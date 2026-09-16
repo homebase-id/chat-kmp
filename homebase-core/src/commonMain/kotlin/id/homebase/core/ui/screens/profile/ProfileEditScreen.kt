@@ -53,7 +53,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.staticCompositionLocalOf
+import id.homebase.resources.profile_edit_circles_fallback_hint
+import id.homebase.resources.profile_edit_preview_section_vetted
+import id.homebase.resources.profile_edit_preview_section_vetted_desc
+import id.homebase.resources.profile_edit_visibility_circles
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -113,8 +119,8 @@ import id.homebase.resources.profile_edit_preview_enter
 import id.homebase.resources.profile_edit_preview_exit
 import id.homebase.resources.profile_edit_preview_section_public
 import id.homebase.resources.profile_edit_preview_section_public_desc
-import id.homebase.resources.profile_edit_preview_section_vetted
-import id.homebase.resources.profile_edit_preview_section_vetted_desc
+import id.homebase.resources.profile_edit_preview_section_circles
+import id.homebase.resources.profile_edit_preview_section_circles_desc
 import id.homebase.resources.profile_edit_public_hint
 import id.homebase.resources.profile_edit_retry
 import id.homebase.resources.profile_edit_status
@@ -219,15 +225,17 @@ fun ProfileEditScreen(
                 if (uiState.savingAttributes.isNotEmpty()) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
-                ProfileForm(
-                    uiState = uiState,
-                    onAction = viewModel::onAction,
-                    avatarUiState = avatarUiState,
-                    onAvatarAction = avatarViewModel::onAction,
-                    onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
-                    onPickConnectedPhoto = { connectedPhotoPicker.launch() },
-                    modifier = Modifier.fillMaxSize(),
-                )
+                CompositionLocalProvider(LocalReviewEnabled provides uiState.reviewEnabled) {
+                    ProfileForm(
+                        uiState = uiState,
+                        onAction = viewModel::onAction,
+                        avatarUiState = avatarUiState,
+                        onAvatarAction = avatarViewModel::onAction,
+                        onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
+                        onPickConnectedPhoto = { connectedPhotoPicker.launch() },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
     }
@@ -260,9 +268,9 @@ private fun LoadFailedState(modifier: Modifier, onRetry: () -> Unit) {
 }
 
 /**
- * Mirrors [ProfilePreview]'s Public/Vetted split: everyone-visible fields first, then everything a
- * vetted (connected) contact can see. There's no screen-wide Save — tapping a row expands it in
- * place with a Public|Vetted toggle (defaulting to that row's own section) and its field(s); the
+ * Mirrors [ProfilePreview]'s Public/Circles split: everyone-visible fields first, then everything a
+ * contact in one of your circles can see. There's no screen-wide Save — tapping a row expands it in
+ * place with a Public|Circles toggle (defaulting to that row's own section) and its field(s); the
  * checkmark persists just that one attribute at whichever tier is currently selected.
  */
 @Composable
@@ -283,7 +291,7 @@ private fun ProfileForm(
     var addDialogTarget by remember { mutableStateOf<Pair<AttributeSpec, ProfileVisibility>?>(null) }
 
     // An attribute qualifies once it's missing from either tier — if it already has a value in one
-    // tier, that tier's row is already on screen and its own Public|Vetted toggle can add the other.
+    // tier, that tier's row is already on screen and its own Public|Circles toggle can add the other.
     val missingAttributes = ATTRIBUTE_SPECS.filter {
         displayValueFor(it.type, uiState.anonymousValues) == null ||
             displayValueFor(it.type, uiState.connectedValues) == null
@@ -314,8 +322,14 @@ private fun ProfileForm(
 
             ProfileFieldsSection(
                 tier = ProfileVisibility.CONNECTED,
-                title = stringResource(MR.string.profile_edit_preview_section_vetted),
-                description = stringResource(MR.string.profile_edit_preview_section_vetted_desc),
+                title = stringResource(
+                    if (uiState.reviewEnabled) MR.string.profile_edit_preview_section_circles
+                    else MR.string.profile_edit_preview_section_vetted
+                ),
+                description = stringResource(
+                    if (uiState.reviewEnabled) MR.string.profile_edit_preview_section_circles_desc
+                    else MR.string.profile_edit_preview_section_vetted_desc
+                ),
                 uiState = uiState,
                 onAction = onAction,
                 editingRows = editingRows,
@@ -638,7 +652,7 @@ private fun SectionHeader(title: String, description: String) {
 
 /**
  * One profile attribute rendered contact-detail style — icon, label, current value. Tapping the row
- * expands it in place with a Public|Vetted toggle (defaulting to [sectionTier], the section it's
+ * expands it in place with a Public|Circles toggle (defaulting to [sectionTier], the section it's
  * listed under) and [content]'s field(s) for whichever tier is currently selected. The checkmark
  * dispatches [ProfileEditAction.SaveAttribute] for that (type, tier) and collapses immediately —
  * [content]'s fields already write straight through as they change, so the value shown is correct
@@ -711,7 +725,8 @@ private fun EditableFieldGroup(
                         if (selectedTier == ProfileVisibility.ANONYMOUS) {
                             MR.string.profile_edit_public_hint
                         } else {
-                            MR.string.profile_edit_connected_fallback_hint
+                            if (LocalReviewEnabled.current) MR.string.profile_edit_circles_fallback_hint
+                            else MR.string.profile_edit_connected_fallback_hint
                         }
                     ),
                     style = MaterialTheme.typography.bodySmall,
@@ -721,6 +736,9 @@ private fun EditableFieldGroup(
         }
     }
 }
+
+/** Dark launch: provided around [ProfileForm] so the deep tier toggles and hints can keep main's "Vetted" wording. */
+private val LocalReviewEnabled = staticCompositionLocalOf { false }
 
 /** Picks which of an attribute's two independent tier records a row's [content] shows/edits. */
 @Composable
@@ -736,7 +754,14 @@ private fun TierToggle(selected: ProfileVisibility, onSelect: (ProfileVisibility
             selected = selected == ProfileVisibility.CONNECTED,
             onClick = { onSelect(ProfileVisibility.CONNECTED) },
             shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-            label = { Text(stringResource(MR.string.profile_edit_visibility_connected)) },
+            label = {
+                Text(
+                    stringResource(
+                        if (LocalReviewEnabled.current) MR.string.profile_edit_visibility_circles
+                        else MR.string.profile_edit_visibility_connected
+                    )
+                )
+            },
         )
     }
 }
@@ -871,7 +896,8 @@ private fun AddAttributeDialog(
                         if (tier == ProfileVisibility.ANONYMOUS) {
                             MR.string.profile_edit_public_hint
                         } else {
-                            MR.string.profile_edit_connected_fallback_hint
+                            if (LocalReviewEnabled.current) MR.string.profile_edit_circles_fallback_hint
+                            else MR.string.profile_edit_connected_fallback_hint
                         }
                     ),
                     style = MaterialTheme.typography.bodySmall,

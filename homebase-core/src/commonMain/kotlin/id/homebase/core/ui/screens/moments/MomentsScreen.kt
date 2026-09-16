@@ -1203,7 +1203,6 @@ private fun MomentsTopAppBar(
                             ),
                             animatedVisibilityScope = this@AnimatedVisibility,
                             sharedTransitionScope = null,
-                            cacheBustKey = session.profileImageLastModified,
                         )
                     }
                 }

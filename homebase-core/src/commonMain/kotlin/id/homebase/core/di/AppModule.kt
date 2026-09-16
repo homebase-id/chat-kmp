@@ -175,6 +175,7 @@ import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
+import id.homebase.core.ui.screens.contactbook.enrollment.EnrollmentCandidatesViewModel
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestViewModel
 import id.homebase.core.ui.screens.feed.FeedViewModel
@@ -212,6 +213,7 @@ import id.homebase.core.location.EmergencyCircleNotifier
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.PushLocationCapture
 import id.homebase.core.location.LocationPreferences
+import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.DeviceSensors
 import id.homebase.core.location.tracking.createDeviceSensors
@@ -313,6 +315,7 @@ val appModule = module {
 
     // region Location add-on
     single { LocationPreferences(get()) }
+    single { DeveloperPreferences(get()) }
     single { LocationDeviceId() }
     single<DeviceSensors> { createDeviceSensors() }
     single { LocationPointStore(databaseManager = get(), deviceSensors = get()) }
@@ -728,6 +731,7 @@ val appModule = module {
             // #1109: attribute a background window to the active location profile in the
             // BgTrace transition line. Lambda keeps the auth layer decoupled from the location module.
             locationProfileLabel = { get<LocationTrackingCoordinator>().currentProfileLabel() },
+            processEnrollmentsEnabled = { get<DeveloperPreferences>().connectionReviewEnabled.value },
         )
     }
     single {
@@ -761,7 +765,15 @@ val appModule = module {
     singleOf(::LocalAttachmentContextStore)
 
     singleOf(::ConnectionCacheRepository)
-    singleOf(::ConnectionService)
+    single {
+        ConnectionService(
+            provider = get(),
+            eventBus = get(),
+            scope = get(),
+            cache = get(),
+            processEnrollmentsEnabled = { get<DeveloperPreferences>().connectionReviewEnabled.value },
+        )
+    }
     singleOf(::EmergencyCircleNotifier)
     single {
         EmergencyContactService(
@@ -1055,6 +1067,7 @@ val appModule = module {
             conversationService = get(),
             emergencyLocateService = get(),
             authConnectionCoordinator = get(),
+            developerPreferences = get(),
         )
     }
     viewModelOf(::EmergencyContactPickerViewModel)
@@ -1102,6 +1115,7 @@ val appModule = module {
             circleName = params.get(),
             repo = get(),
             connectionService = get(),
+            developerPreferences = get(),
         )
     }
     // Manual block: conversationId arrives as a Koin runtime parameter from the ShareContact route.
@@ -1220,6 +1234,7 @@ val appModule = module {
     viewModelOf(::ProfileAvatarEditViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)
+    viewModelOf(::EnrollmentCandidatesViewModel)
     viewModelOf(::DeveloperScheduledPushTestViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::MediaSettingsViewModel)

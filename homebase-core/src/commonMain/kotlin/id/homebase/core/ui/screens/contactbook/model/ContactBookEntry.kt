@@ -14,7 +14,6 @@ import id.homebase.api.client.contacts.ContactPhone
 import id.homebase.api.client.contacts.ContactSocialNetwork
 import id.homebase.api.client.contacts.resolveDisplayName
 import id.homebase.api.client.contacts.socialHandles
-import id.homebase.api.common.publicImageUrl
 import id.homebase.core.contactbook.iCanLocate
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -96,7 +95,6 @@ data class ContactBookEntry(
     val hasOdinId: Boolean get() = !odinId.isNullOrBlank()
 
     /** Public avatar endpoint for identity contacts; null for plain contacts. */
-    val avatarUrl: String? get() = odinId?.takeIf { it.isNotBlank() }?.let { publicImageUrl(it) }
 
     val avatarInitials: String get() = displayName.initials()
 

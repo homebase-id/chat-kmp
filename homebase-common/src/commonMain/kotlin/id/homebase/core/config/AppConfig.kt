@@ -107,6 +107,12 @@ const val PHOTO_APP_ID = "32f0bdbf-017f-4fc0-8004-2d4631182d1e"
 const val OWNER_APP_ID = "ac126e09-54cb-4878-a690-856be692da16"
 const val COMMUNITY_APP_ID = "77ed6136-6b33-4654-8088-3d89c91e6065"
 
+/**
+ * The contacts app, which owns the relationship circles (Friends, Family, Work, Acquaintances)
+ * since odin-core #1682. Matches `SystemAppConstants.ContactsAppId`.
+ */
+const val CONTACTS_APP_ID = "a1a7bd26-7f52-461f-98cf-1f0ec969d97a"
+
 // Labeled drives — drive definition co-located with its human-readable label
 val chatLabeledDrive = LabeledDrive(drive = SystemDriveConstants.chatDrive, label = "Chat")
 val contactLabeledDrive =

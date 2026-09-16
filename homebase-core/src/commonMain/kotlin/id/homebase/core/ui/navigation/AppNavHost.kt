@@ -187,6 +187,7 @@ import id.homebase.core.ui.screens.contactbook.components.ContactCardSaveHost
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen
 import id.homebase.core.ui.screens.contactbook.onboarding.ContactBookOnboardingScreen
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
+import id.homebase.core.ui.screens.contactbook.enrollment.EnrollmentCandidatesScreen
 import id.homebase.resources.chat_contact_card_saved_body
 import id.homebase.resources.chat_contact_card_saved_open
 import id.homebase.resources.contactbook_label
@@ -521,6 +522,9 @@ fun AppNavHost(
                     navController.navigate(Route.AddContact())
                 is ContactBookUiEvent.OpenCircleMemberAdd ->
                     navController.navigate(Route.CircleMemberAdd(event.circleId, event.circleName))
+
+                ContactBookUiEvent.OpenEnrollmentCandidates ->
+                    navController.navigate(Route.EnrollmentCandidates)
                 ContactBookUiEvent.CloseOnboarding ->
                     navController.popBackStack(Route.ChatList, inclusive = false)
                 else -> { /* Error handled by ContactBookScreen */ }
@@ -1110,6 +1114,15 @@ fun AppNavHost(
                                             )
                                         },
                                     ),
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.EnrollmentCandidates> {
+                            if (isAuthenticated) {
+                                EnrollmentCandidatesScreen(
+                                    viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
                                 )
                             }

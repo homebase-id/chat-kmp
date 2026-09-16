@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.NetworkCheck
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.WavingHand
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -71,6 +72,8 @@ import id.homebase.resources.dev_menu_force_logout_confirm_title
 import id.homebase.resources.dev_menu_crash_confirm_action
 import id.homebase.resources.dev_menu_crash_confirm_message
 import id.homebase.resources.dev_menu_crash_confirm_title
+import id.homebase.resources.dev_menu_connection_review
+import id.homebase.resources.dev_menu_connection_review_desc
 import id.homebase.resources.dev_menu_force_sync
 import id.homebase.resources.dev_menu_network_captive_portal
 import id.homebase.resources.dev_menu_network_copy
@@ -232,6 +235,20 @@ fun DeveloperMenuUi(
             DevFootnote(text = BuildConfig.APP_BUILD_TIME)
 
             DevSectionHeader(title = stringResource(MR.string.dev_menu_section_sync))
+            // Dark launch: the review's states and marks are always on, only the actions that
+            // let the owner perform one are behind this.
+            SettingsRow(
+                icon = Icons.Outlined.WavingHand,
+                title = stringResource(MR.string.dev_menu_connection_review),
+                supportingText = stringResource(MR.string.dev_menu_connection_review_desc),
+                action = SettingsRowAction.Toggle(
+                    checked = uiState.connectionReviewEnabled,
+                    onCheckedChange = {
+                        onAction(DeveloperMenuUiAction.SetConnectionReviewEnabled(it))
+                    },
+                ),
+            )
+
             SettingsRow(
                 icon = Icons.Outlined.Sync,
                 title = stringResource(MR.string.dev_menu_force_sync),

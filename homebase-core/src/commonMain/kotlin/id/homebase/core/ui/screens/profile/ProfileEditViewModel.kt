@@ -47,9 +47,12 @@ import kotlin.uuid.ExperimentalUuidApi
  */
 class ProfileEditViewModel(
     private val repository: ProfileRepository,
+    developerPreferences: id.homebase.core.settings.DeveloperPreferences,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(ProfileEditUiState())
+    private val _state = MutableStateFlow(
+        ProfileEditUiState(reviewEnabled = developerPreferences.connectionReviewEnabled.value),
+    )
     val state: StateFlow<ProfileEditUiState> = _state.asStateFlow()
 
     private val _events = MutableSharedFlow<ProfileEditEvent>(extraBufferCapacity = 8)

@@ -21,7 +21,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
@@ -38,6 +37,7 @@ import androidx.compose.ui.window.PopupProperties
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.model.trigger.Trigger
+import id.homebase.core.util.isImeComposing
 import id.homebase.core.util.replaceTextRangeSafely
 
 const val ComposerAutocompleteTag: String = "composer_autocomplete"
@@ -54,7 +54,11 @@ const val ComposerAutocompleteTag: String = "composer_autocomplete"
 class ComposerAutocompleteController internal constructor() {
     internal var keyHandler: ((KeyEvent) -> Boolean)? by mutableStateOf(null)
 
-    fun handleKeyEvent(event: KeyEvent): Boolean = keyHandler?.invoke(event) ?: false
+    // A modified Enter is the composer's in either mode, and an input method's Enter confirms its
+    // own candidate; a bare Enter picks the highlighted suggestion rather than sending ":sm".
+    fun handleKeyEvent(event: KeyEvent): Boolean =
+        if (event.isImeComposing() || event.isModifiedEnter()) false
+        else keyHandler?.invoke(event) ?: false
 }
 
 @Composable
@@ -152,15 +156,10 @@ private fun <T> SuggestionList(
                     true
                 }
 
-                // NumPadEnter too: macOS can report Return as NumPadEnter (#1043). Shift+Enter is
-                // the composer's newline and stays the composer's, open list or not.
+                // NumPadEnter too: macOS can report Return as NumPadEnter.
                 Key.Enter, Key.NumPadEnter, Key.Tab -> {
-                    if (event.isShiftPressed && event.key != Key.Tab) {
-                        false
-                    } else {
-                        items.getOrNull(selected.coerceIn(0, items.lastIndex))?.let(::commit)
-                        true
-                    }
+                    items.getOrNull(selected.coerceIn(0, items.lastIndex))?.let(::commit)
+                    true
                 }
 
                 Key.Escape -> {

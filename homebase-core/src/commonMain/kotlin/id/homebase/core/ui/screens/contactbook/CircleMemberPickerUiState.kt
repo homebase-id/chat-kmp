@@ -9,10 +9,12 @@ data class CircleMemberPickerUiState(
     val candidates: PersistentList<CircleMemberCandidate> = persistentListOf(),
     val selected: PersistentList<ContactBookEntry> = persistentListOf(),
     val submitting: Boolean = false,
+    /** Dark launch: picks the reason text shown on ineligible rows. */
+    val reviewEnabled: Boolean = false,
 )
 
 /** A connected identity shown in the add-to-circle picker. [eligible] is false for a connected
- *  but unvetted (unconfirmed) identity — the server rejects circles/add for those with
+ *  but unreviewed identity — the server rejects circles/add for those with
  *  CannotGrantAutoConnectedMoreCircles, so the row is shown (not hidden) but disabled, with a
  *  reason, rather than silently vanishing from the list. */
 data class CircleMemberCandidate(

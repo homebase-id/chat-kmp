@@ -23,12 +23,14 @@ class AttachmentToolbarVisibilityTest {
     @Test
     fun toolbarHiddenWhenFlagFalse() = runComposeUiTest {
         setContent {
-            HomebaseTheme {
-                MessageTextFieldForAttachment(
-                    state = rememberRichTextState(),
-                    onSendMessage = {},
-                    showFormattingToolbar = false,
-                )
+            WithComposerPreferences {
+                HomebaseTheme {
+                    MessageTextFieldForAttachment(
+                        state = rememberRichTextState(),
+                        onSendMessage = {},
+                        showFormattingToolbar = false,
+                    )
+                }
             }
         }
         waitForIdle()
@@ -38,12 +40,14 @@ class AttachmentToolbarVisibilityTest {
     @Test
     fun toolbarShownWhenFlagTrue() = runComposeUiTest {
         setContent {
-            HomebaseTheme {
-                MessageTextFieldForAttachment(
-                    state = rememberRichTextState(),
-                    onSendMessage = {},
-                    showFormattingToolbar = true,
-                )
+            WithComposerPreferences {
+                HomebaseTheme {
+                    MessageTextFieldForAttachment(
+                        state = rememberRichTextState(),
+                        onSendMessage = {},
+                        showFormattingToolbar = true,
+                    )
+                }
             }
         }
         waitForIdle()
@@ -53,12 +57,14 @@ class AttachmentToolbarVisibilityTest {
     @Test
     fun emojiButtonTogglesPicker() = runComposeUiTest {
         setContent {
-            HomebaseTheme {
-                MessageTextFieldForAttachment(
-                    state = rememberRichTextState(),
-                    onSendMessage = {},
-                    showFormattingToolbar = false,
-                )
+            WithComposerPreferences {
+                HomebaseTheme {
+                    MessageTextFieldForAttachment(
+                        state = rememberRichTextState(),
+                        onSendMessage = {},
+                        showFormattingToolbar = false,
+                    )
+                }
             }
         }
         waitForIdle()
@@ -77,13 +83,15 @@ class AttachmentToolbarVisibilityTest {
     fun emojiPickerSurvivesUnfocusedCaptionAndClosesWhenItRegainsFocus() = runComposeUiTest {
         var reportedVisible: Boolean? = null
         setContent {
-            HomebaseTheme {
-                MessageTextFieldForAttachment(
-                    state = rememberRichTextState(),
-                    onSendMessage = {},
-                    showFormattingToolbar = false,
-                    onEmojiPickerVisibilityChanged = { reportedVisible = it },
-                )
+            WithComposerPreferences {
+                HomebaseTheme {
+                    MessageTextFieldForAttachment(
+                        state = rememberRichTextState(),
+                        onSendMessage = {},
+                        showFormattingToolbar = false,
+                        onEmojiPickerVisibilityChanged = { reportedVisible = it },
+                    )
+                }
             }
         }
         waitForIdle()

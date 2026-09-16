@@ -42,7 +42,6 @@ class MessageListOwnerSessionFallbackTest {
         profileImageFileId = "fid",
         profileImageFileKey = "fkey",
         profileImagePreviewThumbnail = "thumb",
-        profileImageLastModified = 123L,
         status = "around",
     )
 

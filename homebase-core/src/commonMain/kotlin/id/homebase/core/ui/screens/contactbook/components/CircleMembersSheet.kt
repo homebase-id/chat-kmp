@@ -79,8 +79,9 @@ fun CircleMembersSheet(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = state.circleName,
+                CircleLabel(
+                    emoji = state.circleEmoji,
+                    name = state.circleName,
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f),
                 )

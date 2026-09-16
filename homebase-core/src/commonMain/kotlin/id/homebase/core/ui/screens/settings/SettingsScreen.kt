@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Security
@@ -74,6 +75,7 @@ import id.homebase.core.ui.screens.appearance.getStringResourceForTheme
 import id.homebase.core.ui.theme.ExtendedColors
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogText
@@ -95,6 +97,8 @@ import id.homebase.resources.moments_settings_section
 import id.homebase.resources.settings
 import id.homebase.resources.settings_appearance
 import id.homebase.resources.settings_appearance_theme
+import id.homebase.resources.settings_composer_enter_sends
+import id.homebase.resources.settings_composer_enter_sends_description
 import id.homebase.resources.settings_contactbook_desc
 import id.homebase.resources.settings_delete_account
 import id.homebase.resources.settings_delete_account_desc
@@ -335,6 +339,21 @@ fun SettingsUi(
                 )
             }
 
+            if (isDesktopOrWeb()) {
+                item {
+                    SettingsRow(
+                        modifier = Modifier.testTag("enterSendsToggle"),
+                        icon = Icons.Outlined.Keyboard,
+                        title = stringResource(MR.string.settings_composer_enter_sends),
+                        supportingText = stringResource(MR.string.settings_composer_enter_sends_description),
+                        action = SettingsRowAction.Toggle(
+                            checked = uiState.enterSendsMessage,
+                            onCheckedChange = { onAction(SettingsUiAction.SetEnterSendsMessage(it)) },
+                        ),
+                    )
+                }
+            }
+
             item { HubSectionHeader(stringResource(MR.string.settings_section_apps)) }
             item {
                 SettingsRow(
@@ -504,7 +523,6 @@ private fun IdentityHeader(
                         options = AvatarOptions(size = 72.dp),
                         sharedTransitionScope = null,
                         animatedVisibilityScope = null,
-                        cacheBustKey = it.profileImageLastModified,
                     )
                 }
             }
