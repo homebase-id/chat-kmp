@@ -67,6 +67,8 @@ data class ContactDetailUiState(
     val reviewCircleGroups: ReviewCircleGroups = ReviewCircleGroups(),
     /** Non-null while the review sheet is open. */
     val review: ReviewSheetState? = null,
+    /** With the review on, a pending incoming request is reviewed in place; accepting applies it. */
+    val requestReview: ReviewSheetState? = null,
     /** Non-null while the un-review confirmation is open. */
     val unreview: UnreviewState? = null,
     /** User-defined circles this contact belongs to, real or pending (system circles excluded), A–Z. */
@@ -152,7 +154,7 @@ data class ReviewSheetState(
     val alreadyHeldCircleIds: Set<String> = emptySet(),
     val isSubmitting: Boolean = false,
     val failed: Boolean = false,
-    /** Set when the sheet accepts a pending request instead of reviewing a connection. */
+    /** Set when the review accepts a pending request instead of reviewing a connection. */
     val incomingRequest: IncomingRequestSummary? = null,
 )
 
@@ -199,12 +201,14 @@ sealed interface ContactDetailAction {
     data object SeeAllMediaClicked : ContactDetailAction
     data class OpenGroup(val conversationId: Uuid) : ContactDetailAction
     data object BackClicked : ContactDetailAction
-    /** Open the review sheet for a New connection, or to accept a pending incoming request. */
+    /** Open the review sheet for a New connection. */
     data object ReviewClicked : ContactDetailAction
     /** Complete the review: stamp it and enrol [circleIds]. Empty = the "chat only" outcome. */
     data class ReviewSubmitted(val circleIds: Set<String>) : ContactDetailAction
     data object ReviewDismissed : ContactDetailAction
     /** Clear the review stamp, dropping the contact back to New. */
+    /** Accept the pending incoming request with the circles picked in its review. */
+    data class RequestReviewSubmitted(val circleIds: Set<String>) : ContactDetailAction
     data object UnreviewClicked : ContactDetailAction
     data object UnreviewConfirmed : ContactDetailAction
     data object UnreviewDismissed : ContactDetailAction

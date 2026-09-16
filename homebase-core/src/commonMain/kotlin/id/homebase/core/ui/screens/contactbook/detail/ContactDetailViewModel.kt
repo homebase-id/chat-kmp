@@ -357,6 +357,11 @@ class ContactDetailViewModel(
                 // contact's membership. Same system-circle exclusion as the chips above; feeds the
                 // pending-request circle picker (#921 Part B).
                 val assignableCircles = circ.assignableCircles(reviewEnabled)
+                val incomingRequest = domain
+                    ?.takeIf { reviewEnabled && status != ConnectionStatus.Connected }
+                    ?.let { d ->
+                        bundle.incoming.firstOrNull { it.senderOdinId.domainName.equals(d, ignoreCase = true) }
+                    }
                 _uiState.update {
                     it.copy(
                         entry = entry,
@@ -375,9 +380,14 @@ class ContactDetailViewModel(
                         isSelf = isSelf,
                         requestDirection = requestDirection,
                         introducedByName = introducedByName,
-                        // The request can vanish under an open sheet (sender withdrew, accepted elsewhere).
-                        review = it.review?.takeIf { r ->
-                            r.incomingRequest == null || requestDirection == RequestDirection.INCOMING
+                        requestReview = incomingRequest?.let { request ->
+                            (it.requestReview ?: ReviewSheetState()).copy(
+                                introducedBy = request.introducerOdinId?.domainName,
+                                incomingRequest = IncomingRequestSummary(
+                                    receivedAtMs = request.receivedTimestampMilliseconds.milliseconds,
+                                    message = request.message,
+                                ),
+                            )
                         },
                     )
                 }
@@ -651,6 +661,7 @@ class ContactDetailViewModel(
             ContactDetailAction.ReviewDismissed ->
                 _uiState.update { it.copy(review = null) }
             is ContactDetailAction.ReviewSubmitted -> submitReview(action.circleIds)
+            is ContactDetailAction.RequestReviewSubmitted -> acceptReviewedRequest(action.circleIds)
 
             ContactDetailAction.UnreviewClicked ->
                 _uiState.update { it.copy(unreview = UnreviewState()) }
@@ -725,23 +736,6 @@ class ContactDetailViewModel(
 
     private fun openReview() {
         val domain = _uiState.value.entry?.odinId?.lowercase() ?: return
-        if (_uiState.value.isPendingIncoming) {
-            val request = connectionRequestService.incomingRequests.value
-                .firstOrNull { it.senderOdinId.domainName.equals(domain, ignoreCase = true) }
-                ?: return
-            _uiState.update {
-                it.copy(
-                    review = ReviewSheetState(
-                        introducedBy = request.introducerOdinId?.domainName,
-                        incomingRequest = IncomingRequestSummary(
-                            receivedAtMs = request.receivedTimestampMilliseconds.milliseconds,
-                            message = request.message,
-                        ),
-                    ),
-                )
-            }
-            return
-        }
         val registration = connectionService.connections.value.map.entries
             .firstOrNull { it.key.domainName.equals(domain, ignoreCase = true) }?.value
         _uiState.update {
@@ -769,33 +763,52 @@ class ContactDetailViewModel(
         _uiState.update { it.copy(review = open.copy(isSubmitting = true, failed = false)) }
         viewModelScope.launch {
             try {
-                val circleUuids = circleIds.map { Uuid.parseHex(it) }
-                // Accepting stamps the review server-side, so a request never needs a second call.
-                if (open.incomingRequest != null) {
-                    connectionRequestService.acceptIncomingRequest(OdinId(odinId), circleUuids)
-                    _uiState.update { it.copy(review = null) }
-                    _events.tryEmit(ContactDetailEvent.RequestAccepted)
-                } else {
-                    connectionService.reviewConnection(OdinId(odinId), circleUuids)
-                    _uiState.update { it.copy(review = null) }
-                }
+                connectionService.reviewConnection(
+                    OdinId(odinId),
+                    circleIds.map { Uuid.parseHex(it) },
+                )
+                _uiState.update { it.copy(review = null) }
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Logger.w(e, TAG) { "Review of $odinId failed" }
-                // Retrying can't fix a withdrawn request or a missing permission.
-                val terminal = open.incomingRequest != null && (
-                    e is ForbiddenException ||
-                        (e is ClientException && e.errorCode == OdinClientErrorCode.IncomingRequestNotFound)
-                    )
-                if (terminal) {
-                    _uiState.update { it.copy(review = null) }
-                    emitConnectionError(e)
-                    return@launch
-                }
                 _uiState.update {
                     it.copy(review = open.copy(isSubmitting = false, failed = true))
                 }
+            }
+        }
+    }
+
+    /**
+     * Accepting stamps the review server-side, so the reviewed circles ride the accept call. On
+     * success the request leaves the incoming list and the collector drops [ContactDetailUiState.requestReview].
+     */
+    private fun acceptReviewedRequest(circleIds: Set<String>) {
+        val odinId = _uiState.value.entry?.odinId ?: return
+        val open = _uiState.value.requestReview ?: return
+        if (open.isSubmitting) return
+        _uiState.update {
+            it.copy(requestReview = it.requestReview?.copy(isSubmitting = true, failed = false))
+        }
+        viewModelScope.launch {
+            try {
+                connectionRequestService.acceptIncomingRequest(
+                    OdinId(odinId),
+                    circleIds.map { Uuid.parseHex(it) },
+                )
+                _uiState.update { it.copy(requestReview = it.requestReview?.copy(isSubmitting = false)) }
+                _events.tryEmit(ContactDetailEvent.RequestAccepted)
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "Accepting $odinId from the review failed" }
+                // Retrying can't fix a withdrawn request or a missing permission.
+                val terminal = e is ForbiddenException ||
+                    (e is ClientException && e.errorCode == OdinClientErrorCode.IncomingRequestNotFound)
+                _uiState.update {
+                    it.copy(requestReview = it.requestReview?.copy(isSubmitting = false, failed = !terminal))
+                }
+                if (terminal) emitConnectionError(e)
             }
         }
     }

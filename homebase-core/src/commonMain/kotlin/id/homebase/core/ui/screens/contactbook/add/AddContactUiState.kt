@@ -48,11 +48,9 @@ data class AddContactUiState(
      * request — the selection rides the accept call atomically.
      */
     val assignableCircles: List<ContactCircleUi> = emptyList(),
-    /** Dark launch: with the review on, Accept opens the review sheet instead of the chips. */
-    val reviewEnabled: Boolean = false,
     val reviewCircleGroups: ReviewCircleGroups = ReviewCircleGroups(),
-    /** Non-null while the review sheet is open for the resolved identity's incoming request. */
-    val review: ReviewSheetState? = null,
+    /** With the review on, an incoming request is reviewed in place; accepting applies it. */
+    val requestReview: ReviewSheetState? = null,
     val draft: ContactDraft = ContactDraft(),
     val photo: PlatformFile? = null,
     val isSaving: Boolean = false,
@@ -78,9 +76,7 @@ sealed interface AddContactAction {
      * call. Empty = accept without adding to any circle.
      */
     data class AcceptRequestClicked(val circleIds: List<String>) : AddContactAction
-    data object ReviewRequestClicked : AddContactAction
-    data object ReviewDismissed : AddContactAction
-    /** Accept the incoming request through the review sheet, enrolling [circleIds]. */
+    /** Accept the incoming request with the circles picked in its review. */
     data class ReviewSubmitted(val circleIds: Set<String>) : AddContactAction
     /** Reject the incoming request from the resolved identity. */
     data object RejectRequestClicked : AddContactAction

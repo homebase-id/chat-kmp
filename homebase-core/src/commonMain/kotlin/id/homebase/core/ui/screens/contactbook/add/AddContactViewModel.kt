@@ -118,14 +118,23 @@ class AddContactViewModel(
             val alreadySaved = domain != null &&
                 contacts.any { it.content.odinId?.lowercase() == domain }
             val reviewEnabled = developerPreferences.connectionReviewEnabled.value
+            val incomingRequest = domain
+                ?.takeIf { reviewEnabled && relation == IdentityRelation.INCOMING_PENDING }
+                ?.let { d -> incoming.firstOrNull { it.senderOdinId.domainName.lowercase() == d } }
             s.copy(
                 relation = relation,
                 alreadySaved = alreadySaved,
                 assignableCircles = circ.assignableCircles(reviewEnabled),
-                reviewEnabled = reviewEnabled,
                 reviewCircleGroups = circ.reviewCircleGroups(),
-                // The request can vanish under an open sheet (sender withdrew, accepted elsewhere).
-                review = s.review?.takeIf { relation == IdentityRelation.INCOMING_PENDING },
+                requestReview = incomingRequest?.let { request ->
+                    (s.requestReview ?: ReviewSheetState()).copy(
+                        introducedBy = request.introducerOdinId?.domainName,
+                        incomingRequest = IncomingRequestSummary(
+                            receivedAtMs = request.receivedTimestampMilliseconds.milliseconds,
+                            message = request.message,
+                        ),
+                    )
+                },
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AddContactUiState())
 
@@ -153,7 +162,9 @@ class AddContactViewModel(
     fun onAction(action: AddContactAction) {
         when (action) {
             is AddContactAction.OdinIdChanged -> {
-                _state.update { it.copy(draft = it.draft.copy(odinId = action.value)) }
+                _state.update {
+                    it.copy(draft = it.draft.copy(odinId = action.value), requestReview = null)
+                }
                 startResolution(action.value)
             }
             is AddContactAction.DraftChanged -> _state.update { it.copy(draft = action.draft) }
@@ -178,9 +189,7 @@ class AddContactViewModel(
                     connectionRequestService.acceptIncomingRequest(it, circleUuids)
                 }
             }
-            AddContactAction.ReviewRequestClicked -> openReview()
-            AddContactAction.ReviewDismissed -> _state.update { it.copy(review = null) }
-            is AddContactAction.ReviewSubmitted -> submitReview(action.circleIds)
+            is AddContactAction.ReviewSubmitted -> acceptReviewedRequest(action.circleIds)
             AddContactAction.RejectRequestClicked -> handleRequestAction(
                 AddContactEvent.RequestRejected,
             ) { connectionRequestService.rejectIncomingRequest(it) }
@@ -227,57 +236,39 @@ class AddContactViewModel(
         }
     }
 
-    private fun openReview() {
+    /** Accepting stamps the review server-side, so the reviewed circles ride the accept call. */
+    private fun acceptReviewedRequest(circleIds: Set<String>) {
         val odinId = (_state.value.resolution as? RecipientResolution.Resolved)?.identity?.odinId
             ?: return
-        val request = connectionRequestService.incomingRequests.value
-            .firstOrNull { it.senderOdinId.domainName.equals(odinId.domainName, ignoreCase = true) }
-            ?: return
+        if (_state.value.requestReview?.isSubmitting == true) return
         _state.update {
             it.copy(
-                review = ReviewSheetState(
-                    introducedBy = request.introducerOdinId?.domainName,
-                    incomingRequest = IncomingRequestSummary(
-                        receivedAtMs = request.receivedTimestampMilliseconds.milliseconds,
-                        message = request.message,
-                    ),
-                ),
+                requestReview = (it.requestReview ?: ReviewSheetState())
+                    .copy(isSubmitting = true, failed = false),
             )
         }
-    }
-
-    /** Accepting stamps the review server-side, so the sheet's circles ride the accept call. */
-    private fun submitReview(circleIds: Set<String>) {
-        val odinId = (_state.value.resolution as? RecipientResolution.Resolved)?.identity?.odinId
-            ?: return
-        val open = _state.value.review ?: return
-        if (open.isSubmitting) return
-        _state.update { it.copy(review = open.copy(isSubmitting = true, failed = false)) }
         viewModelScope.launch {
             try {
                 connectionRequestService.acceptIncomingRequest(
                     odinId,
                     circleIds.map { Uuid.parseHex(it) },
                 )
-                _state.update { it.copy(review = null) }
+                _state.update { it.copy(requestReview = null) }
                 _events.tryEmit(AddContactEvent.RequestAccepted)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Logger.w(e) { "Accepting $odinId from the review sheet failed" }
+                Logger.w(e) { "Accepting $odinId from the review failed" }
                 val withdrawn = e is ClientException &&
                     e.errorCode == OdinClientErrorCode.IncomingRequestNotFound
                 // Retrying can't fix a withdrawn request or a missing permission.
-                if (withdrawn || e is ForbiddenException) {
-                    _state.update { it.copy(review = null) }
-                    _events.tryEmit(
-                        if (withdrawn) AddContactEvent.RequestWithdrawn
-                        else AddContactEvent.RequestActionFailed
-                    )
-                } else {
-                    _state.update {
-                        it.copy(review = it.review?.copy(isSubmitting = false, failed = true))
-                    }
+                val terminal = withdrawn || e is ForbiddenException
+                _state.update {
+                    it.copy(requestReview = it.requestReview?.copy(isSubmitting = false, failed = !terminal))
+                }
+                when {
+                    withdrawn -> _events.tryEmit(AddContactEvent.RequestWithdrawn)
+                    terminal -> _events.tryEmit(AddContactEvent.RequestActionFailed)
                 }
             }
         }

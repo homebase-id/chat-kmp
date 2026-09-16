@@ -69,8 +69,10 @@ import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.components.CirclePickerChips
+import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
-import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionSheet
+import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionContent
+import id.homebase.core.ui.screens.contactbook.detail.ReviewSheetState
 import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.core.widget.HomebaseIdField
 import id.homebase.resources.MR
@@ -244,34 +246,6 @@ fun AddContactScreen(
             snackbarHostState = snackbarHostState,
             onNavigateToConversation = onOpenConversation,
         )
-
-        val review = uiState.review
-        val identity = (uiState.resolution as? RecipientResolution.Resolved)?.identity
-        if (review != null && identity != null) {
-            ReviewConnectionSheet(
-                displayName = identity.displayNameOrDomain(),
-                odinId = identity.odinId.domainName,
-                avatar = {
-                    ContactAvatar(
-                        odinId = identity.odinId,
-                        profileImageData = null,
-                        initials = identity.initials(),
-                        options = AvatarOptions(size = 52.dp),
-                    )
-                },
-                introducedBy = review.introducedBy,
-                connectedAtMs = null,
-                groups = uiState.reviewCircleGroups,
-                alreadyHeldCircleIds = review.alreadyHeldCircleIds,
-                isSubmitting = review.isSubmitting,
-                errorText = if (review.failed) {
-                    stringResource(MR.string.contact_review_accept_failed)
-                } else null,
-                onSubmit = { ids -> viewModel.onAction(AddContactAction.ReviewSubmitted(ids)) },
-                onDismiss = { viewModel.onAction(AddContactAction.ReviewDismissed) },
-                incomingRequest = review.incomingRequest,
-            )
-        }
     }
 }
 
@@ -362,7 +336,9 @@ private fun ByIdentitySection(
                 relation = uiState.relation,
                 odinId = resolution.identity.odinId,
                 assignableCircles = uiState.assignableCircles,
-                reviewEnabled = uiState.reviewEnabled,
+                displayName = resolution.identity.displayNameOrDomain(),
+                requestReview = uiState.requestReview,
+                reviewCircleGroups = uiState.reviewCircleGroups,
                 actionInProgress = uiState.actionInProgress,
                 identityOnly = identityOnly,
                 onSendConnectionRequest = onSendConnectionRequest,
@@ -426,7 +402,9 @@ private fun RelationActions(
     relation: IdentityRelation,
     odinId: OdinId,
     assignableCircles: List<ContactCircleUi>,
-    reviewEnabled: Boolean,
+    displayName: String,
+    requestReview: ReviewSheetState?,
+    reviewCircleGroups: ReviewCircleGroups,
     actionInProgress: Boolean,
     identityOnly: Boolean,
     onSendConnectionRequest: (OdinId) -> Unit,
@@ -441,7 +419,35 @@ private fun RelationActions(
         IdentityRelation.NONE ->
             ConnectRequestOffer(onClick = { onSendConnectionRequest(odinId) })
 
-        IdentityRelation.INCOMING_PENDING -> {
+        // With the review on, the request is reviewed in place; submitting it accepts.
+        IdentityRelation.INCOMING_PENDING -> if (requestReview != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            ReviewConnectionContent(
+                displayName = displayName,
+                odinId = odinId.domainName,
+                avatar = null,
+                introducedBy = requestReview.introducedBy,
+                connectedAtMs = null,
+                groups = reviewCircleGroups,
+                alreadyHeldCircleIds = requestReview.alreadyHeldCircleIds,
+                isSubmitting = requestReview.isSubmitting,
+                errorText = if (requestReview.failed) {
+                    stringResource(MR.string.contact_review_accept_failed)
+                } else null,
+                onSubmit = { ids -> onAction(AddContactAction.ReviewSubmitted(ids)) },
+                incomingRequest = requestReview.incomingRequest,
+                showIdentity = false,
+                secondaryAction = {
+                    OutlinedButton(
+                        onClick = { onAction(AddContactAction.RejectRequestClicked) },
+                        enabled = !requestReview.isSubmitting && !actionInProgress,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(MR.string.contactbook_detail_reject))
+                    }
+                },
+            )
+        } else {
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = stringResource(MR.string.contactbook_detail_request_incoming),
@@ -451,8 +457,7 @@ private fun RelationActions(
             )
             // Optional: pick which of the user's own circles to add this identity to on Accept.
             // The circles ride the accept request atomically (see AcceptConnectionRequestV2).
-            // With the review on, the review sheet owns the circle choice instead.
-            if (!reviewEnabled) CirclePickerChips(
+            CirclePickerChips(
                 circles = assignableCircles,
                 selectedIds = selectedCircleIds,
                 onToggle = { id ->
@@ -472,10 +477,7 @@ private fun RelationActions(
             ) {
                 Button(
                     onClick = {
-                        onAction(
-                            if (reviewEnabled) AddContactAction.ReviewRequestClicked
-                            else AddContactAction.AcceptRequestClicked(selectedCircleIds.toList())
-                        )
+                        onAction(AddContactAction.AcceptRequestClicked(selectedCircleIds.toList()))
                     },
                     enabled = !actionInProgress,
                     modifier = Modifier.weight(1f),

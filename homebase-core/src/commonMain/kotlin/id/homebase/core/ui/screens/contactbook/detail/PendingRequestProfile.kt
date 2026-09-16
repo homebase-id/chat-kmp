@@ -37,10 +37,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import id.homebase.core.media.subsample.SubSamplingImageSource
+import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.components.CirclePickerChips
+import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionContent
 import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.resources.MR
+import id.homebase.resources.contact_review_accept_failed
 import id.homebase.resources.contactbook_detail_accept
 import id.homebase.resources.contactbook_detail_reject
 import id.homebase.resources.contactbook_detail_request_incoming
@@ -63,10 +66,11 @@ import org.jetbrains.compose.resources.stringResource
 fun PendingRequestProfile(
     entry: ContactBookEntry,
     assignableCircles: List<ContactCircleUi>,
-    reviewEnabled: Boolean,
+    /** Non-null with the review on: the screen is the review, and submitting it accepts. */
+    review: ReviewSheetState?,
+    reviewCircleGroups: ReviewCircleGroups,
     onAccept: (selectedCircleIds: List<String>) -> Unit,
-    /** With the review on, Accept opens the review sheet, which owns the circle choice. */
-    onReview: () -> Unit,
+    onReviewSubmit: (Set<String>) -> Unit,
     onReject: () -> Unit,
     actionInProgress: Boolean,
     onAvatarClick: (SubSamplingImageSource) -> Unit,
@@ -74,6 +78,21 @@ fun PendingRequestProfile(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
+    if (review != null) {
+        PendingRequestReview(
+            entry = entry,
+            review = review,
+            groups = reviewCircleGroups,
+            onSubmit = onReviewSubmit,
+            onReject = onReject,
+            onAvatarClick = onAvatarClick,
+            modifier = modifier,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
+        )
+        return
+    }
+
     // Circle ids the user has ticked to add this contact to on Accept. Keyed by the contact so it
     // resets when viewing a different request (a transient picker — no need to survive process death).
     var selectedCircleIds by remember(entry.uniqueId) { mutableStateOf(emptySet<String>()) }
@@ -155,7 +174,7 @@ fun PendingRequestProfile(
 
         // Optional: pick which of the user's own circles to add this contact to on Accept.
         // The circles ride the accept request atomically (see AcceptConnectionRequestV2).
-        if (!reviewEnabled && assignableCircles.isNotEmpty()) {
+        if (assignableCircles.isNotEmpty()) {
             Spacer(modifier = Modifier.height(24.dp))
             CirclePickerChips(
                 circles = assignableCircles,
@@ -183,9 +202,7 @@ fun PendingRequestProfile(
                 Text(stringResource(MR.string.contactbook_detail_reject))
             }
             FilledTonalButton(
-                onClick = {
-                    if (reviewEnabled) onReview() else onAccept(selectedCircleIds.toList())
-                },
+                onClick = { onAccept(selectedCircleIds.toList()) },
                 enabled = !actionInProgress,
                 contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
             ) {
@@ -195,4 +212,80 @@ fun PendingRequestProfile(
             }
         }
     }
+}
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun PendingRequestReview(
+    entry: ContactBookEntry,
+    review: ReviewSheetState,
+    groups: ReviewCircleGroups,
+    onSubmit: (Set<String>) -> Unit,
+    onReject: () -> Unit,
+    onAvatarClick: (SubSamplingImageSource) -> Unit,
+    modifier: Modifier = Modifier,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
+) {
+    ReviewConnectionContent(
+        displayName = entry.displayName,
+        odinId = entry.odinId,
+        avatar = {
+            ContactBookAvatar(
+                entry = entry,
+                size = 52.dp,
+                onClick = onAvatarClick,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
+        },
+        introducedBy = review.introducedBy,
+        connectedAtMs = null,
+        groups = groups,
+        alreadyHeldCircleIds = review.alreadyHeldCircleIds,
+        isSubmitting = review.isSubmitting,
+        errorText = if (review.failed) stringResource(MR.string.contact_review_accept_failed) else null,
+        onSubmit = onSubmit,
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+            .padding(top = 20.dp, bottom = 24.dp),
+        incomingRequest = review.incomingRequest,
+        details = {
+            entry.status?.takeIf { it.isNotBlank() }?.let { status ->
+                Text(
+                    text = status,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+            }
+            entry.shortBio?.takeIf { it.isNotBlank() }?.let { bio ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ) {
+                    SelectionContainer {
+                        Text(
+                            text = bio,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(16.dp),
+                        )
+                    }
+                }
+            }
+        },
+        secondaryAction = {
+            OutlinedButton(
+                onClick = onReject,
+                enabled = !review.isSubmitting,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(MR.string.contactbook_detail_reject))
+            }
+        },
+    )
 }
