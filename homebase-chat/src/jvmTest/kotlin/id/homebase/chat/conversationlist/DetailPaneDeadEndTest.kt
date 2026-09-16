@@ -9,6 +9,7 @@ import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
 import androidx.compose.material3.adaptive.layout.PaneScaffoldDirective
 import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldDestinationItem
+import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldRole
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
 import androidx.compose.material3.adaptive.navigation.BackNavigationBehavior
 import androidx.compose.material3.adaptive.navigation.ThreePaneScaffoldNavigator
@@ -32,7 +33,7 @@ import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 /**
- * #1523: rotating landscape→portrait after a notification tap stranded the app on the empty
+ * Rotating landscape→portrait after a notification tap stranded the app on the empty
  * "Select a conversation" pane — no list, no back, no bottom navigation, force-quit to recover.
  */
 @OptIn(ExperimentalTestApi::class, ExperimentalMaterial3AdaptiveApi::class)
@@ -40,70 +41,25 @@ class DetailPaneDeadEndTest {
 
     @Test
     fun `an empty detail pane owning a compact window is the stranded state`() {
-        assertTrue(
-            isStrandedOnEmptyDetailPane(
-                maxHorizontalPartitions = 1,
-                currentPane = ListDetailPaneScaffoldRole.Detail,
-                detailContentKey = null,
-            )
-        )
-        // A wiped destination history has no current pane at all and still resolves to
+        fun destination(pane: ThreePaneScaffoldRole, key: Uuid? = null) =
+            ThreePaneScaffoldDestinationItem(pane, key)
+
+        assertTrue(isStrandedOnEmptyDetailPane(1, destination(ListDetailPaneScaffoldRole.Detail)))
+        // A wiped destination history has no current destination at all and still resolves to
         // Detail-expanded / List-hidden — the exact screen the issue reports.
-        assertTrue(
-            isStrandedOnEmptyDetailPane(
-                maxHorizontalPartitions = 1,
-                currentPane = null,
-                detailContentKey = null,
-            )
-        )
+        assertTrue(isStrandedOnEmptyDetailPane(1, null))
         assertFalse(
             isStrandedOnEmptyDetailPane(
-                maxHorizontalPartitions = 1,
-                currentPane = ListDetailPaneScaffoldRole.Detail,
-                detailContentKey = Uuid.random(),
+                1,
+                destination(ListDetailPaneScaffoldRole.Detail, Uuid.random()),
             ),
             "a conversation is on screen with a back button — nothing to recover from",
         )
         assertFalse(
-            isStrandedOnEmptyDetailPane(
-                maxHorizontalPartitions = 2,
-                currentPane = ListDetailPaneScaffoldRole.Detail,
-                detailContentKey = null,
-            ),
+            isStrandedOnEmptyDetailPane(2, destination(ListDetailPaneScaffoldRole.Detail)),
             "the placeholder beside a visible list is the designed two-pane empty state",
         )
-        assertFalse(
-            isStrandedOnEmptyDetailPane(
-                maxHorizontalPartitions = 1,
-                currentPane = ListDetailPaneScaffoldRole.List,
-                detailContentKey = null,
-            )
-        )
-    }
-
-    @Test
-    fun `the bottom bar is only surrendered to a detail pane that has content`() {
-        assertTrue(
-            detailPaneOwnsWindow(
-                isListPaneHidden = true,
-                isDetailPaneVisible = true,
-                detailContentKey = Uuid.random(),
-            )
-        )
-        assertFalse(
-            detailPaneOwnsWindow(
-                isListPaneHidden = true,
-                isDetailPaneVisible = true,
-                detailContentKey = null,
-            )
-        )
-        assertFalse(
-            detailPaneOwnsWindow(
-                isListPaneHidden = false,
-                isDetailPaneVisible = true,
-                detailContentKey = Uuid.random(),
-            )
-        )
+        assertFalse(isStrandedOnEmptyDetailPane(1, destination(ListDetailPaneScaffoldRole.List)))
     }
 
     /**
@@ -122,10 +78,6 @@ class DetailPaneDeadEndTest {
             waitUntil(timeoutMillis = 5_000) { harness.navigator.currentDestination == null }
 
             assertNull(harness.navigator.currentDestination)
-            assertTrue(
-                isStrandedOnEmptyDetailPane(1, harness.navigator.currentDestination?.pane, null),
-                "a wiped history is one re-layout away from the dead end",
-            )
         }
 
     /**
@@ -157,13 +109,6 @@ class DetailPaneDeadEndTest {
             waitForIdle()
 
             assertEquals(conversation, harness.navigator.currentDestination?.contentKey)
-            assertFalse(
-                isStrandedOnEmptyDetailPane(
-                    maxHorizontalPartitions = 1,
-                    currentPane = harness.navigator.currentDestination?.pane,
-                    detailContentKey = harness.navigator.currentDestination?.contentKey,
-                )
-            )
 
             // And the way out of that full-screen conversation still reaches the list.
             harness.dispatch { returnToListPane() }

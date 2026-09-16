@@ -243,8 +243,8 @@ class NotificationNavigationEffectsTest {
         onNodeWithText("detail=$idA").assertExists()
         assertEquals(0, clearCount, "no clear expected after selecting A")
 
-        // Simulate user-back: the production path calls scaffoldNavigator.navigateBack()
-        // from a BackHandler. We don't have access to the navigator from outside the
+        // Simulate user-back: the production path calls closeDetailEntry() from a
+        // BackHandler. We don't have access to the navigator from outside the
         // test host, so we synthesize the same end-state by clearing selection and also
         // expecting the cleanup effect to NOT run an extra time (clear must come from
         // the user-back path, not from `selected.value = null`). To keep the test faithful

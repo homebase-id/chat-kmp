@@ -2,49 +2,38 @@ package id.homebase.chat.conversationlist
 
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
-import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldRole
+import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldDestinationItem
 import androidx.compose.material3.adaptive.navigation.BackNavigationBehavior
 import androidx.compose.material3.adaptive.navigation.ThreePaneScaffoldNavigator
 import kotlin.uuid.Uuid
 
 /**
- * The dead end this file exists to make unreachable (#1523).
+ * An empty destination history resolves to Detail-Expanded / List-Hidden with a null
+ * `currentDestination`: the "select a conversation" placeholder full-screen, list gone, and
+ * `canNavigateBack` false, so nothing on screen can leave it.
  *
- * A compact window with the scaffold on Detail and no content key draws the "select a
- * conversation" placeholder full-screen: list hidden, no back affordance, no bottom navigation.
- * An *empty* destination history resolves to exactly that — `primary = Expanded,
- * secondary = Hidden`, `currentDestination = null` — and `canNavigateBack` is false there, so
- * nothing on screen can leave it. Force-quit is the only way out.
+ * Only a *null* content key qualifies. A key whose conversation has not synced yet belongs to
+ * [ColdStartDetailGuard]; widening this test flickers the bottom bar across that guard's grace
+ * period on every cold start into a chat.
  */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 internal fun isStrandedOnEmptyDetailPane(
     maxHorizontalPartitions: Int,
-    currentPane: ThreePaneScaffoldRole?,
-    detailContentKey: Uuid?,
+    currentDestination: ThreePaneScaffoldDestinationItem<Uuid>?,
 ): Boolean =
     maxHorizontalPartitions == 1 &&
-        (currentPane == null || currentPane == ListDetailPaneScaffoldRole.Detail) &&
-        detailContentKey == null
-
-/** The detail pane may claim the compact window, and hide the bottom bar, only while it has
- *  a conversation to draw. */
-internal fun detailPaneOwnsWindow(
-    isListPaneHidden: Boolean,
-    isDetailPaneVisible: Boolean,
-    detailContentKey: Uuid?,
-): Boolean = isListPaneHidden && isDetailPaneVisible && detailContentKey != null
+        (currentDestination == null ||
+            currentDestination.pane == ListDetailPaneScaffoldRole.Detail) &&
+        currentDestination?.contentKey == null
 
 /**
- * Leaves the detail pane for the list pane without ever emptying the destination history.
+ * Leaves the detail pane for the list pane without ever emptying the destination history (#1523).
  *
- * Never call the navigator's own `navigateBack()` instead of this: it *clears* the whole history
- * whenever no earlier entry would change the scaffold value — true of a single-entry history, and
- * of every entry while two panes are on screen, since `ThreePaneScaffoldValue.equals` compares only
- * the three adapted values and both panes stay Expanded whichever destination is current.
- *
- * `PopUntilCurrentDestinationChange` drops every Detail entry down to the most recent List one, so
- * one pop reaches the list and leaves no stale Detail on top for a back press to re-enter. With no
- * List entry to fall back on, pushing one is the only escape that avoids that clearing branch.
+ * The navigator's own `navigateBack()` *clears* the whole history whenever no earlier entry would
+ * change the scaffold value: true of a one-entry history, and of every entry while two panes are on
+ * screen, since `ThreePaneScaffoldValue.equals` compares only the three adapted values. Pushing a
+ * List entry is the only escape once there is none left to pop to. `PopUntilCurrentDestinationChange`
+ * drops every Detail down to the most recent List, leaving no stale entry for back to re-enter.
  */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 internal suspend fun ThreePaneScaffoldNavigator<Uuid>.returnToListPane() {
@@ -52,5 +41,16 @@ internal suspend fun ThreePaneScaffoldNavigator<Uuid>.returnToListPane() {
         navigateBack(BackNavigationBehavior.PopUntilCurrentDestinationChange)
     } else {
         navigateTo(ListDetailPaneScaffoldRole.List)
+    }
+}
+
+/**
+ * Closes one detail entry, stopping at the first destination whose content differs — not
+ * interchangeable with [returnToListPane], which pops every Detail down to the most recent List.
+ */
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
+internal suspend fun ThreePaneScaffoldNavigator<Uuid>.closeDetailEntry() {
+    if (canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
+        navigateBack(BackNavigationBehavior.PopUntilContentChange)
     }
 }

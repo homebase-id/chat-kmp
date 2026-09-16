@@ -167,6 +167,35 @@ class ArchitectureTest {
             }
     }
 
+    /**
+     * Dead-end guard (#1523). A pane navigator's own `navigateBack()` *clears* the entire
+     * destination history whenever no earlier entry would change the scaffold value — a one-entry
+     * history, or any entry while two panes are on screen — and an empty history draws the
+     * "select a conversation" placeholder full-screen with the list gone and `canNavigateBack`
+     * false: force-quit is the only way out. `DetailPaneNavigation.kt` owns the two escapes that
+     * handle that branch, `returnToListPane()` and `closeDetailEntry()`.
+     *
+     * Scoped to files importing from the adaptive-navigation package, which keeps the unrelated
+     * `FeedWebView` back-navigation interface out of frame. The regex matches CALLS on a receiver;
+     * `canNavigateBack(` and the extension-receiver form inside the test harness do not match.
+     */
+    @Test
+    fun `Pane scaffold back navigation goes through DetailPaneNavigation`() {
+        Konsist.scopeFromProject()
+            .files
+            .filter { it.text.contains("material3.adaptive.navigation.") }
+            .filter { !it.hasNameEndingWith("DetailPaneNavigation") }
+            .assertFalse(
+                additionalMessage = "Call returnToListPane() or closeDetailEntry() from " +
+                    "DetailPaneNavigation.kt instead of the pane navigator's own navigateBack() " +
+                    "(issue #1523) — it empties the destination history whenever no earlier entry " +
+                    "changes the scaffold value, stranding a compact window on an empty detail " +
+                    "pane with no list, no back affordance and no bottom navigation."
+            ) { file ->
+                file.text.contains(Regex("""\.\s*navigateBack\s*\("""))
+            }
+    }
+
     @Test
     fun `Do not allow calling close on httpClient`() {
         Konsist.scopeFromProject()

@@ -27,9 +27,7 @@ import kotlin.uuid.Uuid
  * forward by `AppNavHost.popBackStack(ChatList)` after a notification tap.
  *
  * Effect 2 (swap): when `selectedConversationId` changes to a new value, navigate the
- * scaffold to `Detail(selectedId)`. If the scaffold is already at `Detail` with a stale
- * `contentKey`, pop that entry off first — but only when `canNavigateBack` says the pop is
- * real, because otherwise `navigateBack` empties the history instead (see [returnToListPane]).
+ * scaffold to `Detail(selectedId)`, popping a stale `Detail` entry off first.
  *
  * Contract with [ConversationListViewModel.selectConversation]: the VM MUST update
  * `selectedConversationId` synchronously when a conversation is selected, *before*
@@ -38,7 +36,7 @@ import kotlin.uuid.Uuid
  * cold-start / post-reconnect will hold notification-tap navigation hostage for
  * seconds. See `loadMessagesForConversation` for the prelude that enforces this.
  *
- * The two effects race during a programmatic swap: `navigateBack()` transits the
+ * The two effects race during a programmatic swap: the pop transits the
  * scaffold through the "list-only" state that effect 1 watches for. `isSwappingDetailPane`
  * gates effect 1 during that window so it doesn't null out `selectedConversationId`
  * mid-swap.
