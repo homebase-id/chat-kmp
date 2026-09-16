@@ -74,16 +74,16 @@ fun ContactBookAvatar(
     if (!odinId.isNullOrBlank()) {
         val parsed = remember(odinId) { runCatching { OdinId(odinId) }.getOrNull() }
         if (parsed != null) {
-            // The same cache-busted URL the tile renders, so a Sync-refreshed photo doesn't open
-            // full screen as the pre-refresh bytes Coil still holds under the plain URL.
-            val avatarUrl = rememberPublicAvatarUrl(parsed)
+            val avatarUrl = if (onClick != null) rememberPublicAvatarUrl(parsed) else null
             ContactAvatar(
                 odinId = parsed,
                 profileImageData = null,
                 initials = entry.avatarInitials,
                 options = options.copy(
-                    onClick = onClick?.let {
-                        { it(SubSamplingImageSource.Url(avatarUrl)) }
+                    onClick = if (onClick != null && avatarUrl != null) {
+                        { onClick(SubSamplingImageSource.Url(avatarUrl)) }
+                    } else {
+                        null
                     },
                     onClickNeedsImage = true,
                 ),

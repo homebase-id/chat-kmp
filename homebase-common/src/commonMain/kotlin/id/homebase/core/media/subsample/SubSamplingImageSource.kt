@@ -28,6 +28,5 @@ fun SubSamplingImageSource.sharedElementKey(): String? = when (this) {
     is SubSamplingImageSource.LocalFile -> null
 }
 
-// Query-insensitive: a public avatar carries a `?v=` cache-bust token that the tile and the
-// full-screen viewer can be one refresh apart on, and a mismatched key drops the morph.
+// Query-insensitive: a stale `?v=` cache-bust token on either end must not drop the morph.
 fun imageUrlSharedElementKey(url: String): String = "image-url-${url.substringBefore('?')}"

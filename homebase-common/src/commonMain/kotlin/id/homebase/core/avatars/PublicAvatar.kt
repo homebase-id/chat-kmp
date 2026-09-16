@@ -25,7 +25,6 @@ import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
 import id.homebase.api.common.OdinId
-import id.homebase.api.common.publicImageUrl
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.media.subsample.imageUrlSharedElementKey
 import id.homebase.resources.MR
@@ -82,13 +81,12 @@ fun PublicAvatar(
                 .clip(CircleShape)
         }
 
-    // Keyed off the plain published URL, never the cache-busted one: the viewer is opened with
-    // the plain URL and both ends must agree on the key.
+    // The key strips the ?v= token, so tile and viewer still pair up a refresh apart.
     if (sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
             containerModifier = containerModifier.sharedBounds(
                 rememberSharedContentState(
-                    key = imageUrlSharedElementKey(odinId.publicImageUrl()),
+                    key = imageUrlSharedElementKey(imageUrl),
                 ),
                 animatedVisibilityScope = animatedVisibilityScope,
                 boundsTransform = { _, _ ->

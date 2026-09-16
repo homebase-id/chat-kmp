@@ -31,11 +31,8 @@ class ContactInfoGateway internal constructor(
     // Always the public read: a synced contact stores name/avatar, not the card.
     suspend fun profileCard(odinId: OdinId): ProfileCard? = publicProfiles.getPublicProfile(odinId)
 
-    /**
-     * Explicit "re-read this identity from their host now" — the one path that overrides the
-     * client TTL, for a user-initiated refresh. Invalidate before bumping [PublicAvatarRevisions]:
-     * a reader racing the bump would otherwise refill Coil from the entry we are about to drop.
-     */
+    // The one read that overrides the client TTL. Invalidate before bumping: a reader racing the
+    // bump would otherwise refill Coil from the entry we are about to drop.
     suspend fun refresh(odinId: OdinId) {
         publicProfiles.invalidateProfile(odinId)
         publicProfiles.invalidateImage(odinId)
@@ -44,7 +41,12 @@ class ContactInfoGateway internal constructor(
 
     suspend fun getCacheStats(): List<CacheStats> = publicProfiles.getCacheStats()
 
-    suspend fun clearCaches() = publicProfiles.clearCaches()
+    // Both callers clear Coil's memory cache too, so dropping the tokens here cannot resurface
+    // stale bytes under the reverted plain URL.
+    suspend fun clearCaches() {
+        publicProfiles.clearCaches()
+        PublicAvatarRevisions.clear()
+    }
 
     private suspend fun localContact(odinId: OdinId): Contact? {
         val repository = contactRepository()

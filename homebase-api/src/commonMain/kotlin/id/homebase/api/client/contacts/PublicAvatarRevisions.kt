@@ -1,30 +1,31 @@
 package id.homebase.api.client.contacts
 
+import androidx.compose.runtime.mutableStateMapOf
 import id.homebase.api.common.OdinId
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlin.time.Clock
 
 /**
- * Cache-bust tokens for peers' `/pub/image`, bumped by [ContactInfoGateway.refresh] and folded by
- * avatar composables into the model string they hand Coil. Coil keys its *memory* cache on that
- * string, so dropping the disk entry alone repaints nothing and never even reaches the fetcher.
+ * Cache-bust tokens for peers' `/pub/image`: Coil keys its memory cache on the model string, and a
+ * peer's avatar URL never changes on its own.
  *
- * Deliberately not a Koin binding. Every avatar on screen reads this, including in previews and
- * Compose UI tests that stand up no graph at all, and the state is process-wide, in-memory and
- * dependency-free — a binding would buy nothing and make a leaf composable un-renderable without
- * one. Keyed by [OdinId.domainName]; only identities refreshed this session appear.
+ * Not a Koin binding — `PublicAvatar` is a leaf that 19 homebase-chat Compose tests render in an
+ * isolated graph holding only `UserPreferences` + an `ImageLoader`, and a second required binding
+ * fails all of them. [ContactInfoGateway.clearCaches] prunes it, so it outlives no identity.
  */
 object PublicAvatarRevisions {
 
-    private val _revisions = MutableStateFlow<Map<String, Long>>(emptyMap())
-    val revisions: StateFlow<Map<String, Long>> = _revisions.asStateFlow()
+    private val revisions = mutableStateMapOf<String, Long>()
 
+    // Snapshot state: an avatar composable reading this recomposes when bump() lands.
+    fun revisionOf(domain: String): Long? = revisions[domain]
+
+    // Monotonic, not just "now": a device clock stepping backwards would otherwise hand back a
+    // token Coil already holds bytes under, silently disarming the refresh.
     internal fun bump(odinId: OdinId) {
-        _revisions.update {
-            it + (odinId.domainName to Clock.System.now().toEpochMilliseconds())
-        }
+        val domain = odinId.domainName
+        val previous = revisions[domain] ?: 0L
+        revisions[domain] = maxOf(Clock.System.now().toEpochMilliseconds(), previous + 1)
     }
+
+    internal fun clear() = revisions.clear()
 }

@@ -583,10 +583,6 @@ class ContactDetailViewModel(
      * Best-effort server-side enrichment from the identity's public profile. The endpoint is
      * fire-and-forget (202 Accepted) and the enriched contact lands later via drive sync, so we
      * just acknowledge the request — there's no success/failure to report back synchronously.
-     *
-     * The peer's /pub/profile + /pub/image are cached client-side for a week/month and the
-     * enrichment call does not touch them, so a user-initiated refresh has to force them itself
-     * (#1526). This is the only path that overrides that TTL; every other read still caches.
      */
     private fun handleSync() {
         val domain = odinId ?: return
