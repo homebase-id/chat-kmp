@@ -40,7 +40,6 @@ import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
 import androidx.compose.material3.adaptive.layout.PaneAdaptedValue
 import androidx.compose.material3.adaptive.layout.PaneExpansionAnchor
-import androidx.compose.material3.adaptive.layout.PaneScaffoldDirective
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
 import androidx.compose.material3.adaptive.layout.rememberPaneExpansionState
 import androidx.compose.runtime.Composable
@@ -71,7 +70,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
@@ -791,16 +789,13 @@ fun ConversationListUi(
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
     val defaultDirective = calculatePaneScaffoldDirective(windowAdaptiveInfo)
     val isExpanded = isExpandedLayout()
-    val scaffoldDirective = PaneScaffoldDirective(
+    val scaffoldDirective = defaultDirective.copy(
         maxHorizontalPartitions = if (isExpanded) 2 else 1,
         horizontalPartitionSpacerSize = 0.dp, // Remove the white border
-        maxVerticalPartitions = defaultDirective.maxVerticalPartitions,
-        verticalPartitionSpacerSize = defaultDirective.verticalPartitionSpacerSize,
         defaultPanePreferredWidth = 360.dp, // Slightly wider default for chat list
-        excludedBounds = defaultDirective.excludedBounds
     )
-    val selectedConversationId = uiState.selectedConversationId
-    val scaffoldValue = chatScaffoldValue(scaffoldDirective, selectedConversationId)
+    val detail = chatDetail(uiState.selectedConversationId, uiState.activeConversations)
+    val scaffoldValue = chatScaffoldValue(isExpanded, detail)
     // Anchors are the only bound the scaffold offers: a drag can overshoot but settles to the
     // nearest one, so the ladder's ends are what actually clamp the list pane. Kept remembered
     // because rememberPaneExpansionState restarts its restore effect whenever the list changes.
@@ -819,13 +814,7 @@ fun ConversationListUi(
 
     val isListPaneHidden =
         scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
-    val isDetailPaneVisible =
-        scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
-    // Unlike showingOnlyDetail this is also true on an expanded two-pane window, where the
-    // composer is on screen while the list still is.
-    val isComposerVisible = isDetailPaneVisible && selectedConversationId != null
-    // An empty detail pane must never take the bottom bar with it.
-    val showingOnlyDetail = isListPaneHidden && isComposerVisible
+    val isComposerVisible = detail is ChatDetail.Open
 
     // Record what the user last saw at the top, so the return can tell whether the list reordered
     // while they were gone. ON_STOP runs inside the lifecycle callback; a coroutine would not be
@@ -842,7 +831,7 @@ fun ConversationListUi(
     }
 
     // Notify parent about detail pane visibility in compact view
-    LaunchedEffect(showingOnlyDetail) { onDetailPaneVisibilityChanged(showingOnlyDetail) }
+    LaunchedEffect(isListPaneHidden) { onDetailPaneVisibilityChanged(isListPaneHidden) }
 
     LaunchedEffect(isComposerVisible) { onComposerVisibilityChanged(isComposerVisible) }
 
@@ -859,7 +848,7 @@ fun ConversationListUi(
         }
     }
 
-    @Suppress("DEPRECATION") BackHandler(selectedConversationId != null) {
+    @Suppress("DEPRECATION") BackHandler(detail is ChatDetail.Open) {
         if (messagesUiState.fullScreenOverlay != null) {
             onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
         } else if (!isExpanded) {
@@ -907,7 +896,6 @@ fun ConversationListUi(
                         }
                         ConversationListPane(
                             uiState = uiState,
-                            selectedConversationId = selectedConversationId,
                             searchTextState = conversationSearchTextFieldState,
                             searchFocusRequester = conversationSearchFocusRequester,
                             archivedUiState = archivedConversationsUiState,
@@ -919,17 +907,10 @@ fun ConversationListUi(
                 },
                 detailPane = {
                     AnimatedPane {
-                        val conversation = uiState.activeConversations
-                            .find { it.conversation.id == selectedConversationId }
-                        LaunchedEffect(selectedConversationId, conversation != null) {
-                            Logger.i(tag = "ConversationListUi") {
-                                "detailPane render: selected=$selectedConversationId, conversationFound=${conversation != null}, activeConversationsSize=${uiState.activeConversations.size}"
-                            }
-                        }
-                        if (conversation != null) {
-                            key(conversation.conversation.id) {
+                        if (detail is ChatDetail.Open) {
+                            key(detail.conversation.conversation.id) {
                                 ConversationMessagesPane(
-                                    conversation = conversation,
+                                    conversation = detail.conversation,
                                     uiState = messagesUiState,
                                     textFieldState = messageInputTextFieldState,
                                     searchTextState = messagesSearchTextState,

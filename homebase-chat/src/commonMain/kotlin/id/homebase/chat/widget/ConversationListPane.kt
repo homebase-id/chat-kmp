@@ -136,7 +136,6 @@ internal fun Modifier.paneTrailingEdge(): Modifier {
 @Composable
 fun ConversationListPane(
     uiState: ConversationListUiState,
-    selectedConversationId: Uuid? = null,
     searchTextState: TextFieldState,
     searchFocusRequester: FocusRequester? = null,
     archivedUiState: ArchivedConversationsUiState = ArchivedConversationsUiState(),
@@ -465,7 +464,7 @@ fun ConversationListPane(
                     if (uiState.showArchived) {
                         archivedConversationItems(
                             archivedUiState = archivedUiState,
-                            selectedConversationId = selectedConversationId,
+                            selectedConversationId = uiState.selectedConversationId,
                             iconOnlyMode = iconOnlyMode,
                             onUiAction = onUiAction,
                         )
@@ -583,7 +582,7 @@ fun ConversationListPane(
                                 Box(modifier = Modifier.animateItem()) {
                                     ConversationLisContentItem(
                                         listItem = listItem,
-                                        selectedConversationId = selectedConversationId,
+                                        selectedConversationId = uiState.selectedConversationId,
                                         iconOnlyMode = iconOnlyMode,
                                         // Search results are a tap target, not a swipe target.
                                         allowSwipeActions = !searchActive,
