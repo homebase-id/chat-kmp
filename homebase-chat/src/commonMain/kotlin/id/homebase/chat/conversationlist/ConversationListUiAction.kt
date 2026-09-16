@@ -30,10 +30,6 @@ sealed interface ConversationListUiAction {
      *  list leaves the screen, and once per return to it. */
     data object SnapshotListTop : ConversationListUiAction
 
-    /** The screen has handled [ConversationListUiState.closeDetailPaneRequest] (popped
-     *  the scaffold detail pane); clear it so it doesn't fire again on next recompose. */
-    data object CloseDetailPaneRequestConsumed : ConversationListUiAction
-
     /** Combined leave-and-delete for a group conversation the user is still in.
      *  Service-side: calls [ConversationService.leaveGroup] then
      *  [ConversationService.deleteConversation] in sequence so the user does not
