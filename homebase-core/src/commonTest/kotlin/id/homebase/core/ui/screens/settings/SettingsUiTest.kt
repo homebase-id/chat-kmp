@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.runComposeUiTest
 import id.homebase.core.settings.ThemeState
 import kotlin.test.Test
@@ -43,9 +44,11 @@ class SettingsUiTest {
         )
     }
 
+    // Scroll to compose the row, then fire its click action rather than tapping coordinates: the
+    // app bar is pinned over the scrolling list, and a row parked under it swallows a tap.
     private fun ComposeUiTest.tapRow(tag: String) {
         onNodeWithTag("settingsList").performScrollToNode(hasTestTag(tag))
-        onNodeWithTag(tag).performClick()
+        onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick)
     }
 
     private fun ComposeUiTest.settings(
@@ -74,10 +77,7 @@ class SettingsUiTest {
         assertEquals(listOf("back"), routes.fired)
     }
 
-    /**
-     * Walks the hub top to bottom. Order matters: the app bar is pinned, so scrolling *up*
-     * to a row can park it under the bar and swallow the tap.
-     */
+    /** Walks the hub top to bottom. */
     @Test
     fun everyNavigationRowReachesItsOwnRoute() = runComposeUiTest {
         val routes = Routes()

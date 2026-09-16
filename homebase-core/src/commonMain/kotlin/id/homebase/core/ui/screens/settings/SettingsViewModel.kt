@@ -44,6 +44,7 @@ class SettingsViewModel(
     private val _uiState = MutableStateFlow(
         SettingsUiState(
             useNativeFeed = userPreferences.useNativeFeed,
+            enterSendsMessage = userPreferences.enterSendsMessage,
             appVersion = platformInfo.versionName,
         ),
     )
@@ -67,7 +68,9 @@ class SettingsViewModel(
     private fun observePreferences() {
         viewModelScope.launch {
             userPreferences.preferenceState.collect { prefs ->
-                _uiState.update { it.copy(theme = prefs.theme) }
+                _uiState.update {
+                    it.copy(theme = prefs.theme, enterSendsMessage = prefs.enterSendsMessage)
+                }
             }
         }
     }
@@ -143,6 +146,10 @@ class SettingsViewModel(
             is SettingsUiAction.SetUseNativeFeed -> {
                 userPreferences.useNativeFeed = action.enabled
                 _uiState.update { it.copy(useNativeFeed = action.enabled) }
+            }
+
+            is SettingsUiAction.SetEnterSendsMessage -> {
+                userPreferences.enterSendsMessage = action.enabled
             }
         }
     }

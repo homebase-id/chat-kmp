@@ -16,6 +16,7 @@ class UserPreferences(private val settings: Settings) {
             mediaQuality = mediaQuality,
             autoSaveIncomingMedia = autoSaveIncomingMedia,
             autoSaveOnUnmeteredOnly = autoSaveOnUnmeteredOnly,
+            enterSendsMessage = enterSendsMessage,
         )
     )
     val preferenceState: StateFlow<PreferenceState> = _preferenceState
@@ -99,6 +100,18 @@ class UserPreferences(private val settings: Settings) {
         set(value) {
             settings.putBoolean("auto_save_unmetered_only", value)
             _preferenceState.value = _preferenceState.value.copy(autoSaveOnUnmeteredOnly = value)
+        }
+
+    /**
+     * Restores the legacy chord on a hardware keyboard: Enter sends and Shift+Enter breaks the
+     * line. Off means the reverse. Mirrored into [preferenceState] so the open composer picks the
+     * change up without an app restart — on desktop the settings pane sits beside it.
+     */
+    var enterSendsMessage: Boolean
+        get() = settings.getBoolean("composer_enter_sends", false)
+        set(value) {
+            settings.putBoolean("composer_enter_sends", value)
+            _preferenceState.value = _preferenceState.value.copy(enterSendsMessage = value)
         }
 
     var preferredUserReactions: List<String>
@@ -189,6 +202,7 @@ data class PreferenceState(
     val mediaQuality: MediaQuality = MediaQuality.STANDARD,
     val autoSaveIncomingMedia: Boolean = false,
     val autoSaveOnUnmeteredOnly: Boolean = true,
+    val enterSendsMessage: Boolean = false,
 )
 
 enum class ThemeState {

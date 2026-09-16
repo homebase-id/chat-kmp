@@ -50,6 +50,7 @@ import id.homebase.chat.conversationlist.resolveAnchorMessageId
 import id.homebase.chat.services.PaginatedConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
+import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.toMessageMarkdown
@@ -403,6 +404,7 @@ fun ConversationMessagesPane(
                                 MessageTextFieldForAttachment(
                                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                                     state = textFieldState,
+                                    enterSendsMessage = rememberEnterSendsMessage(),
                                     onSendMessage = {
                                         onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments))
                                     },

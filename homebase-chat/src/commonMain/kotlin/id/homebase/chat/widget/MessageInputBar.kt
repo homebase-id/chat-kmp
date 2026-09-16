@@ -86,7 +86,6 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
-import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -216,6 +215,7 @@ fun MessageInputBar(
      *  unregistered so no mention affordance appears there. */
     mentionTargets: List<ContactUiModel> = emptyList(),
     onPasteImage: ((ByteArray) -> Unit)? = null,
+    enterSendsMessage: Boolean = false,
     onCancelEdit: () -> Unit,
 ) {
     var showExpanded by remember { mutableStateOf(false) }
@@ -320,6 +320,7 @@ fun MessageInputBar(
                 onEmojiClick = onEmojiClick,
                 onAddAttachmentClick = onAddAttachmentClick,
                 onPasteImage = onPasteImage,
+                enterSendsMessage = enterSendsMessage,
                 sendMessage = {
                     showExpanded = false
                     sendMessage()
@@ -352,6 +353,7 @@ fun MessageInputBar(
                 onRecordingCancelled = onRecordingCancelled,
                 onRecordingHelp = onRecordingHelp,
                 onPasteImage = onPasteImage,
+                enterSendsMessage = enterSendsMessage,
                 isSendingMessage = isSendingMessage,
                 showActionButtons = showActionButtons,
                 onSendStateChanged = onSendStateChanged,
@@ -377,6 +379,7 @@ fun MessageTextFieldExpanded(
     onEmojiClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onPasteImage: ((ByteArray) -> Unit)? = null,
+    enterSendsMessage: Boolean = false,
     onFocused: () -> Unit = {},
     sendMessage: () -> Unit,
     onToggleExpand: (() -> Unit)? = null,
@@ -451,47 +454,38 @@ fun MessageTextFieldExpanded(
                         }
                     }
                     .onPreviewKeyEvent { keyEvent ->
-                        // The autocomplete list owns arrows/Enter/Tab/Esc while it is showing;
-                        // preview events run root-to-leaf, so Enter-to-send below beats it otherwise.
+                        // The autocomplete list owns arrows/Enter/Tab/Esc while it is showing; preview
+                        // events run root-to-leaf, so the send/newline decision below beats it otherwise.
                         if (autocomplete.handleKeyEvent(keyEvent)) return@onPreviewKeyEvent true
 
-                        // Cmd/Ctrl+V image paste works on any platform with a hardware
-                        // keyboard — desktop, web, AND iOS/iPad. Enter-to-send (below)
-                        // stays desktop/web only; mobile uses the send button.
-                        if (keyEvent.type == KeyEventType.KeyDown &&
-                            (isDesktopOrWeb() ||
-                                (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
-                        ) {
-                            when {
-                                // Shift+Enter inserts a newline; every other Enter/NumPadEnter
-                                // (incl. Cmd/Ctrl+Enter) sends. Match NumPadEnter too — macOS can
-                                // report Return as NumPadEnter, so Key.Enter alone never fired (#1043).
-                                (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter) &&
-                                    keyEvent.isShiftPressed -> {
-                                    state.addTextAfterSelection("\n")
-                                    true
-                                }
-
-                                keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter -> {
-                                    sendMessage()
-                                    true
-                                }
-
-                                keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed) && onPasteImage != null -> {
-                                    val imageBytes = getImageFromClipboard()
-                                    if (imageBytes != null) {
-                                        onPasteImage.invoke(imageBytes)
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-
-                                else -> false
+                        when (composerKeyAction(keyEvent, enterSendsMessage)) {
+                            ComposerKeyAction.Send -> {
+                                sendMessage()
+                                return@onPreviewKeyEvent true
                             }
-                        } else {
-                            false
+
+                            ComposerKeyAction.Newline -> {
+                                state.addTextAfterSelection("\n")
+                                return@onPreviewKeyEvent true
+                            }
+
+                            ComposerKeyAction.Ignore -> Unit
                         }
+
+                        // Cmd/Ctrl+V image paste works on any platform with a hardware keyboard —
+                        // desktop, web, AND iOS/iPad — unlike the Enter chord above.
+                        if (onPasteImage != null &&
+                            keyEvent.type == KeyEventType.KeyDown &&
+                            keyEvent.key == Key.V &&
+                            (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)
+                        ) {
+                            val imageBytes = getImageFromClipboard()
+                            if (imageBytes != null) {
+                                onPasteImage.invoke(imageBytes)
+                                return@onPreviewKeyEvent true
+                            }
+                        }
+                        false
                     },
                 placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
                 shape = if (editExistingMode) RoundedCornerShape(
@@ -599,6 +593,7 @@ fun MessageTextFieldCompact(
     onRecordingCancelled: () -> Unit,
     onRecordingHelp: () -> Unit,
     onPasteImage: ((ByteArray) -> Unit)? = null,
+    enterSendsMessage: Boolean = false,
     onFocused: () -> Unit = {},
     isSendingMessage: Boolean = false,
     showActionButtons: Boolean = true,
@@ -775,49 +770,39 @@ fun MessageTextFieldCompact(
                                         }
                                     }
                                     .onPreviewKeyEvent { keyEvent ->
-                                        // The autocomplete list owns arrows/Enter/Tab/Esc while it is
-                                        // showing; preview events run root-to-leaf, so Enter-to-send
-                                        // below beats it otherwise.
+                                        // The autocomplete list owns arrows/Enter/Tab/Esc while it
+                                        // is showing; preview events run root-to-leaf, so the
+                                        // send/newline decision below beats it otherwise.
                                         if (autocomplete.handleKeyEvent(keyEvent)) return@onPreviewKeyEvent true
 
-                                        // Cmd/Ctrl+V image paste works on any platform with a hardware
-                                        // keyboard — desktop, web, AND iOS/iPad. Enter-to-send (below)
-                                        // stays desktop/web only; mobile uses the send button.
-                                        if (keyEvent.type == KeyEventType.KeyDown &&
-                                            (isDesktopOrWeb() ||
-                                                (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
-                                        ) {
-                                            when {
-                                                // Shift+Enter inserts a newline; every other
-                                                // Enter/NumPadEnter (incl. Cmd/Ctrl+Enter) sends.
-                                                // Match NumPadEnter too — macOS can report Return as
-                                                // NumPadEnter, so Key.Enter alone never fired (#1043).
-                                                (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter) &&
-                                                    keyEvent.isShiftPressed -> {
-                                                    state.addTextAfterSelection("\n")
-                                                    true
-                                                }
-
-                                                keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter -> {
-                                                    onSendMessage()
-                                                    true
-                                                }
-
-                                                keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed) && onPasteImage != null -> {
-                                                    val imageBytes = getImageFromClipboard()
-                                                    if (imageBytes != null) {
-                                                        onPasteImage.invoke(imageBytes)
-                                                        true
-                                                    } else {
-                                                        false
-                                                    }
-                                                }
-
-                                                else -> false
+                                        when (composerKeyAction(keyEvent, enterSendsMessage)) {
+                                            ComposerKeyAction.Send -> {
+                                                onSendMessage()
+                                                return@onPreviewKeyEvent true
                                             }
-                                        } else {
-                                            false
+
+                                            ComposerKeyAction.Newline -> {
+                                                state.addTextAfterSelection("\n")
+                                                return@onPreviewKeyEvent true
+                                            }
+
+                                            ComposerKeyAction.Ignore -> Unit
                                         }
+
+                                        // Cmd/Ctrl+V image paste works on any platform with a hardware keyboard —
+                                        // desktop, web, AND iOS/iPad — unlike the Enter chord above.
+                                        if (onPasteImage != null &&
+                                            keyEvent.type == KeyEventType.KeyDown &&
+                                            keyEvent.key == Key.V &&
+                                            (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)
+                                        ) {
+                                            val imageBytes = getImageFromClipboard()
+                                            if (imageBytes != null) {
+                                                onPasteImage.invoke(imageBytes)
+                                                return@onPreviewKeyEvent true
+                                            }
+                                        }
+                                        false
                                     },
                                 placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
                                 leadingIcon = if (editExistingMode) null else {
@@ -1258,6 +1243,7 @@ fun MessageTextFieldForAttachment(
     // On mobile (Android/iOS) the caption editor hides it. Injectable so both branches
     // are unit-testable without a device.
     showFormattingToolbar: Boolean = isDesktopOrWeb(),
+    enterSendsMessage: Boolean = false,
     onEmojiPickerVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     var hasSent by remember { mutableStateOf(false) }
@@ -1305,22 +1291,24 @@ fun MessageTextFieldForAttachment(
                         .onFocusChanged { if (it.isFocused) setEmojiPicker(false) }
                         .onPreviewKeyEvent { keyEvent ->
                             // The autocomplete list owns arrows/Enter/Tab/Esc while it is showing;
-                            // preview events run root-to-leaf, so Enter-to-send below beats it otherwise.
+                            // preview events run root-to-leaf, so the decision below beats it otherwise.
                             if (autocomplete.handleKeyEvent(keyEvent)) return@onPreviewKeyEvent true
 
-                            if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
-                                if (keyEvent.isShiftPressed) {
-                                    state.addTextAfterSelection("\n")
-                                    true
-                                } else if (!hasSent) {
-                                    hasSent = true
-                                    onSendMessage()
-                                    true
-                                } else {
+                            when (composerKeyAction(keyEvent, enterSendsMessage)) {
+                                ComposerKeyAction.Send -> {
+                                    if (!hasSent) {
+                                        hasSent = true
+                                        onSendMessage()
+                                    }
                                     true
                                 }
-                            } else {
-                                false
+
+                                ComposerKeyAction.Newline -> {
+                                    state.addTextAfterSelection("\n")
+                                    true
+                                }
+
+                                ComposerKeyAction.Ignore -> false
                             }
                         },
                     placeholder = {
@@ -1368,20 +1356,25 @@ fun MessageTextFieldForAttachment(
             }
             Spacer(modifier = Modifier.width(8.dp))
             if (!isKeyboardVisible) {
-                IconButton(
-                    onClick = { hasSent = true; onSendMessage() },
-                    enabled = !hasSent,
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                    )
+                SendChordTooltip(
+                    enabled = isDesktopOrWeb(),
+                    enterSendsMessage = enterSendsMessage,
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = stringResource(
-                            MR.string.chat_send_message_button
-                        ),
-                    )
+                    IconButton(
+                        onClick = { hasSent = true; onSendMessage() },
+                        enabled = !hasSent,
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                            contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = stringResource(
+                                MR.string.chat_send_message_button
+                            ),
+                        )
+                    }
                 }
             } else {
                 IconButton(

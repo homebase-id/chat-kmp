@@ -38,6 +38,7 @@ import androidx.compose.ui.window.PopupProperties
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.model.trigger.Trigger
+import id.homebase.core.util.isImeComposing
 import id.homebase.core.util.replaceTextRangeSafely
 
 const val ComposerAutocompleteTag: String = "composer_autocomplete"
@@ -54,7 +55,9 @@ const val ComposerAutocompleteTag: String = "composer_autocomplete"
 class ComposerAutocompleteController internal constructor() {
     internal var keyHandler: ((KeyEvent) -> Boolean)? by mutableStateOf(null)
 
-    fun handleKeyEvent(event: KeyEvent): Boolean = keyHandler?.invoke(event) ?: false
+    // An input method's Enter confirms its own candidate, never the highlighted suggestion.
+    fun handleKeyEvent(event: KeyEvent): Boolean =
+        if (event.isImeComposing()) false else keyHandler?.invoke(event) ?: false
 }
 
 @Composable

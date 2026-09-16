@@ -145,6 +145,7 @@ import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.isImeComposing
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogTitle
@@ -3133,7 +3134,8 @@ private fun AddCommentRow(
                 .onPreviewKeyEvent { e ->
                     if (e.type == KeyEventType.KeyDown &&
                         (e.key == Key.Enter || e.key == Key.NumPadEnter) &&
-                        !e.isShiftPressed
+                        !e.isShiftPressed &&
+                        !e.isImeComposing()
                     ) {
                         if (canSend) onSend()
                         true
