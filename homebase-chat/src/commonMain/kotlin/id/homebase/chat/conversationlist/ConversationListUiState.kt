@@ -157,6 +157,8 @@ data class MessageListUiState(
     val scrollToLatestRequest: Uuid? = null,
     val awaitingJumpMessageId: Uuid? = null,
     val savedContactIdentities: Set<OdinId> = emptySet(),
+    /** Lowercased odinId -> display name, for the mention chips in message bodies. */
+    val mentionNames: ImmutableMap<String, String> = persistentMapOf(),
 )
 
 /**

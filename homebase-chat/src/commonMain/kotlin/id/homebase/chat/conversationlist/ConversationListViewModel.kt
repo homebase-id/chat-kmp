@@ -48,6 +48,7 @@ import id.homebase.chat.services.convo.matchesConversationQuery
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.chat.widget.mentionNamesOf
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
@@ -899,6 +900,23 @@ class ConversationListViewModel(
                 .distinctUntilChanged()
                 .collect { identities ->
                     _messagesUiState.update { it.copy(savedContactIdentities = identities) }
+                }
+        }
+
+        // Projected here, not in composition: contactService.contacts re-emits on connection-status
+        // churn, which the names do not read, and a snapshot read inside ConversationContent would
+        // recompose the whole screen on every one of those.
+        viewModelScope.launch {
+            combine(
+                contactService.contacts,
+                effectiveOwnerSessionFlow(
+                    live = ownerSessionRepository.user,
+                    credentials = credentialsManager.credentialsFlow,
+                ),
+            ) { contacts, session -> mentionNamesOf(contacts, session) }
+                .distinctUntilChanged()
+                .collect { names ->
+                    _messagesUiState.update { it.copy(mentionNames = names) }
                 }
         }
 
