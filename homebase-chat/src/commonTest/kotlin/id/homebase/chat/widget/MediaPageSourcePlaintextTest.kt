@@ -17,7 +17,7 @@ class MediaPageSourcePlaintextTest {
         LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null)
 
     @Test
-    fun `unencrypted payload with no iv is remote plaintext, not pending`() {
+    fun `unencrypted payload with no iv is remote plaintext not pending`() {
         val result = resolveMediaPageSource(
             localContext = null,
             rawIvPresent = false,
@@ -38,7 +38,7 @@ class MediaPageSourcePlaintextTest {
     }
 
     @Test
-    fun `encryption default is on, so chat callers keep the pending classification`() {
+    fun `encryption default is on so chat callers keep the pending classification`() {
         assertEquals(
             resolveMediaPageSource(null, rawIvPresent = false, decodedIv = null, isEncrypted = true),
             resolveMediaPageSource(null, rawIvPresent = false, decodedIv = null),
