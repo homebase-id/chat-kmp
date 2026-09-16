@@ -2,7 +2,6 @@ package id.homebase.chat.conversationlist
 
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
-import androidx.compose.material3.adaptive.navigation.BackNavigationBehavior
 import androidx.compose.material3.adaptive.navigation.ThreePaneScaffoldNavigator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,7 +70,7 @@ internal fun ColdStartDetailGuard(
             Logger.i(tag = "ConversationListUi") {
                 "Detail pane restored with unloaded conversation $restoredDetailKey — popping to List"
             }
-            scaffoldNavigator.navigateBack(BackNavigationBehavior.PopUntilContentChange)
+            scaffoldNavigator.returnToListPane()
         }
     }
 }
