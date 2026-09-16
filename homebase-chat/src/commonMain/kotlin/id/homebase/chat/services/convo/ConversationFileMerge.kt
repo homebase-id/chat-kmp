@@ -113,7 +113,6 @@ internal fun mergeConversationFileUpdate(
         admins = incoming.admins,
         avatarModel = incoming.avatarModel,
         avatarTiny = incoming.avatarTiny,
-        avatarUrl = incoming.avatarUrl,
         avatarInitials = incoming.avatarInitials,
         participants = incoming.participants,
         isPinned = incoming.isPinned,

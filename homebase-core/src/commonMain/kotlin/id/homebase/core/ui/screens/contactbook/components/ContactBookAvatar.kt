@@ -73,14 +73,19 @@ fun ContactBookAvatar(
     if (!odinId.isNullOrBlank()) {
         val parsed = remember(odinId) { runCatching { OdinId(odinId) }.getOrNull() }
         if (parsed != null) {
+            // Remembered for the same reason as the drive-photo branch above: a fresh lambda each
+            // recomposition makes options.copy() unequal, so the avatar can never skip.
+            val avatarOptions = remember(options, parsed, onClick) {
+                options.copy(
+                    onClick = onClick?.let { open -> { open(SubSamplingImageSource.Avatar(parsed)) } },
+                    onClickNeedsImage = true,
+                )
+            }
             ContactAvatar(
                 odinId = parsed,
                 profileImageData = null,
                 initials = entry.avatarInitials,
-                options = options.copy(
-                    onClick = onClick?.let { open -> { open(SubSamplingImageSource.Avatar(parsed)) } },
-                    onClickNeedsImage = true,
-                ),
+                options = avatarOptions,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
             )

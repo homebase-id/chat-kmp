@@ -235,7 +235,8 @@ class ConnectionRequestService(
             }
             AutoConnectOutcome.AlreadyConnected -> {
                 connectionService.refresh()
-                contactInfo.resync(header.recipient)
+                // No transition: their photo is no more suspect than a second ago.
+                contactInfo.syncContactRecord(header.recipient)
             }
             AutoConnectOutcome.PendingManualApproval -> {
                 markOutgoingOptimistically(header.recipient)

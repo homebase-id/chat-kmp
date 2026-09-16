@@ -13,7 +13,6 @@ data class OwnerSession(
     val profileImageFileId: String?,
     val profileImageFileKey: String?,
     val profileImagePreviewThumbnail: String?, // base64 content
-    val profileImageLastModified: Long?,
     val status: String?
 )
 

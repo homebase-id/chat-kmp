@@ -29,15 +29,8 @@ class PublicImageFetcher(
         )
     }
 
-    // Factory<Uri> — Coil 3 maps a String model to coil3.Uri BEFORE
-    // Fetcher-factory matching runs. A Factory<String> is therefore never
-    // polled for http(s) URLs (Coil sees only Uris at that stage), falls
-    // through to the built-in NetworkFetcher, and our cache layer is
-    // bypassed. Factory<Any> wasn't polled either (verified empirically —
-    // diagnostic logs showed Factory<Any>.create fired for custom data
-    // classes like HomebaseImageData but never for a mapped http Uri).
-    // Factory<Uri> is the correct type for http URL inputs. (Keyers resolve
-    // differently: see CoilKeyerResolutionTest.)
+    // Factory<Uri>, not <String> or <Any>: Coil maps a String model to coil3.Uri before
+    // fetcher-factory matching, and neither of the others is polled for the mapped Uri.
     class Factory(private val contactInfo: ContactInfoGateway) : Fetcher.Factory<Uri> {
         override fun create(data: Uri, options: Options, imageLoader: ImageLoader): Fetcher? {
             val odinId = resolveOdinId(data) ?: return null
@@ -51,17 +44,20 @@ class PublicImageFetcher(
         /**
          * The peer [OdinId] behind a Coil `data` parameter, or null when it is not a public-image
          * URL. The `Any` parameter takes both [coil3.Uri] (what Coil hands the Factory) and
-         * [String] (test convenience). An exact match: the memory-cache key lives in
-         * [PublicAvatarKeyer], so nothing decorates this URL any more.
+         * [String] (test convenience). The `?v=<revision>` suffix
+         * [id.homebase.core.avatars.rememberPublicAvatarUrl] appends is not part of the identity.
          */
         internal fun resolveOdinId(data: Any): OdinId? {
             val url = when (data) {
                 is Uri -> data.toString()
                 is String -> data
                 else -> return null
-            }
+            }.substringBefore('?')
             if (!url.startsWith(HTTPS_PREFIX) || !url.endsWith(PUB_IMAGE_PATH)) return null
-            return OdinId(url.removePrefix(HTTPS_PREFIX).removeSuffix(PUB_IMAGE_PATH))
+            // A host the validator rejects must fall through to the next fetcher, not abort the request.
+            return runCatching {
+                OdinId(url.removePrefix(HTTPS_PREFIX).removeSuffix(PUB_IMAGE_PATH))
+            }.getOrNull()
         }
     }
 }

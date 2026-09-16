@@ -217,9 +217,6 @@ internal class PublicProfileProviderCached(
         }
 
         notFoundCache = emptySet()
-        // Reverts every avatar cache key to the plain URL — safe only because both callers
-        // (logout, Storage -> Clear caches) clear Coil's memory cache in the same pass.
-        PublicAvatarRevisions.clear()
     }
 
     // Per-cache try/catch — see DriveFileProviderCached.getCacheStats for the

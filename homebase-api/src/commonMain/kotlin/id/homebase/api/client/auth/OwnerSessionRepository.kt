@@ -18,7 +18,6 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.longOrNull
 
 private const val PUBLIC_PROFILE_REFRESH_DEBOUNCE_MS = 300L
 private const val TAG = "OwnerSessionRepository"
@@ -82,8 +81,7 @@ class OwnerSessionRepository internal constructor(
         val after = _user.value
         Logger.d(tag = TAG) {
             "reloadAfterOwnPublish artifact=$artifact " +
-                "fileId ${before?.profileImageFileId} -> ${after?.profileImageFileId}, " +
-                "lastModified ${before?.profileImageLastModified} -> ${after?.profileImageLastModified}"
+                "fileId ${before?.profileImageFileId} -> ${after?.profileImageFileId}"
         }
     }
 
@@ -125,10 +123,6 @@ class OwnerSessionRepository internal constructor(
                     ?.jsonObject?.get("previewThumbnail")
                     ?.jsonObject?.get("content")
                     ?.jsonPrimitive?.contentOrNull,
-            profileImageLastModified =
-                photoHeader?.get("fileMetadata")
-                    ?.jsonObject?.get("updated")
-                    ?.jsonPrimitive?.longOrNull,
             status = statusData?.get("status")?.jsonPrimitive?.contentOrNull,
         )
     }
@@ -141,7 +135,6 @@ class OwnerSessionRepository internal constructor(
         profileImageFileId = null,
         profileImageFileKey = null,
         profileImagePreviewThumbnail = null,
-        profileImageLastModified = null,
         status = null,
     )
 

@@ -45,7 +45,7 @@ class EmergencyContactReceiveService(
             val contact = contactRepository.contacts.value.firstOrNull { it.uniqueId == uniqueId }
             val versionTag = contact?.versionTag
             when (designationAction(contact != null, contact?.iCanLocate() == true, versionTag != null)) {
-                DesignationAction.SyncOnly -> contactInfo.resync(sender)
+                DesignationAction.SyncOnly -> contactInfo.syncContactRecord(sender)
                 DesignationAction.Consume -> consume(messageFile)
                 DesignationAction.SetThenConsume -> {
                     contactRepository.setICanLocate(uniqueId, versionTag!!)
