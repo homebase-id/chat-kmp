@@ -191,9 +191,7 @@ fun MessageBubbleRaw(
             ?.let { VoiceNoteSender(it, message.displayName, isYou = sentByYou) }
     }
 
-    // Who the reader is + the names to draw, both resolved upstream (LocalMentionNames is built
-    // once per contact-cache change). Handed to ChatMarkdown explicitly so the feed, which renders
-    // through the same composable, never picks any of it up.
+    // Explicit, not ambient: the feed renders through ChatMarkdown too and must not pick this up.
     val mentionNames = LocalMentionNames.current
     val mentionContext = remember(currentOdinId, mentionNames, sentByYou) {
         MentionContext(

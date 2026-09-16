@@ -8,15 +8,14 @@ package id.homebase.api.util
 private val mentionIdentityShape = Regex("[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
 
 /**
- * One `@mention` in a body: the [range] to decorate, and the [identity] the shape regex actually
- * matched inside it.
- *
- * The two are NOT the same substring. [range] opens on the `@` and runs to the end of the token,
- * so `@alice.example.test/inbox` decorates the path too while naming only `alice.example.test`.
- * Anything asking *who* is mentioned must therefore read [identity]; slicing [range] gives a false
- * negative on every mention carrying a path or a suffix.
+ * One `@mention`: [range] is what to decorate, [identity] is who. NOT the same substring —
+ * `@alice.example.test/inbox` decorates the path too, so asking *who* by slicing [range] gives a
+ * false negative on every mention carrying a path or a suffix.
  */
-data class Mention(val range: IntRange, val identity: String)
+data class Mention(val range: IntRange, val identity: String) {
+    fun isIdentity(odinId: String): Boolean =
+        odinId.isNotBlank() && identity.equals(odinId, ignoreCase = true)
+}
 
 /**
  * Locates the `@mention`s in a raw chat body.
@@ -76,14 +75,6 @@ fun findMentions(text: String): List<Mention> {
     return mentions ?: emptyList()
 }
 
-/**
- * Whether [text] mentions [odinId] — the one answer both the self-mention chip (#1425) and the
- * notification path (#1417) need, so neither grows its own copy of the rule above.
- *
- * Case-insensitive: odinIds are domain names. Matches on [Mention.identity], never on a slice of
- * [Mention.range], so `@me.example.test/inbox` counts and `@me.example.test.evil.test` does not.
- */
-fun mentionsIdentity(text: String, odinId: String): Boolean {
-    if (odinId.isBlank()) return false
-    return findMentions(text).any { it.identity.equals(odinId, ignoreCase = true) }
-}
+/** Body-level [Mention.isIdentity]. No production caller yet; #1417's notification gate is it. */
+fun mentionsIdentity(text: String, odinId: String): Boolean =
+    findMentions(text).any { it.isIdentity(odinId) }

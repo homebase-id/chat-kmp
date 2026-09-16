@@ -738,7 +738,7 @@ fun ConversationContent(
 
     CompositionLocalProvider(
         LocalCurrentOdinId provides (uiState.ownerSession?.odinId?.domainName ?: ""),
-        LocalMentionNames provides rememberMentionNames(uiState.ownerSession),
+        LocalMentionNames provides uiState.mentionNames,
         LocalUploadConnected provides uiState.isConnected,
         LocalSavedContactIdentities provides uiState.savedContactIdentities,
     ) {

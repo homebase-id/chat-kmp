@@ -131,13 +131,13 @@ import id.homebase.core.ui.theme.withEmojiFont
  * flattening a mention inside a code span is indistinguishable from one in prose — the highlight is
  * what that surface is for.
  *
- * [mentions] is what lifts a chip above decoration: it names the reader (so a mention of THEM gets
- * [selfMentionSpanStyle] instead of [mentionSpanStyle]) and carries already-resolved display names
- * (so the chip can draw `@Alice Smith` rather than `@alice.example.test`). Both are pre-resolved
- * upstream — nothing here reaches for a contact — and both are absent by default, which is how the
- * feed's post and comment bodies render through this same composable unchanged. Who is mentioned is
- * always decided on the RAW body text, never on a resolved name, so a renamed or name-colliding
- * contact cannot turn a mention of someone else into a mention of you.
+ * [mentions] names the reader (so a mention of THEM gets [selfMentionSpanStyle]) and carries
+ * already-resolved display names, both resolved upstream and both absent by default — which is how
+ * the feed's bodies render through this same composable unchanged. Who is mentioned is decided on
+ * the RAW body text, never on a resolved name, so a name collision cannot turn a mention of someone
+ * else into a mention of you. Shape 1's exclusion has a visible consequence: a body that draws
+ * `@Alice Smith` flips back to the raw `@alice.example.test` while in-conversation search is
+ * active, because shape 1 flattens every inline decoration. Known trade-off, not a bug.
  *
  * The chip is decoration only: no [androidx.compose.ui.text.LinkAnnotation], nothing to tap. That
  * keeps shape 2 a plain styled Text — a link annotation re-registers with TextLinkScope on hover,
@@ -301,12 +301,7 @@ fun ChatMarkdown(
         // Published as LocalMarkdownAnnotator, so paragraphs, headings, list items, quotes and
         // table cells all pick up the same mention chip the inline path draws. Code fences take a
         // different route inside mikepenz and are never offered to an annotator.
-        annotator = rememberMentionAnnotator(
-            parsedContent = parsedContent,
-            mentionStyle = mentionSpanStyle(style, color),
-            selfMentionStyle = selfMentionSpanStyle(style, color, mentions?.sentBubble == true),
-            context = mentions,
-        ),
+        annotator = rememberMentionAnnotator(parsedContent, style, color, mentions),
         // Default is fillMaxSize(); a chat bubble must wrap its content.
         modifier = modifier.wrapContentSize(),
         dimens = markdownDimens(
@@ -411,12 +406,7 @@ internal fun buildChatInlineAnnotatedString(
     val settings = annotatorSettings(
         linkTextSpanStyle = linkSpanStyle,
         codeSpanStyle = inlineCodeStyle,
-        annotator = rememberMentionAnnotator(
-            parsedContent = parsedContent,
-            mentionStyle = mentionSpanStyle(style, color),
-            selfMentionStyle = selfMentionSpanStyle(style, color, mentions?.sentBubble == true),
-            context = mentions,
-        ),
+        annotator = rememberMentionAnnotator(parsedContent, style, color, mentions),
         referenceLinkHandler = null,
     )
     // The actual parse (buildMarkdownAnnotatedString) is a pure, non-composable string

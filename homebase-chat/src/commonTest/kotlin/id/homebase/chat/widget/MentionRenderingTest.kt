@@ -52,7 +52,13 @@ class MentionRenderingTest {
             rendered = Rendered(
                 text = buildChatInlineAnnotatedString(content, style, color, mentions),
                 mentionStyle = mentionSpanStyle(style, color),
-                selfMentionStyle = selfMentionSpanStyle(style, color, mentions?.sentBubble == true),
+                selfMentionStyle = selfMentionSpanStyle(
+                    style = style,
+                    color = color,
+                    selfBackground = MaterialTheme.colorScheme.tertiaryContainer,
+                    selfContent = MaterialTheme.colorScheme.onTertiaryContainer,
+                    sentBubble = mentions?.sentBubble == true,
+                ),
             )
         }
         waitForIdle()
@@ -353,7 +359,13 @@ class MentionRenderingTest {
         setContent {
             val style = MaterialTheme.typography.bodyLarge
             val color = LocalContentColor.current
-            selfStyle = selfMentionSpanStyle(style, color, sentBubble = false)
+            selfStyle = selfMentionSpanStyle(
+                style = style,
+                color = color,
+                selfBackground = MaterialTheme.colorScheme.tertiaryContainer,
+                selfContent = MaterialTheme.colorScheme.onTertiaryContainer,
+                sentBubble = false,
+            )
             Box(Modifier.testTag("md")) {
                 ChatMarkdown(
                     content = "- hi @me.example.test\n- second",
