@@ -28,7 +28,8 @@ import kotlin.uuid.Uuid
  *
  * Effect 2 (swap): when `selectedConversationId` changes to a new value, navigate the
  * scaffold to `Detail(selectedId)`. If the scaffold is already at `Detail` with a stale
- * `contentKey`, pop first so `navigateTo` is not treated as a no-op.
+ * `contentKey`, pop that entry off first — but only when `canNavigateBack` says the pop is
+ * real, because otherwise `navigateBack` empties the history instead (see [returnToListPane]).
  *
  * Contract with [ConversationListViewModel.selectConversation]: the VM MUST update
  * `selectedConversationId` synchronously when a conversation is selected, *before*
@@ -77,7 +78,9 @@ internal fun NotificationNavigationEffects(
                     Logger.i(tag = "ConversationListUi") { "Swapping detail pane ${cur.contentKey}->$selectedId" }
                     isSwappingDetailPane = true
                     try {
-                        scaffoldNavigator.navigateBack()
+                        // Unguarded this wipes the whole destination history on a two-pane window,
+                        // leaving [Detail(selectedId)] with no List under it — see returnToListPane.
+                        if (scaffoldNavigator.canNavigateBack()) scaffoldNavigator.navigateBack()
                         scaffoldNavigator.navigateTo(ListDetailPaneScaffoldRole.Detail, selectedId)
                     } finally {
                         isSwappingDetailPane = false

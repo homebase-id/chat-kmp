@@ -826,7 +826,6 @@ fun ConversationListUi(
         }
     )
     val scope = rememberCoroutineScope()
-    val backNavigationBehavior = BackNavigationBehavior.PopUntilScaffoldValueChange
     // Anchors are the only bound the scaffold offers: a drag can overshoot but settles to the
     // nearest one, so the ladder's ends are what actually clamp the list pane. Kept remembered
     // because rememberPaneExpansionState restarts its restore effect whenever the list changes.
@@ -844,8 +843,7 @@ fun ConversationListUi(
     val conversationSearchFocusRequester = remember { FocusRequester() }
 
     // closeDetailPaneRequest handler — has to live inside ConversationListUi (not
-    // the outer screen) because scaffoldNavigator + backNavigationBehavior are in
-    // scope here.
+    // the outer screen) because the scaffoldNavigator is in scope here.
     //
     // Pops the detail pane with PopUntilContentChange (same mechanic the
     // BackHandler uses) so this works in BOTH expanded (desktop) and compact
@@ -865,7 +863,14 @@ fun ConversationListUi(
         scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
     val isDetailPaneVisible =
         scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
-    val showingOnlyDetail = isListPaneHidden && isDetailPaneVisible
+    val detailContentKey = scaffoldNavigator.currentDestination?.contentKey
+    // Safety net for #1523: a detail pane with nothing in it must never take the bottom bar with
+    // it, so a screen that has no other affordance is still navigable.
+    val showingOnlyDetail = detailPaneOwnsWindow(
+        isListPaneHidden = isListPaneHidden,
+        isDetailPaneVisible = isDetailPaneVisible,
+        detailContentKey = detailContentKey,
+    )
 
     // Record what the user last saw at the top, so the return can tell whether the list reordered
     // while they were gone. ON_STOP runs inside the lifecycle callback; a coroutine would not be
@@ -881,10 +886,18 @@ fun ConversationListUi(
         listPaneWasVisible = !isListPaneHidden
     }
 
-    LaunchedEffect(isExpanded) {
-        if (!isExpanded && scaffoldNavigator.currentDestination?.pane == ListDetailPaneScaffoldRole.Detail) {
-            // Optional: If you want to force it back to list view when shrinking
-            scaffoldNavigator.navigateBack()
+    // Shrinking to one partition — a landscape→portrait rotation — leaves the detail pane owning
+    // the window. That is fine while it has a conversation to draw and a back button to leave by;
+    // with a null content key it is the unrecoverable empty placeholder, so bounce to the list.
+    val strandedOnEmptyDetail = isStrandedOnEmptyDetailPane(
+        maxHorizontalPartitions = scaffoldDirective.maxHorizontalPartitions,
+        currentPane = scaffoldNavigator.currentDestination?.pane,
+        detailContentKey = detailContentKey,
+    )
+    LaunchedEffect(strandedOnEmptyDetail) {
+        if (strandedOnEmptyDetail) {
+            Logger.i(tag = "ConversationListUi") { "Empty detail pane owns a compact window — returning to List" }
+            scaffoldNavigator.returnToListPane()
         }
     }
 
@@ -916,8 +929,7 @@ fun ConversationListUi(
 
     // Unlike showingOnlyDetail this is also true on an expanded two-pane window, where the
     // composer is on screen while the list still is.
-    val isComposerVisible =
-        isDetailPaneVisible && scaffoldNavigator.currentDestination?.contentKey != null
+    val isComposerVisible = isDetailPaneVisible && detailContentKey != null
     LaunchedEffect(isComposerVisible) { onComposerVisibilityChanged(isComposerVisible) }
 
     val hoistedMediaViewer = messagesUiState.hoistedMediaViewer(isExpanded)
@@ -1037,11 +1049,7 @@ fun ConversationListUi(
                                     showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
                                     onBackClick = {
                                         onUiAction(ConversationListUiAction.ClearSelection)
-                                        scope.launch {
-                                            scaffoldNavigator.navigateBack(
-                                                backNavigationBehavior
-                                            )
-                                        }
+                                        scope.launch { scaffoldNavigator.returnToListPane() }
                                     },
                                     onUiAction = onUiAction,
                                     hoistMediaViewer = isExpanded,
