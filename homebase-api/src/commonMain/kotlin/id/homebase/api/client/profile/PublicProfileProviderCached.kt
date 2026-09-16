@@ -3,6 +3,7 @@ package id.homebase.api.client.profile
 import co.touchlab.kermit.Logger
 import coil3.disk.DiskCache
 import id.homebase.api.client.cache.CacheStats
+import id.homebase.api.client.contacts.PublicAvatarRevisions
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.publicImageUrl
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -199,6 +200,8 @@ internal class PublicProfileProviderCached(
             Logger.w(tag = "PublicProfileIO", throwable = e) { "invalidate image failed key=$cacheKey" }
         }
         notFoundCacheMutex.withLock { notFoundCache = notFoundCache - cacheKey }
+        // Last: a reader racing an earlier bump would refill Coil from the entry just dropped.
+        PublicAvatarRevisions.bump(odinId)
     }
 
     suspend fun clearCaches() {
@@ -214,6 +217,9 @@ internal class PublicProfileProviderCached(
         }
 
         notFoundCache = emptySet()
+        // Reverts every avatar cache key to the plain URL — safe only because both callers
+        // (logout, Storage -> Clear caches) clear Coil's memory cache in the same pass.
+        PublicAvatarRevisions.clear()
     }
 
     // Per-cache try/catch — see DriveFileProviderCached.getCacheStats for the

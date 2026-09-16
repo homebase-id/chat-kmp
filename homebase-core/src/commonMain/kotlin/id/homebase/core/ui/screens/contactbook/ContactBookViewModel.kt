@@ -9,6 +9,7 @@ import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionStatus
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -66,6 +67,7 @@ import kotlin.uuid.Uuid
  */
 class ContactBookViewModel(
     private val repo: ContactRepository,
+    private val contactInfo: ContactInfoGateway,
     private val preferences: ContactBookPreferences,
     private val conversationService: ConversationService,
     private val connectionService: ConnectionService,
@@ -391,7 +393,7 @@ class ContactBookViewModel(
             is ContactBookUiAction.MessageClicked -> handleMessage(action.entry)
             is ContactBookUiAction.SyncClicked -> {
                 val odinId = action.entry.odinId ?: return
-                viewModelScope.launch { repo.sync(OdinId(odinId)) }
+                viewModelScope.launch { contactInfo.resync(OdinId(odinId)) }
             }
             ContactBookUiAction.CloseOverlay -> _overlay.value = null
 

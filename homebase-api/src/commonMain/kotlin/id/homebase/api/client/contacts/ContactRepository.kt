@@ -281,8 +281,9 @@ class ContactRepository(
         }
     }
 
-    /** Best-effort server-side enrichment of a connected identity from its public profile. */
-    suspend fun sync(odinId: OdinId) {
+    // internal: every caller goes through ContactInfoGateway.resync, which also drops the cached
+    // public profile/avatar this enrichment reads from.
+    internal suspend fun sync(odinId: OdinId) {
         // A prior delete of this same identity left its uniqueId in the resurrection guard. The
         // server (re-)creates the contact under uniqueId = md5(odinId), so lift the suppression for
         // that id first — otherwise the re-created contact's incoming batch would be dropped.

@@ -71,14 +71,9 @@ class OwnerSessionRepository internal constructor(
 
     /**
      * For the client that itself just wrote [artifact] (e.g. the avatar edit screen after an
-     * upload/delete), rather than [load] directly. The server's own
-     * `publicProfileContentPublished` echo of this same write will arrive over the websocket too,
-     * but only after this call — and by then it would derive the *same* cache-bust key this
-     * client already recomputes from `sitedata.json`, so its cache invalidation would be too late
-     * to matter (nothing would ever re-request that now-permanently-memory-cached URL again).
-     * Invalidating here, before [load] builds and requests the new cache-busted URL, closes that
-     * race for the uploading client; [onPublicProfileContentPublished] above still covers every
-     * other client, for which the websocket notification is the only signal available.
+     * upload/delete), rather than [load] directly, so its own avatars repaint without waiting on
+     * the server's websocket echo. [onPublicProfileContentPublished] above covers every other
+     * client, for which that echo is the only signal available.
      */
     suspend fun reloadAfterOwnPublish(odinId: OdinId, artifact: PublicProfileArtifact) {
         val before = _user.value
@@ -101,16 +96,8 @@ class OwnerSessionRepository internal constructor(
     }
 
     suspend fun load(odinId: OdinId) {
-        // Emit a minimal fallback immediately so the UI can render without waiting for HTTP —
-        // but only on a cold load (no session yet). On a reload of an already-populated session
-        // (e.g. reloadAfterOwnPublish, or the websocket-triggered refresh), skipping straight to
-        // fetch() avoids a real photo's profileImageLastModified ever flickering to null: that
-        // momentary null is a real emission, not just an implementation detail, so any avatar
-        // composable on-screen at that instant requests the un-parameterized `/pub/image` URL and
-        // Coil caches whatever the server returns under that query-less key forever. From then on
-        // every genuine no-photo state (which also has profileImageLastModified = null) resolves
-        // to that same cached URL and silently reuses those stale bytes instead of asking the
-        // server again.
+        // Cold load only. On a reload of an already-populated session the fallback's null photo
+        // is a real emission, so every owner avatar on screen would flash its initials.
         if (_user.value == null) {
             _user.value = fallback(odinId)
         }

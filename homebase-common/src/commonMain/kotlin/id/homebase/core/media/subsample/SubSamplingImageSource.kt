@@ -1,5 +1,6 @@
 package id.homebase.core.media.subsample
 
+import id.homebase.api.common.OdinId
 import id.homebase.core.image.HomebaseImageData
 
 sealed interface SubSamplingImageSource {
@@ -12,8 +13,9 @@ sealed interface SubSamplingImageSource {
         val filePath: String,
     ) : SubSamplingImageSource
 
-    class Url(
-        val url: String,
+    /** An identity's published `/pub/image`, keyed on the identity so no caller handles its URL. */
+    class Avatar(
+        val odinId: OdinId,
     ) : SubSamplingImageSource
 }
 
@@ -24,9 +26,8 @@ sealed interface SubSamplingImageSource {
  */
 fun SubSamplingImageSource.sharedElementKey(): String? = when (this) {
     is SubSamplingImageSource.Remote -> "image-${imageData.fileId}-${imageData.payloadKey}"
-    is SubSamplingImageSource.Url -> imageUrlSharedElementKey(url)
+    is SubSamplingImageSource.Avatar -> avatarSharedElementKey(odinId)
     is SubSamplingImageSource.LocalFile -> null
 }
 
-// Query-insensitive: a stale `?v=` cache-bust token on either end must not drop the morph.
-fun imageUrlSharedElementKey(url: String): String = "image-url-${url.substringBefore('?')}"
+fun avatarSharedElementKey(odinId: OdinId): String = "avatar-${odinId.domainName}"

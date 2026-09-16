@@ -5,12 +5,13 @@ import id.homebase.api.common.OdinId
 import kotlin.time.Clock
 
 /**
- * Cache-bust tokens for peers' `/pub/image`: Coil keys its memory cache on the model string, and a
- * peer's avatar URL never changes on its own.
+ * The single "this identity's avatar changed" signal, published by
+ * [id.homebase.api.client.profile.PublicProfileProviderCached.invalidateImage] — the owner's own
+ * republish and a peer resync both land there.
  *
- * Not a Koin binding — `PublicAvatar` is a leaf that 19 homebase-chat Compose tests render in an
- * isolated graph holding only `UserPreferences` + an `ImageLoader`, and a second required binding
- * fails all of them. [ContactInfoGateway.clearCaches] prunes it, so it outlives no identity.
+ * A process-wide object rather than a Koin binding: 19 homebase-chat Compose tests render an avatar
+ * in an isolated graph holding only `UserPreferences` + an `ImageLoader`, and a second required
+ * binding fails all of them.
  */
 object PublicAvatarRevisions {
 

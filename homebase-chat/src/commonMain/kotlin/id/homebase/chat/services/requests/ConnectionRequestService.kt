@@ -13,7 +13,7 @@ import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IncomingConnectionRequestResponse
 import id.homebase.api.client.connections.OutgoingConnectionRequestResponse
 import kotlin.uuid.Uuid
-import id.homebase.api.client.contacts.ContactRepository
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
@@ -34,7 +34,7 @@ import kotlin.time.Clock
 
 class ConnectionRequestService(
     private val connectionRequestProvider: ConnectionRequestProvider,
-    private val contactRepository: ContactRepository,
+    private val contactInfo: ContactInfoGateway,
     private val connectionService: ConnectionService,
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
@@ -231,18 +231,18 @@ class ConnectionRequestService(
                 removeFromOutgoing(header.recipient)
                 refresh()
                 connectionService.refresh()
-                contactRepository.sync(header.recipient)
+                contactInfo.resync(header.recipient)
             }
             AutoConnectOutcome.AlreadyConnected -> {
                 connectionService.refresh()
-                contactRepository.sync(header.recipient)
+                contactInfo.resync(header.recipient)
             }
             AutoConnectOutcome.PendingManualApproval -> {
                 markOutgoingOptimistically(header.recipient)
                 refresh()
                 // Save contact so they appear in the contact list immediately — matches
                 // the legacy sendConnectionRequest flow, which saved on HTTP-200.
-                contactRepository.sync(header.recipient)
+                contactInfo.resync(header.recipient)
             }
             AutoConnectOutcome.OutgoingRequestAlreadyExists,
             AutoConnectOutcome.DuplicateIntroductoryRequest -> {
@@ -290,7 +290,7 @@ class ConnectionRequestService(
             }
             throw e
         }
-        contactRepository.sync(senderId)
+        contactInfo.resync(senderId)
         removeFromIncoming(senderId)
         refresh()
         connectionService.refresh()

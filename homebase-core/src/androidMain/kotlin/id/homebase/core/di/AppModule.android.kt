@@ -28,6 +28,7 @@ import id.homebase.core.gallery.GalleryCache
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.image.HomebaseImageKeyer
+import id.homebase.core.image.PublicAvatarKeyer
 import id.homebase.core.image.PublicImageFetcher
 import id.homebase.core.notifications.KMPNotifierBackend
 import id.homebase.core.notifications.NotificationBackend
@@ -91,6 +92,7 @@ actual fun platformModule(): Module = module {
         ImageLoader.Builder(androidContext())
                 .components {
                     add(HomebaseImageKeyer())
+                    add(PublicAvatarKeyer())
                     add(HomebaseImageFetcher.Factory(get(), get()))
                     add(PublicImageFetcher.Factory(get()))
                     add(PlatformFileFetcher.Factory())

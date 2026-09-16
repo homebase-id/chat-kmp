@@ -6,9 +6,7 @@ import id.homebase.api.common.publicImageUrl
 import id.homebase.core.image.PublicImageFetcher.Companion.resolveOdinId
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /** Tests for [PublicImageFetcher.Factory] URL matching and OdinId parsing logic */
 class PublicImageFetcherFactoryTest {
@@ -18,23 +16,18 @@ class PublicImageFetcherFactoryTest {
     // =========================================================
 
     @Test
-    fun urlWithPubImage_isAccepted() {
-        assertTrue("https://frodo.digital/pub/image".contains("/pub/image"))
-    }
-
-    @Test
     fun urlWithoutPubImage_isRejected() {
-        assertFalse("https://frodo.digital/pub/profile".contains("/pub/image"))
+        assertNull(resolveOdinId("https://frodo.digital/pub/profile"))
     }
 
     @Test
     fun rootUrl_isRejected() {
-        assertFalse("https://frodo.digital".contains("/pub/image"))
+        assertNull(resolveOdinId("https://frodo.digital"))
     }
 
     @Test
     fun emptyString_isRejected() {
-        assertFalse("".contains("/pub/image"))
+        assertNull(resolveOdinId(""))
     }
 
     // =========================================================
@@ -129,21 +122,19 @@ class PublicImageFetcherFactoryTest {
     }
 
     // =========================================================
-    // Cache-busting query string (?v=<lastModified>) — see PublicAvatar's
-    // cacheBustKey param. The suffix match must still resolve correctly with
-    // one appended, or the owner's own avatar refresh silently stops using
-    // this Fetcher (and its cache) entirely.
+    // No decoration survives on this URL: the memory-cache key is
+    // PublicAvatarKeyer's job, so a query-carrying URL is not ours and must
+    // fall through rather than resolve to a garbage OdinId.
     // =========================================================
 
     @Test
-    fun resolveOdinId_uriWithCacheBustQuery_matches() {
-        val uri = "https://frodo.digital/pub/image?v=1699999999".toUri()
-        assertEquals("frodo.digital", resolveOdinId(uri)?.toString())
+    fun resolveOdinId_uriWithQuery_isRejected() {
+        assertNull(resolveOdinId("https://frodo.digital/pub/image?v=1699999999".toUri()))
+        assertNull(resolveOdinId("https://frodo.digital/pub/image?v=1699999999"))
     }
 
     @Test
-    fun resolveOdinId_stringWithCacheBustQuery_matches() {
-        val odinId = resolveOdinId("https://frodo.digital/pub/image?v=1699999999")
-        assertEquals("frodo.digital", odinId?.toString())
+    fun resolveOdinId_httpUrlIsRejected() {
+        assertNull(resolveOdinId("http://frodo.digital/pub/image"))
     }
 }

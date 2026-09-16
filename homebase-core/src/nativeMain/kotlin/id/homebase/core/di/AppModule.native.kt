@@ -28,6 +28,7 @@ import id.homebase.core.image.HeicDecoder
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.image.PHAssetFetcher
+import id.homebase.core.image.PublicAvatarKeyer
 import id.homebase.core.image.PublicImageFetcher
 import id.homebase.core.notifications.KMPNotifierBackend
 import id.homebase.core.notifications.NotificationBackend
@@ -76,6 +77,7 @@ actual fun platformModule(): Module = module {
         ImageLoader.Builder(PlatformContext.INSTANCE)
                 .components {
                     add(HomebaseImageKeyer())
+                    add(PublicAvatarKeyer())
                     add(PHAssetFetcher.Factory())
                     add(HomebaseImageFetcher.Factory(get(), get()))
                     add(PublicImageFetcher.Factory(get()))

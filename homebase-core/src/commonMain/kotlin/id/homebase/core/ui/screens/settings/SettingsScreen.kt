@@ -504,7 +504,6 @@ private fun IdentityHeader(
                         options = AvatarOptions(size = 72.dp),
                         sharedTransitionScope = null,
                         animatedVisibilityScope = null,
-                        cacheBustKey = it.profileImageLastModified,
                     )
                 }
             }

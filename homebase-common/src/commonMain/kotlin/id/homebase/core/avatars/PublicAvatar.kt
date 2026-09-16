@@ -14,6 +14,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.takeOrElse
@@ -24,9 +26,11 @@ import coil3.ImageLoader
 import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
+import id.homebase.api.client.contacts.PublicAvatarRevisions
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.publicImageUrl
 import id.homebase.core.HomebaseConstants
-import id.homebase.core.media.subsample.imageUrlSharedElementKey
+import id.homebase.core.media.subsample.avatarSharedElementKey
 import id.homebase.resources.MR
 import id.homebase.resources.avatar_public
 import org.jetbrains.compose.resources.stringResource
@@ -41,23 +45,14 @@ fun PublicAvatar(
     modifier: Modifier = Modifier,
     /**
      * Supply both to morph this avatar into (and back out of) the full-screen viewer opened by
-     * [options] `onClick`. The key is derived from the published-avatar URL, so it pairs with a
-     * [id.homebase.core.media.subsample.SubSamplingImageSource.Url] built from the same identity.
+     * [options] `onClick`. Keyed on the identity, so it pairs with a
+     * [id.homebase.core.media.subsample.SubSamplingImageSource.Avatar] for the same one.
      */
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
-    /**
-     * Appended as `?v=<cacheBustKey>` so Coil treats a changed value as a distinct request/cache
-     * key instead of serving a stale in-memory image — the URL itself never otherwise changes,
-     * so without this a freshly-uploaded photo won't visibly update until the app restarts or
-     * Coil's memory cache is evicted for some unrelated reason. Pass e.g.
-     * `OwnerSession.profileImageLastModified` for the owner's own avatar; leave null (default)
-     * for any other identity, where an explicit contact Sync is the only such signal and
-     * [rememberPublicAvatarUrl] picks that up on its own.
-     */
-    cacheBustKey: Long? = null,
 ) {
-    val imageUrl = rememberPublicAvatarUrl(odinId, cacheBustKey)
+    val domain = odinId.domainName
+    val imageUrl = remember(domain) { publicImageUrl(domain) }
 
     // Defense in depth. SingletonImageLoader is also rewired to this
     // instance in AppModule.{android,desktop,native}.kt, so a caller that
@@ -81,12 +76,11 @@ fun PublicAvatar(
                 .clip(CircleShape)
         }
 
-    // The key strips the ?v= token, so tile and viewer still pair up a refresh apart.
     if (sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
             containerModifier = containerModifier.sharedBounds(
                 rememberSharedContentState(
-                    key = imageUrlSharedElementKey(imageUrl),
+                    key = avatarSharedElementKey(odinId),
                 ),
                 animatedVisibilityScope = animatedVisibilityScope,
                 boundsTransform = { _, _ ->
@@ -101,50 +95,54 @@ fun PublicAvatar(
         }
     }
 
-    SubcomposeAsyncImage(
-        model = imageUrl,
-        imageLoader = imageLoader,
-        contentDescription = stringResource(MR.string.avatar_public),
-        contentScale = options.contentScale,
-        modifier = containerModifier
-    ) {
+    // The URL is constant, so a bumped revision cannot restart the request on its own; tearing the
+    // painter down does. PublicAvatarKeyer keeps the re-request off the pre-bump cache entry.
+    key(PublicAvatarRevisions.revisionOf(domain)) {
+        SubcomposeAsyncImage(
+            model = imageUrl,
+            imageLoader = imageLoader,
+            contentDescription = stringResource(MR.string.avatar_public),
+            contentScale = options.contentScale,
+            modifier = containerModifier
+        ) {
 
-        val state by painter.state.collectAsStateWithLifecycle()
+            val state by painter.state.collectAsStateWithLifecycle()
 
-        when (state) {
-            is AsyncImagePainter.State.Loading,
-            is AsyncImagePainter.State.Empty -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        strokeWidth = 2.dp,
-                        color = options.contentColor.takeOrElse {
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                        },
+            when (state) {
+                is AsyncImagePainter.State.Loading,
+                is AsyncImagePainter.State.Empty -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            strokeWidth = 2.dp,
+                            color = options.contentColor.takeOrElse {
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                            },
+                        )
+                    }
+                }
+
+                is AsyncImagePainter.State.Success -> {
+                    SubcomposeAsyncImageContent(
+                        modifier = if (imageClick != null) {
+                            Modifier.fillMaxSize().clickable(onClick = imageClick)
+                        } else {
+                            Modifier
+                        }
                     )
                 }
-            }
 
-            is AsyncImagePainter.State.Success -> {
-                SubcomposeAsyncImageContent(
-                    modifier = if (imageClick != null) {
-                        Modifier.fillMaxSize().clickable(onClick = imageClick)
-                    } else {
-                        Modifier
-                    }
-                )
-            }
-
-            is AsyncImagePainter.State.Error -> {
-                FallbackAvatar(
-                    initials = initials,
-                    // FallbackAvatar applies options.onClick itself; an image-gated
-                    // tap must not survive into the no-image branch.
-                    options = if (imageClick != null) options.copy(onClick = null) else options,
-                    modifier = Modifier.fillMaxSize()
-                )
+                is AsyncImagePainter.State.Error -> {
+                    FallbackAvatar(
+                        initials = initials,
+                        // FallbackAvatar applies options.onClick itself; an image-gated
+                        // tap must not survive into the no-image branch.
+                        options = if (imageClick != null) options.copy(onClick = null) else options,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
     }

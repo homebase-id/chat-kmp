@@ -21,6 +21,7 @@ import id.homebase.core.image.AnimatedSkiaDecoder
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.image.OrientedJpegDecoder
+import id.homebase.core.image.PublicAvatarKeyer
 import id.homebase.core.notifications.NoopNotificationBackend
 import id.homebase.core.notifications.NotificationBackend
 import id.homebase.core.settings.createSettings
@@ -66,6 +67,7 @@ actual fun platformModule(): Module = module {
         ImageLoader.Builder(PlatformContext.INSTANCE)
                 .components {
                     add(HomebaseImageKeyer())
+                    add(PublicAvatarKeyer())
                     add(HomebaseImageFetcher.Factory(get(), get()))
                     add(PlatformFileFetcher.Factory())
                     // EXIF quarter-turn JPEGs are squished by Coil's browser

@@ -18,16 +18,18 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * A user-initiated Sync is the one read allowed to defeat the client TTL (#1526): it must drop the
- * cached avatar bytes *and* publish a new revision, or Coil repaints the copy already in memory.
- * Every other read stays on the cache.
+ * One signal, two publishers: an explicit contact Sync ([ContactInfoGateway.resync]) and the owner's
+ * own `publicProfileContentPublished` echo both reach [PublicProfileProviderCached.invalidateImage],
+ * which must drop the cached bytes *and* publish a revision — or Coil repaints the copy already in
+ * memory (#1526). Every other read stays on the cache.
  */
-class ContactInfoGatewayRefreshTest {
+class AvatarInvalidationTest {
 
     private val odinId = OdinId("frodobaggins.me")
     private val otherOdinId = OdinId("samwisegamgee.me")
@@ -41,9 +43,9 @@ class ContactInfoGatewayRefreshTest {
     @BeforeTest
     fun resetRevisions() = PublicAvatarRevisions.clear()
 
-    private fun gateway(): ContactInfoGateway {
-        val tempDir = Files.createTempDirectory("hb-gateway-refresh-test").toString()
-        val provider = PublicProfileProviderCached(
+    private fun provider(): PublicProfileProviderCached {
+        val tempDir = Files.createTempDirectory("hb-avatar-invalidation-test").toString()
+        return PublicProfileProviderCached(
             httpClient = HttpClient(
                 MockEngine {
                     requestCount++
@@ -62,87 +64,114 @@ class ContactInfoGatewayRefreshTest {
                 override suspend fun writeStream(path: String, data: Flow<ByteArray>) = error("unused")
             },
         )
-        return ContactInfoGateway(
-            contactRepository = { error("not used by the avatar path") },
-            publicProfiles = provider,
-        )
     }
 
     @Test
-    fun refreshDropsTheCachedAvatarAndRepeatReadsDoNot() = runBlocking {
-        val gateway = gateway()
+    fun invalidateImageDropsTheCachedAvatarAndRepeatReadsDoNot() = runBlocking {
+        val provider = provider()
 
-        assertContentEquals(firstBytes, gateway.avatarBytes(odinId))
+        assertContentEquals(firstBytes, provider.getPublicImage(odinId))
         assertEquals(1, requestCount)
 
         // Normal caching: an unrelated read seconds later must not hit the network again.
-        assertContentEquals(firstBytes, gateway.avatarBytes(odinId))
+        assertContentEquals(firstBytes, provider.getPublicImage(odinId))
         assertEquals(1, requestCount, "a plain read must stay on the cache")
 
         nextBytes = secondBytes
-        gateway.refresh(odinId)
+        provider.invalidateImage(odinId)
 
-        assertContentEquals(secondBytes, gateway.avatarBytes(odinId))
-        assertEquals(2, requestCount, "refresh must force the next read to the host")
+        assertContentEquals(secondBytes, provider.getPublicImage(odinId))
+        assertEquals(2, requestCount, "invalidation must force the next read to the host")
 
-        // ...and the refreshed bytes are cached again, not re-fetched on every read.
-        assertContentEquals(secondBytes, gateway.avatarBytes(odinId))
+        assertContentEquals(secondBytes, provider.getPublicImage(odinId))
         assertEquals(2, requestCount, "caching must resume after a forced refresh")
     }
 
     @Test
-    fun refreshPublishesARevisionForThatIdentityOnly() = runBlocking {
-        val gateway = gateway()
+    fun invalidateImagePublishesARevisionForThatIdentityOnly() = runBlocking {
+        val provider = provider()
 
-        assertNull(PublicAvatarRevisions.revisionOf(odinId.domainName))
-
-        gateway.avatarBytes(odinId)
+        provider.getPublicImage(odinId)
         assertNull(
             PublicAvatarRevisions.revisionOf(odinId.domainName),
-            "a plain read must not bust the avatar URL",
+            "a plain read must not bust the avatar cache key",
         )
 
-        gateway.refresh(odinId)
+        provider.invalidateImage(odinId)
 
         val revision = PublicAvatarRevisions.revisionOf(odinId.domainName)
-        assertNotNull(revision, "refresh must publish a revision for the refreshed identity")
+        assertNotNull(revision, "invalidating an image must publish a revision for that identity")
         assertTrue(revision > 0)
         assertNull(
             PublicAvatarRevisions.revisionOf(otherOdinId.domainName),
-            "refreshing one identity must not bust another's avatar URL",
+            "invalidating one identity must not bust another's avatar",
         )
     }
 
     @Test
-    fun everyRefreshPublishesAStrictlyLargerRevision() = runBlocking {
-        val gateway = gateway()
+    fun invalidateProfileDoesNotPublishARevision() = runBlocking {
+        val provider = provider()
 
-        gateway.refresh(odinId)
+        // A ProfileCard-only republish re-reads the card; the photo is untouched, so every avatar
+        // on screen must keep its bytes.
+        provider.invalidateProfile(odinId)
+
+        assertNull(PublicAvatarRevisions.revisionOf(odinId.domainName))
+    }
+
+    @Test
+    fun everyInvalidationPublishesAStrictlyLargerRevision() = runBlocking {
+        val provider = provider()
+
+        provider.invalidateImage(odinId)
         val first = assertNotNull(PublicAvatarRevisions.revisionOf(odinId.domainName))
-        gateway.refresh(odinId)
+        provider.invalidateImage(odinId)
         val second = assertNotNull(PublicAvatarRevisions.revisionOf(odinId.domainName))
 
-        // A device clock stepping backwards must not revert the URL to one Coil already has bytes
-        // for — that would silently disarm the refresh.
+        // A device clock stepping backwards must not revert to a key Coil already has bytes for —
+        // that would silently disarm the refresh.
         assertTrue(
             second > first,
-            "a second refresh must publish a strictly larger revision ($second was not > $first)",
+            "a second invalidation must publish a strictly larger revision ($second was not > $first)",
         )
     }
 
     @Test
     fun clearCachesDropsEveryRevision() = runBlocking {
-        val gateway = gateway()
+        val provider = provider()
 
-        gateway.refresh(odinId)
+        provider.invalidateImage(odinId)
         assertNotNull(PublicAvatarRevisions.revisionOf(odinId.domainName))
 
         // The logout and Storage -> Clear caches path.
-        gateway.clearCaches()
+        provider.clearCaches()
 
         assertNull(
             PublicAvatarRevisions.revisionOf(odinId.domainName),
             "logout / clear-caches must not leave one identity's tokens for the next",
         )
     }
+
+    @Test
+    fun resyncInvalidatesBeforeItReachesTheContactRepository() = runBlocking {
+        val provider = provider()
+        var resolved = false
+        val gateway = ContactInfoGateway(
+            contactRepository = { resolved = true; throw RepositoryReached() },
+            publicProfiles = provider,
+        )
+
+        assertContentEquals(firstBytes, gateway.avatarBytes(odinId))
+        assertEquals(1, requestCount)
+
+        nextBytes = secondBytes
+        assertFailsWith<RepositoryReached> { gateway.resync(odinId) }
+
+        assertTrue(resolved, "resync must also re-enrich the local contact record")
+        assertNotNull(PublicAvatarRevisions.revisionOf(odinId.domainName))
+        assertContentEquals(secondBytes, gateway.avatarBytes(odinId))
+        assertEquals(2, requestCount, "resync must drop the cached avatar before the drive sync")
+    }
+
+    private class RepositoryReached : RuntimeException()
 }

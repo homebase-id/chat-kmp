@@ -589,8 +589,7 @@ class ContactDetailViewModel(
         val peer = OdinId(domain)
         _events.tryEmit(ContactDetailEvent.SyncStarted)
         viewModelScope.launch {
-            contactInfo.refresh(peer)
-            contactRepository.sync(peer)
+            contactInfo.resync(peer)
             verifyLocateAccess(peer)
         }
     }

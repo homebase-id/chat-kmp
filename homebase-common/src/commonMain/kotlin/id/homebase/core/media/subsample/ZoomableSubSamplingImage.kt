@@ -33,6 +33,7 @@ import coil3.size.Size
 import com.github.panpf.zoomimage.CoilZoomAsyncImage
 import com.github.panpf.zoomimage.compose.zoom.ZoomableState
 import com.github.panpf.zoomimage.rememberCoilZoomState
+import id.homebase.api.common.publicImageUrl
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageLoader
@@ -102,7 +103,7 @@ fun ZoomableSubSamplingImage(
             }
         }
         is SubSamplingImageSource.LocalFile -> source.filePath
-        is SubSamplingImageSource.Url -> source.url
+        is SubSamplingImageSource.Avatar -> source.odinId.publicImageUrl()
     }
 
     var imageLoaded by remember(model) { mutableStateOf(false) }
