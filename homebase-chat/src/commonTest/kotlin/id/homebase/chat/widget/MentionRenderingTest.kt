@@ -14,8 +14,10 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import kotlinx.collections.immutable.persistentMapOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
@@ -26,21 +28,31 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalTestApi::class)
 class MentionRenderingTest {
 
-    private class Rendered(val text: AnnotatedString, val mentionStyle: SpanStyle) {
-        fun mentionRuns(): List<String> = text.spanStyles
-            .filter { it.item == mentionStyle }
+    private class Rendered(
+        val text: AnnotatedString,
+        val mentionStyle: SpanStyle,
+        val selfMentionStyle: SpanStyle,
+    ) {
+        fun mentionRuns(): List<String> = runsOf(mentionStyle)
+        fun selfRuns(): List<String> = runsOf(selfMentionStyle)
+
+        private fun runsOf(style: SpanStyle): List<String> = text.spanStyles
+            .filter { it.item == style }
             .map { text.text.substring(it.start, it.end) }
     }
 
-    /** Builds the inline path's annotated string for [content] plus the style a mention must carry. */
-    private fun ComposeUiTest.inline(content: String): Rendered {
+    private val self = "me.example.test"
+
+    /** Builds the inline path's annotated string for [content] plus the styles a mention may carry. */
+    private fun ComposeUiTest.inline(content: String, mentions: MentionContext? = null): Rendered {
         var rendered: Rendered? = null
         setContent {
             val style = MaterialTheme.typography.bodyLarge
             val color = LocalContentColor.current
             rendered = Rendered(
-                text = buildChatInlineAnnotatedString(content, style, color),
+                text = buildChatInlineAnnotatedString(content, style, color, mentions),
                 mentionStyle = mentionSpanStyle(style, color),
+                selfMentionStyle = selfMentionSpanStyle(style, color, mentions?.sentBubble == true),
             )
         }
         waitForIdle()
@@ -193,5 +205,171 @@ class MentionRenderingTest {
             .filter { it.item == requireNotNull(mentionStyle) }
             .map { drawn.text.substring(it.start, it.end) }
         assertEquals(listOf("@bob.example.test"), runs)
+    }
+
+    // --- #1425: a mention of YOU, and the names a chip draws.
+
+    /** No context is the feed's shape: general chip, raw odinId, nothing self-highlighted. */
+    @Test
+    fun withoutAContextEveryMentionIsTheGeneralChip() = runComposeUiTest {
+        val rendered = inline("hey @me.example.test and @alice.example.test")
+        assertEquals(
+            listOf("@me.example.test", "@alice.example.test"),
+            rendered.mentionRuns(),
+        )
+        assertEquals(emptyList(), rendered.selfRuns())
+        assertEquals("hey @me.example.test and @alice.example.test", rendered.text.text)
+    }
+
+    @Test
+    fun aMentionOfMeCarriesTheStrongerStyle() = runComposeUiTest {
+        val rendered = inline(
+            "hey @me.example.test and @alice.example.test",
+            MentionContext(selfOdinId = self),
+        )
+        assertEquals(listOf("@me.example.test"), rendered.selfRuns())
+        assertEquals(listOf("@alice.example.test"), rendered.mentionRuns())
+        assertNotEquals(rendered.mentionStyle, rendered.selfMentionStyle)
+    }
+
+    /** `@me.example.test/inbox` names me — the decorated range reaches past the identity. */
+    @Test
+    fun aMentionOfMeIsFoundThroughAPathSuffix() = runComposeUiTest {
+        val rendered = inline("hi @me.example.test/inbox", MentionContext(selfOdinId = self))
+        assertEquals(listOf("@me.example.test/inbox"), rendered.selfRuns())
+    }
+
+    /** An identity my odinId is merely a prefix of is somebody else. */
+    @Test
+    fun aLongerIdentityIsNotMe() = runComposeUiTest {
+        val rendered = inline("hi @me.example.test.evil.test", MentionContext(selfOdinId = self))
+        assertEquals(emptyList(), rendered.selfRuns())
+        assertEquals(listOf("@me.example.test.evil.test"), rendered.mentionRuns())
+    }
+
+    @Test
+    fun aKnownMentionDrawsTheContactName() = runComposeUiTest {
+        val rendered = inline(
+            "hey @alice.example.test how are you",
+            MentionContext(names = persistentMapOf("alice.example.test" to "Alice Smith")),
+        )
+        assertEquals(listOf("@Alice Smith"), rendered.mentionRuns())
+        assertEquals("hey @Alice Smith how are you", rendered.text.text)
+    }
+
+    /** Only the identity is swapped, so a token that reaches past it keeps its tail. */
+    @Test
+    fun aSubstitutedNameKeepsThePathSuffix() = runComposeUiTest {
+        val rendered = inline(
+            "hi @alice.example.test/inbox",
+            MentionContext(names = persistentMapOf("alice.example.test" to "Alice Smith")),
+        )
+        assertEquals(listOf("@Alice Smith/inbox"), rendered.mentionRuns())
+    }
+
+    /** No contact, no name: the raw odinId, never a blank chip. */
+    @Test
+    fun anUnknownMentionKeepsTheRawOdinId() = runComposeUiTest {
+        val rendered = inline(
+            "hey @bob.example.test",
+            MentionContext(names = persistentMapOf("alice.example.test" to "Alice Smith")),
+        )
+        assertEquals(listOf("@bob.example.test"), rendered.mentionRuns())
+    }
+
+    /** The user's extension: a mention of me shows MY full name, not the handle and not "You". */
+    @Test
+    fun aMentionOfMeDrawsMyOwnName() = runComposeUiTest {
+        val rendered = inline(
+            "can you look at this @me.example.test?",
+            MentionContext(
+                selfOdinId = self,
+                names = persistentMapOf(self to "Bishwajeet Parhi"),
+            ),
+        )
+        assertEquals(listOf("@Bishwajeet Parhi"), rendered.selfRuns())
+        assertEquals("can you look at this @Bishwajeet Parhi?", rendered.text.text)
+    }
+
+    /**
+     * Self-detection runs on the RAW body, before any name resolution — so a contact who happens
+     * to carry my display name is still styled as someone else.
+     */
+    @Test
+    fun selfDetectionReadsTheOdinIdNotTheResolvedName() = runComposeUiTest {
+        val rendered = inline(
+            "hey @alice.example.test",
+            MentionContext(
+                selfOdinId = self,
+                names = persistentMapOf("alice.example.test" to "Bishwajeet Parhi"),
+            ),
+        )
+        assertEquals(emptyList(), rendered.selfRuns())
+        assertEquals(listOf("@Bishwajeet Parhi"), rendered.mentionRuns())
+    }
+
+    /**
+     * The degenerate case — you mentioning yourself in your own message. The sent bubble is
+     * painted `primary`, so the accent hue is dropped for a denser bubble-relative tint; it must
+     * still be distinguishable from the general chip.
+     */
+    @Test
+    fun onASentBubbleTheSelfChipFallsBackToABubbleRelativeTint() = runComposeUiTest {
+        val rendered = inline(
+            "note to @me.example.test",
+            MentionContext(selfOdinId = self, sentBubble = true),
+        )
+        assertEquals(listOf("@me.example.test"), rendered.selfRuns())
+        assertNotEquals(rendered.mentionStyle, rendered.selfMentionStyle)
+        assertEquals(rendered.mentionStyle.color, rendered.selfMentionStyle.color)
+    }
+
+    /** ...whereas a received bubble takes a real accent role, hue and all. */
+    @Test
+    fun onAReceivedBubbleTheSelfChipTakesAnAccentRole() = runComposeUiTest {
+        val rendered = inline(
+            "ping @me.example.test",
+            MentionContext(selfOdinId = self, sentBubble = false),
+        )
+        assertEquals(listOf("@me.example.test"), rendered.selfRuns())
+        assertNotEquals(rendered.mentionStyle.color, rendered.selfMentionStyle.color)
+    }
+
+    @Test
+    fun aCodeSpanIsStillNotChippedWhenItNamesMe() = runComposeUiTest {
+        val rendered = inline(
+            "run ` @me.example.test ` verbatim",
+            MentionContext(selfOdinId = self, names = persistentMapOf(self to "Bishwajeet Parhi")),
+        )
+        assertEquals(emptyList(), rendered.selfRuns())
+        assertEquals(emptyList(), rendered.mentionRuns())
+        assertTrue(rendered.text.text.contains("@me.example.test"))
+    }
+
+    /** The block path publishes the same annotator, so the self chip and the name land there too. */
+    @Test
+    fun blockPathCarriesTheSelfChipAndTheResolvedName() = runComposeUiTest {
+        var selfStyle: SpanStyle? = null
+        setContent {
+            val style = MaterialTheme.typography.bodyLarge
+            val color = LocalContentColor.current
+            selfStyle = selfMentionSpanStyle(style, color, sentBubble = false)
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(
+                    content = "- hi @me.example.test\n- second",
+                    style = style,
+                    color = color,
+                    mentions = MentionContext(
+                        selfOdinId = self,
+                        names = persistentMapOf(self to "Bishwajeet Parhi"),
+                    ),
+                )
+            }
+        }
+        val drawn = drawnText("@Bishwajeet Parhi")
+        val runs = drawn.spanStyles
+            .filter { it.item == requireNotNull(selfStyle) }
+            .map { drawn.text.substring(it.start, it.end) }
+        assertEquals(listOf("@Bishwajeet Parhi"), runs)
     }
 }

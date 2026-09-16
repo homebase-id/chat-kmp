@@ -8,7 +8,18 @@ package id.homebase.api.util
 private val mentionIdentityShape = Regex("[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
 
 /**
- * Locates the `@mention`s in a raw chat body, as ranges into [text].
+ * One `@mention` in a body: the [range] to decorate, and the [identity] the shape regex actually
+ * matched inside it.
+ *
+ * The two are NOT the same substring. [range] opens on the `@` and runs to the end of the token,
+ * so `@alice.example.test/inbox` decorates the path too while naming only `alice.example.test`.
+ * Anything asking *who* is mentioned must therefore read [identity]; slicing [range] gives a false
+ * negative on every mention carrying a path or a suffix.
+ */
+data class Mention(val range: IntRange, val identity: String)
+
+/**
+ * Locates the `@mention`s in a raw chat body.
  *
  * A mention rides the wire as plain text — `@<odinId> `, nothing on the message header — so both
  * clients recognise one purely by shape. This is chat-kmp's half of that agreement, and it accepts
@@ -21,7 +32,7 @@ private val mentionIdentityShape = Regex("[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
  *    `@alice.example.t` is a mention on both clients (via `alice.example`) even though its last
  *    label is too short to be a TLD.
  *
- * The returned range covers the `@` plus the token, with trailing non-alphanumerics trimmed off.
+ * [Mention.range] covers the `@` plus the token, with trailing non-alphanumerics trimmed off.
  * Web instead paints its link over the whole token, punctuation included — `@alice.example.test,`
  * links the comma and lands it in the href. Whether a token *is* a mention is identical between the
  * two; the decoration's reach differs only when a mention is followed, with no space, by characters
@@ -34,10 +45,10 @@ private val mentionIdentityShape = Regex("[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
  * Nothing here knows about markdown. Callers that render markdown must additionally refuse to
  * decorate the ranges that fall inside code — see the chat renderer's mention annotator.
  */
-fun findMentionRanges(text: String): List<IntRange> {
+fun findMentions(text: String): List<Mention> {
     if (text.length < 2) return emptyList()
 
-    var ranges: MutableList<IntRange>? = null
+    var mentions: MutableList<Mention>? = null
     var i = 0
     while (i < text.length) {
         if (text[i] != '@' || (i > 0 && !text[i - 1].isWhitespace())) {
@@ -55,12 +66,24 @@ fun findMentionRanges(text: String): List<IntRange> {
             // always ends on a letter, so this can never eat into it.
             var end = tokenEnd
             while (end > identity.range.last + 1 && !text[end - 1].isLetterOrDigit()) end--
-            val list = ranges ?: mutableListOf<IntRange>().also { ranges = it }
-            list.add(i until end)
+            val list = mentions ?: mutableListOf<Mention>().also { mentions = it }
+            list.add(Mention(range = i until end, identity = identity.value))
         }
         // Web consumes the whole whitespace-delimited token whether or not it turned out to be a
         // mention, so a second `@` inside the same token is never reconsidered.
         i = tokenEnd
     }
-    return ranges ?: emptyList()
+    return mentions ?: emptyList()
+}
+
+/**
+ * Whether [text] mentions [odinId] — the one answer both the self-mention chip (#1425) and the
+ * notification path (#1417) need, so neither grows its own copy of the rule above.
+ *
+ * Case-insensitive: odinIds are domain names. Matches on [Mention.identity], never on a slice of
+ * [Mention.range], so `@me.example.test/inbox` counts and `@me.example.test.evil.test` does not.
+ */
+fun mentionsIdentity(text: String, odinId: String): Boolean {
+    if (odinId.isBlank()) return false
+    return findMentions(text).any { it.identity.equals(odinId, ignoreCase = true) }
 }

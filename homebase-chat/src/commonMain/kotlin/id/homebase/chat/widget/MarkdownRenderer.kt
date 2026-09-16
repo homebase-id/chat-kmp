@@ -123,13 +123,21 @@ import id.homebase.core.ui.theme.withEmojiFont
  *
  * ### Mentions
  * A mention is plain body text (`@<odinId>`), not a header descriptor, so it is recognised by
- * shape — see [id.homebase.api.util.findMentionRanges] for the rule and how it lines up with the
+ * shape — see [id.homebase.api.util.findMentions] for the rule and how it lines up with the
  * web client's. Shapes 2 and 3 share ONE [com.mikepenz.markdown.model.MarkdownAnnotator]
  * ([rememberMentionAnnotator]), which is why the chip looks the same in a one-line message and in
  * a bulleted one. Shape 1 deliberately does not carry it: a search-active body is already flattened
  * to plain text, dropping bold, italic, link styling and the inline-code chip alike, and after that
  * flattening a mention inside a code span is indistinguishable from one in prose — the highlight is
  * what that surface is for.
+ *
+ * [mentions] is what lifts a chip above decoration: it names the reader (so a mention of THEM gets
+ * [selfMentionSpanStyle] instead of [mentionSpanStyle]) and carries already-resolved display names
+ * (so the chip can draw `@Alice Smith` rather than `@alice.example.test`). Both are pre-resolved
+ * upstream — nothing here reaches for a contact — and both are absent by default, which is how the
+ * feed's post and comment bodies render through this same composable unchanged. Who is mentioned is
+ * always decided on the RAW body text, never on a resolved name, so a renamed or name-colliding
+ * contact cannot turn a mention of someone else into a mention of you.
  *
  * The chip is decoration only: no [androidx.compose.ui.text.LinkAnnotation], nothing to tap. That
  * keeps shape 2 a plain styled Text — a link annotation re-registers with TextLinkScope on hover,
@@ -148,6 +156,7 @@ fun ChatMarkdown(
     style: TextStyle = MaterialTheme.typography.bodyLarge,
     searchQuery: String? = null,
     isCurrentSearchResult: Boolean = false,
+    mentions: MentionContext? = null,
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip,
     onTextLayout: (TextLayoutResult) -> Unit = {},
@@ -201,7 +210,7 @@ fun ChatMarkdown(
         // reentrancy safety) and why annotatorSettings is built explicitly outside
         // Markdown(). Keeping this as one stable node is what makes the bubble's
         // last-line timestamp tuck reentrancy-free.
-        val annotated = buildChatInlineAnnotatedString(content, style, color)
+        val annotated = buildChatInlineAnnotatedString(content, style, color, mentions)
         Text(
             text = annotated,
             modifier = modifier,
@@ -292,7 +301,12 @@ fun ChatMarkdown(
         // Published as LocalMarkdownAnnotator, so paragraphs, headings, list items, quotes and
         // table cells all pick up the same mention chip the inline path draws. Code fences take a
         // different route inside mikepenz and are never offered to an annotator.
-        annotator = rememberMentionAnnotator(parsedContent, mentionSpanStyle(style, color)),
+        annotator = rememberMentionAnnotator(
+            parsedContent = parsedContent,
+            mentionStyle = mentionSpanStyle(style, color),
+            selfMentionStyle = selfMentionSpanStyle(style, color, mentions?.sentBubble == true),
+            context = mentions,
+        ),
         // Default is fillMaxSize(); a chat bubble must wrap its content.
         modifier = modifier.wrapContentSize(),
         dimens = markdownDimens(
@@ -378,6 +392,7 @@ internal fun buildChatInlineAnnotatedString(
     content: String,
     style: TextStyle,
     color: Color,
+    mentions: MentionContext? = null,
 ): AnnotatedString {
     val linkSpanStyle = TextLinkStyles(
         style = style.copy(
@@ -396,7 +411,12 @@ internal fun buildChatInlineAnnotatedString(
     val settings = annotatorSettings(
         linkTextSpanStyle = linkSpanStyle,
         codeSpanStyle = inlineCodeStyle,
-        annotator = rememberMentionAnnotator(parsedContent, mentionSpanStyle(style, color)),
+        annotator = rememberMentionAnnotator(
+            parsedContent = parsedContent,
+            mentionStyle = mentionSpanStyle(style, color),
+            selfMentionStyle = selfMentionSpanStyle(style, color, mentions?.sentBubble == true),
+            context = mentions,
+        ),
         referenceLinkHandler = null,
     )
     // The actual parse (buildMarkdownAnnotatedString) is a pure, non-composable string
@@ -408,7 +428,7 @@ internal fun buildChatInlineAnnotatedString(
     // where withEmojiFont returns the string untouched. Part of the remember key so the emoji
     // pass is memoized with the parse rather than redone on every recomposition.
     val emojiFamily = emojiFontFamily()
-    return remember(parsedContent, style, color, emojiFamily) {
+    return remember(parsedContent, style, color, emojiFamily, mentions) {
         parsedContent.buildMarkdownAnnotatedString(
             style = style,
             annotatorSettings = settings,

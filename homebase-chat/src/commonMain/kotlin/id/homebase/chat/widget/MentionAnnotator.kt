@@ -1,6 +1,8 @@
 package id.homebase.chat.widget
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
@@ -8,7 +10,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import com.mikepenz.markdown.model.MarkdownAnnotator
 import com.mikepenz.markdown.model.markdownAnnotator
-import id.homebase.api.util.findMentionRanges
+import id.homebase.api.util.Mention
+import id.homebase.api.util.findMentions
+import kotlinx.collections.immutable.ImmutableMap
+import kotlinx.collections.immutable.persistentMapOf
 import org.intellij.markdown.IElementType
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
@@ -20,9 +25,35 @@ import org.intellij.markdown.MarkdownTokenTypes
  */
 private const val MENTION_BG_ALPHA = 0.18f
 
+/** Same tint, denser: the fallback a mention of YOU gets where an accent hue cannot be used. */
+private const val SELF_MENTION_BG_ALPHA = 0.35f
+
 /**
- * How an `@mention` is painted inside a chat bubble: the bubble's own content [color], bold, on a
- * faint tint of that same colour.
+ * Who the reader is, and what the mentions in this body should say — everything the chip needs
+ * that the renderer cannot know on its own.
+ *
+ * Passed explicitly rather than read from a CompositionLocal inside [ChatMarkdown]: the renderer
+ * also draws feed posts and feed comments, which must not self-highlight and must not swap an
+ * odinId for a name. Those call sites simply do not pass one.
+ *
+ * [names] is keyed by LOWERCASED odinId; see [rememberMentionNames].
+ */
+@Immutable
+data class MentionContext(
+    val selfOdinId: String? = null,
+    val names: ImmutableMap<String, String> = persistentMapOf(),
+    /** A sent bubble is painted `primary`, where the `tertiary` accent washes out. */
+    val sentBubble: Boolean = false,
+)
+
+private fun chipStyle(style: TextStyle, textColor: Color, background: Color): SpanStyle =
+    style.copy(color = textColor, fontWeight = FontWeight.Bold)
+        .toSpanStyle()
+        .copy(background = background)
+
+/**
+ * How an `@mention` of someone else is painted inside a chat bubble: the bubble's own content
+ * [color], bold, on a faint tint of that same colour.
  *
  * Derived from [color] rather than a fixed `MaterialTheme.colorScheme` role for the reason the rest
  * of [ChatMarkdown] is — a sent bubble paints `primary` and a received one `surface`, so any fixed
@@ -34,9 +65,31 @@ private const val MENTION_BG_ALPHA = 0.18f
  * either, which is what separates it from the inline-code chip.
  */
 internal fun mentionSpanStyle(style: TextStyle, color: Color): SpanStyle =
-    style.copy(color = color, fontWeight = FontWeight.Bold)
-        .toSpanStyle()
-        .copy(background = color.copy(alpha = MENTION_BG_ALPHA))
+    chipStyle(style, color, color.copy(alpha = MENTION_BG_ALPHA))
+
+/**
+ * How an `@mention` of the CURRENT user is painted — stronger than [mentionSpanStyle], because
+ * spotting "this message is asking me something" while scrolling is the whole point of the feature.
+ *
+ * On a received bubble it takes a real M3 accent, `onTertiaryContainer` on `tertiaryContainer`:
+ * `tertiary` is the role reserved for an attention-drawing highlight that is not competing with
+ * `primary` (which the sent bubble owns and chat links deliberately avoid) and does not read as
+ * `error`. That is affordable here in a way it is not for the general chip, because a self-mention
+ * on a SENT bubble only happens if you mention yourself in your own message — and on that
+ * primary-painted bubble any fixed hue washes out, so it falls back to the bubble-relative chip at
+ * a denser tint instead.
+ */
+@Composable
+internal fun selfMentionSpanStyle(style: TextStyle, color: Color, sentBubble: Boolean): SpanStyle =
+    if (sentBubble) {
+        chipStyle(style, color, color.copy(alpha = SELF_MENTION_BG_ALPHA))
+    } else {
+        chipStyle(
+            style,
+            MaterialTheme.colorScheme.onTertiaryContainer,
+            MaterialTheme.colorScheme.tertiaryContainer,
+        )
+    }
 
 /** The library's own no-op annotator: default handling for every node. */
 private val NoMentionAnnotator: MarkdownAnnotator = markdownAnnotator()
@@ -58,7 +111,9 @@ private val nonProseParents: Set<IElementType> = setOf(
 )
 
 /**
- * A [MarkdownAnnotator] that paints [mentionSpanStyle] over the mentions in [parsedContent].
+ * A [MarkdownAnnotator] that paints [mentionSpanStyle] — or [selfMentionStyle], for a mention of
+ * [context]'s own identity — over the mentions in [parsedContent], substituting resolved display
+ * names where [context] knows one.
  *
  * mikepenz calls an annotator for every AST child on the way to building an `AnnotatedString`, and
  * both of [ChatMarkdown]'s markdown shapes route through that: the inline path passes this to
@@ -73,20 +128,26 @@ private val nonProseParents: Set<IElementType> = setOf(
  * Scanning is `remember`ed on the content: it is a pure, linear pass, but so is
  * `markdownHasBlockElements`, and the same rule applies — a body re-scanned on every recomposition
  * is work done once per scrolled frame instead of once per message. A body with no mention gets the
- * library's own default annotator back, so the common case adds nothing at all.
+ * library's own default annotator back, so the common case adds nothing at all. [context] carries
+ * only already-resolved data, so nothing here reaches for a contact.
  */
 @Composable
 internal fun rememberMentionAnnotator(
     parsedContent: String,
     mentionStyle: SpanStyle,
-): MarkdownAnnotator = remember(parsedContent, mentionStyle) {
-    val ranges = findMentionRanges(parsedContent)
-    if (ranges.isEmpty()) NoMentionAnnotator else mentionAnnotator(ranges, mentionStyle)
+    selfMentionStyle: SpanStyle = mentionStyle,
+    context: MentionContext? = null,
+): MarkdownAnnotator = remember(parsedContent, mentionStyle, selfMentionStyle, context) {
+    val mentions = findMentions(parsedContent)
+    if (mentions.isEmpty()) NoMentionAnnotator
+    else mentionAnnotator(mentions, mentionStyle, selfMentionStyle, context)
 }
 
 internal fun mentionAnnotator(
-    ranges: List<IntRange>,
+    mentions: List<Mention>,
     mentionStyle: SpanStyle,
+    selfMentionStyle: SpanStyle = mentionStyle,
+    context: MentionContext? = null,
 ): MarkdownAnnotator = markdownAnnotator { content, child ->
     if (child.type != MarkdownTokenTypes.TEXT) return@markdownAnnotator false
     if (child.parent?.type in nonProseParents) return@markdownAnnotator false
@@ -100,13 +161,15 @@ internal fun mentionAnnotator(
     if (escape in start until end) return@markdownAnnotator false
 
     var cursor = start
-    for (range in ranges) {
-        val from = maxOf(range.first, start)
-        val to = minOf(range.last + 1, end)
+    for (mention in mentions) {
+        val from = maxOf(mention.range.first, start)
+        val to = minOf(mention.range.last + 1, end)
         if (from >= to) continue
         if (from > cursor) append(content.substring(cursor, from))
-        pushStyle(mentionStyle)
-        append(content.substring(from, to))
+        val isSelf = context?.selfOdinId
+            ?.let { mention.identity.equals(it, ignoreCase = true) } == true
+        pushStyle(if (isSelf) selfMentionStyle else mentionStyle)
+        append(mention.chipText(content, from, to, context?.names))
         pop()
         cursor = to
     }
@@ -114,4 +177,25 @@ internal fun mentionAnnotator(
 
     if (cursor < end) append(content.substring(cursor, end))
     true
+}
+
+/**
+ * What the chip draws: `@<resolved name>` when one is known, the source verbatim otherwise — so a
+ * name that never resolves degrades to the raw `@odinId` rather than to a blank.
+ *
+ * Only the identity is swapped, never the whole range, so a token that reaches past it keeps its
+ * tail (`@alice.example.test/inbox` → `@Alice Smith/inbox`). A mention split across inline nodes by
+ * emphasis is drawn verbatim rather than half-substituted. Offsets downstream are unaffected: the
+ * annotator is CONSTRUCTING the output string, not mapping into it.
+ */
+private fun Mention.chipText(
+    content: String,
+    from: Int,
+    to: Int,
+    names: Map<String, String>?,
+): String {
+    val verbatim = content.substring(from, to)
+    if (names.isNullOrEmpty() || from != range.first || to != range.last + 1) return verbatim
+    val name = names[identity.lowercase()]?.takeIf { it.isNotBlank() } ?: return verbatim
+    return "@" + name + content.substring(range.first + 1 + identity.length, to)
 }

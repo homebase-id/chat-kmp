@@ -191,6 +191,18 @@ fun MessageBubbleRaw(
             ?.let { VoiceNoteSender(it, message.displayName, isYou = sentByYou) }
     }
 
+    // Who the reader is + the names to draw, both resolved upstream (LocalMentionNames is built
+    // once per contact-cache change). Handed to ChatMarkdown explicitly so the feed, which renders
+    // through the same composable, never picks any of it up.
+    val mentionNames = LocalMentionNames.current
+    val mentionContext = remember(currentOdinId, mentionNames, sentByYou) {
+        MentionContext(
+            selfOdinId = currentOdinId.takeIf { it.isNotBlank() },
+            names = mentionNames,
+            sentBubble = sentByYou,
+        )
+    }
+
     // #814: render the timestamp + delivery footer only on the last bubble of a
     // same-sender cluster (END/ALONE), or whenever a sent message failed to deliver.
     val showMessageFooter = clusterPosition == MessageClusterPosition.END ||
@@ -769,6 +781,7 @@ fun MessageBubbleRaw(
                             style = MaterialTheme.typography.bodyLarge,
                             searchQuery = effectiveSearchQuery,
                             isCurrentSearchResult = isCurrentSearchResult,
+                            mentions = mentionContext,
                         )
                     }
                     if (message.hasMore && onShowMoreClick != null) {
@@ -912,6 +925,7 @@ fun MessageBubbleRaw(
                                         style = MaterialTheme.typography.bodyLarge,
                                         searchQuery = effectiveSearchQuery,
                                         isCurrentSearchResult = isCurrentSearchResult,
+                                        mentions = mentionContext,
                                         maxLines = bodyMaxLines,
                                         overflow = TextOverflow.Ellipsis,
                                         onTextLayout = { textLayoutResult = it },

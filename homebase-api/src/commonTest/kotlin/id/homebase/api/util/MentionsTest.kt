@@ -2,6 +2,7 @@ package id.homebase.api.util
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -13,7 +14,9 @@ import kotlin.test.assertTrue
 class MentionsTest {
 
     private fun mentions(text: String): List<String> =
-        findMentionRanges(text).map { text.substring(it.first, it.last + 1) }
+        findMentions(text).map { text.substring(it.range.first, it.range.last + 1) }
+
+    private fun identities(text: String): List<String> = findMentions(text).map { it.identity }
 
     @Test
     fun findsAPlainMention() {
@@ -121,7 +124,7 @@ class MentionsTest {
     @Test
     fun rangesAreAscendingAndNonOverlapping() {
         val text = "@a.example.test @b.example.test @c.example.test"
-        val ranges = findMentionRanges(text)
+        val ranges = findMentions(text).map { it.range }
         assertEquals(3, ranges.size)
         for (i in 1 until ranges.size) {
             assertTrue(ranges[i - 1].last < ranges[i].first)
@@ -136,7 +139,7 @@ class MentionsTest {
     @Test
     fun neverSplitsASurrogatePair() {
         val text = "😀 @alice.example.test😀 done"
-        val ranges = findMentionRanges(text)
+        val ranges = findMentions(text).map { it.range }
         assertEquals(listOf("@alice.example.test"), ranges.map { text.substring(it.first, it.last + 1) })
         for (range in ranges) {
             assertTrue(!text[range.first].isLowSurrogate())
@@ -152,7 +155,117 @@ class MentionsTest {
 
     @Test
     fun handlesAnEmptyBody() {
-        assertEquals(emptyList(), findMentionRanges(""))
-        assertEquals(emptyList(), findMentionRanges("@"))
+        assertEquals(emptyList(), findMentions(""))
+        assertEquals(emptyList(), findMentions("@"))
+    }
+
+    // --- Mention.identity: what the shape regex actually matched, as opposed to what gets painted.
+
+    /**
+     * The whole point of surfacing the identity separately: the decorated range reaches past it,
+     * so `body.substring(range)` would never equal the odinId it names.
+     */
+    @Test
+    fun identityStopsAtTheDomainWhileTheRangeCarriesOn() {
+        val text = "hi @alice.example.test/inbox"
+        assertEquals(listOf("@alice.example.test/inbox"), mentions(text))
+        assertEquals(listOf("alice.example.test"), identities(text))
+    }
+
+    @Test
+    fun identityDropsTheAtSignAndTrailingPunctuation() {
+        assertEquals(listOf("alice.example.test"), identities("thanks @alice.example.test!"))
+        assertEquals(listOf("alice.example.test"), identities("bye @alice.example.test."))
+    }
+
+    /** A last label too short for a TLD is not part of the identity, only of the decoration. */
+    @Test
+    fun identityStopsWhereTheShapeStops() {
+        assertEquals(listOf("alice.example"), identities("hey @alice.example.t"))
+    }
+
+    @Test
+    fun identitiesAreReportedForEveryMention() {
+        assertEquals(
+            listOf("alice.example.test", "bob.example.test"),
+            identities("@alice.example.test and @bob.example.test both"),
+        )
+    }
+
+    // --- mentionsIdentity: the shared "is this about me?" predicate (#1425 chip, #1417 notify).
+
+    @Test
+    fun mentionsIdentityFindsAPlainMention() {
+        assertTrue(mentionsIdentity("hey @me.example.test how are you", "me.example.test"))
+        assertTrue(mentionsIdentity("@me.example.test hi", "me.example.test"))
+    }
+
+    /** odinIds are domain names, and a sender can type one in any case. */
+    @Test
+    fun mentionsIdentityIsCaseInsensitive() {
+        assertTrue(mentionsIdentity("hey @ME.Example.TEST", "me.example.test"))
+        assertTrue(mentionsIdentity("hey @me.example.test", "ME.EXAMPLE.test"))
+    }
+
+    /** The case that makes slicing the range wrong — a path suffix must not hide the mention. */
+    @Test
+    fun mentionsIdentityMatchesThroughAPathSuffix() {
+        assertTrue(mentionsIdentity("hi @me.example.test/inbox", "me.example.test"))
+    }
+
+    @Test
+    fun mentionsIdentityMatchesThroughTrailingPunctuation() {
+        assertTrue(mentionsIdentity("ping @me.example.test, please", "me.example.test"))
+        assertTrue(mentionsIdentity("ping @me.example.test!", "me.example.test"))
+    }
+
+    /** A mention that is only a PREFIX of my odinId is somebody else. */
+    @Test
+    fun mentionsIdentityRejectsAPrefixOfMyOdinId() {
+        assertFalse(mentionsIdentity("hey @example.test", "me.example.test"))
+        assertFalse(mentionsIdentity("hey @me.example.tes", "me.example.test"))
+    }
+
+    /** ...and so is one my odinId is a prefix of — the impersonation direction. */
+    @Test
+    fun mentionsIdentityRejectsAnIdentityThatMerelyStartsWithMine() {
+        assertFalse(mentionsIdentity("hey @me.example.test.evil.test", "me.example.test"))
+        assertFalse(mentionsIdentity("hey @me.example.test-evil.test", "me.example.test"))
+    }
+
+    @Test
+    fun mentionsIdentityPicksMeOutOfSeveralMentions() {
+        val body = "@alice.example.test @me.example.test @bob.example.test"
+        assertTrue(mentionsIdentity(body, "me.example.test"))
+        assertFalse(mentionsIdentity(body, "carol.example.test"))
+    }
+
+    @Test
+    fun mentionsIdentityIgnoresAnEmailAddress() {
+        assertFalse(mentionsIdentity("write to me.example.test today", "me.example.test"))
+        assertFalse(mentionsIdentity("write to you@me.example.test today", "me.example.test"))
+    }
+
+    @Test
+    fun mentionsIdentityRejectsABlankOdinId() {
+        assertFalse(mentionsIdentity("hey @me.example.test", ""))
+        assertFalse(mentionsIdentity("hey @me.example.test", "   "))
+    }
+
+    @Test
+    fun mentionsIdentityHandlesAnEmptyBody() {
+        assertFalse(mentionsIdentity("", "me.example.test"))
+    }
+
+    /**
+     * Markdown-blind, exactly like the scan it is built on: a mention inside a fenced code block
+     * still names you. Refusing to DECORATE those is the renderer's job (its annotator never sees
+     * code nodes), and #1417 wants the notification either way. An inline code span happens to be
+     * excluded anyway — a backtick is not whitespace, so the `@` never opens a mention.
+     */
+    @Test
+    fun mentionsIdentityIsMarkdownBlind() {
+        assertTrue(mentionsIdentity("```\n@me.example.test\n```", "me.example.test"))
+        assertFalse(mentionsIdentity("run `@me.example.test` verbatim", "me.example.test"))
     }
 }
