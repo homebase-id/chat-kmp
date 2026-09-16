@@ -13,11 +13,15 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
@@ -392,7 +396,14 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                                 collapseSecondaryChrome = captionEmojiPickerOpen,
                                 bottomBar = {
                                     MessageTextFieldForAttachment(
-                                        modifier = Modifier.fillMaxWidth().padding(16.dp).imePadding(),
+                                        // union takes the max: the ime inset already spans the nav bar, so
+                                        // stacking the two paddings would double-count it.
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp)
+                                            .windowInsetsPadding(
+                                                WindowInsets.ime.union(WindowInsets.navigationBars)
+                                            ),
                                         state = textFieldState,
                                         onSendMessage = {
                                             sendEditedFiles(
