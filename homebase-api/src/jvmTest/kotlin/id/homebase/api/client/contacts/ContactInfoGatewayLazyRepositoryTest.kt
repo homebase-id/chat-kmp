@@ -1,17 +1,15 @@
 package id.homebase.api.client.contacts
 
+import id.homebase.api.client.profile.FakeFileOperationsProvider
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.common.OdinId
-import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.request.forms.InputProvider
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 import kotlin.test.Test
@@ -33,16 +31,7 @@ class ContactInfoGatewayLazyRepositoryTest {
         return PublicProfileProviderCached(
             httpClient = HttpClient(MockEngine { respond(imageBytes, HttpStatusCode.OK) }),
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-            fileOperationsProvider = object : FileOperationsProvider {
-                override fun getCacheDirectory() = tempDir
-                override fun openFileInput(path: String): InputProvider = error("unused")
-                override suspend fun readFileBytes(path: String): ByteArray = error("unused")
-                override fun deleteTempFile(path: String) = false
-                override fun getFileSize(path: String) = 0L
-                override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String = error("unused")
-                override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String = error("unused")
-                override suspend fun writeStream(path: String, data: Flow<ByteArray>) = error("unused")
-            },
+            fileOperationsProvider = FakeFileOperationsProvider(tempDir),
         )
     }
 

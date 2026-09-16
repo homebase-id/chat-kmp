@@ -115,7 +115,7 @@ object LocalCallbackServer {
                                     contentType = ContentType.Text.Html
                                 )
 
-                                DesktopAppFocusManager.requestFocus()
+                                DesktopAppFocusManager.requestFocus("oauth-data-upgrade-callback")
                                 val toStop = server
                                 server = null
                                 currentPort = 0
@@ -128,7 +128,7 @@ object LocalCallbackServer {
                             get("/focus") {
                                 Logger.d(tag = TAG) { "Focus requested from browser" }
 
-                                DesktopAppFocusManager.requestFocus()
+                                DesktopAppFocusManager.requestFocus("oauth-focus-endpoint")
                                 call.respondText("OK", ContentType.Text.Plain)
 
                                 // Invalidate the in-process handles immediately so any

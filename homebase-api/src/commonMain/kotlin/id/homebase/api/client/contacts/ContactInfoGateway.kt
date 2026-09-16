@@ -31,6 +31,21 @@ class ContactInfoGateway internal constructor(
     // Always the public read: a synced contact stores name/avatar, not the card.
     suspend fun profileCard(odinId: OdinId): ProfileCard? = publicProfiles.getPublicProfile(odinId)
 
+    // A user-initiated Sync: defeat the client TTL on both public artifacts (dropping the image
+    // publishes the avatar revision) and re-enrich the local contact record from the peer.
+    suspend fun resync(odinId: OdinId) {
+        publicProfiles.invalidateProfile(odinId)
+        publicProfiles.invalidateImage(odinId)
+        contactRepository().sync(odinId)
+    }
+
+    // Same, minus the avatar: for paths where nothing suggests the photo changed, so the next paint
+    // is not a guaranteed unauthenticated re-download of bytes already held.
+    suspend fun syncContactRecord(odinId: OdinId) {
+        publicProfiles.invalidateProfile(odinId)
+        contactRepository().sync(odinId)
+    }
+
     suspend fun getCacheStats(): List<CacheStats> = publicProfiles.getCacheStats()
 
     suspend fun clearCaches() = publicProfiles.clearCaches()

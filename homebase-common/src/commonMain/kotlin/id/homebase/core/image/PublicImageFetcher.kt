@@ -29,14 +29,8 @@ class PublicImageFetcher(
         )
     }
 
-    // Factory<Uri> — Coil 3 maps a String model to coil3.Uri BEFORE
-    // Fetcher-factory matching runs. A Factory<String> is therefore never
-    // polled for http(s) URLs (Coil sees only Uris at that stage), falls
-    // through to the built-in NetworkFetcher, and our cache layer is
-    // bypassed. Factory<Any> wasn't polled either (verified empirically —
-    // diagnostic logs showed Factory<Any>.create fired for custom data
-    // classes like HomebaseImageData but never for a mapped http Uri).
-    // Factory<Uri> is the correct type for http URL inputs.
+    // Factory<Uri>, not <String> or <Any>: Coil maps a String model to coil3.Uri before
+    // fetcher-factory matching, and neither of the others is polled for the mapped Uri.
     class Factory(private val contactInfo: ContactInfoGateway) : Fetcher.Factory<Uri> {
         override fun create(data: Uri, options: Options, imageLoader: ImageLoader): Fetcher? {
             val odinId = resolveOdinId(data) ?: return null
@@ -45,20 +39,13 @@ class PublicImageFetcher(
     }
 
     companion object {
+        private const val HTTPS_PREFIX = "https://"
+
         /**
-         * Extracts the peer [OdinId] from a Coil request `data` parameter when
-         * it represents a public-image URL, or returns null otherwise.
-         *
-         * The `Any` parameter makes the helper directly testable with both
-         * [coil3.Uri] (production path, what Coil hands the Factory) and
-         * [String] (convenience in tests, avoids standing up a real Coil
-         * pipeline). Tested in `PublicImageFetcherFactoryTest` — keep this
-         * helper and its tests in sync if the URL shape changes.
-         *
-         * Strips a trailing `?...` query string before matching — callers that need the image
-         * to actually reload after it changes server-side (e.g. the owner's own avatar after a
-         * new upload) append a cache-busting `?v=<lastModified>` so Coil treats it as a distinct
-         * request/cache-key; the underlying odinId/path shape is unaffected.
+         * The peer [OdinId] behind a Coil `data` parameter, or null when it is not a public-image
+         * URL. The `Any` parameter takes both [coil3.Uri] (what Coil hands the Factory) and
+         * [String] (test convenience). The `?v=<revision>` suffix
+         * [id.homebase.core.avatars.rememberPublicAvatarUrl] appends is not part of the identity.
          */
         internal fun resolveOdinId(data: Any): OdinId? {
             val url = when (data) {
@@ -66,10 +53,11 @@ class PublicImageFetcher(
                 is String -> data
                 else -> return null
             }.substringBefore('?')
-            if (!url.contains(PUB_IMAGE_PATH)) return null
-            return OdinId(
-                url.removePrefix("https://").removeSuffix(PUB_IMAGE_PATH)
-            )
+            if (!url.startsWith(HTTPS_PREFIX) || !url.endsWith(PUB_IMAGE_PATH)) return null
+            // A host the validator rejects must fall through to the next fetcher, not abort the request.
+            return runCatching {
+                OdinId(url.removePrefix(HTTPS_PREFIX).removeSuffix(PUB_IMAGE_PATH))
+            }.getOrNull()
         }
     }
 }

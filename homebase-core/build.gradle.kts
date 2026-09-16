@@ -97,6 +97,9 @@ kotlin {
             implementation(libs.jetbrains.compose.material3)
             implementation(libs.jetbrains.compose.material.icons.extended)
             implementation(libs.jetbrains.compose.material3.adaptive)
+            // desktopApp strips homebase-chat's transitive deps, so the pane scaffold classes
+            // reach the desktop runtime classpath only if a module core depends on declares them.
+            implementation(libs.jetbrains.compose.material3.adaptive.layout)
             implementation(libs.jetbrains.compose.ui.backhandler)
             implementation(libs.jetbrains.compose.ui.tooling.preview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)

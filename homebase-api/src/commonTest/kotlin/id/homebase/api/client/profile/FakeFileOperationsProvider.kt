@@ -4,8 +4,8 @@ import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
 
-class FakeFileOperationsProvider : FileOperationsProvider {
-    override fun getCacheDirectory(): String = "/tmp/test-cache"
+class FakeFileOperationsProvider(private val cacheDir: String = "/tmp/test-cache") : FileOperationsProvider {
+    override fun getCacheDirectory(): String = cacheDir
     override fun openFileInput(path: String): InputProvider = throw UnsupportedOperationException()
     override suspend fun readFileBytes(path: String): ByteArray = throw UnsupportedOperationException()
     override fun deleteTempFile(path: String): Boolean = false

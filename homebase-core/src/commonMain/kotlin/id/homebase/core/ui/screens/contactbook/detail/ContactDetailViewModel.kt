@@ -31,6 +31,7 @@ import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.data.OutgoingConnectionRequestUiModel
 import id.homebase.api.client.contacts.Contact
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactService
@@ -83,6 +84,7 @@ private const val OVERVIEW_MESSAGE_CAP = 1000
 class ContactDetailViewModel(
     savedStateHandle: SavedStateHandle,
     private val contactRepository: ContactRepository,
+    private val contactInfo: ContactInfoGateway,
     private val conversationService: ConversationService,
     private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
@@ -683,7 +685,7 @@ class ContactDetailViewModel(
         val peer = OdinId(domain)
         _events.tryEmit(ContactDetailEvent.SyncStarted)
         viewModelScope.launch {
-            contactRepository.sync(peer)
+            contactInfo.resync(peer)
             verifyLocateAccess(peer)
         }
     }

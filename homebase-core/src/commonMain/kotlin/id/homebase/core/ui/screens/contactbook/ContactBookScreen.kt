@@ -233,7 +233,6 @@ fun ContactBookScreen(
                                         ),
                                         animatedVisibilityScope = this@AnimatedVisibility,
                                         sharedTransitionScope = null,
-                                        cacheBustKey = session.profileImageLastModified,
                                     )
                                 }
                             }

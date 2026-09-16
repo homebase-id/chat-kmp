@@ -98,12 +98,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -133,6 +128,7 @@ import id.homebase.core.moments.services.MomentCommentItem
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.moments.services.MomentsVideoSession
+import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.common.widget.ImageInfoOverlay
 import id.homebase.common.widget.VideoInfoOverlay
 import id.homebase.core.ui.screens.moments.widget.MomentDatePill
@@ -145,6 +141,8 @@ import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.widget.ComposerKeyAction
+import id.homebase.core.widget.composerKeyAction
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogTitle
@@ -3114,6 +3112,7 @@ private fun AddCommentRow(
     modifier: Modifier = Modifier,
 ) {
     val canSend = draft.isNotBlank() && !isPosting
+    val enterSendsMessage = rememberEnterSendsMessage()
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -3125,20 +3124,14 @@ private fun AddCommentRow(
             placeholder = { Text(stringResource(MR.string.moments_detail_add_comment_hint)) },
             modifier = Modifier
                 .weight(1f)
-                // Enter sends (primarily for desktop's hardware keyboard);
-                // Shift+Enter is left for the platform so it isn't hijacked.
-                // We consume every plain Enter so it never inserts into the
-                // field, and only post when there's a non-blank, non-in-flight
-                // draft.
                 .onPreviewKeyEvent { e ->
-                    if (e.type == KeyEventType.KeyDown &&
-                        (e.key == Key.Enter || e.key == Key.NumPadEnter) &&
-                        !e.isShiftPressed
-                    ) {
-                        if (canSend) onSend()
-                        true
-                    } else {
-                        false
+                    when (composerKeyAction(e, enterSendsMessage)) {
+                        ComposerKeyAction.Send -> {
+                            if (canSend) onSend()
+                            true
+                        }
+                        // singleLine, so there is no newline to insert — let the platform have it.
+                        ComposerKeyAction.Newline, ComposerKeyAction.Ignore -> false
                     }
                 },
             singleLine = true,

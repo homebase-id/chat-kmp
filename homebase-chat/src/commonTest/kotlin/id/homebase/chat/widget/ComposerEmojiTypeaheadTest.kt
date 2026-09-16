@@ -8,6 +8,7 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.withKeyDown
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -26,9 +27,11 @@ class ComposerEmojiTypeaheadTest {
     fun typingAShortcodePrefixOffersTheMatchingEmoji() = runComposeUiTest {
         lateinit var state: RichTextState
         setContent {
-            HomebaseTheme {
-                state = rememberRichTextState()
-                MessageTextFieldForAttachment(state = state, onSendMessage = {})
+            WithComposerPreferences {
+                HomebaseTheme {
+                    state = rememberRichTextState()
+                    MessageTextFieldForAttachment(state = state, onSendMessage = {})
+                }
             }
         }
 
@@ -43,9 +46,11 @@ class ComposerEmojiTypeaheadTest {
         lateinit var state: RichTextState
         var sends = 0
         setContent {
-            HomebaseTheme {
-                state = rememberRichTextState()
-                MessageTextFieldForAttachment(state = state, onSendMessage = { sends++ })
+            WithComposerPreferences {
+                HomebaseTheme {
+                    state = rememberRichTextState()
+                    MessageTextFieldForAttachment(state = state, onSendMessage = { sends++ })
+                }
             }
         }
 
@@ -63,13 +68,15 @@ class ComposerEmojiTypeaheadTest {
     }
 
     @Test
-    fun enterStillSendsWithNoListOpen() = runComposeUiTest {
+    fun theSendChordStillSendsWithNoListOpen() = runComposeUiTest {
         lateinit var state: RichTextState
         var sends = 0
         setContent {
-            HomebaseTheme {
-                state = rememberRichTextState()
-                MessageTextFieldForAttachment(state = state, onSendMessage = { sends++ })
+            WithComposerPreferences {
+                HomebaseTheme {
+                    state = rememberRichTextState()
+                    MessageTextFieldForAttachment(state = state, onSendMessage = { sends++ })
+                }
             }
         }
 
@@ -77,7 +84,9 @@ class ComposerEmojiTypeaheadTest {
         runOnIdle { state.addTextAfterSelection("just a caption") }
         waitForIdle()
 
-        onNodeWithTag(ATTACHMENT_CAPTION_FIELD_TAG).performKeyInput { pressKey(Key.Enter) }
+        onNodeWithTag(ATTACHMENT_CAPTION_FIELD_TAG).performKeyInput {
+            withKeyDown(Key.ShiftLeft) { pressKey(Key.Enter) }
+        }
         waitForIdle()
 
         assertEquals(1, sends)
@@ -88,9 +97,11 @@ class ComposerEmojiTypeaheadTest {
     fun aClosingColonFallsThroughToTheInlineReplacement() = runComposeUiTest {
         lateinit var state: RichTextState
         setContent {
-            HomebaseTheme {
-                state = rememberRichTextState()
-                MessageTextFieldForAttachment(state = state, onSendMessage = {})
+            WithComposerPreferences {
+                HomebaseTheme {
+                    state = rememberRichTextState()
+                    MessageTextFieldForAttachment(state = state, onSendMessage = {})
+                }
             }
         }
 

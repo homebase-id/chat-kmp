@@ -75,6 +75,8 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.GlobalContext.startKoin
 import java.awt.Desktop
+import java.awt.Frame
+import java.awt.event.WindowStateListener
 import java.io.File
 
 fun main() {
@@ -334,6 +336,22 @@ fun main() {
 
             DesktopAppFocusManager.registerWindowProvider { window }
             window.minimumSize = java.awt.Dimension(minWidth, minHeight)
+
+            // Diagnostic: an un-minimise nobody asked for has no other trace, so log the
+            // transition to correlate it against the requestFocus / notification lines.
+            DisposableEffect(window) {
+                val listener = WindowStateListener { event ->
+                    val wasIconified = (event.oldState and Frame.ICONIFIED) != 0
+                    val isIconified = (event.newState and Frame.ICONIFIED) != 0
+                    if (wasIconified != isIconified) {
+                        Logger.i(tag = "DesktopWindowState") {
+                            if (isIconified) "window minimised" else "window restored (de-iconified)"
+                        }
+                    }
+                }
+                window.addWindowStateListener(listener)
+                onDispose { window.removeWindowStateListener(listener) }
+            }
 
             LaunchedEffect(window) { AppIconBadge.start(window) }
 

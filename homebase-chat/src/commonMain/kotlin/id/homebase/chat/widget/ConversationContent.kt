@@ -152,6 +152,7 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
@@ -275,6 +276,7 @@ fun ConversationContent(
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
+    val enterSendsMessage = rememberEnterSendsMessage()
     val focusManager = LocalFocusManager.current
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showEventComposer by remember { mutableStateOf(false) }
@@ -738,6 +740,7 @@ fun ConversationContent(
 
     CompositionLocalProvider(
         LocalCurrentOdinId provides (uiState.ownerSession?.odinId?.domainName ?: ""),
+        LocalMentionNames provides uiState.mentionNames,
         LocalUploadConnected provides uiState.isConnected,
         LocalSavedContactIdentities provides uiState.savedContactIdentities,
     ) {
@@ -1669,6 +1672,7 @@ fun ConversationContent(
                             showSendButton = showSendButton,
                             isRecordingActive = isRecordingActive,
                             isSendingMessage = uiState.isSendingMessage,
+                            enterSendsMessage = enterSendsMessage,
                             onSendMessage = {
                                 performSend(textFieldState.toMessageMarkdown(), payloadRenderers)
                             },

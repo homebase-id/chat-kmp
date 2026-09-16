@@ -1536,6 +1536,12 @@
     <string name="settings_media_autosave_unmetered">Only on Wi-Fi</string>
     <string name="settings_media_autosave_unmetered_description">Wait for an unmetered network instead of using mobile data.</string>
 
+    <!-- Composer keyboard -->
+    <string name="settings_composer_enter_sends">Enter sends the message</string>
+    <string name="settings_composer_enter_sends_description">On, Enter sends and Shift+Enter starts a new line. Off, the two swap. Cmd or Ctrl with Enter always sends.</string>
+    <string name="chat_send_chord_enter">Send (Enter)</string>
+    <string name="chat_send_chord_shift_enter">Send (Shift+Enter)</string>
+
     <!-- Settings hub -->
     <string name="settings_category_general">General</string>
     <string name="settings_section_preferences">Preferences</string>
