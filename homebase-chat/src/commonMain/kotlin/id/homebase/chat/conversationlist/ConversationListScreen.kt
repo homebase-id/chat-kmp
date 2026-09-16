@@ -856,14 +856,12 @@ fun ConversationListUi(
         scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
     val isDetailPaneVisible =
         scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
-    val detailContentKey = scaffoldNavigator.currentDestination?.contentKey
-    // Safety net for #1523: a detail pane with nothing in it must never take the bottom bar with
-    // it, so a screen that has no other affordance is still navigable.
-    val showingOnlyDetail = detailPaneOwnsWindow(
-        isListPaneHidden = isListPaneHidden,
-        isDetailPaneVisible = isDetailPaneVisible,
-        detailContentKey = detailContentKey,
-    )
+    // Unlike showingOnlyDetail this is also true on an expanded two-pane window, where the
+    // composer is on screen while the list still is.
+    val isComposerVisible =
+        isDetailPaneVisible && scaffoldNavigator.currentDestination?.contentKey != null
+    // An empty detail pane must never take the bottom bar with it.
+    val showingOnlyDetail = isListPaneHidden && isComposerVisible
 
     // Record what the user last saw at the top, so the return can tell whether the list reordered
     // while they were gone. ON_STOP runs inside the lifecycle callback; a coroutine would not be
@@ -880,12 +878,12 @@ fun ConversationListUi(
     }
 
     // Shrinking to one partition — a landscape→portrait rotation — leaves the detail pane owning
-    // the window. That is fine while it has a conversation to draw and a back button to leave by;
-    // with a null content key it is the unrecoverable empty placeholder, so bounce to the list.
+    // the window, which is fine while it has a conversation to draw and a back button to leave by.
+    // Only the empty placeholder bounces: keeping the selection alive across a rotate also means
+    // ConversationListViewModel's message-stream teardown now runs only on a real back-out.
     val strandedOnEmptyDetail = isStrandedOnEmptyDetailPane(
-        maxHorizontalPartitions = scaffoldDirective.maxHorizontalPartitions,
-        currentPane = scaffoldNavigator.currentDestination?.pane,
-        detailContentKey = detailContentKey,
+        scaffoldDirective.maxHorizontalPartitions,
+        scaffoldNavigator.currentDestination,
     )
     LaunchedEffect(strandedOnEmptyDetail) {
         if (strandedOnEmptyDetail) {
@@ -920,9 +918,6 @@ fun ConversationListUi(
     // Notify parent about detail pane visibility in compact view
     LaunchedEffect(showingOnlyDetail) { onDetailPaneVisibilityChanged(showingOnlyDetail) }
 
-    // Unlike showingOnlyDetail this is also true on an expanded two-pane window, where the
-    // composer is on screen while the list still is.
-    val isComposerVisible = isDetailPaneVisible && detailContentKey != null
     LaunchedEffect(isComposerVisible) { onComposerVisibilityChanged(isComposerVisible) }
 
     val hoistedMediaViewer = messagesUiState.hoistedMediaViewer(isExpanded)
@@ -952,7 +947,7 @@ fun ConversationListUi(
             if (messagesUiState.fullScreenOverlay != null) {
                 onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
             } else if (!isExpanded) {
-                scaffoldNavigator.navigateBack(BackNavigationBehavior.PopUntilContentChange)
+                scaffoldNavigator.closeDetailEntry()
             }
         }
     }
