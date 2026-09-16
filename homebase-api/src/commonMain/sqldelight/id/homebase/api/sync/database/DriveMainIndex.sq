@@ -146,6 +146,15 @@ WHERE identityId = ? AND driveId = ? AND rowId > ?
 ORDER BY rowId
 LIMIT ?;
 
+-- Keyset scan of one drive's rows of a given fileType/dataType, newest rowIds after
+-- the caller's cursor. Rows arriving from a DriveSync round are INSERTs, so a rowId
+-- cursor bounds the scan to what actually landed since the last pass.
+selectByFileTypeAndDataTypeSince:
+SELECT rowId, jsonHeader FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND fileType = ? AND dataType = ? AND rowId > ?
+ORDER BY rowId
+LIMIT ?;
+
 -- Select all records - for TESTING
 selectAll:
 SELECT * FROM DriveMainIndex;

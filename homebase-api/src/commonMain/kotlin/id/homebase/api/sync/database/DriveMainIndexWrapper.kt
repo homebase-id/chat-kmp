@@ -193,6 +193,38 @@ class DriveMainIndexWrapper(
         )
     }.executeAsList()
 
+    /** One row of [selectHomebaseFilesByFileTypeAndDataTypeSince] — the file plus its cursor. */
+    data class CursoredFile(val rowId: Long, val file: HomebaseFile)
+
+    /**
+     * Rows of [fileType]/[dataType] on [driveId] whose rowId is above [sinceRowId], oldest first.
+     * A DriveSync round INSERTs the rows it pulls, so the cursor bounds the scan to what actually
+     * landed since the caller last looked. A row whose header won't deserialise is skipped rather
+     * than failing the batch — its rowId still advances the caller's cursor.
+     */
+    suspend fun selectHomebaseFilesByFileTypeAndDataTypeSince(
+        identityId: Uuid,
+        driveId: Uuid,
+        fileType: Long,
+        dataType: Long,
+        sinceRowId: Long,
+        limit: Long,
+    ): List<CursoredFile> {
+        val rows = databaseManager.readValue("selectByFileTypeAndDataTypeSince") {
+            delegate.selectByFileTypeAndDataTypeSince(
+                identityId, driveId, fileType, dataType, sinceRowId, limit,
+            ) { rowId, jsonHeader -> rowId to jsonHeader }.executeAsList()
+        }
+        val result = ArrayList<CursoredFile>(rows.size)
+        for ((rowId, jsonHeader) in rows) {
+            val file = runCatching {
+                OdinSystemSerializer.deserialize<HomebaseFile>(jsonHeader)
+            }.getOrNull() ?: continue
+            result.add(CursoredFile(rowId, file))
+        }
+        return result
+    }
+
     /**
      * Defragmenter: re-project archivalStatus on a single row. Used by the
      * repair pass to correct rows where the SQL projection has drifted from
