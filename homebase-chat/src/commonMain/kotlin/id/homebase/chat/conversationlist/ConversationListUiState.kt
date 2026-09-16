@@ -63,10 +63,6 @@ data class ConversationListUiState(
      *  - `chat_introduce_preflight_in_progress` — introduction preflight check
      *  Null means no overlay. Cleared on both success and error. */
     val inFlightOperationLabel: StringResource? = null,
-    /** When non-null, the screen should pop the scaffold detail pane (i.e. close the
-     *  open conversation). The screen calls [closeDetailPaneRequestConsumed] when it
-     *  has handled the request. */
-    val closeDetailPaneRequest: Uuid? = null,
     /** Id of the #1 conversation as of the last time the list was on screen, mirrored from
      *  [id.homebase.core.settings.UserPreferences.conversationListTopId]. Compared against the
      *  current #1 by [shouldScrollToTop] on every return to the list. */

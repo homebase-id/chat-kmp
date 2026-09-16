@@ -332,10 +332,6 @@ internal class ConversationLifecycleHandler(
         }
     }
 
-    fun handleCloseDetailPaneRequestConsumed() {
-        uiState.update { it.copy(closeDetailPaneRequest = null) }
-    }
-
     fun handleAcceptRejoin(action: ConversationListUiAction.AcceptRejoin) {
         scope.launch {
             try {
@@ -458,7 +454,6 @@ internal class ConversationLifecycleHandler(
                 it.copy(
                     inFlightOperationLabel = null,
                     selectedConversationId = if (close) null else it.selectedConversationId,
-                    closeDetailPaneRequest = if (close) conversationId else it.closeDetailPaneRequest,
                 )
             }
             if (close) {

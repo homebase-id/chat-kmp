@@ -1548,7 +1548,6 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ConfirmLeaveAndDeleteConversation -> conversationLifecycleHandler.handleConfirmLeaveAndDeleteConversation(action)
 
-            is ConversationListUiAction.CloseDetailPaneRequestConsumed -> conversationLifecycleHandler.handleCloseDetailPaneRequestConsumed()
 
             is ConversationListUiAction.AcceptRejoin -> conversationLifecycleHandler.handleAcceptRejoin(action)
 
@@ -1872,13 +1871,9 @@ class ConversationListViewModel(
             )
         }
 
-        // Flip the selected id NOW, not after messages arrive. The scaffold's
-        // detail-pane navigation in NotificationNavigationEffects keys off this
-        // value via LaunchedEffect(selectedConversationId); waiting for the first
-        // ChatMessagesData.Messages emission held the navigation hostage to a
-        // potentially slow DB read on cold-start / post-reconnect. The detail pane
-        // already shows isLoadingMessages = true above; messages will fill in via
-        // the collect block below.
+        // Flip the selected id NOW, not after messages arrive: the pane scaffold draws the detail
+        // pane straight off this value, so waiting for the first ChatMessagesData.Messages emission
+        // would hold navigation hostage to a slow cold-start DB read.
         Logger.i(tag = "ConversationListViewModel") {
             "selectedConversationId set id=$conversationId (pending messages) trigger=$trigger"
         }
