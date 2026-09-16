@@ -58,7 +58,6 @@ class ChatMessageSenderServiceRecipientRuleTest {
                 unreadCount = 0,
                 avatarTiny = null,
                 avatarInitials = "",
-                avatarUrl = "",
                 participants = emptyList(),
                 lastRead = Instant.fromEpochMilliseconds(0),
                 avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),

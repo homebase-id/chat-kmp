@@ -24,8 +24,6 @@ fun ContactAvatar(
     modifier: Modifier = Modifier,
     sharedTransitionScope: SharedTransitionScope?= null,
     animatedVisibilityScope: AnimatedVisibilityScope?= null,
-    /** Forwarded to [PublicAvatar] when [profileImageData] is null — see its doc. */
-    cacheBustKey: Long? = null,
 ) {
     if (profileImageData != null) {
         if (animatedVisibilityScope == null) {
@@ -56,7 +54,6 @@ fun ContactAvatar(
             modifier = modifier,
             sharedTransitionScope = sharedTransitionScope,
             animatedVisibilityScope = animatedVisibilityScope,
-            cacheBustKey = cacheBustKey,
         )
     }
 }

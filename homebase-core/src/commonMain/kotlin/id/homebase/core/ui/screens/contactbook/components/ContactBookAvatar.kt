@@ -17,7 +17,6 @@ import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.FallbackAvatar
-import id.homebase.core.avatars.rememberPublicAvatarUrl
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
@@ -74,19 +73,19 @@ fun ContactBookAvatar(
     if (!odinId.isNullOrBlank()) {
         val parsed = remember(odinId) { runCatching { OdinId(odinId) }.getOrNull() }
         if (parsed != null) {
-            val avatarUrl = if (onClick != null) rememberPublicAvatarUrl(parsed) else null
+            // Remembered for the same reason as the drive-photo branch above: a fresh lambda each
+            // recomposition makes options.copy() unequal, so the avatar can never skip.
+            val avatarOptions = remember(options, parsed, onClick) {
+                options.copy(
+                    onClick = onClick?.let { open -> { open(SubSamplingImageSource.Avatar(parsed)) } },
+                    onClickNeedsImage = true,
+                )
+            }
             ContactAvatar(
                 odinId = parsed,
                 profileImageData = null,
                 initials = entry.avatarInitials,
-                options = options.copy(
-                    onClick = if (onClick != null && avatarUrl != null) {
-                        { onClick(SubSamplingImageSource.Url(avatarUrl)) }
-                    } else {
-                        null
-                    },
-                    onClickNeedsImage = true,
-                ),
+                options = avatarOptions,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
             )

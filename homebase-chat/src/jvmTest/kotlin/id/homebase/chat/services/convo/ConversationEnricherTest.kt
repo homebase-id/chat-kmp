@@ -31,7 +31,6 @@ class ConversationEnricherTest {
         profileImageFileId = null,
         profileImageFileKey = null,
         profileImagePreviewThumbnail = null,
-        profileImageLastModified = null,
         status = null,
     )
 
@@ -42,7 +41,6 @@ class ConversationEnricherTest {
         latestMessageTimestamp = Instant.fromEpochMilliseconds(0),
         unreadCount = 0,
         avatarInitials = "",
-        avatarUrl = "",
         avatarTiny = null,
         participants = listOf(me, alice),
         lastRead = Instant.fromEpochMilliseconds(0),

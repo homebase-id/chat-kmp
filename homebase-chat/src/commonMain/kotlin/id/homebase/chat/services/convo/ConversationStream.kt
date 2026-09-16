@@ -606,7 +606,6 @@ class ConversationStream(
                         unreadCount = 0,
                         avatarTiny = null,
                         avatarInitials = "",
-                        avatarUrl = "",
                         participants = placeholderParticipants,
                         lastRead = UnixTimeUtc(0).toInstant(),
                         avatarModel = placeholderAvatar,

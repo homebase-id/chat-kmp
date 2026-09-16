@@ -69,7 +69,6 @@ class StatusMessagePreviewParityTest {
         latestMessageTimestamp = Instant.fromEpochMilliseconds(sortKeyMs),
         unreadCount = 0,
         avatarInitials = "",
-        avatarUrl = "",
         avatarTiny = null,
         participants = listOf(me, alice),
         lastRead = Instant.fromEpochMilliseconds(0),

@@ -5,13 +5,12 @@ import id.homebase.api.common.OdinId
 import kotlin.time.Clock
 
 /**
- * Cache-bust tokens for peers' `/pub/image`: Coil keys its memory cache on the model string, and a
- * peer's avatar URL never changes on its own.
- *
- * Not a Koin binding — `PublicAvatar` is a leaf that 19 homebase-chat Compose tests render in an
- * isolated graph holding only `UserPreferences` + an `ImageLoader`, and a second required binding
- * fails all of them. [ContactInfoGateway.clearCaches] prunes it, so it outlives no identity.
+ * The single "this identity's avatar changed" signal, published by
+ * [id.homebase.api.client.profile.PublicProfileProviderCached.invalidateImage] — the owner's own
+ * republish and a peer resync both land there.
  */
+// Not a Koin binding: homebase-chat's Compose tests build a graph with no room for a second
+// required binding.
 object PublicAvatarRevisions {
 
     private val revisions = mutableStateMapOf<String, Long>()
@@ -20,12 +19,11 @@ object PublicAvatarRevisions {
     fun revisionOf(domain: String): Long? = revisions[domain]
 
     // Monotonic, not just "now": a device clock stepping backwards would otherwise hand back a
-    // token Coil already holds bytes under, silently disarming the refresh.
+    // token Coil already holds bytes under, silently disarming the refresh. Never reset — a token
+    // that goes backwards is the one failure this cannot recover from.
     internal fun bump(odinId: OdinId) {
         val domain = odinId.domainName
         val previous = revisions[domain] ?: 0L
         revisions[domain] = maxOf(Clock.System.now().toEpochMilliseconds(), previous + 1)
     }
-
-    internal fun clear() = revisions.clear()
 }

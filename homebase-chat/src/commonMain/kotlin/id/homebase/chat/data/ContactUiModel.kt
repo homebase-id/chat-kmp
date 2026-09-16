@@ -8,7 +8,6 @@ import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.initials
 import id.homebase.api.client.contacts.resolveDisplayName
 import id.homebase.api.common.OdinId
-import id.homebase.api.common.publicImageUrl
 import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.core.util.initials
 import kotlin.uuid.ExperimentalUuidApi
@@ -20,7 +19,6 @@ data class ContactUiModel(
     val odinId: OdinId,
     val name: String, //TODO: change to ContactName class?
     val avatarInitials: String,
-    val avatarUrl: String = "",
     val status: String = "Available",
 
     val connection: RedactedIdentityConnectionRegistration? = null,
@@ -33,7 +31,6 @@ data class ContactUiModel(
             odinId = odinId,
             name = odinId.domainName,
             avatarInitials = odinId.domainName.initials(),
-            avatarUrl = odinId.publicImageUrl(),
             connection = null,
             connectionState = ContactConnectionState.NotConnected,
         )
@@ -58,6 +55,5 @@ fun Contact.toContactUiModel(): ContactUiModel? {
             email = content.email?.email,
         ) ?: odin.domainName,
         avatarInitials = content.name.initials(),
-        avatarUrl = odin.publicImageUrl(),
     )
 }
