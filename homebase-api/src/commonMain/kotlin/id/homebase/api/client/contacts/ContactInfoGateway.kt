@@ -31,6 +31,17 @@ class ContactInfoGateway internal constructor(
     // Always the public read: a synced contact stores name/avatar, not the card.
     suspend fun profileCard(odinId: OdinId): ProfileCard? = publicProfiles.getPublicProfile(odinId)
 
+    /**
+     * Explicit "re-read this identity from their host now" — the one path that overrides the
+     * client TTL, for a user-initiated refresh. Invalidate before bumping [PublicAvatarRevisions]:
+     * a reader racing the bump would otherwise refill Coil from the entry we are about to drop.
+     */
+    suspend fun refresh(odinId: OdinId) {
+        publicProfiles.invalidateProfile(odinId)
+        publicProfiles.invalidateImage(odinId)
+        PublicAvatarRevisions.bump(odinId)
+    }
+
     suspend fun getCacheStats(): List<CacheStats> = publicProfiles.getCacheStats()
 
     suspend fun clearCaches() = publicProfiles.clearCaches()

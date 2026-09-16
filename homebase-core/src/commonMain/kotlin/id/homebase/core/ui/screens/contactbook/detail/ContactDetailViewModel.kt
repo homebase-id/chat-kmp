@@ -30,6 +30,7 @@ import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.data.OutgoingConnectionRequestUiModel
 import id.homebase.api.client.contacts.Contact
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactService
@@ -74,6 +75,7 @@ private const val OVERVIEW_MESSAGE_CAP = 1000
 class ContactDetailViewModel(
     savedStateHandle: SavedStateHandle,
     private val contactRepository: ContactRepository,
+    private val contactInfo: ContactInfoGateway,
     private val conversationService: ConversationService,
     private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
@@ -581,12 +583,17 @@ class ContactDetailViewModel(
      * Best-effort server-side enrichment from the identity's public profile. The endpoint is
      * fire-and-forget (202 Accepted) and the enriched contact lands later via drive sync, so we
      * just acknowledge the request — there's no success/failure to report back synchronously.
+     *
+     * The peer's /pub/profile + /pub/image are cached client-side for a week/month and the
+     * enrichment call does not touch them, so a user-initiated refresh has to force them itself
+     * (#1526). This is the only path that overrides that TTL; every other read still caches.
      */
     private fun handleSync() {
         val domain = odinId ?: return
         val peer = OdinId(domain)
         _events.tryEmit(ContactDetailEvent.SyncStarted)
         viewModelScope.launch {
+            contactInfo.refresh(peer)
             contactRepository.sync(peer)
             verifyLocateAccess(peer)
         }

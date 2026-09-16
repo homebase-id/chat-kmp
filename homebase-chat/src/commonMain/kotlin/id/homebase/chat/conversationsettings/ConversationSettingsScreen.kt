@@ -40,7 +40,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import id.homebase.api.common.publicImageUrl
 import id.homebase.chat.widget.AvatarFullScreenViewer
 import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ChatMediaFullScreenHost
@@ -50,6 +49,7 @@ import id.homebase.chat.widget.LoadingListItem
 import id.homebase.chat.widget.MediaItem
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.avatars.rememberPublicAvatarUrl
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.ImageSize
 import id.homebase.core.media.subsample.SubSamplingImageSource
@@ -167,6 +167,9 @@ fun ConversationSettingsUi(
                     } else {
                         conversation.name
                     })?.takeIf { it.isNotBlank() && it != displayName }
+                    // The same cache-busted URL the avatar itself renders, so a Sync-refreshed
+                    // photo doesn't open full screen as the bytes Coil holds under the plain URL.
+                    val avatarUrl = conversation.avatarModel.odinId?.let { rememberPublicAvatarUrl(it) }
                     AvatarNameDisplay(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -180,9 +183,7 @@ fun ConversationSettingsUi(
                         onClick = null,
                         // The identity's public photo. One that serves none renders
                         // initials, which PublicAvatar leaves un-tappable.
-                        onAvatarClick = conversation.avatarModel.odinId?.let { odinId ->
-                            { fullScreenAvatarUrl = odinId.publicImageUrl() }
-                        },
+                        onAvatarClick = avatarUrl?.let { url -> { fullScreenAvatarUrl = url } },
                     )
 
                     // Server-stamped conversation creation date — accurate and

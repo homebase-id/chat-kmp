@@ -53,13 +53,12 @@ fun PublicAvatar(
      * so without this a freshly-uploaded photo won't visibly update until the app restarts or
      * Coil's memory cache is evicted for some unrelated reason. Pass e.g.
      * `OwnerSession.profileImageLastModified` for the owner's own avatar; leave null (default)
-     * for any other identity, where no such signal exists client-side.
+     * for any other identity, where an explicit contact Sync is the only such signal and
+     * [rememberPublicAvatarUrl] picks that up on its own.
      */
     cacheBustKey: Long? = null,
 ) {
-    val imageUrl = odinId.publicImageUrl().let { url ->
-        if (cacheBustKey != null) "$url?v=$cacheBustKey" else url
-    }
+    val imageUrl = rememberPublicAvatarUrl(odinId, cacheBustKey)
 
     // Defense in depth. SingletonImageLoader is also rewired to this
     // instance in AppModule.{android,desktop,native}.kt, so a caller that
