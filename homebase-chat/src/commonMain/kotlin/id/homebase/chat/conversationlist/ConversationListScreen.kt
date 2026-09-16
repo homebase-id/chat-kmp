@@ -40,12 +40,8 @@ import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
 import androidx.compose.material3.adaptive.layout.PaneAdaptedValue
 import androidx.compose.material3.adaptive.layout.PaneExpansionAnchor
-import androidx.compose.material3.adaptive.layout.PaneScaffoldDirective
-import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldDestinationItem
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
 import androidx.compose.material3.adaptive.layout.rememberPaneExpansionState
-import androidx.compose.material3.adaptive.navigation.BackNavigationBehavior
-import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -74,7 +70,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
@@ -780,11 +775,6 @@ fun ConversationListUi(
     messageInputTextFieldState: RichTextState,
     messagesSearchTextState: TextFieldState,
     onUiAction: (ConversationListUiAction) -> Unit,
-    /** Forwarded from the outer screen so this composable can mark VM events as
-     *  consumed when it handles them locally (e.g. CloseDetailPane, which needs
-     *  the in-scope scaffoldNavigator). Defaults to no-op so the existing call
-     *  site at the bottom of the file (ConversationListUiPreview) and any other
-     *  caller that doesn't drive events still compiles. */
     onNavigateToSettingsScreen: () -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
     newConversationPane: (@Composable (
@@ -799,33 +789,13 @@ fun ConversationListUi(
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
     val defaultDirective = calculatePaneScaffoldDirective(windowAdaptiveInfo)
     val isExpanded = isExpandedLayout()
-    val scaffoldDirective = PaneScaffoldDirective(
+    val scaffoldDirective = defaultDirective.copy(
         maxHorizontalPartitions = if (isExpanded) 2 else 1,
         horizontalPartitionSpacerSize = 0.dp, // Remove the white border
-        maxVerticalPartitions = defaultDirective.maxVerticalPartitions,
-        verticalPartitionSpacerSize = defaultDirective.verticalPartitionSpacerSize,
         defaultPanePreferredWidth = 360.dp, // Slightly wider default for chat list
-        excludedBounds = defaultDirective.excludedBounds
     )
-    val scaffoldNavigator = rememberListDetailPaneScaffoldNavigator<Uuid>(
-        scaffoldDirective = scaffoldDirective,
-        initialDestinationHistory = if (scaffoldDirective.maxHorizontalPartitions > 1) {
-            listOf(
-                ThreePaneScaffoldDestinationItem(
-                    ListDetailPaneScaffoldRole.List
-                ), ThreePaneScaffoldDestinationItem(
-                    ListDetailPaneScaffoldRole.Detail
-                )
-            )
-        } else {
-            listOf(
-                ThreePaneScaffoldDestinationItem(
-                    ListDetailPaneScaffoldRole.List
-                )
-            )
-        }
-    )
-    val scope = rememberCoroutineScope()
+    val detail = chatDetail(uiState.selectedConversationId, uiState.activeConversations)
+    val scaffoldValue = chatScaffoldValue(isExpanded, detail)
     // Anchors are the only bound the scaffold offers: a drag can overshoot but settles to the
     // nearest one, so the ladder's ends are what actually clamp the list pane. Kept remembered
     // because rememberPaneExpansionState restarts its restore effect whenever the list changes.
@@ -842,26 +812,9 @@ fun ConversationListUi(
     var splitterCenter by remember { mutableFloatStateOf(0f) }
     val conversationSearchFocusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(uiState.closeDetailPaneRequest) {
-        if (uiState.closeDetailPaneRequest != null) {
-            // The request is consumed either way, so a history with no List entry left must still
-            // close the pane — otherwise a deleted conversation stays on screen.
-            scaffoldNavigator.returnToListPane()
-            onUiAction(ConversationListUiAction.CloseDetailPaneRequestConsumed)
-        }
-    }
-
-    // Detect if detail pane is visible and list pane is hidden (compact view showing only detail)
     val isListPaneHidden =
-        scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
-    val isDetailPaneVisible =
-        scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
-    // Unlike showingOnlyDetail this is also true on an expanded two-pane window, where the
-    // composer is on screen while the list still is.
-    val isComposerVisible =
-        isDetailPaneVisible && scaffoldNavigator.currentDestination?.contentKey != null
-    // An empty detail pane must never take the bottom bar with it.
-    val showingOnlyDetail = isListPaneHidden && isComposerVisible
+        scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
+    val isComposerVisible = detail is ChatDetail.Open
 
     // Record what the user last saw at the top, so the return can tell whether the list reordered
     // while they were gone. ON_STOP runs inside the lifecycle callback; a coroutine would not be
@@ -877,46 +830,8 @@ fun ConversationListUi(
         listPaneWasVisible = !isListPaneHidden
     }
 
-    // Shrinking to one partition — a landscape→portrait rotation — leaves the detail pane owning
-    // the window, which is fine while it has a conversation to draw and a back button to leave by.
-    // Only the empty placeholder bounces: keeping the selection alive across a rotate also means
-    // ConversationListViewModel's message-stream teardown now runs only on a real back-out.
-    val strandedOnEmptyDetail = isStrandedOnEmptyDetailPane(
-        scaffoldDirective.maxHorizontalPartitions,
-        scaffoldNavigator.currentDestination,
-    )
-    LaunchedEffect(strandedOnEmptyDetail) {
-        if (strandedOnEmptyDetail) {
-            Logger.i(tag = "ConversationListUi") { "Empty detail pane owns a compact window — returning to List" }
-            scaffoldNavigator.returnToListPane()
-        }
-    }
-
-    // Cold-start guard against the pane scaffold's rememberSaveable-restored Detail
-    // destination outliving its conversation. See ColdStartDetailGuard's KDoc.
-    val loadedConversationIds = remember(uiState.activeConversations) {
-        uiState.activeConversations.mapTo(hashSetOf()) { it.conversation.id }
-    }
-    ColdStartDetailGuard(
-        scaffoldNavigator = scaffoldNavigator,
-        loadedConversationIds = loadedConversationIds,
-        maxHorizontalPartitions = scaffoldDirective.maxHorizontalPartitions,
-    )
-
-    val partitions = scaffoldDirective.maxHorizontalPartitions
-    LaunchedEffect(partitions) {
-        if (partitions > 1) {
-            // This ensures the Detail role is added to the active visible roles
-            Logger.i(tag = "ConversationListUi") { "Showing details more than 1 partition for ${uiState.selectedConversationId}" }
-            scaffoldNavigator.navigateTo(
-                ListDetailPaneScaffoldRole.Detail,
-                uiState.selectedConversationId,
-            )
-        }
-    }
-
     // Notify parent about detail pane visibility in compact view
-    LaunchedEffect(showingOnlyDetail) { onDetailPaneVisibilityChanged(showingOnlyDetail) }
+    LaunchedEffect(isListPaneHidden) { onDetailPaneVisibilityChanged(isListPaneHidden) }
 
     LaunchedEffect(isComposerVisible) { onComposerVisibilityChanged(isComposerVisible) }
 
@@ -933,22 +848,11 @@ fun ConversationListUi(
         }
     }
 
-    // Installs the coupled cleanup + swap effects that drive notification-tap navigation.
-    // See NotificationNavigationEffects.kt for why the two effects must be coordinated.
-    NotificationNavigationEffects(
-        scaffoldNavigator = scaffoldNavigator,
-        selectedConversationId = uiState.selectedConversationId,
-        scaffoldDirective = scaffoldDirective,
-        onClearSelection = { onUiAction(ConversationListUiAction.ClearSelection) },
-    )
-
-    @Suppress("DEPRECATION") BackHandler(scaffoldNavigator.canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
-        scope.launch {
-            if (messagesUiState.fullScreenOverlay != null) {
-                onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
-            } else if (!isExpanded) {
-                scaffoldNavigator.closeDetailEntry()
-            }
+    @Suppress("DEPRECATION") BackHandler(detail is ChatDetail.Open) {
+        if (messagesUiState.fullScreenOverlay != null) {
+            onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
+        } else if (!isExpanded) {
+            onUiAction(ConversationListUiAction.ClearSelection)
         }
     }
 
@@ -971,8 +875,8 @@ fun ConversationListUi(
                         false
                     }
                 },
-                directive = scaffoldNavigator.scaffoldDirective,
-                scaffoldState = scaffoldNavigator.scaffoldState,
+                directive = scaffoldDirective,
+                value = scaffoldValue,
                 listPane = {
                     AnimatedPane(modifier = Modifier) {
                         val pane = newConversationPane
@@ -986,58 +890,33 @@ fun ConversationListUi(
                                             null,
                                         )
                                     )
-                                    scope.launch {
-                                        scaffoldNavigator.navigateTo(
-                                            ListDetailPaneScaffoldRole.Detail,
-                                            conversationId,
-                                        )
-                                    }
                                 }
                             }
                             return@AnimatedPane
                         }
                         ConversationListPane(
                             uiState = uiState,
-                            selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
                             searchTextState = conversationSearchTextFieldState,
                             searchFocusRequester = conversationSearchFocusRequester,
                             archivedUiState = archivedConversationsUiState,
                             listPaneVisible = !isListPaneHidden,
                             onProfileClick = onNavigateToSettingsScreen,
                             onUiAction = onUiAction,
-                            onConversationSelected = {
-                                Logger.i(tag = "ConversationListUi") { "Navigating to detail for $it" }
-                                scope.launch {
-                                    scaffoldNavigator.navigateTo(
-                                        ListDetailPaneScaffoldRole.Detail,
-                                        it
-                                    )
-                                }
-                            }
                         )
                     }
                 },
                 detailPane = {
                     AnimatedPane {
-                        val contentKey = scaffoldNavigator.currentDestination?.contentKey
-                        val conversation =
-                            uiState.activeConversations.find { it.conversation.id == contentKey }
-                        LaunchedEffect(contentKey, conversation != null) {
-                            Logger.i(tag = "ConversationListUi") {
-                                "detailPane render: contentKey=$contentKey, conversationFound=${conversation != null}, activeConversationsSize=${uiState.activeConversations.size}"
-                            }
-                        }
-                        if (conversation != null) {
-                            key(conversation.conversation.id) {
+                        if (detail is ChatDetail.Open) {
+                            key(detail.conversation.conversation.id) {
                                 ConversationMessagesPane(
-                                    conversation = conversation,
+                                    conversation = detail.conversation,
                                     uiState = messagesUiState,
                                     textFieldState = messageInputTextFieldState,
                                     searchTextState = messagesSearchTextState,
-                                    showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
+                                    showBackButton = isListPaneHidden,
                                     onBackClick = {
                                         onUiAction(ConversationListUiAction.ClearSelection)
-                                        scope.launch { scaffoldNavigator.returnToListPane() }
                                     },
                                     onUiAction = onUiAction,
                                     hoistMediaViewer = isExpanded,
@@ -1055,7 +934,7 @@ fun ConversationListUi(
                     }
                 },
                 paneExpansionState = rememberPaneExpansionState(
-                    keyProvider = scaffoldNavigator.scaffoldValue,
+                    keyProvider = scaffoldValue,
                     anchors = paneAnchors,
                     consumeDragDelta = { delta ->
                         if (scaffoldWidth <= 0f) delta else {
