@@ -842,18 +842,11 @@ fun ConversationListUi(
     var splitterCenter by remember { mutableFloatStateOf(0f) }
     val conversationSearchFocusRequester = remember { FocusRequester() }
 
-    // closeDetailPaneRequest handler — has to live inside ConversationListUi (not
-    // the outer screen) because the scaffoldNavigator is in scope here.
-    //
-    // Pops the detail pane with PopUntilContentChange (same mechanic the
-    // BackHandler uses) so this works in BOTH expanded (desktop) and compact
-    // (resized-narrow / phone) layouts. PopUntilScaffoldValueChange would no-op
-    // on expanded because the visible panes don't change there.
     LaunchedEffect(uiState.closeDetailPaneRequest) {
         if (uiState.closeDetailPaneRequest != null) {
-            if (scaffoldNavigator.canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
-                scaffoldNavigator.navigateBack(BackNavigationBehavior.PopUntilContentChange)
-            }
+            // The request is consumed either way, so a history with no List entry left must still
+            // close the pane — otherwise a deleted conversation stays on screen.
+            scaffoldNavigator.returnToListPane()
             onUiAction(ConversationListUiAction.CloseDetailPaneRequestConsumed)
         }
     }

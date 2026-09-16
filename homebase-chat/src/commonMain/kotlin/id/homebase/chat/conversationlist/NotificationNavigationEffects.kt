@@ -78,9 +78,9 @@ internal fun NotificationNavigationEffects(
                     Logger.i(tag = "ConversationListUi") { "Swapping detail pane ${cur.contentKey}->$selectedId" }
                     isSwappingDetailPane = true
                     try {
-                        // Unguarded this wipes the whole destination history on a two-pane window,
-                        // leaving [Detail(selectedId)] with no List under it — see returnToListPane.
-                        if (scaffoldNavigator.canNavigateBack()) scaffoldNavigator.navigateBack()
+                        // The default behaviour never pops on a two-pane window, which would leave
+                        // the stale Detail(null) buried under the live one for back to land on.
+                        scaffoldNavigator.returnToListPane()
                         scaffoldNavigator.navigateTo(ListDetailPaneScaffoldRole.Detail, selectedId)
                     } finally {
                         isSwappingDetailPane = false
