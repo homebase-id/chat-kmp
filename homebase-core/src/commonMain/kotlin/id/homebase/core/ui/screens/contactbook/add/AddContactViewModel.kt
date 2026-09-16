@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.contacts.Contact
@@ -25,6 +26,9 @@ import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.assignableCircles
+import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
+import id.homebase.core.ui.screens.contactbook.detail.ReviewSheetState
+import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.saveContactDraft
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.Job
@@ -113,10 +117,15 @@ class AddContactViewModel(
             }
             val alreadySaved = domain != null &&
                 contacts.any { it.content.odinId?.lowercase() == domain }
+            val reviewEnabled = developerPreferences.connectionReviewEnabled.value
             s.copy(
                 relation = relation,
                 alreadySaved = alreadySaved,
-                assignableCircles = circ.assignableCircles(developerPreferences.connectionReviewEnabled.value),
+                assignableCircles = circ.assignableCircles(reviewEnabled),
+                reviewEnabled = reviewEnabled,
+                reviewCircleGroups = circ.reviewCircleGroups(),
+                // The request can vanish under an open sheet (sender withdrew, accepted elsewhere).
+                review = s.review?.takeIf { relation == IdentityRelation.INCOMING_PENDING },
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AddContactUiState())
 
@@ -169,6 +178,9 @@ class AddContactViewModel(
                     connectionRequestService.acceptIncomingRequest(it, circleUuids)
                 }
             }
+            AddContactAction.ReviewRequestClicked -> openReview()
+            AddContactAction.ReviewDismissed -> _state.update { it.copy(review = null) }
+            is AddContactAction.ReviewSubmitted -> submitReview(action.circleIds)
             AddContactAction.RejectRequestClicked -> handleRequestAction(
                 AddContactEvent.RequestRejected,
             ) { connectionRequestService.rejectIncomingRequest(it) }
@@ -211,6 +223,62 @@ class AddContactViewModel(
                     }
             } finally {
                 _state.update { it.copy(actionInProgress = false) }
+            }
+        }
+    }
+
+    private fun openReview() {
+        val odinId = (_state.value.resolution as? RecipientResolution.Resolved)?.identity?.odinId
+            ?: return
+        val request = connectionRequestService.incomingRequests.value
+            .firstOrNull { it.senderOdinId.domainName.equals(odinId.domainName, ignoreCase = true) }
+            ?: return
+        _state.update {
+            it.copy(
+                review = ReviewSheetState(
+                    introducedBy = request.introducerOdinId?.domainName,
+                    incomingRequest = IncomingRequestSummary(
+                        receivedAtMs = request.receivedTimestampMilliseconds.milliseconds,
+                        message = request.message,
+                    ),
+                ),
+            )
+        }
+    }
+
+    /** Accepting stamps the review server-side, so the sheet's circles ride the accept call. */
+    private fun submitReview(circleIds: Set<String>) {
+        val odinId = (_state.value.resolution as? RecipientResolution.Resolved)?.identity?.odinId
+            ?: return
+        val open = _state.value.review ?: return
+        if (open.isSubmitting) return
+        _state.update { it.copy(review = open.copy(isSubmitting = true, failed = false)) }
+        viewModelScope.launch {
+            try {
+                connectionRequestService.acceptIncomingRequest(
+                    odinId,
+                    circleIds.map { Uuid.parseHex(it) },
+                )
+                _state.update { it.copy(review = null) }
+                _events.tryEmit(AddContactEvent.RequestAccepted)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e) { "Accepting $odinId from the review sheet failed" }
+                val withdrawn = e is ClientException &&
+                    e.errorCode == OdinClientErrorCode.IncomingRequestNotFound
+                // Retrying can't fix a withdrawn request or a missing permission.
+                if (withdrawn || e is ForbiddenException) {
+                    _state.update { it.copy(review = null) }
+                    _events.tryEmit(
+                        if (withdrawn) AddContactEvent.RequestWithdrawn
+                        else AddContactEvent.RequestActionFailed
+                    )
+                } else {
+                    _state.update {
+                        it.copy(review = it.review?.copy(isSubmitting = false, failed = true))
+                    }
+                }
             }
         }
     }

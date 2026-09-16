@@ -36,13 +36,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
-import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.util.formatMomentDate
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
 import id.homebase.resources.contact_review_already_added
 import id.homebase.resources.contactbook_circle_members_count
 import id.homebase.resources.contact_review_chat_only_hint
@@ -56,6 +56,7 @@ import id.homebase.resources.contact_review_group_yours
 import id.homebase.resources.contact_review_group_yours_caption
 import id.homebase.resources.contact_review_introduced_by
 import id.homebase.resources.contact_review_keep_new
+import id.homebase.resources.contact_review_requested_on
 import id.homebase.resources.contact_review_submit_chat_only
 import id.homebase.resources.contact_review_submit_circles
 import kotlin.time.Instant
@@ -71,11 +72,14 @@ import org.jetbrains.compose.resources.stringResource
  * The submit button names the state the tap produces rather than passing judgment — "Add to
  * circles" with a selection, "Chat only" without — so the relabel *is* the feedback that
  * deselecting the last circle changed the outcome. Dismissing leaves the contact New, which is
- * why the secondary action says so instead of "Cancel".
+ * why the secondary action says so instead of "Cancel" — except for an incoming request, which
+ * dismissing leaves pending rather than New.
  */
 @Composable
 fun ReviewConnectionSheet(
-    entry: ContactBookEntry?,
+    displayName: String,
+    odinId: String?,
+    avatar: (@Composable () -> Unit)?,
     introducedBy: String?,
     /** When the connection was made, epoch-millis. Null where it isn't known. */
     connectedAtMs: Long?,
@@ -85,10 +89,11 @@ fun ReviewConnectionSheet(
     errorText: String?,
     onSubmit: (Set<String>) -> Unit,
     onDismiss: () -> Unit,
+    /** Non-null when submitting accepts a pending request rather than reviewing a connection. */
+    incomingRequest: IncomingRequestSummary? = null,
 ) {
     // App defaults arrive checked: the owning app nominated them, and the review button applies
     // "the checked per-app defaults". They stay visible so any can be turned off deliberately.
-    val displayName = entry?.displayName.orEmpty()
     var selected by rememberSaveable(displayName) { mutableStateOf(groups.initialSelection()) }
 
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true, maxWidth = 680.dp) {
@@ -112,7 +117,7 @@ fun ReviewConnectionSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                if (entry != null) ContactBookAvatar(entry = entry, size = 52.dp)
+                avatar?.invoke()
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = displayName,
@@ -120,7 +125,6 @@ fun ReviewConnectionSheet(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    val odinId = entry?.odinId
                     if (!odinId.isNullOrBlank() && !odinId.equals(displayName, ignoreCase = true)) {
                         Text(
                             text = odinId,
@@ -133,6 +137,12 @@ fun ReviewConnectionSheet(
                     // Both facts, not a choice between them: when the connection happened and
                     // who vouched for it are each worth knowing, and neither implies the other.
                     val subtitle = listOfNotNull(
+                        incomingRequest?.receivedAtMs?.takeIf { it > 0 }?.let {
+                            stringResource(
+                                MR.string.contact_review_requested_on,
+                                formatMomentDate(Instant.fromEpochMilliseconds(it)),
+                            )
+                        },
                         connectedAtMs?.takeIf { it > 0 }?.let {
                             stringResource(
                                 MR.string.contact_review_connected_since,
@@ -152,6 +162,14 @@ fun ReviewConnectionSheet(
                         )
                     }
                 }
+            }
+
+            incomingRequest?.message?.takeIf { it.isNotBlank() }?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
             }
 
             val toggle: (String) -> Unit = { id -> selected = groups.toggleSelection(selected, id) }
@@ -247,11 +265,21 @@ fun ReviewConnectionSheet(
                 enabled = !isSubmitting,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(stringResource(MR.string.contact_review_keep_new))
+                Text(
+                    stringResource(
+                        if (incomingRequest != null) MR.string.cancel
+                        else MR.string.contact_review_keep_new
+                    )
+                )
             }
         }
     }
 }
+
+data class IncomingRequestSummary(
+    val receivedAtMs: Long,
+    val message: String?,
+)
 
 /** Settings' section header, plus the line of helper text a section may need under it. */
 @Composable

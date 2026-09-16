@@ -48,6 +48,7 @@ import id.homebase.core.ui.screens.contactbook.circleAccessState
 import id.homebase.core.ui.screens.contactbook.contactStateOf
 import id.homebase.core.ui.screens.contactbook.personalCirclesFor
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
+import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 import id.homebase.core.ui.screens.contactbook.isAccessRevoked
 import id.homebase.core.ui.screens.contactbook.isUserCircle
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
@@ -374,6 +375,10 @@ class ContactDetailViewModel(
                         isSelf = isSelf,
                         requestDirection = requestDirection,
                         introducedByName = introducedByName,
+                        // The request can vanish under an open sheet (sender withdrew, accepted elsewhere).
+                        review = it.review?.takeIf { r ->
+                            r.incomingRequest == null || requestDirection == RequestDirection.INCOMING
+                        },
                     )
                 }
                 if (!reviewEnabled && domain != null && pendingCirclesLoadedFor != domain) {
@@ -720,6 +725,23 @@ class ContactDetailViewModel(
 
     private fun openReview() {
         val domain = _uiState.value.entry?.odinId?.lowercase() ?: return
+        if (_uiState.value.isPendingIncoming) {
+            val request = connectionRequestService.incomingRequests.value
+                .firstOrNull { it.senderOdinId.domainName.equals(domain, ignoreCase = true) }
+                ?: return
+            _uiState.update {
+                it.copy(
+                    review = ReviewSheetState(
+                        introducedBy = request.introducerOdinId?.domainName,
+                        incomingRequest = IncomingRequestSummary(
+                            receivedAtMs = request.receivedTimestampMilliseconds.milliseconds,
+                            message = request.message,
+                        ),
+                    ),
+                )
+            }
+            return
+        }
         val registration = connectionService.connections.value.map.entries
             .firstOrNull { it.key.domainName.equals(domain, ignoreCase = true) }?.value
         _uiState.update {
@@ -747,15 +769,30 @@ class ContactDetailViewModel(
         _uiState.update { it.copy(review = open.copy(isSubmitting = true, failed = false)) }
         viewModelScope.launch {
             try {
-                connectionService.reviewConnection(
-                    OdinId(odinId),
-                    circleIds.map { Uuid.parseHex(it) },
-                )
-                _uiState.update { it.copy(review = null) }
+                val circleUuids = circleIds.map { Uuid.parseHex(it) }
+                // Accepting stamps the review server-side, so a request never needs a second call.
+                if (open.incomingRequest != null) {
+                    connectionRequestService.acceptIncomingRequest(OdinId(odinId), circleUuids)
+                    _uiState.update { it.copy(review = null) }
+                    _events.tryEmit(ContactDetailEvent.RequestAccepted)
+                } else {
+                    connectionService.reviewConnection(OdinId(odinId), circleUuids)
+                    _uiState.update { it.copy(review = null) }
+                }
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Logger.w(e, TAG) { "Review of $odinId failed" }
+                // Retrying can't fix a withdrawn request or a missing permission.
+                val terminal = open.incomingRequest != null && (
+                    e is ForbiddenException ||
+                        (e is ClientException && e.errorCode == OdinClientErrorCode.IncomingRequestNotFound)
+                    )
+                if (terminal) {
+                    _uiState.update { it.copy(review = null) }
+                    emitConnectionError(e)
+                    return@launch
+                }
                 _uiState.update {
                     it.copy(review = open.copy(isSubmitting = false, failed = true))
                 }

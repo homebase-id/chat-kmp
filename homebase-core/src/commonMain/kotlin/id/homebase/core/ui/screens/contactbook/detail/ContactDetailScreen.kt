@@ -142,6 +142,7 @@ import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.menu_back
 import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionSheet
+import id.homebase.resources.contact_review_accept_failed
 import id.homebase.resources.contact_review_failed
 import id.homebase.resources.contact_unreview_action
 import id.homebase.resources.contact_unreview_blocked
@@ -304,18 +305,24 @@ fun ContactDetailScreen(
     }
 
     uiState.review?.let { review ->
+        val entry = uiState.entry
         ReviewConnectionSheet(
-            entry = uiState.entry,
+            displayName = entry?.displayName.orEmpty(),
+            odinId = entry?.odinId,
+            avatar = entry?.let { { ContactBookAvatar(entry = it, size = 52.dp) } },
             introducedBy = review.introducedBy,
             connectedAtMs = review.connectedAtMs,
             groups = uiState.reviewCircleGroups,
             alreadyHeldCircleIds = review.alreadyHeldCircleIds,
             isSubmitting = review.isSubmitting,
-            errorText = if (review.failed) {
-                stringResource(MR.string.contact_review_failed)
-            } else null,
+            errorText = when {
+                !review.failed -> null
+                review.incomingRequest != null -> stringResource(MR.string.contact_review_accept_failed)
+                else -> stringResource(MR.string.contact_review_failed)
+            },
             onSubmit = { ids -> viewModel.onAction(ContactDetailAction.ReviewSubmitted(ids)) },
             onDismiss = { viewModel.onAction(ContactDetailAction.ReviewDismissed) },
+            incomingRequest = review.incomingRequest,
         )
     }
 
@@ -426,9 +433,11 @@ private fun ContactDetailContent(
                 uiState.isPendingIncoming -> PendingRequestProfile(
                     entry = entry,
                     assignableCircles = uiState.assignableCircles,
+                    reviewEnabled = uiState.reviewEnabled,
                     onAccept = { selectedCircleIds ->
                         onAction(ContactDetailAction.AcceptRequestClicked(selectedCircleIds))
                     },
+                    onReview = { onAction(ContactDetailAction.ReviewClicked) },
                     onReject = { onAction(ContactDetailAction.RejectRequestClicked) },
                     actionInProgress = uiState.actionInProgress,
                     onAvatarClick = onAvatarClick,

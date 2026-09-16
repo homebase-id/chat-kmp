@@ -63,7 +63,10 @@ import org.jetbrains.compose.resources.stringResource
 fun PendingRequestProfile(
     entry: ContactBookEntry,
     assignableCircles: List<ContactCircleUi>,
+    reviewEnabled: Boolean,
     onAccept: (selectedCircleIds: List<String>) -> Unit,
+    /** With the review on, Accept opens the review sheet, which owns the circle choice. */
+    onReview: () -> Unit,
     onReject: () -> Unit,
     actionInProgress: Boolean,
     onAvatarClick: (SubSamplingImageSource) -> Unit,
@@ -152,7 +155,7 @@ fun PendingRequestProfile(
 
         // Optional: pick which of the user's own circles to add this contact to on Accept.
         // The circles ride the accept request atomically (see AcceptConnectionRequestV2).
-        if (assignableCircles.isNotEmpty()) {
+        if (!reviewEnabled && assignableCircles.isNotEmpty()) {
             Spacer(modifier = Modifier.height(24.dp))
             CirclePickerChips(
                 circles = assignableCircles,
@@ -180,7 +183,9 @@ fun PendingRequestProfile(
                 Text(stringResource(MR.string.contactbook_detail_reject))
             }
             FilledTonalButton(
-                onClick = { onAccept(selectedCircleIds.toList()) },
+                onClick = {
+                    if (reviewEnabled) onReview() else onAccept(selectedCircleIds.toList())
+                },
                 enabled = !actionInProgress,
                 contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
             ) {

@@ -17,6 +17,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import id.homebase.core.ui.screens.contactbook.CircleAccessState
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
+import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 
 /** A pending destructive action awaiting confirmation. */
 enum class ContactDetailConfirm { BLOCK, DISCONNECT, DELETE }
@@ -151,6 +152,8 @@ data class ReviewSheetState(
     val alreadyHeldCircleIds: Set<String> = emptySet(),
     val isSubmitting: Boolean = false,
     val failed: Boolean = false,
+    /** Set when the sheet accepts a pending request instead of reviewing a connection. */
+    val incomingRequest: IncomingRequestSummary? = null,
 )
 
 /**
@@ -196,7 +199,7 @@ sealed interface ContactDetailAction {
     data object SeeAllMediaClicked : ContactDetailAction
     data class OpenGroup(val conversationId: Uuid) : ContactDetailAction
     data object BackClicked : ContactDetailAction
-    /** Open the review sheet for a New connection. */
+    /** Open the review sheet for a New connection, or to accept a pending incoming request. */
     data object ReviewClicked : ContactDetailAction
     /** Complete the review: stamp it and enrol [circleIds]. Empty = the "chat only" outcome. */
     data class ReviewSubmitted(val circleIds: Set<String>) : ContactDetailAction
