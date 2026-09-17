@@ -1,5 +1,6 @@
 package id.homebase.core.widget
 
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -7,11 +8,66 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isImeComposing
 
-enum class ComposerKeyAction {
+fun Modifier.composerKeyHandler(
+    autocomplete: ComposerAutocompleteController? = null,
+    enterSendsMessage: Boolean,
+    onSend: () -> Unit,
+    onNewline: (() -> Unit)? = null,
+    onPasteImage: ((ByteArray) -> Unit)? = null,
+): Modifier = onPreviewKeyEvent { event ->
+    handleComposerKey(
+        isImeComposing = event.isImeComposing(),
+        claimedByAutocomplete = { autocomplete?.handleKeyEvent(event) == true },
+        action = composerKeyAction(event, enterSendsMessage),
+        onSend = onSend,
+        onNewline = onNewline,
+        pasteImage = { onPasteImage != null && event.pasteClipboardImage(onPasteImage) },
+    )
+}
+
+internal fun handleComposerKey(
+    isImeComposing: Boolean,
+    claimedByAutocomplete: () -> Boolean,
+    action: ComposerKeyAction,
+    onSend: () -> Unit,
+    onNewline: (() -> Unit)?,
+    pasteImage: () -> Boolean,
+): Boolean {
+    // Ahead of the controller, which commits on Enter: an IME's Enter confirms its own candidate.
+    if (isImeComposing) return false
+    // Preview events run root-to-leaf: decide Enter before this and an open suggestion list loses it.
+    if (claimedByAutocomplete()) return true
+    when (action) {
+        ComposerKeyAction.Send -> {
+            onSend()
+            return true
+        }
+
+        ComposerKeyAction.Newline -> onNewline?.let {
+            it()
+            return true
+        }
+
+        ComposerKeyAction.Ignore -> Unit
+    }
+    // Deliberately not gated like the Enter chord: an iPad's hardware keyboard pastes but never sends.
+    return pasteImage()
+}
+
+private fun KeyEvent.pasteClipboardImage(onPasteImage: (ByteArray) -> Unit): Boolean {
+    if (type != KeyEventType.KeyDown || key != Key.V || !(isCtrlPressed || isMetaPressed)) return false
+    val imageBytes = getImageFromClipboard() ?: return false
+    onPasteImage(imageBytes)
+    return true
+}
+
+internal enum class ComposerKeyAction {
     Send,
     Newline,
     Ignore,
@@ -22,7 +78,6 @@ internal class ComposerEnterChord(
     val isKeyDown: Boolean,
     val isShiftPressed: Boolean,
     val isSendModifierPressed: Boolean,
-    val isImeComposing: Boolean,
 )
 
 internal fun KeyEvent.toEnterChord(): ComposerEnterChord = ComposerEnterChord(
@@ -31,11 +86,9 @@ internal fun KeyEvent.toEnterChord(): ComposerEnterChord = ComposerEnterChord(
     isKeyDown = type == KeyEventType.KeyDown,
     isShiftPressed = isShiftPressed,
     isSendModifierPressed = isCtrlPressed || isMetaPressed,
-    isImeComposing = isImeComposing(),
 )
 
-// Call after autocomplete.handleKeyEvent — it claims Enter first.
-fun composerKeyAction(event: KeyEvent, enterSendsMessage: Boolean): ComposerKeyAction =
+internal fun composerKeyAction(event: KeyEvent, enterSendsMessage: Boolean): ComposerKeyAction =
     composerKeyAction(
         chord = event.toEnterChord(),
         enterSendsMessage = enterSendsMessage,
@@ -54,8 +107,6 @@ internal fun composerKeyAction(
     handlesHardwareEnter: Boolean,
 ): ComposerKeyAction {
     if (!chord.isKeyDown || !chord.isEnter || !handlesHardwareEnter) return ComposerKeyAction.Ignore
-    // In either mode: an IME's Enter confirms its own candidate.
-    if (chord.isImeComposing) return ComposerKeyAction.Ignore
     if (chord.isSendModifierPressed) return ComposerKeyAction.Send
 
     return if (chord.isShiftPressed != enterSendsMessage) ComposerKeyAction.Send
