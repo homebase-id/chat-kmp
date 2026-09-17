@@ -39,7 +39,6 @@ import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.event.EventDateChip
 import id.homebase.chat.event.rememberEventTimes
-import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImage
@@ -77,13 +76,7 @@ fun ReplyPreviewBar(
     accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
     val currentOdinId = LocalCurrentOdinId.current
-    // Filter out non-media payloads (default payload key and payload descriptor keys)
-    val mediaPayloads = remember(message.payloads) {
-        message.payloads?.filter { payload ->
-            payload.key != ChatProtocol.DefaultPayloadKey &&
-                !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
-        } ?: emptyList()
-    }
+    val mediaPayloads = remember(message.payloads) { message.payloads.replyMediaPayloads() }
 
     val firstPayload = mediaPayloads.firstOrNull()
     val hasMultiplePayloads = mediaPayloads.size > 1

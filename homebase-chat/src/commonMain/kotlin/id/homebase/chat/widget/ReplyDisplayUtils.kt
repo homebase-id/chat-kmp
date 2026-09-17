@@ -1,5 +1,20 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.client.drives.files.DescriptorContent
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.chat.services.ChatProtocol
+
+fun List<PayloadDescriptor>?.replyMediaPayloads(): List<PayloadDescriptor> =
+    this?.filter { payload ->
+        payload.key != ChatProtocol.DefaultPayloadKey &&
+            !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
+    }.orEmpty()
+
+fun PayloadDescriptor.isAudio(): Boolean = contentType?.startsWith("audio/") == true
+
+fun PayloadDescriptor.audioLengthSeconds(): Int? =
+    (descriptorInfo() as? DescriptorContent.AudioFile)?.lengthSeconds?.takeIf { it > 0 }
+
 /**
  * Resolves the display name for a reply quote's author.
  *

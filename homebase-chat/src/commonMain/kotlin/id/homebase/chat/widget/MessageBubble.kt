@@ -1045,6 +1045,11 @@ fun InlineReplyPreview(
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
+    val replyContext = remember(replyPreview.context) { ReplyContext.fromJson(replyPreview.context) }
+    val mediaPayloads = remember(replyMessage?.payloads) { replyMessage?.payloads.replyMediaPayloads() }
+    // A voice note's embedded thumb is its waveform strip, which crops to a blank square.
+    val quotesAudio = replyContext is ReplyContext.Audio || mediaPayloads.firstOrNull()?.isAudio() == true
+
     // Build HomebaseImageData from the original message's first visual payload (image or video)
     val imageData: HomebaseImageData? = remember(replyPreview, replyMessage, driveId) {
         if (replyMessage == null || driveId == null) return@remember null
@@ -1076,8 +1081,8 @@ fun InlineReplyPreview(
     }
 
     // Fallback: decode embedded base64 thumbnail if we can't build HomebaseImageData
-    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData) {
-        if (imageData != null) return@remember null
+    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData, quotesAudio) {
+        if (imageData != null || quotesAudio) return@remember null
         replyPreview.previewThumbnail?.content?.let { base64Content ->
             try {
                 val bytes = Base64.decode(base64Content)
@@ -1091,13 +1096,6 @@ fun InlineReplyPreview(
     val hasThumb = imageData != null || thumbnailBitmap != null
     val hasImage = hasThumb || replyPreview.previewThumbnail != null
 
-    // Content-type label for media replies (reuses shared logic with ReplyPreviewBar)
-    val mediaPayloads = remember(replyMessage?.payloads) {
-        replyMessage?.payloads?.filter { payload ->
-            payload.key != ChatProtocol.DefaultPayloadKey &&
-                !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
-        } ?: emptyList()
-    }
     // Strip richeditor's `<br>` empty-paragraph artifacts from the quoted body so a reply to a
     // legacy `<br>` message shows its real text, not a stray break / blank quote (#1104).
     val replyText = remember(replyPreview.message) { replyPreview.message.stripComposerLineBreakArtifacts() }
@@ -1106,16 +1104,18 @@ fun InlineReplyPreview(
         isDeleted = replyMessage?.isDeleted ?: false,
         firstPayload = mediaPayloads.firstOrNull(),
         hasMultiplePayloads = mediaPayloads.size > 1,
-    )
+    ) ?: (replyContext as? ReplyContext.Audio)
+        ?.takeIf { replyText.isBlank() }
+        ?.let { voiceMessageLabel(it.lengthSeconds) }
     // Dispatch on the typed ReplyContext carried on the wire — that's how
     // the renderer knows it's an event reply without looking up the parent.
     // Pre-context senders leave it null; we fall back to a parent-message
     // lookup so old replies still get the chip when the parent is in
     // memory. Future kinds parse as Unknown → default reply preview, no
     // crash.
-    val eventStartLocal = when (val ctx = ReplyContext.fromJson(replyPreview.context)) {
+    val eventStartLocal = when (val ctx = replyContext) {
         is ReplyContext.Event -> rememberViewerLocalDate(ctx.startUtcMs)
-        ReplyContext.Unknown -> null
+        is ReplyContext.Audio, ReplyContext.Unknown -> null
         null -> {
             val eventDescriptor = (replyMessage?.messageContent as? MessageContent.Event)?.descriptor
             eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }

@@ -313,7 +313,7 @@ private fun nextSpeed(current: Float): Float {
     return PLAYBACK_SPEEDS[(index + 1) % PLAYBACK_SPEEDS.size]
 }
 
-private fun formatAudioTime(seconds: Int): String {
+fun formatAudioTime(seconds: Int): String {
     val mins = seconds / 60
     val secs = seconds % 60
     return "${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}"

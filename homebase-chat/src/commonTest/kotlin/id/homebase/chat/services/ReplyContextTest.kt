@@ -79,4 +79,25 @@ class ReplyContextTest {
         assertIs<ReplyContext.Event>(ctx)
         assertEquals(1747094400000L, ctx.startUtcMs)
     }
+
+    @Test
+    fun audio_builder_round_trips_with_length() {
+        assertEquals(ReplyContext.Audio(15), ReplyContext.fromJson(ReplyContext.audio(15)))
+    }
+
+    @Test
+    fun audio_builder_round_trips_without_length() {
+        val built = ReplyContext.audio(null)
+        assertNull(built["lengthSeconds"])
+        assertEquals(ReplyContext.Audio(null), ReplyContext.fromJson(built))
+    }
+
+    @Test
+    fun audio_kind_with_non_positive_length_has_no_length() {
+        val json = buildJsonObject {
+            put("kind", "audio")
+            put("lengthSeconds", 0)
+        }
+        assertEquals(ReplyContext.Audio(null), ReplyContext.fromJson(json))
+    }
 }

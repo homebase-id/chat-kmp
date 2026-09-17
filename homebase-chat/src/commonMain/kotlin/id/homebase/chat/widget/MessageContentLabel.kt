@@ -11,10 +11,12 @@ import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.vector.ImageVector
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -22,6 +24,7 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_audio
+import id.homebase.resources.chat_message_audio_duration
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_file
 import id.homebase.resources.chat_message_gif
@@ -31,6 +34,7 @@ import id.homebase.resources.chat_message_location
 import id.homebase.resources.chat_message_multiple_media
 import id.homebase.resources.chat_message_video
 import id.homebase.resources.chat_preview_sticker
+import id.homebase.core.widget.formatAudioTime
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -60,6 +64,14 @@ fun typedMessageContentLabel(messageContent: MessageContent?): ContentLabel? = w
     is MessageContent.Unknown -> ContentLabel(messageContent.displayLabel, Icons.AutoMirrored.Outlined.HelpOutline)
     null -> null
 }
+
+@Composable
+fun voiceMessageLabel(lengthSeconds: Int?): ContentLabel = ContentLabel(
+    text = lengthSeconds
+        ?.let { stringResource(MR.string.chat_message_audio_duration, formatAudioTime(it)) }
+        ?: stringResource(MR.string.chat_message_audio),
+    icon = Icons.Default.Mic,
+)
 
 /**
  * Determines the content-type label for a message based on its payload descriptors.
@@ -136,9 +148,8 @@ fun messageContentLabel(
                 text = stringResource(MR.string.chat_message_video),
                 icon = Icons.Default.PlayArrow
             )
-            firstPayload.contentType?.startsWith("audio/") == true -> ContentLabel(
-                text = stringResource(MR.string.chat_message_audio),
-                icon = Icons.Default.PlayArrow
+            firstPayload.isAudio() -> voiceMessageLabel(
+                remember(firstPayload) { firstPayload.audioLengthSeconds() },
             )
             else -> ContentLabel(
                 text = stringResource(MR.string.chat_message_file),

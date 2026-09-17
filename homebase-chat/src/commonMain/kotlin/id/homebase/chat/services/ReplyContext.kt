@@ -4,6 +4,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
@@ -16,6 +17,7 @@ import kotlinx.serialization.json.put
  * Wire form is a small JsonObject with a "kind" string discriminator:
  *
  *     {"kind":"event","startUtcMs":1747094400000}
+ *     {"kind":"audio","lengthSeconds":15}
  *     {"kind":"dice","faces":[6,4,3]}              // future
  *     {"kind":"doodle","w":256,"h":256}            // future
  *
@@ -42,11 +44,15 @@ sealed interface ReplyContext {
     /** Event reply: chip renders the viewer-local month/day from `startUtcMs`. */
     data class Event(val startUtcMs: Long) : ReplyContext
 
+    /** Voice-note reply: the quote can label it without the parent message loaded. */
+    data class Audio(val lengthSeconds: Int?) : ReplyContext
+
     /** Reply context whose `kind` we don't recognise — render as a default reply preview. */
     data object Unknown : ReplyContext
 
     companion object {
         const val KIND_EVENT = "event"
+        const val KIND_AUDIO = "audio"
 
         /**
          * Parse a wire-side [JsonElement] into a typed [ReplyContext].
@@ -63,6 +69,9 @@ sealed interface ReplyContext {
                     val ts = (obj["startUtcMs"] as? JsonPrimitive)?.longOrNull
                     if (ts != null) Event(ts) else Unknown
                 }
+                KIND_AUDIO -> Audio(
+                    (obj["lengthSeconds"] as? JsonPrimitive)?.intOrNull?.takeIf { it > 0 },
+                )
                 else -> Unknown
             }
         }
@@ -71,6 +80,11 @@ sealed interface ReplyContext {
         fun event(startUtcMs: Long): JsonObject = buildJsonObject {
             put("kind", KIND_EVENT)
             put("startUtcMs", startUtcMs)
+        }
+
+        fun audio(lengthSeconds: Int?): JsonObject = buildJsonObject {
+            put("kind", KIND_AUDIO)
+            lengthSeconds?.let { put("lengthSeconds", it) }
         }
     }
 }
