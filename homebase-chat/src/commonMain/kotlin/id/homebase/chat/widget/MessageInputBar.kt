@@ -82,13 +82,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isMetaPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -120,7 +113,6 @@ import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.clipboard.ClipboardImagePasteEffect
 import id.homebase.core.clipboard.clipboardImageReceiverModifier
-import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.clipboard.pasteImageContextMenuItem
 import id.homebase.core.clipboard.readClipboardImage
 import id.homebase.core.emoji.EmojiShortcodeEffect
@@ -131,8 +123,7 @@ import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.toMessageMarkdown
-import id.homebase.core.widget.ComposerKeyAction
-import id.homebase.core.widget.composerKeyAction
+import id.homebase.core.widget.composerKeyHandler
 import id.homebase.core.widget.EmojiAutocomplete
 import id.homebase.core.widget.EmojiSelection
 import id.homebase.core.widget.rememberComposerAutocompleteController
@@ -453,40 +444,13 @@ fun MessageTextFieldExpanded(
                             onFocused()
                         }
                     }
-                    .onPreviewKeyEvent { keyEvent ->
-                        // The autocomplete list owns arrows/Enter/Tab/Esc while it is showing; preview
-                        // events run root-to-leaf, so the send/newline decision below beats it otherwise.
-                        if (autocomplete.handleKeyEvent(keyEvent)) return@onPreviewKeyEvent true
-
-                        when (composerKeyAction(keyEvent, enterSendsMessage)) {
-                            ComposerKeyAction.Send -> {
-                                sendMessage()
-                                return@onPreviewKeyEvent true
-                            }
-
-                            ComposerKeyAction.Newline -> {
-                                state.addTextAfterSelection("\n")
-                                return@onPreviewKeyEvent true
-                            }
-
-                            ComposerKeyAction.Ignore -> Unit
-                        }
-
-                        // Cmd/Ctrl+V image paste works on any platform with a hardware keyboard —
-                        // desktop, web, AND iOS/iPad — unlike the Enter chord above.
-                        if (onPasteImage != null &&
-                            keyEvent.type == KeyEventType.KeyDown &&
-                            keyEvent.key == Key.V &&
-                            (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)
-                        ) {
-                            val imageBytes = getImageFromClipboard()
-                            if (imageBytes != null) {
-                                onPasteImage.invoke(imageBytes)
-                                return@onPreviewKeyEvent true
-                            }
-                        }
-                        false
-                    },
+                    .composerKeyHandler(
+                        autocomplete = autocomplete,
+                        enterSendsMessage = enterSendsMessage,
+                        onSend = sendMessage,
+                        onNewline = { state.addTextAfterSelection("\n") },
+                        onPasteImage = onPasteImage,
+                    ),
                 placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
                 shape = if (editExistingMode) RoundedCornerShape(
                     bottomStart = 12.dp,
@@ -769,41 +733,13 @@ fun MessageTextFieldCompact(
                                             onFocused()
                                         }
                                     }
-                                    .onPreviewKeyEvent { keyEvent ->
-                                        // The autocomplete list owns arrows/Enter/Tab/Esc while it
-                                        // is showing; preview events run root-to-leaf, so the
-                                        // send/newline decision below beats it otherwise.
-                                        if (autocomplete.handleKeyEvent(keyEvent)) return@onPreviewKeyEvent true
-
-                                        when (composerKeyAction(keyEvent, enterSendsMessage)) {
-                                            ComposerKeyAction.Send -> {
-                                                onSendMessage()
-                                                return@onPreviewKeyEvent true
-                                            }
-
-                                            ComposerKeyAction.Newline -> {
-                                                state.addTextAfterSelection("\n")
-                                                return@onPreviewKeyEvent true
-                                            }
-
-                                            ComposerKeyAction.Ignore -> Unit
-                                        }
-
-                                        // Cmd/Ctrl+V image paste works on any platform with a hardware keyboard —
-                                        // desktop, web, AND iOS/iPad — unlike the Enter chord above.
-                                        if (onPasteImage != null &&
-                                            keyEvent.type == KeyEventType.KeyDown &&
-                                            keyEvent.key == Key.V &&
-                                            (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)
-                                        ) {
-                                            val imageBytes = getImageFromClipboard()
-                                            if (imageBytes != null) {
-                                                onPasteImage.invoke(imageBytes)
-                                                return@onPreviewKeyEvent true
-                                            }
-                                        }
-                                        false
-                                    },
+                                    .composerKeyHandler(
+                                        autocomplete = autocomplete,
+                                        enterSendsMessage = enterSendsMessage,
+                                        onSend = onSendMessage,
+                                        onNewline = { state.addTextAfterSelection("\n") },
+                                        onPasteImage = onPasteImage,
+                                    ),
                                 placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
                                 leadingIcon = if (editExistingMode) null else {
                                     {
@@ -1289,28 +1225,17 @@ fun MessageTextFieldForAttachment(
                         .focusRequester(captionFocusRequester)
                         // Tapping into the caption closes the panel; the keyboard reclaims the space.
                         .onFocusChanged { if (it.isFocused) setEmojiPicker(false) }
-                        .onPreviewKeyEvent { keyEvent ->
-                            // The autocomplete list owns arrows/Enter/Tab/Esc while it is showing;
-                            // preview events run root-to-leaf, so the decision below beats it otherwise.
-                            if (autocomplete.handleKeyEvent(keyEvent)) return@onPreviewKeyEvent true
-
-                            when (composerKeyAction(keyEvent, enterSendsMessage)) {
-                                ComposerKeyAction.Send -> {
-                                    if (!hasSent) {
-                                        hasSent = true
-                                        onSendMessage()
-                                    }
-                                    true
+                        .composerKeyHandler(
+                            autocomplete = autocomplete,
+                            enterSendsMessage = enterSendsMessage,
+                            onSend = {
+                                if (!hasSent) {
+                                    hasSent = true
+                                    onSendMessage()
                                 }
-
-                                ComposerKeyAction.Newline -> {
-                                    state.addTextAfterSelection("\n")
-                                    true
-                                }
-
-                                ComposerKeyAction.Ignore -> false
-                            }
-                        },
+                            },
+                            onNewline = { state.addTextAfterSelection("\n") },
+                        ),
                     placeholder = {
                         Text(stringResource(MR.string.chat_new_message_placeholder))
                     },

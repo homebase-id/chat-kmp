@@ -187,8 +187,11 @@ fun MediaMessage(
                     payloads[0].contentType?.startsWith("audio/") == true
                 }
                 val sizedModifier = when {
-                    isDocument ->
+                    // The block-caption bubble is already caption-wide; a capped card would leave a strip.
+                    isDocument && fillsBubble ->
                         widthModifier
+                    isDocument ->
+                        widthModifier.widthIn(max = Dimens.MediaBubble.documentMaxWidth)
                     fillsBubble ->
                         widthModifier.fillMaxWidth().height(Dimens.MediaBubble.maxHeight)
                     isAudio ->

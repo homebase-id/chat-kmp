@@ -10,10 +10,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
@@ -47,6 +43,7 @@ import id.homebase.chat.data.ContactUiModel
 import id.homebase.core.util.initials
 import id.homebase.core.widget.ComposerAutocompleteTag
 import id.homebase.core.widget.EmojiAutocomplete
+import id.homebase.core.widget.composerKeyHandler
 import id.homebase.core.widget.rememberComposerAutocompleteController
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
@@ -100,8 +97,7 @@ private val TestKoin = koinApplication {
 @OptIn(ExperimentalTestApi::class, ExperimentalRichTextApi::class)
 class ComposerMentionTypeaheadTest {
 
-    /** Mirrors the composer: a Box wrapping only the editor anchors the popup, and the editor's
-     *  preview-key handler gives the autocomplete first refusal before Enter-to-send. */
+    /** Mirrors the composer: a Box wrapping only the editor anchors the popup. */
     private fun harness(
         targets: List<ContactUiModel> = GroupMembers,
         withEmoji: Boolean = false,
@@ -117,16 +113,12 @@ class ComposerMentionTypeaheadTest {
                     RichTextEditor(
                         state = state,
                         modifier = Modifier
-                            .onPreviewKeyEvent { event ->
-                                if (controller.handleKeyEvent(event)) {
-                                    true
-                                } else if (event.key == Key.Enter && event.type == KeyEventType.KeyDown) {
-                                    onSend()
-                                    true
-                                } else {
-                                    false
-                                }
-                            }
+                            .composerKeyHandler(
+                                controller,
+                                enterSendsMessage = true,
+                                onSend = onSend,
+                                onNewline = { state.addTextAfterSelection("\n") },
+                            )
                             .testTag("editor"),
                     )
                     MentionAutocomplete(state = state, controller = controller, targets = targets)
