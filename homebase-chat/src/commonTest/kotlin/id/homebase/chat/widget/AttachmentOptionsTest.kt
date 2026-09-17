@@ -16,14 +16,16 @@ class AttachmentOptionsTest {
         setContent {
             MaterialTheme {
                 AttachmentOptions(
-                    onGalleryClick = {},
-                    onFileClick = {},
-                    onContactClick = {},
-                    onLocationClick = {},
-                    onEventClick = {},
-                    onGroodleClick = {},
-                    onDicesClick = {},
-                    onPollClick = {},
+                    attachmentActions(
+                        onGalleryClick = {},
+                        onFileClick = {},
+                        onContactClick = {},
+                        onLocationClick = {},
+                        onEventClick = {},
+                        onGroodleClick = {},
+                        onDicesClick = {},
+                        onPollClick = {},
+                    )
                 )
             }
         }
@@ -37,14 +39,16 @@ class AttachmentOptionsTest {
         setContent {
             MaterialTheme {
                 AttachmentOptions(
-                    onGalleryClick = { clicked = true },
-                    onFileClick = {},
-                    onContactClick = {},
-                    onLocationClick = {},
-                    onEventClick = {},
-                    onGroodleClick = {},
-                    onDicesClick = {},
-                    onPollClick = {},
+                    attachmentActions(
+                        onGalleryClick = { clicked = true },
+                        onFileClick = {},
+                        onContactClick = {},
+                        onLocationClick = {},
+                        onEventClick = {},
+                        onGroodleClick = {},
+                        onDicesClick = {},
+                        onPollClick = {},
+                    )
                 )
             }
         }
@@ -58,14 +62,16 @@ class AttachmentOptionsTest {
         setContent {
             MaterialTheme {
                 AttachmentOptions(
-                    onGalleryClick = {},
-                    onFileClick = { clicked = true },
-                    onContactClick = {},
-                    onLocationClick = {},
-                    onEventClick = {},
-                    onGroodleClick = {},
-                    onDicesClick = {},
-                    onPollClick = {},
+                    attachmentActions(
+                        onGalleryClick = {},
+                        onFileClick = { clicked = true },
+                        onContactClick = {},
+                        onLocationClick = {},
+                        onEventClick = {},
+                        onGroodleClick = {},
+                        onDicesClick = {},
+                        onPollClick = {},
+                    )
                 )
             }
         }
@@ -78,14 +84,16 @@ class AttachmentOptionsTest {
         setContent {
             MaterialTheme {
                 AttachmentOptions(
-                    onGalleryClick = {},
-                    onFileClick = {},
-                    onContactClick = {},
-                    onLocationClick = {},
-                    onEventClick = {},
-                    onGroodleClick = {},
-                    onDicesClick = {},
-                    onPollClick = {},
+                    attachmentActions(
+                        onGalleryClick = {},
+                        onFileClick = {},
+                        onContactClick = {},
+                        onLocationClick = {},
+                        onEventClick = {},
+                        onGroodleClick = {},
+                        onDicesClick = {},
+                        onPollClick = {},
+                    )
                 )
             }
         }
@@ -98,14 +106,16 @@ class AttachmentOptionsTest {
         setContent {
             MaterialTheme {
                 AttachmentOptions(
-                    onGalleryClick = {},
-                    onFileClick = {},
-                    onContactClick = { clicked = true },
-                    onLocationClick = {},
-                    onEventClick = {},
-                    onGroodleClick = {},
-                    onDicesClick = {},
-                    onPollClick = {},
+                    attachmentActions(
+                        onGalleryClick = {},
+                        onFileClick = {},
+                        onContactClick = { clicked = true },
+                        onLocationClick = {},
+                        onEventClick = {},
+                        onGroodleClick = {},
+                        onDicesClick = {},
+                        onPollClick = {},
+                    )
                 )
             }
         }

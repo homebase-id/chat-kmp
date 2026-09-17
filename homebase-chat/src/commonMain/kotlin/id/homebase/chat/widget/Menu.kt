@@ -658,7 +658,7 @@ fun BubbleReactionPopup(
 }
 
 @Composable
-private fun rememberAboveBubblePositionProvider(alignToEnd: Boolean): PopupPositionProvider {
+internal fun rememberAboveBubblePositionProvider(alignToEnd: Boolean): PopupPositionProvider {
     val gapPx = with(LocalDensity.current) { 4.dp.roundToPx() }
     return remember(gapPx, alignToEnd) { AboveBubblePositionProvider(gapPx, alignToEnd) }
 }
