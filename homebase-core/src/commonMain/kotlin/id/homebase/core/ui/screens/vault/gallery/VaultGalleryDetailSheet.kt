@@ -68,7 +68,7 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.ui.screens.vault.VaultEditorTool
-import id.homebase.core.ui.screens.vault.components.fileTypeIcon
+import id.homebase.core.ui.screens.vault.components.pageTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.resources.MR
 import id.homebase.resources.vault_edit_crop
@@ -207,7 +207,7 @@ fun VaultGalleryDetailSheet(
                         }
                     } else {
                         Icon(
-                            imageVector = fileTypeIcon(descriptor.contentType ?: ""),
+                            imageVector = file.pageTypeIcon(descriptor),
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(24.dp),

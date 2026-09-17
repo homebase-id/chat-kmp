@@ -215,7 +215,7 @@ fun MomentMediaItem(
             }
         }
 
-        contentType.startsWith("image/") && enableZoom -> {
+        payload.isImage() && enableZoom -> {
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             val zoomSource = remember(
                 imageLocalContext?.localFilePath,
@@ -271,7 +271,7 @@ fun MomentMediaItem(
             }
         }
 
-        contentType.startsWith("image/") -> {
+        payload.isImage() -> {
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             if (imageLocalContext != null) {
                 var imageModifier = if (onClick != null || onLongPress != null) {
@@ -346,7 +346,7 @@ fun MomentMediaItem(
             }
         }
 
-        contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
+        payload.isVideo() -> {
             // A public feed post ships its video plaintext, so the payload carries no IV.
             // Build the player path either way (encrypted only when an IV is present) instead of
             // bailing to a non-tappable placeholder with no route to the full-screen player —
@@ -492,7 +492,7 @@ fun MomentMediaItem(
             }
         }
 
-        contentType.startsWith("audio/") -> {
+        payload.isAudio() -> {
             // The caller hands this a fillMaxSize modifier, which pins min == max width, so the
             // cap only bites on a child inside it.
             Box(modifier = baseModifier, contentAlignment = Alignment.Center) {

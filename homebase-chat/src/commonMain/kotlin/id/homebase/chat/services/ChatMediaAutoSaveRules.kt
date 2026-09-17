@@ -1,9 +1,8 @@
 package id.homebase.chat.services
 
 import id.homebase.api.client.drives.files.DescriptorContent
+import id.homebase.api.client.drives.files.HLS_PLAYLIST_CONTENT_TYPE
 import id.homebase.api.client.drives.files.PayloadDescriptor
-
-const val HLS_PLAYLIST_CONTENT_TYPE = "application/vnd.apple.mpegurl"
 
 /**
  * Whether one payload of one chat message should be downloaded and written to the device album.

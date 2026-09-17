@@ -6,11 +6,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasText
@@ -34,11 +29,7 @@ private val Candidates = listOf("smile", "smirk", "smiley")
 @OptIn(ExperimentalTestApi::class)
 class ComposerAutocompleteTest {
 
-    /**
-     * Mirrors the three composer editors in `MessageInputBar`: a Box wrapping ONLY the editor is
-     * the popup's anchor, and the editor's preview-key handler gives the controller first refusal
-     * before Enter-to-send.
-     */
+    /** A Box wrapping ONLY the editor is the popup's anchor, as in `MessageInputBar`. */
     private fun harness(
         enabled: Boolean = true,
         onSend: () -> Unit = {},
@@ -52,16 +43,12 @@ class ComposerAutocompleteTest {
                 RichTextEditor(
                     state = state,
                     modifier = Modifier
-                        .onPreviewKeyEvent { event ->
-                            if (controller.handleKeyEvent(event)) {
-                                true
-                            } else if (event.key == Key.Enter && event.type == KeyEventType.KeyDown) {
-                                if (event.isShiftPressed) state.addTextAfterSelection("\n") else onSend()
-                                true
-                            } else {
-                                false
-                            }
-                        }
+                        .composerKeyHandler(
+                            controller,
+                            enterSendsMessage = true,
+                            onSend = onSend,
+                            onNewline = { state.addTextAfterSelection("\n") },
+                        )
                         .testTag("editor"),
                 )
                 ComposerAutocomplete(

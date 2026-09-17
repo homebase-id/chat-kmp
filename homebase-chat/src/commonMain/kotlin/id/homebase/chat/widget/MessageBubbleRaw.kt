@@ -95,7 +95,6 @@ import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_edited
 import id.homebase.resources.chat_message_read_more
 import kotlinx.collections.immutable.ImmutableMap
-import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
@@ -217,8 +216,7 @@ fun MessageBubbleRaw(
             // message. EventBubble renders it rounded above the card (tapping it
             // opens the event detail, not the media viewer) and in the detail too.
             val coverPayload = message.payloads?.firstOrNull {
-                it.contentType?.startsWith("image/") == true &&
-                    it.key.startsWith(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB)
+                it.isImage() && it.key.startsWith(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB)
             }
             EventBubble(
                 descriptor = content.descriptor,
@@ -373,16 +371,13 @@ fun MessageBubbleRaw(
     // Old payload-format location messages (no header descriptor) still render via the media path.
     val locationDescriptor = (message.messageContent as? MessageContent.Location)?.descriptor
 
-    val filteredPayloads = message.payloads?.filter {
-        it.key != ChatProtocol.DefaultPayloadKey &&
-                !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
-    }
-    val hasMedia = !filteredPayloads.isNullOrEmpty()
+    val filteredPayloads = message.payloads.mediaPayloads()
+    val hasMedia = filteredPayloads.isNotEmpty()
     // A 2+-image album (MediaGallery) sitting above a caption renders full-bleed —
     // the images run edge-to-edge to the bubble, and only the caption below keeps its
     // 12dp inset (the messenger convention, matching this app's media-only bubbles). A
     // single image already renders edge-to-edge, so it is untouched.
-    val isGallery = (filteredPayloads?.size ?: 0) >= 2
+    val isGallery = filteredPayloads.size >= 2
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
@@ -463,7 +458,7 @@ fun MessageBubbleRaw(
     // outer Surface fill/shape/elevation entirely and render it like an emoji-only
     // message (see StickerMessage). Non-sticker bubbles are unaffected.
     val isSticker = remember(filteredPayloads) {
-        filteredPayloads?.size == 1 &&
+        filteredPayloads.size == 1 &&
             (filteredPayloads[0].descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
     }
     val isStickerBubble = isSticker && mediaOnly
@@ -584,7 +579,7 @@ fun MessageBubbleRaw(
                 // scrim — see StickerMessage. Non-sticker media-only messages fall through
                 // to the unchanged path below.
                 StickerMessage(
-                    payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
+                    payloads = filteredPayloads.toPersistentList(),
                     decryptedFiles = decryptedFiles,
                     keyHeader = message.keyHeader,
                     driveId = chatTargetDrive.alias,
@@ -609,7 +604,7 @@ fun MessageBubbleRaw(
             } else if (mediaOnly && !message.isDeleted) {
                 Box(modifier = Modifier.wrapContentWidth()) {
                     MediaMessage(
-                        payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
+                        payloads = filteredPayloads.toPersistentList(),
                         fileId = message.fileId,
                         decryptedFiles = decryptedFiles,
                         keyHeader = message.keyHeader,
@@ -651,7 +646,7 @@ fun MessageBubbleRaw(
                         )
                         Box {
                             MediaMessage(
-                                payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
+                                payloads = filteredPayloads.toPersistentList(),
                                 fileId = message.fileId,
                                 decryptedFiles = decryptedFiles,
                                 keyHeader = message.keyHeader,

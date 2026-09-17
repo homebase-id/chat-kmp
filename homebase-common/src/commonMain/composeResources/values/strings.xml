@@ -750,6 +750,7 @@
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Audio</string>
+    <string name="chat_message_voice_duration">Voice message · %1$s</string>
     <string name="chat_message_file">File</string>
     <string name="chat_message_location">Location</string>
     <string name="chat_message_multiple_media">Media</string>

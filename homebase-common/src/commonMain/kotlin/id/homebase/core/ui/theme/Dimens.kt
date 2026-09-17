@@ -26,6 +26,10 @@ object Dimens {
         val galleryWidth = 210.dp
         val audioMinWidth = 240.dp
         val audioMaxWidth = 320.dp
+        val documentMaxWidth = audioMaxWidth
+
+        // Wider than any phone bubble (~382dp on a 430dp screen), so only large windows are capped.
+        val linkPreviewMaxWidth = 400.dp
     }
 
     object Sticker {

@@ -336,7 +336,7 @@ internal class MediaDownloadHandler(
                 val isSticker =
                     (selectedPayload.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
                 when {
-                    contentType.startsWith("image/") && isSticker -> {
+                    selectedPayload.isImage() && isSticker -> {
                         dispatch(
                             ConversationListUiAction.ShowStickerOptions(
                                 message = action.message,
@@ -345,7 +345,7 @@ internal class MediaDownloadHandler(
                         )
                     }
 
-                    contentType.startsWith("image/") -> {
+                    selectedPayload.isImage() -> {
                         Logger.d("Image clicked: ${action.message.id}:${action.payloadKey}")
 
                         // Header title = the sender's resolved display name (same as the
@@ -379,7 +379,7 @@ internal class MediaDownloadHandler(
                         }
                     }
 
-                    contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
+                    selectedPayload.isVideo() -> {
                         val localContext = localVideoContextStore.get(action.message.id, selectedPayload.key)
                         val ivBytes = selectedPayload.iv?.let { Base64.decode(it) }
 
@@ -403,7 +403,7 @@ internal class MediaDownloadHandler(
                         }
                     }
 
-                    contentType.startsWith("audio/") -> {}
+                    selectedPayload.isAudio() -> {}
                     contentType == "application/pdf" -> {
                         val alreadyDecrypted = messagesUiState.value.decryptedFiles
                             .containsKey(DecryptedFileKey(action.message.fileId, action.payloadKey))

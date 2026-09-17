@@ -10,13 +10,11 @@ class ComposerEnterChordTest {
         isKeyDown: Boolean = true,
         shift: Boolean = false,
         sendModifier: Boolean = false,
-        ime: Boolean = false,
     ) = ComposerEnterChord(
         isEnter = isEnter,
         isKeyDown = isKeyDown,
         isShiftPressed = shift,
         isSendModifierPressed = sendModifier,
-        isImeComposing = ime,
     )
 
     private fun action(chord: ComposerEnterChord, enterSends: Boolean = false) =
@@ -50,18 +48,6 @@ class ComposerEnterChordTest {
             ComposerKeyAction.Send,
             action(chord(shift = true, sendModifier = true), enterSends = true),
         )
-    }
-
-    @Test
-    fun `an enter that is confirming an IME candidate is left alone`() {
-        for (enterSends in listOf(false, true)) {
-            assertEquals(ComposerKeyAction.Ignore, action(chord(ime = true), enterSends))
-            assertEquals(ComposerKeyAction.Ignore, action(chord(shift = true, ime = true), enterSends))
-            assertEquals(
-                ComposerKeyAction.Ignore,
-                action(chord(sendModifier = true, ime = true), enterSends),
-            )
-        }
     }
 
     @Test

@@ -11,10 +11,12 @@ import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.vector.ImageVector
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -30,7 +32,9 @@ import id.homebase.resources.chat_message_link
 import id.homebase.resources.chat_message_location
 import id.homebase.resources.chat_message_multiple_media
 import id.homebase.resources.chat_message_video
+import id.homebase.resources.chat_message_voice_duration
 import id.homebase.resources.chat_preview_sticker
+import id.homebase.core.widget.formatAudioTime
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -115,7 +119,7 @@ fun messageContentLabel(
             // A solo transparent cut-out image carries DescriptorContent.ImageFile(isSticker=true).
             // hasMultiplePayloads is already false here, so this is the single-payload case the
             // sticker bubble (MediaMessage) recognises — surface "Sticker" instead of "Image".
-            firstPayload.contentType?.startsWith("image/") == true &&
+            firstPayload.isImage() &&
                 (firstPayload.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true ->
                 ContentLabel(
                     text = stringResource(MR.string.chat_preview_sticker),
@@ -127,21 +131,32 @@ fun messageContentLabel(
                 text = stringResource(MR.string.chat_message_gif),
                 icon = null
             )
-            firstPayload.contentType?.startsWith("image/") == true -> ContentLabel(
+            firstPayload.isImage() -> ContentLabel(
                 text = stringResource(MR.string.chat_message_image),
                 icon = Icons.Default.Image
             )
-            firstPayload.contentType?.startsWith("video/") == true ||
-                firstPayload.contentType == "application/vnd.apple.mpegurl" -> ContentLabel(
+            firstPayload.isVideo() -> ContentLabel(
                 text = stringResource(MR.string.chat_message_video),
                 icon = Icons.Default.PlayArrow
             )
-            firstPayload.contentType?.startsWith("audio/") == true -> ContentLabel(
-                text = stringResource(MR.string.chat_message_audio),
-                icon = Icons.Default.PlayArrow
-            )
+            firstPayload.isAudio() -> {
+                // Only the in-app recorder measures a length; picked audio files carry 0.
+                val voiceNoteSeconds = remember(firstPayload) { firstPayload.audioLengthSeconds() }
+                if (voiceNoteSeconds != null) {
+                    ContentLabel(
+                        text = stringResource(MR.string.chat_message_voice_duration, formatAudioTime(voiceNoteSeconds)),
+                        icon = Icons.Default.Mic
+                    )
+                } else {
+                    ContentLabel(
+                        text = stringResource(MR.string.chat_message_audio),
+                        icon = Icons.Default.PlayArrow
+                    )
+                }
+            }
             else -> ContentLabel(
-                text = stringResource(MR.string.chat_message_file),
+                text = firstPayload.descriptorContent?.takeIf { it.isNotBlank() }
+                    ?: stringResource(MR.string.chat_message_file),
                 icon = Icons.Default.Description
             )
         }
