@@ -95,8 +95,13 @@ class WebDropViewModel(
                 _uiState.update { it.copy(composeOpen = true, createdUrl = null, error = null) }
 
             WebDropUiAction.SetupClicked -> {
-                _uiState.update { it.copy(setupInitiated = true) }
-                webDropPermissionViewModel.recheckPermissions()
+                if (webDropPermissionViewModel.permissionsGranted.value) {
+                    // No false->true edge will reach the init collector; mount directly.
+                    viewModelScope.launch { optionalDriveActivation.activate(webDropLabeledDrive) }
+                } else {
+                    _uiState.update { it.copy(setupInitiated = true) }
+                    webDropPermissionViewModel.recheckPermissions()
+                }
             }
 
             WebDropUiAction.DismissOnboardingClicked ->

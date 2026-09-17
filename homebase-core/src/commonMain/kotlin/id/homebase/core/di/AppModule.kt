@@ -160,6 +160,7 @@ import id.homebase.core.config.feedLabeledDrive
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.moments.services.MomentsUserStateStore
 import id.homebase.core.sync.DriveRegistry
+import id.homebase.core.sync.RegistryDriveFileType
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
@@ -473,6 +474,7 @@ val appModule = module {
                     fullSyncWindow = 14.days,
                     initialQueries = listOf(
                         FileQueryParams(fileType = listOf(ChatProtocol.ConversationFileType)),
+                        FileQueryParams(fileType = listOf(RegistryDriveFileType)),
                     ),
                 ),
             ),
