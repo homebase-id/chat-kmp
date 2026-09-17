@@ -67,7 +67,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -91,7 +90,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -104,7 +104,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import co.touchlab.kermit.Logger
@@ -222,7 +221,7 @@ fun MessageInputBar(
      *  unregistered so no mention affordance appears there. */
     mentionTargets: List<ContactUiModel> = emptyList(),
     onPasteImage: ((ByteArray) -> Unit)? = null,
-    emojiPopover: (@Composable (anchorTopInWindow: Dp) -> Unit)? = null,
+    emojiPopoverContent: (@Composable () -> Unit)? = null,
     onCancelEdit: () -> Unit,
 ) {
     var showExpanded by remember { mutableStateOf(false) }
@@ -332,7 +331,7 @@ fun MessageInputBar(
                     sendMessage()
                 },
                 onToggleExpand = onToggleExpand,
-                emojiPopover = emojiPopover,
+                emojiPopoverContent = emojiPopoverContent,
                 onCancelEdit = onCancelEdit
             )
         } else {
@@ -366,7 +365,7 @@ fun MessageInputBar(
                 onRecordingStateChanged = onRecordingStateChanged,
                 onSendMessage = { sendMessage() },
                 onToggleExpand = onToggleExpand,
-                emojiPopover = emojiPopover,
+                emojiPopoverContent = emojiPopoverContent,
                 onCancelEdit = onCancelEdit
             )
         }
@@ -389,7 +388,7 @@ fun MessageTextFieldExpanded(
     onFocused: () -> Unit = {},
     sendMessage: () -> Unit,
     onToggleExpand: (() -> Unit)? = null,
-    emojiPopover: (@Composable (anchorTopInWindow: Dp) -> Unit)? = null,
+    emojiPopoverContent: (@Composable () -> Unit)? = null,
     onCancelEdit: () -> Unit,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
@@ -419,6 +418,7 @@ fun MessageTextFieldExpanded(
         }
         if (editExistingMode) {
             MessageEditMessageInfo(
+                focusRequester = focusRequester,
                 showingEmojiSheet = false,
                 showExtraButtons = false,
                 onEmojiClick = onEmojiClick,
@@ -529,13 +529,14 @@ fun MessageTextFieldExpanded(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Bottom,
         ) {
-            EmojiButtonAnchor(popover = emojiPopover) {
-                IconButton(onClick = onEmojiClick) {
-                    Icon(
-                        imageVector = Icons.Default.EmojiEmotions, contentDescription = stringResource(MR.string.chat_message_emoji)
-                    )
-                }
-            }
+            EmojiToggleButton(
+                showingEmojiSheet = false,
+                contentDescription = stringResource(MR.string.chat_message_emoji),
+                focusRequester = focusRequester,
+                popoverContent = emojiPopoverContent,
+                onEmojiClick = onEmojiClick,
+                onKeyboardClick = {},
+            )
             if (!editExistingMode) {
                 IconButton(
                     onClick = onAddAttachmentClick,
@@ -610,7 +611,7 @@ fun MessageTextFieldCompact(
     onRecordingStateChanged: ((isRecording: Boolean) -> Unit)? = null,
     onSendMessage: () -> Unit,
     onToggleExpand: (() -> Unit)? = null,
-    emojiPopover: (@Composable (anchorTopInWindow: Dp) -> Unit)? = null,
+    emojiPopoverContent: (@Composable () -> Unit)? = null,
     onCancelEdit: () -> Unit,
 ) {
     val pasteScope = rememberCoroutineScope()
@@ -739,11 +740,12 @@ fun MessageTextFieldCompact(
                 Column {
                     if (editExistingMode && showActionButtons) {
                         MessageEditMessageInfo(
+                            focusRequester = focusRequester,
                             showingEmojiSheet = showingEmojiSheet,
                             showExtraButtons = true,
                             onEmojiClick = onEmojiClick,
                             onKeyboardClick = onKeyboardClick,
-                            emojiPopover = emojiPopover,
+                            emojiPopoverContent = emojiPopoverContent,
                         )
                     }
                     Row(
@@ -819,23 +821,14 @@ fun MessageTextFieldCompact(
                                 placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
                                 leadingIcon = if (editExistingMode) null else {
                                     {
-                                        EmojiButtonAnchor(popover = emojiPopover) {
-                                            if (!showingEmojiSheet) {
-                                                IconButton(onClick = onEmojiClick) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.EmojiEmotions,
-                                                        contentDescription = stringResource(MR.string.chat_message_emoji_options)
-                                                    )
-                                                }
-                                            } else {
-                                                IconButton(onClick = onKeyboardClick) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Keyboard,
-                                                        contentDescription = stringResource(MR.string.chat_message_emoji_options)
-                                                    )
-                                                }
-                                            }
-                                        }
+                                        EmojiToggleButton(
+                                            showingEmojiSheet = showingEmojiSheet,
+                                            contentDescription = stringResource(MR.string.chat_message_emoji_options),
+                                            focusRequester = focusRequester,
+                                            popoverContent = emojiPopoverContent,
+                                            onEmojiClick = onEmojiClick,
+                                            onKeyboardClick = onKeyboardClick,
+                                        )
                                     }
                                 },
                                 trailingIcon = if (editExistingMode) null else {
@@ -1203,11 +1196,12 @@ fun BlueBackgroundIconButton(
 @Composable
 private fun MessageEditMessageInfo(
     modifier: Modifier = Modifier,
+    focusRequester: FocusRequester,
     showExtraButtons: Boolean = false,
     showingEmojiSheet: Boolean,
     onEmojiClick: () -> Unit,
     onKeyboardClick: () -> Unit,
-    emojiPopover: (@Composable (anchorTopInWindow: Dp) -> Unit)? = null,
+    emojiPopoverContent: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -1229,42 +1223,60 @@ private fun MessageEditMessageInfo(
             style = MaterialTheme.typography.labelSmall,
         )
         if (showExtraButtons) {
-            EmojiButtonAnchor(popover = emojiPopover) {
-                if (!showingEmojiSheet) {
-                    IconButton(onClick = onEmojiClick) {
-                        Icon(
-                            imageVector = Icons.Default.EmojiEmotions,
-                            contentDescription = stringResource(MR.string.chat_message_emoji_options)
-                        )
-                    }
-                } else {
-                    IconButton(onClick = onKeyboardClick) {
-                        Icon(
-                            imageVector = Icons.Default.Keyboard,
-                            contentDescription = stringResource(MR.string.chat_message_emoji_options)
-                        )
-                    }
-                }
-            }
+            EmojiToggleButton(
+                showingEmojiSheet = showingEmojiSheet,
+                contentDescription = stringResource(MR.string.chat_message_emoji_options),
+                focusRequester = focusRequester,
+                popoverContent = emojiPopoverContent,
+                onEmojiClick = onEmojiClick,
+                onKeyboardClick = onKeyboardClick,
+            )
         }
     }
 }
 
-// The anchor's top is tracked while the popover is closed so it opens at its clamped height on the first frame.
+private class AnchorCoordinates {
+    var value: LayoutCoordinates? = null
+}
+
 @Composable
-private fun EmojiButtonAnchor(
-    popover: (@Composable (anchorTopInWindow: Dp) -> Unit)?,
-    button: @Composable () -> Unit,
+private fun EmojiToggleButton(
+    showingEmojiSheet: Boolean,
+    contentDescription: String,
+    focusRequester: FocusRequester,
+    popoverContent: (@Composable () -> Unit)?,
+    onEmojiClick: () -> Unit,
+    onKeyboardClick: () -> Unit,
 ) {
-    if (popover == null) {
-        button()
-        return
-    }
-    val density = LocalDensity.current
-    var anchorTopPx by remember { mutableIntStateOf(0) }
-    Box(modifier = Modifier.onGloballyPositioned { anchorTopPx = it.positionInWindow().y.roundToInt() }) {
-        button()
-        popover(with(density) { anchorTopPx.toDp() })
+    if (showingEmojiSheet) {
+        IconButton(onClick = onKeyboardClick) {
+            Icon(imageVector = Icons.Default.Keyboard, contentDescription = contentDescription)
+        }
+    } else if (popoverContent == null) {
+        IconButton(onClick = onEmojiClick) {
+            Icon(imageVector = Icons.Default.EmojiEmotions, contentDescription = contentDescription)
+        }
+    } else {
+        var popoverOpen by remember { mutableStateOf(false) }
+        val anchor = remember { AnchorCoordinates() }
+        Box(modifier = Modifier.onPlaced { anchor.value = it }) {
+            IconButton(onClick = {
+                onEmojiClick()
+                popoverOpen = !popoverOpen
+            }) {
+                Icon(imageVector = Icons.Default.EmojiEmotions, contentDescription = contentDescription)
+            }
+            if (popoverOpen) {
+                ExpressionPopover(
+                    anchorTopInWindowPx = { anchor.value?.takeIf { it.isAttached }?.positionInWindow()?.y },
+                    onDismissRequest = {
+                        popoverOpen = false
+                        focusRequester.requestFocus()
+                    },
+                    content = popoverContent,
+                )
+            }
+        }
     }
 }
 

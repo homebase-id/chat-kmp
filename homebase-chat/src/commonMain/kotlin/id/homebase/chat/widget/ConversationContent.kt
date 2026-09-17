@@ -286,7 +286,7 @@ fun ConversationContent(
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showPollComposer by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
-    val popoverEmoji = isExpandedLayout() && isDesktopOrWeb()
+    val emojiPopover = isDesktopOrWeb() && isExpandedLayout()
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -964,11 +964,10 @@ fun ConversationContent(
                         val imeHeight = imeInsets.getBottom(this)
                         val pureImeHeight = imeState.pureImeBottomPx
                         val sheetHeight = keyboardHeight.coerceAtLeast(300.dp).roundToPx()
-                        val dockedEmojiSheet = showEmojiSheet && !popoverEmoji
                         val sheetOffset = when {
-                            dockedEmojiSheet && imeHeight > 0 -> pureImeHeight + sheetHeight
+                            showEmojiSheet && imeHeight > 0 -> pureImeHeight + sheetHeight
                             imeHeight > 0 -> pureImeHeight
-                            dockedEmojiSheet || showAttachmentSheet -> sheetHeight
+                            showEmojiSheet || showAttachmentSheet -> sheetHeight
                             else -> 0
                         }
                         IntOffset(0, -sheetOffset)
@@ -1667,6 +1666,26 @@ fun ConversationContent(
                             }
                         }
 
+                        val toggleEmojiSheet = {
+                            showAttachmentSheet = false
+                            if (showEmojiSheet && !isKeyboardVisible) {
+                                showEmojiSheet = false
+                                if (wasKeyboardVisible) {
+                                    focusRequester.requestFocus()
+                                    keyboardController?.show()
+                                }
+                            } else {
+                                if (isKeyboardVisible) {
+                                    wasKeyboardVisible = true
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
+                                } else {
+                                    wasKeyboardVisible = false
+                                }
+                                showEmojiSheet = true
+                            }
+                        }
+
                         UnifiedInputBubble(
                             replyToMessage = uiState.replyToMessage,
                             onDismissReply = {
@@ -1691,7 +1710,7 @@ fun ConversationContent(
                                 recordingData = recordingData,
                                 focusRequester = focusRequester,
                                 editExistingMode = uiState.isEditingMessageId != null,
-                                showingEmojiSheet = showEmojiSheet && !popoverEmoji,
+                                showingEmojiSheet = showEmojiSheet,
                                 isSendingMessage = uiState.isSendingMessage,
                                 showActionButtons = false,
                                 onSendStateChanged = { showSendButton = it },
@@ -1704,26 +1723,10 @@ fun ConversationContent(
                                 } else {
                                     emptyList()
                                 },
-                                onEmojiClick = {
-                                    showAttachmentSheet = false
-                                    if (popoverEmoji) {
-                                        showEmojiSheet = !showEmojiSheet
-                                    } else if (showEmojiSheet && !isKeyboardVisible) {
-                                        showEmojiSheet = false
-                                        if (wasKeyboardVisible) {
-                                            focusRequester.requestFocus()
-                                            keyboardController?.show()
-                                        }
-                                    } else {
-                                        if (isKeyboardVisible) {
-                                            wasKeyboardVisible = true
-                                            focusManager.clearFocus()
-                                            keyboardController?.hide()
-                                        } else {
-                                            wasKeyboardVisible = false
-                                        }
-                                        showEmojiSheet = true
-                                    }
+                                onEmojiClick = if (emojiPopover) {
+                                    { showAttachmentSheet = false }
+                                } else {
+                                    toggleEmojiSheet
                                 },
                                 onKeyboardClick = {
                                     showEmojiSheet = false
@@ -1756,21 +1759,16 @@ fun ConversationContent(
                                         )
                                     )
                                 },
-                                emojiPopover = if (popoverEmoji) {
-                                    { anchorTopInWindow ->
-                                        if (showEmojiSheet) {
-                                            ExpressionPopover(
-                                                anchorTopInWindow = anchorTopInWindow,
-                                                conversationId = conversation.conversation.id,
-                                                onUiAction = onUiAction,
-                                                onBackSpace = { textFieldState.programmaticBackspace() },
-                                                onEmojiSelected = { textFieldState.addTextAfterSelection(it) },
-                                                onDismissRequest = {
-                                                    showEmojiSheet = false
-                                                    focusRequester.requestFocus()
-                                                },
-                                            )
-                                        }
+                                emojiPopoverContent = if (emojiPopover) {
+                                    {
+                                        ExpressionPanel(
+                                            conversationId = conversation.conversation.id,
+                                            onUiAction = onUiAction,
+                                            onBackSpace = { textFieldState.programmaticBackspace() },
+                                            onEmojiSelected = { textFieldState.addTextAfterSelection(it) },
+                                            modifier = Modifier.fillMaxSize(),
+                                            searchFirst = true,
+                                        )
                                     }
                                 } else {
                                     null
@@ -1792,7 +1790,7 @@ fun ConversationContent(
                 modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
                     .offset { IntOffset(0, -imeInsets.getBottom(this)) }) {
                 ExpressionSheet(
-                    visible = showEmojiSheet && !popoverEmoji,
+                    visible = showEmojiSheet,
                     conversationId = conversation.conversation.id,
                     onUiAction = onUiAction,
                     onBackSpace = { textFieldState.programmaticBackspace() },

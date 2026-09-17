@@ -10,9 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -38,16 +36,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntRect
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.coerceIn
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrain
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.conversationlist.ConversationListUiAction
@@ -72,6 +66,7 @@ import io.github.vinceglb.filekit.readBytes
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import kotlin.math.roundToInt
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -105,32 +100,33 @@ fun ExpressionSheet(
 }
 
 private val POPOVER_WIDTH = 360.dp
-private val POPOVER_HEIGHT = 440.dp
+private val POPOVER_MAX_HEIGHT = 440.dp
 private val POPOVER_MIN_HEIGHT = 200.dp
 private val POPOVER_ANCHOR_GAP = 8.dp
 private val POPOVER_WINDOW_MARGIN = 8.dp
 
-// Compose it beside the emoji button: a Popup anchors to its parent layout.
+// Compose it beside the anchor: a Popup anchors to its parent layout.
 @Composable
-fun ExpressionPopover(
-    anchorTopInWindow: Dp,
-    conversationId: Uuid,
-    onUiAction: (ConversationListUiAction) -> Unit,
-    onBackSpace: () -> Unit,
-    onEmojiSelected: (String) -> Unit,
+internal fun ExpressionPopover(
+    anchorTopInWindowPx: () -> Float?,
     onDismissRequest: () -> Unit,
+    content: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
+    // Start-aligned so the card grows over the conversation, not the conversation list.
     val positionProvider = remember(density) {
-        AboveAnchorPositionProvider(
-            gapPx = with(density) { POPOVER_ANCHOR_GAP.roundToPx() },
-            marginPx = with(density) { POPOVER_WINDOW_MARGIN.roundToPx() },
-        )
+        with(density) {
+            AboveBubblePositionProvider(
+                gapPx = POPOVER_ANCHOR_GAP.roundToPx(),
+                alignToEnd = false,
+                windowMarginPx = POPOVER_WINDOW_MARGIN.roundToPx(),
+                flipBelow = false,
+            )
+        }
     }
     // Read outside the Popup: on Android its content sits in a separate window with its own insets.
-    val topInset = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
-    val height = (anchorTopInWindow - topInset - POPOVER_ANCHOR_GAP - POPOVER_WINDOW_MARGIN)
-        .coerceIn(POPOVER_MIN_HEIGHT, POPOVER_HEIGHT)
+    val reservedAbove = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() +
+        POPOVER_ANCHOR_GAP + POPOVER_WINDOW_MARGIN
 
     Popup(
         popupPositionProvider = positionProvider,
@@ -138,51 +134,34 @@ fun ExpressionPopover(
         properties = PopupProperties(focusable = true),
     ) {
         Surface(
-            modifier = Modifier.width(POPOVER_WIDTH).height(height),
+            modifier = Modifier
+                .width(POPOVER_WIDTH)
+                .layout { measurable, constraints ->
+                    val spaceAbove = anchorTopInWindowPx()?.minus(reservedAbove.toPx())
+                        ?: POPOVER_MAX_HEIGHT.toPx()
+                    val height = spaceAbove
+                        .coerceIn(POPOVER_MIN_HEIGHT.toPx(), POPOVER_MAX_HEIGHT.toPx())
+                        .roundToInt()
+                    val placeable = measurable.measure(constraints.constrain(Constraints.fixedHeight(height)))
+                    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                },
             shape = MaterialTheme.shapes.large,
             color = MenuDefaults.containerColor,
             tonalElevation = MenuDefaults.TonalElevation,
             shadowElevation = MenuDefaults.ShadowElevation,
-        ) {
-            ExpressionPanel(
-                conversationId = conversationId,
-                onUiAction = onUiAction,
-                onBackSpace = onBackSpace,
-                onEmojiSelected = onEmojiSelected,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-    }
-}
-
-// Start-aligned: the button is at the composer's start, so the card grows over the conversation, not the list.
-private class AboveAnchorPositionProvider(
-    private val gapPx: Int,
-    private val marginPx: Int,
-) : PopupPositionProvider {
-    override fun calculatePosition(
-        anchorBounds: IntRect,
-        windowSize: IntSize,
-        layoutDirection: LayoutDirection,
-        popupContentSize: IntSize,
-    ): IntOffset {
-        val preferredX = when (layoutDirection) {
-            LayoutDirection.Ltr -> anchorBounds.left
-            LayoutDirection.Rtl -> anchorBounds.right - popupContentSize.width
-        }
-        val maxX = (windowSize.width - popupContentSize.width - marginPx).coerceAtLeast(marginPx)
-        val y = anchorBounds.top - gapPx - popupContentSize.height
-        return IntOffset(preferredX.coerceIn(marginPx, maxX), y.coerceAtLeast(marginPx))
+            content = content,
+        )
     }
 }
 
 @Composable
-private fun ExpressionPanel(
+internal fun ExpressionPanel(
     conversationId: Uuid,
     onUiAction: (ConversationListUiAction) -> Unit,
     onBackSpace: () -> Unit,
     onEmojiSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
+    searchFirst: Boolean = false,
 ) {
     // Ephemeral panel state (rememberSaveable with a plain enum isn't reliably saveable
     // on iOS/Desktop; the tab choice needn't survive process death).
@@ -192,12 +171,11 @@ private fun ExpressionPanel(
     Column(modifier = modifier) {
         ExpressionTabRow(tabs = tabs, selected = selected, onSelect = { selected = it })
         when (selected) {
-            // weight(1f) fills the remaining panel height (the panel is floored at 300.dp
-            // and the keyboard can be shorter); a fixed height would clip the picker. The
-            // emoji grid scrolls internally.
+            // weight(1f), not a fixed height: the container sets the panel height and the emoji grid scrolls.
             ExpressionTab.Emoji -> EmojiSelection(
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp),
                 messageInputMode = true,
+                searchFirst = searchFirst,
                 onBackSpace = onBackSpace,
                 onEmojiSelected = onEmojiSelected,
             )
