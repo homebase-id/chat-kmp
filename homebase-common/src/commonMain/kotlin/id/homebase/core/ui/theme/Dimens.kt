@@ -26,6 +26,7 @@ object Dimens {
         val galleryWidth = 210.dp
         val audioMinWidth = 240.dp
         val audioMaxWidth = 320.dp
+        val documentMaxWidth = audioMaxWidth
     }
 
     object Sticker {

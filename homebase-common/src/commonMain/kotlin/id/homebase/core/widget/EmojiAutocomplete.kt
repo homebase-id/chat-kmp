@@ -25,7 +25,7 @@ private const val EmojiTriggerId = "emoji-shortcode"
  * tap away and the app ships [EmojiSelection] on every platform.
  *
  * Placement and key routing follow [ComposerAutocomplete]: a `Box` around the editor alone, and the
- * editor's `onPreviewKeyEvent` running through the controller first.
+ * controller passed to the editor's [composerKeyHandler].
  */
 @Composable
 fun EmojiAutocomplete(

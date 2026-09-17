@@ -48,6 +48,7 @@ import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
 import id.homebase.core.logging.crashlyticsRecordException
+import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.settings.applyStoredLocale
 import id.homebase.core.ui.navigation.Route
@@ -76,6 +77,7 @@ import org.koin.core.context.GlobalContext
 import org.koin.core.context.GlobalContext.startKoin
 import java.awt.Desktop
 import java.awt.Frame
+import java.awt.desktop.AppReopenedListener
 import java.awt.event.WindowStateListener
 import java.io.File
 
@@ -264,9 +266,14 @@ fun main() {
             prefsDesktop?.setPreferencesHandler {
                 currentNavigate.value?.invoke(Route.Settings)
             }
+            val reopenDesktop =
+                awtDesktop?.takeIf { it.isSupported(Desktop.Action.APP_EVENT_REOPENED) }
+            val reopenListener = AppReopenedListener { isWindowVisible = true }
+            reopenDesktop?.addAppEventListener(reopenListener)
             onDispose {
                 quitHandlerDesktop?.setQuitHandler(null)
                 prefsDesktop?.setPreferencesHandler(null)
+                reopenDesktop?.removeAppEventListener(reopenListener)
             }
         }
 
@@ -319,6 +326,13 @@ fun main() {
         ) {
             MenuBar {
                 Menu(stringResource(MR.string.desktop_menu_file)) {
+                    if (uiState.updateAvailable) {
+                        Item(
+                            text = updateAvailable,
+                            onClick = { viewModel.onUiAction(DesktopUiAction.TriggerUpdate) },
+                        )
+                        Separator()
+                    }
                     Item(
                         text = stringResource(MR.string.chat_new_conversation),
                         enabled = canNavigate,
@@ -331,6 +345,15 @@ fun main() {
                         shortcut = menuShortcut(Key.W),
                         onClick = hideWindow,
                     )
+                }
+                Menu(themeMenuLabel) {
+                    ThemeState.entries.forEach { theme ->
+                        RadioButtonItem(
+                            text = theme.getStringResourceForTheme(),
+                            selected = uiState.theme == theme,
+                            onClick = { viewModel.onUiAction(DesktopUiAction.SetTheme(theme)) },
+                        )
+                    }
                 }
             }
 
