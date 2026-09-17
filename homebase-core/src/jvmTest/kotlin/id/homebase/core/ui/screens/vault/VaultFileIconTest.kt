@@ -13,10 +13,17 @@ import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.VideoFile
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
+import id.homebase.core.ui.screens.vault.components.pageTypeIcon
+import id.homebase.core.ui.screens.vault.model.VaultEntry
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
+@OptIn(ExperimentalUuidApi::class)
 class VaultFileIconTest {
 
     @Test
@@ -98,7 +105,48 @@ class VaultFileIconTest {
     fun plainText_mimeTypes() {
         assertEquals(Icons.Outlined.Description, fileTypeIcon("text/plain"))
         assertEquals(Icons.AutoMirrored.Outlined.NoteAdd, fileTypeIcon("text/markdown"))
-        assertEquals(Icons.Outlined.Description, fileTypeIcon("text/html"))
+    }
+
+    @Test
+    fun markup_isCode() {
+        assertEquals(Icons.Outlined.Code, fileTypeIcon("text/html"))
+        assertEquals(Icons.Outlined.Code, fileTypeIcon("text/css"))
+    }
+
+    @Test
+    fun openDocumentSheetsAndSlides() {
+        assertEquals(Icons.Outlined.TableChart, fileTypeIcon("application/vnd.oasis.opendocument.spreadsheet"))
+        assertEquals(Icons.Outlined.Slideshow, fileTypeIcon("application/vnd.oasis.opendocument.presentation"))
+    }
+
+    @Test
+    fun unresolvedMime_fallsBackToExtension() {
+        assertEquals(Icons.Outlined.FolderZip, fileTypeIcon("application/octet-stream", "archive.zip"))
+        assertEquals(Icons.Outlined.PictureAsPdf, fileTypeIcon(null, "report.pdf"))
+        assertEquals(Icons.Outlined.Description, fileTypeIcon("application/octet-stream", "notes.md"))
+    }
+
+    @Test
+    fun pageTypeIcon_onlyFirstPageUsesEntryName() {
+        val entry = VaultEntry(
+            fileId = Uuid.random(),
+            uniqueId = Uuid.random(),
+            driveId = Uuid.random(),
+            fileName = "archive.zip",
+            contentType = "application/octet-stream",
+            sizeBytes = 0L,
+            createdAt = 0L,
+            previewThumbnail = null,
+            keyHeader = KeyHeader.empty(),
+            isEncrypted = true,
+            versionTag = null,
+            payloadDescriptors = listOf(
+                PayloadDescriptor(key = "vlt_pg_00", contentType = "application/octet-stream"),
+                PayloadDescriptor(key = "vlt_pg_01", contentType = "application/octet-stream"),
+            ),
+        )
+        assertEquals(Icons.Outlined.FolderZip, entry.pageTypeIcon(entry.payloadDescriptors[0]))
+        assertEquals(Icons.AutoMirrored.Outlined.InsertDriveFile, entry.pageTypeIcon(entry.payloadDescriptors[1]))
     }
 
     @Test

@@ -44,9 +44,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
+import id.homebase.core.util.FileKind
+import id.homebase.core.util.fileKindOf
 import id.homebase.core.util.formatFileSize
 import id.homebase.core.util.formatShortDate
 import id.homebase.resources.MR
@@ -66,46 +69,27 @@ import org.jetbrains.compose.resources.stringResource
 import id.homebase.resources.vault_gallery_send_webdrop
 import androidx.compose.material.icons.outlined.Redeem
 
-/**
- * Returns the appropriate icon for a given MIME content type.
- */
-fun fileTypeIcon(contentType: String): ImageVector = when {
-    contentType.startsWith("image/") -> Icons.Outlined.Image
-    contentType.startsWith("video/") -> Icons.Outlined.VideoFile
-    contentType.startsWith("audio/") -> Icons.Outlined.AudioFile
-    contentType == "application/pdf" -> Icons.Outlined.PictureAsPdf
-
-    contentType == "application/json" ||
-        contentType == "application/xml" ||
-        contentType == "application/javascript" ||
-        contentType == "application/x-sh" ||
-        contentType == "application/x-yaml" ||
-        contentType.startsWith("text/x-") -> Icons.Outlined.Code
-
-    contentType == "text/csv" ||
-        contentType == "application/vnd.ms-excel" ||
-        contentType.contains("spreadsheetml") -> Icons.Outlined.TableChart
-
-    contentType == "application/vnd.ms-powerpoint" ||
-        contentType.contains("presentationml") -> Icons.Outlined.Slideshow
-
-    contentType == "application/msword" ||
-        contentType.contains("wordprocessingml") ||
-        contentType == "application/vnd.oasis.opendocument.text" ||
-        contentType == "application/rtf" -> Icons.AutoMirrored.Outlined.Article
-
-    contentType == "application/zip" ||
-        contentType == "application/x-tar" ||
-        contentType == "application/gzip" ||
-        contentType == "application/x-rar-compressed" ||
-        contentType == "application/x-7z-compressed" -> Icons.Outlined.FolderZip
-
-    contentType == CONTENT_TYPE_MARKDOWN -> Icons.AutoMirrored.Outlined.NoteAdd
-
-    contentType.startsWith("text/") -> Icons.Outlined.Description
-
-    else -> Icons.AutoMirrored.Outlined.InsertDriveFile
+// Vault notes are text/markdown, a distinction fileKindOf doesn't draw.
+fun fileTypeIcon(contentType: String?, fileName: String? = null): ImageVector {
+    if (contentType == CONTENT_TYPE_MARKDOWN) return Icons.AutoMirrored.Outlined.NoteAdd
+    return when (fileKindOf(contentType, fileName)) {
+        FileKind.Image -> Icons.Outlined.Image
+        FileKind.Video -> Icons.Outlined.VideoFile
+        FileKind.Audio -> Icons.Outlined.AudioFile
+        FileKind.Pdf -> Icons.Outlined.PictureAsPdf
+        FileKind.Code -> Icons.Outlined.Code
+        FileKind.Spreadsheet -> Icons.Outlined.TableChart
+        FileKind.Presentation -> Icons.Outlined.Slideshow
+        FileKind.Word -> Icons.AutoMirrored.Outlined.Article
+        FileKind.Archive -> Icons.Outlined.FolderZip
+        FileKind.Text -> Icons.Outlined.Description
+        FileKind.Apk, FileKind.Generic -> Icons.AutoMirrored.Outlined.InsertDriveFile
+    }
 }
+
+// The entry is named after its first payload, so later pages must not borrow that extension.
+fun VaultEntry.pageTypeIcon(page: PayloadDescriptor): ImageVector =
+    fileTypeIcon(page.contentType, fileName.takeIf { page.key == payloadDescriptors.firstOrNull()?.key })
 
 /**
  * Formats a file's size and creation date into a short display string.

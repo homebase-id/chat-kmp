@@ -325,7 +325,7 @@ private fun VaultCardThumbnail(
 
     // 5. Fallback icon
     Icon(
-        imageVector = if (file.isImage) Icons.Outlined.Image else fileTypeIcon(file.contentType),
+        imageVector = if (file.isImage) Icons.Outlined.Image else fileTypeIcon(file.contentType, file.fileName),
         contentDescription = null,
         tint = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.size(32.dp),

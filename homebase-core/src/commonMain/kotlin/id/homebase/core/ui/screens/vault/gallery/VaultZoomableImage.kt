@@ -16,7 +16,7 @@ import id.homebase.core.media.MediaPendingOverlay
 import id.homebase.core.media.MediaUnavailablePlaceholder
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
-import id.homebase.core.ui.screens.vault.components.fileTypeIcon
+import id.homebase.core.ui.screens.vault.components.pageTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.imageDataFor
 import id.homebase.resources.MR
@@ -104,7 +104,7 @@ fun VaultZoomableImage(
         } else {
             MediaUnavailablePlaceholder(
                 message = stringResource(MR.string.vault_error_image_unavailable),
-                icon = fileTypeIcon(descriptor.contentType ?: ""),
+                icon = file.pageTypeIcon(descriptor),
                 onTap = onToggleUI,
             )
         }
