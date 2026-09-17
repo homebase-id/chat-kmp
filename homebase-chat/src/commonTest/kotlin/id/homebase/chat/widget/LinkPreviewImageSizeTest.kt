@@ -1,0 +1,76 @@
+package id.homebase.chat.widget
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.common.SecureByteArray
+import id.homebase.chat.services.builder.LinkPreviewDescriptor
+import kotlin.test.Test
+import kotlin.uuid.Uuid
+
+/**
+ * The image must always span the card (anything narrower shows the card surface beside it) and
+ * take its height from the embedded thumb's measured aspect ratio, capped at 180dp.
+ */
+@OptIn(ExperimentalTestApi::class)
+class LinkPreviewImageSizeTest {
+
+    private val onePxPngBase64 =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+    private val title = "Image Title"
+
+    private fun assertImageSize(cardWidth: Dp, thumbWidth: Int, thumbHeight: Int, expectedHeight: Dp) =
+        runComposeUiTest {
+            setContent {
+                MaterialTheme {
+                    Box(Modifier.width(cardWidth)) {
+                        LinkPreviewCard(
+                            descriptor = LinkPreviewDescriptor(
+                                url = "https://example.com",
+                                hasImage = true,
+                                // Declared og:image size disagrees with the real file; it must be ignored.
+                                imageWidth = 600,
+                                imageHeight = 600,
+                                title = title,
+                                description = "",
+                            ),
+                            fileId = Uuid.random(),
+                            driveId = Uuid.random(),
+                            payloadKey = "chat_links",
+                            keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(32))),
+                            previewThumbnail = EmbeddedThumb(
+                                pixelWidth = thumbWidth,
+                                pixelHeight = thumbHeight,
+                                contentType = "image/png",
+                                content = onePxPngBase64,
+                            ),
+                            isUploading = true,
+                        )
+                    }
+                }
+            }
+            onNodeWithContentDescription(title, useUnmergedTree = true)
+                .assertWidthIsEqualTo(cardWidth)
+                .assertHeightIsEqualTo(expectedHeight)
+        }
+
+    @Test
+    fun wideImageOnNarrowCard_followsAspectRatio() = assertImageSize(300.dp, 20, 10, 150.dp)
+
+    @Test
+    fun wideImageOnWideCard_spansWidthAtCappedHeight() = assertImageSize(500.dp, 20, 10, 180.dp)
+
+    @Test
+    fun squareImage_spansWidthAtCappedHeight() = assertImageSize(300.dp, 20, 20, 180.dp)
+}

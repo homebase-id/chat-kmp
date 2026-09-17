@@ -201,6 +201,13 @@ fun MediaMessage(
                                 min = Dimens.MediaBubble.minHeight,
                                 max = Dimens.MediaBubble.maxHeight,
                             )
+                    isLinkPreview && !fillWidth ->
+                        widthModifier
+                            .widthIn(max = Dimens.MediaBubble.linkPreviewMaxWidth)
+                            .heightIn(
+                                min = Dimens.MediaBubble.minHeight,
+                                max = Dimens.MediaBubble.maxHeight,
+                            )
                     narrowCaptioned ->
                         widthModifier.size(
                             width = Dimens.MediaBubble.minWidthWithContent,
