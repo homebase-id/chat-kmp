@@ -370,10 +370,7 @@ private fun MomentsFeedList(
     val videoMomentIds = remember(moments) {
         moments.asSequence()
             .filter { m ->
-                m.payloads.any { p ->
-                    val ct = p.contentType ?: ""
-                    ct.startsWith("video/") || ct == "application/vnd.apple.mpegurl"
-                }
+                m.payloads.any { it.isVideo() }
             }
             .map { it.id.toString() }
             .toSet()
@@ -601,9 +598,7 @@ private fun MomentCommentsMediaBand(
                     .fillMaxHeight(MOMENT_FEED_MEDIA_FRACTION_WITH_COMMENTS)
                     .align(Alignment.TopCenter),
             ) {
-                val isVideo = targetPayload.contentType?.startsWith("video/") == true ||
-                    targetPayload.contentType == "application/vnd.apple.mpegurl"
-                if (isVideo) {
+                if (targetPayload.isVideo()) {
                     var playing by remember(moment.id, targetPayload.key) {
                         mutableStateOf(true)
                     }
@@ -893,10 +888,7 @@ private fun MomentPostCard(
             // chips below stay readable through the scrim because they sit
             // outside this Box on the outer card.
             Box {
-                val singleVideoPayload = moment.payloads.singleOrNull()?.takeIf { p ->
-                    p.contentType?.startsWith("video/") == true ||
-                        p.contentType == "application/vnd.apple.mpegurl"
-                }
+                val singleVideoPayload = moment.payloads.singleOrNull()?.takeIf { it.isVideo() }
                 if (singleVideoPayload != null) {
                     // Tap-to-play tile. Inner detectTapGestures consumes single
                     // and double taps on the video area — heart-by-double-tap

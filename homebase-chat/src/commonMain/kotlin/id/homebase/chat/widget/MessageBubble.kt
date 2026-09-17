@@ -543,7 +543,7 @@ fun ReceivedMessageBubble(
     val emojiOnly = message.content.isEmojiContentOnly() && !hasMedia
     val hasVisibleBackground = !mediaOnly && !emojiOnly
     val isVoiceNote = mediaOnly &&
-        filteredPayloads.singleOrNull()?.contentType?.startsWith("audio/") == true
+        filteredPayloads.singleOrNull()?.isAudio() == true
     val clipboardManager = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val haptics = rememberHaptics()
