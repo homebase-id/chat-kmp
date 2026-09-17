@@ -69,6 +69,21 @@ class AboveBubblePositionProviderTest {
     }
 
     @Test
+    fun `without flipping, a card with no room above is pinned inside the window margin`() {
+        val margin = 8
+        val card = IntSize(360, 440)
+        val anchor = IntRect(0, 300, 48, 348)
+        val offset = AboveBubblePositionProvider(GAP, alignToEnd = false, windowMarginPx = margin, flipBelow = false)
+            .calculatePosition(anchor, WINDOW, LayoutDirection.Ltr, card)
+        assertEquals(margin, offset.x)
+        assertEquals(margin, offset.y)
+        val rtl = AboveBubblePositionProvider(GAP, alignToEnd = false, windowMarginPx = margin, flipBelow = false)
+            .calculatePosition(IntRect(1060, 1800, 1080, 1848), WINDOW, LayoutDirection.Rtl, card)
+        assertEquals(WINDOW.width - card.width - margin, rtl.x)
+        assertEquals(1800 - card.height - GAP, rtl.y)
+    }
+
+    @Test
     fun `flipping below a bubble at the bottom stays inside the window`() {
         val anchor = IntRect(300, 0, 1000, 1900)
         val y = position(anchor, alignToEnd = true).y
