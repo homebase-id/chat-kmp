@@ -5,7 +5,9 @@ package id.homebase.core.ui.screens.contactbook.add
 import androidx.compose.runtime.Immutable
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.ContactDraft
+import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
+import id.homebase.core.ui.screens.contactbook.detail.ReviewSheetState
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -46,6 +48,9 @@ data class AddContactUiState(
      * request — the selection rides the accept call atomically.
      */
     val assignableCircles: List<ContactCircleUi> = emptyList(),
+    val reviewCircleGroups: ReviewCircleGroups = ReviewCircleGroups(),
+    /** With the review on, an incoming request is reviewed in place; accepting applies it. */
+    val requestReview: ReviewSheetState? = null,
     val draft: ContactDraft = ContactDraft(),
     val photo: PlatformFile? = null,
     val isSaving: Boolean = false,
@@ -71,6 +76,8 @@ sealed interface AddContactAction {
      * call. Empty = accept without adding to any circle.
      */
     data class AcceptRequestClicked(val circleIds: List<String>) : AddContactAction
+    /** Accept the incoming request with the circles picked in its review. */
+    data class ReviewSubmitted(val circleIds: Set<String>) : AddContactAction
     /** Reject the incoming request from the resolved identity. */
     data object RejectRequestClicked : AddContactAction
     /** Cancel the outgoing request to the resolved identity. */

@@ -1954,6 +1954,8 @@
     <string name="contact_review_prompt_title">Not reviewed yet</string>
     <string name="contact_review_prompt_body">You are connected, but you have not decided what they can see. Reviewing records your decision and lets you add them to circles.</string>
     <string name="contact_review_failed">Couldn't save the review. Please try again.</string>
+    <string name="contact_review_requested_on">Requested %1$s</string>
+    <string name="contact_review_accept_failed">Couldn't accept the request. Please try again.</string>
 
     <string name="contact_unreview_title">Mark as new?</string>
     <string name="contact_unreview_body">%1$s keeps every circle and every bit of access they already have. This only clears your record of having reviewed them.</string>

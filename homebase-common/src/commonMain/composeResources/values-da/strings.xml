@@ -1542,6 +1542,8 @@
     <string name="contact_review_prompt_title">Ikke gennemgået endnu</string>
     <string name="contact_review_prompt_body">I er forbundet, men du har ikke besluttet, hvad de kan se. En gennemgang registrerer din beslutning og lader dig føje dem til kredse.</string>
     <string name="contact_review_failed">Kunne ikke gemme gennemgangen. Prøv igen.</string>
+    <string name="contact_review_requested_on">Anmodet %1$s</string>
+    <string name="contact_review_accept_failed">Kunne ikke acceptere anmodningen. Prøv igen.</string>
     <string name="contact_unreview_title">Markér som ny?</string>
     <string name="contact_unreview_body">%1$s beholder alle kredse og al den adgang, de allerede har. Dette rydder kun din registrering af, at du har gennemgået dem.</string>
     <string name="contact_unreview_confirm">Markér som ny</string>

@@ -69,7 +69,10 @@ import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.components.CirclePickerChips
+import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
+import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionContent
+import id.homebase.core.ui.screens.contactbook.detail.ReviewSheetState
 import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.core.widget.HomebaseIdField
 import id.homebase.resources.MR
@@ -101,6 +104,7 @@ import id.homebase.resources.contactbook_detail_request_incoming
 import id.homebase.resources.contactbook_detail_request_outgoing
 import id.homebase.resources.contactbook_detail_reject
 import id.homebase.resources.auto_connect_failed_generic
+import id.homebase.resources.contact_review_accept_failed
 import id.homebase.resources.contactbook_edit_change_photo
 import id.homebase.resources.contactbook_edit_city
 import id.homebase.resources.contactbook_edit_country
@@ -332,6 +336,9 @@ private fun ByIdentitySection(
                 relation = uiState.relation,
                 odinId = resolution.identity.odinId,
                 assignableCircles = uiState.assignableCircles,
+                displayName = resolution.identity.displayNameOrDomain(),
+                requestReview = uiState.requestReview,
+                reviewCircleGroups = uiState.reviewCircleGroups,
                 actionInProgress = uiState.actionInProgress,
                 identityOnly = identityOnly,
                 onSendConnectionRequest = onSendConnectionRequest,
@@ -395,6 +402,9 @@ private fun RelationActions(
     relation: IdentityRelation,
     odinId: OdinId,
     assignableCircles: List<ContactCircleUi>,
+    displayName: String,
+    requestReview: ReviewSheetState?,
+    reviewCircleGroups: ReviewCircleGroups,
     actionInProgress: Boolean,
     identityOnly: Boolean,
     onSendConnectionRequest: (OdinId) -> Unit,
@@ -409,7 +419,35 @@ private fun RelationActions(
         IdentityRelation.NONE ->
             ConnectRequestOffer(onClick = { onSendConnectionRequest(odinId) })
 
-        IdentityRelation.INCOMING_PENDING -> {
+        // With the review on, the request is reviewed in place; submitting it accepts.
+        IdentityRelation.INCOMING_PENDING -> if (requestReview != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            ReviewConnectionContent(
+                displayName = displayName,
+                odinId = odinId.domainName,
+                avatar = null,
+                introducedBy = requestReview.introducedBy,
+                connectedAtMs = null,
+                groups = reviewCircleGroups,
+                alreadyHeldCircleIds = requestReview.alreadyHeldCircleIds,
+                isSubmitting = requestReview.isSubmitting,
+                errorText = if (requestReview.failed) {
+                    stringResource(MR.string.contact_review_accept_failed)
+                } else null,
+                onSubmit = { ids -> onAction(AddContactAction.ReviewSubmitted(ids)) },
+                incomingRequest = requestReview.incomingRequest,
+                showIdentity = false,
+                secondaryAction = {
+                    OutlinedButton(
+                        onClick = { onAction(AddContactAction.RejectRequestClicked) },
+                        enabled = !requestReview.isSubmitting && !actionInProgress,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(MR.string.contactbook_detail_reject))
+                    }
+                },
+            )
+        } else {
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = stringResource(MR.string.contactbook_detail_request_incoming),
