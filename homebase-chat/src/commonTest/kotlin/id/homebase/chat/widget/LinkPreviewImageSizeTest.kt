@@ -18,10 +18,6 @@ import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import kotlin.test.Test
 import kotlin.uuid.Uuid
 
-/**
- * The image must always span the card (anything narrower shows the card surface beside it) and
- * take its height from the embedded thumb's measured aspect ratio, capped at 180dp.
- */
 @OptIn(ExperimentalTestApi::class)
 class LinkPreviewImageSizeTest {
 
@@ -72,5 +68,5 @@ class LinkPreviewImageSizeTest {
     fun wideImageOnWideCard_spansWidthAtCappedHeight() = assertImageSize(500.dp, 20, 10, 180.dp)
 
     @Test
-    fun squareImage_spansWidthAtCappedHeight() = assertImageSize(300.dp, 20, 20, 180.dp)
+    fun veryWideImage_clampsToFourToOne() = assertImageSize(300.dp, 100, 10, 75.dp)
 }

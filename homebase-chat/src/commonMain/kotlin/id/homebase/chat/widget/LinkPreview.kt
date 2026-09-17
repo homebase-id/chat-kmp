@@ -56,6 +56,9 @@ import kotlin.uuid.Uuid
 private val ImageMaxHeight = 180.dp
 private const val OpenGraphAspectRatio = 1.91f
 private const val MaxImageAspectRatio = 4f
+private val ImageCornerShape = RoundedCornerShape(
+    topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius
+)
 
 // Not descriptor.imageWidth/Height: those echo the page's og:image tags (linktr.ee: 600x600 for a 1200x630 file).
 private fun EmbeddedThumb?.aspectRatio(): Float =
@@ -212,12 +215,7 @@ fun LinkPreviewCard(
                             contentDescription = stringResource(MR.string.cd_link_preview_image),
                             modifier = Modifier.linkPreviewImageSize(
                                 imageBitmap.width.toFloat() / imageBitmap.height
-                            ).clip(
-                                RoundedCornerShape(
-                                    topStart = Dimens.Message.cornerRadius,
-                                    topEnd = Dimens.Message.cornerRadius
-                                )
-                            ),
+                            ).clip(ImageCornerShape),
                             contentScale = ContentScale.Crop
                         )
                     }
@@ -284,10 +282,7 @@ fun LinkPreviewCard(
     val uriHandler = LocalUriHandler.current
     val domain = extractDomain(descriptor.url)
 
-    val imageCornerShape = RoundedCornerShape(
-        topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius
-    )
-    val imageAspectRatio = previewThumbnail.aspectRatio()
+    val imageModifier = Modifier.linkPreviewImageSize(previewThumbnail.aspectRatio()).clip(ImageCornerShape)
 
     // While the message is pending/uploading the drive payload does not exist yet, so a
     // HomebaseImage fetch would 404 into a broken-image triangle. Feed Coil a local source
@@ -316,7 +311,7 @@ fun LinkPreviewCard(
                 AsyncImage(
                     model = pendingModel,
                     contentDescription = descriptor.title,
-                    modifier = Modifier.linkPreviewImageSize(imageAspectRatio).clip(imageCornerShape),
+                    modifier = imageModifier,
                     contentScale = ContentScale.Crop,
                 )
             } else {
@@ -335,7 +330,7 @@ fun LinkPreviewCard(
 
                 HomebaseImage(
                     imageData = imageData,
-                    modifier = Modifier.linkPreviewImageSize(imageAspectRatio).clip(imageCornerShape),
+                    modifier = imageModifier,
                     contentScale = ContentScale.Crop,
                     contentDescription = descriptor.title,
                 )
