@@ -211,10 +211,18 @@ fun MediaMessage(
                                 .coerceIn(Dimens.MediaBubble.minHeight, Dimens.MediaBubble.maxHeight),
                         )
                     else ->
-                        widthModifier.heightIn(
-                            min = Dimens.MediaBubble.minHeight,
-                            max = Dimens.MediaBubble.maxHeight,
-                        )
+                        widthModifier
+                            .then(
+                                if (isLinkPreview && !fillWidth) {
+                                    Modifier.widthIn(max = Dimens.MediaBubble.linkPreviewMaxWidth)
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .heightIn(
+                                min = Dimens.MediaBubble.minHeight,
+                                max = Dimens.MediaBubble.maxHeight,
+                            )
                 }
                 MediaItem(
                     payload = payloads[0],
