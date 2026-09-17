@@ -281,13 +281,12 @@ fun ConversationContent(
     val enterSendsMessage = rememberEnterSendsMessage()
     val focusManager = LocalFocusManager.current
     var showAttachmentSheet by remember { mutableStateOf(false) }
-    val popoverAttachments = isExpandedLayout() && isDesktopOrWeb()
     var showEventComposer by remember { mutableStateOf(false) }
     var showGroodleComposer by remember { mutableStateOf(false) }
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showPollComposer by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
-    val emojiPopover = isDesktopOrWeb() && isExpandedLayout()
+    val composerPopovers = isDesktopOrWeb() && isExpandedLayout()
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -644,40 +643,21 @@ fun ConversationContent(
         }
     }
     val attachmentActions = attachmentActions(
-        onGalleryClick = {
-            showAttachmentSheet = false
-            galleryLauncher.launch()
-        },
-        onFileClick = {
-            showAttachmentSheet = false
-            fileLauncher.launch()
-        },
+        onGalleryClick = { galleryLauncher.launch() },
+        onFileClick = { fileLauncher.launch() },
         onContactClick = {
-            showAttachmentSheet = false
             onUiAction(ConversationListUiAction.OpenShareContact(conversation.conversation.id))
         },
         onLocationClick = {
             Logger.d(tag = "LocationShare") { "share location clicked" }
-            showAttachmentSheet = false
             onUiAction(ConversationListUiAction.OpenShareLocation(conversation.conversation.id))
         },
-        onEventClick = {
-            showAttachmentSheet = false
-            showEventComposer = true
-        },
-        onGroodleClick = {
-            showAttachmentSheet = false
-            showGroodleComposer = true
-        },
-        onDicesClick = {
-            showAttachmentSheet = false
-            showDiceRollComposer = true
-        },
-        onPollClick = {
-            showAttachmentSheet = false
-            showPollComposer = true
-        },
+        onEventClick = { showEventComposer = true },
+        onGroodleClick = { showGroodleComposer = true },
+        onDicesClick = { showDiceRollComposer = true },
+        onPollClick = { showPollComposer = true },
     )
+    val popoverAttachmentActions = if (composerPopovers) attachmentActions else null
 
     ConversationContentSheets(
         uiState = uiState,
@@ -1003,7 +983,7 @@ fun ConversationContent(
                         val sheetOffset = when {
                             showEmojiSheet && imeHeight > 0 -> pureImeHeight + sheetHeight
                             imeHeight > 0 -> pureImeHeight
-                            showEmojiSheet || (showAttachmentSheet && !popoverAttachments) -> sheetHeight
+                            showEmojiSheet || showAttachmentSheet -> sheetHeight
                             else -> 0
                         }
                         IntOffset(0, -sheetOffset)
@@ -1684,9 +1664,7 @@ fun ConversationContent(
 
                         val toggleAttachmentSheet = {
                             showEmojiSheet = false
-                            if (popoverAttachments) {
-                                showAttachmentSheet = !showAttachmentSheet
-                            } else if (showAttachmentSheet && !isKeyboardVisible) {
+                            if (showAttachmentSheet && !isKeyboardVisible) {
                                 showAttachmentSheet = false
                                 if (wasKeyboardVisible) {
                                     focusRequester.requestFocus()
@@ -1742,18 +1720,8 @@ fun ConversationContent(
                             },
                             onAddAttachmentClick = { toggleAttachmentSheet() },
                             modifier = Modifier.focusProperties { canFocus = inputFocusable },
-                            attachmentPopover = {
-                                if (popoverAttachments) {
-                                    AttachmentPopover(
-                                        expanded = showAttachmentSheet,
-                                        actions = attachmentActions,
-                                        onDismissRequest = {
-                                            showAttachmentSheet = false
-                                            focusRequester.requestFocus()
-                                        },
-                                    )
-                                }
-                            },
+                            attachmentActions = popoverAttachmentActions,
+                            onAttachmentPopoverDismissed = { focusRequester.requestFocus() },
                         ) {
                             MessageInputBar(
                                 textFieldState = textFieldState,
@@ -1773,7 +1741,7 @@ fun ConversationContent(
                                 } else {
                                     emptyList()
                                 },
-                                onEmojiClick = if (emojiPopover) {
+                                onEmojiClick = if (composerPopovers) {
                                     { showAttachmentSheet = false }
                                 } else {
                                     toggleEmojiSheet
@@ -1809,7 +1777,8 @@ fun ConversationContent(
                                         )
                                     )
                                 },
-                                emojiPopoverContent = if (emojiPopover) {
+                                attachmentActions = popoverAttachmentActions,
+                                emojiPopoverContent = if (composerPopovers) {
                                     {
                                         ExpressionPanel(
                                             conversationId = conversation.conversation.id,
@@ -1854,7 +1823,7 @@ fun ConversationContent(
                 AttachmentOptionsDisplay(
                     modifier = Modifier.fillMaxWidth()
                         .height(keyboardHeight.coerceAtLeast(300.dp)),
-                    visible = showAttachmentSheet && !popoverAttachments && !isKeyboardVisible,
+                    visible = showAttachmentSheet && !isKeyboardVisible,
                 ) {
                     // The gallery thumb strip reads the OS photo library via GalleryCache,
                     // which only exists on Android/iOS. On desktop/web the row would be
@@ -1874,7 +1843,7 @@ fun ConversationContent(
                             },
                         )
                     }
-                    AttachmentOptions(attachmentActions)
+                    AttachmentOptions(attachmentActions, onPicked = { showAttachmentSheet = false })
                 }
             } // AttachmentOptionsDisplay wrapper Box
 

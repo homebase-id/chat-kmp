@@ -83,9 +83,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onPlaced
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -159,6 +156,7 @@ import id.homebase.resources.chat_send_message_button
 import id.homebase.resources.collapse
 import id.homebase.resources.expand
 import id.homebase.resources.slide_to_cancel
+import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -213,6 +211,7 @@ fun MessageInputBar(
     mentionTargets: List<ContactUiModel> = emptyList(),
     onPasteImage: ((ByteArray) -> Unit)? = null,
     emojiPopoverContent: (@Composable () -> Unit)? = null,
+    attachmentActions: ImmutableList<AttachmentAction>? = null,
     onCancelEdit: () -> Unit,
 ) {
     var showExpanded by remember { mutableStateOf(false) }
@@ -323,6 +322,7 @@ fun MessageInputBar(
                 },
                 onToggleExpand = onToggleExpand,
                 emojiPopoverContent = emojiPopoverContent,
+                attachmentActions = attachmentActions,
                 onCancelEdit = onCancelEdit
             )
         } else {
@@ -357,6 +357,7 @@ fun MessageInputBar(
                 onSendMessage = { sendMessage() },
                 onToggleExpand = onToggleExpand,
                 emojiPopoverContent = emojiPopoverContent,
+                attachmentActions = attachmentActions,
                 onCancelEdit = onCancelEdit
             )
         }
@@ -380,6 +381,7 @@ fun MessageTextFieldExpanded(
     sendMessage: () -> Unit,
     onToggleExpand: (() -> Unit)? = null,
     emojiPopoverContent: (@Composable () -> Unit)? = null,
+    attachmentActions: ImmutableList<AttachmentAction>? = null,
     onCancelEdit: () -> Unit,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
@@ -502,8 +504,11 @@ fun MessageTextFieldExpanded(
                 onKeyboardClick = {},
             )
             if (!editExistingMode) {
-                IconButton(
+                AttachmentPopoverButton(
+                    actions = attachmentActions,
+                    alignToEnd = false,
                     onClick = onAddAttachmentClick,
+                    onPopoverDismissed = { focusRequester.requestFocus() },
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add, contentDescription = stringResource(
@@ -576,6 +581,7 @@ fun MessageTextFieldCompact(
     onSendMessage: () -> Unit,
     onToggleExpand: (() -> Unit)? = null,
     emojiPopoverContent: (@Composable () -> Unit)? = null,
+    attachmentActions: ImmutableList<AttachmentAction>? = null,
     onCancelEdit: () -> Unit,
 ) {
     val pasteScope = rememberCoroutineScope()
@@ -770,8 +776,11 @@ fun MessageTextFieldCompact(
                                 trailingIcon = if (editExistingMode) null else {
                                     {
                                         if (state.annotatedString.isNotBlank()) {
-                                            IconButton(
+                                            AttachmentPopoverButton(
+                                                actions = attachmentActions,
+                                                alignToEnd = true,
                                                 onClick = onAddAttachmentClick,
+                                                onPopoverDismissed = { focusRequester.requestFocus() },
                                                 modifier = Modifier.testTag("inline_attach_button"),
                                             ) {
                                                 Icon(
@@ -1171,9 +1180,7 @@ private fun MessageEditMessageInfo(
     }
 }
 
-private class AnchorCoordinates {
-    var value: LayoutCoordinates? = null
-}
+private val EMOJI_POPOVER_WIDTH = 360.dp
 
 @Composable
 private fun EmojiToggleButton(
@@ -1194,17 +1201,21 @@ private fun EmojiToggleButton(
         }
     } else {
         var popoverOpen by remember { mutableStateOf(false) }
-        val anchor = remember { AnchorCoordinates() }
-        Box(modifier = Modifier.onPlaced { anchor.value = it }) {
-            IconButton(onClick = {
+        val anchor = remember { PopoverAnchor() }
+        IconButton(
+            onClick = {
                 onEmojiClick()
                 popoverOpen = !popoverOpen
-            }) {
-                Icon(imageVector = Icons.Default.EmojiEmotions, contentDescription = contentDescription)
-            }
+            },
+            modifier = Modifier.popoverAnchor(anchor),
+        ) {
+            Icon(imageVector = Icons.Default.EmojiEmotions, contentDescription = contentDescription)
             if (popoverOpen) {
-                ExpressionPopover(
-                    anchorTopInWindowPx = { anchor.value?.takeIf { it.isAttached }?.positionInWindow()?.y },
+                ComposerPopover(
+                    anchor = anchor,
+                    // Start-aligned so the card grows over the conversation, not the conversation list.
+                    alignToEnd = false,
+                    width = EMOJI_POPOVER_WIDTH,
                     onDismissRequest = {
                         popoverOpen = false
                         focusRequester.requestFocus()
