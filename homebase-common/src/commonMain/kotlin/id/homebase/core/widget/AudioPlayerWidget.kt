@@ -37,7 +37,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.core.audio.VoiceNotePlayback
@@ -110,9 +109,7 @@ fun AudioPlayerWidget(
     var fileRequested by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
 
-    val descriptorSeconds = remember(payload) {
-        (payload.descriptorInfo() as? DescriptorContent.AudioFile)?.lengthSeconds ?: 0
-    }
+    val descriptorSeconds = remember(payload) { payload.audioLengthSeconds() ?: 0 }
 
     // Held as a State object and read only inside the Canvas draw lambda below, so a position
     // tick invalidates the waveform's draw pass instead of recomposing every visible bubble.

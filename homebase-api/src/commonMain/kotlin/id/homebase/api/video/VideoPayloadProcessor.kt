@@ -3,6 +3,7 @@ package id.homebase.api.video
 import co.touchlab.kermit.Logger
 import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.HLS_PLAYLIST_CONTENT_TYPE
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.files.WholePercentProgressGate
@@ -315,7 +316,7 @@ class VideoPayloadProcessor(
         val metadata =
             VideoMetadata(
                 mimeType =
-                    if (isSegmented) "application/vnd.apple.mpegurl" else "video/mp4",
+                    if (isSegmented) HLS_PLAYLIST_CONTENT_TYPE else "video/mp4",
                 isSegmented = isSegmented,
                 fileSize = fileOperationsProvider.getFileSize(finalVideoPath),
                 duration = durationMs.toFloat(),

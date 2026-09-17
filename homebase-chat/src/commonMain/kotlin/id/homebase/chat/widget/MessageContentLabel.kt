@@ -119,7 +119,7 @@ fun messageContentLabel(
             // A solo transparent cut-out image carries DescriptorContent.ImageFile(isSticker=true).
             // hasMultiplePayloads is already false here, so this is the single-payload case the
             // sticker bubble (MediaMessage) recognises — surface "Sticker" instead of "Image".
-            firstPayload.contentType?.startsWith("image/") == true &&
+            firstPayload.isImage() &&
                 (firstPayload.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true ->
                 ContentLabel(
                     text = stringResource(MR.string.chat_preview_sticker),
@@ -131,12 +131,11 @@ fun messageContentLabel(
                 text = stringResource(MR.string.chat_message_gif),
                 icon = null
             )
-            firstPayload.contentType?.startsWith("image/") == true -> ContentLabel(
+            firstPayload.isImage() -> ContentLabel(
                 text = stringResource(MR.string.chat_message_image),
                 icon = Icons.Default.Image
             )
-            firstPayload.contentType?.startsWith("video/") == true ||
-                firstPayload.contentType == "application/vnd.apple.mpegurl" -> ContentLabel(
+            firstPayload.isVideo() -> ContentLabel(
                 text = stringResource(MR.string.chat_message_video),
                 icon = Icons.Default.PlayArrow
             )

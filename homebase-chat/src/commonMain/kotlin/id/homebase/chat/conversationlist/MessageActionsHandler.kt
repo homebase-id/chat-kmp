@@ -40,7 +40,6 @@ import id.homebase.chat.services.renderer.LocationPreviewRenderer
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.toCombinedPayloadBundle
 import id.homebase.chat.services.renderer.toMessageDataType
-import id.homebase.chat.widget.isVisualMedia
 import id.homebase.chat.widget.mediaPayloads
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.common.time.UnixTimeUtc

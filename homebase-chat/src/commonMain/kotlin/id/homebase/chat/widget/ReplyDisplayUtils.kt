@@ -1,6 +1,5 @@
 package id.homebase.chat.widget
 
-import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.services.ChatProtocol
 
@@ -9,16 +8,6 @@ fun List<PayloadDescriptor>?.mediaPayloads(): List<PayloadDescriptor> =
         payload.key != ChatProtocol.DefaultPayloadKey &&
             !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
     }.orEmpty()
-
-fun PayloadDescriptor.isVisualMedia(): Boolean {
-    val ct = contentType.orEmpty()
-    return ct.startsWith("image/") || ct.startsWith("video/") || ct == "application/vnd.apple.mpegurl"
-}
-
-fun PayloadDescriptor.isAudio(): Boolean = contentType?.startsWith("audio/") == true
-
-fun PayloadDescriptor.audioLengthSeconds(): Int? =
-    (descriptorInfo() as? DescriptorContent.AudioFile)?.lengthSeconds?.takeIf { it > 0 }
 
 /**
  * Resolves the display name for a reply quote's author.

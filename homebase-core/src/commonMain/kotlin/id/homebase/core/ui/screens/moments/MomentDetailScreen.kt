@@ -1344,9 +1344,7 @@ private fun MomentMediaScaffold(
                                 onLongPress = { showCurrentInfo = false },
                             )
                         }
-                    val isVideo = infoPayload.contentType?.startsWith("video/") == true ||
-                        infoPayload.contentType == "application/vnd.apple.mpegurl"
-                    if (isVideo) {
+                    if (infoPayload.isVideo()) {
                         val videoDescriptor =
                             infoPayload.descriptorInfo() as? DescriptorContent.VideoFile
                         VideoInfoOverlay(
@@ -1539,10 +1537,7 @@ private fun MomentDetailContent(
         snapshotFlow {
             val payload = moment.payloads.getOrNull(pagerState.currentPage)
                 ?: return@snapshotFlow null
-            val ct = payload.contentType ?: ""
-            val isVideo = ct.startsWith("video/") ||
-                ct == "application/vnd.apple.mpegurl"
-            if (isVideo) payload.key else null
+            if (payload.isVideo()) payload.key else null
         }.collect { autoplayKey ->
             if (autoplayKey != playingPayloadKey) {
                 Logger.d(tag = "MomentReels") {
@@ -1628,9 +1623,6 @@ private fun MomentDetailContent(
                 userScrollEnabled = pageCount > 1 && !zoomedPageActive,
             ) { page ->
                 val payload = moment.payloads[page]
-                val contentType = payload.contentType ?: ""
-                val isVideo = contentType.startsWith("video/") ||
-                    contentType == "application/vnd.apple.mpegurl"
 
                 // Single tap anywhere on the media: on mobile it opens the
                 // comments sheet; on the desktop docked layout (comments already
@@ -1655,7 +1647,7 @@ private fun MomentDetailContent(
                             onClick = onMediaTap,
                         ),
                 ) {
-                    if (isVideo) {
+                    if (payload.isVideo()) {
                         // Inline-playable video tile. ButtonOnly tapMode skips
                         // the full-surface tap detector so the tap above opens
                         // the panel; a centred play/pause affordance
