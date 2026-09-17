@@ -153,12 +153,7 @@ private fun SingleImageLayout(
 
     // Feed only (minAspect != null): cap the photo's height so a tall post fits a screenful, drawn Fit and
     // scaled down rather than cropped. Moments keeps the natural-aspect height.
-    val maxMediaHeight = if (minAspect != null) {
-        with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() } *
-            FeedMediaMaxScreenFraction
-    } else {
-        Dp.Unspecified
-    }
+    val maxMediaHeight = if (minAspect != null) feedMediaMaxHeight() else Dp.Unspecified
 
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         // When capped, the whole image is drawn Fit inside (letterboxed at the sides), never cropped.
@@ -210,9 +205,13 @@ internal const val MaxFeedMediaAspect = 0.8f
 // Fit, so the cell tracks its real aspect and Fit fills it exactly; only wider panoramas letterbox slightly.
 internal const val MaxFeedPhotoAspect = 1.91f
 
-// Feed only: a single photo's height is capped to this fraction of the window so a tall post fits a screenful.
-// 0.7 leaves room for the header/caption/actions. Tune here.
+// Feed only: a single photo's or link preview image's height is capped to this fraction of the window so a tall
+// post fits a screenful. 0.7 leaves room for the header/caption/actions. Tune here.
 internal const val FeedMediaMaxScreenFraction = 0.7f
+
+@Composable
+internal fun feedMediaMaxHeight(): Dp =
+    with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() } * FeedMediaMaxScreenFraction
 
 internal fun aspectRatioFor(payload: PayloadDescriptor): Float? {
     val thumb = payload.previewThumbnail ?: payload.thumbnails?.lastOrNull()

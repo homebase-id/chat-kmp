@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -67,11 +68,15 @@ private fun EmbeddedThumb?.aspectRatio(): Float =
         ?: OpenGraphAspectRatio
 
 // Width always spans the card so Crop can never leave bars; only the height follows the image.
-private fun Modifier.linkPreviewImageSize(aspectRatio: Float): Modifier = layout { measurable, constraints ->
-    val ratio = aspectRatio.coerceAtMost(MaxImageAspectRatio)
-    val maxHeight = ImageMaxHeight.roundToPx()
-    val width = if (constraints.hasBoundedWidth) constraints.maxWidth else (maxHeight * ratio).roundToInt()
-    val height = constraints.constrainHeight((width / ratio).roundToInt().coerceAtMost(maxHeight))
+private fun Modifier.linkPreviewImageSize(
+    aspectRatio: Float,
+    maxHeight: Dp = ImageMaxHeight,
+    minAspectRatio: Float = 0f,
+): Modifier = layout { measurable, constraints ->
+    val ratio = aspectRatio.coerceIn(minAspectRatio, MaxImageAspectRatio)
+    val maxHeightPx = maxHeight.roundToPx()
+    val width = if (constraints.hasBoundedWidth) constraints.maxWidth else (maxHeightPx * ratio).roundToInt()
+    val height = constraints.constrainHeight((width / ratio).roundToInt().coerceAtMost(maxHeightPx))
     val placeable = measurable.measure(Constraints.fixed(width, height))
     layout(width, height) { placeable.place(0, 0) }
 }
@@ -278,11 +283,15 @@ fun LinkPreviewCard(
     isUploading: Boolean = false,
     localImagePath: String? = null,
     modifier: Modifier = Modifier,
+    imageMaxHeight: Dp = ImageMaxHeight,
+    imageMinAspectRatio: Float = 0f,
 ) {
     val uriHandler = LocalUriHandler.current
     val domain = extractDomain(descriptor.url)
 
-    val imageModifier = Modifier.linkPreviewImageSize(previewThumbnail.aspectRatio()).clip(ImageCornerShape)
+    val imageModifier = Modifier
+        .linkPreviewImageSize(previewThumbnail.aspectRatio(), imageMaxHeight, imageMinAspectRatio)
+        .clip(ImageCornerShape)
 
     // While the message is pending/uploading the drive payload does not exist yet, so a
     // HomebaseImage fetch would 404 into a broken-image triangle. Feed Coil a local source

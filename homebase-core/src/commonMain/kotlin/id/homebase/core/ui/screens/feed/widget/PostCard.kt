@@ -47,6 +47,7 @@ import id.homebase.core.feed.services.authorOdinId
 import id.homebase.core.feed.services.toPostAudience
 import id.homebase.core.feed.services.previewBody
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
+import id.homebase.core.ui.screens.moments.widget.feedMediaMaxHeight
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.initials
@@ -406,6 +407,8 @@ private fun PostLinkPreview(
         keyHeader = keyHeader,
         previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
         modifier = modifier,
+        imageMaxHeight = feedMediaMaxHeight(),
+        imageMinAspectRatio = FeedMinMediaAspect,
     )
 }
 
