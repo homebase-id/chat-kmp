@@ -98,7 +98,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -141,8 +140,7 @@ import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 import id.homebase.core.util.getUriHandler
-import id.homebase.core.widget.ComposerKeyAction
-import id.homebase.core.widget.composerKeyAction
+import id.homebase.core.widget.composerKeyHandler
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogTitle
@@ -3124,16 +3122,10 @@ private fun AddCommentRow(
             placeholder = { Text(stringResource(MR.string.moments_detail_add_comment_hint)) },
             modifier = Modifier
                 .weight(1f)
-                .onPreviewKeyEvent { e ->
-                    when (composerKeyAction(e, enterSendsMessage)) {
-                        ComposerKeyAction.Send -> {
-                            if (canSend) onSend()
-                            true
-                        }
-                        // singleLine, so there is no newline to insert — let the platform have it.
-                        ComposerKeyAction.Newline, ComposerKeyAction.Ignore -> false
-                    }
-                },
+                .composerKeyHandler(
+                    enterSendsMessage = enterSendsMessage,
+                    onSend = { if (canSend) onSend() },
+                ),
             singleLine = true,
             enabled = !isPosting,
         )
