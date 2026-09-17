@@ -9,7 +9,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -52,6 +51,7 @@ import id.homebase.resources.chat_message_edit_message
 import id.homebase.resources.chat_send_chord_enter
 import id.homebase.resources.chat_send_chord_shift_enter
 import id.homebase.resources.chat_send_message_button
+import kotlinx.collections.immutable.ImmutableList
 import org.jetbrains.compose.resources.stringResource
 
 private enum class BubbleFabAction { Confirm, Send, Attach }
@@ -69,7 +69,8 @@ fun UnifiedInputBubble(
     onCancelEdit: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     modifier: Modifier = Modifier,
-    attachmentPopover: @Composable () -> Unit = {},
+    attachmentActions: ImmutableList<AttachmentAction>? = null,
+    onAttachmentPopoverDismissed: () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     Row(
@@ -194,42 +195,42 @@ fun UnifiedInputBubble(
                     BubbleFabAction.Send -> "send_fab"
                     BubbleFabAction.Attach -> "attachment_fab"
                 }
-                Box {
-                    SendChordTooltip(
-                        enabled = fabAction == BubbleFabAction.Send,
-                        enterSendsMessage = enterSendsMessage,
+                SendChordTooltip(
+                    enabled = fabAction == BubbleFabAction.Send,
+                    enterSendsMessage = enterSendsMessage,
+                ) {
+                    AttachmentPopoverButton(
+                        actions = attachmentActions.takeIf { fabAction == BubbleFabAction.Attach },
+                        alignToEnd = true,
+                        onClick = fabClick,
+                        onPopoverDismissed = onAttachmentPopoverDismissed,
+                        enabled = fabEnabled,
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                            contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                        ),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag(fabTestTag),
                     ) {
-                        IconButton(
-                            onClick = fabClick,
-                            enabled = fabEnabled,
-                            colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                                contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                            ),
-                            modifier = Modifier
-                                .size(40.dp)
-                                .testTag(fabTestTag),
-                        ) {
-                            AnimatedContent(
-                                targetState = fabAction,
-                                transitionSpec = { signalToggleIn togetherWith signalToggleOut },
-                                label = "fab_icon_toggle",
-                            ) { action ->
-                                Icon(
-                                    imageVector = when (action) {
-                                        BubbleFabAction.Confirm -> Icons.Filled.Check
-                                        BubbleFabAction.Send -> Icons.AutoMirrored.Filled.Send
-                                        BubbleFabAction.Attach -> Icons.Default.Add
-                                    },
-                                    contentDescription = when (action) {
-                                        BubbleFabAction.Attach -> stringResource(MR.string.chat_message_attachment_options)
-                                        else -> stringResource(MR.string.chat_send_message_button)
-                                    },
-                                )
-                            }
+                        AnimatedContent(
+                            targetState = fabAction,
+                            transitionSpec = { signalToggleIn togetherWith signalToggleOut },
+                            label = "fab_icon_toggle",
+                        ) { action ->
+                            Icon(
+                                imageVector = when (action) {
+                                    BubbleFabAction.Confirm -> Icons.Filled.Check
+                                    BubbleFabAction.Send -> Icons.AutoMirrored.Filled.Send
+                                    BubbleFabAction.Attach -> Icons.Default.Add
+                                },
+                                contentDescription = when (action) {
+                                    BubbleFabAction.Attach -> stringResource(MR.string.chat_message_attachment_options)
+                                    else -> stringResource(MR.string.chat_send_message_button)
+                                },
+                            )
                         }
                     }
-                    attachmentPopover()
                 }
             }
         }

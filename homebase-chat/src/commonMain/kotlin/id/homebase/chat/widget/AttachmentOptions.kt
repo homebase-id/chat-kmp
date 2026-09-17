@@ -49,7 +49,6 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -411,7 +410,6 @@ private fun SelectionBadge(
     }
 }
 
-@Immutable
 data class AttachmentAction(
     val testTag: String,
     val icon: ImageVector,
@@ -444,7 +442,7 @@ fun attachmentActions(
 ).toImmutableList()
 
 @Composable
-fun AttachmentOptions(actions: ImmutableList<AttachmentAction>) {
+fun AttachmentOptions(actions: ImmutableList<AttachmentAction>, onPicked: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -460,7 +458,10 @@ fun AttachmentOptions(actions: ImmutableList<AttachmentAction>) {
                     modifier = Modifier.testTag(action.testTag),
                     icon = action.icon,
                     label = stringResource(action.label),
-                    onClick = action.onClick,
+                    onClick = {
+                        onPicked()
+                        action.onClick()
+                    },
                 )
             }
         }
