@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.isAudio
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -403,7 +404,7 @@ internal class MediaDownloadHandler(
                         }
                     }
 
-                    contentType.startsWith("audio/") -> {}
+                    selectedPayload.isAudio() -> {}
                     contentType == "application/pdf" -> {
                         val alreadyDecrypted = messagesUiState.value.decryptedFiles
                             .containsKey(DecryptedFileKey(action.message.fileId, action.payloadKey))

@@ -65,6 +65,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.isAudio
+import id.homebase.api.client.drives.files.isVisualMedia
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.contactcard.ContactCardDescriptor
@@ -543,7 +545,7 @@ fun ReceivedMessageBubble(
     val emojiOnly = message.content.isEmojiContentOnly() && !hasMedia
     val hasVisibleBackground = !mediaOnly && !emojiOnly
     val isVoiceNote = mediaOnly &&
-        filteredPayloads.singleOrNull()?.contentType?.startsWith("audio/") == true
+        filteredPayloads.singleOrNull()?.isAudio() == true
     val clipboardManager = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val haptics = rememberHaptics()

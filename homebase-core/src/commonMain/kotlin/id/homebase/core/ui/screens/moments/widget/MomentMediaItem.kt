@@ -42,6 +42,7 @@ import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.isAudio
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.toImageBitmap
@@ -492,7 +493,7 @@ fun MomentMediaItem(
             }
         }
 
-        contentType.startsWith("audio/") -> {
+        payload.isAudio() -> {
             // The caller hands this a fillMaxSize modifier, which pins min == max width, so the
             // cap only bites on a child inside it.
             Box(modifier = baseModifier, contentAlignment = Alignment.Center) {

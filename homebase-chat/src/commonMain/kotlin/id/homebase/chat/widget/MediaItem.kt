@@ -42,6 +42,7 @@ import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.isAudio
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.image.toImageBitmap
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -545,7 +546,7 @@ fun MediaItem(
             }
         }
 
-        contentType.startsWith("audio/") -> {
+        payload.isAudio() -> {
             AudioPlayerWidget(
                 modifier = baseModifier,
                 driveId = driveId,

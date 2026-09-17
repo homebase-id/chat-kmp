@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.isAudio
+import id.homebase.api.client.drives.files.isVisualMedia
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.chat.conversationlist.DecryptedFileKey
@@ -68,8 +70,7 @@ import kotlin.uuid.Uuid
 internal fun PayloadDescriptor.rendersAsDocumentCard(): Boolean {
     if (key == ChatProtocol.PAYLOAD_KEY_LINKS || key == ChatProtocol.PAYLOAD_KEY_LOCATION) return false
     val ct = contentType ?: return false
-    if (ct.startsWith("image/") || ct.startsWith("video/") || ct.startsWith("audio/")) return false
-    if (ct == "application/vnd.apple.mpegurl") return false // HLS video, not a document
+    if (isVisualMedia() || isAudio()) return false
     return ct == "application/pdf" ||
         ct == "application/zip" ||
         ct == "application/x-rar-compressed" ||
@@ -183,9 +184,7 @@ fun MediaMessage(
                 // or the card floats atop a grey void (#1103).
                 val isDocument = remember(payloads) { payloads[0].rendersAsDocumentCard() }
                 // Capped here, not inside AudioPlayerWidget, so the bubble background is capped too.
-                val isAudio = remember(payloads) {
-                    payloads[0].contentType?.startsWith("audio/") == true
-                }
+                val isAudio = remember(payloads) { payloads[0].isAudio() }
                 val sizedModifier = when {
                     // The block-caption bubble is already caption-wide; a capped card would leave a strip.
                     isDocument && fillsBubble ->

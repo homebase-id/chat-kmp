@@ -31,7 +31,7 @@ data class PayloadDescriptor(
                 DescriptorContent.Empty
             }
 
-            contentType?.startsWith("audio/") == true -> {
+            isAudio() -> {
                 try {
                     val audioDescriptor =
                         OdinSystemSerializer.deserialize<DescriptorContent.AudioFile>(
@@ -122,6 +122,16 @@ data class PayloadDescriptor(
         }
     }
 }
+
+fun PayloadDescriptor.isVisualMedia(): Boolean {
+    val ct = contentType.orEmpty()
+    return ct.startsWith("image/") || ct.startsWith("video/") || ct == "application/vnd.apple.mpegurl"
+}
+
+fun PayloadDescriptor.isAudio(): Boolean = contentType?.startsWith("audio/") == true
+
+fun PayloadDescriptor.audioLengthSeconds(): Int? =
+    (descriptorInfo() as? DescriptorContent.AudioFile)?.lengthSeconds?.takeIf { it > 0 }
 
 sealed interface DescriptorContent {
     data object Empty : DescriptorContent
