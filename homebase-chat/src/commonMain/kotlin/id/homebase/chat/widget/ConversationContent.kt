@@ -158,6 +158,8 @@ import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
 import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
+import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
@@ -284,6 +286,7 @@ fun ConversationContent(
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showPollComposer by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
+    val composerPopovers = isDesktopOrWeb() && isExpandedLayout()
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -639,6 +642,22 @@ fun ConversationContent(
             )
         }
     }
+    val attachmentActions = attachmentActions(
+        onGalleryClick = { galleryLauncher.launch() },
+        onFileClick = { fileLauncher.launch() },
+        onContactClick = {
+            onUiAction(ConversationListUiAction.OpenShareContact(conversation.conversation.id))
+        },
+        onLocationClick = {
+            Logger.d(tag = "LocationShare") { "share location clicked" }
+            onUiAction(ConversationListUiAction.OpenShareLocation(conversation.conversation.id))
+        },
+        onEventClick = { showEventComposer = true },
+        onGroodleClick = { showGroodleComposer = true },
+        onDicesClick = { showDiceRollComposer = true },
+        onPollClick = { showPollComposer = true },
+    )
+    val popoverAttachmentActions = if (composerPopovers) attachmentActions else null
 
     ConversationContentSheets(
         uiState = uiState,
@@ -1663,6 +1682,26 @@ fun ConversationContent(
                             }
                         }
 
+                        val toggleEmojiSheet = {
+                            showAttachmentSheet = false
+                            if (showEmojiSheet && !isKeyboardVisible) {
+                                showEmojiSheet = false
+                                if (wasKeyboardVisible) {
+                                    focusRequester.requestFocus()
+                                    keyboardController?.show()
+                                }
+                            } else {
+                                if (isKeyboardVisible) {
+                                    wasKeyboardVisible = true
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
+                                } else {
+                                    wasKeyboardVisible = false
+                                }
+                                showEmojiSheet = true
+                            }
+                        }
+
                         UnifiedInputBubble(
                             replyToMessage = uiState.replyToMessage,
                             onDismissReply = {
@@ -1681,6 +1720,8 @@ fun ConversationContent(
                             },
                             onAddAttachmentClick = { toggleAttachmentSheet() },
                             modifier = Modifier.focusProperties { canFocus = inputFocusable },
+                            attachmentActions = popoverAttachmentActions,
+                            onAttachmentPopoverDismissed = { focusRequester.requestFocus() },
                         ) {
                             MessageInputBar(
                                 textFieldState = textFieldState,
@@ -1700,24 +1741,10 @@ fun ConversationContent(
                                 } else {
                                     emptyList()
                                 },
-                                onEmojiClick = {
-                                    showAttachmentSheet = false
-                                    if (showEmojiSheet && !isKeyboardVisible) {
-                                        showEmojiSheet = false
-                                        if (wasKeyboardVisible) {
-                                            focusRequester.requestFocus()
-                                            keyboardController?.show()
-                                        }
-                                    } else {
-                                        if (isKeyboardVisible) {
-                                            wasKeyboardVisible = true
-                                            focusManager.clearFocus()
-                                            keyboardController?.hide()
-                                        } else {
-                                            wasKeyboardVisible = false
-                                        }
-                                        showEmojiSheet = true
-                                    }
+                                onEmojiClick = if (composerPopovers) {
+                                    { showAttachmentSheet = false }
+                                } else {
+                                    toggleEmojiSheet
                                 },
                                 onKeyboardClick = {
                                     showEmojiSheet = false
@@ -1749,6 +1776,21 @@ fun ConversationContent(
                                             imageBytes = imageBytes,
                                         )
                                     )
+                                },
+                                attachmentActions = popoverAttachmentActions,
+                                emojiPopoverContent = if (composerPopovers) {
+                                    {
+                                        ExpressionPanel(
+                                            conversationId = conversation.conversation.id,
+                                            onUiAction = onUiAction,
+                                            onBackSpace = { textFieldState.programmaticBackspace() },
+                                            onEmojiSelected = { textFieldState.addTextAfterSelection(it) },
+                                            modifier = Modifier.fillMaxSize(),
+                                            searchFirst = true,
+                                        )
+                                    }
+                                } else {
+                                    null
                                 },
                                 onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) },
                             )
@@ -1801,36 +1843,7 @@ fun ConversationContent(
                             },
                         )
                     }
-                    AttachmentOptions(onGalleryClick = {
-                        showAttachmentSheet = false
-                        galleryLauncher.launch()
-                    }, onFileClick = {
-                        showAttachmentSheet = false
-                        fileLauncher.launch()
-                    }, onContactClick = {
-                        showAttachmentSheet = false
-                        onUiAction(
-                            ConversationListUiAction.OpenShareContact(conversation.conversation.id)
-                        )
-                    }, onLocationClick = {
-                        Logger.d(tag = "LocationShare") { "share location clicked" }
-                        showAttachmentSheet = false
-                        onUiAction(
-                            ConversationListUiAction.OpenShareLocation(conversation.conversation.id)
-                        )
-                    }, onEventClick = {
-                        showAttachmentSheet = false
-                        showEventComposer = true
-                    }, onGroodleClick = {
-                        showAttachmentSheet = false
-                        showGroodleComposer = true
-                    }, onDicesClick = {
-                        showAttachmentSheet = false
-                        showDiceRollComposer = true
-                    }, onPollClick = {
-                        showAttachmentSheet = false
-                        showPollComposer = true
-                    })
+                    AttachmentOptions(attachmentActions, onPicked = { showAttachmentSheet = false })
                 }
             } // AttachmentOptionsDisplay wrapper Box
 

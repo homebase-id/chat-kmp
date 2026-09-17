@@ -98,7 +98,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -141,8 +140,7 @@ import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 import id.homebase.core.util.getUriHandler
-import id.homebase.core.widget.ComposerKeyAction
-import id.homebase.core.widget.composerKeyAction
+import id.homebase.core.widget.composerKeyHandler
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogTitle
@@ -1346,9 +1344,7 @@ private fun MomentMediaScaffold(
                                 onLongPress = { showCurrentInfo = false },
                             )
                         }
-                    val isVideo = infoPayload.contentType?.startsWith("video/") == true ||
-                        infoPayload.contentType == "application/vnd.apple.mpegurl"
-                    if (isVideo) {
+                    if (infoPayload.isVideo()) {
                         val videoDescriptor =
                             infoPayload.descriptorInfo() as? DescriptorContent.VideoFile
                         VideoInfoOverlay(
@@ -1541,10 +1537,7 @@ private fun MomentDetailContent(
         snapshotFlow {
             val payload = moment.payloads.getOrNull(pagerState.currentPage)
                 ?: return@snapshotFlow null
-            val ct = payload.contentType ?: ""
-            val isVideo = ct.startsWith("video/") ||
-                ct == "application/vnd.apple.mpegurl"
-            if (isVideo) payload.key else null
+            if (payload.isVideo()) payload.key else null
         }.collect { autoplayKey ->
             if (autoplayKey != playingPayloadKey) {
                 Logger.d(tag = "MomentReels") {
@@ -1630,9 +1623,6 @@ private fun MomentDetailContent(
                 userScrollEnabled = pageCount > 1 && !zoomedPageActive,
             ) { page ->
                 val payload = moment.payloads[page]
-                val contentType = payload.contentType ?: ""
-                val isVideo = contentType.startsWith("video/") ||
-                    contentType == "application/vnd.apple.mpegurl"
 
                 // Single tap anywhere on the media: on mobile it opens the
                 // comments sheet; on the desktop docked layout (comments already
@@ -1657,7 +1647,7 @@ private fun MomentDetailContent(
                             onClick = onMediaTap,
                         ),
                 ) {
-                    if (isVideo) {
+                    if (payload.isVideo()) {
                         // Inline-playable video tile. ButtonOnly tapMode skips
                         // the full-surface tap detector so the tap above opens
                         // the panel; a centred play/pause affordance
@@ -3124,16 +3114,10 @@ private fun AddCommentRow(
             placeholder = { Text(stringResource(MR.string.moments_detail_add_comment_hint)) },
             modifier = Modifier
                 .weight(1f)
-                .onPreviewKeyEvent { e ->
-                    when (composerKeyAction(e, enterSendsMessage)) {
-                        ComposerKeyAction.Send -> {
-                            if (canSend) onSend()
-                            true
-                        }
-                        // singleLine, so there is no newline to insert — let the platform have it.
-                        ComposerKeyAction.Newline, ComposerKeyAction.Ignore -> false
-                    }
-                },
+                .composerKeyHandler(
+                    enterSendsMessage = enterSendsMessage,
+                    onSend = { if (canSend) onSend() },
+                ),
             singleLine = true,
             enabled = !isPosting,
         )

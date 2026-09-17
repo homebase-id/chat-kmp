@@ -699,6 +699,7 @@
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Lyd</string>
+    <string name="chat_message_voice_duration">Talebesked · %1$s</string>
     <string name="chat_message_file">Fil</string>
     <string name="chat_message_location">Placering</string>
     <string name="chat_message_multiple_media">Medier</string>

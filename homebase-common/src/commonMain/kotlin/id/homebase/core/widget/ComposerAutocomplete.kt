@@ -37,27 +37,22 @@ import androidx.compose.ui.window.PopupProperties
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.model.trigger.Trigger
-import id.homebase.core.util.isImeComposing
 import id.homebase.core.util.replaceTextRangeSafely
 
 const val ComposerAutocompleteTag: String = "composer_autocomplete"
 
 /**
- * Owns the arrow/Enter/Tab/Escape keys while a [ComposerAutocomplete] list is showing.
- *
- * richeditor's own `triggerKeyHandler` is internal, and the composer's Enter-to-send lives in an
- * `onPreviewKeyEvent` on the editor's outer modifier — preview events run root-to-leaf, so that
- * handler sees Enter before the editor does. Without giving this first refusal there, Enter sends
- * `:sm` as a message instead of committing the highlighted suggestion.
+ * Owns arrow/Enter/Tab/Escape while a [ComposerAutocomplete] list is showing; [composerKeyHandler]
+ * offers it every key first.
  */
 @Stable
 class ComposerAutocompleteController internal constructor() {
     internal var keyHandler: ((KeyEvent) -> Boolean)? by mutableStateOf(null)
 
-    // A modified Enter is the composer's in either mode, and an input method's Enter confirms its
-    // own candidate; a bare Enter picks the highlighted suggestion rather than sending ":sm".
-    fun handleKeyEvent(event: KeyEvent): Boolean =
-        if (event.isImeComposing() || event.isModifiedEnter()) false
+    // A modified Enter is the composer's in either mode; a bare Enter picks the highlighted
+    // suggestion rather than sending ":sm".
+    internal fun handleKeyEvent(event: KeyEvent): Boolean =
+        if (event.isModifiedEnter()) false
         else keyHandler?.invoke(event) ?: false
 }
 
@@ -70,8 +65,7 @@ fun rememberComposerAutocompleteController(): ComposerAutocompleteController =
  * filters it, and picking an entry splices [replacementFor] over the trigger token.
  *
  * Place it as a sibling of the editor inside a `Box` that wraps ONLY the editor — that Box is the
- * anchor — and route the editor's `onPreviewKeyEvent` through [ComposerAutocompleteController]
- * first.
+ * anchor — and pass [controller] to the editor's [composerKeyHandler].
  *
  * The trigger detection comes from richeditor, which brings the word-boundary rule that keeps
  * `10:30` and `https://` from opening the list. Commit goes through [replacementFor] and

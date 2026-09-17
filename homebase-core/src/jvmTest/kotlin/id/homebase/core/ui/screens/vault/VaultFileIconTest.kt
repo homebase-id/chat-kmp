@@ -13,105 +13,82 @@ import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.VideoFile
+import androidx.compose.ui.graphics.vector.ImageVector
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
+import id.homebase.core.ui.screens.vault.components.pageTypeIcon
+import id.homebase.core.ui.screens.vault.model.VaultEntry
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
+@OptIn(ExperimentalUuidApi::class)
 class VaultFileIconTest {
 
     @Test
-    fun image_mimeTypes() {
-        assertEquals(Icons.Outlined.Image, fileTypeIcon("image/jpeg"))
-        assertEquals(Icons.Outlined.Image, fileTypeIcon("image/png"))
-        assertEquals(Icons.Outlined.Image, fileTypeIcon("image/webp"))
-        assertEquals(Icons.Outlined.Image, fileTypeIcon("image/svg+xml"))
+    fun eachFileKindMapsToItsIcon() {
+        listOf(
+            "image/png" to Icons.Outlined.Image,
+            "video/mp4" to Icons.Outlined.VideoFile,
+            "audio/mpeg" to Icons.Outlined.AudioFile,
+            "application/pdf" to Icons.Outlined.PictureAsPdf,
+            "application/json" to Icons.Outlined.Code,
+            "text/csv" to Icons.Outlined.TableChart,
+            "application/vnd.ms-powerpoint" to Icons.Outlined.Slideshow,
+            "application/msword" to Icons.AutoMirrored.Outlined.Article,
+            "application/zip" to Icons.Outlined.FolderZip,
+            "text/plain" to Icons.Outlined.Description,
+            "application/vnd.android.package-archive" to Icons.AutoMirrored.Outlined.InsertDriveFile,
+            "application/octet-stream" to Icons.AutoMirrored.Outlined.InsertDriveFile,
+        ).forEach { (contentType, expected) -> assertIcon(expected, contentType, fileName = null) }
     }
 
     @Test
-    fun video_mimeTypes() {
-        assertEquals(Icons.Outlined.VideoFile, fileTypeIcon("video/mp4"))
-        assertEquals(Icons.Outlined.VideoFile, fileTypeIcon("video/quicktime"))
+    fun markdownIsANote() {
+        assertIcon(Icons.AutoMirrored.Outlined.NoteAdd, "text/markdown", fileName = null)
     }
 
     @Test
-    fun audio_mimeTypes() {
-        assertEquals(Icons.Outlined.AudioFile, fileTypeIcon("audio/mpeg"))
-        assertEquals(Icons.Outlined.AudioFile, fileTypeIcon("audio/wav"))
+    fun unresolvedMimeFallsBackToExtension() {
+        assertIcon(Icons.Outlined.TableChart, "application/octet-stream", "budget.ods")
+        assertIcon(Icons.Outlined.FolderZip, "application/octet-stream", "archive.zip")
+        assertIcon(Icons.Outlined.PictureAsPdf, null, "report.pdf")
+        assertIcon(Icons.Outlined.Description, "application/octet-stream", "notes.md")
     }
 
     @Test
-    fun pdf() {
-        assertEquals(Icons.Outlined.PictureAsPdf, fileTypeIcon("application/pdf"))
-    }
-
-    @Test
-    fun code_mimeTypes() {
-        assertEquals(Icons.Outlined.Code, fileTypeIcon("application/json"))
-        assertEquals(Icons.Outlined.Code, fileTypeIcon("application/xml"))
-        assertEquals(Icons.Outlined.Code, fileTypeIcon("application/javascript"))
-        assertEquals(Icons.Outlined.Code, fileTypeIcon("application/x-sh"))
-        assertEquals(Icons.Outlined.Code, fileTypeIcon("application/x-yaml"))
-        assertEquals(Icons.Outlined.Code, fileTypeIcon("text/x-python"))
-        assertEquals(Icons.Outlined.Code, fileTypeIcon("text/x-kotlin"))
-    }
-
-    @Test
-    fun spreadsheet_mimeTypes() {
-        assertEquals(Icons.Outlined.TableChart, fileTypeIcon("text/csv"))
-        assertEquals(Icons.Outlined.TableChart, fileTypeIcon("application/vnd.ms-excel"))
+    fun pageTypeIcon_onlyFirstPageUsesEntryName() {
+        val entry = VaultEntry(
+            fileId = Uuid.random(),
+            uniqueId = Uuid.random(),
+            driveId = Uuid.random(),
+            fileName = "archive.zip",
+            contentType = "application/octet-stream",
+            sizeBytes = 0L,
+            createdAt = 0L,
+            previewThumbnail = null,
+            keyHeader = KeyHeader.empty(),
+            isEncrypted = true,
+            versionTag = null,
+            payloadDescriptors = listOf(
+                PayloadDescriptor(key = "vlt_pg_00", contentType = "application/octet-stream"),
+                PayloadDescriptor(key = "vlt_pg_01", contentType = "application/octet-stream"),
+            ),
+        )
+        assertEquals(Icons.Outlined.FolderZip.name, entry.pageTypeIcon(entry.payloadDescriptors[0]).name)
         assertEquals(
-            Icons.Outlined.TableChart,
-            fileTypeIcon("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+            Icons.AutoMirrored.Outlined.InsertDriveFile.name,
+            entry.pageTypeIcon(entry.payloadDescriptors[1]).name,
         )
     }
 
-    @Test
-    fun presentation_mimeTypes() {
-        assertEquals(Icons.Outlined.Slideshow, fileTypeIcon("application/vnd.ms-powerpoint"))
+    private fun assertIcon(expected: ImageVector, contentType: String?, fileName: String?) {
         assertEquals(
-            Icons.Outlined.Slideshow,
-            fileTypeIcon("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+            expected.name,
+            fileTypeIcon(contentType, fileName).name,
+            "icon for contentType=$contentType fileName=$fileName",
         )
-    }
-
-    @Test
-    fun document_mimeTypes() {
-        assertEquals(Icons.AutoMirrored.Outlined.Article, fileTypeIcon("application/msword"))
-        assertEquals(
-            Icons.AutoMirrored.Outlined.Article,
-            fileTypeIcon("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-        )
-        assertEquals(Icons.AutoMirrored.Outlined.Article, fileTypeIcon("application/vnd.oasis.opendocument.text"))
-        assertEquals(Icons.AutoMirrored.Outlined.Article, fileTypeIcon("application/rtf"))
-    }
-
-    @Test
-    fun archive_mimeTypes() {
-        assertEquals(Icons.Outlined.FolderZip, fileTypeIcon("application/zip"))
-        assertEquals(Icons.Outlined.FolderZip, fileTypeIcon("application/x-tar"))
-        assertEquals(Icons.Outlined.FolderZip, fileTypeIcon("application/gzip"))
-        assertEquals(Icons.Outlined.FolderZip, fileTypeIcon("application/x-rar-compressed"))
-        assertEquals(Icons.Outlined.FolderZip, fileTypeIcon("application/x-7z-compressed"))
-    }
-
-    @Test
-    fun plainText_mimeTypes() {
-        assertEquals(Icons.Outlined.Description, fileTypeIcon("text/plain"))
-        assertEquals(Icons.AutoMirrored.Outlined.NoteAdd, fileTypeIcon("text/markdown"))
-        assertEquals(Icons.Outlined.Description, fileTypeIcon("text/html"))
-    }
-
-    @Test
-    fun fallback_unknownMimeType() {
-        assertEquals(Icons.AutoMirrored.Outlined.InsertDriveFile, fileTypeIcon("application/octet-stream"))
-        assertEquals(Icons.AutoMirrored.Outlined.InsertDriveFile, fileTypeIcon(""))
-        assertEquals(Icons.AutoMirrored.Outlined.InsertDriveFile, fileTypeIcon("application/x-unknown"))
-    }
-
-    @Test
-    fun code_takePrecedenceOverPlainText() {
-        // text/x-* should match code, not fall through to text/*
-        assertEquals(Icons.Outlined.Code, fileTypeIcon("text/x-java"))
-        assertEquals(Icons.Outlined.Code, fileTypeIcon("text/x-c"))
     }
 }

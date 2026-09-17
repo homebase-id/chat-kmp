@@ -51,6 +51,7 @@ import id.homebase.resources.chat_message_edit_message
 import id.homebase.resources.chat_send_chord_enter
 import id.homebase.resources.chat_send_chord_shift_enter
 import id.homebase.resources.chat_send_message_button
+import kotlinx.collections.immutable.ImmutableList
 import org.jetbrains.compose.resources.stringResource
 
 private enum class BubbleFabAction { Confirm, Send, Attach }
@@ -68,6 +69,8 @@ fun UnifiedInputBubble(
     onCancelEdit: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     modifier: Modifier = Modifier,
+    attachmentActions: ImmutableList<AttachmentAction>? = null,
+    onAttachmentPopoverDismissed: () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     Row(
@@ -196,8 +199,11 @@ fun UnifiedInputBubble(
                     enabled = fabAction == BubbleFabAction.Send,
                     enterSendsMessage = enterSendsMessage,
                 ) {
-                    IconButton(
+                    AttachmentPopoverButton(
+                        actions = attachmentActions.takeIf { fabAction == BubbleFabAction.Attach },
+                        alignToEnd = true,
                         onClick = fabClick,
+                        onPopoverDismissed = onAttachmentPopoverDismissed,
                         enabled = fabEnabled,
                         colors = IconButtonDefaults.iconButtonColors(
                             containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,

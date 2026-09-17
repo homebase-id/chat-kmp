@@ -543,7 +543,7 @@ fun ReceivedMessageBubble(
     val emojiOnly = message.content.isEmojiContentOnly() && !hasMedia
     val hasVisibleBackground = !mediaOnly && !emojiOnly
     val isVoiceNote = mediaOnly &&
-        filteredPayloads.singleOrNull()?.contentType?.startsWith("audio/") == true
+        filteredPayloads.singleOrNull()?.isAudio() == true
     val clipboardManager = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val haptics = rememberHaptics()
@@ -1045,14 +1045,14 @@ fun InlineReplyPreview(
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
-    // Build HomebaseImageData from the original message's first visual payload (image or video)
+    val mediaPayloads = remember(replyMessage?.payloads) { replyMessage?.payloads.mediaPayloads() }
+    // A voice note's embedded thumb is its waveform and a PDF's is a 20px page, so only visual media gets one.
+    val showThumbnail = replyMessage == null || mediaPayloads.firstOrNull()?.isVisualMedia() == true
+
     val imageData: HomebaseImageData? = remember(replyPreview, replyMessage, driveId) {
         if (replyMessage == null || driveId == null) return@remember null
-        val firstVisualPayload = replyMessage.payloads?.firstOrNull {
-            val ct = it.contentType ?: ""
-            ct.startsWith("image/") || ct.startsWith("video/") ||
-                ct == "application/vnd.apple.mpegurl"
-        } ?: return@remember null
+        val firstVisualPayload = mediaPayloads.firstOrNull()?.takeIf { it.isVisualMedia() }
+            ?: return@remember null
         val payloadIv = try {
             firstVisualPayload.iv?.let { Base64.decode(it) }
         } catch (_: Exception) {
@@ -1076,8 +1076,8 @@ fun InlineReplyPreview(
     }
 
     // Fallback: decode embedded base64 thumbnail if we can't build HomebaseImageData
-    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData) {
-        if (imageData != null) return@remember null
+    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData, showThumbnail) {
+        if (imageData != null || !showThumbnail) return@remember null
         replyPreview.previewThumbnail?.content?.let { base64Content ->
             try {
                 val bytes = Base64.decode(base64Content)
@@ -1091,13 +1091,6 @@ fun InlineReplyPreview(
     val hasThumb = imageData != null || thumbnailBitmap != null
     val hasImage = hasThumb || replyPreview.previewThumbnail != null
 
-    // Content-type label for media replies (reuses shared logic with ReplyPreviewBar)
-    val mediaPayloads = remember(replyMessage?.payloads) {
-        replyMessage?.payloads?.filter { payload ->
-            payload.key != ChatProtocol.DefaultPayloadKey &&
-                !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
-        } ?: emptyList()
-    }
     // Strip richeditor's `<br>` empty-paragraph artifacts from the quoted body so a reply to a
     // legacy `<br>` message shows its real text, not a stray break / blank quote (#1104).
     val replyText = remember(replyPreview.message) { replyPreview.message.stripComposerLineBreakArtifacts() }

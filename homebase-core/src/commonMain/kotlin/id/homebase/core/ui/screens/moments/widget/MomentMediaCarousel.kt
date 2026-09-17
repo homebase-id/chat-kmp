@@ -150,9 +150,7 @@ fun MomentMediaCarousel(
         snapshotFlow {
             val payload = payloads.getOrNull(pagerState.currentPage)
                 ?: return@snapshotFlow null
-            val ct = payload.contentType ?: ""
-            val isVideo = ct.startsWith("video/") || ct == "application/vnd.apple.mpegurl"
-            if (isVideo) payload.key else null
+            if (payload.isVideo()) payload.key else null
         }.collect { autoplayKey ->
             Logger.d(tag = "MomentVideo") {
                 "carousel autoplay engage: messageId=$messageId page=${pagerState.currentPage} key=${autoplayKey ?: "<no-video>"}"
@@ -184,11 +182,7 @@ fun MomentMediaCarousel(
             // 4dp "peek" gaps, add `pageSpacing = 4.dp` here.
         ) { pageIndex ->
             val payload = payloads[pageIndex]
-            val contentType = payload.contentType ?: ""
-            val isVideo = contentType.startsWith("video/") ||
-                contentType == "application/vnd.apple.mpegurl"
-
-            if (isVideo) {
+            if (payload.isVideo()) {
                 MomentInlineVideoTile(
                     payload = payload,
                     fileId = fileId,
