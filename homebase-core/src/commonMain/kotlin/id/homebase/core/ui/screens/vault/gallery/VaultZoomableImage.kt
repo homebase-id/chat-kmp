@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -16,7 +18,6 @@ import id.homebase.core.media.MediaPendingOverlay
 import id.homebase.core.media.MediaUnavailablePlaceholder
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
-import id.homebase.core.ui.screens.vault.components.pageTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.imageDataFor
 import id.homebase.resources.MR
@@ -104,7 +105,7 @@ fun VaultZoomableImage(
         } else {
             MediaUnavailablePlaceholder(
                 message = stringResource(MR.string.vault_error_image_unavailable),
-                icon = file.pageTypeIcon(descriptor),
+                icon = Icons.Outlined.Image,
                 onTap = onToggleUI,
             )
         }

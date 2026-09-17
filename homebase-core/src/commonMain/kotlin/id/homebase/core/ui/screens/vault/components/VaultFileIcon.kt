@@ -70,7 +70,7 @@ import id.homebase.resources.vault_gallery_send_webdrop
 import androidx.compose.material.icons.outlined.Redeem
 
 // Vault notes are text/markdown, a distinction fileKindOf doesn't draw.
-fun fileTypeIcon(contentType: String?, fileName: String? = null): ImageVector {
+fun fileTypeIcon(contentType: String?, fileName: String?): ImageVector {
     if (contentType == CONTENT_TYPE_MARKDOWN) return Icons.AutoMirrored.Outlined.NoteAdd
     return when (fileKindOf(contentType, fileName)) {
         FileKind.Image -> Icons.Outlined.Image

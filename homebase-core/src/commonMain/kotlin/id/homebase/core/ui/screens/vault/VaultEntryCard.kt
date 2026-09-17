@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -325,7 +324,7 @@ private fun VaultCardThumbnail(
 
     // 5. Fallback icon
     Icon(
-        imageVector = if (file.isImage) Icons.Outlined.Image else fileTypeIcon(file.contentType, file.fileName),
+        imageVector = fileTypeIcon(file.contentType, file.fileName),
         contentDescription = null,
         tint = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.size(32.dp),
