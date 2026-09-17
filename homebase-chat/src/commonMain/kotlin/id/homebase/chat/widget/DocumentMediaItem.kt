@@ -23,7 +23,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,14 +30,6 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.ui.assets.Apk
-import id.homebase.core.ui.assets.Excel
-import id.homebase.core.ui.assets.File
-import id.homebase.core.ui.assets.FileCode
-import id.homebase.core.ui.assets.FileZip
-import id.homebase.core.ui.assets.HomebaseIcons
-import id.homebase.core.ui.assets.Pdf
-import id.homebase.core.ui.assets.WordFile
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.formatFileSize
 import id.homebase.resources.MR
@@ -57,20 +48,9 @@ fun DocumentMediaItem(
     previewImageData: HomebaseImageData? = null,
     showDownloadButton: Boolean = true,
 ) {
-    val contentType = payload.contentType ?: ""
     val fileName = payload.descriptorContent ?: payload.key
     val fileSize = payload.bytesWritten?.formatFileSize() ?: ""
-
-    // Map content types to specific icons based on the requested specification
-    val fileIcon: ImageVector = when (contentType) {
-        "application/pdf" -> HomebaseIcons.Pdf
-        "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> HomebaseIcons.WordFile
-        "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> HomebaseIcons.Excel
-        "application/zip", "application/x-rar-compressed" -> HomebaseIcons.FileZip
-        "application/javascript", "application/json" -> HomebaseIcons.FileCode
-        "application/vnd.android.package-archive" -> HomebaseIcons.Apk
-        else -> HomebaseIcons.File
-    }
+    val fileIcon = fileKindOf(payload.contentType, fileName).icon
 
     Column(
         modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(Dimens.Message.cornerRadius))
