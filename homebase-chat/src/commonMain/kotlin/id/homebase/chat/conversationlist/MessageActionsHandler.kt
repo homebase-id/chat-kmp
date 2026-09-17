@@ -40,9 +40,8 @@ import id.homebase.chat.services.renderer.LocationPreviewRenderer
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.toCombinedPayloadBundle
 import id.homebase.chat.services.renderer.toMessageDataType
-import id.homebase.chat.widget.audioLengthSeconds
-import id.homebase.chat.widget.isAudio
-import id.homebase.chat.widget.replyMediaPayloads
+import id.homebase.chat.widget.isVisualMedia
+import id.homebase.chat.widget.mediaPayloads
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
@@ -119,22 +118,6 @@ internal suspend fun RichTextState.clearedForSend(content: String, send: suspend
         if (e !is CancellationException && annotatedString.isBlank()) applyMarkDownContent(content)
         throw e
     }
-}
-
-internal fun MessageUiModel.toReplyPreview(): ReplyPreview {
-    val audioPayload = payloads.replyMediaPayloads().firstOrNull()?.takeIf { it.isAudio() }
-    return ReplyPreview(
-        replyUniqueId = id,
-        authorOdinId = originalAuthor?.domainName ?: "null",
-        // trim before truncate: leading newlines would otherwise render as a bare
-        // "…" in the quote and eat into the 80-codepoint budget.
-        message = content.trim().truncateToCodePoints(80),
-        // A voice note's preview thumb is its waveform strip, which renders as a blank square.
-        previewThumbnail = previewThumbnail.takeIf { audioPayload == null },
-        context = (messageContent as? MessageContent.Event)?.descriptor
-            ?.let { ReplyContext.event(it.startUtcMs) }
-            ?: audioPayload?.let { ReplyContext.audio(it.audioLengthSeconds()) },
-    )
 }
 
 /**
@@ -1224,6 +1207,18 @@ internal class MessageActionsHandler(
             }
         }
     }
+
+    private fun MessageUiModel.toReplyPreview() = ReplyPreview(
+        replyUniqueId = id,
+        authorOdinId = originalAuthor?.domainName ?: "null",
+        // trim before truncate: leading newlines would otherwise render as a bare
+        // "…" in the quote and eat into the 80-codepoint budget.
+        message = content.trim().truncateToCodePoints(80),
+        previewThumbnail = previewThumbnail
+            .takeIf { payloads.mediaPayloads().firstOrNull()?.isVisualMedia() == true },
+        context = (messageContent as? MessageContent.Event)?.descriptor
+            ?.let { ReplyContext.event(it.startUtcMs) },
+    )
 
     private fun replyToMessage(
         conversationId: Uuid,

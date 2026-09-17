@@ -1045,19 +1045,14 @@ fun InlineReplyPreview(
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
-    val replyContext = remember(replyPreview.context) { ReplyContext.fromJson(replyPreview.context) }
-    val mediaPayloads = remember(replyMessage?.payloads) { replyMessage?.payloads.replyMediaPayloads() }
-    // A voice note's embedded thumb is its waveform strip, which crops to a blank square.
-    val quotesAudio = replyContext is ReplyContext.Audio || mediaPayloads.firstOrNull()?.isAudio() == true
+    val mediaPayloads = remember(replyMessage?.payloads) { replyMessage?.payloads.mediaPayloads() }
+    // A voice note's embedded thumb is its waveform and a PDF's is a 20px page, so only visual media gets one.
+    val showThumbnail = replyMessage == null || mediaPayloads.firstOrNull()?.isVisualMedia() == true
 
-    // Build HomebaseImageData from the original message's first visual payload (image or video)
     val imageData: HomebaseImageData? = remember(replyPreview, replyMessage, driveId) {
         if (replyMessage == null || driveId == null) return@remember null
-        val firstVisualPayload = replyMessage.payloads?.firstOrNull {
-            val ct = it.contentType ?: ""
-            ct.startsWith("image/") || ct.startsWith("video/") ||
-                ct == "application/vnd.apple.mpegurl"
-        } ?: return@remember null
+        val firstVisualPayload = mediaPayloads.firstOrNull()?.takeIf { it.isVisualMedia() }
+            ?: return@remember null
         val payloadIv = try {
             firstVisualPayload.iv?.let { Base64.decode(it) }
         } catch (_: Exception) {
@@ -1081,8 +1076,8 @@ fun InlineReplyPreview(
     }
 
     // Fallback: decode embedded base64 thumbnail if we can't build HomebaseImageData
-    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData, quotesAudio) {
-        if (imageData != null || quotesAudio) return@remember null
+    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData, showThumbnail) {
+        if (imageData != null || !showThumbnail) return@remember null
         replyPreview.previewThumbnail?.content?.let { base64Content ->
             try {
                 val bytes = Base64.decode(base64Content)
@@ -1104,18 +1099,16 @@ fun InlineReplyPreview(
         isDeleted = replyMessage?.isDeleted ?: false,
         firstPayload = mediaPayloads.firstOrNull(),
         hasMultiplePayloads = mediaPayloads.size > 1,
-    ) ?: (replyContext as? ReplyContext.Audio)
-        ?.takeIf { replyText.isBlank() }
-        ?.let { voiceMessageLabel(it.lengthSeconds) }
+    )
     // Dispatch on the typed ReplyContext carried on the wire — that's how
     // the renderer knows it's an event reply without looking up the parent.
     // Pre-context senders leave it null; we fall back to a parent-message
     // lookup so old replies still get the chip when the parent is in
     // memory. Future kinds parse as Unknown → default reply preview, no
     // crash.
-    val eventStartLocal = when (val ctx = replyContext) {
+    val eventStartLocal = when (val ctx = ReplyContext.fromJson(replyPreview.context)) {
         is ReplyContext.Event -> rememberViewerLocalDate(ctx.startUtcMs)
-        is ReplyContext.Audio, ReplyContext.Unknown -> null
+        ReplyContext.Unknown -> null
         null -> {
             val eventDescriptor = (replyMessage?.messageContent as? MessageContent.Event)?.descriptor
             eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }

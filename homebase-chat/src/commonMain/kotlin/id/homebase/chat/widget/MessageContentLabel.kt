@@ -24,7 +24,6 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_audio
-import id.homebase.resources.chat_message_audio_duration
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_file
 import id.homebase.resources.chat_message_gif
@@ -33,6 +32,7 @@ import id.homebase.resources.chat_message_link
 import id.homebase.resources.chat_message_location
 import id.homebase.resources.chat_message_multiple_media
 import id.homebase.resources.chat_message_video
+import id.homebase.resources.chat_message_voice_duration
 import id.homebase.resources.chat_preview_sticker
 import id.homebase.core.widget.formatAudioTime
 import org.jetbrains.compose.resources.stringResource
@@ -64,14 +64,6 @@ fun typedMessageContentLabel(messageContent: MessageContent?): ContentLabel? = w
     is MessageContent.Unknown -> ContentLabel(messageContent.displayLabel, Icons.AutoMirrored.Outlined.HelpOutline)
     null -> null
 }
-
-@Composable
-fun voiceMessageLabel(lengthSeconds: Int?): ContentLabel = ContentLabel(
-    text = lengthSeconds
-        ?.let { stringResource(MR.string.chat_message_audio_duration, formatAudioTime(it)) }
-        ?: stringResource(MR.string.chat_message_audio),
-    icon = Icons.Default.Mic,
-)
 
 /**
  * Determines the content-type label for a message based on its payload descriptors.
@@ -148,11 +140,24 @@ fun messageContentLabel(
                 text = stringResource(MR.string.chat_message_video),
                 icon = Icons.Default.PlayArrow
             )
-            firstPayload.isAudio() -> voiceMessageLabel(
-                remember(firstPayload) { firstPayload.audioLengthSeconds() },
-            )
+            firstPayload.isAudio() -> {
+                // Only the in-app recorder measures a length; picked audio files carry 0.
+                val voiceNoteSeconds = remember(firstPayload) { firstPayload.audioLengthSeconds() }
+                if (voiceNoteSeconds != null) {
+                    ContentLabel(
+                        text = stringResource(MR.string.chat_message_voice_duration, formatAudioTime(voiceNoteSeconds)),
+                        icon = Icons.Default.Mic
+                    )
+                } else {
+                    ContentLabel(
+                        text = stringResource(MR.string.chat_message_audio),
+                        icon = Icons.Default.PlayArrow
+                    )
+                }
+            }
             else -> ContentLabel(
-                text = stringResource(MR.string.chat_message_file),
+                text = firstPayload.descriptorContent?.takeIf { it.isNotBlank() }
+                    ?: stringResource(MR.string.chat_message_file),
                 icon = Icons.Default.Description
             )
         }

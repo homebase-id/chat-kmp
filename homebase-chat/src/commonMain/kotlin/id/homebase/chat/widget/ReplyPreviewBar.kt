@@ -76,16 +76,12 @@ fun ReplyPreviewBar(
     accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
     val currentOdinId = LocalCurrentOdinId.current
-    val mediaPayloads = remember(message.payloads) { message.payloads.replyMediaPayloads() }
+    val mediaPayloads = remember(message.payloads) { message.payloads.mediaPayloads() }
 
     val firstPayload = mediaPayloads.firstOrNull()
     val hasMultiplePayloads = mediaPayloads.size > 1
 
-    // Determine if the first payload is an image or video (eligible for thumbnail)
-    val isVisualMedia = remember(firstPayload) {
-        val ct = firstPayload?.contentType ?: ""
-        ct.startsWith("image/") || ct.startsWith("video/") || ct == "application/vnd.apple.mpegurl"
-    }
+    val isVisualMedia = remember(firstPayload) { firstPayload?.isVisualMedia() == true }
 
     // Build thumbnail data for visual media
     val chatDriveId = chatTargetDrive.alias

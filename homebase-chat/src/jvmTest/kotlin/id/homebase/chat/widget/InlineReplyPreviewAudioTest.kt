@@ -14,7 +14,6 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.MessageAppData
-import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
 import kotlinx.collections.immutable.persistentListOf
 import kotlin.test.Test
@@ -31,15 +30,7 @@ class InlineReplyPreviewAudioTest {
         content = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC",
     )
 
-    private val voiceNote = message(
-        PayloadDescriptor(
-            key = "chat_web0",
-            contentType = "audio/mp4",
-            descriptorContent = DescriptorContent.descriptorContentFromAudioFile("rec.m4a", 15),
-        ),
-    )
-
-    private fun message(vararg payloads: PayloadDescriptor) = MessageUiModel(
+    private fun message(contentType: String, descriptorContent: String) = MessageUiModel(
         id = Uuid.random(),
         globalTransitId = null,
         fileId = Uuid.random(),
@@ -54,70 +45,57 @@ class InlineReplyPreviewAudioTest {
         messageAppData = MessageAppData(),
         reactionPreview = null,
         previewThumbnail = pngThumb,
-        payloads = persistentListOf(*payloads),
+        payloads = persistentListOf(
+            PayloadDescriptor(key = "chat_web0", contentType = contentType, descriptorContent = descriptorContent),
+        ),
         keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
         versionTag = Uuid.random(),
         isPendingSend = false,
         hasMore = false,
     )
 
-    private fun reply(thumb: EmbeddedThumb?, context: ReplyContext.Audio? = null) = ReplyPreview(
-        replyUniqueId = voiceNote.id,
-        authorOdinId = "alice.example.com",
-        message = "",
-        previewThumbnail = thumb,
-        context = context?.let { ReplyContext.audio(it.lengthSeconds) },
-    )
+    private fun audio(name: String, lengthSeconds: Int) =
+        message("audio/mp4", DescriptorContent.descriptorContentFromAudioFile(name, lengthSeconds))
+
+    private fun assertQuote(replyMessage: MessageUiModel?, expectedText: String?, expectThumbnail: Boolean) =
+        runComposeUiTest {
+            setContent {
+                MaterialTheme {
+                    InlineReplyPreview(
+                        replyPreview = ReplyPreview(
+                            replyUniqueId = Uuid.random(),
+                            authorOdinId = "alice.example.com",
+                            message = "",
+                            previewThumbnail = pngThumb,
+                        ),
+                        sentByYou = false,
+                        onClick = {},
+                        replyMessage = replyMessage,
+                        driveId = Uuid.random(),
+                    )
+                }
+            }
+            if (expectedText != null) {
+                onNodeWithTag(ChatBubbleTestTags.REPLY_QUOTE_TEXT, useUnmergedTree = true)
+                    .assertTextEquals(expectedText)
+            }
+            val thumbnail = onNodeWithContentDescription("Reply thumbnail")
+            if (expectThumbnail) thumbnail.assertExists() else thumbnail.assertDoesNotExist()
+        }
 
     @Test
-    fun legacyReplyToLoadedVoiceNote_showsVoiceLabel_andNoThumbnail() = runComposeUiTest {
-        setContent {
-            MaterialTheme {
-                InlineReplyPreview(
-                    replyPreview = reply(thumb = pngThumb),
-                    sentByYou = false,
-                    onClick = {},
-                    replyMessage = voiceNote,
-                    driveId = Uuid.random(),
-                )
-            }
-        }
-        onNodeWithTag(ChatBubbleTestTags.REPLY_QUOTE_TEXT, useUnmergedTree = true)
-            .assertTextEquals("Voice message · 00:15")
-        onNodeWithContentDescription("Reply thumbnail").assertDoesNotExist()
-    }
+    fun voiceNote_showsVoiceLabelWithDuration_andNoThumbnail() =
+        assertQuote(audio("recording-1.m4a", 15), "Voice message · 00:15", expectThumbnail = false)
 
     @Test
-    fun audioContextReply_withoutLoadedParent_showsVoiceLabel() = runComposeUiTest {
-        setContent {
-            MaterialTheme {
-                InlineReplyPreview(
-                    replyPreview = reply(thumb = null, context = ReplyContext.Audio(15)),
-                    sentByYou = false,
-                    onClick = {},
-                    replyMessage = null,
-                    driveId = Uuid.random(),
-                )
-            }
-        }
-        onNodeWithTag(ChatBubbleTestTags.REPLY_QUOTE_TEXT, useUnmergedTree = true)
-            .assertTextEquals("Voice message · 00:15")
-        onNodeWithContentDescription("Reply thumbnail").assertDoesNotExist()
-    }
+    fun audioFileWithoutLength_showsAudioLabel_notVoiceMessage() =
+        assertQuote(audio("song.mp3", 0), "Audio", expectThumbnail = false)
 
     @Test
-    fun imageReply_withoutLoadedParent_stillShowsEmbeddedThumbnail() = runComposeUiTest {
-        setContent {
-            MaterialTheme {
-                InlineReplyPreview(
-                    replyPreview = reply(thumb = pngThumb),
-                    sentByYou = false,
-                    onClick = {},
-                    replyMessage = null,
-                    driveId = Uuid.random(),
-                )
-            }
-        }
-        onNodeWithContentDescription("Reply thumbnail").assertExists()
-    }
+    fun pdf_showsFileName_andNoThumbnail() =
+        assertQuote(message("application/pdf", "report.pdf"), "report.pdf", expectThumbnail = false)
+
+    @Test
+    fun replyWithoutLoadedParent_stillShowsEmbeddedThumbnail() =
+        assertQuote(replyMessage = null, expectedText = null, expectThumbnail = true)
 }

@@ -4,11 +4,16 @@ import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.services.ChatProtocol
 
-fun List<PayloadDescriptor>?.replyMediaPayloads(): List<PayloadDescriptor> =
+fun List<PayloadDescriptor>?.mediaPayloads(): List<PayloadDescriptor> =
     this?.filter { payload ->
         payload.key != ChatProtocol.DefaultPayloadKey &&
             !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
     }.orEmpty()
+
+fun PayloadDescriptor.isVisualMedia(): Boolean {
+    val ct = contentType.orEmpty()
+    return ct.startsWith("image/") || ct.startsWith("video/") || ct == "application/vnd.apple.mpegurl"
+}
 
 fun PayloadDescriptor.isAudio(): Boolean = contentType?.startsWith("audio/") == true
 
