@@ -287,6 +287,7 @@ fun ConversationContent(
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showPollComposer by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
+    val emojiPopover = isDesktopOrWeb() && isExpandedLayout()
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -1703,6 +1704,26 @@ fun ConversationContent(
                             }
                         }
 
+                        val toggleEmojiSheet = {
+                            showAttachmentSheet = false
+                            if (showEmojiSheet && !isKeyboardVisible) {
+                                showEmojiSheet = false
+                                if (wasKeyboardVisible) {
+                                    focusRequester.requestFocus()
+                                    keyboardController?.show()
+                                }
+                            } else {
+                                if (isKeyboardVisible) {
+                                    wasKeyboardVisible = true
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
+                                } else {
+                                    wasKeyboardVisible = false
+                                }
+                                showEmojiSheet = true
+                            }
+                        }
+
                         UnifiedInputBubble(
                             replyToMessage = uiState.replyToMessage,
                             onDismissReply = {
@@ -1752,24 +1773,10 @@ fun ConversationContent(
                                 } else {
                                     emptyList()
                                 },
-                                onEmojiClick = {
-                                    showAttachmentSheet = false
-                                    if (showEmojiSheet && !isKeyboardVisible) {
-                                        showEmojiSheet = false
-                                        if (wasKeyboardVisible) {
-                                            focusRequester.requestFocus()
-                                            keyboardController?.show()
-                                        }
-                                    } else {
-                                        if (isKeyboardVisible) {
-                                            wasKeyboardVisible = true
-                                            focusManager.clearFocus()
-                                            keyboardController?.hide()
-                                        } else {
-                                            wasKeyboardVisible = false
-                                        }
-                                        showEmojiSheet = true
-                                    }
+                                onEmojiClick = if (emojiPopover) {
+                                    { showAttachmentSheet = false }
+                                } else {
+                                    toggleEmojiSheet
                                 },
                                 onKeyboardClick = {
                                     showEmojiSheet = false
@@ -1801,6 +1808,20 @@ fun ConversationContent(
                                             imageBytes = imageBytes,
                                         )
                                     )
+                                },
+                                emojiPopoverContent = if (emojiPopover) {
+                                    {
+                                        ExpressionPanel(
+                                            conversationId = conversation.conversation.id,
+                                            onUiAction = onUiAction,
+                                            onBackSpace = { textFieldState.programmaticBackspace() },
+                                            onEmojiSelected = { textFieldState.addTextAfterSelection(it) },
+                                            modifier = Modifier.fillMaxSize(),
+                                            searchFirst = true,
+                                        )
+                                    }
+                                } else {
+                                    null
                                 },
                                 onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) },
                             )
