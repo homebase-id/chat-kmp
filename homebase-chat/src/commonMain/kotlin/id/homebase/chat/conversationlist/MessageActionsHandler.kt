@@ -41,7 +41,6 @@ import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.toCombinedPayloadBundle
 import id.homebase.chat.services.renderer.toMessageDataType
 import id.homebase.chat.widget.mediaPayloads
-import id.homebase.api.client.drives.files.isVisualMedia
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji

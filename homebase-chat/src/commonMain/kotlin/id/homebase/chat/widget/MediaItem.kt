@@ -42,7 +42,6 @@ import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.files.isAudio
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.image.toImageBitmap
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -245,7 +244,7 @@ fun MediaItem(
             }
         }
 
-        contentType.startsWith("image/") -> {
+        payload.isImage() -> {
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             if (imageLocalContext != null) {
                 var imageModifier = if (onClick != null || onLongPress != null) {
@@ -336,7 +335,7 @@ fun MediaItem(
             }
         }
 
-        contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
+        payload.isVideo() -> {
             val payloadIv = remember(payload.iv) {
                 payload.iv?.let { Base64.decode(it) }
             }
@@ -589,11 +588,7 @@ fun MediaItem(
             )
         }
 
-        contentType == "application/zip" ||
-                contentType == "application/x-rar-compressed" ||
-                contentType == "application/vnd.android.package-archive" ||
-                contentType.startsWith("text/") ||
-                contentType.startsWith("application/") -> {
+        payload.rendersAsDocumentCard() -> {
             DocumentMediaItem(
                 payload = payload,
                 modifier = baseModifier,

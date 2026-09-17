@@ -4,7 +4,6 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.client.drives.files.isAudio
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -337,7 +336,7 @@ internal class MediaDownloadHandler(
                 val isSticker =
                     (selectedPayload.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
                 when {
-                    contentType.startsWith("image/") && isSticker -> {
+                    selectedPayload.isImage() && isSticker -> {
                         dispatch(
                             ConversationListUiAction.ShowStickerOptions(
                                 message = action.message,
@@ -346,7 +345,7 @@ internal class MediaDownloadHandler(
                         )
                     }
 
-                    contentType.startsWith("image/") -> {
+                    selectedPayload.isImage() -> {
                         Logger.d("Image clicked: ${action.message.id}:${action.payloadKey}")
 
                         // Header title = the sender's resolved display name (same as the
@@ -380,7 +379,7 @@ internal class MediaDownloadHandler(
                         }
                     }
 
-                    contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
+                    selectedPayload.isVideo() -> {
                         val localContext = localVideoContextStore.get(action.message.id, selectedPayload.key)
                         val ivBytes = selectedPayload.iv?.let { Base64.decode(it) }
 

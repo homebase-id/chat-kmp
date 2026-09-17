@@ -32,8 +32,6 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.files.isAudio
-import id.homebase.api.client.drives.files.isVisualMedia
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.chat.conversationlist.DecryptedFileKey
@@ -61,22 +59,12 @@ import kotlin.uuid.Uuid
  * True when a single payload renders as a compact [DocumentMediaItem] file card (icon + name +
  * size + download) rather than a visual media tile — so it must hug its content instead of being
  * stretched to a media-height box, which leaves the card floating atop a grey void (#1103).
- *
- * Mirrors [MediaItem]'s routing: link-preview and location payloads have their own cards (false);
- * image, video, HLS and audio are media (false); everything else that routes to DocumentMediaItem
- * (pdf, zip, rar, apk, and the text and application MIME families) is a document (true). Keep in
- * sync with the content-type branches in [MediaItem] if a new document type is added there.
  */
 internal fun PayloadDescriptor.rendersAsDocumentCard(): Boolean {
     if (key == ChatProtocol.PAYLOAD_KEY_LINKS || key == ChatProtocol.PAYLOAD_KEY_LOCATION) return false
     val ct = contentType ?: return false
-    if (isVisualMedia() || isAudio()) return false
-    return ct == "application/pdf" ||
-        ct == "application/zip" ||
-        ct == "application/x-rar-compressed" ||
-        ct == "application/vnd.android.package-archive" ||
-        ct.startsWith("text/") ||
-        ct.startsWith("application/")
+    // An HLS playlist is application/* but plays as video.
+    return ct.startsWith("text/") || (ct.startsWith("application/") && !isVisualMedia())
 }
 
 /**

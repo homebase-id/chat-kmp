@@ -3,7 +3,6 @@ package id.homebase.chat.conversationsettings
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.files.isAudio
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.BatchResult
 import id.homebase.chat.data.MessageUiModel
@@ -106,17 +105,15 @@ fun collectConversationOverview(
                 date = message.userDate,
                 senderName = message.displayName,
             )
-            val contentType = payload.contentType
             when {
                 payload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> Unit // links not a tab
                 payload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> locations.add(item())
-                contentType == null -> Unit
-                contentType.startsWith("image/") -> {
+                payload.contentType == null -> Unit
+                payload.isImage() -> {
                     val isSticker = (payload.descriptorInfo() as? id.homebase.api.client.drives.files.DescriptorContent.ImageFile)?.isSticker == true
                     media.add(item(isSticker))
                 }
-                contentType.startsWith("video/") ||
-                        contentType == "application/vnd.apple.mpegurl" -> media.add(item())
+                payload.isVideo() -> media.add(item())
                 payload.isAudio() -> audio.add(item())
                 else -> files.add(item())
             }

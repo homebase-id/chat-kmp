@@ -216,8 +216,7 @@ fun MessageBubbleRaw(
             // message. EventBubble renders it rounded above the card (tapping it
             // opens the event detail, not the media viewer) and in the detail too.
             val coverPayload = message.payloads?.firstOrNull {
-                it.contentType?.startsWith("image/") == true &&
-                    it.key.startsWith(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB)
+                it.isImage() && it.key.startsWith(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB)
             }
             EventBubble(
                 descriptor = content.descriptor,

@@ -38,7 +38,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.files.audioLengthSeconds
 import id.homebase.api.common.OdinId
 import id.homebase.core.audio.VoiceNotePlayback
 import id.homebase.core.audio.rememberWaveformAmplitudes

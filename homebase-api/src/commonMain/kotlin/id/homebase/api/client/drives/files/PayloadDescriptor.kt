@@ -7,6 +7,8 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoMetadata
 import kotlinx.serialization.Serializable
 
+const val HLS_PLAYLIST_CONTENT_TYPE = "application/vnd.apple.mpegurl"
+
 @Serializable
 @Immutable
 data class PayloadDescriptor(
@@ -73,7 +75,7 @@ data class PayloadDescriptor(
                 }
             }
 
-            contentType?.startsWith("image/") == true -> {
+            isImage() -> {
                 // Image payloads historically wrote descriptorContent = "" (no info).
                 // We now optionally store a tiny {"isSticker":true} object here. Blank /
                 // legacy / malformed all fall back to a non-sticker ImageFile so an older
@@ -106,6 +108,18 @@ data class PayloadDescriptor(
         }
     }
 
+    fun isImage(): Boolean = contentType?.startsWith("image/") == true
+
+    fun isVideo(): Boolean =
+        contentType?.startsWith("video/") == true || contentType == HLS_PLAYLIST_CONTENT_TYPE
+
+    fun isVisualMedia(): Boolean = isImage() || isVideo()
+
+    fun isAudio(): Boolean = contentType?.startsWith("audio/") == true
+
+    fun audioLengthSeconds(): Int? =
+        (descriptorInfo() as? DescriptorContent.AudioFile)?.lengthSeconds?.takeIf { it > 0 }
+
     fun filename(): String? {
         return when(val info = descriptorInfo()) {
             is DescriptorContent.AudioFile -> info.name
@@ -122,16 +136,6 @@ data class PayloadDescriptor(
         }
     }
 }
-
-fun PayloadDescriptor.isVisualMedia(): Boolean {
-    val ct = contentType.orEmpty()
-    return ct.startsWith("image/") || ct.startsWith("video/") || ct == "application/vnd.apple.mpegurl"
-}
-
-fun PayloadDescriptor.isAudio(): Boolean = contentType?.startsWith("audio/") == true
-
-fun PayloadDescriptor.audioLengthSeconds(): Int? =
-    (descriptorInfo() as? DescriptorContent.AudioFile)?.lengthSeconds?.takeIf { it > 0 }
 
 sealed interface DescriptorContent {
     data object Empty : DescriptorContent

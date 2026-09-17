@@ -42,7 +42,6 @@ import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.files.isAudio
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.toImageBitmap
@@ -216,7 +215,7 @@ fun MomentMediaItem(
             }
         }
 
-        contentType.startsWith("image/") && enableZoom -> {
+        payload.isImage() && enableZoom -> {
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             val zoomSource = remember(
                 imageLocalContext?.localFilePath,
@@ -272,7 +271,7 @@ fun MomentMediaItem(
             }
         }
 
-        contentType.startsWith("image/") -> {
+        payload.isImage() -> {
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             if (imageLocalContext != null) {
                 var imageModifier = if (onClick != null || onLongPress != null) {
@@ -347,7 +346,7 @@ fun MomentMediaItem(
             }
         }
 
-        contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
+        payload.isVideo() -> {
             // A public feed post ships its video plaintext, so the payload carries no IV.
             // Build the player path either way (encrypted only when an IV is present) instead of
             // bailing to a non-tappable placeholder with no route to the full-screen player —
