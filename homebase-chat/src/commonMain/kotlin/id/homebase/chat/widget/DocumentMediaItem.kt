@@ -31,6 +31,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.util.fileKindOf
 import id.homebase.core.util.formatFileSize
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_download_file
