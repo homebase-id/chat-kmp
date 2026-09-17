@@ -136,7 +136,4 @@ class PostCardLinkPreviewSizeTest {
 
     @Test
     fun squareImage_isCappedToFeedMediaHeight() = assertImageSize(900.dp, 600, 600, 700.dp)
-
-    @Test
-    fun tallImage_isFlooredToFeedMediaAspect() = assertImageSize(400.dp, 600, 900, 460.dp)
 }

@@ -46,6 +46,7 @@ import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.authorOdinId
 import id.homebase.core.feed.services.toPostAudience
 import id.homebase.core.feed.services.previewBody
+import id.homebase.core.ui.screens.moments.widget.MaxFeedMediaAspect
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.core.ui.screens.moments.widget.feedMediaMaxHeight
 import id.homebase.core.util.formatTimestamp
@@ -74,10 +75,9 @@ import org.jetbrains.compose.resources.stringResource
 
 private const val DOUBLE_TAP_EMOJI = "❤️"
 
-// Aspect floor (width/height) for a single feed image: 0.8 == a 4:5 frame, the Instagram "portrait max 4:5"
-// convention, so the next post always peeks below. Equals MomentMediaGallery.MaxFeedMediaAspect, so every feed
-// image renders as a uniform 4:5 card; the detail view still shows the image uncropped.
-internal const val FeedMinMediaAspect = 0.8f
+// Aspect floor (width/height) for a single feed image: a 4:5 frame, the Instagram "portrait max 4:5"
+// convention, so the next post always peeks below; the detail view still shows the image uncropped.
+internal const val FeedMinMediaAspect = MaxFeedMediaAspect
 
 // Deliberately NOT a Material Card: each post is a flat full-bleed band on `surface`, with the list painting
 // the gap between posts.
@@ -408,7 +408,6 @@ private fun PostLinkPreview(
         previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
         modifier = modifier,
         imageMaxHeight = feedMediaMaxHeight(),
-        imageMinAspectRatio = FeedMinMediaAspect,
     )
 }
 

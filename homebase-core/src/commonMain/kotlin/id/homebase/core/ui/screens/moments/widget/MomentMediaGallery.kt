@@ -207,7 +207,7 @@ internal const val MaxFeedPhotoAspect = 1.91f
 
 // Feed only: a single photo's or link preview image's height is capped to this fraction of the window so a tall
 // post fits a screenful. 0.7 leaves room for the header/caption/actions. Tune here.
-internal const val FeedMediaMaxScreenFraction = 0.7f
+private const val FeedMediaMaxScreenFraction = 0.7f
 
 @Composable
 internal fun feedMediaMaxHeight(): Dp =

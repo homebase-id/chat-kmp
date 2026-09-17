@@ -71,9 +71,8 @@ private fun EmbeddedThumb?.aspectRatio(): Float =
 private fun Modifier.linkPreviewImageSize(
     aspectRatio: Float,
     maxHeight: Dp = ImageMaxHeight,
-    minAspectRatio: Float = 0f,
 ): Modifier = layout { measurable, constraints ->
-    val ratio = aspectRatio.coerceIn(minAspectRatio, MaxImageAspectRatio)
+    val ratio = aspectRatio.coerceAtMost(MaxImageAspectRatio)
     val maxHeightPx = maxHeight.roundToPx()
     val width = if (constraints.hasBoundedWidth) constraints.maxWidth else (maxHeightPx * ratio).roundToInt()
     val height = constraints.constrainHeight((width / ratio).roundToInt().coerceAtMost(maxHeightPx))
@@ -284,13 +283,12 @@ fun LinkPreviewCard(
     localImagePath: String? = null,
     modifier: Modifier = Modifier,
     imageMaxHeight: Dp = ImageMaxHeight,
-    imageMinAspectRatio: Float = 0f,
 ) {
     val uriHandler = LocalUriHandler.current
     val domain = extractDomain(descriptor.url)
 
     val imageModifier = Modifier
-        .linkPreviewImageSize(previewThumbnail.aspectRatio(), imageMaxHeight, imageMinAspectRatio)
+        .linkPreviewImageSize(previewThumbnail.aspectRatio(), imageMaxHeight)
         .clip(ImageCornerShape)
 
     // While the message is pending/uploading the drive payload does not exist yet, so a
