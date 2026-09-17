@@ -49,6 +49,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
@@ -92,6 +94,9 @@ import id.homebase.resources.chat_gallery_next_count
 import id.homebase.resources.chat_select_more_photos
 import id.homebase.resources.go_to_settings
 import id.homebase.resources.manage
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.toImmutableList
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
@@ -406,8 +411,15 @@ private fun SelectionBadge(
     }
 }
 
-@Composable
-fun AttachmentOptions(
+@Immutable
+data class AttachmentAction(
+    val testTag: String,
+    val icon: ImageVector,
+    val label: StringResource,
+    val onClick: () -> Unit,
+)
+
+fun attachmentActions(
     onGalleryClick: () -> Unit,
     onFileClick: () -> Unit,
     onContactClick: () -> Unit,
@@ -416,7 +428,23 @@ fun AttachmentOptions(
     onGroodleClick: () -> Unit,
     onDicesClick: () -> Unit,
     onPollClick: () -> Unit,
-) {
+): ImmutableList<AttachmentAction> = listOfNotNull(
+    AttachmentAction("attachment_gallery", Icons.Default.Image, MR.string.chat_message_attachment_gallery, onGalleryClick),
+    AttachmentAction("attachment_file", Icons.Default.UploadFile, MR.string.chat_message_attachment_file, onFileClick),
+    AttachmentAction("attachment_contact", Icons.Default.ContactPage, MR.string.chat_contact_share, onContactClick),
+    if (isMobile()) {
+        AttachmentAction("attachment_location", Icons.Default.LocationOn, MR.string.chat_location_share, onLocationClick)
+    } else {
+        null
+    },
+    AttachmentAction("attachment_event", Icons.Default.Event, MR.string.chat_event_share, onEventClick),
+    AttachmentAction("attachment_groodle", Icons.Default.CalendarMonth, MR.string.chat_groodle_share, onGroodleClick),
+    AttachmentAction("attachment_dices", Icons.Default.Casino, MR.string.chat_dice_share, onDicesClick),
+    AttachmentAction("attachment_poll", Icons.Default.BarChart, MR.string.chat_poll_share, onPollClick),
+).toImmutableList()
+
+@Composable
+fun AttachmentOptions(actions: ImmutableList<AttachmentAction>) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -427,70 +455,12 @@ fun AttachmentOptions(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
         ) {
-            item {
+            items(actions, key = { it.testTag }) { action ->
                 AttachmentOption(
-                    modifier = Modifier.testTag("attachment_gallery"),
-                    icon = Icons.Default.Image,
-                    label = stringResource(MR.string.chat_message_attachment_gallery),
-                    onClick = onGalleryClick
-                )
-            }
-            item {
-                AttachmentOption(
-                    modifier = Modifier.testTag("attachment_file"),
-                    icon = Icons.Default.UploadFile,
-                    label = stringResource(MR.string.chat_message_attachment_file),
-                    onClick = onFileClick
-                )
-            }
-            item {
-                AttachmentOption(
-                    modifier = Modifier.testTag("attachment_contact"),
-                    icon = Icons.Default.ContactPage,
-                    label = stringResource(MR.string.chat_contact_share),
-                    onClick = onContactClick,
-                )
-            }
-            if (isMobile()) {
-                item {
-                    AttachmentOption(
-                        modifier = Modifier.testTag("attachment_location"),
-                        icon = Icons.Default.LocationOn,
-                        label = stringResource(MR.string.chat_location_share),
-                        onClick = onLocationClick,
-                    )
-                }
-            }
-            item {
-                AttachmentOption(
-                    modifier = Modifier.testTag("attachment_event"),
-                    icon = Icons.Default.Event,
-                    label = stringResource(MR.string.chat_event_share),
-                    onClick = onEventClick,
-                )
-            }
-            item {
-                AttachmentOption(
-                    modifier = Modifier.testTag("attachment_groodle"),
-                    icon = Icons.Default.CalendarMonth,
-                    label = stringResource(MR.string.chat_groodle_share),
-                    onClick = onGroodleClick,
-                )
-            }
-            item {
-                AttachmentOption(
-                    modifier = Modifier.testTag("attachment_dices"),
-                    icon = Icons.Default.Casino,
-                    label = stringResource(MR.string.chat_dice_share),
-                    onClick = onDicesClick,
-                )
-            }
-            item {
-                AttachmentOption(
-                    modifier = Modifier.testTag("attachment_poll"),
-                    icon = Icons.Default.BarChart,
-                    label = stringResource(MR.string.chat_poll_share),
-                    onClick = onPollClick,
+                    modifier = Modifier.testTag(action.testTag),
+                    icon = action.icon,
+                    label = stringResource(action.label),
+                    onClick = action.onClick,
                 )
             }
         }
@@ -512,7 +482,7 @@ private fun formatDuration(durationMs: Long): String {
 @Composable
 private fun AttachmentOption(
     modifier: Modifier = Modifier,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     onClick: () -> Unit,
     contentDescription: String? = null,
