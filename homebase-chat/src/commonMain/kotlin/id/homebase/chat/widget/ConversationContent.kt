@@ -158,6 +158,8 @@ import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
 import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
+import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
@@ -284,6 +286,7 @@ fun ConversationContent(
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showPollComposer by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
+    val popoverEmoji = isExpandedLayout() && isDesktopOrWeb()
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -961,10 +964,11 @@ fun ConversationContent(
                         val imeHeight = imeInsets.getBottom(this)
                         val pureImeHeight = imeState.pureImeBottomPx
                         val sheetHeight = keyboardHeight.coerceAtLeast(300.dp).roundToPx()
+                        val dockedEmojiSheet = showEmojiSheet && !popoverEmoji
                         val sheetOffset = when {
-                            showEmojiSheet && imeHeight > 0 -> pureImeHeight + sheetHeight
+                            dockedEmojiSheet && imeHeight > 0 -> pureImeHeight + sheetHeight
                             imeHeight > 0 -> pureImeHeight
-                            showEmojiSheet || showAttachmentSheet -> sheetHeight
+                            dockedEmojiSheet || showAttachmentSheet -> sheetHeight
                             else -> 0
                         }
                         IntOffset(0, -sheetOffset)
@@ -1687,7 +1691,7 @@ fun ConversationContent(
                                 recordingData = recordingData,
                                 focusRequester = focusRequester,
                                 editExistingMode = uiState.isEditingMessageId != null,
-                                showingEmojiSheet = showEmojiSheet,
+                                showingEmojiSheet = showEmojiSheet && !popoverEmoji,
                                 isSendingMessage = uiState.isSendingMessage,
                                 showActionButtons = false,
                                 onSendStateChanged = { showSendButton = it },
@@ -1702,7 +1706,9 @@ fun ConversationContent(
                                 },
                                 onEmojiClick = {
                                     showAttachmentSheet = false
-                                    if (showEmojiSheet && !isKeyboardVisible) {
+                                    if (popoverEmoji) {
+                                        showEmojiSheet = !showEmojiSheet
+                                    } else if (showEmojiSheet && !isKeyboardVisible) {
                                         showEmojiSheet = false
                                         if (wasKeyboardVisible) {
                                             focusRequester.requestFocus()
@@ -1750,6 +1756,25 @@ fun ConversationContent(
                                         )
                                     )
                                 },
+                                emojiPopover = if (popoverEmoji) {
+                                    { anchorTopInWindow ->
+                                        if (showEmojiSheet) {
+                                            ExpressionPopover(
+                                                anchorTopInWindow = anchorTopInWindow,
+                                                conversationId = conversation.conversation.id,
+                                                onUiAction = onUiAction,
+                                                onBackSpace = { textFieldState.programmaticBackspace() },
+                                                onEmojiSelected = { textFieldState.addTextAfterSelection(it) },
+                                                onDismissRequest = {
+                                                    showEmojiSheet = false
+                                                    focusRequester.requestFocus()
+                                                },
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    null
+                                },
                                 onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) },
                             )
                         }
@@ -1767,7 +1792,7 @@ fun ConversationContent(
                 modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
                     .offset { IntOffset(0, -imeInsets.getBottom(this)) }) {
                 ExpressionSheet(
-                    visible = showEmojiSheet,
+                    visible = showEmojiSheet && !popoverEmoji,
                     conversationId = conversation.conversation.id,
                     onUiAction = onUiAction,
                     onBackSpace = { textFieldState.programmaticBackspace() },

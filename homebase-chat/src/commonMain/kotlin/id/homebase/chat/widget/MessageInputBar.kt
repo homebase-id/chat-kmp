@@ -67,6 +67,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -90,6 +91,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -101,6 +104,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import co.touchlab.kermit.Logger
@@ -218,6 +222,7 @@ fun MessageInputBar(
      *  unregistered so no mention affordance appears there. */
     mentionTargets: List<ContactUiModel> = emptyList(),
     onPasteImage: ((ByteArray) -> Unit)? = null,
+    emojiPopover: (@Composable (anchorTopInWindow: Dp) -> Unit)? = null,
     onCancelEdit: () -> Unit,
 ) {
     var showExpanded by remember { mutableStateOf(false) }
@@ -327,6 +332,7 @@ fun MessageInputBar(
                     sendMessage()
                 },
                 onToggleExpand = onToggleExpand,
+                emojiPopover = emojiPopover,
                 onCancelEdit = onCancelEdit
             )
         } else {
@@ -360,6 +366,7 @@ fun MessageInputBar(
                 onRecordingStateChanged = onRecordingStateChanged,
                 onSendMessage = { sendMessage() },
                 onToggleExpand = onToggleExpand,
+                emojiPopover = emojiPopover,
                 onCancelEdit = onCancelEdit
             )
         }
@@ -382,6 +389,7 @@ fun MessageTextFieldExpanded(
     onFocused: () -> Unit = {},
     sendMessage: () -> Unit,
     onToggleExpand: (() -> Unit)? = null,
+    emojiPopover: (@Composable (anchorTopInWindow: Dp) -> Unit)? = null,
     onCancelEdit: () -> Unit,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
@@ -521,10 +529,12 @@ fun MessageTextFieldExpanded(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Bottom,
         ) {
-            IconButton(onClick = onEmojiClick) {
-                Icon(
-                    imageVector = Icons.Default.EmojiEmotions, contentDescription = stringResource(MR.string.chat_message_emoji)
-                )
+            EmojiButtonAnchor(popover = emojiPopover) {
+                IconButton(onClick = onEmojiClick) {
+                    Icon(
+                        imageVector = Icons.Default.EmojiEmotions, contentDescription = stringResource(MR.string.chat_message_emoji)
+                    )
+                }
             }
             if (!editExistingMode) {
                 IconButton(
@@ -600,6 +610,7 @@ fun MessageTextFieldCompact(
     onRecordingStateChanged: ((isRecording: Boolean) -> Unit)? = null,
     onSendMessage: () -> Unit,
     onToggleExpand: (() -> Unit)? = null,
+    emojiPopover: (@Composable (anchorTopInWindow: Dp) -> Unit)? = null,
     onCancelEdit: () -> Unit,
 ) {
     val pasteScope = rememberCoroutineScope()
@@ -732,6 +743,7 @@ fun MessageTextFieldCompact(
                             showExtraButtons = true,
                             onEmojiClick = onEmojiClick,
                             onKeyboardClick = onKeyboardClick,
+                            emojiPopover = emojiPopover,
                         )
                     }
                     Row(
@@ -807,19 +819,21 @@ fun MessageTextFieldCompact(
                                 placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
                                 leadingIcon = if (editExistingMode) null else {
                                     {
-                                        if (!showingEmojiSheet) {
-                                            IconButton(onClick = onEmojiClick) {
-                                                Icon(
-                                                    imageVector = Icons.Default.EmojiEmotions,
-                                                    contentDescription = stringResource(MR.string.chat_message_emoji_options)
-                                                )
-                                            }
-                                        } else {
-                                            IconButton(onClick = onKeyboardClick) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Keyboard,
-                                                    contentDescription = stringResource(MR.string.chat_message_emoji_options)
-                                                )
+                                        EmojiButtonAnchor(popover = emojiPopover) {
+                                            if (!showingEmojiSheet) {
+                                                IconButton(onClick = onEmojiClick) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.EmojiEmotions,
+                                                        contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                                                    )
+                                                }
+                                            } else {
+                                                IconButton(onClick = onKeyboardClick) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Keyboard,
+                                                        contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -1193,6 +1207,7 @@ private fun MessageEditMessageInfo(
     showingEmojiSheet: Boolean,
     onEmojiClick: () -> Unit,
     onKeyboardClick: () -> Unit,
+    emojiPopover: (@Composable (anchorTopInWindow: Dp) -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -1214,22 +1229,42 @@ private fun MessageEditMessageInfo(
             style = MaterialTheme.typography.labelSmall,
         )
         if (showExtraButtons) {
-            if (!showingEmojiSheet) {
-                IconButton(onClick = onEmojiClick) {
-                    Icon(
-                        imageVector = Icons.Default.EmojiEmotions,
-                        contentDescription = stringResource(MR.string.chat_message_emoji_options)
-                    )
-                }
-            } else {
-                IconButton(onClick = onKeyboardClick) {
-                    Icon(
-                        imageVector = Icons.Default.Keyboard,
-                        contentDescription = stringResource(MR.string.chat_message_emoji_options)
-                    )
+            EmojiButtonAnchor(popover = emojiPopover) {
+                if (!showingEmojiSheet) {
+                    IconButton(onClick = onEmojiClick) {
+                        Icon(
+                            imageVector = Icons.Default.EmojiEmotions,
+                            contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                        )
+                    }
+                } else {
+                    IconButton(onClick = onKeyboardClick) {
+                        Icon(
+                            imageVector = Icons.Default.Keyboard,
+                            contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+// The anchor's top is tracked while the popover is closed so it opens at its clamped height on the first frame.
+@Composable
+private fun EmojiButtonAnchor(
+    popover: (@Composable (anchorTopInWindow: Dp) -> Unit)?,
+    button: @Composable () -> Unit,
+) {
+    if (popover == null) {
+        button()
+        return
+    }
+    val density = LocalDensity.current
+    var anchorTopPx by remember { mutableIntStateOf(0) }
+    Box(modifier = Modifier.onGloballyPositioned { anchorTopPx = it.positionInWindow().y.roundToInt() }) {
+        button()
+        popover(with(density) { anchorTopPx.toDp() })
     }
 }
 

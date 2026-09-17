@@ -8,9 +8,15 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.GifBox
@@ -20,6 +26,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,7 +38,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.services.sticker.SavedSticker
@@ -76,29 +94,118 @@ fun ExpressionSheet(
         enter = slideInVertically(initialOffsetY = { it }),
         exit = slideOutVertically(targetOffsetY = { it }),
     ) {
-        // Ephemeral panel state (rememberSaveable with a plain enum isn't reliably saveable
-        // on iOS/Desktop; the tab choice needn't survive process death).
-        var selected by remember { mutableStateOf(ExpressionTab.Default) }
-        val tabs = remember { expressionTabs(gifsEnabled = false) }
+        ExpressionPanel(
+            conversationId = conversationId,
+            onUiAction = onUiAction,
+            onBackSpace = onBackSpace,
+            onEmojiSelected = onEmojiSelected,
+            modifier = modifier,
+        )
+    }
+}
 
-        Column(modifier = modifier) {
-            ExpressionTabRow(tabs = tabs, selected = selected, onSelect = { selected = it })
-            when (selected) {
-                // weight(1f) fills the remaining panel height (the panel is floored at 300.dp
-                // and the keyboard can be shorter); a fixed height would clip the picker. The
-                // emoji grid scrolls internally.
-                ExpressionTab.Emoji -> EmojiSelection(
-                    modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp),
-                    messageInputMode = true,
-                    onBackSpace = onBackSpace,
-                    onEmojiSelected = onEmojiSelected,
-                )
-                ExpressionTab.Stickers -> StickersTabContent(
-                    conversationId = conversationId,
-                    onUiAction = onUiAction,
-                )
-                ExpressionTab.Gifs -> Unit // reserved
-            }
+private val POPOVER_WIDTH = 360.dp
+private val POPOVER_HEIGHT = 440.dp
+private val POPOVER_MIN_HEIGHT = 200.dp
+private val POPOVER_ANCHOR_GAP = 8.dp
+private val POPOVER_WINDOW_MARGIN = 8.dp
+
+// Compose it beside the emoji button: a Popup anchors to its parent layout.
+@Composable
+fun ExpressionPopover(
+    anchorTopInWindow: Dp,
+    conversationId: Uuid,
+    onUiAction: (ConversationListUiAction) -> Unit,
+    onBackSpace: () -> Unit,
+    onEmojiSelected: (String) -> Unit,
+    onDismissRequest: () -> Unit,
+) {
+    val density = LocalDensity.current
+    val positionProvider = remember(density) {
+        AboveAnchorPositionProvider(
+            gapPx = with(density) { POPOVER_ANCHOR_GAP.roundToPx() },
+            marginPx = with(density) { POPOVER_WINDOW_MARGIN.roundToPx() },
+        )
+    }
+    // Read outside the Popup: on Android its content sits in a separate window with its own insets.
+    val topInset = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
+    val height = (anchorTopInWindow - topInset - POPOVER_ANCHOR_GAP - POPOVER_WINDOW_MARGIN)
+        .coerceIn(POPOVER_MIN_HEIGHT, POPOVER_HEIGHT)
+
+    Popup(
+        popupPositionProvider = positionProvider,
+        onDismissRequest = onDismissRequest,
+        properties = PopupProperties(focusable = true),
+    ) {
+        Surface(
+            modifier = Modifier.width(POPOVER_WIDTH).height(height),
+            shape = MaterialTheme.shapes.large,
+            color = MenuDefaults.containerColor,
+            tonalElevation = MenuDefaults.TonalElevation,
+            shadowElevation = MenuDefaults.ShadowElevation,
+        ) {
+            ExpressionPanel(
+                conversationId = conversationId,
+                onUiAction = onUiAction,
+                onBackSpace = onBackSpace,
+                onEmojiSelected = onEmojiSelected,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+// Start-aligned: the button is at the composer's start, so the card grows over the conversation, not the list.
+private class AboveAnchorPositionProvider(
+    private val gapPx: Int,
+    private val marginPx: Int,
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset {
+        val preferredX = when (layoutDirection) {
+            LayoutDirection.Ltr -> anchorBounds.left
+            LayoutDirection.Rtl -> anchorBounds.right - popupContentSize.width
+        }
+        val maxX = (windowSize.width - popupContentSize.width - marginPx).coerceAtLeast(marginPx)
+        val y = anchorBounds.top - gapPx - popupContentSize.height
+        return IntOffset(preferredX.coerceIn(marginPx, maxX), y.coerceAtLeast(marginPx))
+    }
+}
+
+@Composable
+private fun ExpressionPanel(
+    conversationId: Uuid,
+    onUiAction: (ConversationListUiAction) -> Unit,
+    onBackSpace: () -> Unit,
+    onEmojiSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Ephemeral panel state (rememberSaveable with a plain enum isn't reliably saveable
+    // on iOS/Desktop; the tab choice needn't survive process death).
+    var selected by remember { mutableStateOf(ExpressionTab.Default) }
+    val tabs = remember { expressionTabs(gifsEnabled = false) }
+
+    Column(modifier = modifier) {
+        ExpressionTabRow(tabs = tabs, selected = selected, onSelect = { selected = it })
+        when (selected) {
+            // weight(1f) fills the remaining panel height (the panel is floored at 300.dp
+            // and the keyboard can be shorter); a fixed height would clip the picker. The
+            // emoji grid scrolls internally.
+            ExpressionTab.Emoji -> EmojiSelection(
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp),
+                messageInputMode = true,
+                onBackSpace = onBackSpace,
+                onEmojiSelected = onEmojiSelected,
+            )
+            ExpressionTab.Stickers -> StickersTabContent(
+                conversationId = conversationId,
+                onUiAction = onUiAction,
+            )
+            ExpressionTab.Gifs -> Unit // reserved
         }
     }
 }
