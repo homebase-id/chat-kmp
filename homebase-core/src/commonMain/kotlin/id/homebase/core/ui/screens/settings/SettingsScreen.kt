@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
@@ -103,6 +104,8 @@ import id.homebase.resources.settings_delete_account_desc
 import id.homebase.resources.settings_delete_account_dialog_text
 import id.homebase.resources.settings_delete_account_dialog_title
 import id.homebase.resources.settings_edit_profile
+import id.homebase.resources.settings_profile_card
+import id.homebase.resources.settings_profile_card_desc
 import id.homebase.resources.settings_help
 import id.homebase.resources.settings_help_desc
 import id.homebase.resources.settings_keyboard
@@ -282,6 +285,16 @@ fun SettingsUi(
                     session = uiState.ownerSession,
                     onEditProfile = { onAction(SettingsUiAction.ProfileInfoClicked) },
                     onEditAvatar = { onAction(SettingsUiAction.AvatarClicked) },
+                )
+            }
+
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("profileCardButton"),
+                    icon = Icons.Outlined.ContactPage,
+                    title = stringResource(MR.string.settings_profile_card),
+                    supportingText = stringResource(MR.string.settings_profile_card_desc),
+                    action = SettingsRowAction.Navigate(actions.onProfileCard),
                 )
             }
 
@@ -622,6 +635,7 @@ fun SettingsUiPreview() {
                 onContactBookSettings = {},
                 onProfileEdit = {},
                 onProfileAvatarEdit = {},
+                onProfileCard = {},
             ),
         )
     }

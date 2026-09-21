@@ -20,4 +20,5 @@ data class SettingsActions(
     val onContactBookSettings: () -> Unit,
     val onProfileEdit: () -> Unit,
     val onProfileAvatarEdit: () -> Unit,
+    val onProfileCard: () -> Unit,
 )

@@ -28,6 +28,7 @@ import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.core.util.showHtmlOverlay
 import id.homebase.resources.MR
 import id.homebase.resources.video_error_generic
 import id.homebase.resources.video_web_large_playback_unsupported
@@ -158,7 +159,7 @@ actual fun VideoPlayerSurface(
             topCss += appBarInset
             heightCss -= appBarInset
         }
-        setVideoOverlayBounds(el, leftCss, topCss, widthCss, heightCss)
+        showHtmlOverlay(el, leftCss, topCss, widthCss, heightCss)
         // Autoplay only once the element is actually on screen. Native controls remain as a
         // fallback if the browser blocks the programmatic play() (no recent user gesture).
         if (!started && widthCss > 0.0 && heightCss > 0.0) {

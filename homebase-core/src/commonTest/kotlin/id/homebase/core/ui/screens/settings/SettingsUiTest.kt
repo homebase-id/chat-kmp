@@ -42,6 +42,7 @@ class SettingsUiTest {
             onContactBookSettings = { fired += "contactBook" },
             onProfileEdit = { fired += "profileEdit" },
             onProfileAvatarEdit = { fired += "profileAvatarEdit" },
+            onProfileCard = { fired += "profileCard" },
         )
     }
 
@@ -85,6 +86,7 @@ class SettingsUiTest {
         settings(routes = routes)
 
         val expected = listOf(
+            "profileCardButton" to "profileCard",
             "notificationsButton" to "notifications",
             "appearanceButton" to "appearance",
             "mediaButton" to "media",

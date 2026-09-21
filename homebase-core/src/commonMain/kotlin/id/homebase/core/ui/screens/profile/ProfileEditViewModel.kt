@@ -91,39 +91,11 @@ class ProfileEditViewModel(
                 return@launch
             }
 
-            val byType = attributes.groupBy { it.type }
-            loadedAnonymous = byType.mapNotNull { (type, attrs) ->
-                attrs.firstOrNull { it.visibility == ProfileVisibility.ANONYMOUS }?.let { type to it }
-            }.toMap()
-            loadedConnected = byType.mapNotNull { (type, attrs) ->
-                attrs.firstOrNull { it.visibility != ProfileVisibility.ANONYMOUS }?.let { type to it }
-            }.toMap()
-
-            // The same query already returns PHOTO-type attributes (managed by the dedicated avatar
-            // editor) — just pick them out for ProfilePreview rather than issuing a second fetch.
-            val photos = attributes.filter { it.type == ProfileAttributeTypes.PHOTO }
-            val anonymousPhoto = photos.firstOrNull { it.visibility == ProfileVisibility.ANONYMOUS }
-            val connectedPhoto = photos.firstOrNull { it.visibility == ProfileVisibility.CONNECTED }
-
-            _state.update {
-                applyLoaded(it).copy(anonymousPhoto = anonymousPhoto, connectedPhoto = connectedPhoto)
-            }
+            val loaded = LoadedProfileAttributes.from(attributes)
+            loadedAnonymous = loaded.anonymous
+            loadedConnected = loaded.connected
+            _state.update { it.withLoaded(loaded) }
         }
-    }
-
-    /** Overlays each bucket's loaded attribute values onto a fresh form. */
-    private fun applyLoaded(base: ProfileEditUiState): ProfileEditUiState {
-        fun bucket(loaded: Map<String, ProfileAttribute>): Map<ProfileField, String> =
-            TYPE_FIELDS.flatMap { (type, fields) ->
-                fields.map { (field, key) -> field to loaded[type]?.string(key).orEmpty() }
-            }.toMap()
-
-        return base.copy(
-            isLoading = false,
-            loadFailed = false,
-            anonymousValues = bucket(loadedAnonymous),
-            connectedValues = bucket(loadedConnected),
-        )
     }
 
     private fun updateField(field: ProfileField, tier: ProfileVisibility, value: String) {
@@ -332,4 +304,46 @@ class ProfileEditViewModel(
             return JsonObject(map)
         }
     }
+}
+
+/** The ProfileDrive attributes bucketed per tier, as the editor and the profile card both read them. */
+internal class LoadedProfileAttributes(
+    val anonymous: Map<String, ProfileAttribute>,
+    val connected: Map<String, ProfileAttribute>,
+    val anonymousPhoto: ProfileAttribute?,
+    val connectedPhoto: ProfileAttribute?,
+) {
+    companion object {
+        fun from(attributes: List<ProfileAttribute>): LoadedProfileAttributes {
+            val byType = attributes.groupBy { it.type }
+            // PHOTO attributes come back in the same query; the avatar editor owns them.
+            val photos = byType[ProfileAttributeTypes.PHOTO].orEmpty()
+            return LoadedProfileAttributes(
+                anonymous = byType.mapNotNull { (type, attrs) ->
+                    attrs.firstOrNull { it.visibility == ProfileVisibility.ANONYMOUS }?.let { type to it }
+                }.toMap(),
+                connected = byType.mapNotNull { (type, attrs) ->
+                    attrs.firstOrNull { it.visibility != ProfileVisibility.ANONYMOUS }?.let { type to it }
+                }.toMap(),
+                anonymousPhoto = photos.firstOrNull { it.visibility == ProfileVisibility.ANONYMOUS },
+                connectedPhoto = photos.firstOrNull { it.visibility == ProfileVisibility.CONNECTED },
+            )
+        }
+    }
+}
+
+internal fun ProfileEditUiState.withLoaded(loaded: LoadedProfileAttributes): ProfileEditUiState {
+    fun bucket(attributes: Map<String, ProfileAttribute>): Map<ProfileField, String> =
+        ProfileEditViewModel.TYPE_FIELDS.flatMap { (type, fields) ->
+            fields.map { (field, key) -> field to attributes[type]?.string(key).orEmpty() }
+        }.toMap()
+
+    return copy(
+        isLoading = false,
+        loadFailed = false,
+        anonymousValues = bucket(loaded.anonymous),
+        connectedValues = bucket(loaded.connected),
+        anonymousPhoto = loaded.anonymousPhoto,
+        connectedPhoto = loaded.connectedPhoto,
+    )
 }

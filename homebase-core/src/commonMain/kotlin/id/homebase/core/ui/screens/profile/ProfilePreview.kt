@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.profile.ProfileAttribute
+import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.resources.MR
@@ -136,16 +137,9 @@ internal fun ProfilePreview(
             ?.let { add(PreviewRow(Icons.Outlined.AlternateEmail, lblLinkedin, it)) }
     }
 
-    val publicRows = rowsFor(uiState.anonymousValues)
-
-    // What a contact in a circle actually sees: their own Connected value where set, else Public.
-    val resolved = (uiState.anonymousValues.keys + uiState.connectedValues.keys).associateWith { field ->
-        uiState.connectedValues[field]?.takeIf { it.isNotBlank() } ?: uiState.anonymousValues[field].orEmpty()
-    }
-    val circlesRows = rowsFor(resolved)
-    // Same fallback as every text field: no Connected-tier photo means the contact just sees
-    // the Public one.
-    val circlesPhoto = uiState.connectedPhoto ?: uiState.anonymousPhoto
+    val publicRows = rowsFor(uiState.visibleValues(ProfileVisibility.ANONYMOUS))
+    val circlesRows = rowsFor(uiState.visibleValues(ProfileVisibility.CONNECTED))
+    val circlesPhoto = uiState.visiblePhoto(ProfileVisibility.CONNECTED)
 
     Column(modifier = modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
         PreviewSectionHeader(

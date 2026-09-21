@@ -107,6 +107,10 @@ import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.contactbook.EmergencyContactService
+import id.homebase.core.ui.screens.card.DefaultProfileCardSource
+import id.homebase.core.ui.screens.card.ProfileCardSource
+import id.homebase.core.ui.screens.card.ProfileCardViewModel
+import id.homebase.core.ui.screens.card.createCardHost
 import id.homebase.core.ui.screens.contactbook.CircleMemberPickerViewModel
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.ContactCardImport
@@ -851,6 +855,7 @@ val appModule = module {
     singleOf(::ShareSuggestionDonor)
     singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
     singleOf(::HomebaseImageLoader)
+    factoryOf(::DefaultProfileCardSource) bind ProfileCardSource::class
     singleOf(::ChatMessageActionService)
     singleOf(::DiceRollPreferences)
     singleOf(::EventReminderPreferences)
@@ -1233,6 +1238,7 @@ val appModule = module {
     viewModelOf(::SettingsViewModel)
     viewModelOf(::ProfileEditViewModel)
     viewModelOf(::ProfileAvatarEditViewModel)
+    viewModel { ProfileCardViewModel(get(), ::createCardHost) }
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)
     viewModelOf(::EnrollmentCandidatesViewModel)

@@ -9,7 +9,7 @@ package id.homebase.chat.widget.video
  * positioned over the composable's on-screen bounds. We append it to `document.body` with
  * `position: fixed` (NOT inside `#ComposeApp` — that element is owned by `ComposeViewport`, and a
  * child appended there is not laid out: it reports `offsetParent: null` / `0x0`). Compose's
- * `boundsInWindow()` is relative to `#ComposeApp`, so [setVideoOverlayBounds] adds `#ComposeApp`'s
+ * `boundsInWindow()` is relative to `#ComposeApp`, so `showHtmlOverlay` adds `#ComposeApp`'s
  * viewport offset (the safe-area inset; zero on desktop) to convert to fixed/viewport coordinates.
  * A high z-index keeps it above the canvas; native `controls` give play/seek/volume for free.
  */
@@ -32,26 +32,6 @@ internal fun createVideoOverlay(muted: Boolean, controls: Boolean): JsAny = js(
         v.style.display = 'none';
         document.body.appendChild(v);
         return v;
-    }"""
-)
-
-/** Position/size the element in viewport CSS px (Compose bounds + #ComposeApp offset) and reveal it. */
-internal fun setVideoOverlayBounds(
-    el: JsAny,
-    leftCss: Double,
-    topCss: Double,
-    widthCss: Double,
-    heightCss: Double,
-): Unit = js(
-    """{
-        var app = document.getElementById('ComposeApp');
-        var ox = 0, oy = 0;
-        if (app) { var ar = app.getBoundingClientRect(); ox = ar.left; oy = ar.top; }
-        el.style.left = (leftCss + ox) + 'px';
-        el.style.top = (topCss + oy) + 'px';
-        el.style.width = widthCss + 'px';
-        el.style.height = heightCss + 'px';
-        el.style.display = 'block';
     }"""
 )
 

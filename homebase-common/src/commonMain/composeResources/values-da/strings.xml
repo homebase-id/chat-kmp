@@ -1765,6 +1765,18 @@
     <string name="profile_edit_field_not_set">Ikke angivet</string>
     <string name="profile_edit_add_attribute">Tilføj attribut</string>
     <string name="profile_edit_add_attribute_title">Tilføj et felt</string>
+    <string name="profile_card_title">Profilkort</string>
+    <string name="profile_card_open">Åbn profilkort</string>
+    <string name="profile_card_share">Del kort</string>
+    <string name="profile_card_save">Gem kortbillede</string>
+    <string name="profile_card_design_poster">Plakat</string>
+    <string name="profile_card_design_board">Tavle</string>
+    <string name="profile_card_design_collage">Collage</string>
+    <string name="profile_card_design_dossier">Dossier</string>
+    <string name="profile_card_error">Kunne ikke vise dit kort.</string>
+    <string name="profile_card_share_failed">Kunne ikke lave kortbilledet.</string>
+    <string name="settings_profile_card">Profilkort</string>
+    <string name="settings_profile_card_desc">Se hvordan andre ser dig, og del det som et billede</string>
 
     <!-- Avatar editor -->
     <string name="profile_avatar_edit_title">Skift foto</string>

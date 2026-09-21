@@ -9,8 +9,8 @@ import id.homebase.api.client.profile.ProfileVisibility
  * visibility tier — [anonymousValues] shown to everyone, [connectedValues] shown only to connected
  * contacts — since each tier is backed by its own ACL-gated [id.homebase.api.client.profile.ProfileAttribute]
  * record (see [ProfileEditViewModel]). A blank Connected value is not a stored override; it falls
- * back to the Anonymous value at *display* time (see [id.homebase.core.ui.screens.profile.ProfilePreview]),
- * not here — [value] never substitutes across tiers.
+ * back to the Anonymous value at *display* time (see [visibleValues]) — [value] never substitutes
+ * across tiers.
  *
  * There's no screen-wide Save: each attribute persists individually (see
  * [ProfileEditAction.SaveAttribute]), so [savingAttributes] tracks in-flight saves per
@@ -43,6 +43,19 @@ data class ProfileEditUiState(
     /** Raw per-tier lookup — no cross-tier fallback; "" if [field] has no value in [tier]. */
     fun value(field: ProfileField, tier: ProfileVisibility): String =
         (if (tier == ProfileVisibility.ANONYMOUS) anonymousValues else connectedValues)[field].orEmpty()
+
+    /** What a viewer at [tier] sees: above Public, the Connected value where set, else the Public one. */
+    fun visibleValues(tier: ProfileVisibility): Map<ProfileField, String> =
+        if (tier == ProfileVisibility.ANONYMOUS) {
+            anonymousValues
+        } else {
+            (anonymousValues.keys + connectedValues.keys).associateWith { field ->
+                connectedValues[field]?.takeIf { it.isNotBlank() } ?: anonymousValues[field].orEmpty()
+            }
+        }
+
+    fun visiblePhoto(tier: ProfileVisibility): ProfileAttribute? =
+        if (tier == ProfileVisibility.ANONYMOUS) anonymousPhoto else connectedPhoto ?: anonymousPhoto
 
     fun isSaving(type: String, tier: ProfileVisibility): Boolean = (type to tier) in savingAttributes
 }

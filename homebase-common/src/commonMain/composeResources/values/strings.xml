@@ -2260,6 +2260,18 @@
     <string name="profile_edit_field_not_set">Not set</string>
     <string name="profile_edit_add_attribute">Add attribute</string>
     <string name="profile_edit_add_attribute_title">Add a field</string>
+    <string name="profile_card_title">Profile card</string>
+    <string name="profile_card_open">Open profile card</string>
+    <string name="profile_card_share">Share card</string>
+    <string name="profile_card_save">Save card image</string>
+    <string name="profile_card_design_poster">Poster</string>
+    <string name="profile_card_design_board">Board</string>
+    <string name="profile_card_design_collage">Collage</string>
+    <string name="profile_card_design_dossier">Dossier</string>
+    <string name="profile_card_error">Couldn't show your card.</string>
+    <string name="profile_card_share_failed">Couldn't create the card image.</string>
+    <string name="settings_profile_card">Profile card</string>
+    <string name="settings_profile_card_desc">See how others see you, and share it as an image</string>
 
     <!-- Avatar editor -->
     <string name="profile_avatar_edit_title">Change photo</string>
