@@ -17,6 +17,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import id.homebase.core.ui.screens.contactbook.CircleAccessState
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
+import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 
 /** A pending destructive action awaiting confirmation. */
 enum class ContactDetailConfirm { BLOCK, DISCONNECT, DELETE }
@@ -66,6 +67,8 @@ data class ContactDetailUiState(
     val reviewCircleGroups: ReviewCircleGroups = ReviewCircleGroups(),
     /** Non-null while the review sheet is open. */
     val review: ReviewSheetState? = null,
+    /** With the review on, a pending incoming request is reviewed in place; accepting applies it. */
+    val requestReview: ReviewSheetState? = null,
     /** Non-null while the un-review confirmation is open. */
     val unreview: UnreviewState? = null,
     /** User-defined circles this contact belongs to, real or pending (system circles excluded), A–Z. */
@@ -151,6 +154,8 @@ data class ReviewSheetState(
     val alreadyHeldCircleIds: Set<String> = emptySet(),
     val isSubmitting: Boolean = false,
     val failed: Boolean = false,
+    /** Set when the review accepts a pending request instead of reviewing a connection. */
+    val incomingRequest: IncomingRequestSummary? = null,
 )
 
 /**
@@ -202,6 +207,8 @@ sealed interface ContactDetailAction {
     data class ReviewSubmitted(val circleIds: Set<String>) : ContactDetailAction
     data object ReviewDismissed : ContactDetailAction
     /** Clear the review stamp, dropping the contact back to New. */
+    /** Accept the pending incoming request with the circles picked in its review. */
+    data class RequestReviewSubmitted(val circleIds: Set<String>) : ContactDetailAction
     data object UnreviewClicked : ContactDetailAction
     data object UnreviewConfirmed : ContactDetailAction
     data object UnreviewDismissed : ContactDetailAction

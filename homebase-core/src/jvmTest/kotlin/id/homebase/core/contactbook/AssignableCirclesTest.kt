@@ -6,6 +6,7 @@ import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.chat.services.convo.contact.CircleMembershipState
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
+import id.homebase.core.config.CONTACTS_APP_ID
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
@@ -129,14 +130,24 @@ class AssignableCirclesTest {
     }
 }
 
+@OptIn(ExperimentalUuidApi::class)
 class ReviewCircleGroupsTest {
+
+    private val contactsApp = Uuid.parse(CONTACTS_APP_ID)
 
     private fun circle(
         id: String,
         name: String,
         grantOn: CircleGrantOn = CircleGrantOn.None,
         designation: CircleDesignation = CircleDesignation.Personal,
-    ) = RedactedCircleDefinition(id = id, name = name, grantOn = grantOn, designation = designation)
+        appId: Uuid? = contactsApp,
+    ) = RedactedCircleDefinition(
+        id = id,
+        name = name,
+        grantOn = grantOn,
+        designation = designation,
+        appId = appId,
+    )
 
     private fun state(vararg defs: RedactedCircleDefinition) =
         CircleMembershipState(isLoaded = true, circles = defs.map { CircleWithMembers(circle = it) })
@@ -145,8 +156,8 @@ class ReviewCircleGroupsTest {
     fun theThreeGroupsSplitOnGrantOnAndTheSpecialId() {
         val groups = state(
             circle("aa", "Friends"),
-            circle(EMERGENCY_LOCATION_CIRCLE_ID, "Emergency Location Access"),
-            circle("cc", "Moments", grantOn = CircleGrantOn.Review),
+            circle(EMERGENCY_LOCATION_CIRCLE_ID, "Emergency Location Access", appId = null),
+            circle("cc", "Moments", grantOn = CircleGrantOn.Review, appId = Uuid.random()),
         ).reviewCircleGroups()
 
         assertEquals(listOf("Friends"), groups.yours.map { it.name })
@@ -155,12 +166,35 @@ class ReviewCircleGroupsTest {
     }
 
     /**
+     * An unstamped circle is indistinguishable from an app circle odin-core never stamped, so
+     * neither group offers it. Emergency Location Access is exempt: it matches on its id.
+     */
+    @Test
+    fun circlesWithNoOwningAppAreOfferedInNoGroup() {
+        val groups = state(
+            circle("aa", "Recovery", appId = null),
+            circle("bb", "Webdrop", grantOn = CircleGrantOn.Review, appId = null),
+        ).reviewCircleGroups()
+
+        assertTrue(groups.isEmpty)
+    }
+
+    @Test
+    fun anotherAppsCirclesAreStillOfferedAsAppDefaults() {
+        val groups = state(circle("aa", "Feed", grantOn = CircleGrantOn.Review, appId = Uuid.random()))
+            .reviewCircleGroups()
+
+        assertEquals(listOf("Feed"), groups.appDefaults.map { it.name })
+    }
+
+    /**
      * The gap this replaced: a review circle counts toward the Circle state, so a review that
      * cannot enrol one can never produce that state through the circle the spec names.
      */
     @Test
     fun aReviewCircleIsOfferedRatherThanFilteredOut() {
-        val groups = state(circle("cc", "Moments", grantOn = CircleGrantOn.Review)).reviewCircleGroups()
+        val groups = state(circle("cc", "Moments", grantOn = CircleGrantOn.Review, appId = Uuid.random()))
+            .reviewCircleGroups()
 
         assertFalse(groups.isEmpty)
         assertEquals(listOf("Moments"), groups.appDefaults.map { it.name })
