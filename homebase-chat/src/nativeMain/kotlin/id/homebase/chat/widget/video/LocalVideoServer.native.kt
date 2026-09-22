@@ -22,6 +22,9 @@ import io.ktor.server.routing.routing
 import io.ktor.server.routing.get
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSOperationQueue
+import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import kotlin.concurrent.Volatile
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -63,6 +66,8 @@ class LocalVideoServer private constructor() {
         private set
 
     private var engine: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
+    @Volatile private var staleSinceBackground = false
+    private val bindMutex = Mutex()
     private val sessionsMutex = Mutex()
     private val sessions = mutableMapOf<String, Session>()
 
@@ -119,6 +124,7 @@ class LocalVideoServer private constructor() {
             return
         }
         val body = rewritePlaylist(s, sessionId)
+        Logger.d(tag = TAG) { "manifest served ${body.length} chars fileId=${s.fileId}" }
         call.response.header(HttpHeaders.CacheControl, "no-store")
         call.respondText(body, ContentType("application", "vnd.apple.mpegurl"))
     }
@@ -160,6 +166,37 @@ class LocalVideoServer private constructor() {
         )
     }
 
+    /**
+     * iOS tears the listening socket down while the app is suspended, so a server bound
+     * before a background trip answers nothing on the way back: AVURLAsset fails the
+     * playlist fetch in milliseconds and the asset comes back playable=false, tracks=0.
+     * Rebind whenever a suspension has happened since the last bind.
+     */
+    private suspend fun ensureListening() = bindMutex.withLock {
+        if (engine != null && !staleSinceBackground) return@withLock
+
+        engine?.let { old ->
+            Logger.i(tag = TAG) { "rebinding after background — dropping the socket on port $port" }
+            runCatching { old.stop(0, 0) }
+                .onFailure { Logger.w(tag = TAG) { "stopping the stale engine failed: ${it.message}" } }
+        }
+        engine = null
+
+        var lastError: Throwable? = null
+        repeat(MAX_PORT_ATTEMPTS) {
+            val candidate = START_PORT + Random.nextInt(END_PORT - START_PORT)
+            try {
+                startOnPort(candidate)
+                staleSinceBackground = false
+                Logger.i(tag = TAG) { "local video server listening on 127.0.0.1:$candidate" }
+                return@withLock
+            } catch (e: Throwable) {
+                lastError = e
+            }
+        }
+        error("LocalVideoServer failed to bind after $MAX_PORT_ATTEMPTS attempts: ${lastError?.message}")
+    }
+
     private fun startOnPort(port: Int) {
         engine = embeddedServer(CIO, port = port, host = "127.0.0.1") {
             routing {
@@ -168,6 +205,17 @@ class LocalVideoServer private constructor() {
             }
         }.also { it.start(wait = false) }
         this.port = port
+    }
+
+    private fun observeBackgrounding() {
+        NSNotificationCenter.defaultCenter.addObserverForName(
+            name = UIApplicationDidEnterBackgroundNotification,
+            `object` = null,
+            queue = NSOperationQueue.mainQueue,
+        ) {
+            // Only flags; rebinding here would race a player that is still tearing down.
+            staleSinceBackground = true
+        }
     }
 
     companion object {
@@ -182,25 +230,17 @@ class LocalVideoServer private constructor() {
         private val startMutex = Mutex()
 
         suspend fun shared(): LocalVideoServer {
-            instance?.let { return it }
-            startMutex.withLock {
-                instance?.let { return it }
-                val s = LocalVideoServer()
-                var lastError: Throwable? = null
-                repeat(MAX_PORT_ATTEMPTS) {
-                    val candidate = START_PORT + Random.nextInt(END_PORT - START_PORT)
-                    try {
-                        s.startOnPort(candidate)
-                        Logger.i(tag = TAG) { "local video server listening on 127.0.0.1:$candidate" }
-                        instance = s
-                        return s
-                    } catch (e: Throwable) {
-                        lastError = e
-                    }
-                }
-                error("LocalVideoServer failed to bind after $MAX_PORT_ATTEMPTS attempts: ${lastError?.message}")
+            val server = instance ?: startMutex.withLock {
+                instance ?: LocalVideoServer()
+                    .also { it.observeBackgrounding() }
+                    .also { instance = it }
             }
+            server.ensureListening()
+            return server
         }
+
+        /** Teardown-only accessor: never binds, so disposing a player can't revive the server. */
+        fun existing(): LocalVideoServer? = instance
 
         private fun parseRange(header: String?, total: Long): Pair<Long, Long> {
             // AVPlayer sends `bytes=a-b` or `bytes=a-`. Multi-range (comma-separated) is

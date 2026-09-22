@@ -20,6 +20,8 @@ private fun codePointToString(cp: Int): String {
     }
 }
 
+fun String.isBlobUrl(): Boolean = startsWith("blob:")
+
 fun String.decodeHtmlEntities(): String {
     if ('&' !in this) return this
     return htmlEntityPattern.replace(this) { match ->

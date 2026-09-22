@@ -765,11 +765,12 @@ class ConversationService(
     suspend fun updateAdmins(
         conversationId: Uuid,
         add: List<OdinId> = emptyList(),
-        remove: List<OdinId> = emptyList()
+        remove: List<OdinId> = emptyList(),
+        sendStatusMessages: Boolean = true
     ) {
         // ---- DEBUG instrumentation ----
         val audit = MethodAudit("updateAdmins")
-        audit.start("conversationId=$conversationId add=${add.size} remove=${remove.size}")
+        audit.start("conversationId=$conversationId add=${add.size} remove=${remove.size} sendStatusMessages=$sendStatusMessages")
         // ---- end DEBUG ----
         val conversation = requireConversation(conversationId)
         val domain = credentialsManager.requireActiveDomain()
@@ -824,40 +825,74 @@ class ConversationService(
         // lands on each recipient first, then the "X is now admin" / "X is no longer
         // admin" status messages in their original order. Without this initial dep,
         // the first status message would race the admin-file update through Transit.
-        var previousMessageId: Uuid? = ChatProtocol.getAdminFileUniqueId(conversationId)
-        add.forEach { user ->
-            val messageId = Uuid.random()
-            chatMessageSenderService.sendStatusMessage(
-                messageUniqueId = messageId,
-                conversationId = conversationId,
-                statusMessage = StatusMessageData(
-                    statusMessage = StatusMessage.ConversationAdminAdded,
-                    subject = user
-                ),
-                previousMessageUniqueId = previousMessageId
-            )
+        if (sendStatusMessages) {
+            var previousMessageId: Uuid? = ChatProtocol.getAdminFileUniqueId(conversationId)
+            add.forEach { user ->
+                val messageId = Uuid.random()
+                chatMessageSenderService.sendStatusMessage(
+                    messageUniqueId = messageId,
+                    conversationId = conversationId,
+                    statusMessage = StatusMessageData(
+                        statusMessage = StatusMessage.ConversationAdminAdded,
+                        subject = user
+                    ),
+                    previousMessageUniqueId = previousMessageId
+                )
 
-            previousMessageId = messageId
-        }
+                previousMessageId = messageId
+            }
 
-        remove.forEach { user ->
-            val messageId = Uuid.random()
-            chatMessageSenderService.sendStatusMessage(
-                messageUniqueId = messageId,
-                conversationId = conversationId,
-                statusMessage = StatusMessageData(
-                    statusMessage = StatusMessage.ConversationAdminRemoved,
-                    subject = user
-                ),
-                previousMessageUniqueId = previousMessageId
-            )
+            remove.forEach { user ->
+                val messageId = Uuid.random()
+                chatMessageSenderService.sendStatusMessage(
+                    messageUniqueId = messageId,
+                    conversationId = conversationId,
+                    statusMessage = StatusMessageData(
+                        statusMessage = StatusMessage.ConversationAdminRemoved,
+                        subject = user
+                    ),
+                    previousMessageUniqueId = previousMessageId
+                )
 
-            previousMessageId = messageId
+                previousMessageId = messageId
+            }
         }
         // ---- DEBUG instrumentation ----
-        audit.info("status messages sent: added=${add.size} removed=${remove.size}")
+        audit.info("status messages sent: added=${if (sendStatusMessages) add.size else 0} removed=${if (sendStatusMessages) remove.size else 0}")
         audit.finish()
         // ---- end DEBUG ----
+    }
+
+    /**
+     * Removes [member] from the group, demoting them first when they are an admin.
+     *
+     * The demote runs first so [updateAdmins]' last-admin guard rejects the whole
+     * operation before anything mutates. Its status message is suppressed — one user
+     * action should read as one system line ("X was removed"), not two.
+     */
+    suspend fun removeGroupMember(conversationId: Uuid, member: OdinId) {
+        if (!requireConversation(conversationId).admins.contains(member)) {
+            updateGroupMembers(conversationId, remove = listOf(member))
+            return
+        }
+
+        updateAdmins(conversationId, remove = listOf(member), sendStatusMessages = false)
+
+        try {
+            updateGroupMembers(conversationId, remove = listOf(member))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The demote already committed locally and to the outbox. Put the role back
+            // so a failed removal doesn't silently strip an admin the user never asked
+            // to demote; the original failure is what the caller sees either way.
+            try {
+                updateAdmins(conversationId, add = listOf(member), sendStatusMessages = false)
+            } catch (restoreError: Exception) {
+                Logger.e("Failed to restore admin role for $member after a failed removal", restoreError)
+            }
+            throw e
+        }
     }
 
     suspend fun updateGroupMembers(
@@ -2601,19 +2636,21 @@ class ConversationService(
      * so it is offline-safe. Also seeds the dedup guard so restoring this draft
      * into the composer can't immediately echo back out to the outbox. #1122.
      */
-    suspend fun readDraft(conversationId: Uuid): String? {
+    suspend fun readDraft(conversationId: Uuid): String? = draftMutex.withLock {
+        readPersistedDraft(conversationId).also { lastPersistedDraft = conversationId to it }
+    }
+
+    private suspend fun readPersistedDraft(conversationId: Uuid): String? {
         val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return null
         val file = dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, chatDrive, conversationId)
             ?: return null
-        val draft = file.fileMetadata.localAppData?.content?.let {
+        return file.fileMetadata.localAppData?.content?.let {
             try {
                 OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it).draft
             } catch (_: Throwable) {
                 null
             }
         }
-        draftMutex.withLock { lastPersistedDraft = conversationId to draft }
-        return draft
     }
 
     /**
@@ -2630,14 +2667,14 @@ class ConversationService(
      * the very next attempt (the leaving-the-thread save) a silent no-op and
      * losing the draft.
      */
-    suspend fun updateLocalDraft(conversationId: Uuid, draft: String?) {
+    suspend fun updateLocalDraft(conversationId: Uuid, draft: String?): Unit = draftMutex.withLock {
         val capped = draft?.truncateToCodePoints(draftMaxCodepoints)?.ifBlank { null }
-        if (draftMutex.withLock { lastPersistedDraft } == (conversationId to capped)) return
+        if (lastPersistedDraft == (conversationId to capped)) return@withLock
         val request = optimisticWriter
             .stampConversationDraft(chatDrive, conversationId, capped, UnixTimeUtc())
-            ?: return
+            ?: return@withLock
         outboxSync.tryEnqueue(request)
-        draftMutex.withLock { lastPersistedDraft = conversationId to capped }
+        lastPersistedDraft = conversationId to capped
     }
 
     /**
@@ -2649,12 +2686,17 @@ class ConversationService(
      * Nothing stored means nothing to clear — and that's the common case, since
      * composing straight through and sending never trips the idle debounce. Without
      * this check every send would bill a stamp + outbox push to erase a draft that
-     * was never written. The guard is accurate by send time: [readDraft] seeds it
-     * (null included) when the conversation is opened.
+     * was never written.
+     *
+     * That "nothing stored" decision reads the PERSISTED draft, not the in-memory
+     * dedup guard: the guard misses anything written outside this device's
+     * composer (a peer draft the sync merged in) and, before the whole body took
+     * [draftMutex], could still read "cleared" while a flush was mid-write — both
+     * of which skipped the clear and left the sent text behind as a draft (#1492).
      */
-    suspend fun clearLocalDraft(conversationId: Uuid) {
-        if (draftMutex.withLock { lastPersistedDraft } == (conversationId to null)) return
-        draftMutex.withLock { lastPersistedDraft = conversationId to null }
+    suspend fun clearLocalDraft(conversationId: Uuid): Unit = draftMutex.withLock {
+        lastPersistedDraft = conversationId to null
+        if (readPersistedDraft(conversationId) == null) return@withLock
         optimisticWriter.stampConversationDraft(chatDrive, conversationId, null, UnixTimeUtc())
             ?.let { outboxSync.tryEnqueue(it) }
     }

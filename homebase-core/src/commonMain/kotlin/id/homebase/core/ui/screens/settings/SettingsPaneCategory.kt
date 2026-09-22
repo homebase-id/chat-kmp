@@ -10,10 +10,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Brightness6
+import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
@@ -35,6 +37,8 @@ import id.homebase.resources.settings_appearance
 import id.homebase.resources.settings_category_general
 import id.homebase.resources.settings_data_storage
 import id.homebase.resources.settings_help
+import id.homebase.resources.settings_keyboard
+import id.homebase.resources.settings_media
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.vault_settings_section
 import org.jetbrains.compose.resources.StringResource
@@ -49,6 +53,8 @@ internal enum class SettingsCategory(
     General(MR.string.settings_category_general, Icons.Outlined.Tune),
     Notifications(MR.string.settings_notifications, Icons.Outlined.Notifications),
     Appearance(MR.string.settings_appearance, Icons.Outlined.Brightness6),
+    Media(MR.string.settings_media, Icons.Outlined.PermMedia),
+    Keyboard(MR.string.settings_keyboard, Icons.Outlined.Keyboard),
     Moments(MR.string.moments_settings_section, Icons.Outlined.AutoAwesome),
     Vault(MR.string.vault_settings_section, Icons.Outlined.Lock),
     Email(MR.string.email_settings_section, Icons.Outlined.MailOutline),
@@ -60,7 +66,6 @@ internal enum class SettingsCategory(
 @Composable
 internal fun SettingsSidebar(
     selected: SettingsCategory,
-    showEmail: Boolean,
     onSelect: (SettingsCategory) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -72,21 +77,19 @@ internal fun SettingsSidebar(
             .padding(vertical = Dimens.Spacing.item),
     ) {
         SettingsCategory.entries.forEach { category ->
-            if (category != SettingsCategory.Email || showEmail) {
-                NavigationDrawerItem(
-                    label = { Text(stringResource(category.label)) },
-                    icon = { Icon(category.icon, contentDescription = null) },
-                    selected = category == selected,
-                    onClick = { onSelect(category) },
-                    modifier = Modifier.padding(horizontal = Dimens.Spacing.item),
-                    shape = NavigationIndicatorShape,
-                    colors = NavigationDrawerItemDefaults.colors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ),
-                )
-            }
+            NavigationDrawerItem(
+                label = { Text(stringResource(category.label)) },
+                icon = { Icon(category.icon, contentDescription = null) },
+                selected = category == selected,
+                onClick = { onSelect(category) },
+                modifier = Modifier.padding(horizontal = Dimens.Spacing.item),
+                shape = NavigationIndicatorShape,
+                colors = NavigationDrawerItemDefaults.colors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+            )
         }
     }
 }

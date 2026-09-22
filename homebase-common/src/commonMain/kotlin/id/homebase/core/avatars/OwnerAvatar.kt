@@ -45,8 +45,6 @@ fun OwnerAvatar(
     modifier: Modifier = Modifier,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
-    /** Forwarded to [PublicAvatar] when [profileImageData] is null — see its doc. */
-    cacheBustKey: Long? = null,
 ) {
     // Preview-only owner image (e.g. the note-to-self avatar built from
     // OwnerSession.profileImagePreviewThumbnail): there is no server-fetchable
@@ -106,7 +104,6 @@ fun OwnerAvatar(
                 odinId = odinId,
                 initials = initials,
                 options = options,
-                cacheBustKey = cacheBustKey,
             )
         }
         if (connectionStatus != null) {

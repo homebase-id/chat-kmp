@@ -2,6 +2,7 @@
 
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.util.isBlobUrl
 import io.github.vinceglb.filekit.PlatformFile
 
 // Mint a blob: object URL straight from the picked browser File. This is O(1): the browser keeps
@@ -11,7 +12,7 @@ import io.github.vinceglb.filekit.PlatformFile
 actual fun PlatformFile.toPlayableUrl(): String = createObjectUrlFromFile(file)
 
 actual fun revokePlayableUrl(url: String) {
-    if (url.startsWith("blob:")) revokeObjectUrlJs(url)
+    if (url.isBlobUrl()) revokeObjectUrlJs(url)
 }
 
 private fun createObjectUrlFromFile(file: JsAny): String = js("URL.createObjectURL(file)")

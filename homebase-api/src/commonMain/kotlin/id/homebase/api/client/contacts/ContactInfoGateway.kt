@@ -1,0 +1,61 @@
+@file:OptIn(ExperimentalUuidApi::class)
+
+package id.homebase.api.client.contacts
+
+import id.homebase.api.client.cache.CacheStats
+import id.homebase.api.client.profile.ProfileCard
+import id.homebase.api.client.profile.PublicProfileProviderCached
+import id.homebase.api.common.OdinId
+import kotlin.uuid.ExperimentalUuidApi
+
+// The one place that reaches /pub/profile and /pub/image. A known contact's name resolves from
+// the synced Contacts drive; the public endpoints serve everything else.
+class ContactInfoGateway internal constructor(
+    // Resolved on demand: the Coil ImageLoader builds a PublicImageFetcher.Factory holding this
+    // gateway before DatabaseManager.initialize() runs, and ContactRepository needs the database.
+    private val contactRepository: () -> ContactRepository,
+    private val publicProfiles: PublicProfileProviderCached,
+) {
+
+    suspend fun displayName(odinId: OdinId): String? {
+        localContact(odinId)?.content?.name.resolveDisplayName()?.let { return it }
+        return runCatching { publicProfiles.getPublicProfile(odinId)?.name }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    // Not the contact's own prfl_pic payload: that read 500s for some contacts. The public read
+    // is client-TTL'd and stale-while-revalidate, so it stays local after the first fetch.
+    suspend fun avatarBytes(odinId: OdinId): ByteArray? = publicProfiles.getPublicImage(odinId)
+
+    // Always the public read: a synced contact stores name/avatar, not the card.
+    suspend fun profileCard(odinId: OdinId): ProfileCard? = publicProfiles.getPublicProfile(odinId)
+
+    // A user-initiated Sync: defeat the client TTL on both public artifacts (dropping the image
+    // publishes the avatar revision) and re-enrich the local contact record from the peer.
+    suspend fun resync(odinId: OdinId) {
+        publicProfiles.invalidateProfile(odinId)
+        publicProfiles.invalidateImage(odinId)
+        contactRepository().sync(odinId)
+    }
+
+    // Same, minus the avatar: for paths where nothing suggests the photo changed, so the next paint
+    // is not a guaranteed unauthenticated re-download of bytes already held.
+    suspend fun syncContactRecord(odinId: OdinId) {
+        publicProfiles.invalidateProfile(odinId)
+        contactRepository().sync(odinId)
+    }
+
+    suspend fun getCacheStats(): List<CacheStats> = publicProfiles.getCacheStats()
+
+    suspend fun clearCaches() = publicProfiles.clearCaches()
+
+    private suspend fun localContact(odinId: OdinId): Contact? {
+        val repository = contactRepository()
+        repository.ensureLoaded()
+        val domain = odinId.domainName
+        return repository.contacts.value.firstOrNull {
+            it.content.odinId?.equals(domain, ignoreCase = true) == true
+        }
+    }
+}

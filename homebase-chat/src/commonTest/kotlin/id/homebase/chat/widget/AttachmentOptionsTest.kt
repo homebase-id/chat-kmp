@@ -1,6 +1,7 @@
 package id.homebase.chat.widget
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -11,22 +12,22 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalTestApi::class)
 class AttachmentOptionsTest {
 
+    private fun ComposeUiTest.setOptions(
+        onGalleryClick: () -> Unit = {},
+        onFileClick: () -> Unit = {},
+        onContactClick: () -> Unit = {},
+    ) = setContent {
+        MaterialTheme {
+            AttachmentOptions(
+                attachmentActions(onGalleryClick, onFileClick, onContactClick, {}, {}, {}, {}, {}),
+                onPicked = {},
+            )
+        }
+    }
+
     @Test
     fun displaysGalleryAndFileOptions() = runComposeUiTest {
-        setContent {
-            MaterialTheme {
-                AttachmentOptions(
-                    onGalleryClick = {},
-                    onFileClick = {},
-                    onContactClick = {},
-                    onLocationClick = {},
-                    onEventClick = {},
-                    onGroodleClick = {},
-                    onDicesClick = {},
-                    onPollClick = {},
-                )
-            }
-        }
+        setOptions()
         onNodeWithTag("attachment_gallery").assertExists()
         onNodeWithTag("attachment_file").assertExists()
     }
@@ -34,20 +35,7 @@ class AttachmentOptionsTest {
     @Test
     fun galleryClickCallbackFires() = runComposeUiTest {
         var clicked = false
-        setContent {
-            MaterialTheme {
-                AttachmentOptions(
-                    onGalleryClick = { clicked = true },
-                    onFileClick = {},
-                    onContactClick = {},
-                    onLocationClick = {},
-                    onEventClick = {},
-                    onGroodleClick = {},
-                    onDicesClick = {},
-                    onPollClick = {},
-                )
-            }
-        }
+        setOptions(onGalleryClick = { clicked = true })
         onNodeWithTag("attachment_gallery").performClick()
         assertTrue(clicked)
     }
@@ -55,60 +43,21 @@ class AttachmentOptionsTest {
     @Test
     fun fileClickCallbackFires() = runComposeUiTest {
         var clicked = false
-        setContent {
-            MaterialTheme {
-                AttachmentOptions(
-                    onGalleryClick = {},
-                    onFileClick = { clicked = true },
-                    onContactClick = {},
-                    onLocationClick = {},
-                    onEventClick = {},
-                    onGroodleClick = {},
-                    onDicesClick = {},
-                    onPollClick = {},
-                )
-            }
-        }
+        setOptions(onFileClick = { clicked = true })
         onNodeWithTag("attachment_file").performClick()
         assertTrue(clicked)
     }
 
     @Test
     fun displaysContactOption() = runComposeUiTest {
-        setContent {
-            MaterialTheme {
-                AttachmentOptions(
-                    onGalleryClick = {},
-                    onFileClick = {},
-                    onContactClick = {},
-                    onLocationClick = {},
-                    onEventClick = {},
-                    onGroodleClick = {},
-                    onDicesClick = {},
-                    onPollClick = {},
-                )
-            }
-        }
+        setOptions()
         onNodeWithTag("attachment_contact").assertExists()
     }
 
     @Test
     fun contactClickCallbackFires() = runComposeUiTest {
         var clicked = false
-        setContent {
-            MaterialTheme {
-                AttachmentOptions(
-                    onGalleryClick = {},
-                    onFileClick = {},
-                    onContactClick = { clicked = true },
-                    onLocationClick = {},
-                    onEventClick = {},
-                    onGroodleClick = {},
-                    onDicesClick = {},
-                    onPollClick = {},
-                )
-            }
-        }
+        setOptions(onContactClick = { clicked = true })
         onNodeWithTag("attachment_contact").performClick()
         assertTrue(clicked)
     }

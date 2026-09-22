@@ -93,6 +93,56 @@ class MainThreadWatchdogTest {
         assertTrue(!withoutMemory.contains("Memory at stall"))
     }
 
+    @Test
+    fun watchdogStarved_withNoCpuBurnedAcrossTheGap_readsOsSuspended() {
+        val message = renderStallMessage(
+            StallEvent(
+                kind = StallKind.WatchdogStarved,
+                source = StallSource.CoroutineLoop,
+                observedMs = 28961,
+                processDelta = ProcessTimes(cpuMs = 3, continuousMs = 28961),
+            ),
+            stack = null,
+        )
+        assertTrue(
+            message.startsWith(
+                "Process/dispatchers stalled ~28961ms (watchdog starved, OS-SUSPENDED: cpu +3ms over 28961ms wall)"
+            ),
+            message,
+        )
+    }
+
+    @Test
+    fun watchdogStarved_withCpuBurnedInStep_readsSelfStalled() {
+        val message = renderStallMessage(
+            StallEvent(
+                kind = StallKind.WatchdogStarved,
+                source = StallSource.CoroutineLoop,
+                observedMs = 28961,
+                processDelta = ProcessTimes(cpuMs = 28400, continuousMs = 28961),
+            ),
+            stack = null,
+        )
+        assertTrue(message.contains("SELF-STALLED: cpu +28400ms over 28961ms wall"), message)
+    }
+
+    // --- classifyStallCause ------------------------------------------------------------------
+
+    @Test
+    fun classifyStallCause_splitsOnTheCpuShareThreshold() {
+        assertEquals("OS-SUSPENDED", classifyStallCause(ProcessTimes(cpuMs = 200, continuousMs = 10_000)))
+        assertEquals("SELF-STALLED", classifyStallCause(ProcessTimes(cpuMs = 9_500, continuousMs = 10_000)))
+    }
+
+    @Test
+    fun processTimesDelta_isNullUnlessBothSamplesExist() {
+        val before = ProcessTimes(cpuMs = 100, continuousMs = 1_000)
+        val after = ProcessTimes(cpuMs = 103, continuousMs = 30_000)
+        assertEquals(ProcessTimes(cpuMs = 3, continuousMs = 29_000), processTimesDelta(before, after))
+        assertNull(processTimesDelta(null, after))
+        assertNull(processTimesDelta(before, null))
+    }
+
     // --- detectWatchdogStarvation ----------------------------------------------------------
 
     @Test
@@ -133,5 +183,50 @@ class MainThreadWatchdogTest {
         reporter.reportIfDue { "c" } // 35s since "a": window elapsed, logs again
 
         assertEquals(listOf("a", "c"), logged)
+    }
+
+    // --- ProcessHeartbeat (#1491) ------------------------------------------------------------
+
+    @Test
+    fun heartbeat_roundTripsThroughItsEncoding() {
+        listOf(
+            Heartbeat(epochMs = 1_757_277_526_838, foreground = true),
+            Heartbeat(epochMs = 0, foreground = false),
+        ).forEach { assertEquals(it, decodeHeartbeat(encodeHeartbeat(it))) }
+    }
+
+    @Test
+    fun heartbeat_decodesNothingFromAMissingOrCorruptRecord() {
+        // A first-ever launch, a truncated write, a file from an older format: all "no previous
+        // process", never a bogus breadcrumb.
+        listOf(null, "", "   ", "1757277526838", "1757277526838 F B", "abc F", "1757277526838 X")
+            .forEach { assertNull(decodeHeartbeat(it), "should not decode: $it") }
+    }
+
+    @Test
+    fun processDeath_isReportedWhenThePreviousProcessDiedOnScreen() {
+        val message = renderProcessDeathMessage(
+            previous = Heartbeat(epochMs = 1_000_000, foreground = true),
+            launchEpochMs = 1_095_000,
+        )
+        assertTrue(message!!.startsWith("Previous process ended on screen"), message)
+        assertTrue(message.contains("95000ms before this launch"), message)
+    }
+
+    @Test
+    fun processDeath_isSilentForABackgroundedProcess() {
+        // The routine end of every session — and the shape of the benign `stalled ~986967ms`
+        // suspension already in the field logs. Reporting it would drown the real thing.
+        assertNull(
+            renderProcessDeathMessage(
+                previous = Heartbeat(epochMs = 1_000_000, foreground = false),
+                launchEpochMs = 9_999_000,
+            )
+        )
+    }
+
+    @Test
+    fun processDeath_isSilentOnAFirstLaunch() {
+        assertNull(renderProcessDeathMessage(previous = null, launchEpochMs = 1_000))
     }
 }

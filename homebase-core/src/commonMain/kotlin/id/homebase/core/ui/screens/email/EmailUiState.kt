@@ -3,7 +3,6 @@ package id.homebase.core.ui.screens.email
 import id.homebase.api.client.mail.MailAppHealth
 import id.homebase.api.client.mail.MailAppStatus
 import id.homebase.api.client.mail.MailboxStatusResult
-import id.homebase.core.email.MailClientDescriptor
 
 /**
  * What the Email setup screen renders from.
@@ -27,8 +26,6 @@ data class EmailUiState(
     val credentialCount: Int = 0,
     /** null until email is on and the mail server has answered. */
     val mailboxStatus: MailboxStatusResult? = null,
-    /** The mail app the user picked, if any — decides whether we can offer to open it. */
-    val selectedMailClient: MailClientDescriptor? = null,
     /**
      * Whether email actually WORKS, as opposed to how far setup got. Null until the user asks:
      * the check costs DNS lookups plus outbound HTTPS server-side, so it is not run on entry.
@@ -59,7 +56,7 @@ sealed interface EmailUiAction {
     /** Re-ask the server; used by the retry on the no-email screen and on resume. */
     data object RefreshStatusClicked : EmailUiAction
 
-    /** Opens the chosen mail app, if this platform knows how. */
+    /** Opens Thunderbird, if this platform knows how. */
     data object OpenMailClientClicked : EmailUiAction
 
     /** "Check my email" — asks the server whether email actually works. */
@@ -72,7 +69,7 @@ sealed interface EmailUiEvent {
 
     data object CloseOnboarding : EmailUiEvent
 
-    /** The chosen app could not be launched — almost always because it is not installed. */
+    /** Thunderbird could not be launched — almost always because it is not installed. */
     data class MailClientUnavailable(val displayName: String) : EmailUiEvent
 }
 

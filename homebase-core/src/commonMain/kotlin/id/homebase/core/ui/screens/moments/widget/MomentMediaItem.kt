@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
@@ -214,7 +215,7 @@ fun MomentMediaItem(
             }
         }
 
-        contentType.startsWith("image/") && enableZoom -> {
+        payload.isImage() && enableZoom -> {
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             val zoomSource = remember(
                 imageLocalContext?.localFilePath,
@@ -270,7 +271,7 @@ fun MomentMediaItem(
             }
         }
 
-        contentType.startsWith("image/") -> {
+        payload.isImage() -> {
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             if (imageLocalContext != null) {
                 var imageModifier = if (onClick != null || onLongPress != null) {
@@ -345,7 +346,7 @@ fun MomentMediaItem(
             }
         }
 
-        contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
+        payload.isVideo() -> {
             // A public feed post ships its video plaintext, so the payload carries no IV.
             // Build the player path either way (encrypted only when an IV is present) instead of
             // bailing to a non-tappable placeholder with no route to the full-screen player —
@@ -491,16 +492,23 @@ fun MomentMediaItem(
             }
         }
 
-        contentType.startsWith("audio/") -> {
-            AudioPlayerWidget(
-                modifier = baseModifier,
-                driveId = driveId,
-                fileId = fileId,
-                keyHeader = keyHeader,
-                audioFile = decryptedFiles[DecryptedFileKey(fileId, payload.key)],
-                payload = payload,
-                onRequestDecryptedFile = onRequestDecryptedFile,
-            )
+        payload.isAudio() -> {
+            // The caller hands this a fillMaxSize modifier, which pins min == max width, so the
+            // cap only bites on a child inside it.
+            Box(modifier = baseModifier, contentAlignment = Alignment.Center) {
+                AudioPlayerWidget(
+                    modifier = Modifier.widthIn(
+                        min = Dimens.MediaBubble.audioMinWidth,
+                        max = Dimens.MediaBubble.audioMaxWidth,
+                    ),
+                    driveId = driveId,
+                    fileId = fileId,
+                    keyHeader = keyHeader,
+                    audioFile = decryptedFiles[DecryptedFileKey(fileId, payload.key)],
+                    payload = payload,
+                    onRequestDecryptedFile = onRequestDecryptedFile,
+                )
+            }
         }
 
         contentType == "application/zip" ||

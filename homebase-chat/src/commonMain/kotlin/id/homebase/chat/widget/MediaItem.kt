@@ -64,6 +64,7 @@ import id.homebase.core.image.rememberFullScreenImagePrefetch
 import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.widget.AudioPlayerWidget
+import id.homebase.core.widget.VoiceNoteSender
 import id.homebase.resources.MR
 import id.homebase.resources.cd_play_video
 import id.homebase.resources.chat_message_image_attachment
@@ -124,6 +125,7 @@ fun MediaItem(
     isDownloading: Boolean = false,
     messageId: Uuid? = null,
     isUploading: Boolean = false,
+    audioSender: VoiceNoteSender? = null,
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
@@ -242,7 +244,7 @@ fun MediaItem(
             }
         }
 
-        contentType.startsWith("image/") -> {
+        payload.isImage() -> {
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             if (imageLocalContext != null) {
                 var imageModifier = if (onClick != null || onLongPress != null) {
@@ -333,7 +335,7 @@ fun MediaItem(
             }
         }
 
-        contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
+        payload.isVideo() -> {
             val payloadIv = remember(payload.iv) {
                 payload.iv?.let { Base64.decode(it) }
             }
@@ -543,7 +545,7 @@ fun MediaItem(
             }
         }
 
-        contentType.startsWith("audio/") -> {
+        payload.isAudio() -> {
             AudioPlayerWidget(
                 modifier = baseModifier,
                 driveId = driveId,
@@ -552,6 +554,7 @@ fun MediaItem(
                 audioFile = decryptedFiles[DecryptedFileKey(fileId, payload.key)],
                 payload = payload,
                 onRequestDecryptedFile = onRequestDecryptedFile,
+                sender = audioSender,
             )
         }
 
@@ -585,11 +588,7 @@ fun MediaItem(
             )
         }
 
-        contentType == "application/zip" ||
-                contentType == "application/x-rar-compressed" ||
-                contentType == "application/vnd.android.package-archive" ||
-                contentType.startsWith("text/") ||
-                contentType.startsWith("application/") -> {
+        payload.rendersAsDocumentCard() -> {
             DocumentMediaItem(
                 payload = payload,
                 modifier = baseModifier,

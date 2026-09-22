@@ -24,6 +24,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 /**
@@ -102,7 +103,7 @@ class FeedPostSenderDeletePathsTest {
     }
 
     @Test
-    fun deletePost_whenTheDeleteCannotBeQueued_rollsBackAndSkipsTheCommentCleanup() =
+    fun deletePost_whenTheDeleteCannotBeQueued_leavesThePostAndSkipsTheCommentCleanup() =
         runFeedTest(blockOutboxInserts = true) {
             val postId = Uuid.random()
             seedPost(postId)
@@ -125,11 +126,13 @@ class FeedPostSenderDeletePathsTest {
                 0L, env.outboxCount(),
                 "a post delete that can't be queued must not queue the comment cleanup either",
             )
-            val restored = batches.last().batchData.single()
-            assertEquals(postId, restored.fileMetadata.appData.uniqueId)
+            assertTrue(batches.isEmpty(), "nothing was written, so observers see nothing")
+            val local = env.databaseManager.driveMainIndex.selectHomebaseFileByUnique(
+                env.credentialsManager.requireActiveCredentials().getIdentityId(), channelDrive, postId,
+            )
             assertEquals(
-                FileState.Active, restored.fileState,
-                "the optimistic delete must be rolled back for observers",
+                FileState.Active, local?.fileState,
+                "a refused enqueue must leave the local post untouched",
             )
         }
 }

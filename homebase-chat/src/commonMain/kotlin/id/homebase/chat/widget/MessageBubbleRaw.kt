@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.markdownHasBlockElements
@@ -88,12 +89,12 @@ import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.stripComposerLineBreakArtifacts
+import id.homebase.core.widget.VoiceNoteSender
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_edited
 import id.homebase.resources.chat_message_read_more
 import kotlinx.collections.immutable.ImmutableMap
-import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
@@ -170,12 +171,34 @@ fun MessageBubbleRaw(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
-    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     // Rendered as a preview of a message (action-menu header, message info, reply quote) rather
     // than as the message itself: typed bubbles must not open their full-screen detail from here.
     displayOnly: Boolean = false,
+    showVoiceNoteSender: Boolean = false,
 ) {
+    val voiceNoteSender = remember(
+        showVoiceNoteSender, sentByYou, message.originalAuthor, message.displayName, currentOdinId,
+    ) {
+        // An outgoing message carries no originalAuthor, so fall back to the signed-in identity.
+        // OdinId(String) validates the domain and throws, and currentOdinId defaults to blank.
+        val odinId = message.originalAuthor
+            ?: currentOdinId.takeIf { sentByYou && it.isNotBlank() }?.let { OdinId(it) }
+        odinId
+            ?.takeIf { showVoiceNoteSender }
+            ?.let { VoiceNoteSender(it, message.displayName, isYou = sentByYou) }
+    }
+
+    // Explicit, not ambient: the feed renders through ChatMarkdown too and must not pick this up.
+    val mentionNames = LocalMentionNames.current
+    val mentionContext = remember(currentOdinId, mentionNames, sentByYou) {
+        MentionContext(
+            selfOdinId = currentOdinId.takeIf { it.isNotBlank() },
+            names = mentionNames,
+            sentBubble = sentByYou,
+        )
+    }
 
     // #814: render the timestamp + delivery footer only on the last bubble of a
     // same-sender cluster (END/ALONE), or whenever a sent message failed to deliver.
@@ -193,8 +216,7 @@ fun MessageBubbleRaw(
             // message. EventBubble renders it rounded above the card (tapping it
             // opens the event detail, not the media viewer) and in the detail too.
             val coverPayload = message.payloads?.firstOrNull {
-                it.contentType?.startsWith("image/") == true &&
-                    it.key.startsWith(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB)
+                it.isImage() && it.key.startsWith(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB)
             }
             EventBubble(
                 descriptor = content.descriptor,
@@ -349,16 +371,13 @@ fun MessageBubbleRaw(
     // Old payload-format location messages (no header descriptor) still render via the media path.
     val locationDescriptor = (message.messageContent as? MessageContent.Location)?.descriptor
 
-    val filteredPayloads = message.payloads?.filter {
-        it.key != ChatProtocol.DefaultPayloadKey &&
-                !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
-    }
-    val hasMedia = !filteredPayloads.isNullOrEmpty()
+    val filteredPayloads = message.payloads.mediaPayloads()
+    val hasMedia = filteredPayloads.isNotEmpty()
     // A 2+-image album (MediaGallery) sitting above a caption renders full-bleed —
     // the images run edge-to-edge to the bubble, and only the caption below keeps its
     // 12dp inset (the messenger convention, matching this app's media-only bubbles). A
     // single image already renders edge-to-edge, so it is untouched.
-    val isGallery = (filteredPayloads?.size ?: 0) >= 2
+    val isGallery = filteredPayloads.size >= 2
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
@@ -439,7 +458,7 @@ fun MessageBubbleRaw(
     // outer Surface fill/shape/elevation entirely and render it like an emoji-only
     // message (see StickerMessage). Non-sticker bubbles are unaffected.
     val isSticker = remember(filteredPayloads) {
-        filteredPayloads?.size == 1 &&
+        filteredPayloads.size == 1 &&
             (filteredPayloads[0].descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
     }
     val isStickerBubble = isSticker && mediaOnly
@@ -560,7 +579,7 @@ fun MessageBubbleRaw(
                 // scrim — see StickerMessage. Non-sticker media-only messages fall through
                 // to the unchanged path below.
                 StickerMessage(
-                    payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
+                    payloads = filteredPayloads.toPersistentList(),
                     decryptedFiles = decryptedFiles,
                     keyHeader = message.keyHeader,
                     driveId = chatTargetDrive.alias,
@@ -585,7 +604,7 @@ fun MessageBubbleRaw(
             } else if (mediaOnly && !message.isDeleted) {
                 Box(modifier = Modifier.wrapContentWidth()) {
                     MediaMessage(
-                        payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
+                        payloads = filteredPayloads.toPersistentList(),
                         fileId = message.fileId,
                         decryptedFiles = decryptedFiles,
                         keyHeader = message.keyHeader,
@@ -602,6 +621,7 @@ fun MessageBubbleRaw(
                         messageId = message.id,
                         downloadingFiles = downloadingFiles,
                         uploadStatus = uploadStatus,
+                        audioSender = voiceNoteSender,
                     )
                     MediaTimestampOverlay(
                         showTimestamp = showMessageFooter,
@@ -626,7 +646,7 @@ fun MessageBubbleRaw(
                         )
                         Box {
                             MediaMessage(
-                                payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
+                                payloads = filteredPayloads.toPersistentList(),
                                 fileId = message.fileId,
                                 decryptedFiles = decryptedFiles,
                                 keyHeader = message.keyHeader,
@@ -643,6 +663,7 @@ fun MessageBubbleRaw(
                                 messageId = message.id,
                                 downloadingFiles = downloadingFiles,
                                 uploadStatus = uploadStatus,
+                                audioSender = voiceNoteSender,
                             )
                             MediaTimestampOverlay(
                                 showTimestamp = showMessageFooter,
@@ -735,6 +756,7 @@ fun MessageBubbleRaw(
                                 uploadStatus = uploadStatus,
                                 fillWidth = true,
                                 hasCaption = true,
+                                audioSender = voiceNoteSender,
                             )
                         }
                     }
@@ -752,6 +774,7 @@ fun MessageBubbleRaw(
                             style = MaterialTheme.typography.bodyLarge,
                             searchQuery = effectiveSearchQuery,
                             isCurrentSearchResult = isCurrentSearchResult,
+                            mentions = mentionContext,
                         )
                     }
                     if (message.hasMore && onShowMoreClick != null) {
@@ -851,6 +874,7 @@ fun MessageBubbleRaw(
                                         // Floors a narrow single image to 240dp so the caption
                                         // clamp below can't collapse it to one char per line.
                                         hasCaption = true,
+                                        audioSender = voiceNoteSender,
                                     )
                                 }
                             }
@@ -894,6 +918,7 @@ fun MessageBubbleRaw(
                                         style = MaterialTheme.typography.bodyLarge,
                                         searchQuery = effectiveSearchQuery,
                                         isCurrentSearchResult = isCurrentSearchResult,
+                                        mentions = mentionContext,
                                         maxLines = bodyMaxLines,
                                         overflow = TextOverflow.Ellipsis,
                                         onTextLayout = { textLayoutResult = it },

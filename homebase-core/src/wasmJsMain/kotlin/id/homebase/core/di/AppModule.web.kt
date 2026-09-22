@@ -26,7 +26,10 @@ import id.homebase.core.notifications.NotificationBackend
 import id.homebase.core.settings.createSettings
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.updater.UpdateAppManager
+import id.homebase.core.util.AlbumSaver
+import id.homebase.core.util.NetworkMonitor
 import id.homebase.core.util.PlatformInfo
+import id.homebase.core.util.WebAlbumSaver
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -34,6 +37,8 @@ actual fun platformModule(): Module = module {
     single { createSettings() }
     single<FileOperationsProvider> { WebFileOperationsProvider() }
     single { ShareCacheStorage() }
+    single<AlbumSaver> { WebAlbumSaver }
+    single<NetworkMonitor> { NetworkMonitor { true } }
     single<NotificationBackend> { NoopNotificationBackend() }
 
     // Web stubs (see WebPlatformStubs.kt) — inert browser implementations so the Koin graph

@@ -21,7 +21,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
@@ -43,18 +42,18 @@ import id.homebase.core.util.replaceTextRangeSafely
 const val ComposerAutocompleteTag: String = "composer_autocomplete"
 
 /**
- * Owns the arrow/Enter/Tab/Escape keys while a [ComposerAutocomplete] list is showing.
- *
- * richeditor's own `triggerKeyHandler` is internal, and the composer's Enter-to-send lives in an
- * `onPreviewKeyEvent` on the editor's outer modifier — preview events run root-to-leaf, so that
- * handler sees Enter before the editor does. Without giving this first refusal there, Enter sends
- * `:sm` as a message instead of committing the highlighted suggestion.
+ * Owns arrow/Enter/Tab/Escape while a [ComposerAutocomplete] list is showing; [composerKeyHandler]
+ * offers it every key first.
  */
 @Stable
 class ComposerAutocompleteController internal constructor() {
     internal var keyHandler: ((KeyEvent) -> Boolean)? by mutableStateOf(null)
 
-    fun handleKeyEvent(event: KeyEvent): Boolean = keyHandler?.invoke(event) ?: false
+    // A modified Enter is the composer's in either mode; a bare Enter picks the highlighted
+    // suggestion rather than sending ":sm".
+    internal fun handleKeyEvent(event: KeyEvent): Boolean =
+        if (event.isModifiedEnter()) false
+        else keyHandler?.invoke(event) ?: false
 }
 
 @Composable
@@ -66,8 +65,7 @@ fun rememberComposerAutocompleteController(): ComposerAutocompleteController =
  * filters it, and picking an entry splices [replacementFor] over the trigger token.
  *
  * Place it as a sibling of the editor inside a `Box` that wraps ONLY the editor — that Box is the
- * anchor — and route the editor's `onPreviewKeyEvent` through [ComposerAutocompleteController]
- * first.
+ * anchor — and pass [controller] to the editor's [composerKeyHandler].
  *
  * The trigger detection comes from richeditor, which brings the word-boundary rule that keeps
  * `10:30` and `https://` from opening the list. Commit goes through [replacementFor] and
@@ -152,15 +150,10 @@ private fun <T> SuggestionList(
                     true
                 }
 
-                // NumPadEnter too: macOS can report Return as NumPadEnter (#1043). Shift+Enter is
-                // the composer's newline and stays the composer's, open list or not.
+                // NumPadEnter too: macOS can report Return as NumPadEnter.
                 Key.Enter, Key.NumPadEnter, Key.Tab -> {
-                    if (event.isShiftPressed && event.key != Key.Tab) {
-                        false
-                    } else {
-                        items.getOrNull(selected.coerceIn(0, items.lastIndex))?.let(::commit)
-                        true
-                    }
+                    items.getOrNull(selected.coerceIn(0, items.lastIndex))?.let(::commit)
+                    true
                 }
 
                 Key.Escape -> {

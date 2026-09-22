@@ -699,6 +699,7 @@
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Lyd</string>
+    <string name="chat_message_voice_duration">Talebesked · %1$s</string>
     <string name="chat_message_file">Fil</string>
     <string name="chat_message_location">Placering</string>
     <string name="chat_message_multiple_media">Medier</string>
@@ -832,6 +833,13 @@
     <string name="cd_sticker_options_add">Føj til mine klistermærker</string>
     <string name="cd_sticker_options_remove">Fjern fra mine klistermærker</string>
     <string name="cd_sticker_options_save">Gem på enheden</string>
+    <!-- Sheet shown when an animated GIF is pasted into the composer -->
+    <string name="chat_gif_paste_title">Send denne GIF</string>
+    <string name="chat_gif_paste_as_sticker">Send som klistermærke</string>
+    <string name="chat_gif_paste_as_gif">Send som GIF</string>
+    <string name="cd_gif_paste_preview">Indsat GIF</string>
+    <string name="cd_gif_paste_as_sticker">Send den som klistermærke</string>
+    <string name="cd_gif_paste_as_gif">Åbn i editoren for at sende som GIF</string>
 
     <!-- Groodle (group-scheduling poll) -->
     <string name="chat_groodle_share">Groodle</string>
@@ -1244,6 +1252,10 @@
     <string name="dev_menu_network_last_good_ip">Sidst kendte gode IP: %1$s</string>
     <string name="dev_menu_network_last_good_ip_none">ingen registreret endnu</string>
     <string name="dev_menu_force_sync">Gennemtving fuld synkronisering</string>
+    <string name="dev_menu_connection_review">Forbindelsesgennemgang</string>
+    <string name="dev_menu_connection_review_desc">Vis knappen Gennemgå, kontaktprompten og Markér som ny.</string>
+    <string name="dev_menu_profile_card">Profilkort</string>
+    <string name="dev_menu_profile_card_desc">Vis dit profilkort i Indstillinger og profileditoren.</string>
     <string name="dev_menu_clear_data">Ryd alle data</string>
     <string name="dev_menu_test_notification">Test rig notifikation</string>
     <string name="dev_menu_test_temporal_read">Test tidsbestemt placeringslæsning (Frodo)</string>
@@ -1329,7 +1341,6 @@
 
     <!-- Location add-on -->
     <string name="location_label">Lokation</string>
-    <string name="location_dashboard_title">Lokations-dashboard</string>
     <string name="location_settings_title">Lokationsindstillinger</string>
     <string name="location_home_subtitle">Din private lokationshistorik</string>
     <string name="location_onboarding_title">Dine steder, kun dine</string>
@@ -1352,16 +1363,13 @@
     <string name="location_perm_open_settings">Åbn indstillinger</string>
     <string name="location_perm_always_hint">Kræves for at optage din placering, når appen er i baggrunden eller lukket.</string>
     <string name="location_perm_always_settings_hint">Android spørger ikke igen — tryk på Åbn indstillinger, og vælg derefter "Tillad altid" for Placering.</string>
-    <string name="location_status_section">Status</string>
+    <string name="location_status_section">Status på denne enhed</string>
     <string name="location_status_last_fix">Seneste position</string>
     <string name="location_status_points_today">Punkter i dag</string>
     <string name="location_status_pending">Venter på upload</string>
     <string name="location_status_last_flush">Seneste upload</string>
     <string name="location_status_never">Aldrig</string>
     <string name="location_menu_more">Flere muligheder</string>
-    <string name="location_menu_find_device">Find enhed</string>
-    <string name="location_menu_setup">Indstillinger</string>
-    <string name="location_menu_dashboard">Dashboard</string>
     <string name="location_dashboard_history_section">Lokationshistorik</string>
     <string name="location_devices_section">Find min enhed</string>
     <string name="location_locatable_section">Hvem du kan lokalisere</string>
@@ -1383,10 +1391,8 @@
     <string name="location_locate_ambush_explainer">Hvis du tror, at personen kan blive holdt som gidsel, så markér dette felt for at forsinke notifikationen til personen i 24 timer.</string>
     <string name="location_locate_confirm">Anmod om placeringsdata</string>
     <string name="location_locate_fetch_failed">Kunne ikke hente deres placeringsdata. Meddelelsen om anmodningen blev stadig sendt.</string>
-    <string name="location_emergency_contacts_section">Nødkontakter</string>
     <string name="location_emergency_access_section">Hvem kan lokalisere dig</string>
     <string name="location_emergency_access_manage">Tilføj nødkontakter</string>
-    <string name="location_emergency_access_missing">Ingen nødlokationsadgangskreds endnu. Tryk på + for at oprette en i din ejer konsol.</string>
     <string name="location_emergency_access_none">Ingen kan lokalisere dig endnu. Tryk på + for at tilføje personer.</string>
     <string name="location_emergency_access_more">+%1$d</string>
     <string name="location_device_this_device">Denne enhed</string>
@@ -1423,14 +1429,34 @@
     <string name="location_maps_off_cta">Slå kort til</string>
     <string name="location_dashboard_sharing_with">Du deler med</string>
     <string name="location_dashboard_sharing_with_you">Deler med dig</string>
-    <string name="location_dashboard_sharing_show">Vis listen</string>
-    <string name="location_dashboard_sharing_hide">Skjul listen</string>
     <string name="location_dashboard_share_until">indtil %1$s</string>
     <string name="location_dashboard_share_until_stopped">indtil den stoppes</string>
     <string name="location_dashboard_stop_one_cd">Stop deling med %1$s</string>
     <string name="location_dashboard_stop_everyone">Stop deling med alle</string>
     <string name="location_dashboard_stop_confirm_title">Stop al deling?</string>
     <string name="location_dashboard_stop_confirm_body">Dette afslutter alle live-placeringsdelinger, du har startet.</string>
+    <string name="location_tile_emergency_title">Nødlokation</string>
+    <string name="location_tile_settings_title">Indstillinger</string>
+    <string name="location_tile_press_to_activate">Tryk for at aktivere</string>
+    <string name="location_tile_press_to_set_up">Tryk for at sætte op</string>
+    <string name="location_tile_on">Til</string>
+    <string name="location_tile_off">Fra</string>
+    <string name="location_tile_badge_count">%1$d</string>
+    <string name="location_tile_emergency_status">Du kan lokalisere %1$d · %2$d kan lokalisere dig</string>
+    <string name="location_tile_emergency_stale">%1$d uden signal i over 2 dage</string>
+    <string name="location_tile_emergency_stale_cd">Advarsel: %1$d kontakter uden sporingssignal i mere end 2 dage</string>
+    <string name="location_tile_history_status">%1$d punkter i dag · %2$d enheder</string>
+    <string name="location_tile_history_tracked_by">Spores af %1$s · %2$d punkter i dag</string>
+    <string name="location_tile_history_viewer_off">Slå sporing til på din telefon</string>
+    <string name="location_tile_live_status">Deler med %1$d · %2$d deler med dig</string>
+    <string name="location_tile_live_off">Ingen deler lige nu</string>
+    <string name="location_tile_settings_status">Kort: %1$s</string>
+    <string name="location_attention_cd">En nødkontakt kræver opmærksomhed</string>
+    <string name="location_emergency_helper">Personer, du kan lokalisere, vises, når de tilføjer dig til deres nødkreds. Tryk på en person for at anmode om deres lokation i en nødsituation.</string>
+    <string name="location_history_overview_helper">Din lokationshistorik optages på denne enhed og gemmes krypteret på dit drev. Tryk på kortet for at gennemse dag for dag, eller på en enhed for at finde den.</string>
+    <string name="location_history_overview_needs_permission">Giv lokationstilladelse under Indstillinger for at starte sporing.</string>
+    <string name="location_live_helper">Start deling af din live-lokation fra en samtale. Delinger stopper automatisk på det tidspunkt, du valgte.</string>
+    <string name="location_settings_helper">Sporing, tilladelser og kortvisning for denne enhed.</string>
     <string name="share_live_location">Del live-placering</string>
     <string name="live_share_back">Del din live-placering</string>
     <string name="live_share_duration_prompt">Del live-placering i</string>
@@ -1477,7 +1503,6 @@
     <string name="contactbook_onboarding_setup">Kom i gang</string>
     <string name="contactbook_onboarding_dismiss">Måske senere</string>
 
-    <string name="contactbook_tab_contacts">Kontakter</string>
     <string name="contactbook_tab_circles">Kredse</string>
     <string name="contactbook_connected">Forbundet</string>
     <string name="contactbook_vetted">Godkendt</string>
@@ -1487,6 +1512,74 @@
     <string name="contactbook_circle_unvetted">Ikke godkendt</string>
     <string name="contactbook_circle_members_empty">Denne kreds har ingen medlemmer.</string>
     <string name="contactbook_circle_members_count">%1$d medlemmer</string>
+    <string name="contactbook_tab_known">Kontakter</string>
+    <string name="contactbook_tab_new">Nye</string>
+    <string name="contactbook_filter_circles">Kredse</string>
+    <string name="contactbook_new_empty">Intet venter på dig.</string>
+    <string name="contactbook_circles_filter_empty">Der er ingen i dine kredse endnu.</string>
+    <string name="contactbook_circle_new">Nye</string>
+
+    <string name="circle_access_incomplete">Ingen nøgle endnu</string>
+    <string name="circle_access_awaiting_app">Afventer</string>
+    <string name="circle_access_awaiting_named">Afventer %1$s</string>
+    <string name="circle_access_awaiting_you">Afventer dig</string>
+    <string name="circle_access_awaiting_unknown_circle">Slettet kreds</string>
+    <string name="circle_access_incomplete_detail">Tildelt, men de kan ikke læse det endnu.</string>
+    <string name="circle_access_pending_detail">Anmodet — træder i kraft, næste gang de forbinder.</string>
+    <string name="contact_access_revoked_title">Adgang slået fra</string>
+    <string name="contact_access_revoked_body">I er stadig forbundet, og de er stadig i dine kredse, men intet af det, du har givet adgang til, når frem til dem.</string>
+
+    <string name="contact_state_new">Ny</string>
+    <string name="contact_state_chat">Chat</string>
+    <string name="contact_state_circle">I dine kredse</string>
+
+    <string name="contact_review_action">Gennemgå</string>
+    <string name="contact_review_introduced_by">Introduceret af %1$s</string>
+    <string name="contact_review_connected_since">Forbundet %1$s</string>
+    <string name="contact_review_submit_circles">Føj til kredse</string>
+    <string name="contact_review_submit_chat_only">Kun chat</string>
+    <string name="contact_review_chat_only_hint">De vil kun se din offentlige profil. Du kan altid føje dem til kredse senere.</string>
+    <string name="contact_review_keep_new">Behold som ny</string>
+    <string name="contact_review_already_added">Allerede tilføjet</string>
+    <string name="contact_review_group_yours">Føj til en kreds</string>
+    <string name="contact_review_group_yours_caption">Alle, du tilføjer, kan se mere af din profil.</string>
+    <string name="contact_review_emergency_title">Nødplacering</string>
+    <string name="contact_review_emergency_row">Del min placering</string>
+    <string name="contact_review_emergency_desc">Lad %1$s se din placering i en nødsituation.</string>
+    <string name="contact_review_group_apps">Yderligere apps</string>
+    <string name="contact_review_group_apps_caption">Disse apps har foreslået deres egen adgang, som allerede er slået til. Slå dem fra efter behov.</string>
+    <string name="contact_review_prompt_title">Ikke gennemgået endnu</string>
+    <string name="contact_review_prompt_body">I er forbundet, men du har ikke besluttet, hvad de kan se. En gennemgang registrerer din beslutning og lader dig føje dem til kredse.</string>
+    <string name="contact_review_failed">Kunne ikke gemme gennemgangen. Prøv igen.</string>
+    <string name="contact_review_requested_on">Anmodet %1$s</string>
+    <string name="contact_review_accept_failed">Kunne ikke acceptere anmodningen. Prøv igen.</string>
+    <string name="contact_unreview_title">Markér som ny?</string>
+    <string name="contact_unreview_body">%1$s beholder alle kredse og al den adgang, de allerede har. Dette rydder kun din registrering af, at du har gennemgået dem.</string>
+    <string name="contact_unreview_confirm">Markér som ny</string>
+    <string name="contact_unreview_blocked_title">Fjern dem først fra disse kredse</string>
+    <string name="contact_unreview_blocked">%1$s er stadig med i kredse, som din gennemgang gav adgang til, så gennemgangen kan ikke ryddes endnu: %2$s</string>
+    <string name="contact_unreview_action">Markér som ny</string>
+    <string name="contact_unreview_failed">Kunne ikke rydde gennemgangen. Prøv igen.</string>
+
+    <string name="enroll_title">Føj til dine kredse</string>
+    <string name="enroll_banner">%1$d kontakter kan komme med i dine kredse</string>
+    <string name="enroll_banner_action">Gennemgå dem</string>
+    <string name="enroll_empty">Alle, der opfylder kravene, er allerede i dine kredse.</string>
+    <string name="enroll_failed">Kunne ikke indlæse kandidater. Prøv igen.</string>
+    <string name="enroll_why_review">Kontakter, du har gennemgået, som endnu ikke er i denne kreds.</string>
+    <string name="enroll_why_connect">Kontakter, du er forbundet med, som endnu ikke er i denne kreds.</string>
+    <string name="enroll_grants">Medlemskab giver:</string>
+    <string name="enroll_read_warning">Denne kreds giver læseadgang. Hvis du fjerner nogen senere, stopper yderligere læsning, men det, de allerede har læst, kan ikke trækkes tilbage.</string>
+    <string name="enroll_reviewed_on">Gennemgået %1$s</string>
+    <string name="enroll_select_all">Vælg alle</string>
+    <string name="enroll_clear">Ryd</string>
+    <string name="enroll_confirm">Føj %1$d til %2$s</string>
+    <string name="enroll_outcome_enrolled">Tilføjet</string>
+    <string name="enroll_outcome_deposited">Kommer med, næste gang deres forbindelse er aktiv</string>
+    <string name="enroll_outcome_skipped">Sprunget over — opfylder ikke længere kravene</string>
+    <string name="enroll_circle_count">%1$d kan komme med</string>
+    <string name="enroll_subtitle_multi">%1$d af dine kredse har kontakter, der kan komme med.</string>
+    <string name="enroll_undo_hint">Fortryd ved at fjerne dem fra kredsen. Det, de allerede har læst, kan ikke trækkes tilbage.</string>
 
     <string name="contactbook_search_hint">Søg</string>
     <string name="contactbook_filter_all">Alle</string>
@@ -1658,26 +1751,47 @@
 
     <string name="profile_edit_visibility_public">Offentlig</string>
     <string name="profile_edit_visibility_connected">Godkendt</string>
+    <string name="profile_edit_visibility_circles">Kredse</string>
     <string name="profile_edit_public_hint">Synlig for alle, også personer du ikke er forbundet med.</string>
     <string name="profile_edit_connected_fallback_hint">Lad feltet stå tomt for i stedet at vise godkendte kontakter din offentlige værdi.</string>
+    <string name="profile_edit_circles_fallback_hint">Lad feltet stå tomt for i stedet at vise dine kredse din offentlige værdi.</string>
     <string name="profile_edit_preview_enter">Forhåndsvisning</string>
     <string name="profile_edit_preview_exit">Tilbage til redigering</string>
     <string name="profile_edit_preview_section_public">Offentlig</string>
     <string name="profile_edit_preview_section_public_desc">Synlig for alle, også personer du ikke er forbundet med.</string>
     <string name="profile_edit_preview_section_vetted">Godkendt</string>
     <string name="profile_edit_preview_section_vetted_desc">Yderligere attributter, der er synlige for dine godkendte (bekræftede) forbindelser.</string>
+    <string name="profile_edit_preview_section_circles">Synlig for mine kredse</string>
+    <string name="profile_edit_preview_section_circles_desc">Yderligere oplysninger, der vises for alle, du har føjet til dine kredse.</string>
     <string name="profile_edit_preview_empty">Intet er synligt på dette niveau endnu.</string>
     <string name="profile_edit_field_not_set">Ikke angivet</string>
     <string name="profile_edit_add_attribute">Tilføj attribut</string>
     <string name="profile_edit_add_attribute_title">Tilføj et felt</string>
+    <string name="profile_card_title">Profilkort</string>
+    <string name="profile_card_open">Åbn profilkort</string>
+    <string name="profile_card_share">Del kort</string>
+    <string name="profile_card_save">Gem kortbillede</string>
+    <string name="profile_card_design_poster">Plakat</string>
+    <string name="profile_card_design_board">Tavle</string>
+    <string name="profile_card_design_collage">Collage</string>
+    <string name="profile_card_design_dossier">Dossier</string>
+    <string name="profile_card_error">Kunne ikke vise dit kort.</string>
+    <string name="profile_card_share_failed">Kunne ikke lave kortbilledet.</string>
+    <string name="profile_card_unsupported">Din Homebase-server understøtter ikke profilkort endnu.</string>
+    <string name="profile_card_channel_access">Nogle opslag, som dine forbindelser kan se, vises ikke. Giv adgang til dine kanaler.</string>
+    <string name="profile_card_channel_access_allow">Tillad</string>
+    <string name="settings_profile_card">Profilkort</string>
+    <string name="settings_profile_card_desc">Se hvordan andre ser dig, og del det som et billede</string>
 
     <!-- Avatar editor -->
     <string name="profile_avatar_edit_title">Skift foto</string>
     <string name="cd_profile_avatar_change_photo">Skift foto</string>
     <string name="profile_avatar_edit_acl_anonymous">Offentligt foto</string>
     <string name="profile_avatar_edit_acl_connected">Foto til godkendte</string>
+    <string name="profile_avatar_edit_acl_circles">Foto til kredse</string>
     <string name="profile_avatar_edit_anonymous_desc">Synligt for alle, også personer du ikke er forbundet med.</string>
     <string name="profile_avatar_edit_connected_desc">Kun synligt for godkendte kontakter — kan være et andet foto end dit offentlige.</string>
+    <string name="profile_avatar_edit_circles_desc">Kun synligt for personer i dine kredse — kan være et andet foto end dit offentlige.</string>
     <string name="profile_avatar_edit_upload">Gem</string>
     <string name="profile_avatar_edit_remove">Fjern</string>
     <string name="profile_avatar_edit_error_upload">Kunne ikke uploade dit foto. Prøv igen.</string>

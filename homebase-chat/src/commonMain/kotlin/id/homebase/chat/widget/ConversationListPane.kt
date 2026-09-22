@@ -76,9 +76,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import id.homebase.api.client.auth.initials
 import id.homebase.chat.conversationlist.ConversationListContentModel
 import id.homebase.chat.conversationlist.ConversationListContentState
+import id.homebase.chat.conversationlist.resolveTopConversationId
+import id.homebase.chat.conversationlist.shouldScrollToTop
 import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiState
@@ -109,30 +113,75 @@ import id.homebase.resources.search
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
+@Composable
+internal fun Modifier.paneTrailingEdge(): Modifier {
+    val twoPaneWindow = isExpandedLayout()
+    val paneEdgeColor = MaterialTheme.colorScheme.outlineVariant
+    return drawWithContent {
+        drawContent()
+        if (!twoPaneWindow) return@drawWithContent
+        val stroke = 1.dp.toPx()
+        val x = if (layoutDirection == LayoutDirection.Rtl) stroke / 2f
+        else size.width - stroke / 2f
+        drawLine(
+            color = paneEdgeColor,
+            start = Offset(x, 0f),
+            end = Offset(x, size.height),
+            strokeWidth = stroke,
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ConversationListPane(
     uiState: ConversationListUiState,
-    selectedConversationId: Uuid? = null,
     searchTextState: TextFieldState,
     searchFocusRequester: FocusRequester? = null,
     archivedUiState: ArchivedConversationsUiState = ArchivedConversationsUiState(),
+    listPaneVisible: Boolean = true,
     onProfileClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
-    onConversationSelected: (conversationId: Uuid) -> Unit,
 ) {
     val twoPaneWindow = isExpandedLayout()
     val persistentSearch = isDesktopOrWeb() && !uiState.showArchived
     val searchTyping by remember(searchTextState) { derivedStateOf { searchTextState.text.isNotEmpty() } }
     val searchActive = uiState.isSearchActive || (persistentSearch && searchTyping)
     val paneContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest
-    val paneEdgeColor = MaterialTheme.colorScheme.outlineVariant
     val topBarState = rememberTopAppBarState()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(topBarState)
     val listState = rememberLazyListState()
     val focusRequesterNone = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
     var showMenu by remember { mutableStateOf(false) }
+
+    // Null while the LazyColumn is showing something other than the conversation list — the
+    // archived thread list or search results, whose #1 row is not comparable to the list's.
+    val topConversationId = if (searchActive || uiState.showArchived) {
+        null
+    } else {
+        (uiState.conversationsContent as? ConversationListContentState.Items)
+            ?.let { resolveTopConversationId(it.list) }
+    }
+
+    // The saved scroll position is an index, so a list that reordered while the user was away
+    // restores them onto a different conversation. Land at the top instead, once per return,
+    // whenever the #1 conversation is no longer the one they last saw.
+    var checkTopOnReturn by remember { mutableStateOf(true) }
+    LaunchedEffect(listPaneVisible) { if (listPaneVisible) checkTopOnReturn = true }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { checkTopOnReturn = true }
+    LaunchedEffect(checkTopOnReturn, listPaneVisible, topConversationId) {
+        if (!checkTopOnReturn || !listPaneVisible || topConversationId == null) {
+            return@LaunchedEffect
+        }
+        checkTopOnReturn = false
+        val isAtTop = listState.firstVisibleItemIndex == 0 &&
+                listState.firstVisibleItemScrollOffset == 0
+        if (shouldScrollToTop(uiState.listTopSnapshotId, topConversationId, isAtTop)) {
+            listState.scrollToItem(0)
+        }
+        onUiAction(ConversationListUiAction.SnapshotListTop)
+    }
 
     // Request focus on box element to prevent soft keyboard popping up
     LaunchedEffect(Unit) { focusRequesterNone.requestFocus() }
@@ -152,19 +201,7 @@ fun ConversationListPane(
         Scaffold(
             modifier = Modifier
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .drawWithContent {
-                    drawContent()
-                    if (!twoPaneWindow) return@drawWithContent
-                    val stroke = 1.dp.toPx()
-                    val x = if (layoutDirection == LayoutDirection.Rtl) stroke / 2f
-                    else size.width - stroke / 2f
-                    drawLine(
-                        color = paneEdgeColor,
-                        start = Offset(x, 0f),
-                        end = Offset(x, size.height),
-                        strokeWidth = stroke,
-                    )
-                },
+                .paneTrailingEdge(),
             topBar = {
                 if (uiState.showArchived) {
                     TopAppBar(
@@ -216,7 +253,6 @@ fun ConversationListPane(
                                                         }),
                                                     animatedVisibilityScope = this@AnimatedVisibility,
                                                     sharedTransitionScope = null,
-                                                    cacheBustKey = session.profileImageLastModified,
                                                 )
                                             }
 
@@ -427,10 +463,9 @@ fun ConversationListPane(
                     if (uiState.showArchived) {
                         archivedConversationItems(
                             archivedUiState = archivedUiState,
-                            selectedConversationId = selectedConversationId,
+                            selectedConversationId = uiState.selectedConversationId,
                             iconOnlyMode = iconOnlyMode,
                             onUiAction = onUiAction,
-                            onConversationSelected = onConversationSelected,
                         )
                         return@LazyColumn
                     }
@@ -546,7 +581,7 @@ fun ConversationListPane(
                                 Box(modifier = Modifier.animateItem()) {
                                     ConversationLisContentItem(
                                         listItem = listItem,
-                                        selectedConversationId = selectedConversationId,
+                                        selectedConversationId = uiState.selectedConversationId,
                                         iconOnlyMode = iconOnlyMode,
                                         // Search results are a tap target, not a swipe target.
                                         allowSwipeActions = !searchActive,
@@ -556,7 +591,6 @@ fun ConversationListPane(
                                             searchTextState.text.toString()
                                         else "",
                                         onUiAction = onUiAction,
-                                        onConversationSelected = onConversationSelected,
                                     )
                                 }
                             }
@@ -621,7 +655,6 @@ private fun LazyListScope.archivedConversationItems(
     selectedConversationId: Uuid?,
     iconOnlyMode: Boolean,
     onUiAction: (ConversationListUiAction) -> Unit,
-    onConversationSelected: (conversationId: Uuid) -> Unit,
 ) {
     if (archivedUiState.isLoading) {
         item {
@@ -660,7 +693,6 @@ private fun LazyListScope.archivedConversationItems(
                 iconOnlyMode = iconOnlyMode,
                 searchQuery = "",
                 onUiAction = onUiAction,
-                onConversationSelected = onConversationSelected,
             )
         }
     }
@@ -673,7 +705,6 @@ fun ConversationLisContentItem(
     iconOnlyMode: Boolean,
     searchQuery: String,
     onUiAction: (ConversationListUiAction) -> Unit,
-    onConversationSelected: (conversationId: Uuid) -> Unit,
     allowSwipeActions: Boolean = true,
 ) {
     when (listItem) {
@@ -700,7 +731,6 @@ fun ConversationLisContentItem(
                                 listItem.conversation.conversation.id, null
                             )
                         )
-                        onConversationSelected(listItem.conversation.conversation.id)
                     },
                     isSelected = listItem.conversation.conversation.id == selectedConversationId,
                 )
@@ -714,7 +744,6 @@ fun ConversationLisContentItem(
                                 null
                             )
                         )
-                        onConversationSelected(listItem.conversation.conversation.id)
                     },
                     onContactClick = {
                         onUiAction(ConversationListUiAction.ShowConversationSettings(listItem.conversation.conversation))
@@ -758,7 +787,6 @@ fun ConversationLisContentItem(
                             listItem.message.conversationId, listItem.message.id
                         )
                     )
-                    onConversationSelected(listItem.message.conversationId)
                 },
                 onContactClick = { odinId ->
                     onUiAction(ConversationListUiAction.ShowContactInfo(odinId.domainName))

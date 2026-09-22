@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import co.touchlab.kermit.Logger
 import com.sun.net.httpserver.HttpServer
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.HLS_PLAYLIST_CONTENT_TYPE
 import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
@@ -188,7 +189,7 @@ actual fun VideoPlayerSurface(
                             val name = exchange.requestURI.path.trimStart('/')
                             if (name.endsWith(".m3u8")) {
                                 val fileBytes = File(dir, name).readBytes()
-                                exchange.responseHeaders.add("Content-Type", "application/vnd.apple.mpegurl")
+                                exchange.responseHeaders.add("Content-Type", HLS_PLAYLIST_CONTENT_TYPE)
                                 exchange.sendResponseHeaders(200, fileBytes.size.toLong())
                                 exchange.responseBody.use { it.write(fileBytes) }
                                 return@createContext

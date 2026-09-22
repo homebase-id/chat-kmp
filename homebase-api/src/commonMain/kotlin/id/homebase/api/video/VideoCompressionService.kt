@@ -29,7 +29,7 @@ import kotlinx.coroutines.sync.withLock
  *
  * Rather than rely on every caller (the full-screen attachment editor, multi-video send,
  * Moments, Chat) to remember to serialize, this service guards the heavy ops — [compress],
- * [segment], [segmentAndEncrypt], [remuxHlsToMp4] — behind a single [Mutex]: a second call
+ * [segment], [segmentAndEncrypt], [remuxHlsToMp4], [transcode] — behind a single [Mutex]: a second call
  * waits until the first completes (and `withLock` is cancellation-aware, so a waiter that's
  * cancelled unblocks the queue cleanly). The cheap probes ([getDurationMs],
  * [getFfmpegVersion]) and [cacheInputVideo] are unguarded — they're fine to call freely.
@@ -79,6 +79,11 @@ object VideoCompressionService : VideoCompressor, VideoProber {
     override suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
         heavyOpLock.withLock {
             compressor.remuxHlsToMp4(playlistPath, outputPath)
+        }
+
+    override suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =
+        heavyOpLock.withLock {
+            compressor.transcode(input, extension, outputArgs)
         }
 
     override suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =

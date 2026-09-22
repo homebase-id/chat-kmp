@@ -65,6 +65,8 @@ class AuthConnectionCoordinator(
      * auth layer stays decoupled from the location module. Default `{ null }` keeps it optional.
      */
     private val locationProfileLabel: () -> String? = { null },
+    /** Dark launch: enrollments are only claimed while the connection review flag is on. */
+    private val processEnrollmentsEnabled: () -> Boolean = { false },
     /**
      * Whether this platform has a push + background-worker fallback for sync while backgrounded
      * (FCM/APNs → WorkManager/BGTask HTTP sync) — wired in AppModule to
@@ -590,6 +592,11 @@ class AuthConnectionCoordinator(
                             // auto-process behaviour is fixed.
                             wsClient?.processAllInboxes()
 
+                            // Claim any circle enrollments queued for this app while we were
+                            // away. Sent blind: the queue isn't visible from here, and the
+                            // command is a no-op when there's nothing owed.
+                            if (processEnrollmentsEnabled()) wsClient?.processEnrollments()
+
                             driveSyncManager.syncAll()
                             Logger.i(tag = "AuthLifecycle") { "AuthCC: onConnected post-sync done" }
                         } catch (e: Exception) {
@@ -974,13 +981,12 @@ class AuthConnectionCoordinator(
         if (deadTokenLogoutStarted) return
         deadTokenLogoutStarted = true
         Logger.w(tag = "AuthLifecycle") { "AuthCC: client token is dead — logging out" }
-        // Main, not this scope's default dispatcher. logout() flips authState, and
-        // AuthConnectionCoordinator then closes the Koin identity scope; AppNavHost's body
-        // resolves identity-scoped ViewModels unconditionally (outside its isAuthenticated
-        // gate), so a recomposition landing between the flip and the close resolves from a
-        // closed scope and dies on main. Every existing caller (SettingsViewModel, the dev
-        // menu) already logs out from viewModelScope — Main.immediate — which orders the flip
-        // and the teardown against composition. Match that or reproduce the crash (#1349).
+        // Main, not this scope's default dispatcher. This used to be load-bearing: logout()
+        // flips authState, AuthConnectionCoordinator then closes the Koin identity scope, and
+        // a recomposition landing in between resolved from a closed scope and died on main
+        // (#1349). IdentityScope now recovers from that read (#1373), so the hop is ordering
+        // hygiene — it matches every other caller, which log out from viewModelScope — rather
+        // than a correctness gate.
         scope.launch(Dispatchers.Main.immediate) {
             try {
                 youAuthFlowManager.logout(force = true)

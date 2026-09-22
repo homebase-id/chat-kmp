@@ -4,12 +4,14 @@ package id.homebase.core.contactbook
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ForbiddenException
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlin.uuid.ExperimentalUuidApi
@@ -28,8 +30,10 @@ import kotlin.uuid.ExperimentalUuidApi
  */
 class EmergencyContactReceiveService(
     private val contactRepository: ContactRepository,
+    private val contactInfo: ContactInfoGateway,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
+    private val emergencyContacts: EmergencyContactService,
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -41,11 +45,12 @@ class EmergencyContactReceiveService(
             val contact = contactRepository.contacts.value.firstOrNull { it.uniqueId == uniqueId }
             val versionTag = contact?.versionTag
             when (designationAction(contact != null, contact?.iCanLocate() == true, versionTag != null)) {
-                DesignationAction.SyncOnly -> contactRepository.sync(sender)
+                DesignationAction.SyncOnly -> contactInfo.syncContactRecord(sender)
                 DesignationAction.Consume -> consume(messageFile)
                 DesignationAction.SetThenConsume -> {
                     contactRepository.setICanLocate(uniqueId, versionTag!!)
                     consume(messageFile)
+                    emergencyContacts.refreshAsync(sender)
                 }
                 DesignationAction.Ignore -> Unit
             }
@@ -79,16 +84,13 @@ class EmergencyContactReceiveService(
     }
 
     /**
-     * Soft-deletes the status message on our own identity (local write + server, recipients = null)
-     * so the ConversationStream dispatcher's `content ?: continue` guard no-ops any re-delivery.
-     * Best-effort — a failure just means a re-delivery might re-run an already-idempotent handler.
+     * Soft-deletes the status message on our own identity (server, recipients = null, then the
+     * local row) so the ConversationStream dispatcher's `content ?: continue` guard no-ops any
+     * re-delivery. Best-effort — a failure just means a re-delivery might re-run an already-
+     * idempotent handler.
      */
     private suspend fun consume(messageFile: HomebaseFile) {
-        messageFile.fileMetadata.appData.uniqueId?.let { uniqueId ->
-            runCatching { optimisticWriter.writeDelete(chatDrive, uniqueId) }
-                .onFailure { Logger.w(it) { "emergency consume: local soft-delete failed" } }
-        }
-        runCatching {
+        val queued = runCatching {
             outboxSync.tryEnqueue(
                 DeleteLocalFilesByFileIdRequest(
                     driveId = chatDrive,
@@ -96,8 +98,14 @@ class EmergencyContactReceiveService(
                     recipients = null,
                     hardDelete = false,
                 )
-            )
+            ).enqueued
         }.onFailure { Logger.w(it) { "emergency consume: server soft-delete enqueue failed" } }
+            .getOrDefault(false)
+        if (!queued) return
+        messageFile.fileMetadata.appData.uniqueId?.let { uniqueId ->
+            runCatching { optimisticWriter.writeDeleteAlreadyQueued(chatDrive, uniqueId) }
+                .onFailure { Logger.w(it) { "emergency consume: local soft-delete failed" } }
+        }
     }
 }
 

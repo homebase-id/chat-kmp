@@ -1,12 +1,16 @@
 package id.homebase.core.session
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import org.koin.compose.ComposeContextWrapper
+import org.koin.compose.LocalKoinScopeContext
+import org.koin.compose.currentKoinScope
 import org.koin.compose.koinInject
-import org.koin.compose.scope.UnboundKoinScope
-import org.koin.core.annotation.KoinDelicateAPI
-import org.koin.core.annotation.KoinExperimentalAPI
+import org.koin.core.annotation.KoinInternalApi
+import org.koin.core.scope.Scope
 
 /**
  * Makes the open identity session the scope that `koinViewModel()` and `koinInject()` resolve
@@ -26,15 +30,46 @@ import org.koin.core.annotation.KoinExperimentalAPI
  * transition and closes it on logout. Binding it to composition instead would destroy every
  * per-identity service whenever this subtree left the tree.
  */
-@OptIn(KoinExperimentalAPI::class, KoinDelicateAPI::class)
 @Composable
 fun IdentityScopeProvider(content: @Composable () -> Unit) {
     val session = koinInject<IdentitySessionScope>()
-    val scope by session.currentScope.collectAsState()
+    val published by session.currentScope.collectAsState()
+    val liveScope = remember(session) { session::scopeOrNull }
+    IdentityScope(published, liveScope, content)
+}
 
-    val live = scope
-    if (live != null && !live.closed) {
-        UnboundKoinScope(live) { content() }
+/**
+ * The provider minus its subscription, so a test can hold [published] at the value the
+ * composition is stuck with while the scope dies underneath it (#1373).
+ *
+ * [published] arrives through `collectAsState`; `Scope.closed` flips synchronously inside
+ * `IdentitySessionScope.close()`. In between, anything below that recomposes for its own
+ * reasons reads a closed scope — and `UnboundKoinScope` publishes a [ComposeContextWrapper]
+ * with no `setValue`, so `currentKoinScope()`'s recovery path degenerates into a throw that
+ * `GlobalCrashHandler` turns into a process kill. Every other Koin entry point publishes a
+ * wrapper *with* one; this does the same, pointing at whatever scope is live now — the next
+ * identity's after a switch, the root once logged out.
+ *
+ * Ceiling: a definition registered only in the identity scope has no answer once that scope is
+ * gone, same as `requireScope()`, so it trades a closed-scope throw for a missing-definition one.
+ *
+ * [LocalKoinScopeContext] and [ComposeContextWrapper] are `@KoinInternalApi`: a Koin upgrade
+ * that seals them breaks this at compile time rather than silently.
+ */
+@OptIn(KoinInternalApi::class)
+@Composable
+internal fun IdentityScope(
+    published: Scope?,
+    liveScope: () -> Scope?,
+    content: @Composable () -> Unit,
+) {
+    val fallback = currentKoinScope()
+    val live = published?.takeIf { !it.closed }
+    if (live != null) {
+        val scopeContext = remember(live, fallback) {
+            ComposeContextWrapper(live) { liveScope() ?: fallback }
+        }
+        CompositionLocalProvider(LocalKoinScopeContext provides scopeContext) { content() }
     } else {
         content()
     }

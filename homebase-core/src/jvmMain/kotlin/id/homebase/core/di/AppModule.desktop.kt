@@ -33,7 +33,10 @@ import id.homebase.core.settings.createSettings
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.updater.JvmUpdateAppManager
 import id.homebase.core.updater.UpdateAppManager
+import id.homebase.core.util.AlbumSaver
+import id.homebase.core.util.JvmAlbumSaver
 import id.homebase.core.util.JvmPlatformInfo
+import id.homebase.core.util.NetworkMonitor
 import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
 import id.homebase.core.diagnostics.NoOpDiagnosticsCrashTrigger
 import id.homebase.core.util.PlatformInfo
@@ -43,6 +46,9 @@ import org.koin.dsl.module
 actual fun platformModule(): Module = module {
     single<FileOperationsProvider> { JvmFileOperationsProvider() }
     single { ShareCacheStorage() }
+    single<AlbumSaver> { JvmAlbumSaver() }
+    // Desktop is assumed to be on a wired/Wi-Fi link; there is no metered signal to read.
+    single<NetworkMonitor> { NetworkMonitor { true } }
     single { createSettings() }
     single<PlatformGalleryManager> { JvmGalleryManager() }
     single { GalleryCache(get<PlatformGalleryManager>()) }

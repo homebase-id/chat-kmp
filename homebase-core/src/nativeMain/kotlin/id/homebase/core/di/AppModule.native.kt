@@ -35,7 +35,11 @@ import id.homebase.core.settings.createSettings
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.updater.IOSUpdateAppManager
 import id.homebase.core.updater.UpdateAppManager
+import id.homebase.core.util.AlbumSaver
 import id.homebase.core.util.IOSPlatformInfo
+import id.homebase.core.util.IosAlbumSaver
+import id.homebase.core.util.IosNetworkMonitor
+import id.homebase.core.util.NetworkMonitor
 import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
 import id.homebase.core.diagnostics.IosDiagnosticsCrashTrigger
 import id.homebase.core.util.PlatformInfo
@@ -45,6 +49,8 @@ import org.koin.dsl.module
 actual fun platformModule(): Module = module {
     single<FileOperationsProvider> { IOSFileOperationsProvider() }
     single { ShareCacheStorage() }
+    single<AlbumSaver> { IosAlbumSaver }
+    single<NetworkMonitor> { IosNetworkMonitor() }
     single { createSettings() }
     single<PlatformGalleryManager> { IOSGalleryManager() }
     single { GalleryCache(get<PlatformGalleryManager>()) }

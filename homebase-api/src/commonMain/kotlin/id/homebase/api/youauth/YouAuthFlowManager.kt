@@ -5,8 +5,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.browser.RedirectConfig
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
-import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.http.UriBuilder
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -92,7 +92,7 @@ class YouAuthFlowManager(
     private val credentialsManager: CredentialsManager,
     private val httpClient: HttpClient,
     private val driveFileProviderCached: DriveFileProviderCached,
-    private val publicProfileProviderCached: PublicProfileProviderCached,
+    private val contactInfo: ContactInfoGateway,
     // Platform-level cache teardown invoked during logout, alongside the per-cache
     // clearCaches() calls below. Injected from the module that owns platform
     // singletons (homebase-core) so this class doesn't have to depend on coil3 or
@@ -201,6 +201,8 @@ class YouAuthFlowManager(
      * @param scope CoroutineScope for launching browser
      * @param appId Application ID
      * @param appName Application name
+     * @param appSlug Application slug (e.g. "chat"). The server needs it when it still has to
+     *   register the app; it no longer derives one from the name.
      * @param drives List of drive access requests
      * @param persistForRedirect Persist the flow state (ECC key pair, password, CSRF state) to
      *   [SecureStorage] so `completeAuth` can restore it after a full-page navigation. Used by
@@ -211,6 +213,7 @@ class YouAuthFlowManager(
         identity: OdinId,
         appId: String,
         appName: String,
+        appSlug: String? = null,
         drives: List<TargetDriveAccessRequest> = emptyList(),
         permissions: List<AppPermissionType>? = null,
         circlePermissions: List<AppCirclePermissionType>? = null,
@@ -262,6 +265,7 @@ class YouAuthFlowManager(
                 AppAuthorizationParams.create(
                     appName = appName,
                     appId = appId,
+                    appSlug = appSlug,
                     friendlyName = clientFriendlyName ?: deviceDisplayName(),
                     drives = drives,
                     circleDrives = circleDrives,
@@ -456,7 +460,7 @@ class YouAuthFlowManager(
 
         stepOrLog("clearStorage") { driveSyncManager.clearStorage() }
         stepOrLog("driveFileProvider.clearCaches") { driveFileProviderCached.clearCaches() }
-        stepOrLog("publicProfileProvider.clearCaches") { publicProfileProviderCached.clearCaches() }
+        stepOrLog("contactInfo.clearCaches") { contactInfo.clearCaches() }
         // Platform caches (Coil memory cache, orphan coil3_disk_cache dir, anything
         // else the app-level module wants to flush).
         stepOrLog("clearPlatformCaches") { clearPlatformCaches() }

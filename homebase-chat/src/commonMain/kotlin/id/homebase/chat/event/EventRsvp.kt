@@ -3,12 +3,13 @@ package id.homebase.chat.event
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.ReactionSetChange
 
 /**
  * RSVPs are stored as ordinary chat reactions on the event message — three
- * specific emoji codepoints. The detail screen surfaces them as big buttons
- * and clears any prior RSVP from the same user before recording a new one
- * (so a user can't simultaneously be "going" and "not going").
+ * specific emoji codepoints. The detail screen surfaces them as big buttons;
+ * a tap declares the whole RSVP state at once via [change] (so a user can't
+ * simultaneously be "going" and "not going").
  *
  * Source of truth for the *current user's* RSVP is [MessageUiModel.ownReactions]
  * — already mirrored from `localAppData.localReactions`. The aggregate counts
@@ -38,6 +39,22 @@ object EventRsvp {
     /** Returns the user's current RSVP emoji, or null if none. */
     fun currentRsvp(ownReactions: Iterable<String>): String? =
         ownReactions.firstOrNull { it in ALL }
+
+    /**
+     * The reaction change a tap on [tapped] declares: tapping the current RSVP
+     * retracts it (all three cleared), anything else sets it and clears the
+     * other two. Always covers all three so stale state can't leave a ghost.
+     */
+    fun change(currentRsvp: String?, tapped: String): ReactionSetChange {
+        require(tapped in ALL) { "not an RSVP emoji: $tapped" }
+        return if (currentRsvp == tapped) {
+            ReactionSetChange(scope = SCOPE, add = emptySet(), remove = ALL)
+        } else {
+            ReactionSetChange(scope = SCOPE, add = setOf(tapped), remove = ALL - tapped)
+        }
+    }
+
+    private const val SCOPE = "rsvp"
 
     /**
      * Aggregate count of each RSVP across all reactors, read from the

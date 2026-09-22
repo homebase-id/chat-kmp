@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
@@ -105,9 +106,16 @@ class ConversationStream(
         _shareableConversations.asStateFlow()
 
     // Archived / left / removed threads are counted, matching the per-row unread badge.
+    // Gated on hasUnreadCounts: before that pass every item reads 0, and emitting it would
+    // blank the app-icon badge on each cold start until the enrichment lands.
     val totalUnreadCount: Flow<Int> = conversations
-        .map { data -> data.items.sumOf { it.unreadCount } }
+        .filter { it.enrichment.hasUnreadCounts }
+        .map(::sumUnread)
         .distinctUntilChanged()
+
+    /** Latest unread total, or null before the unread enrichment pass has run. */
+    fun currentUnreadTotal(): Int? =
+        conversations.value.takeIf { it.enrichment.hasUnreadCounts }?.let(::sumUnread)
 
     // region Recovery: missing or deleted conversation file
     /** Hook for explicit (non-sync) conversation recovery.
@@ -598,7 +606,6 @@ class ConversationStream(
                         unreadCount = 0,
                         avatarTiny = null,
                         avatarInitials = "",
-                        avatarUrl = "",
                         participants = placeholderParticipants,
                         lastRead = UnixTimeUtc(0).toInstant(),
                         avatarModel = placeholderAvatar,
@@ -959,26 +966,13 @@ class ConversationStream(
                     ui.copy(conversationState = ConversationState.Left)
                 } else ui
 
-                // Reconcile the disk row against the prior in-memory row so the
-                // reload doesn't throw away local state:
-                //  - lastRead = max, dirty kept only while our local read still
-                //    leads disk (same rule as the WS receive merge), so an
-                //    un-flushed local advance survives and still flushes.
-                //  - unreadCount carried forward to avoid a flicker-to-0 (the
-                //    disk row is always 0); when lastRead actually changed vs.
-                //    the prior (a peer advance pulled to disk), mark it
-                //    unread-dirty so the Stopped pipeline's recount corrects it.
-                val prior = priorById[withLeft.id]
-                val finalUi = if (prior != null) {
-                    val reconciled = prior.reconciledWithRemoteLastRead(withLeft.lastRead)
-                    if (reconciled.lastRead != prior.lastRead) markUnreadDirty(withLeft.id)
-                    withLeft.copy(
-                        lastRead = reconciled.lastRead,
-                        dirty = reconciled.dirty,
-                        unreadCount = prior.unreadCount,
-                    )
-                } else withLeft
-                finalUi to file
+                // Reconcile the disk row against the prior in-memory row so the reload
+                // doesn't throw away state the disk row cannot carry — the message
+                // preview, the computed unreadCount, an un-flushed lastRead advance.
+                // See [mergeReloadedConversationRow].
+                val reload = mergeReloadedConversationRow(withLeft, priorById[withLeft.id])
+                if (reload.remoteLastReadAdvanced) markUnreadDirty(withLeft.id)
+                reload.merged to file
             }
 
         val basic = basicWithSource.map { it.first }
@@ -1619,6 +1613,8 @@ class ConversationStream(
         }
     }
 }
+
+private fun sumUnread(data: ConversationsData): Int = data.items.sumOf { it.unreadCount }
 
 data class ConversationsData(
     val dataReady: Boolean = true,

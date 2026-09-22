@@ -66,13 +66,24 @@ sealed interface FileDropPreview {
     data object Rejected : FileDropPreview
 }
 
-// Desktop only; every other target has no external file-drag source and returns Modifier unchanged.
+// Desktop and web; Android and iOS have no external file-drag source and return Modifier unchanged.
 @Composable
 expect fun Modifier.fileDropTarget(
     enabled: Boolean,
     onDragPreviewChanged: (FileDropPreview?) -> Unit,
     onFilesDropped: (List<PlatformFile>) -> Unit,
 ): Modifier
+
+internal data class DropItem(val kind: String, val mimeType: String, val isDirectory: Boolean)
+
+internal fun dropPreviewOf(items: List<DropItem>): FileDropPreview {
+    val attachable = items.filter { it.kind == "file" && !it.isDirectory }
+    if (attachable.isEmpty()) return FileDropPreview.Rejected
+    return FileDropPreview.Attachable(
+        total = attachable.size,
+        images = attachable.count { it.mimeType.startsWith("image/") },
+    )
+}
 
 @Composable
 fun FileDropOverlay(preview: FileDropPreview?, modifier: Modifier = Modifier) {

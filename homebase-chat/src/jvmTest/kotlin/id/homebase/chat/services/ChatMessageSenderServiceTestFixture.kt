@@ -177,7 +177,6 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
                 unreadCount = 0,
                 avatarTiny = null,
                 avatarInitials = "",
-                avatarUrl = "",
                 participants = participants.map { OdinId(it) },
                 lastRead = Instant.fromEpochMilliseconds(0),
                 avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),

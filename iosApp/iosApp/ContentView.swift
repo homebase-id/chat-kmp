@@ -26,8 +26,9 @@ struct ContentView: View {
     // Compose's first frame then renders while backgrounded, iOS rejects the Metal submissions, and
     // the glyph atlas is born dead → all text blank at the first real foreground (fingerprint
     // fontCacheUsed=6889 count=4, 3/3 field captures). Latched true forever after — backgrounding
-    // later must NOT tear the view down.
-    @State private var hasBeenActive = false
+    // later must NOT tear the view down — hence the process-scoped seed: SwiftUI can drop this
+    // view's identity and a plain @State would come back false, un-building a live ComposeView.
+    @State private var hasBeenActive = ComposeGate.hasBeenActive
     // Crash recovery: when a crash report from the previous run is pending, show the
     // native SwiftUI recovery screen INSTEAD of Compose until the user taps Continue
     // (which runs the deferred heavy init and flips pendingReportPath back to nil).
@@ -48,8 +49,9 @@ struct ContentView: View {
                     .ignoresSafeArea()
             } else {
                 // Native placeholder while the scene has never been active (background launch, or
-                // the first milliseconds of a normal launch before .active lands).
-                Color(UIColor.systemBackground)
+                // the first milliseconds of a normal launch before .active lands). Mirrors the
+                // UILaunchScreen dict in Info.plist so the handoff from it is seamless.
+                LaunchPlaceholderView()
                     .ignoresSafeArea()
             }
 
@@ -64,11 +66,13 @@ struct ContentView: View {
             // when we appear, onChange never fires — latch here so a later backgrounding can never
             // un-build ComposeView (tearing it down on .background would recreate the very bug).
             if scenePhase == .active && !hasBeenActive {
+                ComposeGate.hasBeenActive = true
                 hasBeenActive = true
                 IosGpuTextDiagnosticsKt.logPrevention(note: "appeared already .active — ComposeView built immediately")
             }
         }
-        .onChange(of: scenePhase) { _, newPhase in
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            IosGpuTextDiagnosticsKt.logLaunchTrace(note: "scenePhase \(oldPhase) → \(newPhase)")
             switch newPhase {
             case .inactive:
                 if VaultPrivacyBridge.shared.shouldProtect {
@@ -83,12 +87,29 @@ struct ContentView: View {
                 // PREVENTION latch: first .active ever → ComposeView gets built now (and stays built
                 // through later backgrounding). Log it so homebase.log shows the deferral timeline.
                 if !hasBeenActive {
+                    ComposeGate.hasBeenActive = true
                     hasBeenActive = true
                     IosGpuTextDiagnosticsKt.logPrevention(note: "first .active — ComposeView built now (deferred since launch)")
                 }
             default:
                 break
             }
+        }
+    }
+}
+
+/// Latch outliving any ContentView instance.
+private enum ComposeGate {
+    static var hasBeenActive = false
+}
+
+/// Mirrors the Info.plist `UILaunchScreen` dict: LaunchBackground behind a centred LaunchLogo
+/// at its natural size (`UIImageRespectsSafeAreaInsets` false).
+private struct LaunchPlaceholderView: View {
+    var body: some View {
+        ZStack {
+            Color("LaunchBackground")
+            Image("LaunchLogo")
         }
     }
 }

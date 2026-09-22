@@ -8,7 +8,7 @@ import id.homebase.api.client.mail.MailProvider
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.config.emailLabeledDrive
 import id.homebase.core.email.EmailPreferences
-import id.homebase.core.email.MailClientCatalog
+import id.homebase.core.email.Thunderbird
 import id.homebase.core.email.launchMailClient
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.ui.screens.email.setup.EmailSetupStep
@@ -72,10 +72,6 @@ class EmailViewModel(
         // mounting a drive the identity never created leaves DriveSync retrying `400
         // InvalidDrive` once a second forever, and writes the drive into the cross-device
         // registry, which makes it survive a restart and re-mount on every future login.
-        //
-        // The permission check cannot stand in for this: it reports "granted" when it could not
-        // reach the security context at all, so a failed lookup used to read as permission to
-        // mount. Seen on a fresh identity that had never been through the approval flow.
         viewModelScope.launch {
             emailPermissionViewModel.permissionsGranted.filter { it }.collect {
                 // Re-read the status FIRST. The grant is what provisions the drive, so the
@@ -88,12 +84,6 @@ class EmailViewModel(
                 if (_uiState.value.driveActivated != true && _uiState.value.serverStatus?.driveProvisioned == true) {
                     activateDrive()
                 }
-            }
-        }
-
-        viewModelScope.launch {
-            emailPreferences.selectedMailClientId.collect { id ->
-                _uiState.update { it.copy(selectedMailClient = MailClientCatalog.byId(id)) }
             }
         }
 
@@ -163,8 +153,7 @@ class EmailViewModel(
             EmailUiAction.CheckHealthClicked -> checkHealth()
 
             EmailUiAction.OpenMailClientClicked -> viewModelScope.launch {
-                val client = MailClientCatalog.byId(emailPreferences.selectedMailClientId.value)
-                    ?: return@launch
+                val client = Thunderbird.client
                 // False means not installed — say so rather than appearing to do nothing.
                 if (!launchMailClient(client)) {
                     _events.tryEmit(EmailUiEvent.MailClientUnavailable(client.displayName))
@@ -207,6 +196,8 @@ class EmailViewModel(
             try {
                 val status = mailProvider.getStatus()
                 _uiState.update { it.copy(serverStatus = status, isCheckingServer = false) }
+                // Remembered for the toolbar, which has to decide before this call can finish.
+                emailPreferences.setServerSupportsMail(status.tenantMailEnabled)
 
                 // Only once email is actually on: before that there is no mailbox to ask about,
                 // and a failure here must not make the whole screen look broken.

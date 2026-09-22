@@ -41,6 +41,7 @@ import id.homebase.resources.location_perm_granted
 import id.homebase.resources.location_perm_open_settings
 import id.homebase.resources.location_perm_section
 import id.homebase.resources.location_perm_while_in_use
+import id.homebase.resources.location_settings_helper
 import id.homebase.resources.location_settings_show_icon
 import id.homebase.resources.location_status_last_fix
 import id.homebase.resources.location_status_last_flush
@@ -48,8 +49,6 @@ import id.homebase.resources.location_status_never
 import id.homebase.resources.location_status_pending
 import id.homebase.resources.location_status_points_today
 import id.homebase.resources.location_status_section
-import id.homebase.resources.location_tracking_switch
-import id.homebase.resources.location_tracking_unavailable
 import kotlin.time.Instant
 import org.jetbrains.compose.resources.stringResource
 
@@ -70,38 +69,11 @@ fun LocationContent(
     ) {
         Spacer(modifier = Modifier.height(0.dp))
 
-        // ── Master switch ──
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(MR.string.location_tracking_switch),
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Switch(
-                        checked = uiState.allowLocationHistory,
-                        onCheckedChange = { onAction(LocationUiAction.SetAllowLocationHistory(it)) },
-                        enabled = uiState.trackingAvailable &&
-                            (uiState.allowLocationHistory || uiState.whileInUseGranted),
-                    )
-                }
-                if (!uiState.trackingAvailable) {
-                    Text(
-                        text = stringResource(MR.string.location_tracking_unavailable),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-                    )
-                }
-            }
-        }
+        Text(
+            text = stringResource(MR.string.location_settings_helper),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         // ── Permissions ──
         if (uiState.trackingAvailable) {

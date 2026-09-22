@@ -4,10 +4,13 @@ package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.systemFileSystem
+import id.homebase.api.util.isBlobUrl
 import kotlin.js.Promise
 import kotlin.math.abs
 import kotlin.random.Random
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.await
+import kotlinx.coroutines.withContext
 import okio.Path.Companion.toPath
 
 /**
@@ -49,7 +52,7 @@ actual object FFmpegUtils {
         // Editor fast path: a blob: URL (minted from the picked File) has no okio bytes for mp4box
         // to parse. Read the duration straight off an HTML5 <video> instead — any codec the browser
         // can decode, no bytes copied into wasm, no 22 MB core.
-        if (inputPath.startsWith("blob:")) return videoDurationMsFromUrl(inputPath)
+        if (inputPath.isBlobUrl()) return videoDurationMsFromUrl(inputPath)
         val bytes = readOkioBytes(inputPath) ?: return 0L
         return FFmpegBridge.probe(bytes)?.durationMs ?: 0L
     }
@@ -66,15 +69,9 @@ actual object FFmpegUtils {
     }
 
     /**
-     * Compress (+ optional trim) via ffmpeg.wasm, mirroring the native actuals: probe the
-     * input, hand it to [FfmpegCompressPlanner], and either short-circuit (already-optimal /
-     * small) by returning null — caller falls back to the original file — or run ffmpeg and
-     * return the okio path of the compressed mp4.
-     *
-     * Small-video parity with native: the planner's already-optimal predicate needs the codec,
-     * which the mp4box probe supplies, so an in-budget H.264 clip skips ffmpeg here exactly as
-     * it does on Android/iOS/Desktop. (Web v1 does not strip location atoms on the skip path —
-     * a minor known gap vs Android's Mp4LocationStripper.)
+     * Compress (+ optional trim) via ffmpeg.wasm, mirroring the native actuals: probe the input,
+     * hand it to [FfmpegCompressPlanner], run ffmpeg, and return the okio path of the
+     * compressed mp4.
      */
     actual suspend fun compressVideo(
         inputPath: String,
@@ -88,7 +85,7 @@ actual object FFmpegUtils {
         //    (fetch → mp4box / ffmpeg.writeFile); the original never enters Kotlin and is never
         //    base64'd. Size comes from the probe.
         //  - okio path (e.g. a compressed intermediate, or native) → read bytes into Kotlin as before.
-        val isBlob = inputPath.startsWith("blob:")
+        val isBlob = inputPath.isBlobUrl()
         val inputBytes =
             if (isBlob) null
             else (readOkioBytes(inputPath)
@@ -283,6 +280,22 @@ actual object FFmpegUtils {
             outPath.parent?.let { systemFileSystem.createDirectories(it) }
             systemFileSystem.write(outPath) { write(outBytes) }
         }.isSuccess
+    }
+
+    actual suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? {
+        val inName = "transcode_in.$extension"
+        val outName = "transcode_out.$extension"
+        try {
+            FFmpegBridge.writeFile(inName, input)
+            val status = FFmpegBridge.exec(listOf("-y", "-i", inName) + outputArgs + outName)
+            return if (status == 0) FFmpegBridge.readFile(outName) else null
+        } finally {
+            // ffmpeg.wasm can't be interrupted: wait out a cancelled exec instead of leaking MEMFS files.
+            withContext(NonCancellable) {
+                FFmpegBridge.deleteFile(inName)
+                FFmpegBridge.deleteFile(outName)
+            }
+        }
     }
 
     private var cachedVersion: String? = null

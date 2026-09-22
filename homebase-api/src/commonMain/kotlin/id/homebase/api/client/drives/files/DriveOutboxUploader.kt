@@ -23,6 +23,7 @@ import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.drives.upload.validateForUpload
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
+import id.homebase.api.client.drives.files.reactions.SetReactionsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -30,6 +31,8 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxUploader
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
 
 class DriveOutboxUploader(
@@ -54,6 +57,7 @@ class DriveOutboxUploader(
                 UpdateLocalMetadataContent -> updateLocalMetadataContent(outboxRecord)
                 SendReadReceiptByFileIds -> sendReadReceiptByFileIds(outboxRecord)
                 ToggleReaction -> toggleReaction(outboxRecord)
+                SetReactions -> setReactions(outboxRecord)
                 DeleteFilesByGroupId -> deleteFilesByGroupId(outboxRecord)
             }
         } catch (e: ClientException) {
@@ -435,6 +439,66 @@ class DriveOutboxUploader(
         )
     }
 
+    // Rows for the same file may be checked out by parallel workers; a newer
+    // set-state must apply strictly after an older in-flight one, or the two
+    // interleave and the older one's adds land last.
+    private val reactionSetLocks = mutableMapOf<Uuid, Mutex>()
+    private val reactionSetLocksGuard = Mutex()
+
+    private suspend fun setReactions(outboxRecord: Outbox) {
+        val request = OdinSystemSerializer.deserialize<SetReactionsOutboxRequest>(outboxRecord.json.decodeToString())
+        val lock = reactionSetLocksGuard.withLock {
+            reactionSetLocks.getOrPut(request.fileId) { Mutex() }
+        }
+        val row = outboxRecord.uniqueId
+        Logger.i(
+            "$TAG setReactions: row=$row file=${request.fileId} attempt=${outboxRecord.checkOutCount + 1} " +
+                "remove=${request.remove} add=${request.add} recipients=${request.recipients.size}"
+        )
+        lock.withLock {
+            for (reaction in request.remove) {
+                try {
+                    reactionProvider.deleteReaction(
+                        driveId = request.driveId,
+                        fileId = request.fileId,
+                        reaction = reaction,
+                        recipients = request.recipients,
+                    )
+                    Logger.i("$TAG setReactions: row=$row deleted $reaction")
+                } catch (t: Throwable) {
+                    Logger.e("$TAG setReactions: row=$row FAILED deleting $reaction: ${t.message}")
+                    throw t
+                }
+            }
+            for (reaction in request.add) {
+                try {
+                    reactionProvider.addReaction(
+                        driveId = request.driveId,
+                        fileId = request.fileId,
+                        reaction = reaction,
+                        recipients = request.recipients,
+                    )
+                    Logger.i("$TAG setReactions: row=$row added $reaction")
+                } catch (e: ClientException) {
+                    // The server's add is not idempotent: a reaction that already landed (an
+                    // earlier attempt of this row, or the user's other device) is a 400. The
+                    // desired state holds, so it is a success for a set-state row.
+                    if (!e.isDuplicateReaction()) {
+                        Logger.e("$TAG setReactions: row=$row FAILED adding $reaction: ${e.message}")
+                        throw e
+                    }
+                    Logger.i("$TAG setReactions: row=$row $reaction already present — treating as applied")
+                } catch (t: Throwable) {
+                    Logger.e("$TAG setReactions: row=$row FAILED adding $reaction: ${t.message}")
+                    throw t
+                }
+            }
+        }
+    }
+
+    private fun ClientException.isDuplicateReaction(): Boolean =
+        status == 400 && message?.contains("duplicate reaction", ignoreCase = true) == true
+
     private suspend fun deleteFilesByGroupId(outboxRecord: Outbox) {
         val request = OdinSystemSerializer.deserialize<DeleteFilesByGroupIdOutboxRequest>(outboxRecord.json.decodeToString())
         fileProvider.deleteFilesByGroupId(request.driveId, request.groupIds)
@@ -453,6 +517,8 @@ class DriveOutboxUploader(
         const val SendReadReceiptByFileIds = 7L
         const val ToggleReaction = 8L
         const val DeleteFilesByGroupId = 9L
+        // 10 and 11 belong to ScheduledPushOutboxUploader; CompositeOutboxUploader routes on these ids.
+        const val SetReactions = 12L
     }
 }
 
