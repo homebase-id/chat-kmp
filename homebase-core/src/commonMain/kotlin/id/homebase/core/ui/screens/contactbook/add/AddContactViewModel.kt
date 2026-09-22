@@ -27,6 +27,7 @@ import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.assignableCircles
 import id.homebase.core.ui.screens.contactbook.connectionRequestFailure
 import id.homebase.core.ui.screens.contactbook.isTerminal
+import id.homebase.core.ui.screens.contactbook.isPendingIncomingRequest
 import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 import id.homebase.core.ui.screens.contactbook.detail.ReviewSheetState
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
@@ -109,11 +110,12 @@ class AddContactViewModel(
             // Taken once: the relation below is derived from it, so the two can't disagree.
             val incomingRequest = domain
                 ?.let { d -> incoming.firstOrNull { it.senderOdinId.domainName.lowercase() == d } }
+            val pendingIncoming = isPendingIncomingRequest(status, incomingRequest != null)
             val relation = when {
                 domain == null -> IdentityRelation.NONE
                 status == ConnectionStatus.Connected -> IdentityRelation.CONNECTED
                 status == ConnectionStatus.Blocked -> IdentityRelation.BLOCKED
-                incomingRequest != null -> IdentityRelation.INCOMING_PENDING
+                pendingIncoming -> IdentityRelation.INCOMING_PENDING
                 outgoing.any { it.recipientOdinId.domainName.lowercase() == domain } ->
                     IdentityRelation.OUTGOING_PENDING
                 else -> IdentityRelation.NONE
@@ -121,8 +123,7 @@ class AddContactViewModel(
             val alreadySaved = domain != null &&
                 contacts.any { it.content.odinId?.lowercase() == domain }
             val reviewEnabled = developerPreferences.connectionReviewEnabled.value
-            val requestUnderReview = incomingRequest
-                ?.takeIf { reviewEnabled && relation == IdentityRelation.INCOMING_PENDING }
+            val requestUnderReview = incomingRequest.takeIf { reviewEnabled && pendingIncoming }
             s.copy(
                 relation = relation,
                 alreadySaved = alreadySaved,

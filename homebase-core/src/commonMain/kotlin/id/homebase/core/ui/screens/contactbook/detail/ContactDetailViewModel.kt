@@ -52,6 +52,7 @@ import id.homebase.core.ui.screens.contactbook.personalCirclesFor
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 import id.homebase.core.ui.screens.contactbook.isAccessRevoked
+import id.homebase.core.ui.screens.contactbook.isPendingIncomingRequest
 import id.homebase.core.ui.screens.contactbook.isUserCircle
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.RequestDirection
@@ -265,15 +266,20 @@ class ContactDetailViewModel(
                         contacts.firstOrNull { it.odinId.equals(introducer, ignoreCase = true) }
                             ?.displayName ?: introducer
                     }
+                // Taken once: the direction and the review gate below both derive from it,
+                // so the two can't disagree.
+                val incomingRequest = domain?.let { d ->
+                    bundle.incoming.firstOrNull { it.senderOdinId.domainName.equals(d, ignoreCase = true) }
+                }
                 val requestDirection = domain?.let { d ->
                     when {
-                        bundle.incoming.any { it.senderOdinId.domainName.equals(d, ignoreCase = true) } ->
-                            RequestDirection.INCOMING
+                        incomingRequest != null -> RequestDirection.INCOMING
                         bundle.outgoing.any { it.recipientOdinId.domainName.equals(d, ignoreCase = true) } ->
                             RequestDirection.OUTGOING
                         else -> null
                     }
                 }
+                val pendingIncoming = isPendingIncomingRequest(status, incomingRequest != null)
                 // User circles only — app default circles are surfaced through the connection
                 // status, not as chips. Both halves are now reactive: real membership from
                 // circ.circlesFor, pending deposits from the registration the refresh already
@@ -359,11 +365,7 @@ class ContactDetailViewModel(
                 // contact's membership. Same system-circle exclusion as the chips above; feeds the
                 // pending-request circle picker (#921 Part B).
                 val assignableCircles = circ.assignableCircles(reviewEnabled)
-                val incomingRequest = domain
-                    ?.takeIf { reviewEnabled && status != ConnectionStatus.Connected }
-                    ?.let { d ->
-                        bundle.incoming.firstOrNull { it.senderOdinId.domainName.equals(d, ignoreCase = true) }
-                    }
+                val requestUnderReview = incomingRequest.takeIf { reviewEnabled && pendingIncoming }
                 _uiState.update {
                     it.copy(
                         entry = entry,
@@ -382,7 +384,7 @@ class ContactDetailViewModel(
                         isSelf = isSelf,
                         requestDirection = requestDirection,
                         introducedByName = introducedByName,
-                        requestReview = incomingRequest?.let { request ->
+                        requestReview = requestUnderReview?.let { request ->
                             (it.requestReview ?: ReviewSheetState()).copy(
                                 introducedBy = request.introducerOdinId?.domainName,
                                 incomingRequest = IncomingRequestSummary(
