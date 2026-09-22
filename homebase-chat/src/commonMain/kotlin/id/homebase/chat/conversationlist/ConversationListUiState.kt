@@ -94,6 +94,7 @@ data class MessageListUiState(
     val isReactionsLoading: Boolean = false,
     /** Non-null while the sticker-tap bottom sheet is open; null otherwise. */
     val stickerOptionsSheet: StickerOptionsSheetState? = null,
+    val pendingGifPaste: PendingGifPaste? = null,
     val downloadingFiles: Set<String> = emptySet(),
     val recordingData: RecordingData? = null,
     val uiSheet: MessageListUiSheet? = null,
@@ -193,6 +194,9 @@ data class StickerOptionsSheetState(
     val isAlreadySaved: Boolean,
     val stickerImage: HomebaseImageData,
 )
+
+@Immutable
+class PendingGifPaste(val conversationId: Uuid, val bytes: ByteArray)
 
 @Immutable
 data class PendingOutgoingMessage(
