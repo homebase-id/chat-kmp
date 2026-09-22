@@ -123,7 +123,7 @@ fun MomentComposeScreen(
             if (ct.startsWith("video/")) {
                 AttachmentPendingFile.FileVideo(Uuid.generateV7(), f, thumbnailBytes = null)
             } else {
-                AttachmentPendingFile.FileImage(Uuid.generateV7(), f)
+                AttachmentPendingFile.FileImage(Uuid.generateV7(), f, sourceContentType = ct)
             }
         }
         viewModel.onAction(MomentComposeUiAction.AttachmentsAdded(pending))
@@ -145,7 +145,7 @@ fun MomentComposeScreen(
             val pending = if (ct.startsWith("video/")) {
                 AttachmentPendingFile.FileVideo(Uuid.generateV7(), it, thumbnailBytes = null)
             } else {
-                AttachmentPendingFile.FileImage(Uuid.generateV7(), it)
+                AttachmentPendingFile.FileImage(Uuid.generateV7(), it, sourceContentType = ct)
             }
             viewModel.onAction(MomentComposeUiAction.AttachmentsAdded(listOf(pending)))
         }

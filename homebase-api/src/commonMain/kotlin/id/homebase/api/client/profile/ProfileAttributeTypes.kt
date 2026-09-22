@@ -31,6 +31,9 @@ object ProfileAttributeTypes {
      *  not [ProfileProvider.saveAttribute]. Multiple photo attributes can coexist (one per
      *  [ProfileVisibility] tier); see [ProfileRepository.uploadPhoto]. */
     const val PHOTO = "5ae0c1c8a5260bc7b6648f6fbd115c35"
+    /** The short bio the public site's card shows; read-only here. */
+    const val BIO_SUMMARY = "1d89f51a6e4240748d6b60916c0eec9a"
+    const val LINK = "2a304a1348456ccd2234cd71a81bd338"
 
     // --- data keys: Name ---
     const val KEY_GIVEN_NAME = "givenName"
@@ -69,6 +72,11 @@ object ProfileAttributeTypes {
     /** Data key on a [PHOTO] attribute holding the payload key to fetch the image bytes from —
      *  server-set, never sent on write (see the `/profile/attributes/photo` endpoint docs). */
     const val KEY_PROFILE_IMAGE = "profileImageKey"
+
+    const val KEY_SHORT_BIO = "short_bio"
+
+    const val KEY_LINK_TEXT = "link_text"
+    const val KEY_LINK_TARGET = "link_target"
 
     /**
      * Default [ProfileVisibility] for a brand-new attribute of [type] (one the owner has not set

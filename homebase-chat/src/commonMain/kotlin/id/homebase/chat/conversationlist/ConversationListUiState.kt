@@ -94,6 +94,7 @@ data class MessageListUiState(
     val isReactionsLoading: Boolean = false,
     /** Non-null while the sticker-tap bottom sheet is open; null otherwise. */
     val stickerOptionsSheet: StickerOptionsSheetState? = null,
+    val pendingGifPaste: PendingGifPaste? = null,
     val downloadingFiles: Set<String> = emptySet(),
     val recordingData: RecordingData? = null,
     val uiSheet: MessageListUiSheet? = null,
@@ -193,6 +194,9 @@ data class StickerOptionsSheetState(
     val isAlreadySaved: Boolean,
     val stickerImage: HomebaseImageData,
 )
+
+@Immutable
+class PendingGifPaste(val conversationId: Uuid, val bytes: ByteArray)
 
 @Immutable
 data class PendingOutgoingMessage(
@@ -375,6 +379,18 @@ sealed interface FullScreenOverlay {
         val title: String,
         val userDate: Instant,
     ) : FullScreenOverlay.MediaViewer
+}
+
+internal fun MessageListUiState.lastEditableMessage(): MessageUiModel? {
+    // A window paged into history doesn't hold the newest messages, so its last one isn't the last sent.
+    if (isEditingMessageId != null || hasNewerMessages) return null
+    val self = ownerSession?.odinId ?: return null
+    return messages.asReversed().firstNotNullOfOrNull { item ->
+        (item as? MessageListContentModel.Message)?.message?.takeIf {
+            // With no server version tag, an edit only lands by amending a still-queued create.
+            it.isEditableBy(self) && !it.isDeleted && (it.versionTag != Uuid.NIL || it.isPendingSend)
+        }
+    }
 }
 
 /**

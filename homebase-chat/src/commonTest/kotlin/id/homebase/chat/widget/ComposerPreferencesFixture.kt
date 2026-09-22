@@ -8,17 +8,19 @@ import org.koin.compose.KoinIsolatedContext
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 
-// The composer fields read the Enter chord through rememberEnterSendsMessage() -> koinInject.
+// The composer fields read their key preferences through rememberEnterSendsMessage() and friends -> koinInject.
 @Composable
 internal fun WithComposerPreferences(
     enterSendsMessage: Boolean = false,
+    arrowUpEditsLastMessage: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     // Isolated, not KoinApplication { }: that one starts and stops the global context, which the
     // other tests sharing this module's test JVM are already using.
-    val app = remember(enterSendsMessage) {
+    val app = remember(enterSendsMessage, arrowUpEditsLastMessage) {
         val prefs = UserPreferences(InMemorySettings())
         prefs.enterSendsMessage = enterSendsMessage
+        prefs.arrowUpEditsLastMessage = arrowUpEditsLastMessage
         koinApplication { modules(module { single { prefs } }) }
     }
     KoinIsolatedContext(app) { content() }

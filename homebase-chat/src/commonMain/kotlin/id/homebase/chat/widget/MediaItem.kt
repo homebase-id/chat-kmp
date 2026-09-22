@@ -244,7 +244,7 @@ fun MediaItem(
             }
         }
 
-        contentType.startsWith("image/") -> {
+        payload.isImage() -> {
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             if (imageLocalContext != null) {
                 var imageModifier = if (onClick != null || onLongPress != null) {
@@ -335,7 +335,7 @@ fun MediaItem(
             }
         }
 
-        contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
+        payload.isVideo() -> {
             val payloadIv = remember(payload.iv) {
                 payload.iv?.let { Base64.decode(it) }
             }
@@ -545,7 +545,7 @@ fun MediaItem(
             }
         }
 
-        contentType.startsWith("audio/") -> {
+        payload.isAudio() -> {
             AudioPlayerWidget(
                 modifier = baseModifier,
                 driveId = driveId,
@@ -588,11 +588,7 @@ fun MediaItem(
             )
         }
 
-        contentType == "application/zip" ||
-                contentType == "application/x-rar-compressed" ||
-                contentType == "application/vnd.android.package-archive" ||
-                contentType.startsWith("text/") ||
-                contentType.startsWith("application/") -> {
+        payload.rendersAsDocumentCard() -> {
             DocumentMediaItem(
                 payload = payload,
                 modifier = baseModifier,

@@ -525,6 +525,28 @@ class BubbleLayoutInvariantTest {
         assertTrue(failures.isEmpty(), "document compact-card failures:\n" + failures.joinToString("\n"))
     }
 
+    @Test
+    fun singleDocument_cappedOnWideDesktop_unchangedOnPhone() = runComposeUiTest {
+        val cap = Dimens.MediaBubble.documentMaxWidth.value
+        val failures = mutableListOf<String>()
+        for (sent in listOf(true, false))
+            for (caption in listOf(Caption.NONE, Caption.SHORT))
+                for (width in listOf(desktopWidth, phoneWidth)) {
+                    val name = "file/$caption/${if (sent) "sent" else "recv"}/${width.value}"
+                    render(Case(name, sent, images = 0, caption = caption, document = true), width = width)
+                    val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+                    val media = boundsOf(ChatBubbleTestTags.MEDIA)
+                    val mediaWidth = media.right.value - media.left.value
+                    val bubbleWidth = bubble.right.value - bubble.left.value
+                    val expected = minOf(cap, width.value)
+                    if (!approx(mediaWidth, expected))
+                        failures += "[$name] file card is ${mediaWidth}dp, expected ${expected}dp"
+                    if (bubbleWidth > expected + tol)
+                        failures += "[$name] bubble behind the file card is ${bubbleWidth}dp, expected <= ${expected}dp"
+                }
+        assertTrue(failures.isEmpty(), "document width failures:\n" + failures.joinToString("\n"))
+    }
+
     /**
      * A short text bubble hugs its text.
      *

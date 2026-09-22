@@ -35,8 +35,18 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
         _connectionReviewEnabled.value = value
     }
 
+    private val _profileCardEnabled = MutableStateFlow(readBoolean(PROFILE_CARD_KEY, default = false))
+    val profileCardEnabled: StateFlow<Boolean> = _profileCardEnabled.asStateFlow()
+
+    suspend fun setProfileCardEnabled(value: Boolean) {
+        if (_profileCardEnabled.value == value) return
+        keyValue.upsertValue(PROFILE_CARD_KEY, encode(value))
+        _profileCardEnabled.value = value
+    }
+
     fun reload() {
         _connectionReviewEnabled.value = readBoolean(CONNECTION_REVIEW_KEY, default = false)
+        _profileCardEnabled.value = readBoolean(PROFILE_CARD_KEY, default = false)
     }
 
     private fun readBoolean(key: Uuid, default: Boolean): Boolean {
@@ -54,5 +64,7 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
         // 0a08xx — developer flags. Vault owns 0a01xx, Moments 0a02xx, Location 0a03xx,
         // 0a04xx and 0a07xx are taken; 0a08 is the next free namespace.
         val CONNECTION_REVIEW_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0801")
+        // DiceRollPreferences also writes 0a0801-0a0803, so newer flags go in 0a09xx.
+        val PROFILE_CARD_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0901")
     }
 }

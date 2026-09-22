@@ -60,7 +60,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.ui.screens.vault.VaultEditorTool
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.components.VaultFileDropdownMenu
-import id.homebase.core.ui.screens.vault.components.fileTypeIcon
+import id.homebase.core.ui.screens.vault.components.pageTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.resources.MR
@@ -228,6 +228,7 @@ fun VaultGalleryScreen(
                         )
                     } else {
                         GalleryPageNonImage(
+                            file = file,
                             descriptor = descriptor,
                             onToggleUI = onTapImage,
                         )
@@ -456,6 +457,7 @@ private fun PageIndicatorPill(
 
 @Composable
 private fun GalleryPageNonImage(
+    file: VaultEntry,
     descriptor: PayloadDescriptor,
     onToggleUI: () -> Unit,
 ) {
@@ -477,7 +479,7 @@ private fun GalleryPageNonImage(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = fileTypeIcon(descriptor.contentType ?: ""),
+                    imageVector = file.pageTypeIcon(descriptor),
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(48.dp),

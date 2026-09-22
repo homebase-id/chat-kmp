@@ -40,6 +40,7 @@ import id.homebase.chat.services.renderer.LocationPreviewRenderer
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.toCombinedPayloadBundle
 import id.homebase.chat.services.renderer.toMessageDataType
+import id.homebase.chat.widget.mediaPayloads
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
@@ -1227,7 +1228,8 @@ internal class MessageActionsHandler(
         // trim before truncate: leading newlines would otherwise render as a bare
         // "…" in the quote and eat into the 80-codepoint budget.
         message = content.trim().truncateToCodePoints(80),
-        previewThumbnail = previewThumbnail,
+        previewThumbnail = previewThumbnail
+            .takeIf { payloads.mediaPayloads().firstOrNull()?.isVisualMedia() == true },
         context = (messageContent as? MessageContent.Event)?.descriptor
             ?.let { ReplyContext.event(it.startUtcMs) },
     )

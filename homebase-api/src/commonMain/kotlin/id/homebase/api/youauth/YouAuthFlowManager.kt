@@ -201,6 +201,8 @@ class YouAuthFlowManager(
      * @param scope CoroutineScope for launching browser
      * @param appId Application ID
      * @param appName Application name
+     * @param appSlug Application slug (e.g. "chat"). The server needs it when it still has to
+     *   register the app; it no longer derives one from the name.
      * @param drives List of drive access requests
      * @param persistForRedirect Persist the flow state (ECC key pair, password, CSRF state) to
      *   [SecureStorage] so `completeAuth` can restore it after a full-page navigation. Used by
@@ -211,6 +213,7 @@ class YouAuthFlowManager(
         identity: OdinId,
         appId: String,
         appName: String,
+        appSlug: String? = null,
         drives: List<TargetDriveAccessRequest> = emptyList(),
         permissions: List<AppPermissionType>? = null,
         circlePermissions: List<AppCirclePermissionType>? = null,
@@ -262,6 +265,7 @@ class YouAuthFlowManager(
                 AppAuthorizationParams.create(
                     appName = appName,
                     appId = appId,
+                    appSlug = appSlug,
                     friendlyName = clientFriendlyName ?: deviceDisplayName(),
                     drives = drives,
                     circleDrives = circleDrives,

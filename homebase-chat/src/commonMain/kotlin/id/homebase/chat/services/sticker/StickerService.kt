@@ -81,15 +81,7 @@ class StickerService(
         }
     }
 
-    /**
-     * Save raw transparent image [bytes] as a new sticker. The single entry point a
-     * future background-remover would also call. Returns the new sticker's uniqueId,
-     * or null if the upload could not be enqueued.
-     *
-     * The alpha-gate (rejecting fully-opaque images) is enforced by the caller
-     * ([id.homebase.chat.conversationlist.StickerHandler]) before this point, so this
-     * method just persists whatever bytes it is handed.
-     */
+    /** Returns the new sticker's uniqueId, or null if the upload could not be enqueued. */
     suspend fun saveSticker(
         bytes: ByteArray,
         contentType: String,

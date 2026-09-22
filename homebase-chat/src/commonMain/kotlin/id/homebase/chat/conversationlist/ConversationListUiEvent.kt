@@ -55,5 +55,8 @@ sealed interface ConversationListUiEvent {
     data object NavigateToLocationSetup : ConversationListUiEvent
 
     /** Hand a received contact card to the contact editor in :homebase-core. */
-    data class NavigateToSaveContactCard(val descriptor: ContactCardDescriptor) : ConversationListUiEvent
+    data class NavigateToSaveContactCard(
+        val descriptor: ContactCardDescriptor,
+        val alreadySaved: Boolean,
+    ) : ConversationListUiEvent
 }

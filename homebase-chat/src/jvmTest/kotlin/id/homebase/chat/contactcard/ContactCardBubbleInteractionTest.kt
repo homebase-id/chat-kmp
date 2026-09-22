@@ -4,13 +4,21 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.intercept.Interceptor
+import coil3.request.ErrorResult
 import com.russhwolf.settings.PreferencesSettings
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.OdinId
@@ -55,7 +63,25 @@ class ContactCardBubbleInteractionTest {
 
     // Isolated, not KoinApplication: that one starts the process-wide Koin and never stops it, so
     // the second suite in the JVM to compose one silently inherits the first suite's modules.
-    private val koin = koinApplication { modules(module { single { preferences } }) }
+    private val koin = koinApplication {
+        modules(
+            module {
+                single { preferences }
+                // A saved identity draws its published avatar; answered here so no test dials it.
+                single {
+                    ImageLoader.Builder(PlatformContext.INSTANCE)
+                        .components {
+                            add(
+                                Interceptor {
+                                    ErrorResult(null, it.request, UnsupportedOperationException())
+                                },
+                            )
+                        }
+                        .build()
+                }
+            },
+        )
+    }
 
     @Composable
     private fun Host(content: @Composable () -> Unit) {
@@ -76,6 +102,7 @@ class ContactCardBubbleInteractionTest {
 
     // Rendered strings, so a renamed resource fails here rather than passing vacuously.
     private val saveLabel = "Save to contacts"
+    private val updateLabel = "Update contact"
     private val messageLabel = "Message"
     private val openProfileLabel = "Open profile"
 
@@ -105,6 +132,33 @@ class ContactCardBubbleInteractionTest {
         messageContent = MessageContent.ContactCard(content),
     )
 
+    private fun ComposeUiTest.renderInStream(
+        message: MessageUiModel,
+        savedContacts: Set<OdinId> = emptySet(),
+        onUiAction: (ConversationListUiAction) -> Unit = {},
+    ) {
+        setContent {
+            Host {
+                CompositionLocalProvider(LocalSavedContactIdentities provides savedContacts) {
+                    SharedTransitionLayout {
+                        AnimatedVisibility(visible = true) {
+                            MessageItem(
+                                message = message,
+                                userDefaultReactions = persistentListOf(),
+                                decryptedFiles = persistentMapOf(),
+                                currentOdinId = me.domainName,
+                                animatedVisibilityScope = this@AnimatedVisibility,
+                                sharedTransitionScope = this@SharedTransitionLayout,
+                                onUiAction = onUiAction,
+                                downloadingFiles = emptySet(),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     @Test
     fun `an off-stream card takes no click action`() = runComposeUiTest {
         setContent {
@@ -133,7 +187,7 @@ class ContactCardBubbleInteractionTest {
             var saved: ContactCardDescriptor? = null
             setContent {
                 HomebaseTheme(darkTheme = false) {
-                    ContactCardBubble(descriptor = card, onSaveToContacts = { saved = it })
+                    ContactCardBubble(descriptor = card, onSaveToContacts = { c, _ -> saved = c })
                 }
             }
 
@@ -159,29 +213,56 @@ class ContactCardBubbleInteractionTest {
     @Test
     fun `a sent card in the stream routes Save out to the host`() = runComposeUiTest {
         val actions = mutableListOf<ConversationListUiAction>()
-        setContent {
-            Host {
-                SharedTransitionLayout {
-                    AnimatedVisibility(visible = true) {
-                        MessageItem(
-                            message = message(author = me),
-                            userDefaultReactions = persistentListOf(),
-                            decryptedFiles = persistentMapOf(),
-                            currentOdinId = me.domainName,
-                            animatedVisibilityScope = this@AnimatedVisibility,
-                            sharedTransitionScope = this@SharedTransitionLayout,
-                            onUiAction = { actions += it },
-                            downloadingFiles = emptySet(),
-                        )
-                    }
-                }
-            }
-        }
+        renderInStream(message(author = me)) { actions += it }
 
         onNodeWithText("Ada Vance").assertHasClickAction()
         onNodeWithText(saveLabel).performClick()
 
-        assertEquals(ConversationListUiAction.SaveContactCard(card), actions.singleOrNull())
+        assertEquals(
+            ConversationListUiAction.SaveContactCard(card, alreadySaved = false),
+            actions.singleOrNull(),
+        )
+    }
+
+    @Test
+    fun `a card naming a saved identity offers Update and routes it as already saved`() =
+        runComposeUiTest {
+            val actions = mutableListOf<ConversationListUiAction>()
+            renderInStream(message(content = identityCard), setOf(OdinId(identity))) {
+                actions += it
+            }
+
+            onNodeWithText(saveLabel).assertDoesNotExist()
+            onNodeWithText(updateLabel).performClick()
+
+            assertEquals(
+                ConversationListUiAction.SaveContactCard(identityCard, alreadySaved = true),
+                actions.singleOrNull(),
+            )
+        }
+
+    @Test
+    fun `the detail view names the same action as the bubble`() = runComposeUiTest {
+        renderInStream(message(content = identityCard), setOf(OdinId(identity)))
+
+        onNodeWithText("Ada Vance").performClick()
+
+        onAllNodesWithText(updateLabel).assertCountEquals(2)
+        onAllNodesWithText(saveLabel).assertCountEquals(0)
+    }
+
+    @Test
+    fun `a card naming an identity outside your book keeps Save`() = runComposeUiTest {
+        val actions = mutableListOf<ConversationListUiAction>()
+        renderInStream(message(content = identityCard)) { actions += it }
+
+        onNodeWithText(updateLabel).assertDoesNotExist()
+        onNodeWithText(saveLabel).performClick()
+
+        assertEquals(
+            ConversationListUiAction.SaveContactCard(identityCard, alreadySaved = false),
+            actions.singleOrNull(),
+        )
     }
 
     @Test
@@ -223,24 +304,7 @@ class ContactCardBubbleInteractionTest {
     @Test
     fun `a received card in the stream routes Message out to the host`() = runComposeUiTest {
         val actions = mutableListOf<ConversationListUiAction>()
-        setContent {
-            Host {
-                SharedTransitionLayout {
-                    AnimatedVisibility(visible = true) {
-                        MessageItem(
-                            message = message(content = identityCard),
-                            userDefaultReactions = persistentListOf(),
-                            decryptedFiles = persistentMapOf(),
-                            currentOdinId = me.domainName,
-                            animatedVisibilityScope = this@AnimatedVisibility,
-                            sharedTransitionScope = this@SharedTransitionLayout,
-                            onUiAction = { actions += it },
-                            downloadingFiles = emptySet(),
-                        )
-                    }
-                }
-            }
-        }
+        renderInStream(message(content = identityCard)) { actions += it }
 
         onNodeWithText("Ada Vance").performClick()
         onNodeWithText(messageLabel).performClick()
@@ -265,7 +329,7 @@ class ContactCardBubbleInteractionTest {
                     sharedTransitionScope = null,
                     animatedVisibilityScope = null,
                     downloadingFiles = emptySet(),
-                    onSaveContactCard = { },
+                    onSaveContactCard = { _, _ -> },
                     displayOnly = true,
                 )
             }

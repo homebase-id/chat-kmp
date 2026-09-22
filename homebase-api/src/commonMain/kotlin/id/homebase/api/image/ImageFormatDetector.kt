@@ -69,6 +69,81 @@ object ImageFormatDetector {
         return brand in listOf("heic", "heix", "hevc", "hevx", "mif1", "msf1")
     }
 
+    // A single-frame GIF counts as still.
+    fun isAnimated(bytes: ByteArray): Boolean = isAnimatedGif(bytes) || isAnimatedWebp(bytes)
+
+    fun isAnimatedGif(b: ByteArray): Boolean {
+        if (b.size < 13 || b.decodeToString(0, 3) != "GIF") return false
+        var i = 13 + gifColorTableSize(b[10])
+        var seenFrame = false
+        while (i < b.size) {
+            when (b[i].toInt() and 0xFF) {
+                0x2C -> {
+                    if (seenFrame) return true
+                    seenFrame = true
+                    if (i + 10 > b.size) return false
+                    // 10-byte descriptor, optional local color table, 1-byte LZW minimum code size.
+                    i = skipGifSubBlocks(b, i + 10 + gifColorTableSize(b[i + 9]) + 1)
+                }
+                0x21 -> i = skipGifSubBlocks(b, i + 2)
+                else -> return false
+            }
+        }
+        return false
+    }
+
+    private fun gifColorTableSize(packed: Byte): Int =
+        if ((packed.toInt() and 0x80) != 0) 3 * (1 shl ((packed.toInt() and 0x07) + 1)) else 0
+
+    private fun skipGifSubBlocks(b: ByteArray, start: Int): Int {
+        var i = start
+        while (i < b.size) {
+            val length = b[i].toInt() and 0xFF
+            i += 1 + length
+            if (length == 0) break
+        }
+        return i
+    }
+
+    internal class GifInfo(val width: Int, val height: Int, val frameCount: Int, val durationCs: Int)
+
+    /** Walks a GIF's blocks without decoding pixels; null unless [b] is a GIF with at least one frame. */
+    internal fun parseGif(b: ByteArray): GifInfo? {
+        if (b.size < 13 || b.decodeToString(0, 3) != "GIF") return null
+        var i = 13 + gifColorTableSize(b[10])
+        var frames = 0
+        var durationCs = 0
+        var delayCs = 0
+        while (i < b.size) {
+            when (b[i].toInt() and 0xFF) {
+                0x2C -> {
+                    frames++
+                    // Browsers and ffmpeg both play a delay under 2 cs at 10 cs.
+                    durationCs += if (delayCs < 2) 10 else delayCs
+                    delayCs = 0
+                    if (i + 10 > b.size) break
+                    i = skipGifSubBlocks(b, i + 10 + gifColorTableSize(b[i + 9]) + 1)
+                }
+                0x21 -> {
+                    if (i + 5 < b.size && (b[i + 1].toInt() and 0xFF) == 0xF9) delayCs = u16le(b, i + 4)
+                    i = skipGifSubBlocks(b, i + 2)
+                }
+                else -> break
+            }
+        }
+        return if (frames > 0) GifInfo(u16le(b, 6), u16le(b, 8), frames, durationCs) else null
+    }
+
+    private fun u16le(b: ByteArray, at: Int): Int = (b[at].toInt() and 0xFF) or ((b[at + 1].toInt() and 0xFF) shl 8)
+
+    private const val VP8X_ANIMATION_FLAG = 0x02
+
+    private fun isAnimatedWebp(b: ByteArray): Boolean =
+        b.size > 20 &&
+            b.decodeToString(0, 4) == "RIFF" &&
+            b.decodeToString(8, 16) == "WEBPVP8X" &&
+            (b[20].toInt() and VP8X_ANIMATION_FLAG) != 0
+
     /**
      * Validates JPEG format by checking for start and end markers
      */

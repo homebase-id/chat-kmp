@@ -61,7 +61,13 @@ class PermissionExtensionManager(
             Logger.w(tag = TAG) { "Could not fetch security context" }
             return PermissionCheckResult.Unknown
         }
+        return getMissingPermissions(config, context)
+    }
 
+    fun getMissingPermissions(
+        config: PermissionExtensionConfig,
+        context: SecurityContext
+    ): PermissionCheckResult {
         // Get all drive grants from permission groups
         val driveGrants =
             context.permissionContext.permissionGroups.flatMap { group ->
@@ -96,8 +102,11 @@ class PermissionExtensionManager(
                             }
                         allPermissions >= requestingPermission
                     }
+                val hasKey = !requestedDrive.requireStorageKey ||
+                        DrivePermission.Read !in requestedDrive.permissions ||
+                        context.canDecrypt(requestedDrive.alias, requestedDrive.type)
 
-                !hasAccess
+                !hasAccess || !hasKey
             }
 
         // Find missing app permissions

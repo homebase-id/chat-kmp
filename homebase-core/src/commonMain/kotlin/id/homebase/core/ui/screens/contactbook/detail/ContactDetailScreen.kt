@@ -304,8 +304,11 @@ fun ContactDetailScreen(
     }
 
     uiState.review?.let { review ->
+        val entry = uiState.entry
         ReviewConnectionSheet(
-            entry = uiState.entry,
+            displayName = entry?.displayName.orEmpty(),
+            odinId = entry?.odinId,
+            avatar = entry?.let { { ContactBookAvatar(entry = it, size = 52.dp) } },
             introducedBy = review.introducedBy,
             connectedAtMs = review.connectedAtMs,
             groups = uiState.reviewCircleGroups,
@@ -426,9 +429,12 @@ private fun ContactDetailContent(
                 uiState.isPendingIncoming -> PendingRequestProfile(
                     entry = entry,
                     assignableCircles = uiState.assignableCircles,
+                    review = uiState.requestReview,
+                    reviewCircleGroups = uiState.reviewCircleGroups,
                     onAccept = { selectedCircleIds ->
                         onAction(ContactDetailAction.AcceptRequestClicked(selectedCircleIds))
                     },
+                    onReviewSubmit = { ids -> onAction(ContactDetailAction.RequestReviewSubmitted(ids)) },
                     onReject = { onAction(ContactDetailAction.RejectRequestClicked) },
                     actionInProgress = uiState.actionInProgress,
                     onAvatarClick = onAvatarClick,

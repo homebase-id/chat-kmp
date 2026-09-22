@@ -51,7 +51,12 @@ class UnreviewBlockedException(
 data class ConnectionState(
     val isLoaded: Boolean,
     val map: Map<OdinId, RedactedIdentityConnectionRegistration>
-)
+) {
+    fun unsavedConnections(lowercaseSavedDomains: Set<String>): Set<OdinId> =
+        map.filter { (odinId, reg) ->
+            reg.status == ConnectionStatus.Connected && odinId.domainName !in lowercaseSavedDomains
+        }.keys
+}
 
 /**
  * Owner circles (including system circles) with their members, fetched alongside the

@@ -31,6 +31,7 @@ class SettingsUiTest {
             onNotifications = { fired += "notifications" },
             onAppearance = { fired += "appearance" },
             onMedia = { fired += "media" },
+            onKeyboard = { fired += "keyboard" },
             onStorage = { fired += "storage" },
             onHelp = { fired += "help" },
             onMomentsSettings = { fired += "moments" },
@@ -41,6 +42,7 @@ class SettingsUiTest {
             onContactBookSettings = { fired += "contactBook" },
             onProfileEdit = { fired += "profileEdit" },
             onProfileAvatarEdit = { fired += "profileAvatarEdit" },
+            onProfileCard = { fired += "profileCard" },
         )
     }
 
@@ -55,10 +57,11 @@ class SettingsUiTest {
         uiState: SettingsUiState = SettingsUiState(),
         routes: Routes = Routes(),
         onAction: (SettingsUiAction) -> Unit = {},
+        actions: SettingsActions = routes.actions(),
     ) {
         setContent {
             MaterialTheme {
-                SettingsUi(uiState = uiState, onAction = onAction, actions = routes.actions())
+                SettingsUi(uiState = uiState, onAction = onAction, actions = actions)
             }
         }
     }
@@ -84,6 +87,7 @@ class SettingsUiTest {
         settings(routes = routes)
 
         val expected = listOf(
+            "profileCardButton" to "profileCard",
             "notificationsButton" to "notifications",
             "appearanceButton" to "appearance",
             "mediaButton" to "media",
@@ -100,6 +104,21 @@ class SettingsUiTest {
         }
 
         assertEquals(expected.map { it.second }, routes.fired)
+    }
+
+    @Test
+    fun profileCardRowIsHiddenWhileTheCardIsDarkLaunched() = runComposeUiTest {
+        settings(actions = Routes().actions().copy(onProfileCard = null))
+        onNodeWithTag("securitySetupButton").assertExists()
+        onNodeWithTag("profileCardButton").assertDoesNotExist()
+    }
+
+    @Test
+    fun keyboardRowOpensKeyboardSettings() = runComposeUiTest {
+        val routes = Routes()
+        settings(routes = routes)
+        tapRow("keyboardButton")
+        assertEquals(listOf("keyboard"), routes.fired)
     }
 
     @Test

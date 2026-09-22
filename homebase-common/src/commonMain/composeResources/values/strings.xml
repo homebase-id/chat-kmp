@@ -749,6 +749,7 @@
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Audio</string>
+    <string name="chat_message_voice_duration">Voice message · %1$s</string>
     <string name="chat_message_file">File</string>
     <string name="chat_message_location">Location</string>
     <string name="chat_message_multiple_media">Media</string>
@@ -884,6 +885,13 @@
     <string name="cd_sticker_options_add">Add to my stickers</string>
     <string name="cd_sticker_options_remove">Remove from my stickers</string>
     <string name="cd_sticker_options_save">Save to device</string>
+    <!-- Sheet shown when an animated GIF is pasted into the composer -->
+    <string name="chat_gif_paste_title">Send this GIF</string>
+    <string name="chat_gif_paste_as_sticker">Send as sticker</string>
+    <string name="chat_gif_paste_as_gif">Send as GIF</string>
+    <string name="cd_gif_paste_preview">Pasted GIF</string>
+    <string name="cd_gif_paste_as_sticker">Send it as a sticker</string>
+    <string name="cd_gif_paste_as_gif">Open in the editor to send as a GIF</string>
 
     <!-- Groodle (group-scheduling poll) -->
     <string name="chat_groodle_share">Groodle</string>
@@ -966,6 +974,7 @@
     <string name="chat_contact_card_open">View contact details</string>
     <string name="chat_contact_card_more">+%1$d more</string>
     <string name="chat_contact_card_save">Save to contacts</string>
+    <string name="chat_contact_card_update">Update contact</string>
     <string name="chat_contact_card_title">Contact</string>
     <string name="chat_contact_card_call">Call</string>
     <string name="chat_contact_card_send_email">Send email</string>
@@ -1538,6 +1547,10 @@
     <!-- Composer keyboard -->
     <string name="settings_composer_enter_sends">Enter sends the message</string>
     <string name="settings_composer_enter_sends_description">On, Enter sends and Shift+Enter starts a new line. Off, the two swap. Cmd or Ctrl with Enter always sends.</string>
+    <string name="settings_composer_arrow_up_edits">Arrow Up edits your last message</string>
+    <string name="settings_composer_arrow_up_edits_description">In an empty message box, Arrow Up opens the last message you sent for editing. Cmd or Ctrl with Arrow Up always does, even with text in the box.</string>
+    <string name="settings_keyboard">Keyboard</string>
+    <string name="settings_keyboard_desc">Shortcuts for sending and editing</string>
     <string name="chat_send_chord_enter">Send (Enter)</string>
     <string name="chat_send_chord_shift_enter">Send (Shift+Enter)</string>
 
@@ -1596,6 +1609,8 @@
     <string name="dev_menu_network_last_good_ip_none">none captured yet</string>
     <string name="dev_menu_connection_review">Connection review</string>
     <string name="dev_menu_connection_review_desc">Show the Review button, the contact prompt, and Mark as new.</string>
+    <string name="dev_menu_profile_card">Profile card</string>
+    <string name="dev_menu_profile_card_desc">Show your profile card in Settings and the profile editor.</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
     <string name="dev_menu_force_logout">Force Logout (local only)</string>
@@ -1952,6 +1967,8 @@
     <string name="contact_review_prompt_title">Not reviewed yet</string>
     <string name="contact_review_prompt_body">You are connected, but you have not decided what they can see. Reviewing records your decision and lets you add them to circles.</string>
     <string name="contact_review_failed">Couldn't save the review. Please try again.</string>
+    <string name="contact_review_requested_on">Requested %1$s</string>
+    <string name="contact_review_accept_failed">Couldn't accept the request. Please try again.</string>
 
     <string name="contact_unreview_title">Mark as new?</string>
     <string name="contact_unreview_body">%1$s keeps every circle and every bit of access they already have. This only clears your record of having reviewed them.</string>
@@ -2244,6 +2261,21 @@
     <string name="profile_edit_field_not_set">Not set</string>
     <string name="profile_edit_add_attribute">Add attribute</string>
     <string name="profile_edit_add_attribute_title">Add a field</string>
+    <string name="profile_card_title">Profile card</string>
+    <string name="profile_card_open">Open profile card</string>
+    <string name="profile_card_share">Share card</string>
+    <string name="profile_card_save">Save card image</string>
+    <string name="profile_card_design_poster">Poster</string>
+    <string name="profile_card_design_board">Board</string>
+    <string name="profile_card_design_collage">Collage</string>
+    <string name="profile_card_design_dossier">Dossier</string>
+    <string name="profile_card_error">Couldn't show your card.</string>
+    <string name="profile_card_share_failed">Couldn't create the card image.</string>
+    <string name="profile_card_unsupported">Your Homebase server doesn't support profile cards yet.</string>
+    <string name="profile_card_channel_access">Some posts your connections can see aren't shown. Allow access to your channels.</string>
+    <string name="profile_card_channel_access_allow">Allow</string>
+    <string name="settings_profile_card">Profile card</string>
+    <string name="settings_profile_card_desc">See how others see you, and share it as an image</string>
 
     <!-- Avatar editor -->
     <string name="profile_avatar_edit_title">Change photo</string>

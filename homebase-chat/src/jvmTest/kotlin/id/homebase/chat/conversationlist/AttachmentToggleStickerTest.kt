@@ -44,6 +44,7 @@ class AttachmentToggleStickerTest {
         sendEvent = {},
         dispatch = {},
         addMessageWithFiles = { _, _, _ -> },
+        sendSticker = { _, _, _ -> },
     )
 
     private fun overlayWith(vararg attachments: AttachmentPendingFile) =
@@ -163,7 +164,7 @@ class AttachmentToggleStickerTest {
 }
 
 /** Minimal no-op [FileOperationsProvider]; the toggle reducer never touches it. */
-private class NoopFileOps : FileOperationsProvider {
+internal class NoopFileOps : FileOperationsProvider {
     override fun openFileInput(path: String): InputProvider = throw NotImplementedError()
     override suspend fun readFileBytes(path: String): ByteArray = throw NotImplementedError()
     override fun deleteTempFile(path: String): Boolean = false
@@ -176,7 +177,7 @@ private class NoopFileOps : FileOperationsProvider {
     override suspend fun writeStream(path: String, data: Flow<ByteArray>) = throw NotImplementedError()
 }
 
-private class NoopAudioRecorder : AudioRecorder {
+internal class NoopAudioRecorder : AudioRecorder {
     override fun getAudioFileExtension(): String = "m4a"
     override fun startRecording(fileName: String) {}
     override fun stopRecording(): String? = null

@@ -79,6 +79,8 @@ import org.jetbrains.compose.resources.stringResource
 fun EmojiSelection(
     modifier: Modifier = Modifier,
     messageInputMode: Boolean = false,
+    // Focuses search on open, so keep it off the docked panel: focus there raises the soft keyboard.
+    searchFirst: Boolean = false,
     onBackSpace: () -> Unit = {},
     onEmojiSelected: (String) -> Unit,
 ) {
@@ -134,12 +136,15 @@ fun EmojiSelection(
         Column(
             modifier = modifier
         ) {
-            if (!messageInputMode) {
+            if (!messageInputMode || searchFirst) {
                 MinimalSearchTextField(
                     textFieldState = searchQuery,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                     placeHolderText = stringResource(MR.string.emoji_search_placeholder)
                 )
+                if (searchFirst) {
+                    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                }
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
@@ -148,7 +153,7 @@ fun EmojiSelection(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (messageInputMode) {
+                if (messageInputMode && !searchFirst) {
                     if (!isSearchActive) {
                         IconButton(onClick = {
                             isSearchActive = !isSearchActive
@@ -209,6 +214,8 @@ fun EmojiSelection(
                             }
                         }
                     }
+                } else if (searchFirst) {
+                    Spacer(modifier = Modifier.weight(1f))
                 }
                 if (messageInputMode) {
                     VerticalDivider(modifier = Modifier.height(24.dp).padding(start = 8.dp))

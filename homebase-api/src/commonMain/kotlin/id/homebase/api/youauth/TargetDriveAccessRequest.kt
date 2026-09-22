@@ -15,9 +15,14 @@ import kotlinx.serialization.serializer
  * @param name Human-readable name for the drive
  * @param description Description of the drive purpose
  * @param permissions List of permission types requested
+ * @param driveSlug Stable, human-readable identifier for this drive (e.g. "chat"). The server
+ *   requires one on every requested drive; it matches `BuiltinDrives.DriveSlug` in odin-core.
+ * @param driveTypeSlug Stable, human-readable identifier for the drive's type (e.g. "chat").
+ *   Matches `BuiltinDrives.DriveTypeSlug` in odin-core.
  * @param attributes Optional key-value attributes for the drive
  * @param allowAnonymousRead Whether anonymous read access is allowed
  * @param allowSubscriptions Whether subscriptions are allowed
+ * @param requireStorageKey Read counts as granted only with the drive's storage key; client-side, never sent
  */
 data class TargetDriveAccessRequest(
     val alias: String,
@@ -25,9 +30,12 @@ data class TargetDriveAccessRequest(
     val name: String,
     val description: String,
     val permissions: List<DrivePermission>,
+    val driveSlug: String? = null,
+    val driveTypeSlug: String? = null,
     val attributes: Map<String, String>? = null,
     val allowAnonymousRead: Boolean? = null,
-    val allowSubscriptions: Boolean? = null
+    val allowSubscriptions: Boolean? = null,
+    val requireStorageKey: Boolean = false,
 ) {
     /**
      * Convert to a map for serialization using short keys matching the API.
@@ -36,6 +44,8 @@ data class TargetDriveAccessRequest(
      * - n: name
      * - d: description
      * - p: permissions (sum of bitwise values)
+     * - ds: driveSlug
+     * - ts: driveTypeSlug
      * - r: allowAnonymousRead
      * - s: allowSubscriptions
      * - at: attributes (JSON encoded)
@@ -46,6 +56,8 @@ data class TargetDriveAccessRequest(
         put("n", name)
         put("d", description)
         put("p", DrivePermission.combine(permissions))
+        driveSlug?.let { put("ds", it) }
+        driveTypeSlug?.let { put("ts", it) }
         allowAnonymousRead?.let { put("r", it) }
         allowSubscriptions?.let { put("s", it) }
         attributes?.let { put("at", Json.encodeToString(serializer(), it)) }
@@ -58,6 +70,8 @@ data class TargetDriveAccessRequest(
         put("n", JsonPrimitive(name))
         put("d", JsonPrimitive(description))
         put("p", JsonPrimitive(DrivePermission.combine(permissions)))
+        driveSlug?.let { put("ds", JsonPrimitive(it)) }
+        driveTypeSlug?.let { put("ts", JsonPrimitive(it)) }
         allowAnonymousRead?.let { put("r", JsonPrimitive(it)) }
         allowSubscriptions?.let { put("s", JsonPrimitive(it)) }
         attributes?.let {

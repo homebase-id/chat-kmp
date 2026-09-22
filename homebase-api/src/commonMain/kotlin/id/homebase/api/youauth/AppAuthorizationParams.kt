@@ -16,6 +16,13 @@ data class AppAuthorizationParams(
         /** App ID */
         @SerialName("appId") val appId: String,
 
+        /**
+         * App slug — the app's stable, human-readable identifier (e.g. "chat"). The server used to
+         * derive one from [name] when it was missing; registration now requires the caller to send
+         * it, so the request is only complete with it.
+         */
+        @SerialName("as") val appSlug: String? = null,
+
         /** Client friendly name (e.g., "Chrome | macOS") */
         @SerialName("fn") val friendlyName: String,
 
@@ -48,6 +55,7 @@ data class AppAuthorizationParams(
                 fun create(
                         appName: String,
                         appId: String,
+                        appSlug: String? = null,
                         friendlyName: String,
                         drives: List<TargetDriveAccessRequest> = emptyList(),
                         circleDrives: List<TargetDriveAccessRequest>? = null,
@@ -60,6 +68,7 @@ data class AppAuthorizationParams(
                         return AppAuthorizationParams(
                                 name = appName,
                                 appId = appId,
+                                appSlug = appSlug,
                                 friendlyName = friendlyName,
                                 // API requires 'd' field to always be present, even if empty array
                                 drives =

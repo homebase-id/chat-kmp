@@ -48,6 +48,7 @@ import id.homebase.core.ui.screens.contactbook.circleAccessState
 import id.homebase.core.ui.screens.contactbook.contactStateOf
 import id.homebase.core.ui.screens.contactbook.personalCirclesFor
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
+import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 import id.homebase.core.ui.screens.contactbook.isAccessRevoked
 import id.homebase.core.ui.screens.contactbook.isUserCircle
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
@@ -356,6 +357,11 @@ class ContactDetailViewModel(
                 // contact's membership. Same system-circle exclusion as the chips above; feeds the
                 // pending-request circle picker (#921 Part B).
                 val assignableCircles = circ.assignableCircles(reviewEnabled)
+                val incomingRequest = domain
+                    ?.takeIf { reviewEnabled && status != ConnectionStatus.Connected }
+                    ?.let { d ->
+                        bundle.incoming.firstOrNull { it.senderOdinId.domainName.equals(d, ignoreCase = true) }
+                    }
                 _uiState.update {
                     it.copy(
                         entry = entry,
@@ -374,6 +380,15 @@ class ContactDetailViewModel(
                         isSelf = isSelf,
                         requestDirection = requestDirection,
                         introducedByName = introducedByName,
+                        requestReview = incomingRequest?.let { request ->
+                            (it.requestReview ?: ReviewSheetState()).copy(
+                                introducedBy = request.introducerOdinId?.domainName,
+                                incomingRequest = IncomingRequestSummary(
+                                    receivedAtMs = request.receivedTimestampMilliseconds.milliseconds,
+                                    message = request.message,
+                                ),
+                            )
+                        },
                     )
                 }
                 if (!reviewEnabled && domain != null && pendingCirclesLoadedFor != domain) {
@@ -646,6 +661,7 @@ class ContactDetailViewModel(
             ContactDetailAction.ReviewDismissed ->
                 _uiState.update { it.copy(review = null) }
             is ContactDetailAction.ReviewSubmitted -> submitReview(action.circleIds)
+            is ContactDetailAction.RequestReviewSubmitted -> acceptReviewedRequest(action.circleIds)
 
             ContactDetailAction.UnreviewClicked ->
                 _uiState.update { it.copy(unreview = UnreviewState()) }
@@ -759,6 +775,40 @@ class ContactDetailViewModel(
                 _uiState.update {
                     it.copy(review = open.copy(isSubmitting = false, failed = true))
                 }
+            }
+        }
+    }
+
+    /**
+     * Accepting stamps the review server-side, so the reviewed circles ride the accept call. On
+     * success the request leaves the incoming list and the collector drops [ContactDetailUiState.requestReview].
+     */
+    private fun acceptReviewedRequest(circleIds: Set<String>) {
+        val odinId = _uiState.value.entry?.odinId ?: return
+        val open = _uiState.value.requestReview ?: return
+        if (open.isSubmitting) return
+        _uiState.update {
+            it.copy(requestReview = it.requestReview?.copy(isSubmitting = true, failed = false))
+        }
+        viewModelScope.launch {
+            try {
+                connectionRequestService.acceptIncomingRequest(
+                    OdinId(odinId),
+                    circleIds.map { Uuid.parseHex(it) },
+                )
+                _uiState.update { it.copy(requestReview = it.requestReview?.copy(isSubmitting = false)) }
+                _events.tryEmit(ContactDetailEvent.RequestAccepted)
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "Accepting $odinId from the review failed" }
+                // Retrying can't fix a withdrawn request or a missing permission.
+                val terminal = e is ForbiddenException ||
+                    (e is ClientException && e.errorCode == OdinClientErrorCode.IncomingRequestNotFound)
+                _uiState.update {
+                    it.copy(requestReview = it.requestReview?.copy(isSubmitting = false, failed = !terminal))
+                }
+                if (terminal) emitConnectionError(e)
             }
         }
     }

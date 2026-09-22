@@ -76,29 +76,46 @@ fun ExpressionSheet(
         enter = slideInVertically(initialOffsetY = { it }),
         exit = slideOutVertically(targetOffsetY = { it }),
     ) {
-        // Ephemeral panel state (rememberSaveable with a plain enum isn't reliably saveable
-        // on iOS/Desktop; the tab choice needn't survive process death).
-        var selected by remember { mutableStateOf(ExpressionTab.Default) }
-        val tabs = remember { expressionTabs(gifsEnabled = false) }
+        ExpressionPanel(
+            conversationId = conversationId,
+            onUiAction = onUiAction,
+            onBackSpace = onBackSpace,
+            onEmojiSelected = onEmojiSelected,
+            modifier = modifier,
+        )
+    }
+}
 
-        Column(modifier = modifier) {
-            ExpressionTabRow(tabs = tabs, selected = selected, onSelect = { selected = it })
-            when (selected) {
-                // weight(1f) fills the remaining panel height (the panel is floored at 300.dp
-                // and the keyboard can be shorter); a fixed height would clip the picker. The
-                // emoji grid scrolls internally.
-                ExpressionTab.Emoji -> EmojiSelection(
-                    modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp),
-                    messageInputMode = true,
-                    onBackSpace = onBackSpace,
-                    onEmojiSelected = onEmojiSelected,
-                )
-                ExpressionTab.Stickers -> StickersTabContent(
-                    conversationId = conversationId,
-                    onUiAction = onUiAction,
-                )
-                ExpressionTab.Gifs -> Unit // reserved
-            }
+@Composable
+internal fun ExpressionPanel(
+    conversationId: Uuid,
+    onUiAction: (ConversationListUiAction) -> Unit,
+    onBackSpace: () -> Unit,
+    onEmojiSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    searchFirst: Boolean = false,
+) {
+    // Ephemeral panel state (rememberSaveable with a plain enum isn't reliably saveable
+    // on iOS/Desktop; the tab choice needn't survive process death).
+    var selected by remember { mutableStateOf(ExpressionTab.Default) }
+    val tabs = remember { expressionTabs(gifsEnabled = false) }
+
+    Column(modifier = modifier) {
+        ExpressionTabRow(tabs = tabs, selected = selected, onSelect = { selected = it })
+        when (selected) {
+            // weight(1f), not a fixed height: the container sets the panel height and the emoji grid scrolls.
+            ExpressionTab.Emoji -> EmojiSelection(
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp),
+                messageInputMode = true,
+                searchFirst = searchFirst,
+                onBackSpace = onBackSpace,
+                onEmojiSelected = onEmojiSelected,
+            )
+            ExpressionTab.Stickers -> StickersTabContent(
+                conversationId = conversationId,
+                onUiAction = onUiAction,
+            )
+            ExpressionTab.Gifs -> Unit // reserved
         }
     }
 }

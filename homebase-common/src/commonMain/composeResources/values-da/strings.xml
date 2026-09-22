@@ -698,6 +698,7 @@
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Lyd</string>
+    <string name="chat_message_voice_duration">Talebesked · %1$s</string>
     <string name="chat_message_file">Fil</string>
     <string name="chat_message_location">Placering</string>
     <string name="chat_message_multiple_media">Medier</string>
@@ -831,6 +832,13 @@
     <string name="cd_sticker_options_add">Føj til mine klistermærker</string>
     <string name="cd_sticker_options_remove">Fjern fra mine klistermærker</string>
     <string name="cd_sticker_options_save">Gem på enheden</string>
+    <!-- Sheet shown when an animated GIF is pasted into the composer -->
+    <string name="chat_gif_paste_title">Send denne GIF</string>
+    <string name="chat_gif_paste_as_sticker">Send som klistermærke</string>
+    <string name="chat_gif_paste_as_gif">Send som GIF</string>
+    <string name="cd_gif_paste_preview">Indsat GIF</string>
+    <string name="cd_gif_paste_as_sticker">Send den som klistermærke</string>
+    <string name="cd_gif_paste_as_gif">Åbn i editoren for at sende som GIF</string>
 
     <!-- Groodle (group-scheduling poll) -->
     <string name="chat_groodle_share">Groodle</string>
@@ -1245,6 +1253,8 @@
     <string name="dev_menu_force_sync">Gennemtving fuld synkronisering</string>
     <string name="dev_menu_connection_review">Forbindelsesgennemgang</string>
     <string name="dev_menu_connection_review_desc">Vis knappen Gennemgå, kontaktprompten og Markér som ny.</string>
+    <string name="dev_menu_profile_card">Profilkort</string>
+    <string name="dev_menu_profile_card_desc">Vis dit profilkort i Indstillinger og profileditoren.</string>
     <string name="dev_menu_clear_data">Ryd alle data</string>
     <string name="dev_menu_test_notification">Test rig notifikation</string>
     <string name="dev_menu_test_temporal_read">Test tidsbestemt placeringslæsning (Frodo)</string>
@@ -1540,6 +1550,8 @@
     <string name="contact_review_prompt_title">Ikke gennemgået endnu</string>
     <string name="contact_review_prompt_body">I er forbundet, men du har ikke besluttet, hvad de kan se. En gennemgang registrerer din beslutning og lader dig føje dem til kredse.</string>
     <string name="contact_review_failed">Kunne ikke gemme gennemgangen. Prøv igen.</string>
+    <string name="contact_review_requested_on">Anmodet %1$s</string>
+    <string name="contact_review_accept_failed">Kunne ikke acceptere anmodningen. Prøv igen.</string>
     <string name="contact_unreview_title">Markér som ny?</string>
     <string name="contact_unreview_body">%1$s beholder alle kredse og al den adgang, de allerede har. Dette rydder kun din registrering af, at du har gennemgået dem.</string>
     <string name="contact_unreview_confirm">Markér som ny</string>
@@ -1754,6 +1766,21 @@
     <string name="profile_edit_field_not_set">Ikke angivet</string>
     <string name="profile_edit_add_attribute">Tilføj attribut</string>
     <string name="profile_edit_add_attribute_title">Tilføj et felt</string>
+    <string name="profile_card_title">Profilkort</string>
+    <string name="profile_card_open">Åbn profilkort</string>
+    <string name="profile_card_share">Del kort</string>
+    <string name="profile_card_save">Gem kortbillede</string>
+    <string name="profile_card_design_poster">Plakat</string>
+    <string name="profile_card_design_board">Tavle</string>
+    <string name="profile_card_design_collage">Collage</string>
+    <string name="profile_card_design_dossier">Dossier</string>
+    <string name="profile_card_error">Kunne ikke vise dit kort.</string>
+    <string name="profile_card_share_failed">Kunne ikke lave kortbilledet.</string>
+    <string name="profile_card_unsupported">Din Homebase-server understøtter ikke profilkort endnu.</string>
+    <string name="profile_card_channel_access">Nogle opslag, som dine forbindelser kan se, vises ikke. Giv adgang til dine kanaler.</string>
+    <string name="profile_card_channel_access_allow">Tillad</string>
+    <string name="settings_profile_card">Profilkort</string>
+    <string name="settings_profile_card_desc">Se hvordan andre ser dig, og del det som et billede</string>
 
     <!-- Avatar editor -->
     <string name="profile_avatar_edit_title">Skift foto</string>

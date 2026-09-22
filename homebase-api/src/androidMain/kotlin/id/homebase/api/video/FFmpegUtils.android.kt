@@ -603,6 +603,28 @@ actual object FFmpegUtils {
             ok
         }
 
+    actual suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =
+        withContext(Dispatchers.IO) {
+            val cacheDir = ActivityProvider.requireApplicationContext().cacheDir
+            val id = UUID.randomUUID()
+            val inFile = File(cacheDir, "transcode_in_$id.$extension")
+            val outFile = File(cacheDir, "transcode_out_$id.$extension")
+            try {
+                inFile.writeBytes(input)
+                val args = listOf("-y", "-i", inFile.absolutePath) + outputArgs + outFile.absolutePath
+                val session = executeFfmpegAsync(args.toTypedArray())
+                if (ReturnCode.isSuccess(session.returnCode)) {
+                    outFile.readBytes()
+                } else {
+                    Log.e(TAG, "transcode failed (rc=${session.returnCode}): ${session.failStackTrace}")
+                    null
+                }
+            } finally {
+                inFile.delete()
+                outFile.delete()
+            }
+        }
+
     fun generateHlsKeyInfoFile(
         outputDir: File,
         aesKey: ByteArray,
