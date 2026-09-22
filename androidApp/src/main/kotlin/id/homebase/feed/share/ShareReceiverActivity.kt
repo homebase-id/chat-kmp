@@ -80,6 +80,7 @@ import id.homebase.imageeditor.ui.DrawScreen
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.moments.services.MomentCreateFlowState
+import id.homebase.core.session.IdentitySessionScope
 import id.homebase.core.config.webDropLabeledDrive
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import id.homebase.core.ui.screens.webdrop.model.PickedDropFile
@@ -131,7 +132,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private val fileOperationsProvider: FileOperationsProvider by inject()
     private val userPreferences: UserPreferences by inject()
     private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
-    private val momentCreateFlowState: MomentCreateFlowState by inject()
+    private val identitySession: IdentitySessionScope by inject()
     private val optionalDriveActivation: OptionalDriveActivation by inject()
     private val webDropShareFlowState: WebDropShareFlowState by inject()
     private val cropResultBus: CropResultBus by inject()
@@ -548,14 +549,24 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     /**
      * Terminal dispatch for the [ShareTarget.NewMoment] branch. Reuses the same
      * `convertToAttachmentFiles` step the chat path uses, seeds the moments
-     * composer draft ([MomentCreateFlowState] is a process-wide Koin singleton
-     * that [MomentComposeViewModel] reads on init), then hands off to
+     * composer draft ([MomentCreateFlowState] is identity-scoped, so it is resolved
+     * through [IdentitySessionScope] rather than injected as a field), then hands off to
      * `Route.MomentCompose` in the main app. The moments composer is the editor
      * here — trim/crop/description/audience all live there — so there's no
      * in-activity preview step on this path.
      */
     private fun startNewMoment(content: SharedContent) {
         if (!content.hasFiles) {
+            finish()
+            return
+        }
+        // The share can outlive the session that started it (logout, or a cold share that
+        // races auth), and the draft dies with the scope — so resolve it before the IO step.
+        // Resolved off scopeOrNull rather than the getOrNull<T>() extension: that one is inline
+        // reified in homebase-common (JVM target 21) and androidApp builds at 11.
+        val momentCreateFlowState = identitySession.scopeOrNull?.get<MomentCreateFlowState>()
+        if (momentCreateFlowState == null) {
+            Toast.makeText(this, getString(R.string.share_auth_required), Toast.LENGTH_LONG).show()
             finish()
             return
         }

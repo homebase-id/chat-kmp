@@ -2,12 +2,16 @@ package id.homebase.core.architecture
 
 import androidx.compose.runtime.Composable
 import com.lemonappdev.konsist.api.Konsist
+import com.lemonappdev.konsist.api.ext.list.classes
 import com.lemonappdev.konsist.api.ext.list.functions
+import com.lemonappdev.konsist.api.ext.list.properties
+import com.lemonappdev.konsist.api.ext.list.withParentInterfaceNamed
 import com.lemonappdev.konsist.api.ext.list.withAnnotationOf
 import com.lemonappdev.konsist.api.ext.list.withNameEndingWith
 import com.lemonappdev.konsist.api.verify.assertFalse
 import com.lemonappdev.konsist.api.verify.assertTrue
 import kotlin.test.Test
+import kotlin.test.assertTrue
 
 class ArchitectureTest {
     @Test
@@ -176,6 +180,47 @@ class ArchitectureTest {
                 additionalMessage = "HttpClient is managed by Koin DI and should not be manually closed"
             ) { file ->
                 file.text.contains(Regex("""httpClient\s*\.\s*close\s*\("""))
+            }
+    }
+
+    /**
+     * An [id.homebase.core.session.IdentityScoped] type is registered only inside
+     * `scope(IdentitySessionQualifier)`, so a bare `by inject()` — which resolves from `_root_` —
+     * throws NoDefinitionFoundException the first time the property is read. `inject()` is lazy,
+     * so the throw lands wherever the value is first touched rather than at construction: in
+     * #1584 that was a `lifecycleScope.launch` with no handler, so sharing an image into New
+     * Moment killed the process on a shipped release.
+     *
+     * Resolve through the identity scope instead — `identitySession.get<T>()` / `getOrNull<T>()`
+     * — and inject IdentitySessionScope, which is root-registered.
+     */
+    @Test
+    fun `IdentityScoped types are never injected from the root scope`() {
+        // Production types only: the scope-mechanics test fixtures carry the marker too, and
+        // their names are generic enough to match unrelated production properties.
+        val identityScopedTypes = Konsist.scopeFromProject()
+            .files
+            .filter { !it.hasNameEndingWith("Test") }
+            .classes()
+            .withParentInterfaceNamed("IdentityScoped")
+            .map { it.name }
+            .toSet()
+
+        // A renamed or moved marker must fail loudly rather than turn this rule vacuously green.
+        assertTrue(identityScopedTypes.isNotEmpty(), "no IdentityScoped types found — has the marker moved?")
+
+        Konsist.scopeFromProject()
+            .files
+            .filter { !it.hasNameEndingWith("Test") }
+            .properties()
+            // delegateName carries the call text — "inject()", or "inject(qualifier)".
+            .filter { it.delegateName?.substringBefore("(") == "inject" }
+            .assertFalse(
+                additionalMessage = "Identity-scoped types are not in the root scope: `by inject()` " +
+                    "throws NoDefinitionFoundException on first read. Inject IdentitySessionScope " +
+                    "and resolve with identitySession.get<T>() at the point of use (see #1584)."
+            ) { property ->
+                property.type?.name in identityScopedTypes
             }
     }
 }
