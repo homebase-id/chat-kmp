@@ -8,7 +8,6 @@ import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.sync.OptionalDriveActivation
-import id.homebase.core.util.isWeb
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -117,9 +116,9 @@ class MomentsViewModel(
                 _uiState.update {
                     it.copy(isCheckingPermissions = true, setupInitiated = true)
                 }
-                // Web grants the drive at login, so the recheck yields no false->true edge
-                // for the init collector — activate directly instead of awaiting a transition.
-                if (isWeb() && momentsPermissionViewModel.permissionsGranted.value) {
+                // Already granted means the recheck yields no false->true edge for the init
+                // collector, so activate directly instead of awaiting a transition.
+                if (momentsPermissionViewModel.permissionsGranted.value) {
                     viewModelScope.launch { activateFromSetup() }
                 } else {
                     momentsPermissionViewModel.recheckPermissions()
