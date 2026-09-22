@@ -80,6 +80,7 @@ import id.homebase.imageeditor.ui.DrawScreen
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.moments.services.MomentCreateFlowState
+import id.homebase.core.session.IdentitySessionScope
 import id.homebase.core.config.webDropLabeledDrive
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import id.homebase.core.ui.screens.webdrop.model.PickedDropFile
@@ -99,6 +100,7 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -131,7 +133,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private val fileOperationsProvider: FileOperationsProvider by inject()
     private val userPreferences: UserPreferences by inject()
     private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
-    private val momentCreateFlowState: MomentCreateFlowState by inject()
+    private val identitySession: IdentitySessionScope by inject()
     private val optionalDriveActivation: OptionalDriveActivation by inject()
     private val webDropShareFlowState: WebDropShareFlowState by inject()
     private val cropResultBus: CropResultBus by inject()
@@ -139,6 +141,22 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
 
     private val contactRepository: ContactRepository by inject()
     private val contactOverrideStore: ContactOverrideStore by inject()
+
+    /**
+     * Without this every throw inside a `lifecycleScope.launch` here is an uncaught coroutine
+     * exception that kills the process; a failed share is not worth a crash.
+     */
+    private val shareErrors = CoroutineExceptionHandler { _, e ->
+        Logger.e(tag = COLD_TAG, throwable = e) { "share failed" }
+        runOnUiThread {
+            Toast.makeText(
+                this,
+                getString(R.string.share_failed, e.message ?: e::class.simpleName.orEmpty()),
+                Toast.LENGTH_LONG,
+            ).show()
+            finish()
+        }
+    }
 
     private var isSending by mutableStateOf(false)
     private var isProcessing by mutableStateOf(false)
@@ -157,7 +175,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         Logger.d(tag = COLD_TAG) { "onCreate: action=${intent.action} type=${intent.type} hasData=${intent.data != null}" }
 
         // Wait for auth state to finish initializing (handles process-kill restart race)
-        lifecycleScope.launch {
+        lifecycleScope.launch(shareErrors) {
             val authState = youAuthFlowManager.authState
                 .dropWhile { it is YouAuthState.Initializing }
                 .first()
@@ -242,7 +260,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 } else if (sharedContent.hasFiles) {
                     // Show overlay while converting files, then transition to editor
                     isProcessing = true
-                    lifecycleScope.launch {
+                    lifecycleScope.launch(shareErrors) {
                         val attachments = withContext(Dispatchers.IO) {
                             convertToAttachmentFiles(sharedContent.files)
                         }
@@ -526,7 +544,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         } else if (content.hasFiles) {
             // Show overlay while converting files
             isProcessing = true
-            lifecycleScope.launch {
+            lifecycleScope.launch(shareErrors) {
                 val attachments = withContext(Dispatchers.IO) {
                     convertToAttachmentFiles(content.files)
                 }
@@ -548,8 +566,8 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     /**
      * Terminal dispatch for the [ShareTarget.NewMoment] branch. Reuses the same
      * `convertToAttachmentFiles` step the chat path uses, seeds the moments
-     * composer draft ([MomentCreateFlowState] is a process-wide Koin singleton
-     * that [MomentComposeViewModel] reads on init), then hands off to
+     * composer draft ([MomentCreateFlowState] is identity-scoped, so it has to be
+     * resolved through the session scope and is absent while logged out), then hands off to
      * `Route.MomentCompose` in the main app. The moments composer is the editor
      * here — trim/crop/description/audience all live there — so there's no
      * in-activity preview step on this path.
@@ -559,12 +577,20 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
             finish()
             return
         }
+        // Scope.get(), not IdentitySessionScope.getOrNull(): androidApp compiles at JVM 11 and
+        // cannot inline homebase-common's JVM 21 bytecode.
+        val flowState: MomentCreateFlowState? = identitySession.scopeOrNull?.get()
+        if (flowState == null) {
+            Toast.makeText(this, getString(R.string.share_auth_required), Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
         isProcessing = true
-        lifecycleScope.launch {
+        lifecycleScope.launch(shareErrors) {
             val attachments = withContext(Dispatchers.IO) {
                 convertToAttachmentFiles(content.files)
             }
-            momentCreateFlowState.setDraft(
+            flowState.setDraft(
                 MomentCreateFlowState.Draft(
                     attachments = attachments,
                     description = content.text ?: "",
@@ -610,7 +636,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         if (isSending) return
         isSending = true
 
-        lifecycleScope.launch {
+        lifecycleScope.launch(shareErrors) {
             try {
                 withContext(Dispatchers.IO) {
                     for (conversationId in conversationIds) {
@@ -658,7 +684,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         if (isSending) return
         isSending = true
 
-        lifecycleScope.launch {
+        lifecycleScope.launch(shareErrors) {
             try {
                 withContext(Dispatchers.IO) {
                     if (content.hasFiles) {
@@ -732,7 +758,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         isProcessing = true
         screenState = ShareScreenState.ContactSent(conversationIds)
 
-        lifecycleScope.launch {
+        lifecycleScope.launch(shareErrors) {
             try {
                 withContext(Dispatchers.IO) {
                     for (conversationId in conversationIds) {
@@ -770,7 +796,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         conversationIds: Set<Uuid>,
     ) {
         isProcessing = true
-        lifecycleScope.launch {
+        lifecycleScope.launch(shareErrors) {
             // Not saveContactDraft: the organization and the extra phones/emails the sheet collects
             // live only in the override blob, and writing the contact alone drops them silently.
             val result = withContext(Dispatchers.IO) {
@@ -906,7 +932,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private fun startImageEdit(attachmentId: Uuid, draw: Boolean) {
         val attachment = editorAttachments.firstOrNull { it.attachmentId == attachmentId }
                 as? AttachmentPendingFile.FileImage ?: return
-        lifecycleScope.launch {
+        lifecycleScope.launch(shareErrors) {
             try {
                 val bytes = fileOperationsProvider.readFileBytes(attachment.file.toString())
                 val requestId = Uuid.random()
@@ -925,7 +951,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
 
     /** Persists the edited bytes back onto the attachment and closes the editor. */
     private fun applyImageEdit(edit: ActiveImageEdit, bytes: ByteArray) {
-        lifecycleScope.launch {
+        lifecycleScope.launch(shareErrors) {
             try {
                 val tempPath =
                     fileOperationsProvider.writeBytesToTempFile(bytes, "shared_edited_image", ".jpg")
@@ -978,7 +1004,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         }
         isProcessing = true
 
-        lifecycleScope.launch {
+        lifecycleScope.launch(shareErrors) {
             try {
                 // Build payload on IO (thumbnail generation is the slow part)
                 val attachments = withContext(Dispatchers.IO) {

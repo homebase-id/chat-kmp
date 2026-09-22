@@ -3,6 +3,7 @@ package id.homebase.core.architecture
 import androidx.compose.runtime.Composable
 import com.lemonappdev.konsist.api.Konsist
 import com.lemonappdev.konsist.api.ext.list.functions
+import com.lemonappdev.konsist.api.ext.list.properties
 import com.lemonappdev.konsist.api.ext.list.withAnnotationOf
 import com.lemonappdev.konsist.api.ext.list.withNameEndingWith
 import com.lemonappdev.konsist.api.verify.assertFalse
@@ -165,6 +166,32 @@ class ArchitectureTest {
                     file.text.contains(Regex("""\.\s*getPublicProfile\s*\(""")) ||
                     file.text.contains(Regex("""\.\s*getPublicImage\s*\("""))
             }
+    }
+
+    /**
+     * `by inject()` resolves from Koin's `_root_` scope, but everything marked [IdentityScoped]
+     * is registered `scoped { }` inside the identity session — so the lookup throws at first
+     * read, far from the declaration. Resolve those through `IdentitySessionScope.get()` /
+     * `getOrNull()` instead.
+     */
+    @Test
+    fun `IdentityScoped state is never injected from the root Koin scope`() {
+        val scope = Konsist.scopeFromProject()
+        val identityScoped = scope
+            .classes()
+            .filter { klass -> klass.parents().any { it.name == "IdentityScoped" } }
+            .map { it.name }
+            .toSet()
+
+        scope
+            .properties()
+            .filter { it.text.contains("by inject()") }
+            .assertFalse(
+                additionalMessage = "IdentityScoped types live in the identity session scope, " +
+                    "not _root_ — a bare `by inject()` throws NoDefinitionFoundException on " +
+                    "first read. Inject IdentitySessionScope and call get()/getOrNull() at the " +
+                    "point of use. Identity-scoped types: $identityScoped"
+            ) { it.type?.name in identityScoped }
     }
 
     @Test
