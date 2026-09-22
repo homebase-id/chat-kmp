@@ -48,6 +48,7 @@ import id.homebase.chat.services.convo.matchesConversationQuery
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.chat.widget.mentionNamesOf
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
@@ -292,6 +293,10 @@ class ConversationListViewModel(
         sendEvent = ::sendEvent,
         dispatch = ::onAction,
         addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
+        // Not a bound reference: stickerCreator is initialised below this.
+        sendSticker = { conversationId, bytes, contentType ->
+            stickerCreator.send(conversationId, bytes, contentType)
+        },
     )
 
     private val conversationLifecycleHandler = ConversationLifecycleHandler(
@@ -335,6 +340,7 @@ class ConversationListViewModel(
             val suffix = when (contentType) {
                 "image/jpeg" -> ".jpg"
                 "image/webp" -> ".webp"
+                "image/gif" -> ".gif"
                 else -> ".png"
             }
             val path = fileOperationsProvider.writeBytesToTempFile(bytes, "sticker_editor_", suffix)
@@ -471,6 +477,14 @@ class ConversationListViewModel(
         get() = stickerPermissionViewModel
 
     init {
+        // The process-global mirror the notification, live-location and draft collectors read is
+        // a projection of the selection, never a second write, so the two cannot diverge.
+        viewModelScope.launch {
+            _uiState.map { it.selectedConversationId }
+                .distinctUntilChanged()
+                .collect(ActiveConversation::selectConversation)
+        }
+
         // Once the Stickers drive is authorized (the user completed the extend-permissions
         // flow, or it was already granted), delegate activation to StickerService — it
         // registers + mounts the drive (idempotently) and cold-loads the tray. This VM owns
@@ -894,11 +908,25 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
-            contactService.contacts
-                .map { contacts -> contacts.mapTo(mutableSetOf()) { it.odinId } }
+            contactService.savedContactIdentities.collect { identities ->
+                _messagesUiState.update { it.copy(savedContactIdentities = identities) }
+            }
+        }
+
+        // Projected here, not in composition: contactService.contacts re-emits on connection-status
+        // churn, which the names do not read, and a snapshot read inside ConversationContent would
+        // recompose the whole screen on every one of those.
+        viewModelScope.launch {
+            combine(
+                contactService.contacts,
+                effectiveOwnerSessionFlow(
+                    live = ownerSessionRepository.user,
+                    credentials = credentialsManager.credentialsFlow,
+                ),
+            ) { contacts, session -> mentionNamesOf(contacts, session) }
                 .distinctUntilChanged()
-                .collect { identities ->
-                    _messagesUiState.update { it.copy(savedContactIdentities = identities) }
+                .collect { names ->
+                    _messagesUiState.update { it.copy(mentionNames = names) }
                 }
         }
 
@@ -1057,7 +1085,6 @@ class ConversationListViewModel(
             messageActionsHandler.processPendingSharedContent(conversationId, trigger)
         }
 
-        ActiveConversation.selectConversation(conversationId)
         loadMessagesForConversation(conversationId, messageId, scrollToBottom, trigger)
     }
 
@@ -1135,7 +1162,6 @@ class ConversationListViewModel(
                 // notification tap so a late-arriving sync can't yank them
                 // to a different one.
                 pendingNotificationTap.clear()
-                ActiveConversation.selectConversation(action.conversationId)
                 loadMessagesForConversation(
                     action.conversationId,
                     action.messageId,
@@ -1276,7 +1302,6 @@ class ConversationListViewModel(
             is ConversationListUiAction.SnapshotListTop -> snapshotListTop()
 
             is ConversationListUiAction.ClearSelection -> {
-                ActiveConversation.selectConversation(null)
                 currentConversationJob?.cancel()
                 // Drop the frozen unread boundary so re-entering recomputes it from
                 // the (now advanced) lastRead — a fully-read conversation then shows
@@ -1530,14 +1555,15 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ConfirmLeaveAndDeleteConversation -> conversationLifecycleHandler.handleConfirmLeaveAndDeleteConversation(action)
 
-            is ConversationListUiAction.CloseDetailPaneRequestConsumed -> conversationLifecycleHandler.handleCloseDetailPaneRequestConsumed()
-
             is ConversationListUiAction.AcceptRejoin -> conversationLifecycleHandler.handleAcceptRejoin(action)
 
             is ConversationListUiAction.DeclineRejoin -> conversationLifecycleHandler.handleDeclineRejoin(action)
 
             /* Clipboard image paste */
             is ConversationListUiAction.AttachClipboardImage -> attachmentHandler.handleAttachClipboardImage(action)
+            is ConversationListUiAction.SendPastedGifAsSticker -> attachmentHandler.handleSendPastedGifAsSticker()
+            is ConversationListUiAction.SendPastedGifAsGif -> attachmentHandler.handleSendPastedGifAsGif()
+            is ConversationListUiAction.DismissPastedGif -> attachmentHandler.handleDismissPastedGif()
 
             is ConversationListUiAction.RequestCropAttachment -> attachmentHandler.handleRequestCropAttachment(action)
 
@@ -1610,7 +1636,12 @@ class ConversationListViewModel(
                 stickerHandler.handleRemoveStickerFromMessage(action)
 
             is ConversationListUiAction.SaveContactCard -> {
-                sendEvent(ConversationListUiEvent.NavigateToSaveContactCard(action.descriptor))
+                sendEvent(
+                    ConversationListUiEvent.NavigateToSaveContactCard(
+                        action.descriptor,
+                        action.alreadySaved,
+                    )
+                )
             }
 
             is ConversationListUiAction.MessageIdentity -> {
@@ -1854,13 +1885,8 @@ class ConversationListViewModel(
             )
         }
 
-        // Flip the selected id NOW, not after messages arrive. The scaffold's
-        // detail-pane navigation in NotificationNavigationEffects keys off this
-        // value via LaunchedEffect(selectedConversationId); waiting for the first
-        // ChatMessagesData.Messages emission held the navigation hostage to a
-        // potentially slow DB read on cold-start / post-reconnect. The detail pane
-        // already shows isLoadingMessages = true above; messages will fill in via
-        // the collect block below.
+        // Flipped before the messages arrive, so navigation isn't held hostage to a cold-start
+        // DB read.
         Logger.i(tag = "ConversationListViewModel") {
             "selectedConversationId set id=$conversationId (pending messages) trigger=$trigger"
         }
@@ -2342,7 +2368,6 @@ fun synthesizeOwnerSession(
         profileImageFileId = null,
         profileImageFileKey = null,
         profileImagePreviewThumbnail = null,
-        profileImageLastModified = null,
         status = null,
     )
 }

@@ -22,6 +22,7 @@ import id.homebase.core.contactbook.LOCATE_VERIFY_TTL_MS
 import id.homebase.core.contactbook.LocateVerifyStatus
 import id.homebase.core.contactbook.locatableContacts
 import id.homebase.core.location.LocationPreferences
+import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.location.emergency.EmergencyLocateService
 import id.homebase.core.location.tracking.LocationPointStore
 import id.homebase.core.location.tracking.LocationTracker
@@ -73,6 +74,7 @@ class LocationViewModel(
     private val conversationService: ConversationService,
     private val emergencyLocateService: EmergencyLocateService,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val developerPreferences: DeveloperPreferences,
     tracker: LocationTracker,
 ) : ViewModel() {
 
@@ -128,17 +130,30 @@ class LocationViewModel(
                     .distinctBy { it.odinId }
                     .sortedBy { it.name.lowercase() }
                     .toList()
+                // Real and pending come out of the same snapshot, so they cannot disagree about
+                // who has converted — the exclusion below is a like-for-like filter, not a race.
+                val memberIds = members.map { it.odinId }.toSet()
+                val pending = circleState.pendingMembersOf(EMERGENCY_LOCATION_CIRCLE_ID)
+                    .asSequence()
+                    .map { it.odinId }
+                    .filterNot { it.domainName.lowercase() == self }
+                    .distinct()
+                    .map { contactService.resolveByOdinId(it) }
+                    .filterNot { it.odinId in memberIds }
+                    .sortedBy { it.name.lowercase() }
+                    .toList()
                 _uiState.update {
                     it.copy(
                         whoCanLocateMe = members,
                         whoCanLocateMeLoaded = circleState.isLoaded,
-                        // Drop anyone who just converted from pending to real — closes the
-                        // window where a stale pending snapshot and a freshly-updated real
-                        // membership list briefly disagree and render the same person twice
-                        // (#1096). checkWhoCanLocateMePending re-derives the full pending set
-                        // on its own cadence; this only prevents the transient overlap.
-                        whoCanLocateMePending = it.whoCanLocateMePending
-                            .filterNot { pending -> members.any { m -> m.odinId == pending.odinId } },
+                        // Flag off: main's path — checkWhoCanLocateMePending owns the pending list;
+                        // this only drops anyone who just converted to real (#1096).
+                        whoCanLocateMePending = if (developerPreferences.connectionReviewEnabled.value) {
+                            pending
+                        } else {
+                            it.whoCanLocateMePending
+                                .filterNot { p -> members.any { m -> m.odinId == p.odinId } }
+                        },
                     )
                 }
             }
@@ -473,15 +488,40 @@ class LocationViewModel(
         }
     }
 
+    /** Revoke [odinId]'s emergency-circle grant, real or still-pending — one API call covers
+     *  both (revoke also silently drops a still-sealed deposit). */
+    private fun removeEmergencyContact(odinId: String) {
+        if (odinId in _uiState.value.removingEmergencyContacts) return
+        _uiState.update { it.copy(removingEmergencyContacts = it.removingEmergencyContacts + odinId) }
+        viewModelScope.launch {
+            try {
+                connectionService.removeFromCircle(Uuid.parseHex(EMERGENCY_LOCATION_CIRCLE_ID), OdinId(odinId))
+                // Flag off: main's pending list isn't read from the snapshot, so drop them by hand.
+                if (!developerPreferences.connectionReviewEnabled.value) {
+                    _uiState.update {
+                        it.copy(
+                            whoCanLocateMePending = it.whoCanLocateMePending
+                                .filterNot { contact -> contact.odinId.domainName == odinId },
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "removeFromCircle failed for $odinId" }
+                _events.tryEmit(LocationUiEvent.EmergencyContactActionFailed)
+            } finally {
+                _uiState.update { it.copy(removingEmergencyContacts = it.removingEmergencyContacts - odinId) }
+            }
+        }
+    }
+
     private var whoCanLocateMePendingJob: Job? = null
 
     /**
-     * Live read, never a periodic loop (a sealed deposit doesn't change moment to moment, and a
-     * conversion to real membership already flips whoCanLocateMe via ConnectionService's normal
-     * refresh). Runs on every [refresh] (screen entry/resume) so a contact just added from the
-     * picker — which lands as a pending deposit far more often than not — is visible at once
-     * (#1096). Delegates the fan-out to [ConnectionService.findPendingMembers] and applies the one
-     * Location-specific rule: you are never your own emergency contact.
+     * Flag off only: main's live pending read, run on every [refresh] so a contact just added
+     * from the picker (usually a sealed deposit) shows at once (#1096). You are never your own
+     * emergency contact.
      */
     private fun checkWhoCanLocateMePending() {
         if (whoCanLocateMePendingJob?.isActive == true) return
@@ -496,10 +536,8 @@ class LocationViewModel(
 
                 _uiState.update {
                     it.copy(
-                        // Exclude against the CURRENT whoCanLocateMe, not the snapshot findPendingMembers
-                        // started from — someone can convert from pending to real while this fan-out is
-                        // still in flight, and rendering both lists un-deduped briefly shows them twice
-                        // (#1096).
+                        // Exclude against the CURRENT whoCanLocateMe: someone can convert while
+                        // the lookup is in flight (#1096).
                         whoCanLocateMePending = pending
                             .distinct()
                             .map { odinId -> contactService.resolveByOdinId(odinId) }
@@ -513,31 +551,6 @@ class LocationViewModel(
             } catch (e: Exception) {
                 Logger.w(e, TAG) { "checkWhoCanLocateMePending failed" }
                 _uiState.update { it.copy(whoCanLocateMePendingChecking = false) }
-            }
-        }
-    }
-
-    /** Revoke [odinId]'s emergency-circle grant, real or still-pending — one API call covers
-     *  both (revoke also silently drops a still-sealed deposit). */
-    private fun removeEmergencyContact(odinId: String) {
-        if (odinId in _uiState.value.removingEmergencyContacts) return
-        _uiState.update { it.copy(removingEmergencyContacts = it.removingEmergencyContacts + odinId) }
-        viewModelScope.launch {
-            try {
-                connectionService.removeFromCircle(Uuid.parseHex(EMERGENCY_LOCATION_CIRCLE_ID), OdinId(odinId))
-                _uiState.update {
-                    it.copy(
-                        whoCanLocateMePending = it.whoCanLocateMePending
-                            .filterNot { contact -> contact.odinId.domainName == odinId },
-                    )
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.w(e, TAG) { "removeFromCircle failed for $odinId" }
-                _events.tryEmit(LocationUiEvent.EmergencyContactActionFailed)
-            } finally {
-                _uiState.update { it.copy(removingEmergencyContacts = it.removingEmergencyContacts - odinId) }
             }
         }
     }
@@ -603,11 +616,7 @@ class LocationViewModel(
             refreshCounts()
         }
         loadDashboard()
-        // Re-derive "who can locate me" pending status on every resume (not just on manual
-        // section-expand) — otherwise returning here right after adding someone shows nothing
-        // for them until the section happens to be expanded, which reads as "the add failed"
-        // (#1096: a real add landed as a pending deposit and stayed invisible until expand).
-        checkWhoCanLocateMePending()
+        if (!developerPreferences.connectionReviewEnabled.value) checkWhoCanLocateMePending()
     }
 
     /** Dashboard data: today's traces (map preview), the device list, and the

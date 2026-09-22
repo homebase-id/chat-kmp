@@ -11,12 +11,17 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -106,7 +111,7 @@ internal data class EditorToolset(
 )
 
 /** Pure decision for the per-attachment tool row. Crop/Draw apply only to
- *  editable images (FileImage / Gallery); Save applies to any current
+ *  editable non-GIF images (FileImage / Gallery); Save applies to any current
  *  attachment. A tool is shown only when its callback was supplied. */
 internal fun editorToolsetFor(
     current: AttachmentPendingFile?,
@@ -117,12 +122,20 @@ internal fun editorToolsetFor(
 ): EditorToolset {
     val isEditableImage =
         current is AttachmentPendingFile.FileImage || current is AttachmentPendingFile.Gallery
+    // Crop and draw re-encode to a single-frame JPEG, which would freeze a GIF. iOS gallery mimeType is "image/*".
+    val isNonGifImage = when (current) {
+        is AttachmentPendingFile.FileImage ->
+            (current.sourceContentType ?: resolveContentType(fileName = current.file.name)) != "image/gif"
+        is AttachmentPendingFile.Gallery ->
+            current.image.mimeType != "image/gif" && resolveContentType(fileName = current.image.fileName) != "image/gif"
+        else -> false
+    }
     // Quality only bites on media we re-encode. A document or a voice note ships untouched either
     // way, so offering the toggle there would be a lie.
     val isQualityRelevant = isEditableImage || current is AttachmentPendingFile.FileVideo
     return EditorToolset(
-        showCrop = canCrop && isEditableImage,
-        showDraw = canDraw && isEditableImage,
+        showCrop = canCrop && isNonGifImage,
+        showDraw = canDraw && isNonGifImage,
         showSave = canSave && current != null,
         showQuality = canSetQuality && isQualityRelevant,
     )
@@ -642,7 +655,14 @@ fun MediaAttachmentEditor(
         }
         } // end AnimatedVisibility (tool row)
 
-        bottomBar()
+        // max, not sum: the ime inset already spans the nav bar, so stacking them double-counts.
+        Box(
+            modifier = Modifier.windowInsetsPadding(
+                WindowInsets.ime.union(WindowInsets.navigationBars)
+            )
+        ) {
+            bottomBar()
+        }
     }
 }
 

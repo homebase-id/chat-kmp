@@ -136,14 +136,12 @@ internal fun Modifier.paneTrailingEdge(): Modifier {
 @Composable
 fun ConversationListPane(
     uiState: ConversationListUiState,
-    selectedConversationId: Uuid? = null,
     searchTextState: TextFieldState,
     searchFocusRequester: FocusRequester? = null,
     archivedUiState: ArchivedConversationsUiState = ArchivedConversationsUiState(),
     listPaneVisible: Boolean = true,
     onProfileClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
-    onConversationSelected: (conversationId: Uuid) -> Unit,
 ) {
     val twoPaneWindow = isExpandedLayout()
     val persistentSearch = isDesktopOrWeb() && !uiState.showArchived
@@ -255,7 +253,6 @@ fun ConversationListPane(
                                                         }),
                                                     animatedVisibilityScope = this@AnimatedVisibility,
                                                     sharedTransitionScope = null,
-                                                    cacheBustKey = session.profileImageLastModified,
                                                 )
                                             }
 
@@ -466,10 +463,9 @@ fun ConversationListPane(
                     if (uiState.showArchived) {
                         archivedConversationItems(
                             archivedUiState = archivedUiState,
-                            selectedConversationId = selectedConversationId,
+                            selectedConversationId = uiState.selectedConversationId,
                             iconOnlyMode = iconOnlyMode,
                             onUiAction = onUiAction,
-                            onConversationSelected = onConversationSelected,
                         )
                         return@LazyColumn
                     }
@@ -585,7 +581,7 @@ fun ConversationListPane(
                                 Box(modifier = Modifier.animateItem()) {
                                     ConversationLisContentItem(
                                         listItem = listItem,
-                                        selectedConversationId = selectedConversationId,
+                                        selectedConversationId = uiState.selectedConversationId,
                                         iconOnlyMode = iconOnlyMode,
                                         // Search results are a tap target, not a swipe target.
                                         allowSwipeActions = !searchActive,
@@ -595,7 +591,6 @@ fun ConversationListPane(
                                             searchTextState.text.toString()
                                         else "",
                                         onUiAction = onUiAction,
-                                        onConversationSelected = onConversationSelected,
                                     )
                                 }
                             }
@@ -660,7 +655,6 @@ private fun LazyListScope.archivedConversationItems(
     selectedConversationId: Uuid?,
     iconOnlyMode: Boolean,
     onUiAction: (ConversationListUiAction) -> Unit,
-    onConversationSelected: (conversationId: Uuid) -> Unit,
 ) {
     if (archivedUiState.isLoading) {
         item {
@@ -699,7 +693,6 @@ private fun LazyListScope.archivedConversationItems(
                 iconOnlyMode = iconOnlyMode,
                 searchQuery = "",
                 onUiAction = onUiAction,
-                onConversationSelected = onConversationSelected,
             )
         }
     }
@@ -712,7 +705,6 @@ fun ConversationLisContentItem(
     iconOnlyMode: Boolean,
     searchQuery: String,
     onUiAction: (ConversationListUiAction) -> Unit,
-    onConversationSelected: (conversationId: Uuid) -> Unit,
     allowSwipeActions: Boolean = true,
 ) {
     when (listItem) {
@@ -739,7 +731,6 @@ fun ConversationLisContentItem(
                                 listItem.conversation.conversation.id, null
                             )
                         )
-                        onConversationSelected(listItem.conversation.conversation.id)
                     },
                     isSelected = listItem.conversation.conversation.id == selectedConversationId,
                 )
@@ -753,7 +744,6 @@ fun ConversationLisContentItem(
                                 null
                             )
                         )
-                        onConversationSelected(listItem.conversation.conversation.id)
                     },
                     onContactClick = {
                         onUiAction(ConversationListUiAction.ShowConversationSettings(listItem.conversation.conversation))
@@ -797,7 +787,6 @@ fun ConversationLisContentItem(
                             listItem.message.conversationId, listItem.message.id
                         )
                     )
-                    onConversationSelected(listItem.message.conversationId)
                 },
                 onContactClick = { odinId ->
                     onUiAction(ConversationListUiAction.ShowContactInfo(odinId.domainName))

@@ -30,10 +30,6 @@ sealed interface ConversationListUiAction {
      *  list leaves the screen, and once per return to it. */
     data object SnapshotListTop : ConversationListUiAction
 
-    /** The screen has handled [ConversationListUiState.closeDetailPaneRequest] (popped
-     *  the scaffold detail pane); clear it so it doesn't fire again on next recompose. */
-    data object CloseDetailPaneRequestConsumed : ConversationListUiAction
-
     /** Combined leave-and-delete for a group conversation the user is still in.
      *  Service-side: calls [ConversationService.leaveGroup] then
      *  [ConversationService.deleteConversation] in sequence so the user does not
@@ -284,6 +280,10 @@ sealed interface ConversationListUiAction {
         val imageBytes: ByteArray,
     ) : ConversationListUiAction
 
+    data object SendPastedGifAsSticker : ConversationListUiAction
+    data object SendPastedGifAsGif : ConversationListUiAction
+    data object DismissPastedGif : ConversationListUiAction
+
     /** User tapped the crop button on an image attachment. */
     data class RequestCropAttachment(
         val conversationId: Uuid,
@@ -454,7 +454,10 @@ sealed interface ConversationListUiAction {
 
     /** Save a received contact card to the contact book — the editor lives in :homebase-core, so
      *  this leaves the module the same way OpenShareLocation does. */
-    data class SaveContactCard(val descriptor: ContactCardDescriptor) : ConversationListUiAction
+    data class SaveContactCard(
+        val descriptor: ContactCardDescriptor,
+        val alreadySaved: Boolean,
+    ) : ConversationListUiAction
 
     /** Open (creating if needed) the 1:1 conversation with the identity on a shared contact card. */
     data class MessageIdentity(val odinId: String) : ConversationListUiAction

@@ -64,7 +64,6 @@ kotlin {
             implementation(libs.jetbrains.compose.material3)
             implementation(libs.jetbrains.compose.material3.adaptive)
             implementation(libs.jetbrains.compose.material3.adaptive.layout)
-            implementation(libs.jetbrains.compose.material3.adaptive.navigation)
             implementation(libs.jetbrains.compose.material.icons.extended)
             implementation(libs.jetbrains.compose.ui.backhandler)
             implementation(libs.jetbrains.compose.ui.tooling.preview)
@@ -142,6 +141,9 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.jetbrains.compose.ui.test)
+            // Composing a real composer field pulls koinInject<UserPreferences>, which a test can
+            // only satisfy by building one over a Settings.
+            implementation(libs.multiplatform.settings)
         }
         jvmTest.dependencies {
             implementation(compose.desktop.currentOs)
@@ -152,9 +154,6 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.ktor.client.mock)
             implementation(libs.okio.fakefilesystem)
-            // Rendering a real bubble pulls rememberHaptics -> koinInject<UserPreferences>,
-            // which a test can only satisfy by building one over a Settings.
-            implementation(libs.multiplatform.settings)
         }
     }
 

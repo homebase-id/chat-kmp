@@ -66,6 +66,9 @@ expect object FFmpegUtils {
      */
     suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean
 
+    /** Runs `ffmpeg -y -i <input> <outputArgs> <output>`, both files named `*.<extension>`. Null on failure. */
+    suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray?
+
     /**
      * Version reported by the underlying ffmpeg (e.g. "n6.0", "6.1.1"), or null if it
      * could not be determined. Result is process-stable; actuals memoize after the first call.

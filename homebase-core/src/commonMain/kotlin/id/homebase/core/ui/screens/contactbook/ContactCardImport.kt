@@ -89,10 +89,15 @@ object ContactCardImport {
         loadOverrides: suspend (List<Contact>) -> Map<Uuid, ContactFieldOverlay>,
     ): ExistingContact? {
         val contacts = loadContacts()
-        val overrides = loadOverrides(contacts)
+        // An override never carries an odinId, so an identity hit needs only its own override.
+        val identityHit = findExisting(descriptor, contacts.mapNotNull { it.toContactBookEntry() })
+            ?.takeIf { it.matchedOn == ExistingContact.MatchedOn.Identity }
+            ?.let { hit -> contacts.first { it.uniqueId == hit.entry.uniqueId } }
+        val candidates = identityHit?.let(::listOf) ?: contacts
+        val overrides = loadOverrides(candidates)
         return findExisting(
             descriptor,
-            contacts.mapNotNull { it.toContactBookEntry()?.withOverride(overrides[it.uniqueId]) },
+            candidates.mapNotNull { it.toContactBookEntry()?.withOverride(overrides[it.uniqueId]) },
         )
     }
 

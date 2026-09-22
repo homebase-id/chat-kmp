@@ -86,11 +86,7 @@ internal fun feedMediaOverlay(
         channelDriveAlias != null
     val driveId = channelDriveAlias?.takeIf { isPeerMedia } ?: post.driveId
 
-    val contentType = payload.contentType.orEmpty()
-    val isVideo = contentType.startsWith("video/") ||
-        contentType == "application/vnd.apple.mpegurl"
-
-    return if (isVideo) {
+    return if (payload.isVideo()) {
         FullScreenOverlay.VideoPlayerData(
             fileId = post.fileId,
             driveId = driveId,

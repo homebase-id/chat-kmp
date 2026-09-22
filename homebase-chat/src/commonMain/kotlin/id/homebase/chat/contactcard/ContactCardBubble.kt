@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.ContactPage
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material3.ButtonDefaults
@@ -55,10 +56,12 @@ import id.homebase.resources.chat_contact_card_more
 import id.homebase.resources.chat_contact_card_open
 import id.homebase.resources.chat_contact_card_save
 import id.homebase.resources.chat_contact_card_title
+import id.homebase.resources.chat_contact_card_update
 import id.homebase.resources.chat_contact_unparseable
 import id.homebase.resources.contactbook_edit_email
 import id.homebase.resources.contactbook_edit_odinid
 import id.homebase.resources.contactbook_edit_phone
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -75,7 +78,7 @@ import org.jetbrains.compose.resources.stringResource
 fun ContactCardBubble(
     descriptor: ContactCardDescriptor?,
     modifier: Modifier = Modifier,
-    onSaveToContacts: ((ContactCardDescriptor) -> Unit)? = null,
+    onSaveToContacts: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     canOpenDetail: Boolean = true,
@@ -89,6 +92,9 @@ fun ContactCardBubble(
     }
 
     var showDetail by remember(descriptor) { mutableStateOf(false) }
+    val savedContacts = LocalSavedContactIdentities.current
+    // Handed to the host with the tap so it opens what the button said, not a re-derivation of it.
+    val alreadySaved = remember(descriptor, savedContacts) { descriptor.isSavedIn(savedContacts) }
     val preview = remember(descriptor) { descriptor.bubbleValues() }
     val subtitle = remember(descriptor) { descriptor.subtitleLine() }
     val title = descriptor.summaryLine().ifBlank { stringResource(MR.string.chat_contact_card_title) }
@@ -197,18 +203,18 @@ fun ContactCardBubble(
                         // Unweighted, the label measures first at large font scale and leaves the
                         // timestamp and delivery tick nothing.
                         TextButton(
-                            onClick = { onSaveToContacts(descriptor) },
+                            onClick = { onSaveToContacts(descriptor, alreadySaved) },
                             modifier = Modifier.weight(1f, fill = false),
                             contentPadding = ButtonDefaults.TextButtonWithIconContentPadding,
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.PersonAdd,
+                                imageVector = saveActionIcon(alreadySaved),
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                text = stringResource(MR.string.chat_contact_card_save),
+                                text = stringResource(saveActionLabel(alreadySaved)),
                                 style = MaterialTheme.typography.labelLarge,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -231,9 +237,10 @@ fun ContactCardBubble(
             onSaveToContacts = onSaveToContacts?.let { save ->
                 { card ->
                     showDetail = false
-                    save(card)
+                    save(card, alreadySaved)
                 }
             },
+            alreadySaved = alreadySaved,
             // Same: the conversation this swaps to would otherwise open behind the dialog.
             onMessageIdentity = onMessageIdentity?.let { message ->
                 { identity ->
@@ -365,6 +372,12 @@ internal fun ContactValueKind.icon(): ImageVector = when (this) {
     ContactValueKind.Phone -> Icons.Outlined.Phone
     ContactValueKind.Email -> Icons.Outlined.AlternateEmail
 }
+
+internal fun saveActionIcon(alreadySaved: Boolean): ImageVector =
+    if (alreadySaved) Icons.Outlined.Edit else Icons.Outlined.PersonAdd
+
+internal fun saveActionLabel(alreadySaved: Boolean): StringResource =
+    if (alreadySaved) MR.string.chat_contact_card_update else MR.string.chat_contact_card_save
 
 @Composable
 private fun UnparseableContactCardBubble(

@@ -13,9 +13,9 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * Pins the contract that no avatar-model path emits blank avatar fields (#952: the Location
- * dashboard rendered blank circles because `ContactService.resolveByOdinId`'s fallback returned
- * empty `avatarInitials`/`avatarUrl` for odinIds not in the contact book).
+ * Pins the contract that no avatar-model path emits blank avatar fields — the Location dashboard
+ * rendered blank circles because `ContactService.resolveByOdinId`'s fallback returned empty
+ * `avatarInitials` for odinIds not in the contact book.
  */
 class ContactUiModelFallbackTest {
 
@@ -28,11 +28,6 @@ class ContactUiModelFallbackTest {
     @Test
     fun fallbackFor_derivesInitialsFromDomain() {
         assertEquals("F", ContactUiModel.fallbackFor(odinId).avatarInitials)
-    }
-
-    @Test
-    fun fallbackFor_usesCanonicalPublicImageUrl() {
-        assertEquals("https://frodo.digital/pub/image", ContactUiModel.fallbackFor(odinId).avatarUrl)
     }
 
     @Test
@@ -57,14 +52,6 @@ class ContactUiModelFallbackTest {
         versionTag = null,
         content = content,
     )
-
-    @Test
-    fun toContactUiModel_usesCanonicalPublicImageUrl() {
-        val model = contact(
-            ContactContent(odinId = "frodo.digital", name = ContactName(displayName = "Frodo Baggins"))
-        ).toContactUiModel()
-        assertEquals("https://frodo.digital/pub/image", model?.avatarUrl)
-    }
 
     @Test
     fun toContactUiModel_initialsFromGivenAndSurname() {

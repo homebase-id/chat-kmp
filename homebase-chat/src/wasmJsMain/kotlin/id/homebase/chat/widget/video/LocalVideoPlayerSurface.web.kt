@@ -20,6 +20,7 @@ import id.homebase.api.browser.guardJsCallback
 import id.homebase.api.file.systemFileSystem
 import id.homebase.api.util.isBlobUrl
 import id.homebase.api.util.toBlobObjectUrl
+import id.homebase.core.util.showHtmlOverlay
 import okio.Path.Companion.toPath
 
 /*
@@ -84,7 +85,7 @@ actual fun LocalVideoPlayerSurface(
         val b = bounds ?: return@LaunchedEffect
         val widthCss = (b.width / density).toDouble()
         val heightCss = (b.height / density).toDouble()
-        setVideoOverlayBounds(el, (b.left / density).toDouble(), (b.top / density).toDouble(), widthCss, heightCss)
+        showHtmlOverlay(el, (b.left / density).toDouble(), (b.top / density).toDouble(), widthCss, heightCss)
         // Autoplay only once the element has real on-screen bounds. A programmatic unmuted play()
         // can be blocked without a recent user gesture; playVideoOverlay swallows that rejection
         // and the native control bar remains as a fallback.
@@ -163,7 +164,7 @@ actual fun TrimmableVideoPlayerSurface(
         val b = bounds ?: return@LaunchedEffect
         val widthCss = (b.width / density).toDouble()
         val heightCss = (b.height / density).toDouble()
-        setVideoOverlayBounds(el, (b.left / density).toDouble(), (b.top / density).toDouble(), widthCss, heightCss)
+        showHtmlOverlay(el, (b.left / density).toDouble(), (b.top / density).toDouble(), widthCss, heightCss)
         if (!firstFrameSent && widthCss > 0.0 && heightCss > 0.0) {
             firstFrameSent = true
             onFirstFrameRendered()

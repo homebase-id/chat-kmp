@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,9 +26,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
@@ -48,7 +51,34 @@ import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
+
+private val ImageMaxHeight = 180.dp
+private const val OpenGraphAspectRatio = 1.91f
+private const val MaxImageAspectRatio = 4f
+private val ImageCornerShape = RoundedCornerShape(
+    topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius
+)
+
+// Not descriptor.imageWidth/Height: those echo the page's og:image tags (linktr.ee: 600x600 for a 1200x630 file).
+private fun EmbeddedThumb?.aspectRatio(): Float =
+    this?.takeIf { it.pixelWidth > 0 && it.pixelHeight > 0 }
+        ?.let { it.pixelWidth.toFloat() / it.pixelHeight }
+        ?: OpenGraphAspectRatio
+
+// Width always spans the card so Crop can never leave bars; only the height follows the image.
+private fun Modifier.linkPreviewImageSize(
+    aspectRatio: Float,
+    maxHeight: Dp = ImageMaxHeight,
+): Modifier = layout { measurable, constraints ->
+    val ratio = aspectRatio.coerceAtMost(MaxImageAspectRatio)
+    val maxHeightPx = maxHeight.roundToPx()
+    val width = if (constraints.hasBoundedWidth) constraints.maxWidth else (maxHeightPx * ratio).roundToInt()
+    val height = constraints.constrainHeight((width / ratio).roundToInt().coerceAtMost(maxHeightPx))
+    val placeable = measurable.measure(Constraints.fixed(width, height))
+    layout(width, height) { placeable.place(0, 0) }
+}
 
 // ─── Shared text content ────────────────────────────────────────────────────
 
@@ -187,12 +217,9 @@ fun LinkPreviewCard(
                         Image(
                             bitmap = imageBitmap,
                             contentDescription = stringResource(MR.string.cd_link_preview_image),
-                            modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp).clip(
-                                RoundedCornerShape(
-                                    topStart = Dimens.Message.cornerRadius,
-                                    topEnd = Dimens.Message.cornerRadius
-                                )
-                            ),
+                            modifier = Modifier.linkPreviewImageSize(
+                                imageBitmap.width.toFloat() / imageBitmap.height
+                            ).clip(ImageCornerShape),
                             contentScale = ContentScale.Crop
                         )
                     }
@@ -255,13 +282,14 @@ fun LinkPreviewCard(
     isUploading: Boolean = false,
     localImagePath: String? = null,
     modifier: Modifier = Modifier,
+    imageMaxHeight: Dp = ImageMaxHeight,
 ) {
     val uriHandler = LocalUriHandler.current
     val domain = extractDomain(descriptor.url)
 
-    val imageCornerShape = RoundedCornerShape(
-        topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius
-    )
+    val imageModifier = Modifier
+        .linkPreviewImageSize(previewThumbnail.aspectRatio(), imageMaxHeight)
+        .clip(ImageCornerShape)
 
     // While the message is pending/uploading the drive payload does not exist yet, so a
     // HomebaseImage fetch would 404 into a broken-image triangle. Feed Coil a local source
@@ -290,7 +318,7 @@ fun LinkPreviewCard(
                 AsyncImage(
                     model = pendingModel,
                     contentDescription = descriptor.title,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp).clip(imageCornerShape),
+                    modifier = imageModifier,
                     contentScale = ContentScale.Crop,
                 )
             } else {
@@ -309,7 +337,7 @@ fun LinkPreviewCard(
 
                 HomebaseImage(
                     imageData = imageData,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp).clip(imageCornerShape),
+                    modifier = imageModifier,
                     contentScale = ContentScale.Crop,
                     contentDescription = descriptor.title,
                 )

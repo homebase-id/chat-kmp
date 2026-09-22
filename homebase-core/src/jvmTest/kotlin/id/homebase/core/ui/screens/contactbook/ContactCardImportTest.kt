@@ -8,8 +8,12 @@ import id.homebase.api.client.contacts.ContactName
 import id.homebase.api.client.contacts.ContactPhone
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.contactcard.VCardParser
+import id.homebase.core.ui.screens.contactbook.ContactCardImport.ExistingContact
+import id.homebase.core.ui.screens.contactbook.ContactCardImport.ExistingContact.MatchedOn
+import id.homebase.core.ui.screens.contactbook.components.mergeTargetFor
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
+import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
 import kotlinx.coroutines.test.runTest
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -323,6 +327,71 @@ class ContactCardImportTest {
         assertEquals(contacts, seen, "Hydration has to be driven by the list about to be matched.")
     }
 
+    private fun identityContact(uniqueId: Uuid, displayName: String, odinId: String, phone: String) =
+        Contact(
+            uniqueId = uniqueId,
+            versionTag = Uuid.random(),
+            content = ContactContent(
+                odinId = odinId,
+                name = ContactName(displayName = displayName),
+                phone = ContactPhone(phone),
+            ),
+        )
+
+    @Test
+    fun `an identity hit hydrates only that contact and matches as the full scan would`() = runTest {
+        val toddId = Uuid.random()
+        val household = syncedContact(Uuid.random(), "Home", phone = "+14155550123")
+        val todd = identityContact(toddId, "Todd Mitchell", "samwise.gamgee.demo.rocks", "+14155550123")
+        val contacts = listOf(household, todd)
+        val overrides = mapOf(toddId to ContactFieldOverlay(organization = "Shire Gardens"))
+        val card = ContactCardDescriptor(
+            displayName = "Todd",
+            odinId = "samwise.gamgee.demo.rocks",
+            phones = listOf("+14155550123"),
+        )
+        val hydrated = mutableListOf<List<Contact>>()
+
+        val match = ContactCardImport.resolveExisting(card, { contacts }) {
+            hydrated += it
+            overrides
+        }
+
+        assertEquals(listOf(listOf(todd)), hydrated)
+        assertEquals(
+            ContactCardImport.findExisting(
+                card,
+                contacts.mapNotNull { it.toContactBookEntry()?.withOverride(overrides[it.uniqueId]) },
+            ),
+            match,
+        )
+        assertEquals("Shire Gardens", match?.entry?.organization)
+    }
+
+    @Test
+    fun `no identity hit falls back to the whole book and its override-only phones`() = runTest {
+        val adaId = Uuid.random()
+        val contacts = listOf(
+            syncedContact(adaId, "Ada Vance", phone = "+4915112345678"),
+            syncedContact(Uuid.random(), "Other", phone = "+4915199999999"),
+        )
+        val card = ContactCardDescriptor(
+            displayName = "Ada",
+            odinId = "nobody.demo.rocks",
+            phones = listOf("+14155550123"),
+        )
+        val hydrated = mutableListOf<List<Contact>>()
+
+        val match = ContactCardImport.resolveExisting(card, { contacts }) {
+            hydrated += it
+            mapOf(adaId to ContactFieldOverlay(additionalPhones = listOf("+14155550123")))
+        }
+
+        assertEquals(listOf(contacts), hydrated)
+        assertEquals(adaId, match?.entry?.uniqueId)
+        assertEquals(MatchedOn.PhoneOrEmail, match?.matchedOn)
+    }
+
     @Test
     fun `a name-only card never blocks a save`() {
         val descriptor = ContactCardDescriptor(displayName = "Ada Vance")
@@ -563,6 +632,15 @@ class ContactCardImportTest {
         )
 
         assertEquals(todd.uniqueId, assertNotNull(match).entry.uniqueId)
+    }
+
+    @Test
+    fun `only an identity match becomes the Update target`() {
+        val todd = entry("Todd Mitchell", odinId = "samwise.gamgee.demo.rocks")
+
+        assertEquals(todd, mergeTargetFor(ExistingContact(todd, MatchedOn.Identity)))
+        assertNull(mergeTargetFor(ExistingContact(todd, MatchedOn.PhoneOrEmail)))
+        assertNull(mergeTargetFor(null))
     }
 
     @Test

@@ -1,5 +1,14 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.chat.services.ChatProtocol
+
+fun List<PayloadDescriptor>?.mediaPayloads(): List<PayloadDescriptor> =
+    this?.filter { payload ->
+        payload.key != ChatProtocol.DefaultPayloadKey &&
+            !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
+    }.orEmpty()
+
 /**
  * Resolves the display name for a reply quote's author.
  *

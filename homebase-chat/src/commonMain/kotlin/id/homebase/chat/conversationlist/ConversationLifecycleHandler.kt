@@ -332,10 +332,6 @@ internal class ConversationLifecycleHandler(
         }
     }
 
-    fun handleCloseDetailPaneRequestConsumed() {
-        uiState.update { it.copy(closeDetailPaneRequest = null) }
-    }
-
     fun handleAcceptRejoin(action: ConversationListUiAction.AcceptRejoin) {
         scope.launch {
             try {
@@ -454,17 +450,10 @@ internal class ConversationLifecycleHandler(
             conversationStream.onConversationDeleted(conversationId)
 
             val close = uiState.value.selectedConversationId == conversationId
-            uiState.update {
-                it.copy(
-                    inFlightOperationLabel = null,
-                    selectedConversationId = if (close) null else it.selectedConversationId,
-                    closeDetailPaneRequest = if (close) conversationId else it.closeDetailPaneRequest,
-                )
-            }
-            if (close) {
-                // ClearSelection also resets messages and stops the per-convo job.
-                dispatch(ConversationListUiAction.ClearSelection)
-            }
+            uiState.update { it.copy(inFlightOperationLabel = null) }
+            // ClearSelection owns the whole close: the id, the message list, the per-convo job
+            // and the frozen unread boundary, which it can only drop while the id is still set.
+            if (close) dispatch(ConversationListUiAction.ClearSelection)
             sendEvent(ShowInfoMessage(MR.string.chat_conversation_deleted_confirmation))
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = "ConversationListViewModel") {

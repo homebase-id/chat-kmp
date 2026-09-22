@@ -59,23 +59,12 @@ import kotlin.uuid.Uuid
  * True when a single payload renders as a compact [DocumentMediaItem] file card (icon + name +
  * size + download) rather than a visual media tile — so it must hug its content instead of being
  * stretched to a media-height box, which leaves the card floating atop a grey void (#1103).
- *
- * Mirrors [MediaItem]'s routing: link-preview and location payloads have their own cards (false);
- * image, video, HLS and audio are media (false); everything else that routes to DocumentMediaItem
- * (pdf, zip, rar, apk, and the text and application MIME families) is a document (true). Keep in
- * sync with the content-type branches in [MediaItem] if a new document type is added there.
  */
 internal fun PayloadDescriptor.rendersAsDocumentCard(): Boolean {
     if (key == ChatProtocol.PAYLOAD_KEY_LINKS || key == ChatProtocol.PAYLOAD_KEY_LOCATION) return false
     val ct = contentType ?: return false
-    if (ct.startsWith("image/") || ct.startsWith("video/") || ct.startsWith("audio/")) return false
-    if (ct == "application/vnd.apple.mpegurl") return false // HLS video, not a document
-    return ct == "application/pdf" ||
-        ct == "application/zip" ||
-        ct == "application/x-rar-compressed" ||
-        ct == "application/vnd.android.package-archive" ||
-        ct.startsWith("text/") ||
-        ct.startsWith("application/")
+    // An HLS playlist is application/* but plays as video.
+    return ct.startsWith("text/") || (ct.startsWith("application/") && !isVisualMedia())
 }
 
 /**
@@ -183,12 +172,13 @@ fun MediaMessage(
                 // or the card floats atop a grey void (#1103).
                 val isDocument = remember(payloads) { payloads[0].rendersAsDocumentCard() }
                 // Capped here, not inside AudioPlayerWidget, so the bubble background is capped too.
-                val isAudio = remember(payloads) {
-                    payloads[0].contentType?.startsWith("audio/") == true
-                }
+                val isAudio = remember(payloads) { payloads[0].isAudio() }
                 val sizedModifier = when {
-                    isDocument ->
+                    // The block-caption bubble is already caption-wide; a capped card would leave a strip.
+                    isDocument && fillsBubble ->
                         widthModifier
+                    isDocument ->
+                        widthModifier.widthIn(max = Dimens.MediaBubble.documentMaxWidth)
                     fillsBubble ->
                         widthModifier.fillMaxWidth().height(Dimens.MediaBubble.maxHeight)
                     isAudio ->
@@ -208,10 +198,18 @@ fun MediaMessage(
                                 .coerceIn(Dimens.MediaBubble.minHeight, Dimens.MediaBubble.maxHeight),
                         )
                     else ->
-                        widthModifier.heightIn(
-                            min = Dimens.MediaBubble.minHeight,
-                            max = Dimens.MediaBubble.maxHeight,
-                        )
+                        widthModifier
+                            .then(
+                                if (isLinkPreview && !fillWidth) {
+                                    Modifier.widthIn(max = Dimens.MediaBubble.linkPreviewMaxWidth)
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .heightIn(
+                                min = Dimens.MediaBubble.minHeight,
+                                max = Dimens.MediaBubble.maxHeight,
+                            )
                 }
                 MediaItem(
                     payload = payloads[0],

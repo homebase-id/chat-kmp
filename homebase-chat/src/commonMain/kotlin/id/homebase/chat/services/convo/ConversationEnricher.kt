@@ -95,46 +95,16 @@ class ConversationEnricher {
 }
 
 /**
- * Patches the note-to-self conversation's [ConversationAvatarModel] with the
- * owner's initials.
+ * Patches the note-to-self conversation's [ConversationAvatarModel] with the owner's initials.
  *
- * imageData is deliberately left null so [id.homebase.core.avatars.OwnerAvatar]
- * falls through to [id.homebase.core.avatars.PublicAvatar] →
- * `https://{odinId}/pub/image`, the full-res source the chat header already
- * renders successfully. Attaching the tiny base64
- * [OwnerSession.profileImagePreviewThumbnail] here instead blew a 20px preview up
- * into the avatar circle — blurry (#956). Initials remain the fallback until the
- * photo loads (or when the owner has none).
+ * imageData is deliberately left null so [id.homebase.core.avatars.OwnerAvatar] falls through to
+ * [id.homebase.core.avatars.PublicAvatar]: attaching the tiny base64
+ * [OwnerSession.profileImagePreviewThumbnail] here instead blew a 20px preview up into the avatar
+ * circle. Initials remain the fallback until the photo loads.
  */
 internal fun ConversationUiModel.withOwnerProfileAvatar(
     ownerSession: OwnerSession,
 ): ConversationUiModel {
     if (avatarModel.type != ConversationAvatarModel.Type.Owner) return this
     return copy(avatarModel = avatarModel.copy(initials = ownerSession.initials()))
-
-    // TODO(#956, option 2): once we fetch the owner's real profile image data
-    // (real profileImageFileId/profileImageFileKey with an upgrade path), attach
-    // it here so the preview is only a placeholder that upgrades to full-res —
-    // instead of relying solely on /pub/image. The synthetic preview-only shape
-    // that produced the 20px blur is kept below for reference; it must NOT ship as-is.
-    // Restore imports KeyHeader, EmbeddedThumb, HomebaseImageData, kotlin.uuid.Uuid when reviving.
-    //
-    // val ownerImageData = HomebaseImageData(
-    //     driveId = Uuid.NIL,
-    //     fileId = Uuid.NIL,
-    //     payloadKey = "",
-    //     isEncrypted = false,
-    //     previewThumbnail = EmbeddedThumb(
-    //         pixelWidth = 0,
-    //         pixelHeight = 0,
-    //         contentType = "image/webp",
-    //         content = ownerSession.profileImagePreviewThumbnail.orEmpty(),
-    //     ),
-    //     lastModified = ownerSession.profileImageLastModified,
-    //     keyHeader = KeyHeader.newRandom16(),
-    // )
-    // return copy(avatarModel = avatarModel.copy(
-    //     initials = ownerSession.initials(),
-    //     imageData = ownerImageData,
-    // ))
 }

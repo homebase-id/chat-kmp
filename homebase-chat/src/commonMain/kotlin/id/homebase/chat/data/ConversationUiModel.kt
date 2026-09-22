@@ -20,7 +20,6 @@ data class ConversationUiModel(
     val latestMessageTimestamp: Instant, // Timestamp of the last message in this convo
     val unreadCount: Int = 0,
     val avatarInitials: String,
-    val avatarUrl: String = "",
     val avatarTiny: EmbeddedThumb?,
     val participants: List<OdinId> = listOf(),
     val isPinned: Boolean = false,

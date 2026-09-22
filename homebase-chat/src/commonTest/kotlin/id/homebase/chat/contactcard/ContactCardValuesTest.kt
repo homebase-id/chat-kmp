@@ -95,7 +95,7 @@ class ContactCardValuesTest {
     }
 
     @Test
-    fun `initials come from the name, never from a phone number`() {
+    fun `initials come from the name never from a phone number`() {
         assertEquals("AV", card().avatarInitials())
         assertEquals("A", orgCard("Acme").avatarInitials())
         assertEquals(
@@ -119,7 +119,7 @@ class ContactCardValuesTest {
     }
 
     @Test
-    fun `an unparseable card carries no descriptor, so the bubble has nothing to act on`() {
+    fun `an unparseable card carries no descriptor so the bubble has nothing to act on`() {
         val content = MessageContent.ContactCard(null)
 
         assertEquals(null, content.descriptor)
@@ -160,7 +160,7 @@ class ContactCardValuesTest {
     }
 
     @Test
-    fun `tel targets keep only ASCII digits, not every Unicode digit`() {
+    fun `tel targets keep only ASCII digits not every Unicode digit`() {
         // Char.isDigit() is true for these; a dialer cannot parse them.
         assertEquals("", "٠١٢٣٤٥٦٧٨٩".dialable(), "Arabic-Indic digits must not reach tel:.")
         assertEquals("", "०१२३४५६७८९".dialable(), "Devanagari digits must not reach tel:.")
@@ -309,7 +309,7 @@ class ContactCardValuesTest {
     }
 
     @Test
-    fun `a card sent by its own subject fetches, because they already know it arrived`() {
+    fun `a card sent by its own subject fetches because they already know it arrived`() {
         val card = card().copy(odinId = "samwise.gamgee.demo.rocks")
 
         assertEquals(
@@ -345,6 +345,19 @@ class ContactCardValuesTest {
     }
 
     @Test
+    fun `only an identity already in your book turns Save into Update`() {
+        val book = setOf(OdinId("todd.mitchell.demo.rocks"))
+
+        assertTrue(card().copy(odinId = " Todd.Mitchell.Demo.Rocks ").isSavedIn(book))
+        assertFalse(card().copy(odinId = "someone.else.demo.rocks").isSavedIn(book))
+        assertFalse(card().copy(odinId = "not a domain").isSavedIn(book))
+        assertFalse(
+            card(phones = listOf("+14155550123")).isSavedIn(book),
+            "An identity-less card keeps Save and leaves the phone/email check to the host.",
+        )
+    }
+
+    @Test
     fun `an over-long identity makes the whole card unrenderable rather than truncating the host`() {
         val tooLong = "a".repeat(ContactCardDescriptor.MAX_VALUE_CODEPOINTS + 1) + ".example.com"
 
@@ -364,7 +377,7 @@ class ContactCardValuesTest {
     }
 
     @Test
-    fun `a nameless card is titled by its identity, and does not repeat it as a row`() {
+    fun `a nameless card is titled by its identity and does not repeat it as a row`() {
         val card = ContactCardDescriptor(displayName = "", odinId = "samwise.gamgee.demo.rocks")
 
         assertEquals("samwise.gamgee.demo.rocks", card.summaryLine())
@@ -399,7 +412,7 @@ class ContactCardValuesTest {
     }
 
     @Test
-    fun `an identity leads the values, ahead of phones and emails`() {
+    fun `an identity leads the values ahead of phones and emails`() {
         val card = ContactCardDescriptor(
             displayName = "Todd",
             odinId = "samwise.gamgee.demo.rocks",
@@ -545,7 +558,7 @@ class ContactCardValuesTest {
     }
 
     @Test
-    fun `an unattested identity still reaches the editor, so nothing is dropped silently`() {
+    fun `an unattested identity still reaches the editor so nothing is dropped silently`() {
         val hostile = card(phones = listOf("+14155550123"), emails = listOf("ada@example.com"))
             .copy(odinId = "tracker.evil.tld")
 
