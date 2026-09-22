@@ -69,8 +69,8 @@ object AppConfig {
 expect fun returnUrl(): String
 
 /**
- * Return URL the owner data-upgrade page redirects to once the upgrade completes.
- * Same platform split as [returnUrl]: deep link on mobile, localhost loopback on desktop.
+ * Return URL the owner data-upgrade page redirects to once the upgrade completes:
+ * deep link on mobile, localhost loopback on desktop, the app's own page on web.
  */
 expect fun dataUpgradeReturnUrl(): String
 
