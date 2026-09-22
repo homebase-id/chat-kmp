@@ -10,7 +10,7 @@ import id.homebase.api.video.GifShrinker
 import id.homebase.chat.services.image.StickerImageProcessor
 import id.homebase.chat.services.image.isBackgroundRemovalSupported
 import id.homebase.chat.services.image.removeBackground
-import id.homebase.chat.services.sticker.STICKER_GIF_MAX_BYTES
+import id.homebase.chat.services.sticker.TRAY_ANIMATED_MAX_BYTES
 import id.homebase.resources.MR
 import id.homebase.resources.cd_sticker_variant_cutout
 import id.homebase.resources.cd_sticker_variant_original
@@ -90,7 +90,7 @@ class StickerCreator(
             if (ImageFormatDetector.isHeic(bytes)) {
                 val jpeg = convertHeicToJpeg(bytes)
                 if (jpeg != null) jpeg to "image/jpeg" else bytes to contentType
-            } else GifShrinker.shrink(bytes, STICKER_GIF_MAX_BYTES) to contentType
+            } else GifShrinker.shrink(bytes, TRAY_ANIMATED_MAX_BYTES) to contentType
         }
     },
     // Where the heavy image work (decode/transparency probe/segmenter/outline) runs. Default

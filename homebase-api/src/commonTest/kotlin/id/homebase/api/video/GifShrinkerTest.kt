@@ -104,8 +104,7 @@ class GifShrinkerTest {
         assertSame(input, shrink(input, failed))
         assertEquals(1, failed.calls.size)
 
-        val threw = GifShrinker.shrink(input, BUDGET, { _, _, _ -> error("ffmpeg crashed") })
-        assertSame(input, threw)
+        assertSame(input, GifShrinker.shrink(input, BUDGET) { _, _, _ -> error("ffmpeg crashed") })
     }
 
     @Test
@@ -115,8 +114,7 @@ class GifShrinkerTest {
 
     @Test
     fun timeout_keepsTheOriginal() = runTest {
-        val result = GifShrinker.shrink(input, BUDGET, { _, _, _ -> awaitCancellation() }, timeoutMs = 1_000)
-        assertSame(input, result)
+        assertSame(input, GifShrinker.shrink(input, BUDGET) { _, _, _ -> awaitCancellation() })
     }
 
     @Test

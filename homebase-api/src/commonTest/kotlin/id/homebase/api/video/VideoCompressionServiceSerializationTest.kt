@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 /**
  * Regression test for the **serialization invariant** [VideoCompressionService] enforces:
  * the shared ffmpeg backend is not concurrency-safe, so two heavy ops (compress / segment /
- * segmentAndEncrypt / remux) must never run at the same time. The service guards them behind
+ * segmentAndEncrypt / remux / transcode) must never run at the same time. The service guards them behind
  * one [kotlinx.coroutines.sync.Mutex]; this test proves a second call blocks until the first
  * releases instead of entering the backend concurrently.
  *
