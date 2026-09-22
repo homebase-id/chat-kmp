@@ -19,7 +19,6 @@ import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -66,7 +65,6 @@ import id.homebase.resources.chat_contact_card_message
 import id.homebase.resources.chat_contact_card_nothing_else
 import id.homebase.resources.chat_contact_card_open_profile
 import id.homebase.resources.chat_contact_card_phones
-import id.homebase.resources.chat_contact_card_save
 import id.homebase.resources.chat_contact_card_send_email
 import id.homebase.resources.chat_contact_card_title
 import id.homebase.resources.contactbook_detail_message
@@ -87,6 +85,7 @@ fun ContactCardDetailDialog(
     descriptor: ContactCardDescriptor,
     onDismiss: () -> Unit,
     onSaveToContacts: ((ContactCardDescriptor) -> Unit)? = null,
+    alreadySaved: Boolean = false,
     onMessageIdentity: ((String) -> Unit)? = null,
     authorOdinId: String? = null,
     photo: HomebaseImageData? = null,
@@ -99,6 +98,7 @@ fun ContactCardDetailDialog(
             descriptor = descriptor,
             onDismiss = onDismiss,
             onSaveToContacts = onSaveToContacts,
+            alreadySaved = alreadySaved,
             onMessageIdentity = onMessageIdentity,
             authorOdinId = authorOdinId,
             photo = photo,
@@ -112,6 +112,7 @@ private fun ContactCardDetailContent(
     descriptor: ContactCardDescriptor,
     onDismiss: () -> Unit,
     onSaveToContacts: ((ContactCardDescriptor) -> Unit)?,
+    alreadySaved: Boolean,
     onMessageIdentity: ((String) -> Unit)?,
     authorOdinId: String?,
     photo: HomebaseImageData?,
@@ -224,12 +225,12 @@ private fun ContactCardDetailContent(
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.PersonAdd,
+                        imageVector = saveActionIcon(alreadySaved),
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(text = stringResource(MR.string.chat_contact_card_save))
+                    Text(text = stringResource(saveActionLabel(alreadySaved)))
                 }
             }
 

@@ -31,6 +31,10 @@ sealed class Route {
     data object ProfileAvatarEdit : Route()
 
     @Serializable
+    @SerialName("profile-card")
+    data object ProfileCard : Route()
+
+    @Serializable
     @SerialName("create-conversation")
     data object CreateConversation : Route()
 
@@ -106,6 +110,10 @@ sealed class Route {
     @Serializable
     @SerialName("media-settings")
     data object MediaSettings : Route()
+
+    @Serializable
+    @SerialName("keyboard-settings")
+    data object KeyboardSettings : Route()
 
     @Serializable
     @SerialName("defragmenter")

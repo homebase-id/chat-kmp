@@ -216,6 +216,7 @@ class LoginViewModel(
                     identity = homebaseId,
                     appId = AppConfig.APP_ID,
                     appName = AppConfig.APP_NAME,
+                    appSlug = AppConfig.APP_SLUG,
                     drives = targetDriveAccessRequest,
                     permissions = appPermissions,
                     circleDrives = circleDriveTargetRequest,

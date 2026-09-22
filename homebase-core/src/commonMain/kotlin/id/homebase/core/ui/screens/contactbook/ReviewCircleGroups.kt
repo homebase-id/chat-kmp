@@ -68,15 +68,18 @@ private fun CircleWithMembers.toUi() = ContactCircleUi(
 )
 
 /**
- * True for a circle this app presents: one the user made themselves (no owning app) or one the
- * contacts app owns.
+ * True for a circle this app presents: one the contacts app owns.
  *
  * Every app seeds personal circles at GrantOn.None — Vault, Webdrop, Recovery, SocialSync and a
  * dozen more — and until odin-core sets Designation truthfully nothing separates them from
  * Friends. Their own apps present them; this one doesn't.
+ *
+ * An unstamped circle is not presented at all: nothing tells an owner circle apart from an app
+ * circle odin-core left without an appId, so the sheet would be offering the second to grant the
+ * first.
  */
-private fun RedactedCircleDefinition.isOwnedByThisApp(): Boolean =
-    appId == null || appId.toString().equals(CONTACTS_APP_ID, ignoreCase = true)
+private fun RedactedCircleDefinition.isOwnedByContactsApp(): Boolean =
+    appId != null && appId.toString().equals(CONTACTS_APP_ID, ignoreCase = true)
 
 /** Emergency Location Access is user-assigned like any personal circle, but grants location. */
 private fun RedactedCircleDefinition.isSpecialAccessCircle(): Boolean =
@@ -95,12 +98,18 @@ fun CircleMembershipState.reviewCircleGroups(): ReviewCircleGroups {
             .filter {
                 !it.circle.isSpecialAccessCircle() &&
                     it.circle.grantOn == CircleGrantOn.None &&
-                    it.circle.isOwnedByThisApp()
+                    it.circle.isOwnedByContactsApp()
             }
             .map { it.toUi() },
+        // Matched on its id rather than on ownership, so it survives an unstamped appId.
         special = personal.filter { it.circle.isSpecialAccessCircle() }.map { it.toUi() },
+        // Any app's, not just this one's — but there has to be an app, or the heading is a lie.
         appDefaults = personal
-            .filter { !it.circle.isSpecialAccessCircle() && it.circle.grantOn == CircleGrantOn.Review }
+            .filter {
+                !it.circle.isSpecialAccessCircle() &&
+                    it.circle.grantOn == CircleGrantOn.Review &&
+                    it.circle.appId != null
+            }
             .map { it.toUi() },
     )
 }

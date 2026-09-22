@@ -3,11 +3,13 @@
 package id.homebase.api.client.profile
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlin.uuid.ExperimentalUuidApi
 
 /**
@@ -50,9 +52,8 @@ internal fun HomebaseFile.toProfileAttribute(): ProfileAttribute? {
         return null
     }
     val data = (root["data"] as? JsonObject) ?: JsonObject(emptyMap())
-    val visibility = ProfileVisibility.fromWire(
-        serverMetadata.accessControlList?.requiredSecurityGroup
-    )
+    val acl = serverMetadata.accessControlList
+    val visibility = ProfileVisibility.fromWire(acl?.requiredSecurityGroup)
 
     return ProfileAttribute(
         id = id,
@@ -65,5 +66,7 @@ internal fun HomebaseFile.toProfileAttribute(): ProfileAttribute? {
         keyHeader = keyHeader,
         payloads = fileMetadata.payloads,
         isEncrypted = serverFileIsEncrypted,
+        acl = acl ?: AccessControlList(requiredSecurityGroup = visibility.wireValue),
+        priority = (root["priority"] as? JsonPrimitive)?.intOrNull ?: 0,
     )
 }

@@ -143,6 +143,7 @@ import id.homebase.chat.conversationlist.RecipientGroupModel
 import id.homebase.chat.conversationlist.RecipientModel
 import id.homebase.chat.conversationlist.RecipientType
 import id.homebase.chat.conversationlist.RecordingData
+import id.homebase.chat.conversationlist.lastEditableMessage
 import id.homebase.chat.conversationlist.resolveOwnSendFollowTarget
 import id.homebase.chat.createconversation.ContactItem
 import id.homebase.chat.createconversation.GroupOrConversationItem
@@ -731,6 +732,15 @@ fun ConversationContent(
                 onUiAction(ConversationListUiAction.DismissStickerOptions)
             },
             onDismiss = { onUiAction(ConversationListUiAction.DismissStickerOptions) },
+        )
+    }
+
+    uiState.pendingGifPaste?.let { paste ->
+        GifPasteSheet(
+            bytes = paste.bytes,
+            onSendAsSticker = { onUiAction(ConversationListUiAction.SendPastedGifAsSticker) },
+            onSendAsGif = { onUiAction(ConversationListUiAction.SendPastedGifAsGif) },
+            onDismiss = { onUiAction(ConversationListUiAction.DismissPastedGif) },
         )
     }
 
@@ -1776,6 +1786,17 @@ fun ConversationContent(
                                             imageBytes = imageBytes,
                                         )
                                     )
+                                },
+                                onEditLast = editLast@{
+                                    val target = uiState.lastEditableMessage() ?: return@editLast false
+                                    onUiAction(
+                                        ConversationListUiAction.EditMessage(
+                                            messageId = target.id,
+                                            versionTag = target.versionTag,
+                                            ignoreDraft = false,
+                                        )
+                                    )
+                                    true
                                 },
                                 attachmentActions = popoverAttachmentActions,
                                 emojiPopoverContent = if (composerPopovers) {

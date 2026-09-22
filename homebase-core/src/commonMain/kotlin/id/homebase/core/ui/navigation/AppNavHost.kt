@@ -74,6 +74,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -117,6 +118,7 @@ import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
+import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
@@ -124,6 +126,7 @@ import id.homebase.core.ui.screens.feed.FeedTimelineScreen
 import id.homebase.core.ui.screens.feed.PostDetailScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
+import id.homebase.core.ui.screens.keyboard.KeyboardSettingsScreen
 import id.homebase.core.ui.screens.media.MediaSettingsScreen
 import id.homebase.core.ui.screens.moments.CreateMomentGroupScreen
 import id.homebase.core.ui.screens.moments.MomentAudienceScreen
@@ -152,6 +155,8 @@ import id.homebase.core.ui.screens.location.livelocation.LiveLocationScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
 import id.homebase.core.ui.screens.location.share.ShareLocationScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
+import id.homebase.core.ui.screens.card.ProfileCardScreen
+import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.profile.ProfileEditScreen
 import id.homebase.core.ui.screens.settings.SettingsActions
@@ -309,6 +314,7 @@ fun AppNavHost(
     val serverSupportsMail by emailPreferences.serverSupportsMail.collectAsStateWithLifecycle()
     val emailViewModel: EmailViewModel = koinViewModel()
     val emailUiState by emailViewModel.uiState.collectAsStateWithLifecycle()
+    val profileCardEnabled by koinInject<DeveloperPreferences>().profileCardEnabled.collectAsStateWithLifecycle()
     val emailUnreadCount = emailUiState.mailboxStatus
         ?.takeIf { it.available }
         ?.inboxUnread ?: 0
@@ -1253,6 +1259,9 @@ fun AppNavHost(
                                 var pendingContactCard by rememberSaveable(
                                     stateSaver = ContactCardDescriptorSaver,
                                 ) { mutableStateOf<ContactCardDescriptor?>(null) }
+                                var pendingContactCardSaved by rememberSaveable {
+                                    mutableStateOf(false)
+                                }
                                 var savedContact by remember {
                                     mutableStateOf<Pair<String, Uuid?>?>(null)
                                 }
@@ -1278,6 +1287,7 @@ fun AppNavHost(
                                 }
                                 ContactCardSaveHost(
                                     descriptor = pendingContactCard,
+                                    alreadySaved = pendingContactCardSaved,
                                     onDismiss = { pendingContactCard = null },
                                     onOpenContact = { uniqueId, odinId ->
                                         navController.navigate(
@@ -1355,7 +1365,10 @@ fun AppNavHost(
                                         @Suppress("AssignedValueIsNeverRead")
                                         isChatComposerOpen = it
                                     },
-                                    onSaveContactCard = { pendingContactCard = it },
+                                    onSaveContactCard = { card, alreadySaved ->
+                                        pendingContactCard = card
+                                        pendingContactCardSaved = alreadySaved
+                                    },
                                     newConversationPane = { onDismiss, onConversationOpened ->
                                         NewConversationPaneHost(
                                             onDismiss = onDismiss,
@@ -1618,11 +1631,14 @@ fun AppNavHost(
                                                 navController.navigate(Route.Defragmenter)
                                             },
                                         ),
+                                        profileCardEnabled = profileCardEnabled,
                                     )
                                 }
                             },
                         ) {
                             if (isAuthenticated) {
+                                // Pre-warms the card page; its host lives as long as this entry.
+                                if (profileCardEnabled) StartCardHostWhenSettled(koinViewModel())
                                 SettingsScreen(
                                     viewModel = koinViewModel(),
                                     actions = SettingsActions(
@@ -1635,6 +1651,9 @@ fun AppNavHost(
                                         },
                                         onMedia = {
                                             navController.navigate(Route.MediaSettings)
+                                        },
+                                        onKeyboard = {
+                                            navController.navigate(Route.KeyboardSettings)
                                         },
                                         onStorage = {
                                             navController.navigate(Route.StorageSettings)
@@ -1662,13 +1681,21 @@ fun AppNavHost(
                                         onProfileAvatarEdit = {
                                             navController.navigate(Route.ProfileAvatarEdit)
                                         },
+                                        onProfileCard = {
+                                            navController.navigate(Route.ProfileCard)
+                                        }.takeIf { profileCardEnabled },
                                     ),
                                 )
                             }
                         }
 
-                        composable<Route.ProfileEdit> {
+                        composable<Route.ProfileEdit> { entry ->
                             if (isAuthenticated) {
+                                if (profileCardEnabled) {
+                                    StartCardHostWhenSettled(
+                                        koinViewModel(viewModelStoreOwner = rememberCardHostOwner(navController, entry)),
+                                    )
+                                }
                                 ProfileEditScreen(
                                     viewModel = koinViewModel(),
                                     avatarViewModel = koinViewModel(),
@@ -1678,6 +1705,19 @@ fun AppNavHost(
                                             Route.Crop(requestId.toString(), lockedAspect = "square")
                                         )
                                     },
+                                    onOpenCard = { navController.navigate(Route.ProfileCard) }
+                                        .takeIf { profileCardEnabled },
+                                )
+                            }
+                        }
+
+                        composable<Route.ProfileCard> { entry ->
+                            if (isAuthenticated) {
+                                ProfileCardScreen(
+                                    viewModel = koinViewModel(
+                                        viewModelStoreOwner = rememberCardHostOwner(navController, entry),
+                                    ),
+                                    onBack = { navController.popBackStack() },
                                 )
                             }
                         }
@@ -2234,6 +2274,14 @@ fun AppNavHost(
                             }
                         }
 
+                        composable<Route.KeyboardSettings> {
+                            if (isAuthenticated) {
+                                KeyboardSettingsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() })
+                            }
+                        }
+
                         composable<Route.StorageSettings> {
                             if (isAuthenticated) {
                                 StorageSettingsScreen(
@@ -2282,6 +2330,16 @@ private fun NavHostController.navigateToIdentity(odinId: String) {
         )
     )
 }
+
+// The card host lives with the Settings entry (else ProfileEdit's), so it is warm before the card opens and survives it.
+@Composable
+private fun rememberCardHostOwner(navController: NavHostController, entry: NavBackStackEntry): ViewModelStoreOwner =
+    remember(entry) {
+        val backStack = navController.currentBackStack.value
+        backStack.lastOrNull { it.destination.hasRoute(Route.Settings::class) }
+            ?: backStack.lastOrNull { it.destination.hasRoute(Route.ProfileEdit::class) }
+            ?: entry
+    }
 
 private fun NavHostController.selectConversationOnChatList(
     conversationId: Uuid, scrollToBottom: Boolean = false, messageId: Uuid? = null,

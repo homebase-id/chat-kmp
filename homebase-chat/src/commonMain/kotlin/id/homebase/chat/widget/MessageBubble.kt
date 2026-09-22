@@ -189,7 +189,7 @@ fun SentMessageBubble(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
-    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
@@ -520,7 +520,7 @@ fun ReceivedMessageBubble(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
-    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }

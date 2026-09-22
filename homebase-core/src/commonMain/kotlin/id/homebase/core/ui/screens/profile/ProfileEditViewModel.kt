@@ -91,39 +91,11 @@ class ProfileEditViewModel(
                 return@launch
             }
 
-            val byType = attributes.groupBy { it.type }
-            loadedAnonymous = byType.mapNotNull { (type, attrs) ->
-                attrs.firstOrNull { it.visibility == ProfileVisibility.ANONYMOUS }?.let { type to it }
-            }.toMap()
-            loadedConnected = byType.mapNotNull { (type, attrs) ->
-                attrs.firstOrNull { it.visibility != ProfileVisibility.ANONYMOUS }?.let { type to it }
-            }.toMap()
-
-            // The same query already returns PHOTO-type attributes (managed by the dedicated avatar
-            // editor) — just pick them out for ProfilePreview rather than issuing a second fetch.
-            val photos = attributes.filter { it.type == ProfileAttributeTypes.PHOTO }
-            val anonymousPhoto = photos.firstOrNull { it.visibility == ProfileVisibility.ANONYMOUS }
-            val connectedPhoto = photos.firstOrNull { it.visibility == ProfileVisibility.CONNECTED }
-
-            _state.update {
-                applyLoaded(it).copy(anonymousPhoto = anonymousPhoto, connectedPhoto = connectedPhoto)
-            }
+            val loaded = LoadedProfileAttributes.from(attributes)
+            loadedAnonymous = loaded.anonymous
+            loadedConnected = loaded.connected
+            _state.update { it.withLoaded(loaded) }
         }
-    }
-
-    /** Overlays each bucket's loaded attribute values onto a fresh form. */
-    private fun applyLoaded(base: ProfileEditUiState): ProfileEditUiState {
-        fun bucket(loaded: Map<String, ProfileAttribute>): Map<ProfileField, String> =
-            TYPE_FIELDS.flatMap { (type, fields) ->
-                fields.map { (field, key) -> field to loaded[type]?.string(key).orEmpty() }
-            }.toMap()
-
-        return base.copy(
-            isLoading = false,
-            loadFailed = false,
-            anonymousValues = bucket(loadedAnonymous),
-            connectedValues = bucket(loadedConnected),
-        )
     }
 
     private fun updateField(field: ProfileField, tier: ProfileVisibility, value: String) {
@@ -173,7 +145,12 @@ class ProfileEditViewModel(
                 } else {
                     loadedConnected = loadedConnected + (type to newAttr)
                 }
-                _state.update { it.copy(savingAttributes = it.savingAttributes - key) }
+                _state.update {
+                    it.copy(
+                        savingAttributes = it.savingAttributes - key,
+                        attributes = it.attributes.filterNot { stored -> stored.id == newAttr.id } + newAttr,
+                    )
+                }
                 _events.tryEmit(ProfileEditEvent.AttributeSaved(type, tier))
             } catch (e: CancellationException) {
                 throw e
@@ -332,4 +309,44 @@ class ProfileEditViewModel(
             return JsonObject(map)
         }
     }
+}
+
+/**
+ * The editor's write target per type and tier. [connected] is the first non-anonymous record, which
+ * may be owner-only or circle-restricted, so it is never what a visitor sees; see [visibleAttribute].
+ */
+internal class LoadedProfileAttributes(
+    val anonymous: Map<String, ProfileAttribute>,
+    val connected: Map<String, ProfileAttribute>,
+    val all: List<ProfileAttribute>,
+) {
+    companion object {
+        fun from(attributes: List<ProfileAttribute>): LoadedProfileAttributes {
+            val byType = attributes.groupBy { it.type }
+            return LoadedProfileAttributes(
+                anonymous = byType.mapNotNull { (type, attrs) ->
+                    attrs.firstOrNull { it.visibility == ProfileVisibility.ANONYMOUS }?.let { type to it }
+                }.toMap(),
+                connected = byType.mapNotNull { (type, attrs) ->
+                    attrs.firstOrNull { it.visibility != ProfileVisibility.ANONYMOUS }?.let { type to it }
+                }.toMap(),
+                all = attributes,
+            )
+        }
+    }
+}
+
+internal fun ProfileEditUiState.withLoaded(loaded: LoadedProfileAttributes): ProfileEditUiState {
+    fun bucket(attributes: Map<String, ProfileAttribute>): Map<ProfileField, String> =
+        ProfileEditViewModel.TYPE_FIELDS.flatMap { (type, fields) ->
+            fields.map { (field, key) -> field to attributes[type]?.string(key).orEmpty() }
+        }.toMap()
+
+    return copy(
+        isLoading = false,
+        loadFailed = false,
+        anonymousValues = bucket(loaded.anonymous),
+        connectedValues = bucket(loaded.connected),
+        attributes = loaded.all,
+    )
 }

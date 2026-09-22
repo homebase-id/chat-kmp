@@ -293,6 +293,10 @@ class ConversationListViewModel(
         sendEvent = ::sendEvent,
         dispatch = ::onAction,
         addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
+        // Not a bound reference: stickerCreator is initialised below this.
+        sendSticker = { conversationId, bytes, contentType ->
+            stickerCreator.send(conversationId, bytes, contentType)
+        },
     )
 
     private val conversationLifecycleHandler = ConversationLifecycleHandler(
@@ -336,6 +340,7 @@ class ConversationListViewModel(
             val suffix = when (contentType) {
                 "image/jpeg" -> ".jpg"
                 "image/webp" -> ".webp"
+                "image/gif" -> ".gif"
                 else -> ".png"
             }
             val path = fileOperationsProvider.writeBytesToTempFile(bytes, "sticker_editor_", suffix)
@@ -903,12 +908,9 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
-            contactService.contacts
-                .map { contacts -> contacts.mapTo(mutableSetOf()) { it.odinId } }
-                .distinctUntilChanged()
-                .collect { identities ->
-                    _messagesUiState.update { it.copy(savedContactIdentities = identities) }
-                }
+            contactService.savedContactIdentities.collect { identities ->
+                _messagesUiState.update { it.copy(savedContactIdentities = identities) }
+            }
         }
 
         // Projected here, not in composition: contactService.contacts re-emits on connection-status
@@ -1559,6 +1561,9 @@ class ConversationListViewModel(
 
             /* Clipboard image paste */
             is ConversationListUiAction.AttachClipboardImage -> attachmentHandler.handleAttachClipboardImage(action)
+            is ConversationListUiAction.SendPastedGifAsSticker -> attachmentHandler.handleSendPastedGifAsSticker()
+            is ConversationListUiAction.SendPastedGifAsGif -> attachmentHandler.handleSendPastedGifAsGif()
+            is ConversationListUiAction.DismissPastedGif -> attachmentHandler.handleDismissPastedGif()
 
             is ConversationListUiAction.RequestCropAttachment -> attachmentHandler.handleRequestCropAttachment(action)
 
@@ -1631,7 +1636,12 @@ class ConversationListViewModel(
                 stickerHandler.handleRemoveStickerFromMessage(action)
 
             is ConversationListUiAction.SaveContactCard -> {
-                sendEvent(ConversationListUiEvent.NavigateToSaveContactCard(action.descriptor))
+                sendEvent(
+                    ConversationListUiEvent.NavigateToSaveContactCard(
+                        action.descriptor,
+                        action.alreadySaved,
+                    )
+                )
             }
 
             is ConversationListUiAction.MessageIdentity -> {

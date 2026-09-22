@@ -78,6 +78,7 @@ import id.homebase.resources.contactbook_tab_new
 import id.homebase.resources.clear_input
 import id.homebase.resources.menu_back
 import id.homebase.resources.search
+import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionSheet
 import id.homebase.resources.contact_review_failed
 import org.jetbrains.compose.resources.stringResource
@@ -341,7 +342,9 @@ fun ContactBookScreen(
         )
 
         is ContactBookOverlay.Review -> ReviewConnectionSheet(
-            entry = overlay.entry,
+            displayName = overlay.entry.displayName,
+            odinId = overlay.entry.odinId,
+            avatar = { ContactBookAvatar(entry = overlay.entry, size = 52.dp) },
             introducedBy = overlay.introducedBy,
             connectedAtMs = overlay.connectedAtMs,
             groups = uiState.reviewCircleGroups,

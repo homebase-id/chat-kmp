@@ -345,6 +345,19 @@ class ContactCardValuesTest {
     }
 
     @Test
+    fun `only an identity already in your book turns Save into Update`() {
+        val book = setOf(OdinId("todd.mitchell.demo.rocks"))
+
+        assertTrue(card().copy(odinId = " Todd.Mitchell.Demo.Rocks ").isSavedIn(book))
+        assertFalse(card().copy(odinId = "someone.else.demo.rocks").isSavedIn(book))
+        assertFalse(card().copy(odinId = "not a domain").isSavedIn(book))
+        assertFalse(
+            card(phones = listOf("+14155550123")).isSavedIn(book),
+            "An identity-less card keeps Save and leaves the phone/email check to the host.",
+        )
+    }
+
+    @Test
     fun `an over-long identity makes the whole card unrenderable rather than truncating the host`() {
         val tooLong = "a".repeat(ContactCardDescriptor.MAX_VALUE_CODEPOINTS + 1) + ".example.com"
 

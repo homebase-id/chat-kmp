@@ -693,7 +693,7 @@ class VaultViewModel(
     private fun stageAttachment(file: PlatformFile): AttachmentPendingFile {
         val ct = file.contentType()
         return if (ct.startsWith("image/")) {
-            AttachmentPendingFile.FileImage(id = Uuid.random(), file = file)
+            AttachmentPendingFile.FileImage(id = Uuid.random(), file = file, sourceContentType = ct)
         } else {
             AttachmentPendingFile.File(id = Uuid.random(), file = file)
         }

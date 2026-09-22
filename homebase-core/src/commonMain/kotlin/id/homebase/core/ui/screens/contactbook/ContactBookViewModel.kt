@@ -310,11 +310,11 @@ class ContactBookViewModel(
         // entry would otherwise fall through both pills. Connections already in the book show via
         // their saved entry; the rest get a synthetic display-only entry, the same projection
         // the New tab uses.
-        val unsavedConnectionDomains = connectedDomains - contactsByOdin.keys
+        val unsavedConnections = contactsData.connections.unsavedConnections(contactsByOdin.keys)
         val selfEntry = header.ownerSession?.let { selfContact(it) }
         val all = buildList {
             addAll(overriddenContacts)
-            addAll(unsavedConnectionDomains.map { syntheticContact(it) })
+            addAll(unsavedConnections.map { syntheticContact(it.domainName) })
             // The contact store never holds the signed-in user, so a self-search finds nothing.
             // Surface "Name (you)" when the user searches for their own name/handle — only on an
             // active query, and only if self isn't already a saved contact (no duplicate).

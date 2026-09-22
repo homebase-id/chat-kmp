@@ -195,4 +195,51 @@ class ImageFormatDetectorTest {
         )
         assertTrue(ImageFormatDetector.validateJpeg(bytes))
     }
+
+    // =========================================================
+    // isAnimated
+    // =========================================================
+
+    private fun b64(s: String): ByteArray = java.util.Base64.getDecoder().decode(s)
+
+    @Test
+    fun isAnimated_multiFrameGif() {
+        assertTrue(ImageFormatDetector.isAnimated(b64(ANIMATED_GIF)))
+    }
+
+    @Test
+    fun isAnimated_singleFrameGif_isStill() {
+        assertFalse(ImageFormatDetector.isAnimated(ImageTestHelper.loadImage("mountain_800.gif")))
+        // Cut off just before the second frame's descriptor.
+        assertFalse(ImageFormatDetector.isAnimated(b64(ANIMATED_GIF).copyOf(78)))
+    }
+
+    @Test
+    fun isAnimated_webpAnimationFlag() {
+        assertTrue(ImageFormatDetector.isAnimated(b64(ANIMATED_WEBP)))
+        // VP8X with only the alpha flag, then plain VP8L and lossy VP8.
+        for (still in listOf("1_webp_a.webp", "1_webp_ll.webp", "lossy_mountain.webp")) {
+            assertFalse(ImageFormatDetector.isAnimated(ImageTestHelper.loadImage(still)), still)
+        }
+    }
+
+    @Test
+    fun isAnimated_otherFormatsAndGarbage() {
+        assertFalse(ImageFormatDetector.isAnimated(ImageTestHelper.loadImage("roof_test_800x600.jpg")))
+        assertFalse(ImageFormatDetector.isAnimated(ImageTestHelper.loadImage("dice.png")))
+        assertFalse(ImageFormatDetector.isAnimated(ByteArray(0)))
+        assertFalse(ImageFormatDetector.isAnimated("GIF89a".encodeToByteArray() + ByteArray(7) { -1 }))
+    }
+
+    private companion object {
+        // 2x1, two frames, NETSCAPE + graphic-control extensions, second frame has a local color table.
+        const val ANIMATED_GIF =
+            "R0lGODlhAgABAIEAAP8AAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQACgAAACwAAAAAAgABAAAIBQABAAgIACH5" +
+                "BAAKAAAALAAAAAACAAEAgQAA/wAAAAAAAAAAAAgFAAEACAgAOw=="
+
+        // 2x1, two frames.
+        const val ANIMATED_WEBP =
+            "UklGRoQAAABXRUJQVlA4WAoAAAACAAAAAQAAAAAAQU5JTQYAAAAAAAAAAABBTk1GKAAAAAAAAAAAAAEAAAAAAGQAAAJWUDhM" +
+                "DwAAAC8BAAAABxD9j/4HIqL/AQBBTk1GKAAAAAAAAAAAAAEAAAAAAGQAAABWUDhMDwAAAC8BAAAABxDR//4HIqL/AQA="
+    }
 }
