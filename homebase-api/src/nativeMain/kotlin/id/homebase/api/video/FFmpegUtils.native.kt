@@ -1,6 +1,7 @@
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.foundation.toByteArray
 import kotlin.coroutines.resume
 import kotlin.math.PI
 import kotlin.math.atan2
@@ -465,6 +466,37 @@ actual object FFmpegUtils {
                     println("Docs: Error remuxing HLS→MP4: ${result.failStackTrace}")
                 }
                 result.isSuccess
+            }
+
+    actual suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =
+            withContext(Dispatchers.IO) {
+                val id = NSUUID.UUID().UUIDString
+                val inputPath = cacheInputVideo("transcode_$id.$extension", input)
+                val outputPath = "${getCacheDirectory()}/transcode_out_$id.$extension"
+                try {
+                    val args = listOf("-y", "-i", inputPath) + outputArgs + outputPath
+                    val result = suspendCancellableCoroutine<FFmpegResult> { cont ->
+                        val sessionId = bridge.executeFFmpegAsyncArgs(
+                                args = args,
+                                onProgress = {},
+                                onComplete = { if (cont.isActive) cont.resume(it) },
+                        )
+                        cont.invokeOnCancellation {
+                            if (sessionId >= 0) {
+                                try { bridge.cancelFFmpegSession(sessionId) } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                    if (result.isSuccess) {
+                        NSData.dataWithContentsOfFile(outputPath)?.toByteArray()
+                    } else {
+                        println("Docs: transcode failed: ${result.failStackTrace}")
+                        null
+                    }
+                } finally {
+                    NSFileManager.defaultManager.removeItemAtPath(inputPath, null)
+                    NSFileManager.defaultManager.removeItemAtPath(outputPath, null)
+                }
             }
 
     fun generateHlsKeyInfoFile(
