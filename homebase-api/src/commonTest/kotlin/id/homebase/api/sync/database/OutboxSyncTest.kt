@@ -30,6 +30,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.fail
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 import id.homebase.api.client.ClientException
@@ -1480,15 +1481,7 @@ class OutboxSyncTest {
         }
         testScheduler.runCurrent()
 
-        db.outbox.insert(
-            driveId = Uuid.random(),
-            uniqueId = Uuid.random(),
-            dependencyUniqueId = null,
-            priority = 0,
-            uploadType = 0,
-            json = byteArrayOf(),
-            filePaths = null,
-        )
+        db.insertRow()
 
         assertTrue(sync.send())
         advanceUntilIdle()
@@ -1501,24 +1494,16 @@ class OutboxSyncTest {
     /** An offline drain never starts a worker, so it must not ask the OS for a window either. */
     @Test
     fun skippedOfflineDrainTakesNoBackgroundAssertion() = runOutboxTest { db ->
-        val begun = atomic(0)
+        // isOnline is already false at construction; no setOnline(false) needed.
         val sync = OutboxSync(
             databaseManager = db,
             uploader = TestUploader(),
             eventBus = EventBus(),
             scope = backgroundScope,
-            beginBackgroundAssertion = {
-                begun.incrementAndGet()
-                object : BackgroundExecutionAssertion {
-                    override fun end() = Unit
-                }
-            },
+            beginBackgroundAssertion = { fail("offline send() must not begin a background assertion") },
         )
-        sync.setOnline(false)
 
         assertFalse(sync.send(), "send() must decline while offline")
         advanceUntilIdle()
-
-        assertEquals(0, begun.value)
     }
 }

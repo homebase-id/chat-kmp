@@ -126,8 +126,8 @@ class OutboxSync(
     private val uploader: OutboxUploader,
     private val eventBus: EventBus,
     scope: CoroutineScope? = null,
-    private val beginBackgroundAssertion: (String) -> BackgroundExecutionAssertion =
-        ::beginBackgroundExecutionAssertion,
+    private val beginBackgroundAssertion: () -> BackgroundExecutionAssertion =
+        { beginBackgroundExecutionAssertion("outbox-drain") },
 ) {
     // The threads use the DB & Network, so we use the IO dispatcher
     private val scope = scope ?: supervisedScope("outbox-sync", ioDispatcher)
@@ -190,7 +190,7 @@ class OutboxSync(
             try {
                 counterMutex.withLock {
                     if (activeThreads.incrementAndGet() == 1) {
-                        backgroundAssertion = beginBackgroundAssertion(ASSERTION_NAME)
+                        backgroundAssertion = beginBackgroundAssertion()
                         eventBus.emit(BackendEvent.OutboxEvent.Started)
                     }
                 }
@@ -598,8 +598,6 @@ class OutboxSync(
         /** Max outbox upload attempts before a row is dropped (~48h of backoff).
          *  Shown in Message Info as "Attempt N of MAX_ATTEMPTS". */
         public const val MAX_ATTEMPTS: Int = 20
-
-        internal const val ASSERTION_NAME: String = "outbox-drain"
     }
 
     // Checkout stamps of rows currently held by a LIVE upload worker in THIS

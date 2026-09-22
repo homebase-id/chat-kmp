@@ -1,6 +1,7 @@
 package id.homebase.api.platform
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.diagnostics.BgTrace
 import platform.UIKit.UIApplication
 import platform.UIKit.UIBackgroundTaskIdentifier
 import platform.UIKit.UIBackgroundTaskInvalid
@@ -21,7 +22,7 @@ private class IosBackgroundExecutionAssertion(private val name: String) :
         dispatch_async(dispatch_get_main_queue()) {
             taskId = UIApplication.sharedApplication.beginBackgroundTaskWithName(name) {
                 // iOS kills the app if the window closes with the task still open.
-                Logger.w(tag = TAG) { "$name: assertion expired before end()" }
+                Logger.w(tag = BgTrace.TAG) { "assertion-expired name=$name" }
                 endOnMain()
             }
         }
@@ -36,9 +37,5 @@ private class IosBackgroundExecutionAssertion(private val name: String) :
         if (id == UIBackgroundTaskInvalid) return
         taskId = UIBackgroundTaskInvalid
         UIApplication.sharedApplication.endBackgroundTask(id)
-    }
-
-    private companion object {
-        const val TAG = "BackgroundAssertion"
     }
 }
