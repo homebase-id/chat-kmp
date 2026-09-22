@@ -263,16 +263,21 @@
     // webApp/webpack.config.d/html-plugin.js) — in production it's content-hashed for cache busting.
     (function () {
         var params = new URLSearchParams(location.search);
-        var isAuthCallback = window.opener
-            && location.pathname.indexOf("/authorization-code-callback") !== -1
-            && params.has("state");
-        if (isAuthCallback) {
+        var path = location.pathname;
+        var isAuthCallback = path.indexOf("/authorization-code-callback") !== -1 && params.has("state");
+        var isPermissionCallback = path.indexOf("/permission-callback") !== -1;
+        var isDataUpgradeCallback = path.indexOf("/data-upgrade-callback") !== -1;
+        if (window.opener && (isAuthCallback || isPermissionCallback || isDataUpgradeCallback)) {
+            // Data upgrade posts nothing: the opener re-checks on refocus.
+            var type = isAuthCallback ? "youauth-callback" : isPermissionCallback ? "permission-callback" : null;
             try {
-                window.opener.postMessage({ type: "youauth-callback", url: location.href }, location.origin);
+                if (type) window.opener.postMessage({ type: type, url: location.href }, location.origin);
             } catch (e) { /* opener gone — nothing we can do */ }
             window.close();
             return;
         }
+        // Booting without an opener: the router would otherwise keep this path for the whole session.
+        if (isPermissionCallback || isDataUpgradeCallback) history.replaceState(null, "", document.baseURI);
         var scripts = ["sql-wasm.js", "odin-sqljs.js", "mp4box.all.min.js", "ffmpeg-wrapper.js", "odin-ffmpeg.js", "odin-push.js", "<%= htmlWebpackPlugin.files.js[0] %>"];
         var loaded = 0;
         scripts.forEach(function (src) {
