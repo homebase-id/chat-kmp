@@ -1,6 +1,7 @@
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.foundation.toByteArray
 import kotlin.coroutines.resume
 import kotlin.math.PI
 import kotlin.math.atan2
@@ -350,22 +351,25 @@ actual object FFmpegUtils {
         command: String,
         durationMs: Long,
         onProgress: ((Float) -> Unit)?,
-    ): FFmpegResult = suspendCancellableCoroutine { cont ->
-        val sessionId = bridge.executeFFmpegAsync(
+    ): FFmpegResult = awaitSession { onComplete ->
+        bridge.executeFFmpegAsync(
             command = command,
             onProgress = { timeMs ->
                 onProgress?.invoke(progressFraction(timeMs, durationMs))
             },
-            onComplete = { result ->
-                if (cont.isActive) cont.resume(result)
-            },
+            onComplete = onComplete,
         )
-        cont.invokeOnCancellation {
-            if (sessionId >= 0) {
-                try { bridge.cancelFFmpegSession(sessionId) } catch (_: Exception) {}
+    }
+
+    private suspend fun awaitSession(start: (onComplete: (FFmpegResult) -> Unit) -> Long): FFmpegResult =
+        suspendCancellableCoroutine { cont ->
+            val sessionId = start { result -> if (cont.isActive) cont.resume(result) }
+            cont.invokeOnCancellation {
+                if (sessionId >= 0) {
+                    try { bridge.cancelFFmpegSession(sessionId) } catch (_: Exception) {}
+                }
             }
         }
-    }
 
     private fun getCacheDirectory(): String {
         val paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true)
@@ -465,6 +469,32 @@ actual object FFmpegUtils {
                     println("Docs: Error remuxing HLS→MP4: ${result.failStackTrace}")
                 }
                 result.isSuccess
+            }
+
+    actual suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =
+            withContext(Dispatchers.IO) {
+                val id = NSUUID.UUID().UUIDString
+                val inputPath = "${getCacheDirectory()}/transcode_in_$id.$extension"
+                val outputPath = "${getCacheDirectory()}/transcode_out_$id.$extension"
+                try {
+                    input.usePinned {
+                        NSData.create(bytesNoCopy = it.addressOf(0), length = input.size.toULong(), freeWhenDone = false)
+                            .writeToFile(inputPath, atomically = false)
+                    }
+                    val args = listOf("-y", "-i", inputPath) + outputArgs + outputPath
+                    val result = awaitSession { onComplete ->
+                        bridge.executeFFmpegAsyncArgs(args = args, onProgress = {}, onComplete = onComplete)
+                    }
+                    if (result.isSuccess) {
+                        NSData.dataWithContentsOfFile(outputPath)?.toByteArray()
+                    } else {
+                        println("Docs: transcode failed: ${result.failStackTrace}")
+                        null
+                    }
+                } finally {
+                    NSFileManager.defaultManager.removeItemAtPath(inputPath, null)
+                    NSFileManager.defaultManager.removeItemAtPath(outputPath, null)
+                }
             }
 
     fun generateHlsKeyInfoFile(

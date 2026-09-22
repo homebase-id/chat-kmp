@@ -53,6 +53,9 @@ interface VideoCompressor {
      */
     suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean
 
+    /** Runs `ffmpeg -y -i <input> <outputArgs> <output>`, both files named `*.<extension>`. Null on failure. */
+    suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray?
+
     /** Materializes [data] into a cache file named [fileName], returning its path. */
     suspend fun cacheInputVideo(fileName: String, data: ByteArray): String
 }

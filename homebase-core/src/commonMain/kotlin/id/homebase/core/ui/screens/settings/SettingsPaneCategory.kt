@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Brightness6
+import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
@@ -36,6 +37,7 @@ import id.homebase.resources.settings_appearance
 import id.homebase.resources.settings_category_general
 import id.homebase.resources.settings_data_storage
 import id.homebase.resources.settings_help
+import id.homebase.resources.settings_keyboard
 import id.homebase.resources.settings_media
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.vault_settings_section
@@ -52,6 +54,7 @@ internal enum class SettingsCategory(
     Notifications(MR.string.settings_notifications, Icons.Outlined.Notifications),
     Appearance(MR.string.settings_appearance, Icons.Outlined.Brightness6),
     Media(MR.string.settings_media, Icons.Outlined.PermMedia),
+    Keyboard(MR.string.settings_keyboard, Icons.Outlined.Keyboard),
     Moments(MR.string.moments_settings_section, Icons.Outlined.AutoAwesome),
     Vault(MR.string.vault_settings_section, Icons.Outlined.Lock),
     Email(MR.string.email_settings_section, Icons.Outlined.MailOutline),

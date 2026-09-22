@@ -886,6 +886,13 @@
     <string name="cd_sticker_options_add">Add to my stickers</string>
     <string name="cd_sticker_options_remove">Remove from my stickers</string>
     <string name="cd_sticker_options_save">Save to device</string>
+    <!-- Sheet shown when an animated GIF is pasted into the composer -->
+    <string name="chat_gif_paste_title">Send this GIF</string>
+    <string name="chat_gif_paste_as_sticker">Send as sticker</string>
+    <string name="chat_gif_paste_as_gif">Send as GIF</string>
+    <string name="cd_gif_paste_preview">Pasted GIF</string>
+    <string name="cd_gif_paste_as_sticker">Send it as a sticker</string>
+    <string name="cd_gif_paste_as_gif">Open in the editor to send as a GIF</string>
 
     <!-- Groodle (group-scheduling poll) -->
     <string name="chat_groodle_share">Groodle</string>
@@ -1541,6 +1548,10 @@
     <!-- Composer keyboard -->
     <string name="settings_composer_enter_sends">Enter sends the message</string>
     <string name="settings_composer_enter_sends_description">On, Enter sends and Shift+Enter starts a new line. Off, the two swap. Cmd or Ctrl with Enter always sends.</string>
+    <string name="settings_composer_arrow_up_edits">Arrow Up edits your last message</string>
+    <string name="settings_composer_arrow_up_edits_description">In an empty message box, Arrow Up opens the last message you sent for editing. Cmd or Ctrl with Arrow Up always does, even with text in the box.</string>
+    <string name="settings_keyboard">Keyboard</string>
+    <string name="settings_keyboard_desc">Shortcuts for sending and editing</string>
     <string name="chat_send_chord_enter">Send (Enter)</string>
     <string name="chat_send_chord_shift_enter">Send (Shift+Enter)</string>
 

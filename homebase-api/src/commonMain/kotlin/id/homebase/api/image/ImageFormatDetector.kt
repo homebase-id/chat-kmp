@@ -70,9 +70,9 @@ object ImageFormatDetector {
     }
 
     // A single-frame GIF counts as still.
-    fun isAnimated(bytes: ByteArray): Boolean = isMultiFrameGif(bytes) || isAnimatedWebp(bytes)
+    fun isAnimated(bytes: ByteArray): Boolean = isAnimatedGif(bytes) || isAnimatedWebp(bytes)
 
-    private fun isMultiFrameGif(b: ByteArray): Boolean {
+    fun isAnimatedGif(b: ByteArray): Boolean {
         if (b.size < 13 || b.decodeToString(0, 3) != "GIF") return false
         var i = 13 + gifColorTableSize(b[10])
         var seenFrame = false
@@ -104,6 +104,37 @@ object ImageFormatDetector {
         }
         return i
     }
+
+    internal class GifInfo(val width: Int, val height: Int, val frameCount: Int, val durationCs: Int)
+
+    /** Walks a GIF's blocks without decoding pixels; null unless [b] is a GIF with at least one frame. */
+    internal fun parseGif(b: ByteArray): GifInfo? {
+        if (b.size < 13 || b.decodeToString(0, 3) != "GIF") return null
+        var i = 13 + gifColorTableSize(b[10])
+        var frames = 0
+        var durationCs = 0
+        var delayCs = 0
+        while (i < b.size) {
+            when (b[i].toInt() and 0xFF) {
+                0x2C -> {
+                    frames++
+                    // Browsers and ffmpeg both play a delay under 2 cs at 10 cs.
+                    durationCs += if (delayCs < 2) 10 else delayCs
+                    delayCs = 0
+                    if (i + 10 > b.size) break
+                    i = skipGifSubBlocks(b, i + 10 + gifColorTableSize(b[i + 9]) + 1)
+                }
+                0x21 -> {
+                    if (i + 5 < b.size && (b[i + 1].toInt() and 0xFF) == 0xF9) delayCs = u16le(b, i + 4)
+                    i = skipGifSubBlocks(b, i + 2)
+                }
+                else -> break
+            }
+        }
+        return if (frames > 0) GifInfo(u16le(b, 6), u16le(b, 8), frames, durationCs) else null
+    }
+
+    private fun u16le(b: ByteArray, at: Int): Int = (b[at].toInt() and 0xFF) or ((b[at + 1].toInt() and 0xFF) shl 8)
 
     private const val VP8X_ANIMATION_FLAG = 0x02
 

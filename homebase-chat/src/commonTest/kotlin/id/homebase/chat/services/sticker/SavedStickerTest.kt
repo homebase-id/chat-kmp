@@ -222,7 +222,8 @@ class SavedStickerTest {
 
     @Test
     fun toImageData_smallGif_reachesTheLoadersAnimatedBranch() {
-        val data = trayData("image/gif", TRAY_ANIMATED_MAX_BYTES)
+        // A GIF shrunk to exactly the block-aligned cap is stored with a whole 16-byte PKCS7 block.
+        val data = trayData("image/gif", TRAY_ANIMATED_MAX_BYTES + 16)
         assertEquals("image/gif", data.payloadContentType)
         assertTrue(data.effectiveContentType in HomebaseImageLoader.THUMBLESS_CONTENT_TYPES)
         assertFalse(data.loadFullPayload, "must stay on the thumb fetcher path and cache key")
@@ -230,7 +231,7 @@ class SavedStickerTest {
 
     @Test
     fun toImageData_gifOverTheCapOrOfUnknownSize_keepsThePreview() {
-        for (bytes in listOf(TRAY_ANIMATED_MAX_BYTES + 1, null)) {
+        for (bytes in listOf(TRAY_ANIMATED_MAX_BYTES + 17, null)) {
             val data = trayData("image/gif", bytes)
             assertNull(data.payloadContentType, "bytesWritten=$bytes")
             assertEquals("image/webp", data.effectiveContentType)

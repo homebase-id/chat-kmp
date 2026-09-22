@@ -108,7 +108,8 @@ fun SavedSticker.toImageData(requestedSize: ImageSize? = ImageSize.THUMB_SMALL):
         // Lets a GIF animate from its original, but only small ones: a tray is a grid of these.
         payloadContentType = contentType.takeIf {
             it !in HomebaseImageLoader.THUMBLESS_CONTENT_TYPES ||
-                (payloadDescriptor.bytesWritten ?: Long.MAX_VALUE) <= TRAY_ANIMATED_MAX_BYTES
+                // bytesWritten is the encrypted size: PKCS7 padding adds up to one 16-byte AES block.
+                (payloadDescriptor.bytesWritten ?: Long.MAX_VALUE) <= TRAY_ANIMATED_MAX_BYTES + 16
         },
         isEncrypted = true,
         lastModified = payloadDescriptor.lastModified,
