@@ -7,7 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-private const val BUDGET = 1_000L
+private const val BUDGET = 2_000L
 
 /** A structurally valid GIF (no pixel data worth decoding), padded with comment blocks to about [size] bytes. */
 private fun gif(width: Int = 800, height: Int = 450, frames: Int = 30, delayCs: Int = 4, size: Int = 0): ByteArray {
@@ -77,7 +77,7 @@ class GifShrinkerTest {
     @Test
     fun fallsThroughToSmallerSteps() = runTest {
         val fits = gif(size = 800)
-        val ffmpeg = FakeFfmpeg(gif(size = 3_000), gif(size = 2_000), fits)
+        val ffmpeg = FakeFfmpeg(gif(size = 3_000), gif(size = 2_500), fits)
         assertSame(fits, shrink(input, ffmpeg))
         assertEquals(3, ffmpeg.calls.size)
         assertTrue("scale=384:216:" in ffmpeg.graphs[1] && "max_colors=128" in ffmpeg.graphs[1], ffmpeg.graphs[1])
@@ -85,8 +85,38 @@ class GifShrinkerTest {
     }
 
     @Test
+    fun startStep_skipsStepsThatCannotFit() {
+        assertEquals(0, GifShrinker.startStep(3_500, 1_000))
+        assertEquals(1, GifShrinker.startStep(3_501, 1_000))
+        assertEquals(1, GifShrinker.startStep(7_000, 1_000))
+        assertEquals(2, GifShrinker.startStep(7_001, 1_000))
+    }
+
+    @Test
+    fun startStep_matchesTheMeasuredDeviceCases() {
+        val trayBudget = 2L * 1024 * 1024
+        assertEquals(2, GifShrinker.startStep(35 * 1024 * 1024, trayBudget)) // only step 3 fit: 1.95 MB
+        assertEquals(0, GifShrinker.startStep(2_730_000, trayBudget)) // step 1 fit: 1.23 MB
+    }
+
+    @Test
+    fun farOverBudget_startsLowerDownTheLadder() = runTest {
+        val fiveTimes = FakeFfmpeg(gif(size = 3_000), gif(size = 3_000))
+        GifShrinker.shrink(input, 1_000, fiveTimes::transcode)
+        assertEquals(2, fiveTimes.calls.size, fiveTimes.graphs.toString())
+        val first = fiveTimes.graphs[0]
+        assertTrue("scale=384:216:" in first && "max_colors=128" in first, first)
+        assertTrue("max_colors=64" in fiveTimes.graphs[1], fiveTimes.graphs[1])
+
+        val tenTimes = FakeFfmpeg(gif(size = 3_000))
+        GifShrinker.shrink(input, 500, tenTimes::transcode)
+        assertEquals(1, tenTimes.calls.size, tenTimes.graphs.toString())
+        assertTrue(tenTimes.graphs[0].startsWith("fps=12,scale=384:216:"), tenTimes.graphs[0])
+    }
+
+    @Test
     fun nothingFits_keepsTheSmallestResult() = runTest {
-        val smallest = gif(size = 1_500)
+        val smallest = gif(size = 2_200)
         val ffmpeg = FakeFfmpeg(gif(size = 3_000), smallest, gif(size = 2_500))
         assertSame(smallest, shrink(input, ffmpeg))
     }
