@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
 import id.homebase.core.image.thumbSizesFrom
 import kotlin.io.encoding.Base64
@@ -83,6 +84,8 @@ fun HomebaseFile.toSavedSticker(): SavedSticker? {
     )
 }
 
+internal const val TRAY_ANIMATED_MAX_BYTES = 2L * 1024 * 1024
+
 /**
  * Builds the [HomebaseImageData] for rendering this sticker's transparent thumbnail in
  * the tray, or null if the payload has no decodable IV yet (e.g. still uploading).
@@ -102,6 +105,11 @@ fun SavedSticker.toImageData(requestedSize: ImageSize? = ImageSize.THUMB_SMALL):
         requestedSize = requestedSize,
         availableThumbSizes = thumbSizesFrom(payloadDescriptor.thumbnails),
         loadFullPayload = false,
+        // Lets a GIF animate from its original, but only small ones: a tray is a grid of these.
+        payloadContentType = contentType.takeIf {
+            it !in HomebaseImageLoader.THUMBLESS_CONTENT_TYPES ||
+                (payloadDescriptor.bytesWritten ?: Long.MAX_VALUE) <= TRAY_ANIMATED_MAX_BYTES
+        },
         isEncrypted = true,
         lastModified = payloadDescriptor.lastModified,
         keyHeader = KeyHeader(iv = ivBytes, aesKey = keyHeader.aesKey),

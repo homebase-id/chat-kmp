@@ -5,6 +5,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.createImageThumbnail
 import id.homebase.api.image.standardPrimaryImage
+import id.homebase.api.lib.image.ImageFormatDetector
 import kotlin.math.max
 
 /**
@@ -22,13 +23,14 @@ internal suspend fun standardQualityImage(
     payloadKey: String,
     fileOperationsProvider: FileOperationsProvider,
 ): AttachmentInput {
-    // Stickers are already bounded at 512px by StickerImageProcessor, and a lossy re-encode would
-    // chew on their alpha. GIF's payload is the animated original — the still encoder would freeze
-    // it. SVG is vector: rasterising it into the payload throws away the resolution independence
+    // A lossy re-encode would chew on a sticker's alpha. createThumbnails gives a GIF no server
+    // thumbnails, so its payload must stay the GIF, and the still encoder would freeze an animated
+    // WebP. SVG is vector: rasterising it into the payload throws away the resolution independence
     // the ladder is built to exploit.
     if (attachment.forceSticker) return attachment
     if (attachment.contentType == "image/gif") return attachment
     if (attachment.contentType == "image/svg+xml") return attachment
+    if (ImageFormatDetector.isAnimated(sourceBytes)) return attachment
 
     // Decoding an undecodable source throws, so the size probe belongs inside the fail-soft too.
     return try {

@@ -336,6 +336,7 @@ class ConversationListViewModel(
             val suffix = when (contentType) {
                 "image/jpeg" -> ".jpg"
                 "image/webp" -> ".webp"
+                "image/gif" -> ".gif"
                 else -> ".png"
             }
             val path = fileOperationsProvider.writeBytesToTempFile(bytes, "sticker_editor_", suffix)
