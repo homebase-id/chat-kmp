@@ -1,6 +1,6 @@
-// Serve index.html for the YouAuth popup's authorization-code-callback route instead of 404ing.
+// Serve index.html for the callback routes instead of 404ing.
 // `historyApiFallback: true` relies on the request's Accept header + a "no dot in path" heuristic,
-// which can miss; an explicit rewrite for our callback path is unconditional and reliable.
+// which can miss; an explicit rewrite for our callback paths is unconditional and reliable.
 // Only affects the dev server.
 //
 // WEBAPP_PUBLIC_PATH is set by the generated 00-publicPath.js (loaded first thanks to alphabetic
@@ -13,7 +13,7 @@ config.devServer.historyApiFallback = {
     disableDotRule: true,
     index: publicPath + 'index.html',
     rewrites: [
-        { from: new RegExp('^' + escapedPublicPath + 'authorization-code-callback'), to: publicPath + 'index.html' }
+        { from: new RegExp('^' + escapedPublicPath + '(authorization-code|permission|data-upgrade)-callback'), to: publicPath + 'index.html' }
     ]
 };
 

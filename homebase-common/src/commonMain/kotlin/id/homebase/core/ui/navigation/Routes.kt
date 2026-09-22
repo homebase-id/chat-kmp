@@ -108,6 +108,10 @@ sealed class Route {
     data object MediaSettings : Route()
 
     @Serializable
+    @SerialName("keyboard-settings")
+    data object KeyboardSettings : Route()
+
+    @Serializable
     @SerialName("defragmenter")
     data object Defragmenter : Route()
 

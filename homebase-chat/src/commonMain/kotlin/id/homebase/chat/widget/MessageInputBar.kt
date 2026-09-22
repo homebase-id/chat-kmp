@@ -116,6 +116,7 @@ import id.homebase.core.clipboard.clipboardImageReceiverModifier
 import id.homebase.core.clipboard.pasteImageContextMenuItem
 import id.homebase.core.clipboard.readClipboardImage
 import id.homebase.core.emoji.EmojiShortcodeEffect
+import id.homebase.core.settings.rememberArrowUpEditsLastMessage
 import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
@@ -175,6 +176,10 @@ private const val EMOJI_PANEL_MAX_HEIGHT_FRACTION = 0.45f
 private fun hasSendableContent(state: RichTextState, payloadRenderers: List<PayloadRenderer>) =
     state.annotatedString.isNotBlank() || payloadRenderers.any { it !is LinkPreviewRenderer }
 
+// Not !hasSendableContent: a blank line still lets Up move the caret.
+private fun isComposerEmpty(state: RichTextState, payloadRenderers: List<PayloadRenderer>) =
+    state.annotatedString.isEmpty() && payloadRenderers.isEmpty()
+
 private enum class StandaloneFabAction { Confirm, Send, Attach }
 
 private val URL_REGEX = Regex(
@@ -210,6 +215,7 @@ fun MessageInputBar(
      *  unregistered so no mention affordance appears there. */
     mentionTargets: List<ContactUiModel> = emptyList(),
     onPasteImage: ((ByteArray) -> Unit)? = null,
+    onEditLast: (() -> Boolean)? = null,
     emojiPopoverContent: (@Composable () -> Unit)? = null,
     attachmentActions: ImmutableList<AttachmentAction>? = null,
     onCancelEdit: () -> Unit,
@@ -316,6 +322,7 @@ fun MessageInputBar(
                 onEmojiClick = onEmojiClick,
                 onAddAttachmentClick = onAddAttachmentClick,
                 onPasteImage = onPasteImage,
+                onEditLast = onEditLast,
                 sendMessage = {
                     showExpanded = false
                     sendMessage()
@@ -350,6 +357,7 @@ fun MessageInputBar(
                 onRecordingCancelled = onRecordingCancelled,
                 onRecordingHelp = onRecordingHelp,
                 onPasteImage = onPasteImage,
+                onEditLast = onEditLast,
                 isSendingMessage = isSendingMessage,
                 showActionButtons = showActionButtons,
                 onSendStateChanged = onSendStateChanged,
@@ -377,6 +385,7 @@ fun MessageTextFieldExpanded(
     onEmojiClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onPasteImage: ((ByteArray) -> Unit)? = null,
+    onEditLast: (() -> Boolean)? = null,
     onFocused: () -> Unit = {},
     sendMessage: () -> Unit,
     onToggleExpand: (() -> Unit)? = null,
@@ -385,6 +394,7 @@ fun MessageTextFieldExpanded(
     onCancelEdit: () -> Unit,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
+    val arrowUpEditsLastMessage = rememberArrowUpEditsLastMessage()
     val pasteScope = rememberCoroutineScope()
     var isFieldFocused by remember { mutableStateOf(false) }
     val autocomplete = rememberComposerAutocompleteController()
@@ -460,6 +470,9 @@ fun MessageTextFieldExpanded(
                         onSend = sendMessage,
                         onNewline = { state.addTextAfterSelection("\n") },
                         onPasteImage = onPasteImage,
+                        arrowUpEditsLastMessage = arrowUpEditsLastMessage,
+                        isComposerEmpty = { isComposerEmpty(state, payloadRenderers) },
+                        onEditLast = onEditLast,
                     ),
                 placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
                 shape = if (editExistingMode) RoundedCornerShape(
@@ -573,6 +586,7 @@ fun MessageTextFieldCompact(
     onRecordingCancelled: () -> Unit,
     onRecordingHelp: () -> Unit,
     onPasteImage: ((ByteArray) -> Unit)? = null,
+    onEditLast: (() -> Boolean)? = null,
     onFocused: () -> Unit = {},
     isSendingMessage: Boolean = false,
     showActionButtons: Boolean = true,
@@ -597,6 +611,7 @@ fun MessageTextFieldCompact(
     var dragOffset by remember { mutableStateOf(0f) }
     val haptics = rememberHaptics()
     val enterSendsMessage = rememberEnterSendsMessage()
+    val arrowUpEditsLastMessage = rememberArrowUpEditsLastMessage()
     val density = LocalDensity.current
     val cancelThresholdPx = with(density) { 200.dp.toPx() }
     var isKeyboardFocused by remember { mutableStateOf(false) }
@@ -759,6 +774,9 @@ fun MessageTextFieldCompact(
                                         onSend = onSendMessage,
                                         onNewline = { state.addTextAfterSelection("\n") },
                                         onPasteImage = onPasteImage,
+                                        arrowUpEditsLastMessage = arrowUpEditsLastMessage,
+                                        isComposerEmpty = { isComposerEmpty(state, payloadRenderers) },
+                                        onEditLast = onEditLast,
                                     ),
                                 placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
                                 leadingIcon = if (editExistingMode) null else {

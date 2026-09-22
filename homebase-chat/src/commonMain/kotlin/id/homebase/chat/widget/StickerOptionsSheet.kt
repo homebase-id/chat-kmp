@@ -128,7 +128,7 @@ fun StickerOptionsSheet(
 }
 
 @Composable
-private fun StickerOptionRow(
+internal fun StickerOptionRow(
     icon: ImageVector,
     label: String,
     contentDescription: String,

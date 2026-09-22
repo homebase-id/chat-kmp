@@ -82,11 +82,35 @@ class StandardQualityImageTest {
     }
 
     @Test
+    fun animatedWebpIsPassedThroughButAStaticOneOfTheSameSizeIsNot() = runTest {
+        val decoder = java.util.Base64.getDecoder()
+        val animated = decoder.decode(ANIMATED_WEBP_1700x100)
+        val still = decoder.decode(STATIC_WEBP_1700x100)
+        // Oversize and decodable, so only the animation check keeps it out of the still encoder.
+        assertEquals(1700, ImageUtils.getNaturalSize(animated).pixelWidth)
+
+        val attachment = input("image/webp")
+        assertSame(attachment, standardQualityImage(attachment, animated, "chat_web0", TempWritingFileOps()))
+
+        val reEncoded = standardQualityImage(input("image/webp"), still, "chat_web0", TempWritingFileOps())
+        assertEquals(1600, ImageUtils.getNaturalSize(File(reEncoded.filePath).readBytes()).pixelWidth)
+    }
+
+    @Test
     fun anUndecodableSourceSendsTheOriginalRatherThanBlockingTheSend() = runTest {
         val attachment = input("image/jpeg")
         val garbage = ByteArray(64) { 0x7F }
 
         assertSame(attachment, standardQualityImage(attachment, garbage, "chat_web0", ExplodingFileOps()))
+    }
+
+    private companion object {
+        // Solid-colour lossless WebPs, so a 1700px canvas stays tiny.
+        const val ANIMATED_WEBP_1700x100 =
+            "UklGRoQAAABXRUJQVlA4WAoAAAACAAAAowYAYwAAQU5JTQYAAAAAAAAAAABBTk1GKAAAAAAAAAAAAKMGAGMAAGQAAAJWUDhM" +
+                "DwAAAC+jxhgABxD9j/4HIqL/AQBBTk1GKAAAAAAAAAAAAKMGAGMAAGQAAABWUDhMDwAAAC+jxhgABxDR//4HIqL/AQA="
+        const val STATIC_WEBP_1700x100 =
+            "UklGRiwAAABXRUJQVlA4TB8AAAAvo8YYAAcQ/Y/+BwykbTP/9rc/Ef3P8J///Oc//3sDAA=="
     }
 }
 

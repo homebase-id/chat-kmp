@@ -55,8 +55,9 @@ object AppConfig {
  * Return URL the owner console redirects the browser to once the user has finished
  * extending app permissions. Platform-specific because the mechanism differs:
  *
- * - **Mobile (Android/iOS) and Web**: a custom URL scheme deep link
+ * - **Mobile (Android/iOS)**: a custom URL scheme deep link
  *   (`homebase-fchat://permission-callback`) registered on the device.
+ * - **Web**: `<base>permission-callback`, which index.html posts back to the opener tab.
  * - **Desktop (JVM)**: a localhost loopback URL handled by the in-process
  *   [id.homebase.api.browser.LocalCallbackServer] (the same server the OAuth login
  *   flow uses). The implementation must ensure the server is running before returning.

@@ -2,9 +2,9 @@ package id.homebase.core.config
 
 import kotlinx.browser.document
 
-actual fun returnUrl(): String = "${AppConfig.DEEP_LINK_SCHEME}://permission-callback"
+// Browsers drop custom-scheme redirects; index.html intercepts these paths.
+actual fun returnUrl(): String = document.baseURI + "permission-callback"
 
-// Browsers drop custom-scheme redirects.
-actual fun dataUpgradeReturnUrl(): String = document.baseURI
+actual fun dataUpgradeReturnUrl(): String = document.baseURI + "data-upgrade-callback"
 
 actual fun createAccountReturnUrl(): String? = null

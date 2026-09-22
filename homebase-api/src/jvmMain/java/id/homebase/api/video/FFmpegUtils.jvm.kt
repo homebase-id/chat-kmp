@@ -7,6 +7,7 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 
 actual object FFmpegUtils {
@@ -515,6 +516,33 @@ actual object FFmpegUtils {
         // Desktop HLS→MP4 export not implemented yet (VLC-J, no bundled FFmpeg).
         return false
     }
+
+    actual suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =
+        withContext(Dispatchers.IO) {
+            if (!FFmpegBinaryManager.isAvailable()) return@withContext null
+            val id = UUID.randomUUID()
+            val inFile = File(scratchDirPath, "transcode_in_$id.$extension")
+            val outFile = File(scratchDirPath, "transcode_out_$id.$extension")
+            try {
+                inFile.writeBytes(input)
+                val command = listOf(FFmpegBinaryManager.ffmpegPath(), "-y", "-i", inFile.absolutePath) +
+                    outputArgs + outFile.absolutePath
+                val process = ProcessBuilder(command)
+                    .redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .start()
+                // Interruptible, so a cancelled or timed-out caller kills ffmpeg instead of waiting it out.
+                val exitCode = try {
+                    runInterruptible { process.waitFor() }
+                } finally {
+                    process.destroyForcibly()
+                }
+                if (exitCode == 0) outFile.readBytes() else null
+            } finally {
+                inFile.delete()
+                outFile.delete()
+            }
+        }
 }
 
 data class ProcessResult(

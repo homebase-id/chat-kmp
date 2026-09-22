@@ -7,10 +7,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.compose.koinInject
 
 @Composable
-fun rememberEnterSendsMessage(): Boolean {
+fun rememberEnterSendsMessage(): Boolean = rememberPreference { it.enterSendsMessage }
+
+@Composable
+fun rememberArrowUpEditsLastMessage(): Boolean = rememberPreference { it.arrowUpEditsLastMessage }
+
+@Composable
+private fun <T> rememberPreference(select: (PreferenceState) -> T): T {
     val userPreferences: UserPreferences = koinInject()
     // Derived, not `by`: reading the whole PreferenceState would invalidate the caller's restart
     // scope whenever any unrelated preference changes.
     val prefState = userPreferences.preferenceState.collectAsStateWithLifecycle()
-    return remember { derivedStateOf { prefState.value.enterSendsMessage } }.value
+    return remember { derivedStateOf { select(prefState.value) } }.value
 }

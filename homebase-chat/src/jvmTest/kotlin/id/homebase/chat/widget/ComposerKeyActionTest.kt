@@ -1,13 +1,17 @@
 package id.homebase.chat.widget
 
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.KeyInjectionScope
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.withKeyDown
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -49,6 +53,84 @@ class ComposerKeyActionTest {
         waitForIdle()
 
         verify(harness)
+    }
+
+    private fun runComposer(
+        arrowUpEditsLastMessage: Boolean = true,
+        text: String = "",
+        press: KeyInjectionScope.() -> Unit,
+        verify: (edits: Int, text: String) -> Unit,
+    ) = runComposeUiTest {
+        var edits = 0
+        lateinit var state: RichTextState
+        setContent {
+            WithComposerPreferences(arrowUpEditsLastMessage = arrowUpEditsLastMessage) {
+                HomebaseTheme {
+                    state = rememberRichTextState()
+                    MessageTextFieldCompact(
+                        focusRequester = remember { FocusRequester() },
+                        state = state,
+                        mentionTargets = emptyList(),
+                        payloadRenderers = emptyList(),
+                        recordingData = null,
+                        onCancelAttachment = {},
+                        editExistingMode = false,
+                        showingEmojiSheet = false,
+                        onEmojiClick = {},
+                        onKeyboardClick = {},
+                        onAddAttachmentClick = {},
+                        onCameraClick = {},
+                        onVideoRecordClick = {},
+                        onRecordingStarted = {},
+                        onRecordingStopped = {},
+                        onRecordingCancelled = {},
+                        onRecordingHelp = {},
+                        onSendMessage = {},
+                        onEditLast = {
+                            edits++
+                            true
+                        },
+                        onCancelEdit = {},
+                    )
+                }
+            }
+        }
+
+        onNode(hasSetTextAction()).requestFocus()
+        if (text.isNotEmpty()) runOnIdle { state.addTextAfterSelection(text) }
+        waitForIdle()
+
+        onNode(hasSetTextAction()).performKeyInput(press)
+        waitForIdle()
+
+        verify(edits, state.annotatedString.text)
+    }
+
+    @Test
+    fun arrowUpInAnEmptyComposerEditsTheLastMessage() = runComposer(
+        press = { pressKey(Key.DirectionUp) },
+    ) { edits, _ -> assertEquals(1, edits) }
+
+    @Test
+    fun arrowUpWithTextMovesTheCaretInstead() = runComposer(
+        text = "line one",
+        press = { pressKey(Key.DirectionUp) },
+    ) { edits, _ -> assertEquals(0, edits) }
+
+    @Test
+    fun arrowUpDoesNothingWithThePreferenceOff() = runComposer(
+        arrowUpEditsLastMessage = false,
+        press = { pressKey(Key.DirectionUp) },
+    ) { edits, _ -> assertEquals(0, edits) }
+
+    @Test
+    fun ctrlUpEditsEvenWithTextAndThePreferenceOff() = runComposer(
+        arrowUpEditsLastMessage = false,
+        text = "a draft",
+        press = { withKeyDown(Key.CtrlLeft) { pressKey(Key.DirectionUp) } },
+    ) { edits, text ->
+        assertEquals(1, edits)
+        assertEquals("a draft", text)
     }
 
     @Test

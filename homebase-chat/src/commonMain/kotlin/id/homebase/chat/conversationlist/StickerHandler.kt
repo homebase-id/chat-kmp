@@ -4,7 +4,9 @@ package id.homebase.chat.conversationlist
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.video.GifShrinker
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
+import id.homebase.chat.services.sticker.TRAY_ANIMATED_MAX_BYTES
 import id.homebase.chat.services.sticker.SavedSticker
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.config.chatTargetDrive
@@ -127,7 +129,7 @@ internal class StickerHandler(
                 // sync engine would drop it (ungranted drives aren't pushed).
                 awaitDriveGranted()
                 val saved = saveStickerBytes(
-                    bytes,
+                    GifShrinker.shrink(bytes, TRAY_ANIMATED_MAX_BYTES),
                     payload.contentType ?: "image/png",
                     // Record which message this sticker came from, so a later sheet open can
                     // detect it's already saved and offer "Remove" instead of "Add".

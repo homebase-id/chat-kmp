@@ -280,6 +280,10 @@ sealed interface ConversationListUiAction {
         val imageBytes: ByteArray,
     ) : ConversationListUiAction
 
+    data object SendPastedGifAsSticker : ConversationListUiAction
+    data object SendPastedGifAsGif : ConversationListUiAction
+    data object DismissPastedGif : ConversationListUiAction
+
     /** User tapped the crop button on an image attachment. */
     data class RequestCropAttachment(
         val conversationId: Uuid,
@@ -450,7 +454,10 @@ sealed interface ConversationListUiAction {
 
     /** Save a received contact card to the contact book — the editor lives in :homebase-core, so
      *  this leaves the module the same way OpenShareLocation does. */
-    data class SaveContactCard(val descriptor: ContactCardDescriptor) : ConversationListUiAction
+    data class SaveContactCard(
+        val descriptor: ContactCardDescriptor,
+        val alreadySaved: Boolean,
+    ) : ConversationListUiAction
 
     /** Open (creating if needed) the 1:1 conversation with the identity on a shared contact card. */
     data class MessageIdentity(val odinId: String) : ConversationListUiAction

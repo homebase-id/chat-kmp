@@ -616,10 +616,11 @@ fun VaultScreen(
                 showImageAddSheet = false
                 pendingPickerAction = VaultPickerAction.File
             },
+            // A note is its own entry in a section, so it can't be appended to an existing entry.
             onAddNote = {
                 showImageAddSheet = false
                 pendingPickerAction = VaultPickerAction.Note
-            },
+            }.takeIf { fileForAppend == null },
             onDismiss = {
                 showImageAddSheet = false
                 activeSectionForEntry = null
