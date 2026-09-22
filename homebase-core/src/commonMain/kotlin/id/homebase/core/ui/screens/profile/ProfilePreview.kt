@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.profile.ProfileAttribute
+import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.resources.MR
@@ -80,11 +81,8 @@ internal fun profileAddressValue(values: Map<ProfileField, String>): String? = l
 ).joinToString(", ").ifBlank { null }
 
 /**
- * Read-only simulation of the owner's profile, rendered contact-detail style. Public — what
- * everyone sees — is listed first; the circles section below shows what a contact in one of your
- * circles sees: their own
- * Connected value where set, falling back to the Public value for any field left blank on the
- * Connected side.
+ * Read-only simulation of the owner's saved profile, rendered contact-detail style: Public, what an
+ * anonymous visitor sees, then what a plain connection sees, each chosen by the attributes' ACLs.
  */
 @Composable
 internal fun ProfilePreview(
@@ -136,23 +134,17 @@ internal fun ProfilePreview(
             ?.let { add(PreviewRow(Icons.Outlined.AlternateEmail, lblLinkedin, it)) }
     }
 
-    val publicRows = rowsFor(uiState.anonymousValues)
-
-    // What a contact in a circle actually sees: their own Connected value where set, else Public.
-    val resolved = (uiState.anonymousValues.keys + uiState.connectedValues.keys).associateWith { field ->
-        uiState.connectedValues[field]?.takeIf { it.isNotBlank() } ?: uiState.anonymousValues[field].orEmpty()
-    }
-    val circlesRows = rowsFor(resolved)
-    // Same fallback as every text field: no Connected-tier photo means the contact just sees
-    // the Public one.
-    val circlesPhoto = uiState.connectedPhoto ?: uiState.anonymousPhoto
+    val publicRows = rowsFor(uiState.visibleValues(ProfileVisibility.ANONYMOUS))
+    val circlesRows = rowsFor(uiState.visibleValues(ProfileVisibility.CONNECTED))
+    val publicPhoto = uiState.visiblePhoto(ProfileVisibility.ANONYMOUS)
+    val circlesPhoto = uiState.visiblePhoto(ProfileVisibility.CONNECTED)
 
     Column(modifier = modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
         PreviewSectionHeader(
             title = stringResource(MR.string.profile_edit_preview_section_public),
             description = stringResource(MR.string.profile_edit_preview_section_public_desc),
         )
-        PreviewPhoto(uiState.anonymousPhoto)
+        PreviewPhoto(publicPhoto)
         if (publicRows.isEmpty()) {
             PreviewEmptyMessage(stringResource(MR.string.profile_edit_preview_empty))
         } else {

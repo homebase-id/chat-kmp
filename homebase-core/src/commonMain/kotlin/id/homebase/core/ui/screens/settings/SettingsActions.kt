@@ -20,4 +20,6 @@ data class SettingsActions(
     val onContactBookSettings: () -> Unit,
     val onProfileEdit: () -> Unit,
     val onProfileAvatarEdit: () -> Unit,
+    /** Null while the profile card is dark-launched off, which hides its row. */
+    val onProfileCard: (() -> Unit)?,
 )

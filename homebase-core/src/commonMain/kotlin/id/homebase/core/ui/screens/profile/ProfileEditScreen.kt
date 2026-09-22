@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Cake
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Info
@@ -87,6 +88,7 @@ import id.homebase.resources.contactbook_detail_name
 import id.homebase.resources.contactbook_error_birthday
 import id.homebase.resources.contactbook_error_email
 import id.homebase.resources.contactbook_error_phone
+import id.homebase.resources.profile_card_open
 import id.homebase.resources.profile_edit_add_attribute
 import id.homebase.resources.profile_edit_add_attribute_title
 import id.homebase.resources.profile_edit_additional_name
@@ -147,6 +149,7 @@ fun ProfileEditScreen(
     avatarViewModel: ProfileAvatarEditViewModel,
     onBack: () -> Unit,
     onNavigateToCropper: (Uuid) -> Unit,
+    onOpenCard: (() -> Unit)?,
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
     val avatarUiState by avatarViewModel.state.collectAsStateWithLifecycle()
@@ -205,6 +208,14 @@ fun ProfileEditScreen(
                                 ),
                             )
                         }
+                        if (onOpenCard != null) {
+                            IconButton(onClick = onOpenCard) {
+                                Icon(
+                                    imageVector = Icons.Outlined.ContactPage,
+                                    contentDescription = stringResource(MR.string.profile_card_open),
+                                )
+                            }
+                        }
                     }
                 },
             )
@@ -249,7 +260,7 @@ private fun LoadingState(modifier: Modifier) {
 }
 
 @Composable
-private fun LoadFailedState(modifier: Modifier, onRetry: () -> Unit) {
+internal fun LoadFailedState(modifier: Modifier, onRetry: () -> Unit) {
     Column(
         modifier = modifier.padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -742,8 +753,13 @@ private val LocalReviewEnabled = staticCompositionLocalOf { false }
 
 /** Picks which of an attribute's two independent tier records a row's [content] shows/edits. */
 @Composable
-private fun TierToggle(selected: ProfileVisibility, onSelect: (ProfileVisibility) -> Unit) {
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+internal fun TierToggle(
+    selected: ProfileVisibility,
+    onSelect: (ProfileVisibility) -> Unit,
+    modifier: Modifier = Modifier,
+    reviewEnabled: Boolean = LocalReviewEnabled.current,
+) {
+    SingleChoiceSegmentedButtonRow(modifier = modifier.fillMaxWidth()) {
         SegmentedButton(
             selected = selected == ProfileVisibility.ANONYMOUS,
             onClick = { onSelect(ProfileVisibility.ANONYMOUS) },
@@ -757,7 +773,7 @@ private fun TierToggle(selected: ProfileVisibility, onSelect: (ProfileVisibility
             label = {
                 Text(
                     stringResource(
-                        if (LocalReviewEnabled.current) MR.string.profile_edit_visibility_circles
+                        if (reviewEnabled) MR.string.profile_edit_visibility_circles
                         else MR.string.profile_edit_visibility_connected
                     )
                 )

@@ -85,7 +85,22 @@ data class PostContent(
     val abstract: String? = null,
     /** A rich-text tree on the wire, not a string — a String type blanks every caption. */
     val body: JsonElement? = null,
+    val primaryMediaFile: PrimaryMediaFile? = null,
+    val readingTimeStats: ReadingTimeStats? = null,
 )
+
+// [type] is a MIME type on media posts ("image/jpeg") and a bare "image" on an article's hero.
+@Serializable
+data class PrimaryMediaFile(
+    val fileKey: String = "",
+    /** Null when the media is a payload of the post's own file. */
+    val fileId: String? = null,
+    val type: String = "",
+)
+
+// odin-js keeps the unrounded reading time.
+@Serializable
+data class ReadingTimeStats(val minutes: Double? = null)
 
 // Nesting is one level only — the web strips an embed's own embed on upload.
 @Serializable

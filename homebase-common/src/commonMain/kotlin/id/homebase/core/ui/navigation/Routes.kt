@@ -31,6 +31,10 @@ sealed class Route {
     data object ProfileAvatarEdit : Route()
 
     @Serializable
+    @SerialName("profile-card")
+    data object ProfileCard : Route()
+
+    @Serializable
     @SerialName("create-conversation")
     data object CreateConversation : Route()
 

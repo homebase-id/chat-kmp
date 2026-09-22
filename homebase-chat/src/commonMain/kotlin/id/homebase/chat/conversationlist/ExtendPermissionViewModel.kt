@@ -151,7 +151,7 @@ class ExtendPermissionViewModel(
                 is PermissionCheckResult.Missing -> {
                     val details = result.details
                     Logger.i(tag = TAG) {
-                        "Missing permissions detected: drives=${details.missingDrives.size}, permissions=${details.missingPermissions.size}, allConnected=${details.missingAllConnectedCircle}"
+                        "Missing permissions detected: drives=${details.missingDrives.map { it.name.ifEmpty { it.alias } }}, permissions=${details.missingPermissions.size}, allConnected=${details.missingAllConnectedCircle}"
                     }
                     lastMissingResult = details
                     _permissionsGranted.value = false
