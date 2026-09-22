@@ -71,7 +71,7 @@ import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.components.CirclePickerChips
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
-import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionContent
+import id.homebase.core.ui.screens.contactbook.components.PendingRequestReview
 import id.homebase.core.ui.screens.contactbook.detail.ReviewSheetState
 import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.core.widget.HomebaseIdField
@@ -104,7 +104,6 @@ import id.homebase.resources.contactbook_detail_request_incoming
 import id.homebase.resources.contactbook_detail_request_outgoing
 import id.homebase.resources.contactbook_detail_reject
 import id.homebase.resources.auto_connect_failed_generic
-import id.homebase.resources.contact_review_accept_failed
 import id.homebase.resources.contactbook_edit_change_photo
 import id.homebase.resources.contactbook_edit_city
 import id.homebase.resources.contactbook_edit_country
@@ -422,30 +421,16 @@ private fun RelationActions(
         // With the review on, the request is reviewed in place; submitting it accepts.
         IdentityRelation.INCOMING_PENDING -> if (requestReview != null) {
             Spacer(modifier = Modifier.height(12.dp))
-            ReviewConnectionContent(
+            PendingRequestReview(
+                review = requestReview,
                 displayName = displayName,
-                odinId = odinId.domainName,
-                avatar = null,
-                introducedBy = requestReview.introducedBy,
-                connectedAtMs = null,
+                // The card above already names the identity, so no avatar slot and no
+                // identity header here.
+                odinId = null,
                 groups = reviewCircleGroups,
-                alreadyHeldCircleIds = requestReview.alreadyHeldCircleIds,
-                isSubmitting = requestReview.isSubmitting,
-                errorText = if (requestReview.failed) {
-                    stringResource(MR.string.contact_review_accept_failed)
-                } else null,
                 onSubmit = { ids -> onAction(AddContactAction.ReviewSubmitted(ids)) },
-                incomingRequest = requestReview.incomingRequest,
-                showIdentity = false,
-                secondaryAction = {
-                    OutlinedButton(
-                        onClick = { onAction(AddContactAction.RejectRequestClicked) },
-                        enabled = !requestReview.isSubmitting && !actionInProgress,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(stringResource(MR.string.contactbook_detail_reject))
-                    }
-                },
+                onReject = { onAction(AddContactAction.RejectRequestClicked) },
+                rejectEnabled = !actionInProgress,
             )
         } else {
             Spacer(modifier = Modifier.height(12.dp))
