@@ -31,6 +31,7 @@ class SettingsUiTest {
             onNotifications = { fired += "notifications" },
             onAppearance = { fired += "appearance" },
             onMedia = { fired += "media" },
+            onKeyboard = { fired += "keyboard" },
             onStorage = { fired += "storage" },
             onHelp = { fired += "help" },
             onMomentsSettings = { fired += "moments" },
@@ -100,6 +101,14 @@ class SettingsUiTest {
         }
 
         assertEquals(expected.map { it.second }, routes.fired)
+    }
+
+    @Test
+    fun keyboardRowOpensKeyboardSettings() = runComposeUiTest {
+        val routes = Routes()
+        settings(routes = routes)
+        tapRow("keyboardButton")
+        assertEquals(listOf("keyboard"), routes.fired)
     }
 
     @Test

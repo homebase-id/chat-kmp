@@ -97,8 +97,6 @@ import id.homebase.resources.moments_settings_section
 import id.homebase.resources.settings
 import id.homebase.resources.settings_appearance
 import id.homebase.resources.settings_appearance_theme
-import id.homebase.resources.settings_composer_enter_sends
-import id.homebase.resources.settings_composer_enter_sends_description
 import id.homebase.resources.settings_contactbook_desc
 import id.homebase.resources.settings_delete_account
 import id.homebase.resources.settings_delete_account_desc
@@ -107,6 +105,8 @@ import id.homebase.resources.settings_delete_account_dialog_title
 import id.homebase.resources.settings_edit_profile
 import id.homebase.resources.settings_help
 import id.homebase.resources.settings_help_desc
+import id.homebase.resources.settings_keyboard
+import id.homebase.resources.settings_keyboard_desc
 import id.homebase.resources.settings_location_desc
 import id.homebase.resources.settings_logout
 import id.homebase.resources.settings_logout_desc
@@ -342,14 +342,11 @@ fun SettingsUi(
             if (isDesktopOrWeb()) {
                 item {
                     SettingsRow(
-                        modifier = Modifier.testTag("enterSendsToggle"),
+                        modifier = Modifier.testTag("keyboardButton"),
                         icon = Icons.Outlined.Keyboard,
-                        title = stringResource(MR.string.settings_composer_enter_sends),
-                        supportingText = stringResource(MR.string.settings_composer_enter_sends_description),
-                        action = SettingsRowAction.Toggle(
-                            checked = uiState.enterSendsMessage,
-                            onCheckedChange = { onAction(SettingsUiAction.SetEnterSendsMessage(it)) },
-                        ),
+                        title = stringResource(MR.string.settings_keyboard),
+                        supportingText = stringResource(MR.string.settings_keyboard_desc),
+                        action = SettingsRowAction.Navigate(actions.onKeyboard),
                     )
                 }
             }
@@ -614,6 +611,7 @@ fun SettingsUiPreview() {
                 onNotifications = {},
                 onAppearance = {},
                 onMedia = {},
+                onKeyboard = {},
                 onStorage = {},
                 onHelp = {},
                 onMomentsSettings = {},

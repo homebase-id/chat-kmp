@@ -9,6 +9,7 @@ data class SettingsActions(
     val onNotifications: () -> Unit,
     val onAppearance: () -> Unit,
     val onMedia: () -> Unit,
+    val onKeyboard: () -> Unit,
     val onStorage: () -> Unit,
     val onHelp: () -> Unit,
     val onMomentsSettings: () -> Unit,
