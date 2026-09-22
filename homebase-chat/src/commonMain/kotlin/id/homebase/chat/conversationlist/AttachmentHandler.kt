@@ -68,7 +68,7 @@ internal class AttachmentHandler(
     private val sendEvent: (ConversationListUiEvent) -> Unit,
     private val dispatch: (ConversationListUiAction) -> Unit,
     private val addMessageWithFiles: (conversationId: Uuid, content: String, files: List<AttachmentPendingFile>) -> Unit,
-    private val saveAndSendSticker: (conversationId: Uuid, bytes: ByteArray, contentType: String) -> Unit,
+    private val sendSticker: (conversationId: Uuid, bytes: ByteArray, contentType: String) -> Unit,
 ) {
 
     // Tracks in-flight video thumbnail extraction per pending attachment so the editor can
@@ -335,7 +335,7 @@ internal class AttachmentHandler(
 
     fun handleSendPastedGifAsSticker() {
         val paste = takePendingGifPaste() ?: return
-        saveAndSendSticker(paste.conversationId, paste.bytes, "image/gif")
+        sendSticker(paste.conversationId, paste.bytes, "image/gif")
     }
 
     fun handleSendPastedGifAsGif() {

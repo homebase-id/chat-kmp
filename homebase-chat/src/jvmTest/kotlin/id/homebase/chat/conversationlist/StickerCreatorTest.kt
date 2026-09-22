@@ -30,6 +30,7 @@ private class Rec {
     val infos = mutableListOf<StringResource>()
     val saved = mutableListOf<Pair<ByteArray, String>>()
     val sent = mutableListOf<Triple<Uuid, ByteArray, String>>()
+    var driveAwaits = 0
 }
 
 private fun creator(
@@ -41,12 +42,13 @@ private fun creator(
     outline: suspend (ByteArray) -> ByteArray = { it + 9 },
     saveResult: Uuid? = Uuid.random(),
     normalize: suspend (ByteArray, String) -> Pair<ByteArray, String> = { b, ct -> b to ct },
+    send: suspend (Uuid, ByteArray, String) -> Unit = { cid, b, ct -> rec.sent += Triple(cid, b, ct) },
 ) = StickerCreator(
     scope = scope,
     saveSticker = { b, ct -> rec.saved += b to ct; saveResult },
-    sendSticker = { cid, b, ct -> rec.sent += Triple(cid, b, ct) },
+    sendSticker = send,
     sendInfo = { rec.infos += it },
-    awaitDriveGranted = {},
+    awaitDriveGranted = { rec.driveAwaits++ },
     isTransparent = isTransparent,
     bgRemovalSupported = bgSupported,
     cutOut = cutOut,
@@ -119,16 +121,26 @@ class StickerCreatorTest {
         assertTrue(!probed)
     }
 
-    @Test fun saveAndSend_saves_and_sends_those_bytes_once() = runTest {
+    @Test fun send_normalizes_and_sends_once_without_saving_or_awaiting_the_drive() = runTest {
         val rec = Rec()
-        val c = creator(this, rec, isTransparent = { false })
         val gif = byteArrayOf(0x47, 0x49, 0x46)
-        c.saveAndSend(convo, gif, "image/gif")
+        val normalized = byteArrayOf(0x47, 0x49)
+        val c = creator(this, rec, isTransparent = { false },
+            normalize = { b, ct -> if (b.contentEquals(gif)) normalized to ct else b to ct })
+        c.send(convo, gif, "image/gif")
         advanceUntilIdle()
-        assertTrue(rec.saved.single().first.contentEquals(gif)); assertEquals("image/gif", rec.saved.single().second)
         val sent = rec.sent.single()
-        assertEquals(convo, sent.first); assertTrue(sent.second.contentEquals(gif)); assertEquals("image/gif", sent.third)
-        assertEquals(MR.string.chat_sticker_saved, rec.infos.single())
+        assertEquals(convo, sent.first); assertTrue(sent.second.contentEquals(normalized)); assertEquals("image/gif", sent.third)
+        assertTrue(rec.saved.isEmpty()); assertEquals(0, rec.driveAwaits); assertTrue(rec.infos.isEmpty())
+    }
+
+    @Test fun send_only_failure_reports_send_failed() = runTest {
+        val rec = Rec()
+        val c = creator(this, rec, isTransparent = { false }, send = { _, _, _ -> throw RuntimeException("send boom") })
+        c.send(convo, byteArrayOf(0x47, 0x49, 0x46), "image/gif")
+        advanceUntilIdle()
+        assertTrue(rec.saved.isEmpty())
+        assertEquals(MR.string.chat_sticker_send_failed, rec.infos.single())
     }
 
     @Test fun unsupported_only_original_no_cutout_call() = runTest {
@@ -151,6 +163,7 @@ class StickerCreatorTest {
         assertEquals(convo, rec.sent[0].first)
         assertTrue(rec.sent[0].second.contentEquals(byteArrayOf(2)))
         assertEquals(MR.string.chat_sticker_saved, rec.infos.single())
+        assertEquals(1, rec.driveAwaits)
         assertNull(c.state.value)
     }
 

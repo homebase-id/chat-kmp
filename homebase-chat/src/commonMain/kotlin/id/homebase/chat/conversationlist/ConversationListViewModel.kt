@@ -294,8 +294,8 @@ class ConversationListViewModel(
         dispatch = ::onAction,
         addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
         // Not a bound reference: stickerCreator is initialised below this.
-        saveAndSendSticker = { conversationId, bytes, contentType ->
-            stickerCreator.saveAndSend(conversationId, bytes, contentType)
+        sendSticker = { conversationId, bytes, contentType ->
+            stickerCreator.send(conversationId, bytes, contentType)
         },
     )
 

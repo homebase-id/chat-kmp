@@ -44,7 +44,7 @@ class AttachmentToggleStickerTest {
         sendEvent = {},
         dispatch = {},
         addMessageWithFiles = { _, _, _ -> },
-        saveAndSendSticker = { _, _, _ -> },
+        sendSticker = { _, _, _ -> },
     )
 
     private fun overlayWith(vararg attachments: AttachmentPendingFile) =
