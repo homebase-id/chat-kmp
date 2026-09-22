@@ -12,6 +12,7 @@ import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.RequestDirection
+import id.homebase.core.ui.screens.contactbook.isPendingIncomingRequest
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -126,7 +127,10 @@ data class ContactDetailUiState(
      * requester's public profile to inform the Accept/Reject decision (#921).
      */
     val isPendingIncoming: Boolean
-        get() = requestDirection == RequestDirection.INCOMING && !isConnected
+        get() = isPendingIncomingRequest(
+            connectionStatus,
+            requestDirection == RequestDirection.INCOMING,
+        )
 
     /** The "About" tab has content: a short bio, an Experience attribute (text/image), or socials. */
     val hasAboutContent: Boolean

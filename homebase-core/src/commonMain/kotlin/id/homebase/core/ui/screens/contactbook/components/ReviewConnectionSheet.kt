@@ -20,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -41,8 +42,11 @@ import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
+import id.homebase.core.ui.screens.contactbook.detail.ReviewSheetState
 import id.homebase.resources.MR
+import id.homebase.resources.contact_review_accept_failed
 import id.homebase.resources.contact_review_already_added
+import id.homebase.resources.contactbook_detail_reject
 import id.homebase.resources.contactbook_circle_members_count
 import id.homebase.resources.contact_review_chat_only_hint
 import id.homebase.resources.contact_review_connected_since
@@ -326,6 +330,56 @@ data class IncomingRequestSummary(
     val receivedAtMs: Long,
     val message: String?,
 )
+
+/**
+ * [ReviewConnectionContent] wired for a pending incoming request, where submitting accepts it and
+ * the secondary action rejects it. Shared by the contact-detail screen and the add-contact flow so
+ * the two cannot drift on the failure message or the reject button.
+ *
+ * [avatar] is null on a host that already shows the person's identity above this block; the
+ * identity header inside the content follows it.
+ */
+@Composable
+fun PendingRequestReview(
+    review: ReviewSheetState,
+    displayName: String,
+    odinId: String?,
+    groups: ReviewCircleGroups,
+    onSubmit: (Set<String>) -> Unit,
+    onReject: () -> Unit,
+    modifier: Modifier = Modifier,
+    avatar: (@Composable () -> Unit)? = null,
+    details: (@Composable () -> Unit)? = null,
+    rejectEnabled: Boolean = true,
+) {
+    ReviewConnectionContent(
+        displayName = displayName,
+        odinId = odinId,
+        avatar = avatar,
+        introducedBy = review.introducedBy,
+        connectedAtMs = null,
+        groups = groups,
+        alreadyHeldCircleIds = review.alreadyHeldCircleIds,
+        isSubmitting = review.isSubmitting,
+        errorText = if (review.failed) {
+            stringResource(MR.string.contact_review_accept_failed)
+        } else null,
+        onSubmit = onSubmit,
+        modifier = modifier,
+        incomingRequest = review.incomingRequest,
+        showIdentity = avatar != null,
+        details = details,
+        secondaryAction = {
+            OutlinedButton(
+                onClick = onReject,
+                enabled = !review.isSubmitting && rejectEnabled,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(MR.string.contactbook_detail_reject))
+            }
+        },
+    )
+}
 
 /** Settings' section header, plus the line of helper text a section may need under it. */
 @Composable

@@ -7,9 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.ClientException
 import id.homebase.api.client.ForbiddenException
-import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionNetworkProvider
@@ -41,6 +39,10 @@ import id.homebase.core.contactbook.reconcileAction
 import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
+import id.homebase.core.ui.screens.contactbook.ConnectionRequestFailure
+import id.homebase.core.ui.screens.contactbook.connectionRequestFailure
+import id.homebase.core.ui.screens.contactbook.isTerminal
+import id.homebase.core.ui.screens.contactbook.toCircleUuids
 import id.homebase.core.ui.screens.contactbook.assignableCircles
 import id.homebase.core.ui.screens.contactbook.CircleAccessState
 import id.homebase.core.ui.screens.contactbook.ContactState
@@ -50,6 +52,7 @@ import id.homebase.core.ui.screens.contactbook.personalCirclesFor
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 import id.homebase.core.ui.screens.contactbook.isAccessRevoked
+import id.homebase.core.ui.screens.contactbook.isPendingIncomingRequest
 import id.homebase.core.ui.screens.contactbook.isUserCircle
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.RequestDirection
@@ -263,15 +266,20 @@ class ContactDetailViewModel(
                         contacts.firstOrNull { it.odinId.equals(introducer, ignoreCase = true) }
                             ?.displayName ?: introducer
                     }
+                // Taken once: the direction and the review gate below both derive from it,
+                // so the two can't disagree.
+                val incomingRequest = domain?.let { d ->
+                    bundle.incoming.firstOrNull { it.senderOdinId.domainName.equals(d, ignoreCase = true) }
+                }
                 val requestDirection = domain?.let { d ->
                     when {
-                        bundle.incoming.any { it.senderOdinId.domainName.equals(d, ignoreCase = true) } ->
-                            RequestDirection.INCOMING
+                        incomingRequest != null -> RequestDirection.INCOMING
                         bundle.outgoing.any { it.recipientOdinId.domainName.equals(d, ignoreCase = true) } ->
                             RequestDirection.OUTGOING
                         else -> null
                     }
                 }
+                val pendingIncoming = isPendingIncomingRequest(status, incomingRequest != null)
                 // User circles only — app default circles are surfaced through the connection
                 // status, not as chips. Both halves are now reactive: real membership from
                 // circ.circlesFor, pending deposits from the registration the refresh already
@@ -357,11 +365,7 @@ class ContactDetailViewModel(
                 // contact's membership. Same system-circle exclusion as the chips above; feeds the
                 // pending-request circle picker (#921 Part B).
                 val assignableCircles = circ.assignableCircles(reviewEnabled)
-                val incomingRequest = domain
-                    ?.takeIf { reviewEnabled && status != ConnectionStatus.Connected }
-                    ?.let { d ->
-                        bundle.incoming.firstOrNull { it.senderOdinId.domainName.equals(d, ignoreCase = true) }
-                    }
+                val requestUnderReview = incomingRequest.takeIf { reviewEnabled && pendingIncoming }
                 _uiState.update {
                     it.copy(
                         entry = entry,
@@ -380,7 +384,7 @@ class ContactDetailViewModel(
                         isSelf = isSelf,
                         requestDirection = requestDirection,
                         introducedByName = introducedByName,
-                        requestReview = incomingRequest?.let { request ->
+                        requestReview = requestUnderReview?.let { request ->
                             (it.requestReview ?: ReviewSheetState()).copy(
                                 introducedBy = request.introducerOdinId?.domainName,
                                 incomingRequest = IncomingRequestSummary(
@@ -794,7 +798,7 @@ class ContactDetailViewModel(
             try {
                 connectionRequestService.acceptIncomingRequest(
                     OdinId(odinId),
-                    circleIds.map { Uuid.parseHex(it) },
+                    circleIds.toCircleUuids(),
                 )
                 _uiState.update { it.copy(requestReview = it.requestReview?.copy(isSubmitting = false)) }
                 _events.tryEmit(ContactDetailEvent.RequestAccepted)
@@ -802,13 +806,14 @@ class ContactDetailViewModel(
                 throw e
             } catch (e: Exception) {
                 Logger.w(e, TAG) { "Accepting $odinId from the review failed" }
-                // Retrying can't fix a withdrawn request or a missing permission.
-                val terminal = e is ForbiddenException ||
-                    (e is ClientException && e.errorCode == OdinClientErrorCode.IncomingRequestNotFound)
+                val failure = e.connectionRequestFailure()
                 _uiState.update {
-                    it.copy(requestReview = it.requestReview?.copy(isSubmitting = false, failed = !terminal))
+                    it.copy(
+                        requestReview = it.requestReview
+                            ?.copy(isSubmitting = false, failed = !failure.isTerminal),
+                    )
                 }
-                if (terminal) emitConnectionError(e)
+                if (failure.isTerminal) emitConnectionError(e)
             }
         }
     }
@@ -941,12 +946,10 @@ class ContactDetailViewModel(
      */
     private fun emitConnectionError(error: Throwable) {
         _events.tryEmit(
-            when {
-                error is ForbiddenException -> ContactDetailEvent.ConnectionForbidden
-                error is ClientException &&
-                    error.errorCode == OdinClientErrorCode.IncomingRequestNotFound ->
-                    ContactDetailEvent.RequestWithdrawn
-                else -> ContactDetailEvent.Error
+            when (error.connectionRequestFailure()) {
+                ConnectionRequestFailure.Forbidden -> ContactDetailEvent.ConnectionForbidden
+                ConnectionRequestFailure.Withdrawn -> ContactDetailEvent.RequestWithdrawn
+                ConnectionRequestFailure.Transient -> ContactDetailEvent.Error
             }
         )
     }
