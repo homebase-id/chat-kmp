@@ -112,6 +112,8 @@ class StickerCreator(
             // large pick.
             val outlined: ByteArray? = withContext(workDispatcher) {
                 when {
+                    // Every cut-out step is single-frame, so it would silently drop the animation.
+                    ImageFormatDetector.isAnimated(bytes) -> null
                     isTransparent(bytes) -> addOutline(bytes)
                     bgRemovalSupported() -> cutOut(bytes)?.let { addOutline(cropToSubject(it)) }
                     else -> null

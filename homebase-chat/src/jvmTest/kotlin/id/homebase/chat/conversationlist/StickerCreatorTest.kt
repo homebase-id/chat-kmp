@@ -105,6 +105,20 @@ class StickerCreatorTest {
         assertEquals(StickerVariant.Original, s.selected)
     }
 
+    @Test fun animated_source_only_original_without_probing() = runTest {
+        val rec = Rec(); var probed = false
+        val c = creator(this, rec, isTransparent = { probed = true; true })
+        // 2x1, two-frame GIF.
+        val gif = java.util.Base64.getDecoder().decode(
+            "R0lGODlhAgABAIEAAP8AAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQACgAAACwAAAAAAgABAAAIBQABAAgIACH5" +
+                "BAAKAAAALAAAAAACAAEAgQAA/wAAAAAAAAAAAAgFAAEACAgAOw=="
+        )
+        c.create(gif, "image/gif", convo); advanceUntilIdle()
+        val s = c.state.value as StickerCreateState.Choose
+        assertEquals(listOf(StickerVariant.Original), s.variants.map { it.kind })
+        assertTrue(!probed)
+    }
+
     @Test fun unsupported_only_original_no_cutout_call() = runTest {
         val rec = Rec(); var cutCalled = false
         val c = creator(this, rec, isTransparent = { false }, bgSupported = { false }, cutOut = { cutCalled = true; byteArrayOf(1) })

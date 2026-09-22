@@ -69,6 +69,50 @@ object ImageFormatDetector {
         return brand in listOf("heic", "heix", "hevc", "hevx", "mif1", "msf1")
     }
 
+    // A single-frame GIF counts as still.
+    fun isAnimated(bytes: ByteArray): Boolean = isMultiFrameGif(bytes) || isAnimatedWebp(bytes)
+
+    private fun isMultiFrameGif(b: ByteArray): Boolean {
+        if (b.size < 13 || b.decodeToString(0, 3) != "GIF") return false
+        var i = 13 + gifColorTableSize(b[10])
+        var seenFrame = false
+        while (i < b.size) {
+            when (b[i].toInt() and 0xFF) {
+                0x2C -> {
+                    if (seenFrame) return true
+                    seenFrame = true
+                    if (i + 10 > b.size) return false
+                    // 10-byte descriptor, optional local color table, 1-byte LZW minimum code size.
+                    i = skipGifSubBlocks(b, i + 10 + gifColorTableSize(b[i + 9]) + 1)
+                }
+                0x21 -> i = skipGifSubBlocks(b, i + 2)
+                else -> return false
+            }
+        }
+        return false
+    }
+
+    private fun gifColorTableSize(packed: Byte): Int =
+        if ((packed.toInt() and 0x80) != 0) 3 * (1 shl ((packed.toInt() and 0x07) + 1)) else 0
+
+    private fun skipGifSubBlocks(b: ByteArray, start: Int): Int {
+        var i = start
+        while (i < b.size) {
+            val length = b[i].toInt() and 0xFF
+            i += 1 + length
+            if (length == 0) break
+        }
+        return i
+    }
+
+    private const val VP8X_ANIMATION_FLAG = 0x02
+
+    private fun isAnimatedWebp(b: ByteArray): Boolean =
+        b.size > 20 &&
+            b.decodeToString(0, 4) == "RIFF" &&
+            b.decodeToString(8, 16) == "WEBPVP8X" &&
+            (b[20].toInt() and VP8X_ANIMATION_FLAG) != 0
+
     /**
      * Validates JPEG format by checking for start and end markers
      */
