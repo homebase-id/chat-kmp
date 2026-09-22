@@ -146,8 +146,8 @@ fun MessageItem(
     // Routed out because the contact editor lives in :homebase-core, like the location share. Both
     // sides get it: forward a card to yourself and the copy you own must still be savable.
     val onSaveContactCard = remember(message.id) {
-        { descriptor: ContactCardDescriptor ->
-            onUiAction(ConversationListUiAction.SaveContactCard(descriptor))
+        { descriptor: ContactCardDescriptor, alreadySaved: Boolean ->
+            onUiAction(ConversationListUiAction.SaveContactCard(descriptor, alreadySaved))
         }
     }
     val onMessageIdentity = remember(message.id) {
