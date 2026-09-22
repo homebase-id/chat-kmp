@@ -275,6 +275,25 @@ Rules:
 - CI must be green on every layer before merging — the stack merge is all-or-nothing.
 - Branch names still must not contain `/`.
 
+## Before you merge: remind me to run a simplify pass
+
+Before a PR is opened or merged, **remind me to run `/simplify` on the branch**.
+Ask — don't run it unprompted, and don't assume it already happened.
+
+Only an explicit "no" declines it. If I don't answer, presume I didn't see the
+reminder and say it again rather than deciding for me.
+
+Why it's worth the nag: review reads a diff for correctness, and rarely notices
+that the diff re-implements a helper the codebase already has, that a block was
+copy-pasted inside this same PR, that a field is derivable from another, or
+that work landed on a path which re-runs on every keystroke. Those cost nothing
+to fix on the branch and get expensive once a second caller copies them — and a
+copy that outlives review is how two surfaces end up answering the same
+question differently.
+
+If a finding is a design change rather than a cleanup, file it instead of
+widening the PR.
+
 ## Comments
 
 Default to none. This codebase is over-commented; do not add to it.
