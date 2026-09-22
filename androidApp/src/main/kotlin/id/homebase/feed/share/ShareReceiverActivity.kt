@@ -151,7 +151,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         runOnUiThread {
             Toast.makeText(
                 this,
-                getString(R.string.share_failed, e.message ?: e::class.simpleName.orEmpty()),
+                getString(R.string.share_failed, e.message ?: e.toString()),
                 Toast.LENGTH_LONG,
             ).show()
             finish()
@@ -579,7 +579,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         }
         // Scope.get(), not IdentitySessionScope.getOrNull(): androidApp compiles at JVM 11 and
         // cannot inline homebase-common's JVM 21 bytecode.
-        val flowState: MomentCreateFlowState? = identitySession.scopeOrNull?.get()
+        val flowState = identitySession.scopeOrNull?.get<MomentCreateFlowState>()
         if (flowState == null) {
             Toast.makeText(this, getString(R.string.share_auth_required), Toast.LENGTH_LONG).show()
             finish()
