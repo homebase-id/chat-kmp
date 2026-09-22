@@ -171,7 +171,7 @@ fun MessageBubbleRaw(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
-    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     // Rendered as a preview of a message (action-menu header, message info, reply quote) rather
     // than as the message itself: typed bubbles must not open their full-screen detail from here.

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import co.touchlab.kermit.Logger
@@ -47,9 +49,11 @@ import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
 import id.homebase.core.ui.screens.contactbook.saveContactEdit
 import id.homebase.core.ui.screens.contactbook.saveNewContact
+import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.contactbook_edit_odinid_from_card
+import id.homebase.resources.contactbook_edit_title_edit
 import id.homebase.resources.chat_contact_card_exists_body
 import id.homebase.resources.chat_contact_card_exists_identity_body
 import id.homebase.resources.chat_contact_card_exists_open
@@ -68,6 +72,7 @@ import id.homebase.resources.chat_contact_card_saved_open
 import id.homebase.resources.chat_contact_card_saved_title
 import id.homebase.resources.chat_contact_card_title
 import id.homebase.resources.contactbook_error_forbidden
+import id.homebase.resources.loading
 import id.homebase.resources.ok
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.ExperimentalUuidApi
@@ -117,11 +122,13 @@ internal fun saveStageFor(result: ContactSaveResult?): SaveStage = when (result)
  * The duplicate check runs beside the open editor, never in front of it: a cold contact book has to
  * fetch and decrypt one override blob per contact, which is seconds of nothing to look at. When it
  * finds a match the sheet grows a banner offering to add the card's new values to that contact
- * instead of creating a second one.
+ * instead of creating a second one. The exception is [alreadySaved], which waits for its merge
+ * target rather than open a new-contact editor the merge would then replace.
  */
 @Composable
 fun ContactCardSaveHost(
     descriptor: ContactCardDescriptor?,
+    alreadySaved: Boolean,
     onDismiss: () -> Unit,
     onOpenContact: (uniqueId: Uuid, odinId: String?) -> Unit,
     // A clean save is expected and non-destructive, so it reports as a snackbar rather than a
@@ -142,6 +149,7 @@ fun ContactCardSaveHost(
     val checked = remember(descriptor) { CompletableDeferred<ContactCardImport.ExistingContact?>() }
     var mergeInto by remember(descriptor) { mutableStateOf<ContactBookEntry?>(null) }
     var confirmMerge by remember(descriptor) { mutableStateOf<ContactBookEntry?>(null) }
+    var resolvingTarget by remember(descriptor) { mutableStateOf(alreadySaved) }
     // Retained so Failed's "Try again" repeats the write instead of just reopening the sheet.
     var lastAttempt by remember(descriptor) { mutableStateOf<(() -> Unit)?>(null) }
     val cardName = descriptor.summaryLine()
@@ -170,7 +178,9 @@ fun ContactCardSaveHost(
             Logger.w(tag = TAG, throwable = e) { "contact load failed; skipping dupe check" }
             null
         }
+        if (alreadySaved) mergeInto = mergeTargetFor(duplicate)
         } finally {
+            resolvingTarget = false
             // In `finally` because cancellation is rethrown above: a write already suspended on
             // this deferred would otherwise stay suspended for the life of the process, and the
             // contact would never be written or reported.
@@ -181,7 +191,9 @@ fun ContactCardSaveHost(
     // Mounted across Saving and both failures so a retry resumes on the user's own edits.
     val current = stage
     val target = mergeInto
-    if (current is SaveStage.Editing || current is SaveStage.Saving ||
+    if (resolvingTarget) {
+        ResolvingTargetSheet(onDismiss = onDismiss)
+    } else if (current is SaveStage.Editing || current is SaveStage.Saving ||
         current is SaveStage.Forbidden || current is SaveStage.Failed
     ) {
         val match = duplicate
@@ -419,6 +431,10 @@ fun ContactCardSaveHost(
     }
 }
 
+// Only an identity match is the contact "Update" named; a phone/email match keeps the banner.
+internal fun mergeTargetFor(match: ContactCardImport.ExistingContact?): ContactBookEntry? =
+    match?.takeIf { it.matchedOn == ContactCardImport.ExistingContact.MatchedOn.Identity }?.entry
+
 // The matched entry carries its override applied; diffing an edit against it would drop the user's
 // existing primary overrides, so the merge writes against the pre-override contact.
 private fun ContactRepository.syncedBaselineOf(entry: ContactBookEntry): ContactBookEntry =
@@ -472,6 +488,26 @@ private fun DuplicateBanner(
             }
         },
     )
+}
+
+@Composable
+private fun ResolvingTargetSheet(onDismiss: () -> Unit) {
+    AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Text(
+                text = stringResource(MR.string.contactbook_edit_title_edit),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            )
+            val loading = stringResource(MR.string.loading)
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(vertical = 32.dp)
+                    .semantics { contentDescription = loading },
+            )
+        }
+    }
 }
 
 @Composable

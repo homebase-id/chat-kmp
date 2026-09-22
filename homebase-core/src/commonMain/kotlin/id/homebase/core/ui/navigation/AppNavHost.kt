@@ -1253,6 +1253,9 @@ fun AppNavHost(
                                 var pendingContactCard by rememberSaveable(
                                     stateSaver = ContactCardDescriptorSaver,
                                 ) { mutableStateOf<ContactCardDescriptor?>(null) }
+                                var pendingContactCardSaved by rememberSaveable {
+                                    mutableStateOf(false)
+                                }
                                 var savedContact by remember {
                                     mutableStateOf<Pair<String, Uuid?>?>(null)
                                 }
@@ -1278,6 +1281,7 @@ fun AppNavHost(
                                 }
                                 ContactCardSaveHost(
                                     descriptor = pendingContactCard,
+                                    alreadySaved = pendingContactCardSaved,
                                     onDismiss = { pendingContactCard = null },
                                     onOpenContact = { uniqueId, odinId ->
                                         navController.navigate(
@@ -1355,7 +1359,10 @@ fun AppNavHost(
                                         @Suppress("AssignedValueIsNeverRead")
                                         isChatComposerOpen = it
                                     },
-                                    onSaveContactCard = { pendingContactCard = it },
+                                    onSaveContactCard = { card, alreadySaved ->
+                                        pendingContactCard = card
+                                        pendingContactCardSaved = alreadySaved
+                                    },
                                     newConversationPane = { onDismiss, onConversationOpened ->
                                         NewConversationPaneHost(
                                             onDismiss = onDismiss,

@@ -968,6 +968,7 @@
     <string name="chat_contact_card_open">View contact details</string>
     <string name="chat_contact_card_more">+%1$d more</string>
     <string name="chat_contact_card_save">Save to contacts</string>
+    <string name="chat_contact_card_update">Update contact</string>
     <string name="chat_contact_card_title">Contact</string>
     <string name="chat_contact_card_call">Call</string>
     <string name="chat_contact_card_send_email">Send email</string>
