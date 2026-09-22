@@ -118,6 +118,7 @@ import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
+import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
@@ -313,6 +314,7 @@ fun AppNavHost(
     val serverSupportsMail by emailPreferences.serverSupportsMail.collectAsStateWithLifecycle()
     val emailViewModel: EmailViewModel = koinViewModel()
     val emailUiState by emailViewModel.uiState.collectAsStateWithLifecycle()
+    val profileCardEnabled by koinInject<DeveloperPreferences>().profileCardEnabled.collectAsStateWithLifecycle()
     val emailUnreadCount = emailUiState.mailboxStatus
         ?.takeIf { it.available }
         ?.inboxUnread ?: 0
@@ -1629,13 +1631,14 @@ fun AppNavHost(
                                                 navController.navigate(Route.Defragmenter)
                                             },
                                         ),
+                                        profileCardEnabled = profileCardEnabled,
                                     )
                                 }
                             },
                         ) {
                             if (isAuthenticated) {
                                 // Pre-warms the card page; its host lives as long as this entry.
-                                StartCardHostWhenSettled(koinViewModel())
+                                if (profileCardEnabled) StartCardHostWhenSettled(koinViewModel())
                                 SettingsScreen(
                                     viewModel = koinViewModel(),
                                     actions = SettingsActions(
@@ -1680,7 +1683,7 @@ fun AppNavHost(
                                         },
                                         onProfileCard = {
                                             navController.navigate(Route.ProfileCard)
-                                        },
+                                        }.takeIf { profileCardEnabled },
                                     ),
                                 )
                             }
@@ -1688,9 +1691,11 @@ fun AppNavHost(
 
                         composable<Route.ProfileEdit> { entry ->
                             if (isAuthenticated) {
-                                StartCardHostWhenSettled(
-                                    koinViewModel(viewModelStoreOwner = rememberCardHostOwner(navController, entry)),
-                                )
+                                if (profileCardEnabled) {
+                                    StartCardHostWhenSettled(
+                                        koinViewModel(viewModelStoreOwner = rememberCardHostOwner(navController, entry)),
+                                    )
+                                }
                                 ProfileEditScreen(
                                     viewModel = koinViewModel(),
                                     avatarViewModel = koinViewModel(),
@@ -1700,7 +1705,8 @@ fun AppNavHost(
                                             Route.Crop(requestId.toString(), lockedAspect = "square")
                                         )
                                     },
-                                    onOpenCard = { navController.navigate(Route.ProfileCard) },
+                                    onOpenCard = { navController.navigate(Route.ProfileCard) }
+                                        .takeIf { profileCardEnabled },
                                 )
                             }
                         }

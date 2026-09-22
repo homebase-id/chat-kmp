@@ -288,14 +288,16 @@ fun SettingsUi(
                 )
             }
 
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("profileCardButton"),
-                    icon = Icons.Outlined.ContactPage,
-                    title = stringResource(MR.string.settings_profile_card),
-                    supportingText = stringResource(MR.string.settings_profile_card_desc),
-                    action = SettingsRowAction.Navigate(actions.onProfileCard),
-                )
+            actions.onProfileCard?.let { onProfileCard ->
+                item {
+                    SettingsRow(
+                        modifier = Modifier.testTag("profileCardButton"),
+                        icon = Icons.Outlined.ContactPage,
+                        title = stringResource(MR.string.settings_profile_card),
+                        supportingText = stringResource(MR.string.settings_profile_card_desc),
+                        action = SettingsRowAction.Navigate(onProfileCard),
+                    )
+                }
             }
 
             item {

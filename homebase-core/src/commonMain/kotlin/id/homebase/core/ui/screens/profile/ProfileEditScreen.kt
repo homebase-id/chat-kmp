@@ -149,7 +149,7 @@ fun ProfileEditScreen(
     avatarViewModel: ProfileAvatarEditViewModel,
     onBack: () -> Unit,
     onNavigateToCropper: (Uuid) -> Unit,
-    onOpenCard: () -> Unit,
+    onOpenCard: (() -> Unit)?,
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
     val avatarUiState by avatarViewModel.state.collectAsStateWithLifecycle()
@@ -208,11 +208,13 @@ fun ProfileEditScreen(
                                 ),
                             )
                         }
-                        IconButton(onClick = onOpenCard) {
-                            Icon(
-                                imageVector = Icons.Outlined.ContactPage,
-                                contentDescription = stringResource(MR.string.profile_card_open),
-                            )
+                        if (onOpenCard != null) {
+                            IconButton(onClick = onOpenCard) {
+                                Icon(
+                                    imageVector = Icons.Outlined.ContactPage,
+                                    contentDescription = stringResource(MR.string.profile_card_open),
+                                )
+                            }
                         }
                     }
                 },
