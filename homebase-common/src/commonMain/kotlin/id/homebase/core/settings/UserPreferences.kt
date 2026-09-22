@@ -17,6 +17,7 @@ class UserPreferences(private val settings: Settings) {
             autoSaveIncomingMedia = autoSaveIncomingMedia,
             autoSaveOnUnmeteredOnly = autoSaveOnUnmeteredOnly,
             enterSendsMessage = enterSendsMessage,
+            arrowUpEditsLastMessage = arrowUpEditsLastMessage,
         )
     )
     val preferenceState: StateFlow<PreferenceState> = _preferenceState
@@ -109,6 +110,13 @@ class UserPreferences(private val settings: Settings) {
             _preferenceState.value = _preferenceState.value.copy(enterSendsMessage = value)
         }
 
+    var arrowUpEditsLastMessage: Boolean
+        get() = settings.getBoolean("composer_arrow_up_edits_last", true)
+        set(value) {
+            settings.putBoolean("composer_arrow_up_edits_last", value)
+            _preferenceState.value = _preferenceState.value.copy(arrowUpEditsLastMessage = value)
+        }
+
     var preferredUserReactions: List<String>
         get() = settings.getStringOrNull("preferred_user_reactions")?.split(",") ?: listOf()
         set(value) = settings.putString("preferred_user_reactions", value.joinToString(","))
@@ -198,6 +206,7 @@ data class PreferenceState(
     val autoSaveIncomingMedia: Boolean = false,
     val autoSaveOnUnmeteredOnly: Boolean = true,
     val enterSendsMessage: Boolean = false,
+    val arrowUpEditsLastMessage: Boolean = true,
 )
 
 enum class ThemeState {

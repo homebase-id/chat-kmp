@@ -156,7 +156,7 @@ fun MessageItem(
         }
     }
     if (message.isAuthoredBy(odinId)) {
-        val onEdit = if (policy.allowEdit) {
+        val onEdit = if (message.isEditableBy(odinId)) {
             remember(message.id) {
                 {
                     onUiAction(

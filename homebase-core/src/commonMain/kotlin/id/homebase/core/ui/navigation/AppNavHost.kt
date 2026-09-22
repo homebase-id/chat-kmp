@@ -124,6 +124,7 @@ import id.homebase.core.ui.screens.feed.FeedTimelineScreen
 import id.homebase.core.ui.screens.feed.PostDetailScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
+import id.homebase.core.ui.screens.keyboard.KeyboardSettingsScreen
 import id.homebase.core.ui.screens.media.MediaSettingsScreen
 import id.homebase.core.ui.screens.moments.CreateMomentGroupScreen
 import id.homebase.core.ui.screens.moments.MomentAudienceScreen
@@ -1643,6 +1644,9 @@ fun AppNavHost(
                                         onMedia = {
                                             navController.navigate(Route.MediaSettings)
                                         },
+                                        onKeyboard = {
+                                            navController.navigate(Route.KeyboardSettings)
+                                        },
                                         onStorage = {
                                             navController.navigate(Route.StorageSettings)
                                         },
@@ -2236,6 +2240,14 @@ fun AppNavHost(
                         composable<Route.MediaSettings> {
                             if (isAuthenticated) {
                                 MediaSettingsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() })
+                            }
+                        }
+
+                        composable<Route.KeyboardSettings> {
+                            if (isAuthenticated) {
+                                KeyboardSettingsScreen(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() })
                             }

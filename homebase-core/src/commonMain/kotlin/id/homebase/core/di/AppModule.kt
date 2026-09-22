@@ -182,6 +182,7 @@ import id.homebase.core.ui.screens.feed.FeedViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.loading.AppLoadingViewModel
+import id.homebase.core.ui.screens.keyboard.KeyboardSettingsViewModel
 import id.homebase.core.ui.screens.media.MediaSettingsViewModel
 import id.homebase.core.ui.screens.moments.MomentAudienceViewModel
 import id.homebase.core.ui.screens.moments.MomentComposeViewModel
@@ -1238,6 +1239,7 @@ val appModule = module {
     viewModelOf(::DeveloperScheduledPushTestViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::MediaSettingsViewModel)
+    viewModelOf(::KeyboardSettingsViewModel)
     viewModelOf(::StorageSettingsViewModel)
     viewModelOf(::DefragmenterViewModel)
     viewModelOf(::HelpViewModel)

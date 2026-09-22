@@ -377,6 +377,18 @@ sealed interface FullScreenOverlay {
     ) : FullScreenOverlay.MediaViewer
 }
 
+internal fun MessageListUiState.lastEditableMessage(): MessageUiModel? {
+    // A window paged into history doesn't hold the newest messages, so its last one isn't the last sent.
+    if (isEditingMessageId != null || hasNewerMessages) return null
+    val self = ownerSession?.odinId ?: return null
+    return messages.asReversed().firstNotNullOfOrNull { item ->
+        (item as? MessageListContentModel.Message)?.message?.takeIf {
+            // With no server version tag, an edit only lands by amending a still-queued create.
+            it.isEditableBy(self) && !it.isDeleted && (it.versionTag != Uuid.NIL || it.isPendingSend)
+        }
+    }
+}
+
 /**
  * Leaving a conversation drops only the read-only viewers: [FullScreenOverlay.AttachmentData]
  * is the composer editor, whose picked files and crop/draw/trim edits exist nowhere else and
