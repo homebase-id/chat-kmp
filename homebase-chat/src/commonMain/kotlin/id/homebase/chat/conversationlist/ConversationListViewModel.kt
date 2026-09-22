@@ -904,12 +904,9 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
-            contactService.contacts
-                .map { contacts -> contacts.mapTo(mutableSetOf()) { it.odinId } }
-                .distinctUntilChanged()
-                .collect { identities ->
-                    _messagesUiState.update { it.copy(savedContactIdentities = identities) }
-                }
+            contactService.savedContactIdentities.collect { identities ->
+                _messagesUiState.update { it.copy(savedContactIdentities = identities) }
+            }
         }
 
         // Projected here, not in composition: contactService.contacts re-emits on connection-status
