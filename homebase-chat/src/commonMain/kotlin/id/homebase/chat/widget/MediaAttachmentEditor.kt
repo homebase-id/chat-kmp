@@ -111,7 +111,7 @@ internal data class EditorToolset(
 )
 
 /** Pure decision for the per-attachment tool row. Crop/Draw apply only to
- *  editable images (FileImage / Gallery); Save applies to any current
+ *  editable non-GIF images (FileImage / Gallery); Save applies to any current
  *  attachment. A tool is shown only when its callback was supplied. */
 internal fun editorToolsetFor(
     current: AttachmentPendingFile?,
@@ -122,12 +122,20 @@ internal fun editorToolsetFor(
 ): EditorToolset {
     val isEditableImage =
         current is AttachmentPendingFile.FileImage || current is AttachmentPendingFile.Gallery
+    // Crop and draw re-encode to a single-frame JPEG, which would freeze a GIF. iOS gallery mimeType is "image/*".
+    val isNonGifImage = when (current) {
+        is AttachmentPendingFile.FileImage ->
+            (current.sourceContentType ?: resolveContentType(fileName = current.file.name)) != "image/gif"
+        is AttachmentPendingFile.Gallery ->
+            current.image.mimeType != "image/gif" && resolveContentType(fileName = current.image.fileName) != "image/gif"
+        else -> false
+    }
     // Quality only bites on media we re-encode. A document or a voice note ships untouched either
     // way, so offering the toggle there would be a lie.
     val isQualityRelevant = isEditableImage || current is AttachmentPendingFile.FileVideo
     return EditorToolset(
-        showCrop = canCrop && isEditableImage,
-        showDraw = canDraw && isEditableImage,
+        showCrop = canCrop && isNonGifImage,
+        showDraw = canDraw && isNonGifImage,
         showSave = canSave && current != null,
         showQuality = canSetQuality && isQualityRelevant,
     )

@@ -735,6 +735,15 @@ fun ConversationContent(
         )
     }
 
+    uiState.pendingGifPaste?.let { paste ->
+        GifPasteSheet(
+            bytes = paste.bytes,
+            onSendAsSticker = { onUiAction(ConversationListUiAction.SendPastedGifAsSticker) },
+            onSendAsGif = { onUiAction(ConversationListUiAction.SendPastedGifAsGif) },
+            onDismiss = { onUiAction(ConversationListUiAction.DismissPastedGif) },
+        )
+    }
+
     if (showBlockConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showBlockConfirmDialog = false },

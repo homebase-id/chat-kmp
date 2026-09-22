@@ -293,6 +293,10 @@ class ConversationListViewModel(
         sendEvent = ::sendEvent,
         dispatch = ::onAction,
         addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
+        // Not a bound reference: stickerCreator is initialised below this.
+        saveAndSendSticker = { conversationId, bytes, contentType ->
+            stickerCreator.saveAndSend(conversationId, bytes, contentType)
+        },
     )
 
     private val conversationLifecycleHandler = ConversationLifecycleHandler(
@@ -1557,6 +1561,9 @@ class ConversationListViewModel(
 
             /* Clipboard image paste */
             is ConversationListUiAction.AttachClipboardImage -> attachmentHandler.handleAttachClipboardImage(action)
+            is ConversationListUiAction.SendPastedGifAsSticker -> attachmentHandler.handleSendPastedGifAsSticker()
+            is ConversationListUiAction.SendPastedGifAsGif -> attachmentHandler.handleSendPastedGifAsGif()
+            is ConversationListUiAction.DismissPastedGif -> attachmentHandler.handleDismissPastedGif()
 
             is ConversationListUiAction.RequestCropAttachment -> attachmentHandler.handleRequestCropAttachment(action)
 

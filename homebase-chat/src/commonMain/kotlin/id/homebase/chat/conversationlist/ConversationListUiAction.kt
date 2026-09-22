@@ -280,6 +280,10 @@ sealed interface ConversationListUiAction {
         val imageBytes: ByteArray,
     ) : ConversationListUiAction
 
+    data object SendPastedGifAsSticker : ConversationListUiAction
+    data object SendPastedGifAsGif : ConversationListUiAction
+    data object DismissPastedGif : ConversationListUiAction
+
     /** User tapped the crop button on an image attachment. */
     data class RequestCropAttachment(
         val conversationId: Uuid,

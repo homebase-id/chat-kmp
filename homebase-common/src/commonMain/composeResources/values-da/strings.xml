@@ -833,6 +833,13 @@
     <string name="cd_sticker_options_add">Føj til mine klistermærker</string>
     <string name="cd_sticker_options_remove">Fjern fra mine klistermærker</string>
     <string name="cd_sticker_options_save">Gem på enheden</string>
+    <!-- Sheet shown when an animated GIF is pasted into the composer -->
+    <string name="chat_gif_paste_title">Send denne GIF</string>
+    <string name="chat_gif_paste_as_sticker">Send som klistermærke</string>
+    <string name="chat_gif_paste_as_gif">Send som GIF</string>
+    <string name="cd_gif_paste_preview">Indsat GIF</string>
+    <string name="cd_gif_paste_as_sticker">Gem i mine klistermærker og send</string>
+    <string name="cd_gif_paste_as_gif">Åbn i editoren for at sende som GIF</string>
 
     <!-- Groodle (group-scheduling poll) -->
     <string name="chat_groodle_share">Groodle</string>

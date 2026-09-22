@@ -119,6 +119,18 @@ class StickerCreatorTest {
         assertTrue(!probed)
     }
 
+    @Test fun saveAndSend_saves_and_sends_those_bytes_once() = runTest {
+        val rec = Rec()
+        val c = creator(this, rec, isTransparent = { false })
+        val gif = byteArrayOf(0x47, 0x49, 0x46)
+        c.saveAndSend(convo, gif, "image/gif")
+        advanceUntilIdle()
+        assertTrue(rec.saved.single().first.contentEquals(gif)); assertEquals("image/gif", rec.saved.single().second)
+        val sent = rec.sent.single()
+        assertEquals(convo, sent.first); assertTrue(sent.second.contentEquals(gif)); assertEquals("image/gif", sent.third)
+        assertEquals(MR.string.chat_sticker_saved, rec.infos.single())
+    }
+
     @Test fun unsupported_only_original_no_cutout_call() = runTest {
         val rec = Rec(); var cutCalled = false
         val c = creator(this, rec, isTransparent = { false }, bgSupported = { false }, cutOut = { cutCalled = true; byteArrayOf(1) })

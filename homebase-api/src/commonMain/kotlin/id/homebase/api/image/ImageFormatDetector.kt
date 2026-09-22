@@ -70,9 +70,9 @@ object ImageFormatDetector {
     }
 
     // A single-frame GIF counts as still.
-    fun isAnimated(bytes: ByteArray): Boolean = isMultiFrameGif(bytes) || isAnimatedWebp(bytes)
+    fun isAnimated(bytes: ByteArray): Boolean = isAnimatedGif(bytes) || isAnimatedWebp(bytes)
 
-    private fun isMultiFrameGif(b: ByteArray): Boolean {
+    fun isAnimatedGif(b: ByteArray): Boolean {
         if (b.size < 13 || b.decodeToString(0, 3) != "GIF") return false
         var i = 13 + gifColorTableSize(b[10])
         var seenFrame = false
