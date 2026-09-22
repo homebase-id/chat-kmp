@@ -18,7 +18,7 @@ import androidx.compose.ui.platform.LocalDensity
 import id.homebase.api.browser.guardJsCallback
 import id.homebase.core.util.showHtmlOverlay
 
-actual fun createCardHost(): CardHost = WebCardHost()
+actual fun createCardHost(odinId: String): CardHost = WebCardHost(odinId)
 
 @Composable
 actual fun CardHostView(host: CardHost, modifier: Modifier) {
@@ -43,19 +43,24 @@ actual fun CardHostView(host: CardHost, modifier: Modifier) {
 }
 
 // Canvas-rendered Compose can't host DOM, so the iframe floats over the view's bounds (see showHtmlOverlay).
-internal class WebCardHost : CardHostBase() {
+internal class WebCardHost(odinId: String) : CardHostBase(cardPageUrl(odinId, CardPageHost.FRAME)) {
+    private val origin = cardOrigin(odinId)
     val frame: JsAny = createCardFrame()
-    private val listener: JsAny = addCardMessageListener(frame) { message ->
+    private val listener: JsAny = addCardMessageListener(frame, origin) { message ->
         guardJsCallback("CardHost") { onBridgeMessage(message) }
     }
 
     init {
+        addCardFrameLoadListener(frame) { guardJsCallback("CardHost") { onMainFrameFinished() } }
         loadPage()
     }
 
-    override fun loadHtml(html: String) = setCardFrameSrcdoc(frame, html)
+    override fun loadUrl(url: String) = setCardFrameSrc(frame, url)
 
-    override fun evaluateNow(js: String) = evaluateInCardFrame(frame, js)
+    override fun send(command: CardCommand) = when (command) {
+        is CardCommand.Render -> postCardCommand(frame, "render", command.payload.toJson(), origin)
+        CardCommand.ExportPng -> postCardCommand(frame, "exportPng", null, origin)
+    }
 
     override fun release() {
         removeCardMessageListener(listener)
@@ -63,7 +68,7 @@ internal class WebCardHost : CardHostBase() {
     }
 }
 
-// The sandbox blocks top navigation and popups, which would unload the memory-only app; same-origin keeps contentDocument reachable.
+// No top navigation or popups, which would unload the memory-only app; allow-same-origin keeps the site's real origin for its storage and our origin check.
 private fun createCardFrame(): JsAny = js(
     """{
         var f = document.createElement('iframe');
@@ -73,29 +78,33 @@ private fun createCardFrame(): JsAny = js(
         f.style.zIndex = '2147483000';
         f.style.display = 'none';
         f.setAttribute('sandbox', 'allow-scripts allow-same-origin');
-        document.body.appendChild(f);
         return f;
     }"""
 )
 
-private fun setCardFrameSrcdoc(frame: JsAny, html: String): Unit = js("{ frame.srcdoc = html; }")
+// Appended only once src is set, so the only load event is the card page's.
+private fun setCardFrameSrc(frame: JsAny, url: String): Unit = js(
+    "{ frame.src = url; if (!frame.parentNode) document.body.appendChild(frame); }"
+)
 
-// card.html's CSP allows 'unsafe-inline' but not 'unsafe-eval', so contentWindow.eval throws EvalError.
-private fun evaluateInCardFrame(frame: JsAny, script: String): Unit = js(
+private fun addCardFrameLoadListener(frame: JsAny, onLoad: () -> Unit): Unit = js(
+    "{ frame.addEventListener('load', function () { onLoad(); }); }"
+)
+
+private fun postCardCommand(frame: JsAny, command: String, requestJson: String?, origin: String): Unit = js(
     """{
-        var doc = frame.contentDocument;
-        if (!doc || !doc.documentElement) return;
-        var s = doc.createElement('script');
-        s.textContent = script;
-        doc.documentElement.appendChild(s);
-        s.remove();
+        var w = frame.contentWindow;
+        if (!w) return;
+        var message = { homebaseCardCommand: command };
+        if (requestJson !== null) message.request = JSON.parse(requestJson);
+        w.postMessage(message, origin);
     }"""
 )
 
-private fun addCardMessageListener(frame: JsAny, onMessage: (String) -> Unit): JsAny = js(
+private fun addCardMessageListener(frame: JsAny, origin: String, onMessage: (String) -> Unit): JsAny = js(
     """{
         var listener = function (e) {
-            if (e.source === frame.contentWindow && e.data && e.data.homebaseCard) {
+            if (e.source === frame.contentWindow && e.origin === origin && e.data && e.data.homebaseCard) {
                 onMessage(JSON.stringify(e.data.homebaseCard));
             }
         };

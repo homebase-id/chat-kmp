@@ -1,8 +1,8 @@
 package id.homebase.core.ui.screens.card
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
-import id.homebase.api.client.profile.ProfileCard
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.image.ImageFormat
 import id.homebase.api.image.ImageUtils
@@ -10,9 +10,11 @@ import id.homebase.core.image.CachedImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
-import id.homebase.core.ui.screens.profile.ProfileEditUiState
 import id.homebase.core.ui.screens.profile.ProfileField
 import id.homebase.core.ui.screens.profile.profileNameValue
+import id.homebase.core.ui.screens.profile.visibleBio
+import id.homebase.core.ui.screens.profile.visibleLinks
+import id.homebase.core.ui.screens.profile.visibleValues
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -36,15 +38,15 @@ private val cardSocialFields = mapOf(
 
 fun buildCardPayload(
     odinId: String,
-    state: ProfileEditUiState,
+    attributes: List<ProfileAttribute>,
     tier: ProfileVisibility,
     design: String,
-    publicProfile: ProfileCard?,
     photoSrc: String?,
     headerSrc: String?,
     tagLine: String?,
+    posts: List<CardPost> = emptyList(),
 ): CardPayload {
-    val values = state.visibleValues(tier)
+    val values = attributes.visibleValues(tier)
     fun text(field: ProfileField) = values[field]?.trim()?.ifEmpty { null }
     return CardPayload(
         design = design,
@@ -55,28 +57,28 @@ fun buildCardPayload(
             displayName = profileNameValue(values)?.trim(),
             headline = tagLine?.trim()?.ifEmpty { null } ?: text(ProfileField.STATUS),
             // The public site's card shows the summary, never the full bio.
-            bio = publicProfile?.bioSummary?.trim()?.ifEmpty { null },
+            bio = attributes.visibleBio(tier)?.trim()?.ifEmpty { null },
             photo = photoSrc?.ifBlank { null }?.let(::CardImage),
             header = headerSrc?.ifBlank { null }?.let(::CardImage),
-            links = publicProfile?.let(::cardLinks).orEmpty(),
+            links = cardLinks(attributes.visibleLinks(tier)),
             socials = cardSocialFields.mapNotNull { (type, social) ->
                 text(social.field)?.let { socialUsername(type, it) }?.let { CardSocial(type = type, username = it) }
             },
+            posts = posts,
         ),
     )
 }
 
-// /pub/profile repeats every social under `links`; the card takes socials from the profile fields instead.
-private fun cardLinks(profile: ProfileCard): List<CardLink> {
-    val socials = profile.sameAs.mapTo(HashSet()) { it.type to it.url }
-    return profile.links
-        .filterNot { (it.type to it.url) in socials }
+// A link kept at both tiers is two records, so the vetted card would list it twice.
+private fun cardLinks(links: List<ProfileAttribute>): List<CardLink> =
+    links
         .mapNotNull { link ->
-            val target = link.url?.trim()?.takeIf(::isWebUrl) ?: return@mapNotNull null
-            link.type.trim().ifEmpty { target } to target
+            val target = link.string(ProfileAttributeTypes.KEY_LINK_TARGET)?.trim()?.takeIf(::isWebUrl)
+                ?: return@mapNotNull null
+            (link.string(ProfileAttributeTypes.KEY_LINK_TEXT)?.trim()?.ifEmpty { null } ?: target) to target
         }
+        .distinctBy { (_, target) -> target }
         .mapIndexed { index, (text, target) -> CardLink(id = "${index + 1}", text = text, target = target) }
-}
 
 internal fun isWebUrl(url: String): Boolean {
     val scheme = url.substringBefore("://", missingDelimiterValue = "").lowercase()
@@ -104,17 +106,17 @@ internal fun socialUsername(type: String, raw: String): String? {
 }
 
 /**
- * Long edge ≤ [CARD_IMAGE_MAX_EDGE] JPEG as a `data:` URL; SVG passes through unchanged, since it
+ * Long edge ≤ [maxEdge] JPEG as a `data:` URL; SVG passes through unchanged, since it
  * can't be re-encoded and `<img>` draws it at any size. Null (logged) if the bytes don't decode.
  */
 @OptIn(ExperimentalEncodingApi::class)
-suspend fun cardImageSrc(bytes: ByteArray): String? = withContext(Dispatchers.Default) {
+suspend fun cardImageSrc(bytes: ByteArray, maxEdge: Int = CARD_IMAGE_MAX_EDGE): String? = withContext(Dispatchers.Default) {
     if (isSvg(bytes)) return@withContext "data:image/svg+xml;base64," + Base64.encode(bytes)
     try {
         val jpeg = ImageUtils.resizePreserveAspect(
             srcBytes = bytes,
-            maxWidth = CARD_IMAGE_MAX_EDGE,
-            maxHeight = CARD_IMAGE_MAX_EDGE,
+            maxWidth = maxEdge,
+            maxHeight = maxEdge,
             outputFormat = ImageFormat.JPEG,
             quality = CARD_IMAGE_JPEG_QUALITY,
         )
@@ -135,11 +137,19 @@ internal fun isSvg(bytes: ByteArray): Boolean {
     return head.startsWith("<svg") || (head.startsWith("<?xml") || head.startsWith("<!")) && "<svg" in head
 }
 
-// The full payload is the fallback for images with no usable thumbnail, such as SVG.
-suspend fun loadCardImageSrc(image: HomebaseImageData, imageLoader: HomebaseImageLoader): String? =
-    fetchCardImage(image, "thumb") { imageLoader.loadThumbnail(image, ImageSize.THUMB_LARGE) }
-        ?.let { cardImageSrc(it) }
-        ?: fetchCardImage(image, "payload") { imageLoader.loadFullPayload(image) }?.let { cardImageSrc(it) }
+// The full payload is the fallback for images with no usable thumbnail, such as SVG; a video's payload is never an image.
+suspend fun loadCardImageSrc(
+    image: HomebaseImageData,
+    imageLoader: HomebaseImageLoader,
+    maxEdge: Int = CARD_IMAGE_MAX_EDGE,
+): String? =
+    fetchCardImage(image, "thumb") { imageLoader.loadThumbnail(image, ImageSize(maxEdge, maxEdge)) }
+        ?.let { cardImageSrc(it, maxEdge) }
+        ?: if (image.effectiveContentType?.startsWith("video/", ignoreCase = true) == true) {
+            null
+        } else {
+            fetchCardImage(image, "payload") { imageLoader.loadFullPayload(image) }?.let { cardImageSrc(it, maxEdge) }
+        }
 
 private suspend fun fetchCardImage(
     image: HomebaseImageData,

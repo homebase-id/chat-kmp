@@ -18,8 +18,8 @@ class CardImageSrcTest {
     private fun png(width: Int, height: Int): ByteArray =
         ImageUtils.encodeArgbToPng(ArgbImage(IntArray(width * height) { 0xFF3366CC.toInt() }, width, height))
 
-    private suspend fun encodedSize(width: Int, height: Int): ImageSize {
-        val src = assertNotNull(cardImageSrc(png(width, height)))
+    private suspend fun encodedSize(width: Int, height: Int, maxEdge: Int = CARD_IMAGE_MAX_EDGE): ImageSize {
+        val src = assertNotNull(cardImageSrc(png(width, height), maxEdge))
         val prefix = "data:image/jpeg;base64,"
         assertTrue(src.startsWith(prefix), src.take(40))
         val jpeg = Base64.decode(src.removePrefix(prefix))
@@ -35,6 +35,11 @@ class CardImageSrcTest {
     @Test
     fun portraitLongEdgeIsCappedAt1080() = runTest {
         assertEquals(ImageSize(360, 1080), encodedSize(1000, 3000))
+    }
+
+    @Test
+    fun aPostThumbnailIsCappedAtItsOwnEdge() = runTest {
+        assertEquals(ImageSize(400, 225), encodedSize(1600, 900, maxEdge = CARD_POST_IMAGE_MAX_EDGE))
     }
 
     @Test

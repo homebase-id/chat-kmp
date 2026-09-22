@@ -6,7 +6,9 @@ import android.graphics.Color
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
@@ -19,8 +21,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatformTools
 
-actual fun createCardHost(): CardHost =
-    AndroidCardHost(KoinPlatformTools.defaultContext().get().get<Context>())
+actual fun createCardHost(odinId: String): CardHost =
+    AndroidCardHost(KoinPlatformTools.defaultContext().get().get<Context>(), cardPageUrl(odinId))
 
 @Composable
 actual fun CardHostView(host: CardHost, modifier: Modifier) {
@@ -34,7 +36,7 @@ actual fun CardHostView(host: CardHost, modifier: Modifier) {
     }
 }
 
-internal class AndroidCardHost(context: Context) : CardHostBase() {
+internal class AndroidCardHost(context: Context, pageUrl: String) : CardHostBase(pageUrl) {
     private val appContext = context.applicationContext
 
     // Lets the pre-created WebView borrow the showing Activity, then drop it so it doesn't leak.
@@ -61,12 +63,12 @@ internal class AndroidCardHost(context: Context) : CardHostBase() {
         if (attachments == 0) contextWrapper.baseContext = appContext
     }
 
-    override fun loadHtml(html: String) {
-        webView.loadDataWithBaseURL(CARD_BASE_URL, html, "text/html", "utf-8", null)
+    override fun loadUrl(url: String) {
+        webView.loadUrl(url)
     }
 
-    override fun evaluateNow(js: String) {
-        webView.evaluateJavascript(js, null)
+    override fun send(command: CardCommand) {
+        webView.evaluateJavascript(command.script(), null)
     }
 
     override fun release() {
@@ -80,6 +82,7 @@ internal class AndroidCardHost(context: Context) : CardHostBase() {
         layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         setBackgroundColor(Color.TRANSPARENT)
         settings.javaScriptEnabled = true
+        settings.domStorageEnabled = true
         settings.allowFileAccess = false
         settings.allowContentAccess = false
         webViewClient = CardWebViewClient()
@@ -94,9 +97,23 @@ internal class AndroidCardHost(context: Context) : CardHostBase() {
     }
 
     private inner class CardWebViewClient : WebViewClient() {
+        // Never called for loadUrl itself, only for what the page or a redirect starts.
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+            if (request.isForMainFrame && request.url.toString() == pageUrl) return false
             onPageError("blocked navigation to ${request.url}")
             return true
+        }
+
+        override fun onPageFinished(view: WebView, url: String?) = onMainFrameFinished()
+
+        override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, errorResponse: WebResourceResponse) {
+            if (!request.isForMainFrame) return
+            onMainFrameFailed("HTTP ${errorResponse.statusCode} loading ${request.url}", unsupported = true)
+        }
+
+        override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+            if (!request.isForMainFrame) return
+            onMainFrameFailed("${error.description} (${error.errorCode}) loading ${request.url}", unsupported = false)
         }
 
         // Returning false (the default) takes the whole app down with the renderer.

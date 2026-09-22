@@ -59,14 +59,37 @@ class CardProtocolTest {
             CardPayload(design = CardDesign.POSTER, data = CardData(odinId = "frodo.dotyou.cloud")),
         )
         val data = cardJson.parseToJsonElement(json).jsonObject.getValue("data") as JsonObject
-        assertEquals(setOf("odinId", "links", "socials"), data.keys)
+        assertEquals(setOf("odinId", "links", "socials", "posts"), data.keys)
         assertFalse("null" in json)
     }
 
     @Test
-    fun renderScriptCallsThePageApi() {
-        val script = renderScript(CardPayload(design = CardDesign.COLLAGE, data = CardData(odinId = "a.b")))
+    fun aPostEncodesToTheContractFieldNames() {
+        val post = CardPost(
+            id = "f1",
+            href = "https://frodo.dotyou.cloud/posts/public-posts/there-and-back",
+            date = 1_718_000_000_000,
+            title = "There and back",
+            excerpt = "A hobbit's tale",
+            minutes = 2.4,
+            type = "article",
+            image = CardImage("data:image/jpeg;base64,AAAA"),
+        )
+        val json = cardJson.encodeToString(CardPost.serializer(), post)
+        val fields = cardJson.parseToJsonElement(json).jsonObject
+        assertEquals(setOf("id", "href", "date", "title", "excerpt", "minutes", "type", "image"), fields.keys)
+        assertEquals(
+            setOf("id", "href", "date"),
+            cardJson.parseToJsonElement(cardJson.encodeToString(CardPost.serializer(), CardPost("f1", "https://a.b/posts/x/y", 1)))
+                .jsonObject.keys,
+        )
+    }
+
+    @Test
+    fun commandsCallThePageApi() {
+        val script = CardCommand.Render(CardPayload(design = CardDesign.COLLAGE, data = CardData(odinId = "a.b"))).script()
         assertTrue(script.startsWith("window.homebaseCard.render({"))
         assertTrue(script.endsWith("})"))
+        assertEquals("window.homebaseCard.exportPng()", CardCommand.ExportPng.script())
     }
 }

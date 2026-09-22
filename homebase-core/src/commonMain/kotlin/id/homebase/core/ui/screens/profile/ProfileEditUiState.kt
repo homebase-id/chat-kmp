@@ -8,16 +8,15 @@ import id.homebase.api.client.profile.ProfileVisibility
  * Form state for the owner's standard-profile editor. Every field has an independent value per
  * visibility tier — [anonymousValues] shown to everyone, [connectedValues] shown only to connected
  * contacts — since each tier is backed by its own ACL-gated [id.homebase.api.client.profile.ProfileAttribute]
- * record (see [ProfileEditViewModel]). A blank Connected value is not a stored override; it falls
- * back to the Anonymous value at *display* time (see [visibleValues]) — [value] never substitutes
- * across tiers.
+ * record (see [ProfileEditViewModel]). These two maps are what the editor writes, not what a
+ * visitor sees: that is [visibleValues], chosen from the stored [attributes] by their ACLs.
  *
  * There's no screen-wide Save: each attribute persists individually (see
  * [ProfileEditAction.SaveAttribute]), so [savingAttributes] tracks in-flight saves per
  * (attribute type, tier) pair rather than a single global flag.
  *
- * The loaded attributes (id / versionTag / unmodelled data keys, per tier) live in the ViewModel,
- * not here — this state is purely what the form shows and binds to.
+ * The record each tier's edits are written to (id / versionTag / unmodelled data keys) lives in the
+ * ViewModel, not here.
  */
 @Immutable
 data class ProfileEditUiState(
@@ -28,11 +27,8 @@ data class ProfileEditUiState(
     val anonymousValues: Map<ProfileField, String> = emptyMap(),
     val connectedValues: Map<ProfileField, String> = emptyMap(),
 
-    /** The owner's [id.homebase.api.client.profile.ProfileAttributeTypes.PHOTO] attribute at each
-     *  tier, if one is set — null means no photo uploaded for that tier. Managed by the dedicated
-     *  avatar editor ([ProfileAvatarEditViewModel]); read-only here, just for [ProfilePreview]. */
-    val anonymousPhoto: ProfileAttribute? = null,
-    val connectedPhoto: ProfileAttribute? = null,
+    /** Every stored attribute (photos included), as last read or saved; [ProfilePreview] reads it. */
+    val attributes: List<ProfileAttribute> = emptyList(),
 
     /** (attribute type, tier) pairs whose [ProfileEditAction.SaveAttribute] is currently in flight. */
     val savingAttributes: Set<Pair<String, ProfileVisibility>> = emptySet(),
@@ -44,18 +40,10 @@ data class ProfileEditUiState(
     fun value(field: ProfileField, tier: ProfileVisibility): String =
         (if (tier == ProfileVisibility.ANONYMOUS) anonymousValues else connectedValues)[field].orEmpty()
 
-    /** What a viewer at [tier] sees: above Public, the Connected value where set, else the Public one. */
-    fun visibleValues(tier: ProfileVisibility): Map<ProfileField, String> =
-        if (tier == ProfileVisibility.ANONYMOUS) {
-            anonymousValues
-        } else {
-            (anonymousValues.keys + connectedValues.keys).associateWith { field ->
-                connectedValues[field]?.takeIf { it.isNotBlank() } ?: anonymousValues[field].orEmpty()
-            }
-        }
+    /** What a viewer at [tier] sees of the saved profile; an edit shows here once it is saved. */
+    fun visibleValues(tier: ProfileVisibility): Map<ProfileField, String> = attributes.visibleValues(tier)
 
-    fun visiblePhoto(tier: ProfileVisibility): ProfileAttribute? =
-        if (tier == ProfileVisibility.ANONYMOUS) anonymousPhoto else connectedPhoto ?: anonymousPhoto
+    fun visiblePhoto(tier: ProfileVisibility): ProfileAttribute? = attributes.visiblePhoto(tier)
 
     fun isSaving(type: String, tier: ProfileVisibility): Boolean = (type to tier) in savingAttributes
 }

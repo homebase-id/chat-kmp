@@ -2,10 +2,10 @@ package id.homebase.core.ui.screens.card
 
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.identity.PublicIdentityRepository
+import id.homebase.api.client.profile.ProfileAttribute
+import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.common.OdinId
-import id.homebase.core.ui.screens.profile.ProfileEditUiState
-import id.homebase.core.ui.screens.profile.ProfileField
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -21,6 +21,7 @@ import kotlin.test.assertNull
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 
@@ -44,16 +45,23 @@ class CardSiteDefaultsTest {
     private fun siteData(vararg sections: String): JsonArray =
         cardJson.parseToJsonElement(siteDataText(*sections)).jsonArray
 
+    private fun statusRecord(tier: ProfileVisibility, status: String) = ProfileAttribute(
+        id = Uuid.random(),
+        type = ProfileAttributeTypes.STATUS,
+        versionTag = Uuid.random(),
+        visibility = tier,
+        data = JsonObject(mapOf(ProfileAttributeTypes.KEY_STATUS to JsonPrimitive(status))),
+    )
+
     private fun headline(tagLine: String?, status: String?, tier: ProfileVisibility = ProfileVisibility.ANONYMOUS) =
         buildCardPayload(
             odinId = odinId.toString(),
-            state = ProfileEditUiState(
-                anonymousValues = listOfNotNull(status?.let { ProfileField.STATUS to it }).toMap(),
-                connectedValues = mapOf(ProfileField.STATUS to "Vetted status"),
+            attributes = listOfNotNull(
+                status?.let { statusRecord(ProfileVisibility.ANONYMOUS, it) },
+                statusRecord(ProfileVisibility.CONNECTED, "Vetted status"),
             ),
             tier = tier,
             design = CardDesign.BOARD,
-            publicProfile = null,
             photoSrc = null,
             headerSrc = null,
             tagLine = tagLine,

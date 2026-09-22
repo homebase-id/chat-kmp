@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -26,7 +27,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +53,8 @@ import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.file_saved_to
+import id.homebase.resources.profile_card_channel_access
+import id.homebase.resources.profile_card_channel_access_allow
 import id.homebase.resources.profile_card_design_board
 import id.homebase.resources.profile_card_design_collage
 import id.homebase.resources.profile_card_design_dossier
@@ -59,6 +64,7 @@ import id.homebase.resources.profile_card_save
 import id.homebase.resources.profile_card_share
 import id.homebase.resources.profile_card_share_failed
 import id.homebase.resources.profile_card_title
+import id.homebase.resources.profile_card_unsupported
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
@@ -68,11 +74,14 @@ import org.jetbrains.compose.resources.stringResource
 // The portrait frame the card designs were drawn for.
 private const val CARD_ASPECT_RATIO = 390f / 844f
 
+// The page's own breakpoint for its full website layout; a CSS px is one dp in the host WebView.
+private val PAGE_LAYOUT_MIN_WIDTH = 768.dp
+
 @Composable
 fun StartCardHostWhenSettled(viewModel: ProfileCardViewModel) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(viewModel, lifecycle) {
-        // Building the host (first-use Chromium init + loadHtml) blocks the main thread ~1s; a nav entry is RESUMED only once its enter transition ends.
+        // Building the host (first-use Chromium init + page load) blocks the main thread ~1s; a nav entry is RESUMED only once its enter transition ends.
         lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.RESUMED) }
         withFrameNanos { }
         viewModel.startHost()
@@ -155,21 +164,32 @@ fun ProfileCardScreen(
                 reviewEnabled = uiState.reviewEnabled,
             )
             DesignChips(selected = uiState.design, onSelect = viewModel::onDesignSelected)
-            Box(
+            BoxWithConstraints(
                 modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 if (uiState.loadFailed) {
                     LoadFailedState(modifier = Modifier, onRetry = viewModel::onRetry)
                 } else {
-                    Box(
-                        modifier = Modifier
-                            .aspectRatio(CARD_ASPECT_RATIO, matchHeightConstraintsFirst = true)
-                            .clip(MaterialTheme.shapes.large),
-                    ) {
-                        host?.let { CardHostView(it, Modifier.fillMaxSize()) }
-                        if (!uiState.isCardReady) CardPlaceholder(failed = uiState.cardFailed)
+                    val frame = if (maxWidth >= PAGE_LAYOUT_MIN_WIDTH) {
+                        Modifier.fillMaxSize()
+                    } else {
+                        Modifier.aspectRatio(CARD_ASPECT_RATIO, matchHeightConstraintsFirst = true)
                     }
+                    Box(modifier = frame.clip(MaterialTheme.shapes.large)) {
+                        // An unsupported server's /card is its public site, which desktop and web would float over the message.
+                        if (!uiState.cardUnsupported) host?.let { CardHostView(it, Modifier.fillMaxSize()) }
+                        if (!uiState.isCardReady) {
+                            CardPlaceholder(failed = uiState.cardFailed, unsupported = uiState.cardUnsupported)
+                        }
+                    }
+                }
+                // Floats over the card: taking a row of the column would shrink the height-bound card and rewrap its text.
+                if (uiState.showChannelAccessNotice) {
+                    ChannelAccessNotice(
+                        onAllow = viewModel::onAllowChannelAccess,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(8.dp),
+                    )
                 }
             }
         }
@@ -195,6 +215,32 @@ private fun ShareAction(
                     if (saveInsteadOfShare) MR.string.profile_card_save else MR.string.profile_card_share,
                 ),
             )
+        }
+    }
+}
+
+@Composable
+private fun ChannelAccessNotice(onAllow: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = MaterialTheme.shapes.medium,
+        shadowElevation = 3.dp,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(MR.string.profile_card_channel_access),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+            )
+            TextButton(onClick = onAllow) {
+                Text(stringResource(MR.string.profile_card_channel_access_allow))
+            }
         }
     }
 }
@@ -226,14 +272,19 @@ private fun designLabel(design: String): StringResource = when (design) {
 }
 
 @Composable
-private fun CardPlaceholder(failed: Boolean) {
+private fun CardPlaceholder(failed: Boolean, unsupported: Boolean) {
+    val message = when {
+        unsupported -> MR.string.profile_card_unsupported
+        failed -> MR.string.profile_card_error
+        else -> null
+    }
     Box(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh),
         contentAlignment = Alignment.Center,
     ) {
-        if (failed) {
+        if (message != null) {
             Text(
-                text = stringResource(MR.string.profile_card_error),
+                text = stringResource(message),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

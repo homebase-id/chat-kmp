@@ -34,6 +34,7 @@ data class CardData(
     val header: CardImage? = null,
     val links: List<CardLink> = emptyList(),
     val socials: List<CardSocial> = emptyList(),
+    val posts: List<CardPost> = emptyList(),
 )
 
 @Serializable
@@ -45,12 +46,29 @@ data class CardLink(val id: String, val text: String, val target: String)
 @Serializable
 data class CardSocial(val type: String, val username: String)
 
+@Serializable
+data class CardPost(
+    val id: String,
+    val href: String,
+    val date: Long,
+    val title: String? = null,
+    val excerpt: String? = null,
+    val minutes: Double? = null,
+    val type: String? = null,
+    val image: CardImage? = null,
+)
+
 sealed interface CardEvent {
     data object Loaded : CardEvent
     data class Ready(val layout: String, val ms: Long) : CardEvent
     data class Link(val href: String) : CardEvent
     data class Png(val base64: String, val width: Int, val height: Int) : CardEvent
-    data class Error(val message: String) : CardEvent
+    data class Error(val message: String, val unsupported: Boolean = false) : CardEvent
+}
+
+internal sealed interface CardCommand {
+    data class Render(val payload: CardPayload) : CardCommand
+    data object ExportPng : CardCommand
 }
 
 // Optional fields are omitted rather than sent as null; empty lists are always sent.
@@ -82,10 +100,12 @@ fun parseCardEvent(json: String): CardEvent? {
     }
 }
 
-internal fun renderScript(payload: CardPayload): String =
-    "window.homebaseCard.render(${cardJson.encodeToString(CardPayload.serializer(), payload)})"
+internal fun CardPayload.toJson(): String = cardJson.encodeToString(CardPayload.serializer(), this)
 
-internal const val EXPORT_PNG_SCRIPT = "window.homebaseCard.exportPng()"
+internal fun CardCommand.script(): String = when (this) {
+    is CardCommand.Render -> "window.homebaseCard.render(${payload.toJson()})"
+    CardCommand.ExportPng -> "window.homebaseCard.exportPng()"
+}
 
 // Installed before any page script runs, so the page's boot-time `loaded` isn't lost.
 internal fun bridgeShim(postMessageFunction: String): String =

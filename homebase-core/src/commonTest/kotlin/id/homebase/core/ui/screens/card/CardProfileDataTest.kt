@@ -1,13 +1,12 @@
 package id.homebase.core.ui.screens.card
 
-import id.homebase.api.client.profile.Link
+import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
-import id.homebase.api.client.profile.ProfileCard
 import id.homebase.api.client.profile.ProfileVisibility
-import id.homebase.api.client.profile.SameAs
-import id.homebase.core.ui.screens.profile.ProfileEditUiState
+import id.homebase.core.ui.screens.profile.ProfileEditViewModel
 import id.homebase.core.ui.screens.profile.ProfileField
+import id.homebase.core.ui.screens.profile.visiblePhoto
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -24,57 +23,81 @@ class CardProfileDataTest {
     private val odinId = "frodo.dotyou.cloud"
 
     private fun payload(
-        state: ProfileEditUiState,
+        attributes: List<ProfileAttribute>,
         tier: ProfileVisibility = ProfileVisibility.ANONYMOUS,
-        publicProfile: ProfileCard? = null,
         photoSrc: String? = null,
         headerSrc: String? = null,
         tagLine: String? = null,
-    ) = buildCardPayload(odinId, state, tier, CardDesign.BOARD, publicProfile, photoSrc, headerSrc, tagLine)
+    ) = buildCardPayload(odinId, attributes, tier, CardDesign.BOARD, photoSrc, headerSrc, tagLine)
 
-    private fun profileCard(
-        bioSummary: String? = null,
-        links: List<Link> = emptyList(),
-        sameAs: List<SameAs> = emptyList(),
-    ) = ProfileCard(
-        image = "https://frodo.dotyou.cloud/pub/image",
-        givenName = "Frodo",
-        familyName = "Baggins",
-        status = null,
-        name = "Frodo Baggins",
-        bio = "The full bio, which the card never shows.",
-        bioSummary = bioSummary,
-        links = links,
-        email = emptyList(),
-        sameAs = sameAs,
+    /** One stored record per attribute type that has any of [values], at [tier]. */
+    private fun records(tier: ProfileVisibility, vararg values: Pair<ProfileField, String>): List<ProfileAttribute> {
+        val byField = mapOf(*values)
+        return ProfileEditViewModel.TYPE_FIELDS.mapNotNull { (type, fields) ->
+            val data = fields.mapNotNull { (field, key) -> byField[field]?.let { key to JsonPrimitive(it) } }.toMap()
+            if (data.isEmpty()) null else record(type, tier, data)
+        }
+    }
+
+    private fun record(
+        type: String,
+        tier: ProfileVisibility,
+        data: Map<String, JsonPrimitive>,
+        acl: AccessControlList = AccessControlList(requiredSecurityGroup = tier.wireValue),
+        priority: Int = 0,
+    ) = ProfileAttribute(
+        id = Uuid.random(),
+        type = type,
+        versionTag = Uuid.random(),
+        visibility = tier,
+        data = JsonObject(data),
+        acl = acl,
+        priority = priority,
     )
 
-    private fun photo(visibility: ProfileVisibility) = ProfileAttribute(
-        id = Uuid.random(),
-        type = ProfileAttributeTypes.PHOTO,
-        versionTag = Uuid.random(),
-        visibility = visibility,
-        data = JsonObject(emptyMap()),
+    private fun bio(tier: ProfileVisibility, text: String, acl: AccessControlList = AccessControlList(tier.wireValue)) =
+        record(ProfileAttributeTypes.BIO_SUMMARY, tier, mapOf(ProfileAttributeTypes.KEY_SHORT_BIO to JsonPrimitive(text)), acl)
+
+    private fun link(
+        text: String?,
+        target: String?,
+        tier: ProfileVisibility = ProfileVisibility.ANONYMOUS,
+        priority: Int = 0,
+        acl: AccessControlList = AccessControlList(tier.wireValue),
+    ) = record(
+        ProfileAttributeTypes.LINK,
+        tier,
+        listOfNotNull(
+            text?.let { ProfileAttributeTypes.KEY_LINK_TEXT to JsonPrimitive(it) },
+            target?.let { ProfileAttributeTypes.KEY_LINK_TARGET to JsonPrimitive(it) },
+        ).toMap(),
+        acl,
+        priority,
+    )
+
+    private fun photo(visibility: ProfileVisibility) = record(
+        ProfileAttributeTypes.PHOTO,
+        visibility,
+        mapOf(ProfileAttributeTypes.KEY_PROFILE_IMAGE to JsonPrimitive("prfl_pic")),
     )
 
     private fun socials(vararg values: Pair<ProfileField, String>) =
-        payload(ProfileEditUiState(anonymousValues = mapOf(*values))).data.socials
+        payload(records(ProfileVisibility.ANONYMOUS, *values)).data.socials
 
     @Test
     fun publicTierIgnoresConnectedValues() {
-        val state = ProfileEditUiState(
-            anonymousValues = mapOf(
-                ProfileField.GIVEN_NAME to "Frodo",
-                ProfileField.SURNAME to "Baggins",
-                ProfileField.STATUS to "Public status",
-            ),
-            connectedValues = mapOf(
-                ProfileField.GIVEN_NAME to "Mr. Frodo",
-                ProfileField.STATUS to "Vetted status",
-                ProfileField.TWITTER to "frodo_vetted",
-            ),
+        val attributes = records(
+            ProfileVisibility.ANONYMOUS,
+            ProfileField.GIVEN_NAME to "Frodo",
+            ProfileField.SURNAME to "Baggins",
+            ProfileField.STATUS to "Public status",
+        ) + records(
+            ProfileVisibility.CONNECTED,
+            ProfileField.GIVEN_NAME to "Mr. Frodo",
+            ProfileField.STATUS to "Vetted status",
+            ProfileField.TWITTER to "frodo_vetted",
         )
-        val data = payload(state, ProfileVisibility.ANONYMOUS).data
+        val data = payload(attributes, ProfileVisibility.ANONYMOUS).data
         assertEquals("Frodo", data.firstName)
         assertEquals("Baggins", data.surName)
         assertEquals("Frodo Baggins", data.displayName)
@@ -83,24 +106,24 @@ class CardProfileDataTest {
     }
 
     @Test
-    fun vettedTierPrefersConnectedAndFallsBackToPublicPerField() {
-        val state = ProfileEditUiState(
-            anonymousValues = mapOf(
-                ProfileField.GIVEN_NAME to "Frodo",
-                ProfileField.SURNAME to "Baggins",
-                ProfileField.STATUS to "Public status",
-                ProfileField.INSTAGRAM to "frodo_public",
-            ),
-            connectedValues = mapOf(
-                ProfileField.GIVEN_NAME to "Mr. Frodo",
-                ProfileField.SURNAME to "   ",
-                ProfileField.TWITTER to "frodo_vetted",
-            ),
+    fun vettedTierTakesTheConnectedRecordPerTypeAndFallsBackToPublic() {
+        val attributes = records(
+            ProfileVisibility.ANONYMOUS,
+            ProfileField.GIVEN_NAME to "Frodo",
+            ProfileField.SURNAME to "Baggins",
+            ProfileField.STATUS to "Public status",
+            ProfileField.INSTAGRAM to "frodo_public",
+        ) + records(
+            ProfileVisibility.CONNECTED,
+            ProfileField.GIVEN_NAME to "Mr. Frodo",
+            ProfileField.SURNAME to "   ",
+            ProfileField.STATUS to "  ",
+            ProfileField.TWITTER to "frodo_vetted",
         )
-        val data = payload(state, ProfileVisibility.CONNECTED).data
+        val data = payload(attributes, ProfileVisibility.CONNECTED).data
         assertEquals("Mr. Frodo", data.firstName)
-        assertEquals("Baggins", data.surName)
-        assertEquals("Mr. Frodo Baggins", data.displayName)
+        assertNull(data.surName)
+        assertEquals("Mr. Frodo", data.displayName)
         assertEquals("Public status", data.headline)
         assertEquals(
             listOf(CardSocial("twitter", "frodo_vetted"), CardSocial("instagram", "frodo_public")),
@@ -109,25 +132,43 @@ class CardProfileDataTest {
     }
 
     @Test
+    fun ownerOnlyAndCircleOnlyRecordsNeverReachTheVettedCard() {
+        val attributes = records(ProfileVisibility.ANONYMOUS, ProfileField.STATUS to "Public status") +
+            records(ProfileVisibility.OWNER, ProfileField.GIVEN_NAME to "Private", ProfileField.STATUS to "Owner only") +
+            record(
+                ProfileAttributeTypes.TWITTER,
+                ProfileVisibility.CONNECTED,
+                mapOf(ProfileAttributeTypes.KEY_TWITTER to JsonPrimitive("inner_circle")),
+                AccessControlList("connected", circleIdList = listOf("0f2c1a8e5b3d4e6f9a1b2c3d4e5f6a7b")),
+            )
+        val data = payload(attributes, ProfileVisibility.CONNECTED).data
+        assertNull(data.firstName)
+        assertEquals("Public status", data.headline)
+        assertEquals(emptyList(), data.socials)
+    }
+
+    @Test
     fun photoTierFallsBackToPublicOnlyAboveThePublicTier() {
         val public = photo(ProfileVisibility.ANONYMOUS)
         val vetted = photo(ProfileVisibility.CONNECTED)
 
-        val both = ProfileEditUiState(anonymousPhoto = public, connectedPhoto = vetted)
+        val both = listOf(public, vetted)
         assertSame(public, both.visiblePhoto(ProfileVisibility.ANONYMOUS))
         assertSame(vetted, both.visiblePhoto(ProfileVisibility.CONNECTED))
 
-        val publicOnly = ProfileEditUiState(anonymousPhoto = public)
+        val publicOnly = listOf(public)
         assertSame(public, publicOnly.visiblePhoto(ProfileVisibility.CONNECTED))
 
-        val vettedOnly = ProfileEditUiState(connectedPhoto = vetted)
+        val vettedOnly = listOf(vetted)
         assertNull(vettedOnly.visiblePhoto(ProfileVisibility.ANONYMOUS))
         assertSame(vetted, vettedOnly.visiblePhoto(ProfileVisibility.CONNECTED))
+
+        assertNull(listOf(photo(ProfileVisibility.OWNER)).visiblePhoto(ProfileVisibility.CONNECTED))
     }
 
     @Test
     fun imagesPassThroughAndBlankImagesDropOut() {
-        val state = ProfileEditUiState()
+        val state = emptyList<ProfileAttribute>()
         val data = payload(state, photoSrc = "data:image/jpeg;base64,AAAA", headerSrc = "data:image/jpeg;base64,BBBB").data
         assertEquals(CardImage("data:image/jpeg;base64,AAAA"), data.photo)
         assertEquals(CardImage("data:image/jpeg;base64,BBBB"), data.header)
@@ -139,16 +180,15 @@ class CardProfileDataTest {
 
     @Test
     fun blankFieldsDropOutAndValuesAreTrimmed() {
-        val state = ProfileEditUiState(
-            anonymousValues = mapOf(
-                ProfileField.GIVEN_NAME to "  Frodo ",
-                ProfileField.SURNAME to "",
-                ProfileField.STATUS to " \n ",
-                ProfileField.TWITTER to "   ",
-                ProfileField.LINKEDIN to "",
-            ),
-        )
-        val data = payload(state, publicProfile = profileCard(bioSummary = "  ")).data
+        val state = records(
+            ProfileVisibility.ANONYMOUS,
+            ProfileField.GIVEN_NAME to "  Frodo ",
+            ProfileField.SURNAME to "",
+            ProfileField.STATUS to " \n ",
+            ProfileField.TWITTER to "   ",
+            ProfileField.LINKEDIN to "",
+        ) + bio(ProfileVisibility.ANONYMOUS, "  ") + link("  ", "  ")
+        val data = payload(state).data
         assertEquals("Frodo", data.firstName)
         assertNull(data.surName)
         assertEquals("Frodo", data.displayName)
@@ -160,53 +200,89 @@ class CardProfileDataTest {
 
     @Test
     fun emptyProfileIsJustTheOwner() {
-        val data = payload(ProfileEditUiState(), ProfileVisibility.CONNECTED).data
+        val data = payload(emptyList(), ProfileVisibility.CONNECTED).data
         assertEquals(CardData(odinId = odinId), data)
     }
 
     @Test
-    fun bioIsThePublicSummaryOnBothTiers() {
-        val card = profileCard(bioSummary = " Ring-bearer. ")
-        assertEquals("Ring-bearer.", payload(ProfileEditUiState(), ProfileVisibility.ANONYMOUS, card).data.bio)
-        assertEquals("Ring-bearer.", payload(ProfileEditUiState(), ProfileVisibility.CONNECTED, card).data.bio)
+    fun bioIsTheSummaryEachTierCanRead() {
+        val publicBio = bio(ProfileVisibility.ANONYMOUS, " Ring-bearer. ")
+        val vettedBio = bio(ProfileVisibility.CONNECTED, "Ring-bearer, and fond of mushrooms.")
+        val ownerBio = bio(ProfileVisibility.OWNER, "Still has the ring.")
+        val circleBio = bio(
+            ProfileVisibility.CONNECTED,
+            "Fellowship only.",
+            AccessControlList("connected", circleIdList = listOf("0f2c1a8e5b3d4e6f9a1b2c3d4e5f6a7b")),
+        )
+        val all = listOf(publicBio, vettedBio, ownerBio, circleBio)
+
+        assertEquals("Ring-bearer.", payload(all, ProfileVisibility.ANONYMOUS).data.bio)
+        assertEquals("Ring-bearer, and fond of mushrooms.", payload(all, ProfileVisibility.CONNECTED).data.bio)
+        assertEquals("Ring-bearer.", payload(listOf(publicBio, ownerBio), ProfileVisibility.CONNECTED).data.bio)
+        assertNull(payload(listOf(vettedBio, ownerBio), ProfileVisibility.ANONYMOUS).data.bio)
     }
 
     @Test
-    fun linksKeepOnlyHttpAndHttpsAndSkipTheSocialCopies() {
-        val card = profileCard(
-            links = listOf(
-                Link(type = "twitter", url = "https://twitter.com/frodo"),
-                Link(type = "Blog", url = "https://frodo.dotyou.cloud/posts"),
-                Link(type = "Script", url = "javascript:alert(1)"),
-                Link(type = "Script caps", url = "JavaScript://%0aalert(1)"),
-                Link(type = "Inline", url = "data:text/html,<script>alert(1)</script>"),
-                Link(type = "Files", url = "ftp://files.shire.me"),
-                Link(type = "Mail", url = "mailto:frodo@shire.me"),
-                Link(type = "Relative", url = "/posts"),
-                Link(type = "No host", url = "https://"),
-                Link(type = "Spaced", url = "https://exa mple.com"),
-                Link(type = "Missing", url = null),
-                Link(type = "Old site", url = " HTTP://shire.me/frodo "),
-                Link(type = "  ", url = "https://example.com/there-and-back"),
-            ),
-            sameAs = listOf(SameAs(type = "twitter", url = "https://twitter.com/frodo")),
+    fun linksKeepOnlyHttpAndHttpsWithTheTargetAsFallbackText() {
+        val links = listOf(
+            link("Blog", "https://frodo.dotyou.cloud/posts", priority = 1),
+            link("Script", "javascript:alert(1)", priority = 2),
+            link("Script caps", "JavaScript://%0aalert(1)", priority = 3),
+            link("Inline", "data:text/html,<script>alert(1)</script>", priority = 4),
+            link("Files", "ftp://files.shire.me", priority = 5),
+            link("Mail", "mailto:frodo@shire.me", priority = 6),
+            link("Relative", "/posts", priority = 7),
+            link("No host", "https://", priority = 8),
+            link("Spaced", "https://exa mple.com", priority = 9),
+            link("Missing", null, priority = 10),
+            link("Old site", " HTTP://shire.me/frodo ", priority = 11),
+            link("  ", "https://example.com/there-and-back", priority = 12),
+            link(null, "https://example.com/no-text", priority = 13),
         )
         assertEquals(
             listOf(
                 CardLink(id = "1", text = "Blog", target = "https://frodo.dotyou.cloud/posts"),
                 CardLink(id = "2", text = "Old site", target = "HTTP://shire.me/frodo"),
                 CardLink(id = "3", text = "https://example.com/there-and-back", target = "https://example.com/there-and-back"),
+                CardLink(id = "4", text = "https://example.com/no-text", target = "https://example.com/no-text"),
             ),
-            payload(ProfileEditUiState(), publicProfile = card).data.links,
+            payload(links).data.links,
         )
     }
 
     @Test
-    fun linksAreTheSameOnTheVettedTier() {
-        val card = profileCard(links = listOf(Link(type = "Blog", url = "https://frodo.dotyou.cloud/posts")))
+    fun eachTierGetsEveryLinkItCanReadInPriorityOrder() {
+        val circle = AccessControlList("connected", circleIdList = listOf("0f2c1a8e5b3d4e6f9a1b2c3d4e5f6a7b"))
+        val attributes = listOf(
+            link("Vetted only", "https://shire.me/vetted", ProfileVisibility.CONNECTED, priority = 20),
+            link("Owner only", "https://shire.me/owner", ProfileVisibility.OWNER, priority = 5),
+            link("Fellowship", "https://shire.me/fellowship", ProfileVisibility.CONNECTED, priority = 1, acl = circle),
+            link("Blog", "https://shire.me/blog", priority = 30),
+            link("Shop", "https://shire.me/shop", priority = 10),
+            link("Vetted tie", "https://shire.me/tie-vetted", ProfileVisibility.CONNECTED, priority = 40),
+            link("Public tie", "https://shire.me/tie-public", priority = 40),
+        ) + records(ProfileVisibility.ANONYMOUS, ProfileField.TWITTER to "frodo")
+
         assertEquals(
-            payload(ProfileEditUiState(), ProfileVisibility.ANONYMOUS, card).data.links,
-            payload(ProfileEditUiState(), ProfileVisibility.CONNECTED, card).data.links,
+            listOf("Shop", "Blog", "Public tie"),
+            payload(attributes, ProfileVisibility.ANONYMOUS).data.links.map { it.text },
+        )
+        assertEquals(
+            listOf("Shop", "Vetted only", "Blog", "Vetted tie", "Public tie"),
+            payload(attributes, ProfileVisibility.CONNECTED).data.links.map { it.text },
+        )
+        assertEquals(listOf("1", "2", "3", "4", "5"), payload(attributes, ProfileVisibility.CONNECTED).data.links.map { it.id })
+    }
+
+    @Test
+    fun aLinkKeptAtBothTiersShowsOnce() {
+        val attributes = listOf(
+            link("Blog", "https://shire.me/blog", ProfileVisibility.CONNECTED, priority = 1),
+            link("Blog", "https://shire.me/blog", priority = 2),
+        )
+        assertEquals(
+            listOf(CardLink(id = "1", text = "Blog", target = "https://shire.me/blog")),
+            payload(attributes, ProfileVisibility.CONNECTED).data.links,
         )
     }
 
@@ -266,21 +342,18 @@ class CardProfileDataTest {
 
     @Test
     fun builtPayloadSerialisesToTheContractFieldNames() {
-        val state = ProfileEditUiState(
-            anonymousValues = mapOf(
-                ProfileField.GIVEN_NAME to "Frodo",
-                ProfileField.SURNAME to "Baggins",
-                ProfileField.STATUS to "Bag End, the Shire",
-                ProfileField.INSTAGRAM to "@frodo",
-            ),
-        )
-        val card = profileCard(
-            bioSummary = "Ring-bearer.",
-            links = listOf(Link(type = "Blog", url = "https://frodo.dotyou.cloud/posts")),
-        )
+        val state = records(
+            ProfileVisibility.ANONYMOUS,
+            ProfileField.GIVEN_NAME to "Frodo",
+            ProfileField.SURNAME to "Baggins",
+            ProfileField.STATUS to "Bag End, the Shire",
+            ProfileField.INSTAGRAM to "@frodo",
+        ) + bio(ProfileVisibility.ANONYMOUS, "Ring-bearer.") + link("Blog", "https://frodo.dotyou.cloud/posts")
+        val post = CardPost(id = "f1", href = "https://frodo.dotyou.cloud/posts/public-posts/p1", date = 1)
         val built = buildCardPayload(
-            odinId, state, ProfileVisibility.ANONYMOUS, CardDesign.POSTER, card,
+            odinId, state, ProfileVisibility.ANONYMOUS, CardDesign.POSTER,
             photoSrc = "data:image/jpeg;base64,AAAA", headerSrc = "data:image/jpeg;base64,BBBB", tagLine = null,
+            posts = listOf(post),
         )
         val json = cardJson.encodeToString(CardPayload.serializer(), built)
         val root = cardJson.parseToJsonElement(json).jsonObject
@@ -290,7 +363,7 @@ class CardProfileDataTest {
         assertEquals(
             setOf(
                 "odinId", "firstName", "surName", "displayName", "headline", "bio",
-                "photo", "header", "links", "socials",
+                "photo", "header", "links", "socials", "posts",
             ),
             data.keys,
         )
@@ -315,6 +388,16 @@ class CardProfileDataTest {
         assertEquals(
             JsonObject(mapOf("type" to JsonPrimitive("instagram"), "username" to JsonPrimitive("frodo"))),
             data.getValue("socials").jsonArray.single(),
+        )
+        assertEquals(
+            JsonObject(
+                mapOf(
+                    "id" to JsonPrimitive("f1"),
+                    "href" to JsonPrimitive("https://frodo.dotyou.cloud/posts/public-posts/p1"),
+                    "date" to JsonPrimitive(1),
+                ),
+            ),
+            data.getValue("posts").jsonArray.single(),
         )
         assertFalse("null" in json)
     }

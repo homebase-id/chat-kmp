@@ -145,7 +145,12 @@ class ProfileEditViewModel(
                 } else {
                     loadedConnected = loadedConnected + (type to newAttr)
                 }
-                _state.update { it.copy(savingAttributes = it.savingAttributes - key) }
+                _state.update {
+                    it.copy(
+                        savingAttributes = it.savingAttributes - key,
+                        attributes = it.attributes.filterNot { stored -> stored.id == newAttr.id } + newAttr,
+                    )
+                }
                 _events.tryEmit(ProfileEditEvent.AttributeSaved(type, tier))
             } catch (e: CancellationException) {
                 throw e
@@ -306,18 +311,18 @@ class ProfileEditViewModel(
     }
 }
 
-/** The ProfileDrive attributes bucketed per tier, as the editor and the profile card both read them. */
+/**
+ * The editor's write target per type and tier. [connected] is the first non-anonymous record, which
+ * may be owner-only or circle-restricted, so it is never what a visitor sees; see [visibleAttribute].
+ */
 internal class LoadedProfileAttributes(
     val anonymous: Map<String, ProfileAttribute>,
     val connected: Map<String, ProfileAttribute>,
-    val anonymousPhoto: ProfileAttribute?,
-    val connectedPhoto: ProfileAttribute?,
+    val all: List<ProfileAttribute>,
 ) {
     companion object {
         fun from(attributes: List<ProfileAttribute>): LoadedProfileAttributes {
             val byType = attributes.groupBy { it.type }
-            // PHOTO attributes come back in the same query; the avatar editor owns them.
-            val photos = byType[ProfileAttributeTypes.PHOTO].orEmpty()
             return LoadedProfileAttributes(
                 anonymous = byType.mapNotNull { (type, attrs) ->
                     attrs.firstOrNull { it.visibility == ProfileVisibility.ANONYMOUS }?.let { type to it }
@@ -325,8 +330,7 @@ internal class LoadedProfileAttributes(
                 connected = byType.mapNotNull { (type, attrs) ->
                     attrs.firstOrNull { it.visibility != ProfileVisibility.ANONYMOUS }?.let { type to it }
                 }.toMap(),
-                anonymousPhoto = photos.firstOrNull { it.visibility == ProfileVisibility.ANONYMOUS },
-                connectedPhoto = photos.firstOrNull { it.visibility == ProfileVisibility.CONNECTED },
+                all = attributes,
             )
         }
     }
@@ -343,7 +347,6 @@ internal fun ProfileEditUiState.withLoaded(loaded: LoadedProfileAttributes): Pro
         loadFailed = false,
         anonymousValues = bucket(loaded.anonymous),
         connectedValues = bucket(loaded.connected),
-        anonymousPhoto = loaded.anonymousPhoto,
-        connectedPhoto = loaded.connectedPhoto,
+        attributes = loaded.all,
     )
 }

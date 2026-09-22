@@ -5,11 +5,12 @@ import androidx.compose.ui.Modifier
 import co.touchlab.kermit.Logger
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.util.truncateToCodePoints
-import id.homebase.resources.MR
-import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -18,13 +19,15 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
-import org.jetbrains.compose.resources.ExperimentalResourceApi
 
-const val CARD_BASE_URL = "https://card.homebase.local/"
-internal const val CARD_HTML_PATH = "files/card/card.html"
+internal val CARD_LOADED_TIMEOUT = 10.seconds
+
+internal enum class CardPageHost(val param: String) { APP("app"), FRAME("frame") }
+
+internal fun cardOrigin(odinId: String): String = "https://$odinId"
+
+internal fun cardPageUrl(odinId: String, host: CardPageHost = CardPageHost.APP): String =
+    "${cardOrigin(odinId)}/card?host=${host.param}"
 
 /**
  * One card page kept alive independently of any [CardHostView], so it can be created (and the page
@@ -38,7 +41,7 @@ interface CardHost {
     fun dispose()
 }
 
-expect fun createCardHost(): CardHost
+expect fun createCardHost(odinId: String): CardHost
 
 @Composable
 expect fun CardHostView(host: CardHost, modifier: Modifier = Modifier)
@@ -48,22 +51,10 @@ internal object CardLog {
 
     fun info(message: String) = Logger.i(tag = TAG) { message }
 
-    fun error(message: String, throwable: Throwable? = null) =
-        Logger.e(tag = TAG, throwable = throwable) { message }
+    fun error(message: String) = Logger.e(tag = TAG) { message }
 }
 
-private val cardHtmlLock = Mutex()
-private var cardHtml: String? = null
-
-@OptIn(ExperimentalResourceApi::class)
-private suspend fun readCardHtml(): String = cardHtmlLock.withLock {
-    cardHtml ?: withContext(Dispatchers.Default) { MR.readBytes(CARD_HTML_PATH).decodeToString() }
-        .also { cardHtml = it }
-}
-
-internal abstract class CardHostBase(
-    private val readPage: suspend () -> String = ::readCardHtml,
-) : CardHost {
+internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
     private val _events = MutableSharedFlow<CardEvent>(
         extraBufferCapacity = 16,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
@@ -76,32 +67,27 @@ internal abstract class CardHostBase(
     protected val scope = supervisedScope("card-host", Dispatchers.Main)
 
     private var lastPayload: CardPayload? = null
+    private var mainFrameSettled = false
+    private var loadedTimeout: Job? = null
 
-    protected abstract fun loadHtml(html: String)
-    protected abstract fun evaluateNow(js: String)
+    protected abstract fun loadUrl(url: String)
+    protected abstract fun send(command: CardCommand)
     protected abstract fun release()
 
     protected fun loadPage() {
         _isLoaded.value = false
-        scope.launch {
-            try {
-                loadHtml(readPage())
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                // Throwable, not Exception: a failed fetch on wasmJs is a JsException, which isn't an Exception.
-                onPageError("loading $CARD_HTML_PATH failed: $e", e)
-            }
-        }
+        mainFrameSettled = false
+        loadedTimeout?.cancel()
+        loadUrl(pageUrl)
     }
 
     override fun render(payload: CardPayload) {
         lastPayload = payload
-        if (_isLoaded.value) evaluateNow(renderScript(payload))
+        if (_isLoaded.value) send(CardCommand.Render(payload))
     }
 
     override fun exportPng() {
-        if (_isLoaded.value) evaluateNow(EXPORT_PNG_SCRIPT) else onPageError("exportPng before the page loaded")
+        if (_isLoaded.value) send(CardCommand.ExportPng) else onPageError("exportPng before the page loaded")
     }
 
     override fun dispose() {
@@ -109,6 +95,23 @@ internal abstract class CardHostBase(
         scope.cancel()
         _isLoaded.value = false
         release()
+    }
+
+    // A server without the /card route serves its public site there, which never posts `loaded`.
+    internal fun onMainFrameFinished() {
+        if (mainFrameSettled) return
+        mainFrameSettled = true
+        if (_isLoaded.value) return
+        loadedTimeout = scope.launch {
+            delay(CARD_LOADED_TIMEOUT)
+            onPageError("no loaded event $CARD_LOADED_TIMEOUT after $pageUrl finished loading", unsupported = true)
+        }
+    }
+
+    internal fun onMainFrameFailed(message: String, unsupported: Boolean) {
+        if (mainFrameSettled) return
+        mainFrameSettled = true
+        onPageError(message, unsupported)
     }
 
     internal fun onBridgeMessage(json: String) {
@@ -127,16 +130,17 @@ internal abstract class CardHostBase(
         _events.tryEmit(event)
     }
 
-    internal fun onPageError(message: String, throwable: Throwable? = null) {
-        CardLog.error(message, throwable)
-        _events.tryEmit(CardEvent.Error(message))
+    internal fun onPageError(message: String, unsupported: Boolean = false) {
+        CardLog.error(message)
+        _events.tryEmit(CardEvent.Error(message, unsupported))
     }
 
     private fun onLoaded() {
         CardLog.info("loaded")
+        loadedTimeout?.cancel()
         _isLoaded.value = true
         // Covers a render queued before load and a page that reloaded under a rendered card.
-        lastPayload?.let { evaluateNow(renderScript(it)) }
+        lastPayload?.let { send(CardCommand.Render(it)) }
     }
 
     private fun decodedSize(base64: String): Int =

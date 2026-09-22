@@ -81,11 +81,8 @@ internal fun profileAddressValue(values: Map<ProfileField, String>): String? = l
 ).joinToString(", ").ifBlank { null }
 
 /**
- * Read-only simulation of the owner's profile, rendered contact-detail style. Public — what
- * everyone sees — is listed first; the circles section below shows what a contact in one of your
- * circles sees: their own
- * Connected value where set, falling back to the Public value for any field left blank on the
- * Connected side.
+ * Read-only simulation of the owner's saved profile, rendered contact-detail style: Public, what an
+ * anonymous visitor sees, then what a plain connection sees, each chosen by the attributes' ACLs.
  */
 @Composable
 internal fun ProfilePreview(
@@ -139,6 +136,7 @@ internal fun ProfilePreview(
 
     val publicRows = rowsFor(uiState.visibleValues(ProfileVisibility.ANONYMOUS))
     val circlesRows = rowsFor(uiState.visibleValues(ProfileVisibility.CONNECTED))
+    val publicPhoto = uiState.visiblePhoto(ProfileVisibility.ANONYMOUS)
     val circlesPhoto = uiState.visiblePhoto(ProfileVisibility.CONNECTED)
 
     Column(modifier = modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
@@ -146,7 +144,7 @@ internal fun ProfilePreview(
             title = stringResource(MR.string.profile_edit_preview_section_public),
             description = stringResource(MR.string.profile_edit_preview_section_public_desc),
         )
-        PreviewPhoto(uiState.anonymousPhoto)
+        PreviewPhoto(publicPhoto)
         if (publicRows.isEmpty()) {
             PreviewEmptyMessage(stringResource(MR.string.profile_edit_preview_empty))
         } else {

@@ -26,7 +26,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-actual fun createCardHost(): CardHost = DesktopCardHost()
+actual fun createCardHost(odinId: String): CardHost = DesktopCardHost(cardPageUrl(odinId))
 
 @Composable
 actual fun CardHostView(host: CardHost, modifier: Modifier) {
@@ -56,13 +56,14 @@ internal class CardSlot(private val host: DesktopCardHost) : JPanel(null) {
  * wry destroys its native webview on removeNotify, so between views the panel is parked off-screen in
  * the window's layered pane (which also loads the page before any view exists) instead of removed.
  */
-internal class DesktopCardHost : CardHostBase() {
+internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
     val panel = WryWebViewPanel(
-        initialUrl = BLANK_URL,
+        initialUrl = pageUrl,
         initScript = bridgeShim("window.ipc.postMessage"),
         backgroundColor = Rgba(0u, 0u, 0u, 0u),
     )
     private var hadWebView = false
+    private var sawLoading = false
     private var shown = false
     private val awaitedReplies = mutableSetOf<KClass<out CardEvent>>()
 
@@ -70,7 +71,7 @@ internal class DesktopCardHost : CardHostBase() {
     private val polling = MutableStateFlow(false)
 
     init {
-        // With no listener the panel rejects every navigation, loadHtml's own included.
+        // With no listener the panel rejects every navigation, loadUrl's own included.
         panel.addNavigateListener(::allowNavigation)
         // wry moves its native view only from doLayout, which AWT skips when a component merely moves.
         panel.addComponentListener(object : ComponentAdapter() {
@@ -125,12 +126,13 @@ internal class DesktopCardHost : CardHostBase() {
         super.exportPng()
     }
 
-    override fun loadHtml(html: String) {
+    override fun loadUrl(url: String) {
+        sawLoading = false
         awaitReply(CardEvent.Loaded::class)
-        panel.loadHtml(html)
+        panel.loadUrl(url)
     }
 
-    override fun evaluateNow(js: String) = panel.evaluateJavaScript(js) {}
+    override fun send(command: CardCommand) = panel.evaluateJavaScript(command.script()) {}
 
     override fun release() {
         val parent = panel.parent ?: return
@@ -173,21 +175,30 @@ internal class DesktopCardHost : CardHostBase() {
 
     private fun pollWebView() {
         val hasWebView = panel.isReady()
-        // A destroyed webview comes back blank, so queue the page for the next one.
+        // A destroyed webview's replacement starts a fresh page, which has to say `loaded` again.
         if (hadWebView && !hasWebView) loadPage()
         hadWebView = hasWebView
         panel.drainIpcMessages().forEach(::onBridgeMessage)
+        if (hasWebView && CardEvent.Loaded::class in awaitedReplies) trackMainFrame()
+    }
+
+    // wry reports no page-load events; a load can also finish between two polls.
+    private fun trackMainFrame() {
+        if (panel.isLoading()) {
+            sawLoading = true
+        } else if (sawLoading || panel.getCurrentUrl() == pageUrl) {
+            sawLoading = false
+            onMainFrameFinished()
+        }
     }
 
     private fun allowNavigation(url: String): Boolean {
-        if (url == BLANK_URL) return true
+        if (url == pageUrl) return true
         scope.launch { onPageError("blocked navigation to $url") }
         return false
     }
 
     private companion object {
-        const val BLANK_URL = "about:blank"
-
         const val IPC_POLL_MS = 16L
         const val PARK_MARGIN = 100
     }

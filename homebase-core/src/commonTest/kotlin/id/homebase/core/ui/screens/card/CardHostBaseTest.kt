@@ -7,15 +7,18 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 
@@ -33,25 +36,43 @@ class CardHostBaseTest {
     }
 
     @Test
+    fun theCardPageComesFromTheOwnersIdentity() {
+        assertEquals("https://frodo.dotyou.cloud/card?host=app", cardPageUrl("frodo.dotyou.cloud"))
+        assertEquals(
+            "https://frodo.dotyou.cloud/card?host=frame",
+            cardPageUrl("frodo.dotyou.cloud", CardPageHost.FRAME),
+        )
+        assertEquals("https://frodo.dotyou.cloud", cardOrigin("frodo.dotyou.cloud"))
+    }
+
+    @Test
+    fun loadingAPageLoadsTheCardUrl() {
+        host.load()
+
+        assertEquals(listOf("https://frodo.dotyou.cloud/card?host=app"), host.loads)
+        assertFalse(host.isLoaded.value)
+    }
+
+    @Test
     fun renderBeforeLoadIsQueuedUntilLoaded() {
         host.render(payload(CardDesign.BOARD))
-        assertTrue(host.evaluated.isEmpty())
+        assertTrue(host.sent.isEmpty())
 
         host.onBridgeMessage("""{"type":"loaded"}""")
 
         assertTrue(host.isLoaded.value)
-        assertEquals(1, host.evaluated.size)
-        assertTrue(host.evaluated.single().startsWith("window.homebaseCard.render("))
+        val render = assertIs<CardCommand.Render>(host.sent.single())
+        assertTrue(render.script().startsWith("window.homebaseCard.render("))
     }
 
     @Test
     fun renderAfterLoadGoesStraightToThePage() {
         host.onBridgeMessage("""{"type":"loaded"}""")
-        assertTrue(host.evaluated.isEmpty())
+        assertTrue(host.sent.isEmpty())
 
         host.render(payload(CardDesign.POSTER))
 
-        assertEquals(1, host.evaluated.size)
+        assertEquals(1, host.sent.size)
     }
 
     @Test
@@ -60,12 +81,12 @@ class CardHostBaseTest {
         host.render(payload(CardDesign.POSTER))
         host.onBridgeMessage("""{"type":"ready","layout":"poster","ms":5}""")
 
-        host.reload()
+        host.load()
         assertFalse(host.isLoaded.value)
         host.onBridgeMessage("""{"type":"loaded"}""")
 
-        assertEquals(2, host.evaluated.size)
-        assertEquals(host.evaluated[0], host.evaluated[1])
+        assertEquals(2, host.sent.size)
+        assertEquals(host.sent[0], host.sent[1])
     }
 
     @Test
@@ -75,7 +96,7 @@ class CardHostBaseTest {
         host.exportPng()
 
         assertIs<CardEvent.Error>(next.await())
-        assertTrue(host.evaluated.isEmpty())
+        assertTrue(host.sent.isEmpty())
     }
 
     @Test
@@ -97,46 +118,98 @@ class CardHostBaseTest {
     }
 
     @Test
-    fun aPageThatFailsToLoadSurfacesAsAnError() = runTest {
-        val failing = FakeCardHost(readPage = { throw PageFetchFailure() })
-        val next = async(start = CoroutineStart.UNDISPATCHED) { failing.events.first() }
+    fun aPageThatNeverSaysLoadedIsReportedAsUnsupported() = runTest {
+        val events = collectEvents()
+        host.load()
+        host.onMainFrameFinished()
 
-        failing.load()
+        advanceTimeBy(CARD_LOADED_TIMEOUT - 1.milliseconds)
+        runCurrent()
+        assertTrue(events.isEmpty(), "$events")
 
-        val error = assertIs<CardEvent.Error>(next.await())
-        assertTrue("fetch failed" in error.message, error.message)
-        assertFalse(failing.isLoaded.value)
-        failing.dispose()
+        advanceTimeBy(2.milliseconds)
+        runCurrent()
+        assertTrue(assertIs<CardEvent.Error>(events.single()).unsupported)
+        assertFalse(host.isLoaded.value)
     }
 
     @Test
-    fun disposingMidLoadIsNotAnError() = runTest {
-        val loading = FakeCardHost(readPage = { awaitCancellation() })
-        val events = mutableListOf<CardEvent>()
-        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { loading.events.collect { events += it } }
+    fun loadedInTimeCancelsTheUnsupportedTimeout() = runTest {
+        val events = collectEvents()
+        host.load()
+        host.onMainFrameFinished()
 
-        loading.load()
-        loading.dispose()
+        advanceTimeBy(CARD_LOADED_TIMEOUT / 2)
+        host.onBridgeMessage("""{"type":"loaded"}""")
+        advanceTimeBy(CARD_LOADED_TIMEOUT)
+        runCurrent()
+
+        assertEquals(listOf<CardEvent>(CardEvent.Loaded), events)
+    }
+
+    @Test
+    fun aMainFrameFailureIsReportedOnceAndStartsNoTimeout() = runTest {
+        val events = collectEvents()
+        host.load()
+
+        host.onMainFrameFailed("HTTP 404", unsupported = true)
+        host.onMainFrameFailed("frame load interrupted", unsupported = false)
+        host.onMainFrameFinished()
+        advanceTimeBy(CARD_LOADED_TIMEOUT * 2)
+        runCurrent()
+
+        assertEquals(listOf<CardEvent>(CardEvent.Error("HTTP 404", unsupported = true)), events)
+    }
+
+    @Test
+    fun aFreshLoadWaitsForItsOwnFinish() = runTest {
+        val events = collectEvents()
+        host.load()
+        host.onMainFrameFailed("offline", unsupported = false)
+
+        host.load()
+        host.onMainFrameFinished()
+        advanceTimeBy(CARD_LOADED_TIMEOUT + 1.milliseconds)
+        runCurrent()
+
+        assertEquals(listOf(false, true), events.map { assertIs<CardEvent.Error>(it).unsupported })
+    }
+
+    @Test
+    fun disposingWhileWaitingForLoadedIsNotAnError() = runTest {
+        val events = collectEvents()
+        host.load()
+        host.onMainFrameFinished()
+
+        host.dispose()
+        advanceTimeBy(CARD_LOADED_TIMEOUT * 2)
+        runCurrent()
 
         assertTrue(events.isEmpty(), "$events")
     }
 
+    private fun TestScope.collectEvents(): List<CardEvent> {
+        val events = mutableListOf<CardEvent>()
+        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { host.events.collect { events += it } }
+        return events
+    }
+
     private fun payload(design: String) = CardPayload(design = design, data = CardData(odinId = "frodo.dotyou.cloud"))
 
-    // What wasmJs throws for a failed fetch: a JsException, which is a Throwable but not an Exception.
-    private class PageFetchFailure : Throwable("fetch failed")
-
-    private class FakeCardHost(readPage: suspend () -> String = { "<html></html>" }) : CardHostBase(readPage) {
-        val evaluated = mutableListOf<String>()
+    private class FakeCardHost : CardHostBase(cardPageUrl("frodo.dotyou.cloud")) {
+        val loads = mutableListOf<String>()
+        val sent = mutableListOf<CardCommand>()
 
         fun load() = loadPage()
 
-        fun reload() = loadPage()
-
-        override fun loadHtml(html: String) = Unit
-        override fun evaluateNow(js: String) {
-            evaluated += js
+        override fun loadUrl(url: String) {
+            loads += url
         }
+
+        override fun send(command: CardCommand) {
+            sent += command
+        }
+
         override fun release() = Unit
     }
 }
