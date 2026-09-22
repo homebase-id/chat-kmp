@@ -12,7 +12,7 @@ expect fun KeyboardImageReceiver(
 
 internal val keyboardImageMimeTypes = arrayOf("image/gif", "image/png", "image/webp", "image/jpeg")
 
-internal const val MAX_KEYBOARD_IMAGE_BYTES = 20L * 1024 * 1024
+private const val MAX_KEYBOARD_IMAGE_BYTES = 20L * 1024 * 1024
 
 internal fun acceptsKeyboardImage(mimeTypes: List<String>): Boolean =
     mimeTypes.any { it.lowercase() in keyboardImageMimeTypes }

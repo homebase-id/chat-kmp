@@ -18,7 +18,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.PlatformTextInputInterceptor
 import androidx.compose.ui.platform.PlatformTextInputMethodRequest
 import androidx.compose.ui.platform.PlatformTextInputSession
-import androidx.core.view.inputmethod.EditorInfoCompat
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,8 +28,7 @@ import kotlinx.io.buffered
 
 private const val TAG = "KeyboardImageReceiver"
 
-// RichTextEditor is the legacy BasicTextField(TextFieldValue), whose InputConnection ignores
-// Modifier.contentReceiver; only a composable wrapper, not a Modifier, can intercept its IME session.
+// RichTextEditor's legacy BasicTextField ignores Modifier.contentReceiver for IME commits; intercept its session.
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 actual fun KeyboardImageReceiver(
@@ -49,7 +47,7 @@ actual fun KeyboardImageReceiver(
                 override fun createInputConnection(outAttributes: EditorInfo): InputConnection {
                     val connection = request.createInputConnection(outAttributes)
                     if (currentOnImageReceived == null) return connection
-                    EditorInfoCompat.setContentMimeTypes(outAttributes, keyboardImageMimeTypes)
+                    outAttributes.contentMimeTypes = keyboardImageMimeTypes
                     return object : InputConnectionWrapper(connection, false) {
                         override fun commitContent(info: InputContentInfo, flags: Int, opts: Bundle?): Boolean =
                             scope.receiveKeyboardImage(contentResolver, info, flags) { bytes ->
