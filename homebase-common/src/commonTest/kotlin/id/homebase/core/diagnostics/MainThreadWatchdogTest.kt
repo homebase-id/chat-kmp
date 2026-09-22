@@ -184,4 +184,49 @@ class MainThreadWatchdogTest {
 
         assertEquals(listOf("a", "c"), logged)
     }
+
+    // --- ProcessHeartbeat (#1491) ------------------------------------------------------------
+
+    @Test
+    fun heartbeat_roundTripsThroughItsEncoding() {
+        listOf(
+            Heartbeat(epochMs = 1_757_277_526_838, foreground = true),
+            Heartbeat(epochMs = 0, foreground = false),
+        ).forEach { assertEquals(it, decodeHeartbeat(encodeHeartbeat(it))) }
+    }
+
+    @Test
+    fun heartbeat_decodesNothingFromAMissingOrCorruptRecord() {
+        // A first-ever launch, a truncated write, a file from an older format: all "no previous
+        // process", never a bogus breadcrumb.
+        listOf(null, "", "   ", "1757277526838", "1757277526838 F B", "abc F", "1757277526838 X")
+            .forEach { assertNull(decodeHeartbeat(it), "should not decode: $it") }
+    }
+
+    @Test
+    fun processDeath_isReportedWhenThePreviousProcessDiedOnScreen() {
+        val message = renderProcessDeathMessage(
+            previous = Heartbeat(epochMs = 1_000_000, foreground = true),
+            launchEpochMs = 1_095_000,
+        )
+        assertTrue(message!!.startsWith("Previous process ended on screen"), message)
+        assertTrue(message.contains("95000ms before this launch"), message)
+    }
+
+    @Test
+    fun processDeath_isSilentForABackgroundedProcess() {
+        // The routine end of every session — and the shape of the benign `stalled ~986967ms`
+        // suspension already in the field logs. Reporting it would drown the real thing.
+        assertNull(
+            renderProcessDeathMessage(
+                previous = Heartbeat(epochMs = 1_000_000, foreground = false),
+                launchEpochMs = 9_999_000,
+            )
+        )
+    }
+
+    @Test
+    fun processDeath_isSilentOnAFirstLaunch() {
+        assertNull(renderProcessDeathMessage(previous = null, launchEpochMs = 1_000))
+    }
 }

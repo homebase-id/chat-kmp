@@ -216,9 +216,10 @@ object StickerImageProcessor {
      * Downscale the segmenter's full-resolution cut-out to a `<= [STICKER_MAX_DIM]`px
      * **lossless PNG** (alpha preserved) for upload.
      *
-     * PNG, not WebP: the Android [ImageUtils] WebP branch is `WEBP_LOSSY` and gated to
-     * API 30+, but `minSdk` is 28 — WebP output would `NoSuchFieldError`-crash on API
-     * 28/29. PNG encodes on every API level and keeps cut-out edges alpha-perfect.
+     * PNG, not WebP: WebP is lossy on Android below API 30 (the deprecated `WEBP` constant
+     * is the only one there), and its fringe on near-opaque pixels is what
+     * [ImageUtils.hasNonOpaquePixels] already has to tolerate — a cut-out's alpha edge is
+     * exactly the signal a lossy re-encode would blur away.
      *
      * Never upscales (an already-small cut-out is just re-encoded). Defensive: returns
      * the original [cutOutBytes] unchanged if the re-encode fails or yields nothing, so a
@@ -227,10 +228,10 @@ object StickerImageProcessor {
      */
     suspend fun downscaleCutOut(cutOutBytes: ByteArray): ByteArray =
         withContext(Dispatchers.Default) {
-            // runCatching catches Throwable, so a resize failure — or, hypothetically, an
-            // API-gated encoder on an old device — degrades to the original cut-out instead
-            // of crashing. It wraps only the synchronous resize (not a suspension point), so
-            // it cannot swallow CancellationException; cancellation propagates via withContext.
+            // runCatching catches Throwable so a resize failure degrades to the original
+            // cut-out instead of crashing. It wraps only the synchronous resize (not a
+            // suspension point), so it cannot swallow CancellationException; cancellation
+            // propagates via withContext.
             runCatching {
                 ImageUtils.resizePreserveAspect(
                     srcBytes = cutOutBytes,

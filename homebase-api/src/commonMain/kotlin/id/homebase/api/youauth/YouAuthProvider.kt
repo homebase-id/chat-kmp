@@ -56,6 +56,7 @@ class YouAuthProvider(
         returnUrl: String,
         appName: String,
         appId: String,
+        appSlug: String? = null,
         drives: List<TargetDriveAccessRequest> = emptyList(),
         publicKey: EccKeyPair,
         password: SecureByteArray,
@@ -72,6 +73,7 @@ class YouAuthProvider(
             AppAuthorizationParams.create(
                 appName = appName,
                 appId = appId,
+                appSlug = appSlug,
                 friendlyName = clientFriendlyName ?: deviceDisplayName(),
                 drives = drives,
                 circleDrives = circleDrives,

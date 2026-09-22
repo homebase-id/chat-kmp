@@ -4,6 +4,7 @@ import com.russhwolf.settings.Settings
 import id.homebase.api.image.MediaQuality
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 class UserPreferences(private val settings: Settings) {
@@ -13,6 +14,10 @@ class UserPreferences(private val settings: Settings) {
             hapticsEnabled = hapticsEnabled,
             showDeveloperMenu = showDeveloperMenu,
             mediaQuality = mediaQuality,
+            autoSaveIncomingMedia = autoSaveIncomingMedia,
+            autoSaveOnUnmeteredOnly = autoSaveOnUnmeteredOnly,
+            enterSendsMessage = enterSendsMessage,
+            arrowUpEditsLastMessage = arrowUpEditsLastMessage,
         )
     )
     val preferenceState: StateFlow<PreferenceState> = _preferenceState
@@ -70,6 +75,48 @@ class UserPreferences(private val settings: Settings) {
             _preferenceState.value = _preferenceState.value.copy(mediaQuality = value)
         }
 
+    /**
+     * Auto-save incoming chat photos and videos to the device album. Off by default — it writes
+     * to storage the user never asked us to fill.
+     */
+    var autoSaveIncomingMedia: Boolean
+        get() = settings.getBoolean("auto_save_incoming_media", false)
+        set(value) {
+            // Stamped on the way on so the first sync after enabling doesn't backfill the album
+            // with every photo still in the recent-message window.
+            if (value && !autoSaveIncomingMedia) {
+                settings.putLong("auto_save_incoming_media_since", Clock.System.now().toEpochMilliseconds())
+            }
+            settings.putBoolean("auto_save_incoming_media", value)
+            _preferenceState.value = _preferenceState.value.copy(autoSaveIncomingMedia = value)
+        }
+
+    /** Epoch ms at which [autoSaveIncomingMedia] was last switched on; 0 when it never was. */
+    val autoSaveIncomingMediaSince: Long
+        get() = settings.getLong("auto_save_incoming_media_since", 0L)
+
+    /** Guard on [autoSaveIncomingMedia]: skip the download while the network is metered. */
+    var autoSaveOnUnmeteredOnly: Boolean
+        get() = settings.getBoolean("auto_save_unmetered_only", true)
+        set(value) {
+            settings.putBoolean("auto_save_unmetered_only", value)
+            _preferenceState.value = _preferenceState.value.copy(autoSaveOnUnmeteredOnly = value)
+        }
+
+    var enterSendsMessage: Boolean
+        get() = settings.getBoolean("composer_enter_sends", false)
+        set(value) {
+            settings.putBoolean("composer_enter_sends", value)
+            _preferenceState.value = _preferenceState.value.copy(enterSendsMessage = value)
+        }
+
+    var arrowUpEditsLastMessage: Boolean
+        get() = settings.getBoolean("composer_arrow_up_edits_last", true)
+        set(value) {
+            settings.putBoolean("composer_arrow_up_edits_last", value)
+            _preferenceState.value = _preferenceState.value.copy(arrowUpEditsLastMessage = value)
+        }
+
     var preferredUserReactions: List<String>
         get() = settings.getStringOrNull("preferred_user_reactions")?.split(",") ?: listOf()
         set(value) = settings.putString("preferred_user_reactions", value.joinToString(","))
@@ -91,6 +138,25 @@ class UserPreferences(private val settings: Settings) {
     var includeMutedChatsInBadge: Boolean
         get() = settings.getBoolean("notification_include_muted_badge", false)
         set(value) = settings.putBoolean("notification_include_muted_badge", value)
+
+    /**
+     * Id of the conversation at the top of the chat list the last time the user was looking at it.
+     * Persisted rather than held in memory because process death is the case index-based scroll
+     * restore gets wrong.
+     */
+    var conversationListTopId: Uuid?
+        get() {
+            val raw = settings.getStringOrNull("conversationListTopId") ?: return null
+            return try {
+                Uuid.parse(raw)
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+        }
+        set(value) {
+            if (value == null) settings.remove("conversationListTopId")
+            else settings.putString("conversationListTopId", value.toString())
+        }
 
    
     /**
@@ -137,6 +203,10 @@ data class PreferenceState(
     val hapticsEnabled: Boolean,
     val showDeveloperMenu: Boolean = false,
     val mediaQuality: MediaQuality = MediaQuality.STANDARD,
+    val autoSaveIncomingMedia: Boolean = false,
+    val autoSaveOnUnmeteredOnly: Boolean = true,
+    val enterSendsMessage: Boolean = false,
+    val arrowUpEditsLastMessage: Boolean = true,
 )
 
 enum class ThemeState {

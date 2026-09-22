@@ -232,6 +232,7 @@ class DatabaseManager(
         // on logout — exactly the class of bug that leaks Outbox rows across sessions.
         internal val TABLE_NAMES = listOf(
             "AppNotifications",
+            "AutoSavedMedia",
             "ChatReadCount",
             "ConnectionCache",
             "DriveLocalTagIndex",
@@ -319,6 +320,9 @@ class DatabaseManager(
         }
     }
 
+    val autoSavedMedia: AutoSavedMediaWrapper by lazy {
+        AutoSavedMediaWrapper(driver, this)
+    }
     val appNotifications: AppNotificationsWrapper by lazy {
         AppNotificationsWrapper(
             driver,

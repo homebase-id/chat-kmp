@@ -27,7 +27,6 @@ class ConversationListSessionSynthesisTest {
         profileImageFileId = "fid",
         profileImageFileKey = "fkey",
         profileImagePreviewThumbnail = "thumb",
-        profileImageLastModified = 123L,
         status = "around",
     )
 
@@ -55,7 +54,6 @@ class ConversationListSessionSynthesisTest {
         assertNull(result?.profileImageFileId)
         assertNull(result?.profileImageFileKey)
         assertNull(result?.profileImagePreviewThumbnail)
-        assertNull(result?.profileImageLastModified)
         assertNull(result?.status)
     }
 

@@ -6,9 +6,11 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.api.video.GifShrinker
 import id.homebase.chat.services.image.StickerImageProcessor
 import id.homebase.chat.services.image.isBackgroundRemovalSupported
 import id.homebase.chat.services.image.removeBackground
+import id.homebase.chat.services.sticker.TRAY_ANIMATED_MAX_BYTES
 import id.homebase.resources.MR
 import id.homebase.resources.cd_sticker_variant_cutout
 import id.homebase.resources.cd_sticker_variant_original
@@ -88,7 +90,7 @@ class StickerCreator(
             if (ImageFormatDetector.isHeic(bytes)) {
                 val jpeg = convertHeicToJpeg(bytes)
                 if (jpeg != null) jpeg to "image/jpeg" else bytes to contentType
-            } else bytes to contentType
+            } else GifShrinker.shrink(bytes, TRAY_ANIMATED_MAX_BYTES) to contentType
         }
     },
     // Where the heavy image work (decode/transparency probe/segmenter/outline) runs. Default
@@ -112,6 +114,8 @@ class StickerCreator(
             // large pick.
             val outlined: ByteArray? = withContext(workDispatcher) {
                 when {
+                    // Every cut-out step is single-frame, so it would silently drop the animation.
+                    ImageFormatDetector.isAnimated(bytes) -> null
                     isTransparent(bytes) -> addOutline(bytes)
                     bgRemovalSupported() -> cutOut(bytes)?.let { addOutline(cropToSubject(it)) }
                     else -> null
@@ -145,17 +149,32 @@ class StickerCreator(
         val opt = s.variants.firstOrNull { it.kind == s.selected } ?: return
         Logger.d(tag = TAG) { "confirm: variant=${s.selected} bytes=${opt.bytes.size}B ${opt.contentType}" }
         _state.value = null
+        normalizeAndSend(s.conversationId, opt.bytes, opt.contentType, saveToLibrary = true)
+    }
+
+    fun send(conversationId: Uuid, bytes: ByteArray, contentType: String) =
+        normalizeAndSend(conversationId, bytes, contentType, saveToLibrary = false)
+
+    private fun normalizeAndSend(
+        conversationId: Uuid,
+        original: ByteArray,
+        originalContentType: String,
+        saveToLibrary: Boolean,
+    ) {
         scope.launch {
             try {
-                val (bytes, contentType) = normalize(opt.bytes, opt.contentType)
-                awaitDriveGranted()
-                val saved = saveSticker(bytes, contentType)
-                sendSticker(s.conversationId, bytes, contentType) // suspend; a failure throws → caught below
-                sendInfo(if (saved != null) MR.string.chat_sticker_saved else MR.string.chat_sticker_save_failed)
+                val (bytes, contentType) = normalize(original, originalContentType)
+                val savedInfo = if (saveToLibrary) {
+                    awaitDriveGranted()
+                    if (saveSticker(bytes, contentType) != null) MR.string.chat_sticker_saved
+                    else MR.string.chat_sticker_save_failed
+                } else null
+                sendSticker(conversationId, bytes, contentType) // suspend; a failure throws → caught below
+                savedInfo?.let(sendInfo)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Logger.e(e, TAG) { "Confirm sticker create failed" }
+                Logger.e(e, TAG) { "Sticker send failed (saveToLibrary=$saveToLibrary)" }
                 sendInfo(MR.string.chat_sticker_send_failed)
             }
         }

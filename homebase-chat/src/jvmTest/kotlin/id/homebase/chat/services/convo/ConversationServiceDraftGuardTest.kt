@@ -1,7 +1,9 @@
 package id.homebase.chat.services.convo
 
+import id.homebase.api.common.time.UnixTimeUtc
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -75,6 +77,49 @@ class ConversationServiceDraftGuardTest {
                     fixture.getConversationFile(convoId)!!.fileMetadata.updated,
                     "conv file untouched",
                 )
+            }
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    /**
+     * The send-time clear used to skip the write whenever its in-memory guard read
+     * "cleared" — but the guard only tracks what THIS composer wrote. A draft can be
+     * persisted behind its back: a peer device's draft merged in by the drive sync, or
+     * this device's own idle flush still inside its read-modify-write when the send
+     * finishes. Both left the stale draft in `localAppData`, to be restored into the
+     * composer on the next entry — the sent-message-reappears bug. #1492.
+     */
+    @Test
+    fun theSendClearsADraftTheGuardNeverSaw() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            ConversationServiceTestFixture().use { fixture ->
+                val service = fixture.build(scope = scope)
+                val convoId = fixture.seedOneOnOne(other = "alice.test")
+
+                // Opening the conversation seeds the guard with "no draft stored".
+                assertEquals(null, service.readDraft(convoId))
+
+                // Persist a draft WITHOUT going through updateLocalDraft, so the guard
+                // still reads "cleared". Not via readDraft — that would reseed the guard
+                // and hide the very thing under test.
+                fixture.optimisticWriter.stampConversationDraft(
+                    fixture.chatDriveId,
+                    convoId,
+                    "the long message I just sent",
+                    UnixTimeUtc(),
+                )
+                assertTrue(
+                    fixture.getConversationFile(convoId)!!.fileMetadata.localAppData?.content
+                        ?.contains("the long message I just sent") == true,
+                    "seed failed: no draft was persisted",
+                )
+
+                service.clearLocalDraft(convoId)
+
+                assertEquals(null, service.readDraft(convoId), "the send left a stale draft behind")
             }
         } finally {
             scope.cancel()

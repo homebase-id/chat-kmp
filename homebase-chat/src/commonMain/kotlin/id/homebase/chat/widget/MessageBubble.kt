@@ -189,7 +189,7 @@ fun SentMessageBubble(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
-    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
@@ -360,6 +360,7 @@ fun SentMessageBubble(
                         decryptedFiles = decryptedFiles,
                         liveControls = liveControls,
                         sentByYou = true,
+                        showVoiceNoteSender = true,
                         currentOdinId = currentOdinId,
                         clusterPosition = clusterPosition,
                         onLongClick = {
@@ -519,7 +520,7 @@ fun ReceivedMessageBubble(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
-    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
@@ -541,6 +542,8 @@ fun ReceivedMessageBubble(
     val mediaOnly = !message.content.hasContent() && hasMedia
     val emojiOnly = message.content.isEmojiContentOnly() && !hasMedia
     val hasVisibleBackground = !mediaOnly && !emojiOnly
+    val isVoiceNote = mediaOnly &&
+        filteredPayloads.singleOrNull()?.isAudio() == true
     val clipboardManager = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val haptics = rememberHaptics()
@@ -556,8 +559,11 @@ fun ReceivedMessageBubble(
             .padding(top = clusterPosition.topSpacing(), bottom = clusterPosition.bottomSpacing()),
     ) {
         if (isGroupConversation) {
-            val showAvatar = clusterPosition == MessageClusterPosition.ALONE ||
-                clusterPosition == MessageClusterPosition.END
+            // A voice note draws the sender inside its own bubble, so the gutter yields to it
+            // rather than showing the same face twice.
+            val showAvatar = !isVoiceNote &&
+                (clusterPosition == MessageClusterPosition.ALONE ||
+                    clusterPosition == MessageClusterPosition.END)
             Box(
                 modifier = Modifier
                     .align(Alignment.Bottom)
@@ -628,6 +634,7 @@ fun ReceivedMessageBubble(
                             decryptedFiles = decryptedFiles,
                         liveControls = liveControls,
                             sentByYou = false,
+                            showVoiceNoteSender = true,
                             currentOdinId = currentOdinId,
                             clusterPosition = clusterPosition,
                             authorName = if (renderAuthorName && hasVisibleBackground) authorNameTxt
@@ -1038,14 +1045,14 @@ fun InlineReplyPreview(
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
-    // Build HomebaseImageData from the original message's first visual payload (image or video)
+    val mediaPayloads = remember(replyMessage?.payloads) { replyMessage?.payloads.mediaPayloads() }
+    // A voice note's embedded thumb is its waveform and a PDF's is a 20px page, so only visual media gets one.
+    val showThumbnail = replyMessage == null || mediaPayloads.firstOrNull()?.isVisualMedia() == true
+
     val imageData: HomebaseImageData? = remember(replyPreview, replyMessage, driveId) {
         if (replyMessage == null || driveId == null) return@remember null
-        val firstVisualPayload = replyMessage.payloads?.firstOrNull {
-            val ct = it.contentType ?: ""
-            ct.startsWith("image/") || ct.startsWith("video/") ||
-                ct == "application/vnd.apple.mpegurl"
-        } ?: return@remember null
+        val firstVisualPayload = mediaPayloads.firstOrNull()?.takeIf { it.isVisualMedia() }
+            ?: return@remember null
         val payloadIv = try {
             firstVisualPayload.iv?.let { Base64.decode(it) }
         } catch (_: Exception) {
@@ -1069,8 +1076,8 @@ fun InlineReplyPreview(
     }
 
     // Fallback: decode embedded base64 thumbnail if we can't build HomebaseImageData
-    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData) {
-        if (imageData != null) return@remember null
+    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData, showThumbnail) {
+        if (imageData != null || !showThumbnail) return@remember null
         replyPreview.previewThumbnail?.content?.let { base64Content ->
             try {
                 val bytes = Base64.decode(base64Content)
@@ -1084,13 +1091,6 @@ fun InlineReplyPreview(
     val hasThumb = imageData != null || thumbnailBitmap != null
     val hasImage = hasThumb || replyPreview.previewThumbnail != null
 
-    // Content-type label for media replies (reuses shared logic with ReplyPreviewBar)
-    val mediaPayloads = remember(replyMessage?.payloads) {
-        replyMessage?.payloads?.filter { payload ->
-            payload.key != ChatProtocol.DefaultPayloadKey &&
-                !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
-        } ?: emptyList()
-    }
     // Strip richeditor's `<br>` empty-paragraph artifacts from the quoted body so a reply to a
     // legacy `<br>` message shows its real text, not a stray break / blank quote (#1104).
     val replyText = remember(replyPreview.message) { replyPreview.message.stripComposerLineBreakArtifacts() }

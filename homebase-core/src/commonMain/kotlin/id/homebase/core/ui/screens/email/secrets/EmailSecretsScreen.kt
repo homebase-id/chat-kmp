@@ -47,17 +47,13 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.clipboard.clipEntryOf
+import id.homebase.core.ui.screens.email.components.EmailKeyFileSaveEffect
+import id.homebase.core.ui.screens.email.components.MailSettingsCard
 import id.homebase.core.ui.screens.email.model.EmailCredential
 import id.homebase.core.ui.screens.email.model.EmailKeyRef
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.runtime.LaunchedEffect
-import id.homebase.core.util.getUriHandler
-import id.homebase.core.localization.TranslationUtil
-import kotlinx.io.files.Path
 import id.homebase.resources.MR
-import id.homebase.resources.email_secrets_key_save_failed
-import id.homebase.resources.email_secrets_key_saved
 import id.homebase.resources.email_secrets_save_private_key
 import id.homebase.resources.email_secrets_save_private_key_body
 import id.homebase.resources.email_secrets_save_private_key_confirm
@@ -110,42 +106,7 @@ fun EmailSecretsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // The platform save lives here, not in the ViewModel: FileSystemHandler comes from
-    // getUriHandler(), a Composable accessor that is not in DI. The ViewModel writes the file
-    // and hands us the path; we give it to the OS and tell the ViewModel to drop the temp.
-    val fileSystemHandler = getUriHandler()
-    val scope = rememberCoroutineScope()
-
-    LaunchedEffect(viewModel) {
-        viewModel.events.collect { event ->
-            when (event) {
-                is EmailSecretsUiEvent.SaveKeyFile -> fileSystemHandler.saveFile(
-                    file = Path(event.path),
-                    suggestedName = event.suggestedName,
-                    onSuccess = { location ->
-                        viewModel.discardKeyFile(event.path)
-                        scope.launch {
-                            snackbarHostState.showSnackbar(
-                                TranslationUtil.getString(MR.string.email_secrets_key_saved, location)
-                            )
-                        }
-                    },
-                    onError = {
-                        viewModel.discardKeyFile(event.path)
-                        scope.launch {
-                            snackbarHostState.showSnackbar(
-                                TranslationUtil.getString(MR.string.email_secrets_key_save_failed)
-                            )
-                        }
-                    },
-                )
-
-                EmailSecretsUiEvent.KeySaveFailed -> snackbarHostState.showSnackbar(
-                    TranslationUtil.getString(MR.string.email_secrets_key_save_failed)
-                )
-            }
-        }
-    }
+    EmailKeyFileSaveEffect(viewModel = viewModel, snackbarHostState = snackbarHostState)
 
     EmailSecretsUi(
         uiState = uiState,
@@ -606,65 +567,6 @@ private fun KeyCard(
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
             ) {
                 Text(stringResource(MR.string.email_secrets_save_private_key))
-            }
-        }
-    }
-}
-
-
-/**
- * One server's settings, each value copyable. Copy matters more than it looks: these are typed
- * into a different application, often on a different device, and a mistyped hostname or the
- * wrong port produces a hang rather than an error message.
- */
-@Composable
-private fun MailSettingsCard(
-    title: String,
-    host: String,
-    port: Int,
-    security: String,
-    username: String,
-    onCopy: (String) -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleSmall)
-            Spacer(modifier = Modifier.height(6.dp))
-            SettingRow(stringResource(MR.string.email_settings_server), host, onCopy)
-            SettingRow(stringResource(MR.string.email_settings_port), port.toString(), onCopy)
-            SettingRow(stringResource(MR.string.email_settings_security), security, null)
-            SettingRow(stringResource(MR.string.email_settings_username), username, onCopy)
-        }
-    }
-}
-
-/** A label/value pair. [onCopy] null for values nobody types, like "SSL". */
-@Composable
-private fun SettingRow(label: String, value: String, onCopy: ((String) -> Unit)?) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(84.dp),
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f),
-        )
-        if (onCopy != null) {
-            IconButton(onClick = { onCopy(value) }) {
-                Icon(
-                    imageVector = Icons.Outlined.ContentCopy,
-                    contentDescription = stringResource(MR.string.email_settings_server),
-                )
             }
         }
     }

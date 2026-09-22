@@ -19,8 +19,12 @@ class ContactService(
     private val scope: CoroutineScope
 ) {
 
+    // Also lists connected identities that have no saved contact record.
     private val _contacts = MutableStateFlow<List<ContactUiModel>>(emptyList())
     val contacts: StateFlow<List<ContactUiModel>> = _contacts.asStateFlow()
+
+    private val _savedContactIdentities = MutableStateFlow<Set<OdinId>>(emptySet())
+    val savedContactIdentities: StateFlow<Set<OdinId>> = _savedContactIdentities.asStateFlow()
 
     private val contactByOdinId =
         MutableStateFlow<Map<OdinId, ContactUiModel>>(emptyMap())
@@ -39,26 +43,13 @@ class ContactService(
                 contactRepository.contacts.map { list -> list.mapNotNull { it.toContactUiModel() } },
                 connections.connections
             ) { contacts, connectionState ->
-
-                contacts.map { contact ->
-
-                    val connection = connectionState.map[contact.odinId]
-
-                    val state = when {
-                        !connectionState.isLoaded -> ContactConnectionState.Unknown
-                        connection == null -> ContactConnectionState.NotConnected
-                        connection.status == ConnectionStatus.Blocked -> ContactConnectionState.Blocked
-                        connection.status == ConnectionStatus.Connected -> ContactConnectionState.Connected
-                        connection.status == ConnectionStatus.None -> ContactConnectionState.Pending
-                        else -> ContactConnectionState.Unknown
-                    }
-
-                    contact.copy(
-                        connection = connection,
-                        connectionState = state
-                    )
-                }
-            }.collect { merged ->
+                val savedIds = contacts.mapTo(HashSet()) { it.odinId }
+                val unsaved = connectionState
+                    .unsavedConnections(savedIds.mapTo(HashSet()) { it.domainName })
+                    .map { ContactUiModel.fallbackFor(it) }
+                savedIds to (contacts + unsaved).map { it.withConnection(connectionState) }
+            }.collect { (savedIds, merged) ->
+                _savedContactIdentities.value = savedIds
                 _contacts.value = merged
                 contactByOdinId.value =
                     merged.associateBy { it.odinId }
@@ -66,8 +57,26 @@ class ContactService(
         }
     }
 
+    private fun ContactUiModel.withConnection(connectionState: ConnectionState): ContactUiModel {
+        val connection = connectionState.map[odinId]
+
+        val state = when {
+            !connectionState.isLoaded -> ContactConnectionState.Unknown
+            connection == null -> ContactConnectionState.NotConnected
+            connection.status == ConnectionStatus.Blocked -> ContactConnectionState.Blocked
+            connection.status == ConnectionStatus.Connected -> ContactConnectionState.Connected
+            connection.status == ConnectionStatus.None -> ContactConnectionState.Pending
+            else -> ContactConnectionState.Unknown
+        }
+
+        return copy(
+            connection = connection,
+            connectionState = state
+        )
+    }
+
     /**
-     * Resolves the saved contact for [odinId], or an identity-only fallback (domain name,
+     * Resolves [odinId]'s row in [contacts], or an identity-only fallback (domain name,
      * domain-derived initials, canonical public-image URL) when none exists — never null,
      * never blank avatar fields.
      */

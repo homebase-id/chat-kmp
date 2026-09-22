@@ -9,13 +9,19 @@ object DesktopAppFocusManager {
 
     private const val TAG = "DesktopAppFocusManager"
 
+    private val isMacOs: Boolean =
+        System.getProperty("os.name").orEmpty().contains("mac", ignoreCase = true)
+
     private var windowProvider: (() -> Window?)? = null
 
     fun registerWindowProvider(provider: () -> Window?) {
         windowProvider = provider
     }
 
-    fun requestFocus() {
+    // Only legitimate in response to an explicit user action; [reason] names that action
+    // so an unexpected restore is attributable from homebase.log alone.
+    fun requestFocus(reason: String) {
+        Logger.i(tag = TAG) { "requestFocus(reason=$reason)" }
         EventQueue.invokeLater {
             // macOS's Cocoa window server ignores Window.toFront() / isAlwaysOnTop
             // toggling from a background app — only the *application* can activate
@@ -31,11 +37,14 @@ object DesktopAppFocusManager {
             window.isVisible = true
             window.toFront()
             window.requestFocus()
-            // The always-on-top toggle is a Windows-specific trick to nudge focus.
-            // On macOS it's neutralised by the activate() call above; on Linux it's
-            // a best-effort.
-            window.isAlwaysOnTop = true
-            window.isAlwaysOnTop = false
+            // Windows' foreground lock ignores toFront() from a background process and
+            // the always-on-top flicker is the usual workaround; on macOS it measurably
+            // does nothing (activate() above already restored and raised the window), so
+            // skip forcing the window over every other app's there.
+            if (!isMacOs) {
+                window.isAlwaysOnTop = true
+                window.isAlwaysOnTop = false
+            }
         }
     }
 

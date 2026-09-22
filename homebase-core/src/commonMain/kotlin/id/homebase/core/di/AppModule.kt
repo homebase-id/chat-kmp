@@ -2,7 +2,6 @@
 
 package id.homebase.core.di
 
-import id.homebase.core.ui.screens.email.clients.EmailClientPickerViewModel
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsViewModel
 import id.homebase.core.ui.screens.email.setup.EmailSetupViewModel
 import id.homebase.core.ui.screens.email.EmailService
@@ -61,6 +60,7 @@ import id.homebase.core.location.emergency.EmergencyLocateStore
 import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.ChatMediaAutoSaveService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatNotificationMessageResolver
 import id.homebase.chat.services.ChatProtocol
@@ -93,6 +93,10 @@ import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
+import id.homebase.core.audio.DefaultVoiceNotePlayback
+import id.homebase.core.audio.ProximityAudioRouter
+import id.homebase.core.audio.VoiceNotePlayback
+import id.homebase.core.audio.getProximityAudioRouter
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
@@ -102,6 +106,11 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
+import id.homebase.core.contactbook.EmergencyContactService
+import id.homebase.core.ui.screens.card.DefaultProfileCardSource
+import id.homebase.core.ui.screens.card.ProfileCardSource
+import id.homebase.core.ui.screens.card.ProfileCardViewModel
+import id.homebase.core.ui.screens.card.createCardHost
 import id.homebase.core.ui.screens.contactbook.CircleMemberPickerViewModel
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.ContactCardImport
@@ -162,6 +171,7 @@ import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationMessageResolver
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.PendingNotificationTap
+import id.homebase.core.notifications.WebPushService
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.ShareConversationCacheWriter
@@ -169,12 +179,15 @@ import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
+import id.homebase.core.ui.screens.contactbook.enrollment.EnrollmentCandidatesViewModel
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestViewModel
 import id.homebase.core.ui.screens.feed.FeedViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.loading.AppLoadingViewModel
+import id.homebase.core.ui.screens.keyboard.KeyboardSettingsViewModel
+import id.homebase.core.ui.screens.media.MediaSettingsViewModel
 import id.homebase.core.ui.screens.moments.MomentAudienceViewModel
 import id.homebase.core.ui.screens.moments.MomentComposeViewModel
 import id.homebase.core.ui.screens.moments.MomentDetailViewModel
@@ -205,6 +218,7 @@ import id.homebase.core.location.EmergencyCircleNotifier
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.PushLocationCapture
 import id.homebase.core.location.LocationPreferences
+import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.DeviceSensors
 import id.homebase.core.location.tracking.createDeviceSensors
@@ -239,6 +253,11 @@ val LocationPermissionQualifier = named("locationPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
+
+    single<ProximityAudioRouter> { getProximityAudioRouter() }
+    single<VoiceNotePlayback> {
+        DefaultVoiceNotePlayback(player = get(), proximityRouter = get(), scope = get())
+    }
     single { MomentsPreferences(get()) }
     singleOf(::MomentsPostSenderService)
     // User-state store mirrors DriveRegistry's wiring — narrow lambda deps for
@@ -301,6 +320,7 @@ val appModule = module {
 
     // region Location add-on
     single { LocationPreferences(get()) }
+    single { DeveloperPreferences(get()) }
     single { LocationDeviceId() }
     single<DeviceSensors> { createDeviceSensors() }
     single { LocationPointStore(databaseManager = get(), deviceSensors = get()) }
@@ -636,6 +656,11 @@ val appModule = module {
                 get<FeedPermissionService>().reset()
                 get<FeedTimelineService>().start()
 
+                // An event collector with no UI referent, so nothing else constructs it. Resolved
+                // here and NOT createdAtStart: iOS starts Koin before the database, so its DB edge
+                // would kill every launch.
+                get<ChatMediaAutoSaveService>()
+
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
                     conversationStream.getConversationById(conversationId)
@@ -672,6 +697,7 @@ val appModule = module {
                 // event) is never applied. Recover missed SETs against the temporal-access
                 // preflight in the background — no screen required. Set-only: the reconciler
                 // never clears; revocation is applied solely by onRevoked above (issue #961).
+                get<EmergencyContactService>().apply { reset(); start() }
                 get<EmergencyContactReconciler>().start()
                 // endregion
 
@@ -710,6 +736,7 @@ val appModule = module {
             // #1109: attribute a background window to the active location profile in the
             // BgTrace transition line. Lambda keeps the auth layer decoupled from the location module.
             locationProfileLabel = { get<LocationTrackingCoordinator>().currentProfileLabel() },
+            processEnrollmentsEnabled = { get<DeveloperPreferences>().connectionReviewEnabled.value },
         )
     }
     single {
@@ -743,8 +770,25 @@ val appModule = module {
     singleOf(::LocalAttachmentContextStore)
 
     singleOf(::ConnectionCacheRepository)
-    singleOf(::ConnectionService)
+    single {
+        ConnectionService(
+            provider = get(),
+            eventBus = get(),
+            scope = get(),
+            cache = get(),
+            processEnrollmentsEnabled = { get<DeveloperPreferences>().connectionReviewEnabled.value },
+        )
+    }
     singleOf(::EmergencyCircleNotifier)
+    single {
+        EmergencyContactService(
+            contactRepository = get(),
+            temporalRead = get(),
+            authConnectionCoordinator = get(),
+            credentialsManager = get(),
+            scope = get(),
+        )
+    }
     singleOf(::EmergencyContactReceiveService)
     singleOf(::EmergencyContactReconciler)
     singleOf(::ContactService)
@@ -807,9 +851,11 @@ val appModule = module {
         }
     }
     single<MessageLookup> { get<ChatMessageStream>() }
+    singleOf(::ChatMediaAutoSaveService)
     singleOf(::ShareSuggestionDonor)
     singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
     singleOf(::HomebaseImageLoader)
+    factoryOf(::DefaultProfileCardSource) bind ProfileCardSource::class
     singleOf(::ChatMessageActionService)
     singleOf(::DiceRollPreferences)
     singleOf(::EventReminderPreferences)
@@ -840,6 +886,7 @@ val appModule = module {
     }
     single<NotificationMessageResolver> { ChatNotificationMessageResolver(get<MessageLookup>()) }
     singleOf(::NotificationEntry)
+    singleOf(::WebPushService)
     single {
         val upgradeProvider = get<IdentityUpgradeProvider>()
         PendingUpgradeManager(
@@ -1018,7 +1065,7 @@ val appModule = module {
             contactRepository = get(),
             connectionService = get(),
             contactService = get(),
-            temporalDriveReadProvider = get(),
+            emergencyContacts = get(),
             credentialsManager = get(),
             tracker = get(),
             receiveStore = get(),
@@ -1026,6 +1073,7 @@ val appModule = module {
             conversationService = get(),
             emergencyLocateService = get(),
             authConnectionCoordinator = get(),
+            developerPreferences = get(),
         )
     }
     viewModelOf(::EmergencyContactPickerViewModel)
@@ -1073,6 +1121,7 @@ val appModule = module {
             circleName = params.get(),
             repo = get(),
             connectionService = get(),
+            developerPreferences = get(),
         )
     }
     // Manual block: conversationId arrives as a Koin runtime parameter from the ShareContact route.
@@ -1189,10 +1238,14 @@ val appModule = module {
     viewModelOf(::SettingsViewModel)
     viewModelOf(::ProfileEditViewModel)
     viewModelOf(::ProfileAvatarEditViewModel)
+    viewModel { ProfileCardViewModel(get(), ::createCardHost) }
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)
+    viewModelOf(::EnrollmentCandidatesViewModel)
     viewModelOf(::DeveloperScheduledPushTestViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
+    viewModelOf(::MediaSettingsViewModel)
+    viewModelOf(::KeyboardSettingsViewModel)
     viewModelOf(::StorageSettingsViewModel)
     viewModelOf(::DefragmenterViewModel)
     viewModelOf(::HelpViewModel)
@@ -1242,7 +1295,6 @@ val appModule = module {
     singleOf(::EmailService)
     viewModelOf(::EmailSetupViewModel)
     viewModelOf(::EmailSecretsViewModel)
-    viewModelOf(::EmailClientPickerViewModel)
     viewModelOf(::EmailSettingsViewModel)
     viewModel { params ->
         VaultNoteEditorViewModel(

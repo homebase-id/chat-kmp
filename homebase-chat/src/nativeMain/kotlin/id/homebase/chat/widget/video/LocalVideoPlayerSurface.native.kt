@@ -27,6 +27,7 @@ import platform.AVKit.AVPlayerViewController
 import platform.CoreMedia.CMTimeGetSeconds
 import platform.CoreMedia.CMTimeMake
 import platform.Foundation.NSNotificationCenter
+import id.homebase.core.audio.AudioSession
 import platform.Foundation.NSURL
 
 @Composable
@@ -36,6 +37,7 @@ actual fun LocalVideoPlayerSurface(
     onFirstFrameRendered: () -> Unit,
 ) {
     val player = remember(filePath) {
+        AudioSession.ensurePlaybackCapable()
         val url = if (filePath.startsWith("file://")) {
             NSURL.URLWithString(filePath)!!
         } else {
@@ -101,6 +103,7 @@ actual fun TrimmableVideoPlayerSurface(
     val onPositionMsState = rememberUpdatedState(onPositionMs)
 
     val player = remember(filePath) {
+        AudioSession.ensurePlaybackCapable()
         val url = if (filePath.startsWith("file://")) {
             NSURL.URLWithString(filePath)!!
         } else {

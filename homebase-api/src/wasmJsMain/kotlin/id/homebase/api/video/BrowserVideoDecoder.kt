@@ -4,6 +4,7 @@ package id.homebase.api.video
 
 import id.homebase.api.file.systemFileSystem
 import id.homebase.api.util.isBlobUrl
+import id.homebase.api.util.toBlobObjectUrl
 import kotlin.io.encoding.Base64
 import kotlin.js.Promise
 import kotlinx.coroutines.await
@@ -24,8 +25,7 @@ import okio.Path.Companion.toPath
  *    read into wasm and nothing is base64'd. We do NOT revoke it; its owner (the attachment editor)
  *    does.
  *  - an okio path (e.g. an ffmpeg-produced file, or `FFmpegUtils.grabThumbnail`). We read the bytes
- *    and mint a short-lived blob URL for the `<video>`, then revoke it. This is the only path that
- *    still base64s, and it's off the interactive hot path.
+ *    and mint a short-lived blob URL for the `<video>`, then revoke it.
  */
 internal class BrowserVideoDecoder : VideoDecoder {
 
@@ -97,7 +97,7 @@ private class VideoUrlHandle private constructor(val url: String, private val ow
         fun resolve(videoPath: String): VideoUrlHandle? {
             if (videoPath.isBlobUrl()) return VideoUrlHandle(videoPath, owned = false)
             val bytes = readOkioBytes(videoPath) ?: return null
-            val url = objectUrlFromBytesJs(Base64.encode(bytes), mimeFromPath(videoPath))
+            val url = bytes.toBlobObjectUrl(mimeFromPath(videoPath))
             return VideoUrlHandle(url, owned = true)
         }
     }
@@ -123,16 +123,6 @@ private fun mimeFromPath(path: String): String =
         "3gp", "3gpp" -> "video/3gpp"
         else -> "video/mp4"
     }
-
-/** atob -> Uint8Array -> Blob -> object URL. Only for the okio fallback (bytes already in wasm). */
-private fun objectUrlFromBytesJs(base64: String, mimeType: String): String = js(
-    """{
-        var bin = atob(base64);
-        var arr = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        return URL.createObjectURL(new Blob([arr], { type: mimeType }));
-    }"""
-)
 
 private fun revokeObjectUrlJs(url: String): Unit = js("{ URL.revokeObjectURL(url); }")
 

@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -290,10 +289,11 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 type = FileKitType.ImageAndVideo
             ) { file ->
                 file?.let {
-                    val pending = if (it.contentType().startsWith("video/")) {
+                    val ct = it.contentType()
+                    val pending = if (ct.startsWith("video/")) {
                         AttachmentPendingFile.FileVideo(Uuid.random(), it)
                     } else {
-                        AttachmentPendingFile.FileImage(Uuid.random(), it)
+                        AttachmentPendingFile.FileImage(Uuid.random(), it, sourceContentType = ct)
                     }
                     editorAttachments = editorAttachments + pending
                 }
@@ -392,7 +392,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                                 collapseSecondaryChrome = captionEmojiPickerOpen,
                                 bottomBar = {
                                     MessageTextFieldForAttachment(
-                                        modifier = Modifier.fillMaxWidth().padding(16.dp).imePadding(),
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
                                         state = textFieldState,
                                         onSendMessage = {
                                             sendEditedFiles(
@@ -881,7 +881,9 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
             val platformFile = PlatformFile(java.io.File(sharedFile.path))
             when {
                 sharedFile.mimeType.startsWith("image/") ->
-                    AttachmentPendingFile.FileImage(Uuid.random(), platformFile)
+                    AttachmentPendingFile.FileImage(
+                        Uuid.random(), platformFile, sourceContentType = sharedFile.mimeType,
+                    )
                 sharedFile.mimeType.startsWith("video/") ->
                     // Editor renders the poster via Coil's VideoFrameDecoder when bytes
                     // are null; the upload pipeline extracts its own thumbnails from the

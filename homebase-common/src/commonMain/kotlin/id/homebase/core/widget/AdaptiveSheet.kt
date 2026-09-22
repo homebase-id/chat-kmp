@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -30,6 +31,7 @@ import androidx.window.core.layout.WindowSizeClass
  *
  * @param expandFully opens at full height instead of half — for content whose primary action
  *   sits below a form the user would otherwise have to scroll to reach.
+ * @param maxWidth caps the wide (dialog) branch only; the compact sheet is always full width.
  * @param dismissible false pins the sheet open while the caller has work in flight. Gating
  *   [onDismiss] would not: `ModalBottomSheet` runs `hide()` *before* consulting `onDismissRequest`,
  *   so a refused dismissal leaves an invisible sheet mounted with no way to bring it back.
@@ -43,6 +45,7 @@ fun AdaptiveSheet(
     onDismiss: () -> Unit,
     dismissible: Boolean = true,
     expandFully: Boolean = false,
+    maxWidth: Dp = 520.dp,
     contentWindowInsets: @Composable () -> WindowInsets = { BottomSheetDefaults.windowInsets },
     content: @Composable () -> Unit,
 ) {
@@ -63,7 +66,7 @@ fun AdaptiveSheet(
                 tonalElevation = 6.dp,
                 modifier = Modifier
                     .padding(24.dp)
-                    .widthIn(max = 520.dp)
+                    .widthIn(max = maxWidth)
                     .heightIn(max = 680.dp),
             ) {
                 content()

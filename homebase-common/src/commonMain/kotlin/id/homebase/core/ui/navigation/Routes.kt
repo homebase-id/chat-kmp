@@ -31,6 +31,10 @@ sealed class Route {
     data object ProfileAvatarEdit : Route()
 
     @Serializable
+    @SerialName("profile-card")
+    data object ProfileCard : Route()
+
+    @Serializable
     @SerialName("create-conversation")
     data object CreateConversation : Route()
 
@@ -104,6 +108,14 @@ sealed class Route {
     data object StorageSettings : Route()
 
     @Serializable
+    @SerialName("media-settings")
+    data object MediaSettings : Route()
+
+    @Serializable
+    @SerialName("keyboard-settings")
+    data object KeyboardSettings : Route()
+
+    @Serializable
     @SerialName("defragmenter")
     data object Defragmenter : Route()
 
@@ -112,8 +124,8 @@ sealed class Route {
     data object Email : Route()
 
     @Serializable
-    @SerialName("email-client")
-    data object EmailClientPicker : Route()
+    @SerialName("email-thunderbird")
+    data object EmailThunderbirdSetup : Route()
 
     @Serializable
     @SerialName("email-secrets")
@@ -163,6 +175,11 @@ sealed class Route {
     @Serializable
     @SerialName("contactbook-circle-member-add")
     data class CircleMemberAdd(val circleId: String, val circleName: String) : Route()
+
+    /** Contacts that qualify for one of this app's circles but are not in it yet. */
+    @Serializable
+    @SerialName("contactbook-enrollment-candidates")
+    data object EnrollmentCandidates : Route()
 
     @Serializable
     @SerialName("contactbook-add")
@@ -270,6 +287,22 @@ sealed class Route {
     @Serializable
     @SerialName("location-emergency-contact-add")
     data object LocationEmergencyContactAdd : Route()
+
+    @Serializable
+    @SerialName("location-emergency")
+    data object LocationEmergency : Route()
+
+    @Serializable
+    @SerialName("location-history-overview")
+    data object LocationHistoryOverview : Route()
+
+    @Serializable
+    @SerialName("location-live-sharing")
+    data object LocationLiveSharing : Route()
+
+    @Serializable
+    @SerialName("location-settings")
+    data object LocationSettings : Route()
 
     @Serializable
     @SerialName("crop")

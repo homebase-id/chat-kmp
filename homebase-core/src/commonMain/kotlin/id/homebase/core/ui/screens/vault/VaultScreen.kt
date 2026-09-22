@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -507,8 +506,7 @@ fun VaultScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp)
-                                    .imePadding(),
+                                    .padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 OutlinedTextField(
@@ -549,8 +547,7 @@ fun VaultScreen(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp)
-                                    .imePadding(),
+                                    .padding(16.dp),
                             ) {
                                 Text(stringResource(MR.string.vault_editor_add))
                             }
@@ -619,10 +616,11 @@ fun VaultScreen(
                 showImageAddSheet = false
                 pendingPickerAction = VaultPickerAction.File
             },
+            // A note is its own entry in a section, so it can't be appended to an existing entry.
             onAddNote = {
                 showImageAddSheet = false
                 pendingPickerAction = VaultPickerAction.Note
-            },
+            }.takeIf { fileForAppend == null },
             onDismiss = {
                 showImageAddSheet = false
                 activeSectionForEntry = null

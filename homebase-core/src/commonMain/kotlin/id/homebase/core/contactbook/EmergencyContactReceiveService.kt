@@ -4,6 +4,7 @@ package id.homebase.core.contactbook
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ForbiddenException
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
@@ -29,8 +30,10 @@ import kotlin.uuid.ExperimentalUuidApi
  */
 class EmergencyContactReceiveService(
     private val contactRepository: ContactRepository,
+    private val contactInfo: ContactInfoGateway,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
+    private val emergencyContacts: EmergencyContactService,
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -42,11 +45,12 @@ class EmergencyContactReceiveService(
             val contact = contactRepository.contacts.value.firstOrNull { it.uniqueId == uniqueId }
             val versionTag = contact?.versionTag
             when (designationAction(contact != null, contact?.iCanLocate() == true, versionTag != null)) {
-                DesignationAction.SyncOnly -> contactRepository.sync(sender)
+                DesignationAction.SyncOnly -> contactInfo.syncContactRecord(sender)
                 DesignationAction.Consume -> consume(messageFile)
                 DesignationAction.SetThenConsume -> {
                     contactRepository.setICanLocate(uniqueId, versionTag!!)
                     consume(messageFile)
+                    emergencyContacts.refreshAsync(sender)
                 }
                 DesignationAction.Ignore -> Unit
             }

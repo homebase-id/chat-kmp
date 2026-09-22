@@ -132,7 +132,6 @@ class MomentsRecipientLookupService(
                 displayName = contact.name.ifBlank { contact.odinId.domainName },
                 odinIds = listOf(contact.odinId),
                 avatarInitials = contact.avatarInitials,
-                avatarUrl = contact.avatarUrl,
             )
             contactsRaw += recipient to "contact:${contact.odinId.domainName}"
         }
@@ -148,7 +147,6 @@ class MomentsRecipientLookupService(
                 displayName = group.title,
                 odinIds = others,
                 avatarInitials = group.title.initials(),
-                avatarUrl = "",
                 memberCount = others.size,
                 groupId = group.id,
             )
@@ -175,7 +173,6 @@ class MomentsRecipientLookupService(
                 displayName = def.name,
                 odinIds = others,
                 avatarInitials = def.name.initials(),
-                avatarUrl = "",
                 memberCount = others.size,
                 circleId = def.id,
             )

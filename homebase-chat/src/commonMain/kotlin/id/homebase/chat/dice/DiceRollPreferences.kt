@@ -11,7 +11,9 @@ import kotlinx.coroutines.flow.asStateFlow
  * same `count`/`faces`/`mode` they last rolled. Stored in the encrypted local
  * key/value store via [DatabaseManager.keyValue].
  *
- * UUID namespace `0a03xx` (Vault reserved `0a01xx`, next add-on `0a02xx`).
+ * UUID namespace `0a08xx`. The original `0a0301..03` slots collided with LocationPreferences
+ * (`0a0302` icon-visible, `0a0303` allow-history): a dice roll hid the Location icon and switched
+ * tracking off. No migration — the old values just reset to defaults.
  */
 class DiceRollPreferences(private val databaseManager: DatabaseManager) {
 
@@ -85,8 +87,8 @@ class DiceRollPreferences(private val databaseManager: DatabaseManager) {
         const val DEFAULT_FACES = 6
         const val DEFAULT_COUNT = 1
         val DEFAULT_MODE = DiceRollMode.Standard
-        val LAST_FACES_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0301")
-        val LAST_COUNT_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0302")
-        val LAST_MODE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0303")
+        val LAST_FACES_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0801")
+        val LAST_COUNT_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0802")
+        val LAST_MODE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0803")
     }
 }

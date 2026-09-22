@@ -29,6 +29,7 @@ class ProfileAttributeParseTest {
         uniqueId: Uuid? = this.uniqueId,
         securityGroup: String? = null,
         fileState: FileState = FileState.Active,
+        circles: List<String>? = null,
     ): HomebaseFile = HomebaseFile(
         fileId = Uuid.parse("99999999-9999-9999-9999-999999999999"),
         driveId = Uuid.parse("00000000-0000-0000-0000-000000000001"),
@@ -44,7 +45,7 @@ class ProfileAttributeParseTest {
             ),
         ),
         serverMetadata = ServerMetadata(
-            accessControlList = securityGroup?.let { AccessControlList(requiredSecurityGroup = it) },
+            accessControlList = securityGroup?.let { AccessControlList(requiredSecurityGroup = it, circleIdList = circles) },
         ),
     )
 
@@ -89,6 +90,25 @@ class ProfileAttributeParseTest {
             ProfileVisibility.OWNER,
             fileFor(nameContent(), securityGroup = null).toProfileAttribute()!!.visibility,
         )
+    }
+
+    @Test
+    fun keepsTheFullAclAndThePriority() {
+        val circle = "0f2c1a8e-5b3d-4e6f-9a1b-2c3d4e5f6a7b"
+        val attr = fileFor(
+            """{"id":"$uniqueId","type":"${ProfileAttributeTypes.NAME}","priority":3,"data":{}}""",
+            securityGroup = "connected",
+            circles = listOf(circle),
+        ).toProfileAttribute()!!
+        assertEquals(AccessControlList(requiredSecurityGroup = "connected", circleIdList = listOf(circle)), attr.acl)
+        assertEquals(3, attr.priority)
+    }
+
+    @Test
+    fun absentAclAndPriority_readAsOwnerOnlyAndZero() {
+        val attr = fileFor(nameContent(), securityGroup = null).toProfileAttribute()!!
+        assertEquals(AccessControlList(requiredSecurityGroup = "owner"), attr.acl)
+        assertEquals(0, attr.priority)
     }
 
     @Test

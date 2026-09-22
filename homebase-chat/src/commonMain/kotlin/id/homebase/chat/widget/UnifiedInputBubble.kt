@@ -22,12 +22,18 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TooltipAnchorPosition
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,11 +43,15 @@ import androidx.compose.ui.unit.dp
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getOdinIdColor
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_attachment_options
 import id.homebase.resources.chat_message_edit_message
+import id.homebase.resources.chat_send_chord_enter
+import id.homebase.resources.chat_send_chord_shift_enter
 import id.homebase.resources.chat_send_message_button
+import kotlinx.collections.immutable.ImmutableList
 import org.jetbrains.compose.resources.stringResource
 
 private enum class BubbleFabAction { Confirm, Send, Attach }
@@ -54,10 +64,13 @@ fun UnifiedInputBubble(
     showSendButton: Boolean,
     isRecordingActive: Boolean,
     isSendingMessage: Boolean = false,
+    enterSendsMessage: Boolean = false,
     onSendMessage: () -> Unit,
     onCancelEdit: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     modifier: Modifier = Modifier,
+    attachmentActions: ImmutableList<AttachmentAction>? = null,
+    onAttachmentPopoverDismissed: () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     Row(
@@ -182,36 +195,80 @@ fun UnifiedInputBubble(
                     BubbleFabAction.Send -> "send_fab"
                     BubbleFabAction.Attach -> "attachment_fab"
                 }
-                IconButton(
-                    onClick = fabClick,
-                    enabled = fabEnabled,
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                    ),
-                    modifier = Modifier
-                        .size(40.dp)
-                        .testTag(fabTestTag),
+                SendChordTooltip(
+                    enabled = fabAction == BubbleFabAction.Send,
+                    enterSendsMessage = enterSendsMessage,
                 ) {
-                    AnimatedContent(
-                        targetState = fabAction,
-                        transitionSpec = { signalToggleIn togetherWith signalToggleOut },
-                        label = "fab_icon_toggle",
-                    ) { action ->
-                        Icon(
-                            imageVector = when (action) {
-                                BubbleFabAction.Confirm -> Icons.Filled.Check
-                                BubbleFabAction.Send -> Icons.AutoMirrored.Filled.Send
-                                BubbleFabAction.Attach -> Icons.Default.Add
-                            },
-                            contentDescription = when (action) {
-                                BubbleFabAction.Attach -> stringResource(MR.string.chat_message_attachment_options)
-                                else -> stringResource(MR.string.chat_send_message_button)
-                            },
-                        )
+                    AttachmentPopoverButton(
+                        actions = attachmentActions.takeIf { fabAction == BubbleFabAction.Attach },
+                        alignToEnd = true,
+                        onClick = fabClick,
+                        onPopoverDismissed = onAttachmentPopoverDismissed,
+                        enabled = fabEnabled,
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                            contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                        ),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag(fabTestTag),
+                    ) {
+                        AnimatedContent(
+                            targetState = fabAction,
+                            transitionSpec = { signalToggleIn togetherWith signalToggleOut },
+                            label = "fab_icon_toggle",
+                        ) { action ->
+                            Icon(
+                                imageVector = when (action) {
+                                    BubbleFabAction.Confirm -> Icons.Filled.Check
+                                    BubbleFabAction.Send -> Icons.AutoMirrored.Filled.Send
+                                    BubbleFabAction.Attach -> Icons.Default.Add
+                                },
+                                contentDescription = when (action) {
+                                    BubbleFabAction.Attach -> stringResource(MR.string.chat_message_attachment_options)
+                                    else -> stringResource(MR.string.chat_send_message_button)
+                                },
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+/** Always wraps, so toggling it never remounts the button it decorates. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun SendChordTooltip(
+    enabled: Boolean,
+    enterSendsMessage: Boolean,
+    content: @Composable () -> Unit,
+) {
+    // A compile-time constant, so the wrapper is still permanent wherever a tooltip can appear.
+    if (!isDesktopOrWeb()) {
+        content()
+        return
+    }
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
+            TooltipAnchorPosition.Above,
+        ),
+        tooltip = {
+            if (enabled) {
+                PlainTooltip {
+                    Text(
+                        stringResource(
+                            if (enterSendsMessage) MR.string.chat_send_chord_enter
+                            else MR.string.chat_send_chord_shift_enter
+                        )
+                    )
+                }
+            }
+        },
+        state = rememberTooltipState(isPersistent = false),
+        enableUserInput = enabled,
+    ) {
+        content()
     }
 }

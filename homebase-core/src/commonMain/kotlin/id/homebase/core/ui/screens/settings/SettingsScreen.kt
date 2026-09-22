@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
@@ -35,6 +36,8 @@ import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.Keyboard
+import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Storage
@@ -73,6 +76,7 @@ import id.homebase.core.ui.screens.appearance.getStringResourceForTheme
 import id.homebase.core.ui.theme.ExtendedColors
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogText
@@ -100,12 +104,18 @@ import id.homebase.resources.settings_delete_account_desc
 import id.homebase.resources.settings_delete_account_dialog_text
 import id.homebase.resources.settings_delete_account_dialog_title
 import id.homebase.resources.settings_edit_profile
+import id.homebase.resources.settings_profile_card
+import id.homebase.resources.settings_profile_card_desc
 import id.homebase.resources.settings_help
 import id.homebase.resources.settings_help_desc
+import id.homebase.resources.settings_keyboard
+import id.homebase.resources.settings_keyboard_desc
 import id.homebase.resources.settings_location_desc
 import id.homebase.resources.settings_logout
 import id.homebase.resources.settings_logout_desc
 import id.homebase.resources.settings_logout_in_progress
+import id.homebase.resources.settings_media
+import id.homebase.resources.settings_media_desc
 import id.homebase.resources.settings_moments_desc
 import id.homebase.resources.settings_native_feed
 import id.homebase.resources.settings_notifications
@@ -132,7 +142,6 @@ import org.jetbrains.compose.resources.stringResource
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     actions: SettingsActions,
-    showDeveloperMenu: Boolean = false,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -194,7 +203,6 @@ fun SettingsScreen(
             uiState = uiState,
             onAction = viewModel::onAction,
             actions = actions,
-            showDeveloperMenu = showDeveloperMenu,
         )
 
         if (uiState.isLoggingOut) {
@@ -250,7 +258,6 @@ fun SettingsUi(
     onAction: (SettingsUiAction) -> Unit,
     actions: SettingsActions,
     // Defaults to hidden so previews and tests that do not care stay unchanged.
-    showDeveloperMenu: Boolean = false,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
@@ -279,6 +286,18 @@ fun SettingsUi(
                     onEditProfile = { onAction(SettingsUiAction.ProfileInfoClicked) },
                     onEditAvatar = { onAction(SettingsUiAction.AvatarClicked) },
                 )
+            }
+
+            actions.onProfileCard?.let { onProfileCard ->
+                item {
+                    SettingsRow(
+                        modifier = Modifier.testTag("profileCardButton"),
+                        icon = Icons.Outlined.ContactPage,
+                        title = stringResource(MR.string.settings_profile_card),
+                        supportingText = stringResource(MR.string.settings_profile_card_desc),
+                        action = SettingsRowAction.Navigate(onProfileCard),
+                    )
+                }
             }
 
             item {
@@ -325,6 +344,27 @@ fun SettingsUi(
                     action = SettingsRowAction.Navigate(actions.onAppearance),
                 )
             }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("mediaButton"),
+                    icon = Icons.Outlined.PermMedia,
+                    title = stringResource(MR.string.settings_media),
+                    supportingText = stringResource(MR.string.settings_media_desc),
+                    action = SettingsRowAction.Navigate(actions.onMedia),
+                )
+            }
+
+            if (isDesktopOrWeb()) {
+                item {
+                    SettingsRow(
+                        modifier = Modifier.testTag("keyboardButton"),
+                        icon = Icons.Outlined.Keyboard,
+                        title = stringResource(MR.string.settings_keyboard),
+                        supportingText = stringResource(MR.string.settings_keyboard_desc),
+                        action = SettingsRowAction.Navigate(actions.onKeyboard),
+                    )
+                }
+            }
 
             item { HubSectionHeader(stringResource(MR.string.settings_section_apps)) }
             item {
@@ -356,18 +396,14 @@ fun SettingsUi(
                     action = SettingsRowAction.Navigate(actions.onVaultSettings),
                 )
             }
-            // Email setup is developer-menu gated while the arc is in progress: every host has
-            // Email:TenantMail:Enabled off, so the screen can only say "no email here" today.
-            if (showDeveloperMenu) {
-                item {
-                    SettingsRow(
-                        modifier = Modifier.testTag("emailSettingsButton"),
-                        icon = Icons.Outlined.MailOutline,
-                        title = stringResource(MR.string.email_settings_section),
-                        supportingText = stringResource(MR.string.settings_email_desc),
-                        action = SettingsRowAction.Navigate(actions.onEmailSettings),
-                    )
-                }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("emailSettingsButton"),
+                    icon = Icons.Outlined.MailOutline,
+                    title = stringResource(MR.string.email_settings_section),
+                    supportingText = stringResource(MR.string.settings_email_desc),
+                    action = SettingsRowAction.Navigate(actions.onEmailSettings),
+                )
             }
             item {
                 SettingsRow(
@@ -499,7 +535,6 @@ private fun IdentityHeader(
                         options = AvatarOptions(size = 72.dp),
                         sharedTransitionScope = null,
                         animatedVisibilityScope = null,
-                        cacheBustKey = it.profileImageLastModified,
                     )
                 }
             }
@@ -590,6 +625,8 @@ fun SettingsUiPreview() {
                 onBack = {},
                 onNotifications = {},
                 onAppearance = {},
+                onMedia = {},
+                onKeyboard = {},
                 onStorage = {},
                 onHelp = {},
                 onMomentsSettings = {},
@@ -600,6 +637,7 @@ fun SettingsUiPreview() {
                 onContactBookSettings = {},
                 onProfileEdit = {},
                 onProfileAvatarEdit = {},
+                onProfileCard = {},
             ),
         )
     }

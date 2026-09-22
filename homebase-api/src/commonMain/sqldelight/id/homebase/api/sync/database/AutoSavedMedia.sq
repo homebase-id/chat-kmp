@@ -1,0 +1,20 @@
+-- One row per payload the chat media auto-save has already written to the device album.
+-- Required, not an optimisation: BatchReceived re-fires for edits, reactions and delivery-status
+-- fan-out, and a re-sync replays the whole window, so without a durable marker a reaction to an
+-- old photo re-saves it and a re-sync duplicates the album.
+CREATE TABLE IF NOT EXISTS AutoSavedMedia(
+  fileId TEXT NOT NULL,
+  payloadKey TEXT NOT NULL,
+  PRIMARY KEY(fileId, payloadKey)
+);
+
+markSaved:
+INSERT OR IGNORE INTO AutoSavedMedia(fileId, payloadKey)
+VALUES (?, ?);
+
+isSaved:
+SELECT COUNT(*) FROM AutoSavedMedia
+WHERE fileId = ? AND payloadKey = ?;
+
+deleteAll:
+DELETE FROM AutoSavedMedia;

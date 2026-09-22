@@ -676,6 +676,10 @@ class FakeStatusMessageSender : StatusMessageSender {
         val recipientOverride: List<OdinId>?,
     )
     val calls = mutableListOf<Call>()
+
+    /** Set to make every send throw, for tests that need a mid-flow service failure. */
+    var failWith: Throwable? = null
+
     override suspend fun sendStatusMessage(
         messageUniqueId: Uuid,
         conversationId: Uuid,
@@ -693,6 +697,7 @@ class FakeStatusMessageSender : StatusMessageSender {
             additionalRecipients = additionalRecipients,
             recipientOverride = recipientOverride,
         )
+        failWith?.let { throw it }
         return SendMessageResult(messageUniqueId)
     }
 }

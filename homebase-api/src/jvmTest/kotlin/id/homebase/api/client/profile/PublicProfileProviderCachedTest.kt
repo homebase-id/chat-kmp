@@ -6,11 +6,9 @@ import co.touchlab.kermit.Severity
 import co.touchlab.kermit.platformLogWriter
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.common.OdinId
-import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.request.forms.InputProvider
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -22,7 +20,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
@@ -86,16 +83,7 @@ class PublicProfileProviderCachedTest {
         provider = PublicProfileProviderCached(
             httpClient = httpClient,
             scope = CoroutineScope(scopeJob + Dispatchers.Default),
-            fileOperationsProvider = object : FileOperationsProvider {
-                override fun getCacheDirectory() = tempDir
-                override fun openFileInput(path: String): InputProvider = error("not used in tests")
-                override suspend fun readFileBytes(path: String): ByteArray = error("not used in tests")
-                override fun deleteTempFile(path: String) = false
-                override fun getFileSize(path: String) = 0L
-                override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String = error("not used in tests")
-                override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String = error("not used in tests")
-                override suspend fun writeStream(path: String, data: Flow<ByteArray>) = error("not used in tests")
-            }
+            fileOperationsProvider = FakeFileOperationsProvider(tempDir)
         )
 
         requestCount = 0

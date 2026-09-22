@@ -58,7 +58,7 @@ fun EmailScreen(
     setupViewModel: EmailSetupViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToSecrets: () -> Unit,
-    onNavigateToClientPicker: () -> Unit,
+    onNavigateToThunderbirdSetup: () -> Unit,
 ) {
     ExtendPermissionDialog(viewModel = viewModel.emailExtendPermissionViewModel)
 
@@ -97,9 +97,8 @@ fun EmailScreen(
                 setupStep == EmailSetupStep.Complete -> EmailHomeContent(
                     status = uiState.serverStatus,
                     mailbox = uiState.mailboxStatus,
-                    selectedClient = uiState.selectedMailClient,
                     onOpenSecrets = onNavigateToSecrets,
-                    onOpenClientPicker = onNavigateToClientPicker,
+                    onOpenThunderbirdSetup = onNavigateToThunderbirdSetup,
                     onRefresh = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
                     onOpenMailClient = { viewModel.onAction(EmailUiAction.OpenMailClientClicked) },
                     isRefreshing = uiState.isCheckingServer,
