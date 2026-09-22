@@ -39,11 +39,10 @@ import androidx.compose.ui.unit.dp
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.components.CirclePickerChips
-import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionContent
+import id.homebase.core.ui.screens.contactbook.components.PendingRequestReview
 import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.resources.MR
-import id.homebase.resources.contact_review_accept_failed
 import id.homebase.resources.contactbook_detail_accept
 import id.homebase.resources.contactbook_detail_reject
 import id.homebase.resources.contactbook_detail_request_incoming
@@ -79,7 +78,7 @@ fun PendingRequestProfile(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     if (review != null) {
-        PendingRequestReview(
+        PendingRequestUnderReview(
             entry = entry,
             review = review,
             groups = reviewCircleGroups,
@@ -155,21 +154,7 @@ fun PendingRequestProfile(
         // Public short-bio summary, when the identity has published one.
         entry.shortBio?.takeIf { it.isNotBlank() }?.let { bio ->
             Spacer(modifier = Modifier.height(20.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                ),
-            ) {
-                SelectionContainer {
-                    Text(
-                        text = bio,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(16.dp),
-                    )
-                }
-            }
+            ShortBioCard(bio)
         }
 
         // Optional: pick which of the user's own circles to add this contact to on Accept.
@@ -215,8 +200,9 @@ fun PendingRequestProfile(
 }
 
 @OptIn(ExperimentalSharedTransitionApi::class)
+/** The same request, laid out as the review: the submit button accepts it. */
 @Composable
-private fun PendingRequestReview(
+private fun PendingRequestUnderReview(
     entry: ContactBookEntry,
     review: ReviewSheetState,
     groups: ReviewCircleGroups,
@@ -227,9 +213,18 @@ private fun PendingRequestReview(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
-    ReviewConnectionContent(
+    PendingRequestReview(
+        review = review,
         displayName = entry.displayName,
         odinId = entry.odinId,
+        groups = groups,
+        onSubmit = onSubmit,
+        onReject = onReject,
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+            .padding(top = 20.dp, bottom = 24.dp),
         avatar = {
             ContactBookAvatar(
                 entry = entry,
@@ -239,19 +234,6 @@ private fun PendingRequestReview(
                 animatedVisibilityScope = animatedVisibilityScope,
             )
         },
-        introducedBy = review.introducedBy,
-        connectedAtMs = null,
-        groups = groups,
-        alreadyHeldCircleIds = review.alreadyHeldCircleIds,
-        isSubmitting = review.isSubmitting,
-        errorText = if (review.failed) stringResource(MR.string.contact_review_accept_failed) else null,
-        onSubmit = onSubmit,
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
-            .padding(top = 20.dp, bottom = 24.dp),
-        incomingRequest = review.incomingRequest,
         details = {
             entry.status?.takeIf { it.isNotBlank() }?.let { status ->
                 Text(
@@ -260,32 +242,27 @@ private fun PendingRequestReview(
                     modifier = Modifier.padding(horizontal = 4.dp),
                 )
             }
-            entry.shortBio?.takeIf { it.isNotBlank() }?.let { bio ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    ),
-                ) {
-                    SelectionContainer {
-                        Text(
-                            text = bio,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(16.dp),
-                        )
-                    }
-                }
-            }
-        },
-        secondaryAction = {
-            OutlinedButton(
-                onClick = onReject,
-                enabled = !review.isSubmitting,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(MR.string.contactbook_detail_reject))
-            }
+            entry.shortBio?.takeIf { it.isNotBlank() }?.let { bio -> ShortBioCard(bio) }
         },
     )
+}
+
+/** The public short-bio summary, as it reads on both the classic and the review layout. */
+@Composable
+private fun ShortBioCard(bio: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        SelectionContainer {
+            Text(
+                text = bio,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(16.dp),
+            )
+        }
+    }
 }
