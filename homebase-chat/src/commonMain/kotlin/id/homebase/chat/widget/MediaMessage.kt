@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -39,6 +40,7 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.widget.VoiceNoteSender
 import id.homebase.resources.MR
 import id.homebase.resources.cd_upload_complete
 import id.homebase.resources.upload_compressing
@@ -57,23 +59,12 @@ import kotlin.uuid.Uuid
  * True when a single payload renders as a compact [DocumentMediaItem] file card (icon + name +
  * size + download) rather than a visual media tile — so it must hug its content instead of being
  * stretched to a media-height box, which leaves the card floating atop a grey void (#1103).
- *
- * Mirrors [MediaItem]'s routing: link-preview and location payloads have their own cards (false);
- * image, video, HLS and audio are media (false); everything else that routes to DocumentMediaItem
- * (pdf, zip, rar, apk, and the text and application MIME families) is a document (true). Keep in
- * sync with the content-type branches in [MediaItem] if a new document type is added there.
  */
 internal fun PayloadDescriptor.rendersAsDocumentCard(): Boolean {
     if (key == ChatProtocol.PAYLOAD_KEY_LINKS || key == ChatProtocol.PAYLOAD_KEY_LOCATION) return false
     val ct = contentType ?: return false
-    if (ct.startsWith("image/") || ct.startsWith("video/") || ct.startsWith("audio/")) return false
-    if (ct == "application/vnd.apple.mpegurl") return false // HLS video, not a document
-    return ct == "application/pdf" ||
-        ct == "application/zip" ||
-        ct == "application/x-rar-compressed" ||
-        ct == "application/vnd.android.package-archive" ||
-        ct.startsWith("text/") ||
-        ct.startsWith("application/")
+    // An HLS playlist is application/* but plays as video.
+    return ct.startsWith("text/") || (ct.startsWith("application/") && !isVisualMedia())
 }
 
 /**
@@ -122,6 +113,7 @@ fun MediaMessage(
      *  to Signal's 240dp width — the caption can't collapse to char-per-line and the image can't
      *  leave a gap. No effect on stickers, link-preview cards, or galleries. */
     hasCaption: Boolean = false,
+    audioSender: VoiceNoteSender? = null,
 ) {
     if (payloads.isEmpty()) return
 
@@ -141,6 +133,10 @@ fun MediaMessage(
     // still receives isUploading so it renders the local source instead of a failing drive fetch.
     val isLinkPreview = remember(payloads) {
         payloads.size == 1 && payloads[0].key == ChatProtocol.PAYLOAD_KEY_LINKS
+    }
+
+    val isHighQualitySolo = remember(payloads) {
+        payloads.size == 1 && payloads[0].isHighQualityImage()
     }
 
     Box(modifier = Modifier.testTag(ChatBubbleTestTags.MEDIA).animateContentSize()) {
@@ -175,11 +171,26 @@ fun MediaMessage(
                 // content — no media height (neither the maxHeight fill nor the minHeight floor),
                 // or the card floats atop a grey void (#1103).
                 val isDocument = remember(payloads) { payloads[0].rendersAsDocumentCard() }
+                // Capped here, not inside AudioPlayerWidget, so the bubble background is capped too.
+                val isAudio = remember(payloads) { payloads[0].isAudio() }
                 val sizedModifier = when {
-                    isDocument ->
+                    // The block-caption bubble is already caption-wide; a capped card would leave a strip.
+                    isDocument && fillsBubble ->
                         widthModifier
+                    isDocument ->
+                        widthModifier.widthIn(max = Dimens.MediaBubble.documentMaxWidth)
                     fillsBubble ->
                         widthModifier.fillMaxWidth().height(Dimens.MediaBubble.maxHeight)
+                    isAudio ->
+                        widthModifier
+                            .widthIn(
+                                min = Dimens.MediaBubble.audioMinWidth,
+                                max = Dimens.MediaBubble.audioMaxWidth,
+                            )
+                            .heightIn(
+                                min = Dimens.MediaBubble.minHeight,
+                                max = Dimens.MediaBubble.maxHeight,
+                            )
                     narrowCaptioned ->
                         widthModifier.size(
                             width = Dimens.MediaBubble.minWidthWithContent,
@@ -187,10 +198,18 @@ fun MediaMessage(
                                 .coerceIn(Dimens.MediaBubble.minHeight, Dimens.MediaBubble.maxHeight),
                         )
                     else ->
-                        widthModifier.heightIn(
-                            min = Dimens.MediaBubble.minHeight,
-                            max = Dimens.MediaBubble.maxHeight,
-                        )
+                        widthModifier
+                            .then(
+                                if (isLinkPreview && !fillWidth) {
+                                    Modifier.widthIn(max = Dimens.MediaBubble.linkPreviewMaxWidth)
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .heightIn(
+                                min = Dimens.MediaBubble.minHeight,
+                                max = Dimens.MediaBubble.maxHeight,
+                            )
                 }
                 MediaItem(
                     payload = payloads[0],
@@ -219,6 +238,7 @@ fun MediaMessage(
                     isUploading = uploadStatus != null,
                     liveControls = liveControls,
                     locationHeaderDescriptor = locationHeaderDescriptor,
+                    audioSender = audioSender,
                 )
             }
 
@@ -249,6 +269,13 @@ fun MediaMessage(
                 status = uploadStatus,
                 modifier = Modifier.matchParentSize(),
             )
+        }
+
+        // Solo photos only: a gallery cell is too small to carry it, and the fullscreen
+        // viewer badges each item there instead. Top-start keeps it clear of the
+        // bottom timestamp scrim, which is drawn over this Box by the parent bubble.
+        if (isHighQualitySolo) {
+            HdBadge(modifier = Modifier.align(Alignment.TopStart))
         }
     }
 }

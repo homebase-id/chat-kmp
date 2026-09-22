@@ -36,6 +36,13 @@ object AppConfig {
 
     const val APP_NAME = "Homebase - Chat"
 
+    /**
+     * App slug, sent as `as` in the YouAuth permission request. The server no longer derives a slug
+     * from [APP_NAME] when it has to register the app, and "chat" is the slug odin-core's built-in
+     * Chat app already owns (`SystemAppConstants.ChatAppId`), so this must stay "chat".
+     */
+    const val APP_SLUG = "chat"
+
     // Deep link scheme for returning from permission extension
     const val DEEP_LINK_SCHEME = "homebase-fchat"
 
@@ -48,8 +55,9 @@ object AppConfig {
  * Return URL the owner console redirects the browser to once the user has finished
  * extending app permissions. Platform-specific because the mechanism differs:
  *
- * - **Mobile (Android/iOS) and Web**: a custom URL scheme deep link
+ * - **Mobile (Android/iOS)**: a custom URL scheme deep link
  *   (`homebase-fchat://permission-callback`) registered on the device.
+ * - **Web**: `<base>permission-callback`, which index.html posts back to the opener tab.
  * - **Desktop (JVM)**: a localhost loopback URL handled by the in-process
  *   [id.homebase.api.browser.LocalCallbackServer] (the same server the OAuth login
  *   flow uses). The implementation must ensure the server is running before returning.
@@ -62,8 +70,8 @@ object AppConfig {
 expect fun returnUrl(): String
 
 /**
- * Return URL the owner data-upgrade page redirects to once the upgrade completes.
- * Same platform split as [returnUrl]: deep link on mobile, localhost loopback on desktop.
+ * Return URL the owner data-upgrade page redirects to once the upgrade completes:
+ * deep link on mobile, localhost loopback on desktop, the app's own page on web.
  */
 expect fun dataUpgradeReturnUrl(): String
 
@@ -107,12 +115,49 @@ const val PHOTO_APP_ID = "32f0bdbf-017f-4fc0-8004-2d4631182d1e"
 const val OWNER_APP_ID = "ac126e09-54cb-4878-a690-856be692da16"
 const val COMMUNITY_APP_ID = "77ed6136-6b33-4654-8088-3d89c91e6065"
 
+/**
+ * The contacts app, which owns the relationship circles (Friends, Family, Work, Acquaintances)
+ * since odin-core #1682. Matches `SystemAppConstants.ContactsAppId`.
+ */
+const val CONTACTS_APP_ID = "a1a7bd26-7f52-461f-98cf-1f0ec969d97a"
+
+// Drive slugs and drive type slugs. Every drive named in a permission request must carry both: the
+// server requires them rather than deriving them. These are the names odin-core already holds for
+// the built-in drives this app asks for — see `BuiltinDrives` (`DriveSlug` / `DriveTypeSlug`) in
+// odin-core — so they must match exactly, and the type slug is shared by every drive of that type.
+private const val CHAT_DRIVE_SLUG = "chat"
+private const val CHAT_DRIVE_TYPE_SLUG = "chat"
+private const val STICKER_DRIVE_SLUG = "stickers"
+private const val STICKER_DRIVE_TYPE_SLUG = "sticker"
+private const val CONTACT_DRIVE_SLUG = "contacts"
+private const val CONTACT_DRIVE_TYPE_SLUG = "contact"
+private const val PROFILE_DRIVE_SLUG = "profile"
+private const val PROFILE_DRIVE_TYPE_SLUG = "profile"
+private const val FEED_DRIVE_SLUG = "feed"
+private const val FEED_DRIVE_TYPE_SLUG = "feed"
+private const val PUBLIC_CHANNEL_DRIVE_SLUG = "posts"
+private const val CHANNEL_DRIVE_TYPE_SLUG = "channel"
+private const val EMAIL_DRIVE_SLUG = "email"
+private const val EMAIL_DRIVE_TYPE_SLUG = "email"
+private const val LOCATION_DRIVE_SLUG = "location"
+private const val LOCATION_DRIVE_TYPE_SLUG = "location"
+private const val MOMENTS_DRIVE_SLUG = "moments"
+
+/** Moments shares the Lists drive type, so its type slug is "list", not "moments". */
+private const val LIST_DRIVE_TYPE_SLUG = "list"
+private const val VAULT_DRIVE_SLUG = "vault"
+private const val VAULT_DRIVE_TYPE_SLUG = "vault"
+private const val WEBDROP_DRIVE_SLUG = "webdrop"
+private const val WEBDROP_DRIVE_TYPE_SLUG = "webdrop"
+
 // Labeled drives — drive definition co-located with its human-readable label
 val chatLabeledDrive = LabeledDrive(drive = SystemDriveConstants.chatDrive, label = "Chat")
 val contactLabeledDrive =
     LabeledDrive(drive = SystemDriveConstants.contactDrive, label = "Contacts")
 val profileLabeledDrive = LabeledDrive(drive = SystemDriveConstants.profileDrive, label = "Profile")
 val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, label = "Feed")
+val publicChannelLabeledDrive =
+    LabeledDrive(drive = SystemDriveConstants.publicPostChannelDrive, label = "Public Channel")
 val momentsLabeledDrive = LabeledDrive(
     drive = TargetDrive(
         alias = Uuid.parse("a85f8562-6c74-4947-896b-619812cafccc"),
@@ -121,7 +166,9 @@ val momentsLabeledDrive = LabeledDrive(
     label = "Moments",
 )
 
-// Placeholder Vault drive — real GUIDs will replace these once the server feature ships.
+// Vault drive — holds the user's personal documents. Both GUIDs match
+// `WellKnownAppDrives.VaultDrive` in odin-core — change one, change both. The type is deliberately
+// the Contacts drive's type, so a query by that type returns both drives; odin-core says the same.
 val vaultLabeledDrive = LabeledDrive(
     drive = TargetDrive(
         alias = Uuid.parse("f47ac10b-58cc-4372-a567-0e02b2c3d479"),
@@ -129,6 +176,22 @@ val vaultLabeledDrive = LabeledDrive(
         type = Uuid.parse("70e92f0f94d05f5c7dcd36466094f3a5"),
     ),
     label = "Vault",
+)
+
+// Email setup drive — holds the identity's OpenPGP secret keyrings, the pointer to the
+// current one, and the app-password credential files. Optional drive (not in
+// [mandatorySyncDrives]); requested through extend-permissions when the user sets email up.
+//
+// These GUIDs are NOT placeholders and must never change: the server names the same drive to
+// authorize every /api/v2/mail call, and the alias IS the drive's storage id. The mirror lives
+// in odin-core `src/services/Odin.Services/Drives/WellKnownAppDrives.cs` — change one, change
+// both. Read+Write on this drive is what makes this app the identity's email app.
+val emailLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("92bbcad8-3558-417b-9376-9976c086a674"),
+        type = Uuid.parse("37e3480a-4cd7-4a41-a421-ed49866bf07e"),
+    ),
+    label = "Email",
 )
 
 // Stickers drive — modeled exactly on [vaultLabeledDrive] (alias + distinct type
@@ -154,14 +217,26 @@ val stickerLabeledDrive = LabeledDrive(
 // requested via the extend-permissions flow and mounted when the user activates the
 // Location add-on.
 //
-// The type GUID is a placeholder until the server team provisions the real Location
-// drive type (same caveat as Vault above).
+// Both GUIDs match `WellKnownAppDrives.LocationDrive` in odin-core — change one, change both.
 val locationLabeledDrive = LabeledDrive(
     drive = TargetDrive(
         alias = Uuid.parse("2e191a14-8640-4ebc-b0c8-aaac913f6fa8"),
         type = Uuid.parse("9dbc3bf5-ca24-4d7d-98ca-6933af0ad491"),
     ),
     label = "Location",
+)
+
+// WebDrop drive — holds anonymous, client-side-encrypted "drops" (self-destructing share
+// links for non-Homebase recipients) plus their owner-encrypted receipts. The only drive
+// requested with allowAnonymousRead: a drop must be fetchable by a stranger holding the
+// link; confidentiality lives entirely in the AES key carried in the URL fragment.
+// Contract: odin-core docs/web-drop-plan.md.
+val webDropLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("6d1711af-8b93-43ef-b798-b84d51f25828"),
+        type = Uuid.parse("edee430a-73d4-49ae-a9ae-2d3091957702"),
+    ),
+    label = "WebDrop",
 )
 
 // Default vault sections — stable UUIDs so re-running onboarding is idempotent
@@ -204,14 +279,18 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
                     DrivePermission.Read,
                     DrivePermission.Write,
                     DrivePermission.React
-                )
+                ),
+            driveSlug = CHAT_DRIVE_SLUG,
+            driveTypeSlug = CHAT_DRIVE_TYPE_SLUG,
         ),
         TargetDriveAccessRequest(
             alias = contactTargetDrive.alias.toString(),
             type = contactTargetDrive.type.toString(),
             name = " ",
             description = " ",
-            permissions = listOf(DrivePermission.Read, DrivePermission.Write)
+            permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+            driveSlug = CONTACT_DRIVE_SLUG,
+            driveTypeSlug = CONTACT_DRIVE_TYPE_SLUG,
         ),
         // Read-only grant on the ProfileDrive so the in-app profile editor can read the owner's
         // current standard-profile attributes (id + versionTag + values) to prefill the form.
@@ -222,7 +301,9 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
             type = profileLabeledDrive.drive.type.toString(),
             name = "Profile Drive",
             description = "Drive which contains your profile information",
-            permissions = listOf(DrivePermission.Read)
+            permissions = listOf(DrivePermission.Read),
+            driveSlug = PROFILE_DRIVE_SLUG,
+            driveTypeSlug = PROFILE_DRIVE_TYPE_SLUG,
         ),
     )
 
@@ -233,6 +314,22 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
         name = vaultLabeledDrive.label,
         description = "Drive to store your personal documents",
         permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+        driveSlug = VAULT_DRIVE_SLUG,
+        driveTypeSlug = VAULT_DRIVE_TYPE_SLUG,
+    )
+)
+
+// Read AND Write: the server requires both. Every mail action writes key material to this
+// drive and reads it back, so a half grant is refused (403) rather than half-working.
+val emailTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = emailLabeledDrive.drive.alias.toString(),
+        type = emailLabeledDrive.drive.type.toString(),
+        name = emailLabeledDrive.label,
+        description = "Drive to store your email keys and mail app passwords",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+        driveSlug = EMAIL_DRIVE_SLUG,
+        driveTypeSlug = EMAIL_DRIVE_TYPE_SLUG,
     )
 )
 
@@ -244,8 +341,20 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
 // (fileType=77) are indexed locally and available offline (#1105). Display name / avatar
 // continue to come from the public `https://{odinId}/pub/profile` endpoint
 // (PublicProfileProviderCached) — that's a separate, cache-backed path.
+// The feed + public-channel drives are deliberately NOT here. Everything in this list is exempt from
+// AuthConnectionCoordinator's read-grant filter and from drivesToPrune, which is only sound for drives
+// [targetDriveAccessRequest] grants at login. The feed drives are granted by the separate
+// [feedTargetDriveAccessRequest] extend-permissions flow, so listing them here puts an ungranted drive on the
+// WebSocket subscription — the server then closes the socket and the whole session loses live chat. They
+// activate through
+// OptionalDriveActivation like Moments/Vault instead; once registered, the login pre-mount
+// loop mounts them on every device and the sync engine drains the transit inbox as before.
 val mandatorySyncDrives: List<LabeledDrive> =
-    listOf(chatLabeledDrive, contactLabeledDrive, profileLabeledDrive)
+    listOf(
+        chatLabeledDrive,
+        contactLabeledDrive,
+        profileLabeledDrive,
+    )
 
 // Feed-specific permission config
 val feedTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
@@ -255,6 +364,8 @@ val feedTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
         name = "Feed Drive",
         description = " ",
         permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+        driveSlug = FEED_DRIVE_SLUG,
+        driveTypeSlug = FEED_DRIVE_TYPE_SLUG,
     ),
     TargetDriveAccessRequest(
         type = "8f448716e34cedf9014145e043ca6612",
@@ -266,8 +377,9 @@ val feedTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
             DrivePermission.Write,
             DrivePermission.React,
             DrivePermission.Comment
-        )
-
+        ),
+        driveSlug = PUBLIC_CHANNEL_DRIVE_SLUG,
+        driveTypeSlug = CHANNEL_DRIVE_TYPE_SLUG,
     ),
 )
 
@@ -303,6 +415,8 @@ val momentsTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
             DrivePermission.Write,
             DrivePermission.React,
         ),
+        driveSlug = MOMENTS_DRIVE_SLUG,
+        driveTypeSlug = LIST_DRIVE_TYPE_SLUG,
     ),
 )
 
@@ -324,7 +438,9 @@ val circleDriveTargetRequest: List<TargetDriveAccessRequest> =
             type = chatTargetDrive.type.toString(),
             name = "Chat Drive",
             description = "Drive which contains all the chat messages",
-            permissions = listOf(DrivePermission.Write, DrivePermission.React)
+            permissions = listOf(DrivePermission.Write, DrivePermission.React),
+            driveSlug = CHAT_DRIVE_SLUG,
+            driveTypeSlug = CHAT_DRIVE_TYPE_SLUG,
         )
     )
 
@@ -354,6 +470,16 @@ fun getVaultPermissionExtensionConfig(): PermissionExtensionConfig {
     )
 }
 
+fun getEmailPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = emailTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl
+    )
+}
+
 // Stickers-specific permission config — drive-only, no extra app permissions.
 // Mirrors the Vault/Moments optional-drive permission shape; the Stickers drive is
 // mounted on demand (not in [mandatorySyncDrives]) the first time the user opens the
@@ -365,6 +491,8 @@ val stickerTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
         name = stickerLabeledDrive.label,
         description = "Drive to store your saved stickers",
         permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+        driveSlug = STICKER_DRIVE_SLUG,
+        driveTypeSlug = STICKER_DRIVE_TYPE_SLUG,
     )
 )
 
@@ -377,8 +505,33 @@ val locationTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
         name = "Location Drive",
         description = "Drive which contains your encrypted location history",
         permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+        driveSlug = LOCATION_DRIVE_SLUG,
+        driveTypeSlug = LOCATION_DRIVE_TYPE_SLUG,
     )
 )
+
+val webDropTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = webDropLabeledDrive.drive.alias.toString(),
+        type = webDropLabeledDrive.drive.type.toString(),
+        name = webDropLabeledDrive.label,
+        description = "Drive for files you share as self-destructing WebDrop links",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+        driveSlug = WEBDROP_DRIVE_SLUG,
+        driveTypeSlug = WEBDROP_DRIVE_TYPE_SLUG,
+        allowAnonymousRead = true,
+    )
+)
+
+fun getWebDropPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = webDropTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
+    )
+}
 
 fun getLocationPermissionExtensionConfig(): PermissionExtensionConfig {
     return PermissionExtensionConfig(

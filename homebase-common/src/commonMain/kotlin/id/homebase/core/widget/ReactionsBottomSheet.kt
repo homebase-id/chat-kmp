@@ -47,6 +47,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.avatars.PublicAvatar
+import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.initials
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_reaction
@@ -62,6 +63,7 @@ data class ReactionDisplayItem(
     val emoji: String,
 )
 
+// [summaryCounts] labels the chips when the caller's [reactions] roster is partial; null tallies the roster.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReactionsBottomSheet(
@@ -70,6 +72,8 @@ fun ReactionsBottomSheet(
     ownerOdinId: String?,
     onContactClick: (odinId: String) -> Unit,
     onAddReaction: ((String) -> Unit)? = null,
+    summaryCounts: Map<String, Int>? = null,
+    footnote: String? = null,
     onDismiss: () -> Unit,
 ) {
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -95,6 +99,15 @@ fun ReactionsBottomSheet(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
 
+                footnote?.let {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
 
                 if (isLoading) {
@@ -111,6 +124,7 @@ fun ReactionsBottomSheet(
                     onContactClick = onContactClick,
                     onAddEmoji = onAddReaction?.let { { showEmojiPicker = true } },
                     onToggleReaction = onAddReaction,
+                    summaryCounts = summaryCounts,
                 )
             }
         }
@@ -134,6 +148,7 @@ private fun ColumnScope.ReactionsContent(
     onContactClick: (odinId: String) -> Unit,
     onAddEmoji: (() -> Unit)? = null,
     onToggleReaction: ((String) -> Unit)? = null,
+    summaryCounts: Map<String, Int>? = null,
 ) {
     // Drop machine reactions whose code starts with "_" (e.g. Groodle vote codes
     // like "_1Y") — they are surfaced by their own kind's bubble, not as emoji.
@@ -143,9 +158,12 @@ private fun ColumnScope.ReactionsContent(
     val grouped = remember(reactions) {
         reactions.groupBy { it.emoji }
     }
-    var knownEmojiKeys by remember { mutableStateOf(grouped.keys.toList()) }
-    LaunchedEffect(grouped.keys) {
-        val currentKeys = grouped.keys
+    val counts = remember(grouped, summaryCounts) {
+        summaryCounts?.takeIf { it.isNotEmpty() } ?: grouped.mapValues { it.value.size }
+    }
+    var knownEmojiKeys by remember { mutableStateOf(counts.keys.toList()) }
+    LaunchedEffect(counts.keys) {
+        val currentKeys = counts.keys
         if (!knownEmojiKeys.containsAll(currentKeys)) {
             knownEmojiKeys = (knownEmojiKeys + currentKeys).distinct()
         }
@@ -168,7 +186,7 @@ private fun ColumnScope.ReactionsContent(
             AddEmojiChip(onClick = onAddEmoji)
         }
         knownEmojiKeys.forEach { emoji ->
-            val count = grouped[emoji]?.size ?: 0
+            val count = counts[emoji] ?: 0
             val isOwnReaction = emoji in ownerEmojis
             EmojiToggleChip(
                 isOwnReaction = isOwnReaction,
@@ -232,7 +250,7 @@ private fun EmojiToggleChip(
             .clickable(onClick = onClick),
     ) {
         Text(
-            text = label,
+            text = label.withEmojiFont(),
             style = MaterialTheme.typography.labelLarge,
             color = textColor,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -297,7 +315,7 @@ private fun ReactionRow(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = if (isOwner) youLabel else item.displayName,
+                text = (if (isOwner) youLabel else item.displayName).withEmojiFont(),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -311,7 +329,7 @@ private fun ReactionRow(
         }
 
         Text(
-            text = item.emoji,
+            text = item.emoji.withEmojiFont(),
             style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp),
         )
     }

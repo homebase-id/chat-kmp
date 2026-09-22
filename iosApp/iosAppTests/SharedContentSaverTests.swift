@@ -20,6 +20,12 @@ final class SharedContentSaverTests: XCTestCase {
     private var tempDir: URL!
     private var preexistingFiles: Set<String> = []
     private var preexistingDescriptor: Data?
+    private var lockedDirs: [URL] = []
+
+    /// `save()` completes on `group.notify(queue: .main)`, and the test host is the whole app —
+    /// its Kotlin/Native startup owns the main queue for >10s, so whichever test the runner
+    /// happens to put first pays for the launch.
+    private let saveTimeout: TimeInterval = 90
 
     private let vcardBytes = Data("BEGIN:VCARD\nVERSION:3.0\nFN:Ada Vance\nEND:VCARD\n".utf8)
     private let movieBytes = Data([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6D, 0x70, 0x34, 0x32])
@@ -56,6 +62,12 @@ final class SharedContentSaverTests: XCTestCase {
         } else {
             try? FileManager.default.removeItem(at: descriptorURL)
         }
+        for url in lockedDirs {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o700], ofItemAtPath: url.path
+            )
+        }
+        lockedDirs = []
         try? FileManager.default.removeItem(at: tempDir)
 
         try super.tearDownWithError()
@@ -194,6 +206,51 @@ final class SharedContentSaverTests: XCTestCase {
         XCTAssertEqual(try writtenBytes(descriptor), pngBytes)
     }
 
+    // MARK: - Write failures (#1309)
+
+    func testStagedShareLandsInTheInjectedContainer() throws {
+        let container = try injectedContainer()
+
+        XCTAssertTrue(try saveInto(container, [dataProvider(pngBytes, .png)]))
+
+        let descriptor = try decodeDescriptor(in: container)
+        XCTAssertEqual(descriptor.contentType, "IMAGE")
+        XCTAssertEqual(descriptor.mimeTypes, ["image/png"])
+        let name = try XCTUnwrap(descriptor.fileNames.first)
+        XCTAssertEqual(try Data(contentsOf: filesDir(in: container).appendingPathComponent(name)), pngBytes)
+    }
+
+    func testDescriptorWriteFailureIsReportedAsFailure() throws {
+        let container = try injectedContainer()
+        try makeReadOnly(container)
+
+        XCTAssertFalse(
+            try saveInto(container, [dataProvider(vcardBytes, .vCard)], text: "look at this"),
+            "a descriptor that never reached disk must not be reported as a saved share"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: container.appendingPathComponent(SharedContentSaver.sharedContentFile).path
+            )
+        )
+    }
+
+    func testFailedImageDataWriteIsNotClaimedInTheDescriptor() throws {
+        let container = try injectedContainer()
+        try makeReadOnly(filesDir(in: container))
+
+        XCTAssertTrue(try saveInto(container, [dataProvider(pngBytes, .png)], text: "look at this"))
+
+        let descriptor = try decodeDescriptor(in: container)
+        XCTAssertEqual(descriptor.fileNames, [], "the descriptor names a file that was never written")
+        XCTAssertEqual(descriptor.mimeTypes, [])
+        XCTAssertEqual(descriptor.contentType, "TEXT")
+        XCTAssertEqual(descriptor.text, "look at this")
+        XCTAssertEqual(
+            try FileManager.default.contentsOfDirectory(atPath: filesDir(in: container).path), []
+        )
+    }
+
     // MARK: - Helpers
 
     private func save(
@@ -217,7 +274,7 @@ final class SharedContentSaverTests: XCTestCase {
             saved = success
             finished.fulfill()
         }
-        wait(for: [finished], timeout: 10)
+        wait(for: [finished], timeout: saveTimeout)
         XCTAssertTrue(saved, "save() reported failure", file: file, line: line)
 
         return try JSONDecoder().decode(
@@ -249,5 +306,68 @@ final class SharedContentSaverTests: XCTestCase {
         let url = tempDir.appendingPathComponent(name)
         try bytes.write(to: url)
         return url
+    }
+
+    private func filesDir(in container: URL) -> URL {
+        container.appendingPathComponent(SharedContentSaver.sharedFilesDir)
+    }
+
+    private func injectedContainer() throws -> URL {
+        let container = tempDir.appendingPathComponent("container_\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: filesDir(in: container), withIntermediateDirectories: true
+        )
+        return container
+    }
+
+    private func makeReadOnly(
+        _ url: URL,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: url.path)
+        lockedDirs.append(url)
+
+        let probe = url.appendingPathComponent("probe_\(UUID().uuidString)")
+        let wrote = (try? Data([0x00]).write(to: probe)) != nil
+        try? FileManager.default.removeItem(at: probe)
+        XCTAssertFalse(
+            wrote,
+            "\(url.lastPathComponent) is still writable — the injected failure never happened",
+            file: file,
+            line: line
+        )
+    }
+
+    private func saveInto(
+        _ container: URL,
+        _ providers: [NSItemProvider],
+        text: String? = nil
+    ) throws -> Bool {
+        let item = NSExtensionItem()
+        item.attachments = providers
+        if let text {
+            item.attributedContentText = NSAttributedString(string: text)
+        }
+
+        var saved: Bool?
+        let finished = expectation(description: "SharedContentSaver.save")
+        SharedContentSaver.save(
+            extensionContext: StubExtensionContext([item]),
+            conversationId: "conversation-under-test",
+            containerURL: container
+        ) { success in
+            saved = success
+            finished.fulfill()
+        }
+        wait(for: [finished], timeout: saveTimeout)
+        return try XCTUnwrap(saved)
+    }
+
+    private func decodeDescriptor(in container: URL) throws -> SharedContentSaver.ContentDescriptor {
+        try JSONDecoder().decode(
+            SharedContentSaver.ContentDescriptor.self,
+            from: Data(contentsOf: container.appendingPathComponent(SharedContentSaver.sharedContentFile))
+        )
     }
 }

@@ -87,7 +87,7 @@ fun MediaGallery(
         val albumWidth = when {
             maxWidth >= 400.dp -> 300.dp
             maxWidth >= 360.dp -> 252.dp
-            else -> Dimens.Album.totalWidth
+            else -> Dimens.MediaBubble.galleryWidth
         }
         // Cell heights are derived from the actual laid-out width: the given width
         // when filling, else the discrete album width.

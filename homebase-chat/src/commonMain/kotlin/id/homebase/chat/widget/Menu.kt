@@ -666,6 +666,8 @@ private fun rememberAboveBubblePositionProvider(alignToEnd: Boolean): PopupPosit
 internal class AboveBubblePositionProvider(
     private val gapPx: Int,
     private val alignToEnd: Boolean,
+    private val windowMarginPx: Int = 0,
+    private val flipBelow: Boolean = true,
 ) : PopupPositionProvider {
     override fun calculatePosition(
         anchorBounds: IntRect,
@@ -676,11 +678,15 @@ internal class AboveBubblePositionProvider(
         val alignToRightEdge = alignToEnd == (layoutDirection == LayoutDirection.Ltr)
         val x = if (alignToRightEdge) anchorBounds.right - popupContentSize.width
         else anchorBounds.left
-        val maxX = (windowSize.width - popupContentSize.width).coerceAtLeast(0)
-        val maxY = (windowSize.height - popupContentSize.height).coerceAtLeast(0)
+        val maxX = (windowSize.width - popupContentSize.width - windowMarginPx).coerceAtLeast(windowMarginPx)
+        val maxY = (windowSize.height - popupContentSize.height - windowMarginPx).coerceAtLeast(windowMarginPx)
         val above = anchorBounds.top - popupContentSize.height - gapPx
-        val y = if (above >= 0) above else (anchorBounds.bottom + gapPx).coerceAtMost(maxY)
-        return IntOffset(x.coerceIn(0, maxX), y)
+        val y = when {
+            above >= windowMarginPx -> above
+            flipBelow -> (anchorBounds.bottom + gapPx).coerceAtMost(maxY)
+            else -> windowMarginPx
+        }
+        return IntOffset(x.coerceIn(windowMarginPx, maxX), y)
     }
 }
 
@@ -688,7 +694,9 @@ internal class AboveBubblePositionProvider(
 fun FullScreenMediaMenu(
     showMenu: Boolean,
     dismissMenu: () -> Unit,
-    onSave: () -> Unit,
+    // Null when the host has no way to perform the action — the item is then absent
+    // rather than present-but-dead.
+    onSave: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
     onNavigateToMessage: (() -> Unit)? = null,
     // Only set for payloads whose descriptor is ImageFile(isSticker = true). When
@@ -713,12 +721,14 @@ fun FullScreenMediaMenu(
                     )
                 })
         }
-        DropdownMenuItem(
-            onClick = onSave,
-            text = { Text(text = stringResource(MR.string.save)) },
-            leadingIcon = {
-                Icon(imageVector = Icons.Filled.Download, contentDescription = null)
-            })
+        if (onSave != null) {
+            DropdownMenuItem(
+                onClick = onSave,
+                text = { Text(text = stringResource(MR.string.save)) },
+                leadingIcon = {
+                    Icon(imageVector = Icons.Filled.Download, contentDescription = null)
+                })
+        }
         if (onSaveSticker != null) {
             DropdownMenuItem(
                 onClick = onSaveSticker,

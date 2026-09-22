@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.runComposeUiTest
 import id.homebase.core.settings.ThemeState
 import kotlin.test.Test
@@ -29,30 +30,38 @@ class SettingsUiTest {
             onBack = { fired += "back" },
             onNotifications = { fired += "notifications" },
             onAppearance = { fired += "appearance" },
+            onMedia = { fired += "media" },
+            onKeyboard = { fired += "keyboard" },
             onStorage = { fired += "storage" },
             onHelp = { fired += "help" },
             onMomentsSettings = { fired += "moments" },
             onVaultSettings = { fired += "vault" },
+            onEmailSettings = { fired += "email" },
+            onOpenWebDrop = { fired += "webdrop" },
             onLocation = { fired += "location" },
             onContactBookSettings = { fired += "contactBook" },
             onProfileEdit = { fired += "profileEdit" },
             onProfileAvatarEdit = { fired += "profileAvatarEdit" },
+            onProfileCard = { fired += "profileCard" },
         )
     }
 
+    // Scroll to compose the row, then fire its click action rather than tapping coordinates: the
+    // app bar is pinned over the scrolling list, and a row parked under it swallows a tap.
     private fun ComposeUiTest.tapRow(tag: String) {
         onNodeWithTag("settingsList").performScrollToNode(hasTestTag(tag))
-        onNodeWithTag(tag).performClick()
+        onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick)
     }
 
     private fun ComposeUiTest.settings(
         uiState: SettingsUiState = SettingsUiState(),
         routes: Routes = Routes(),
         onAction: (SettingsUiAction) -> Unit = {},
+        actions: SettingsActions = routes.actions(),
     ) {
         setContent {
             MaterialTheme {
-                SettingsUi(uiState = uiState, onAction = onAction, actions = routes.actions())
+                SettingsUi(uiState = uiState, onAction = onAction, actions = actions)
             }
         }
     }
@@ -71,18 +80,17 @@ class SettingsUiTest {
         assertEquals(listOf("back"), routes.fired)
     }
 
-    /**
-     * Walks the hub top to bottom. Order matters: the app bar is pinned, so scrolling *up*
-     * to a row can park it under the bar and swallow the tap.
-     */
+    /** Walks the hub top to bottom. */
     @Test
     fun everyNavigationRowReachesItsOwnRoute() = runComposeUiTest {
         val routes = Routes()
         settings(routes = routes)
 
         val expected = listOf(
+            "profileCardButton" to "profileCard",
             "notificationsButton" to "notifications",
             "appearanceButton" to "appearance",
+            "mediaButton" to "media",
             "momentsSettingsButton" to "moments",
             "vaultSettingsButton" to "vault",
             "locationSettingsButton" to "location",
@@ -96,6 +104,21 @@ class SettingsUiTest {
         }
 
         assertEquals(expected.map { it.second }, routes.fired)
+    }
+
+    @Test
+    fun profileCardRowIsHiddenWhileTheCardIsDarkLaunched() = runComposeUiTest {
+        settings(actions = Routes().actions().copy(onProfileCard = null))
+        onNodeWithTag("securitySetupButton").assertExists()
+        onNodeWithTag("profileCardButton").assertDoesNotExist()
+    }
+
+    @Test
+    fun keyboardRowOpensKeyboardSettings() = runComposeUiTest {
+        val routes = Routes()
+        settings(routes = routes)
+        tapRow("keyboardButton")
+        assertEquals(listOf("keyboard"), routes.fired)
     }
 
     @Test

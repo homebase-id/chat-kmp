@@ -31,7 +31,6 @@ class ShareSelfMatchTest {
         profileImageFileId = null,
         profileImageFileKey = null,
         profileImagePreviewThumbnail = null,
-        profileImageLastModified = null,
         status = null,
     )
 

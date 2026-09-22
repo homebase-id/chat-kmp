@@ -1,5 +1,6 @@
 package id.homebase.api.youauth
 
+import id.homebase.api.util.compareStringUuId
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -32,7 +33,20 @@ data class PermissionGroup(
 
 /** A grant for a specific drive with permissions. */
 @Serializable
-data class DriveGrant(val permissionedDrive: PermissionedDrive)
+data class DriveGrant(val permissionedDrive: PermissionedDrive, val hasStorageKey: Boolean = false)
+
+private fun DriveGrant.isFor(alias: String, type: String): Boolean =
+    compareStringUuId(permissionedDrive.drive.alias, alias) && compareStringUuId(permissionedDrive.drive.type, type)
+
+private val SecurityContext.driveGrants: List<DriveGrant>
+    get() = permissionContext.permissionGroups.flatMap { it.driveGrants.orEmpty() }
+
+/** The server grants Read on every anonymous drive without its storage key, so only a keyed Read decrypts. */
+fun SecurityContext.canDecrypt(alias: String, type: String): Boolean =
+    driveGrants.any { it.isFor(alias, type) && it.hasStorageKey && DrivePermission.Read in it.permissionedDrive.permission }
+
+fun SecurityContext.drivePermissions(alias: String, type: String): List<DrivePermission> =
+    driveGrants.filter { it.isFor(alias, type) }.flatMap { it.permissionedDrive.permission }.distinct()
 
 /**
  * A drive reference with permissions. The permission field may be a string or list from the API.

@@ -212,8 +212,9 @@ actual class RichNotificationDisplayer actual constructor() {
     ) {
         val conversationId = data.conversationId ?: return
 
-        // Direct Reply action — dormant until REPLY_FROM_NOTIFICATION_ENABLED (#1048).
-        if (REPLY_FROM_NOTIFICATION_ENABLED) {
+        // Replying blind to a redacted/placeholder push is meaningless, so Reply rides
+        // on the same content level that shows the message being replied to.
+        if (data.allowsReplyAction) {
             val remoteInput = RemoteInput.Builder(EXTRA_REPLY_TEXT)
                 .setLabel("Reply")
                 .build()
@@ -266,14 +267,6 @@ actual class RichNotificationDisplayer actual constructor() {
     }
 
     companion object {
-        /**
-         * Reply-from-notification is disabled until the flow is hardened (#1048): the send can
-         * silently fail from a cold/headless BroadcastReceiver wake, and replying blind to the
-         * content-less "You have a new message" push (#859) is nonsensical. Flip to `true` to
-         * re-enable once those land. The receiver ([NotificationReplyReceiver]) is kept dormant.
-         */
-        const val REPLY_FROM_NOTIFICATION_ENABLED = false
-
         /** Recent messages kept in a conversation's stacked notification (Android shows ~7). */
         private const val MAX_STACKED_MESSAGES = 6
 

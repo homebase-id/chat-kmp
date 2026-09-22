@@ -33,6 +33,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.ImageSize
+import id.homebase.api.common.OdinId
 import kotlin.uuid.Uuid
 
 private val DotSize = 6.dp
@@ -98,6 +99,9 @@ fun MomentMediaCarousel(
     // Force the whole video frame to show (fit) instead of crop-to-fill —
     // set while the host card is shrunk for the comments sheet.
     fitToContent: Boolean = false,
+    // Over-peer read identity for followed-post media (see [MomentMediaGallery]); null = local.
+    remoteOdinId: OdinId? = null,
+    globalTransitId: Uuid? = null,
 ) {
     if (payloads.isEmpty()) return
 
@@ -146,9 +150,7 @@ fun MomentMediaCarousel(
         snapshotFlow {
             val payload = payloads.getOrNull(pagerState.currentPage)
                 ?: return@snapshotFlow null
-            val ct = payload.contentType ?: ""
-            val isVideo = ct.startsWith("video/") || ct == "application/vnd.apple.mpegurl"
-            if (isVideo) payload.key else null
+            if (payload.isVideo()) payload.key else null
         }.collect { autoplayKey ->
             Logger.d(tag = "MomentVideo") {
                 "carousel autoplay engage: messageId=$messageId page=${pagerState.currentPage} key=${autoplayKey ?: "<no-video>"}"
@@ -180,11 +182,7 @@ fun MomentMediaCarousel(
             // 4dp "peek" gaps, add `pageSpacing = 4.dp` here.
         ) { pageIndex ->
             val payload = payloads[pageIndex]
-            val contentType = payload.contentType ?: ""
-            val isVideo = contentType.startsWith("video/") ||
-                contentType == "application/vnd.apple.mpegurl"
-
-            if (isVideo) {
+            if (payload.isVideo()) {
                 MomentInlineVideoTile(
                     payload = payload,
                     fileId = fileId,
@@ -238,6 +236,8 @@ fun MomentMediaCarousel(
                     isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
                     messageId = messageId,
                     isUploading = isUploading,
+                    remoteOdinId = remoteOdinId,
+                    globalTransitId = globalTransitId,
                     // Inline pinch-zoom; while shrunk for comments the box is a
                     // short band, so keep the lightweight fit render there.
                     enableZoom = !fitToContent,

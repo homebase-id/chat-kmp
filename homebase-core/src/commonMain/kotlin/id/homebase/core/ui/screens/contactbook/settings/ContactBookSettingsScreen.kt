@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,11 +25,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_settings_open
 import id.homebase.resources.contactbook_settings_section
 import id.homebase.resources.contactbook_settings_show_icon
-import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -62,16 +61,9 @@ fun ContactBookSettingsUi(
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.contactbook_settings_section)) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
-                        )
-                    }
-                },
+            SettingsTopBar(
+                title = stringResource(MR.string.contactbook_settings_section),
+                onBack = onBackClick,
             )
         },
     ) { innerPadding ->

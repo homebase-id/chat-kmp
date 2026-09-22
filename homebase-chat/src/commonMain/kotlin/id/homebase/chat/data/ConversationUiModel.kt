@@ -20,7 +20,6 @@ data class ConversationUiModel(
     val latestMessageTimestamp: Instant, // Timestamp of the last message in this convo
     val unreadCount: Int = 0,
     val avatarInitials: String,
-    val avatarUrl: String = "",
     val avatarTiny: EmbeddedThumb?,
     val participants: List<OdinId> = listOf(),
     val isPinned: Boolean = false,
@@ -57,6 +56,8 @@ data class ConversationUiModel(
     val isGroup: Boolean = false,
     val isLegacyGroup: Boolean = false,
     val exitedAt: Instant? = null,
+    /** Null unless archived, and on threads archived before the stamp existed. */
+    val archivedAt: Instant? = null,
     /** Server-stamped last-modified time of the conversation file (fileMetadata.updated). */
     val fileUpdated: Instant = Instant.fromEpochMilliseconds(0),
     /**

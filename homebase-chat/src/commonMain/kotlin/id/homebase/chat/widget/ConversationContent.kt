@@ -114,7 +114,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
-import id.homebase.api.client.profile.PublicProfileProvider
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
 import kotlinx.collections.immutable.ImmutableList
@@ -143,6 +143,7 @@ import id.homebase.chat.conversationlist.RecipientGroupModel
 import id.homebase.chat.conversationlist.RecipientModel
 import id.homebase.chat.conversationlist.RecipientType
 import id.homebase.chat.conversationlist.RecordingData
+import id.homebase.chat.conversationlist.lastEditableMessage
 import id.homebase.chat.conversationlist.resolveOwnSendFollowTarget
 import id.homebase.chat.createconversation.ContactItem
 import id.homebase.chat.createconversation.GroupOrConversationItem
@@ -152,10 +153,14 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.settings.rememberEnterSendsMessage
+import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
 import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
+import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
@@ -172,6 +177,7 @@ import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_auto_connect_connected
+import id.homebase.resources.chat_drop_files_none_usable
 import id.homebase.resources.chat_group_not_connected_disclaimer
 import id.homebase.resources.chat_group_rejoin_accept
 import id.homebase.resources.chat_group_rejoin_decline
@@ -219,9 +225,11 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.DateTimeUnit
@@ -234,12 +242,25 @@ import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /** Upper bound on waiting for an own send to appear in the list before the
  *  follow token is consumed unscrolled (the send failed or was gated out). */
 private const val OWN_SEND_FOLLOW_TIMEOUT_MS = 5_000L
+
+private const val SCROLL_TO_NEWEST_ATTEMPTS = 4
+
+// Mirrors the states in which the composer below is replaced by a banner — keep the two in sync,
+// or a dropped file lands in a conversation with nothing to send it from.
+private fun EnrichedConversationUiModel.acceptsAttachments(): Boolean =
+    conversation.conversationState != ConversationState.Left &&
+        conversation.conversationState != ConversationState.Removed &&
+        conversation.conversationState != ConversationState.RejoinPending &&
+        oneOnOneConnectionStatus !is OneOnOneConnectionStatus.NotConnected &&
+        oneOnOneConnectionStatus !is OneOnOneConnectionStatus.OutgoingRequestPending &&
+        oneOnOneConnectionStatus !is OneOnOneConnectionStatus.IncomingRequestPending
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -258,6 +279,7 @@ fun ConversationContent(
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
+    val enterSendsMessage = rememberEnterSendsMessage()
     val focusManager = LocalFocusManager.current
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showEventComposer by remember { mutableStateOf(false) }
@@ -265,6 +287,7 @@ fun ConversationContent(
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showPollComposer by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
+    val composerPopovers = isDesktopOrWeb() && isExpandedLayout()
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -281,6 +304,9 @@ fun ConversationContent(
     var payloadRenderers by remember { mutableStateOf<List<PayloadRenderer>>(emptyList()) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+
+    var dropPreview by remember { mutableStateOf<FileDropPreview?>(null) }
+    val foldersOnlyDropMessage = stringResource(MR.string.chat_drop_files_none_usable)
 
     LaunchedEffect(uiState.isSearchActive) {
         if (uiState.isSearchActive) {
@@ -617,6 +643,22 @@ fun ConversationContent(
             )
         }
     }
+    val attachmentActions = attachmentActions(
+        onGalleryClick = { galleryLauncher.launch() },
+        onFileClick = { fileLauncher.launch() },
+        onContactClick = {
+            onUiAction(ConversationListUiAction.OpenShareContact(conversation.conversation.id))
+        },
+        onLocationClick = {
+            Logger.d(tag = "LocationShare") { "share location clicked" }
+            onUiAction(ConversationListUiAction.OpenShareLocation(conversation.conversation.id))
+        },
+        onEventClick = { showEventComposer = true },
+        onGroodleClick = { showGroodleComposer = true },
+        onDicesClick = { showDiceRollComposer = true },
+        onPollClick = { showPollComposer = true },
+    )
+    val popoverAttachmentActions = if (composerPopovers) attachmentActions else null
 
     ConversationContentSheets(
         uiState = uiState,
@@ -693,6 +735,15 @@ fun ConversationContent(
         )
     }
 
+    uiState.pendingGifPaste?.let { paste ->
+        GifPasteSheet(
+            bytes = paste.bytes,
+            onSendAsSticker = { onUiAction(ConversationListUiAction.SendPastedGifAsSticker) },
+            onSendAsGif = { onUiAction(ConversationListUiAction.SendPastedGifAsGif) },
+            onDismiss = { onUiAction(ConversationListUiAction.DismissPastedGif) },
+        )
+    }
+
     if (showBlockConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showBlockConfirmDialog = false },
@@ -718,11 +769,27 @@ fun ConversationContent(
 
     CompositionLocalProvider(
         LocalCurrentOdinId provides (uiState.ownerSession?.odinId?.domainName ?: ""),
+        LocalMentionNames provides uiState.mentionNames,
         LocalUploadConnected provides uiState.isConnected,
         LocalSavedContactIdentities provides uiState.savedContactIdentities,
     ) {
     Scaffold(
-        modifier = Modifier,
+        modifier = Modifier.fileDropTarget(
+            enabled = conversation.acceptsAttachments() && !uiState.isSearchActive,
+            onDragPreviewChanged = { dropPreview = it },
+            onFilesDropped = { files ->
+                if (files.isEmpty()) {
+                    coroutineScope.launch { snackbarHostState.showSnackbar(foldersOnlyDropMessage) }
+                } else {
+                    onUiAction(
+                        ConversationListUiAction.AttachPlatformFile(
+                            conversationId = conversation.conversation.id,
+                            files = files,
+                        )
+                    )
+                }
+            },
+        ),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -754,15 +821,14 @@ fun ConversationContent(
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column {
-                                    Text(
-                                        text = if (conversation.conversation.isWithSelf) stringResource(
-                                            MR.string.chat_note_to_self
-                                        )
+                                    val conversationTitle =
+                                        if (conversation.conversation.isWithSelf)
+                                            stringResource(MR.string.chat_note_to_self)
                                         else conversation.getDisplayName(
-                                            youLabel = stringResource(
-                                                MR.string.you
-                                            )
-                                        ),
+                                            youLabel = stringResource(MR.string.you),
+                                        )
+                                    Text(
+                                        text = conversationTitle.withEmojiFont(),
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold
                                     )
@@ -908,7 +974,7 @@ fun ConversationContent(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
                 ),
             )
         },
@@ -1119,6 +1185,27 @@ fun ConversationContent(
                                         is MessageListContentModel -> item.id
                                         is PendingOutgoingMessage -> "pending-${item.id}"
                                         else -> item.hashCode().toString()
+                                    }
+                                },
+                                // One contentType per row shape, so scrolling reuses a recycled
+                                // item's composition instead of discarding and rebuilding it.
+                                // A 45 s device profile of an image-heavy thread (iPhone 15,
+                                // release K/N) put 44.8% of main-thread CPU in recomposition and
+                                // 35.4% in measure/layout, versus 1.14% for the placeholder blur
+                                // that #1370 suspected — reuse is the lever, not the blur.
+                                contentType = { item ->
+                                    when (item) {
+                                        is MessageListContentModel.Message -> "message"
+                                        is PendingOutgoingMessage -> "pending"
+                                        is MessageListContentModel.Section -> "section"
+                                        is MessageListContentModel.System -> "system"
+                                        is MessageListContentModel.Header -> "header"
+                                        is MessageListContentModel.UnreadSeparator -> "unread-separator"
+                                        // Both spinner rows render the same composable.
+                                        is MessageListContentModel.LoadingOlder,
+                                        is MessageListContentModel.LoadingNewer -> "loading"
+                                        is MessageListContentModel.LoadServerHistory -> "load-server-history"
+                                        else -> null
                                     }
                                 },
                             ) { item ->
@@ -1375,9 +1462,7 @@ fun ConversationContent(
                                     // history.)
                                     onUiAction(ConversationListUiAction.ScrollToLatest(conversation.conversation.id))
                                 } else {
-                                    coroutineScope.launch {
-                                        listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
-                                    }
+                                    coroutineScope.launch { listState.animateScrollToNewestItem() }
                                 }
                             },
                         )
@@ -1607,6 +1692,26 @@ fun ConversationContent(
                             }
                         }
 
+                        val toggleEmojiSheet = {
+                            showAttachmentSheet = false
+                            if (showEmojiSheet && !isKeyboardVisible) {
+                                showEmojiSheet = false
+                                if (wasKeyboardVisible) {
+                                    focusRequester.requestFocus()
+                                    keyboardController?.show()
+                                }
+                            } else {
+                                if (isKeyboardVisible) {
+                                    wasKeyboardVisible = true
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
+                                } else {
+                                    wasKeyboardVisible = false
+                                }
+                                showEmojiSheet = true
+                            }
+                        }
+
                         UnifiedInputBubble(
                             replyToMessage = uiState.replyToMessage,
                             onDismissReply = {
@@ -1616,6 +1721,7 @@ fun ConversationContent(
                             showSendButton = showSendButton,
                             isRecordingActive = isRecordingActive,
                             isSendingMessage = uiState.isSendingMessage,
+                            enterSendsMessage = enterSendsMessage,
                             onSendMessage = {
                                 performSend(textFieldState.toMessageMarkdown(), payloadRenderers)
                             },
@@ -1624,6 +1730,8 @@ fun ConversationContent(
                             },
                             onAddAttachmentClick = { toggleAttachmentSheet() },
                             modifier = Modifier.focusProperties { canFocus = inputFocusable },
+                            attachmentActions = popoverAttachmentActions,
+                            onAttachmentPopoverDismissed = { focusRequester.requestFocus() },
                         ) {
                             MessageInputBar(
                                 textFieldState = textFieldState,
@@ -1638,24 +1746,15 @@ fun ConversationContent(
                                 payloadRenderers = payloadRenderers,
                                 onPayloadRenderersChange = { payloadRenderers = it },
                                 onSendMessage = { text, attachments -> performSend(text, attachments) },
-                                onEmojiClick = {
-                                    showAttachmentSheet = false
-                                    if (showEmojiSheet && !isKeyboardVisible) {
-                                        showEmojiSheet = false
-                                        if (wasKeyboardVisible) {
-                                            focusRequester.requestFocus()
-                                            keyboardController?.show()
-                                        }
-                                    } else {
-                                        if (isKeyboardVisible) {
-                                            wasKeyboardVisible = true
-                                            focusManager.clearFocus()
-                                            keyboardController?.hide()
-                                        } else {
-                                            wasKeyboardVisible = false
-                                        }
-                                        showEmojiSheet = true
-                                    }
+                                mentionTargets = if (conversation.conversation.isGroupConversation) {
+                                    conversation.participants
+                                } else {
+                                    emptyList()
+                                },
+                                onEmojiClick = if (composerPopovers) {
+                                    { showAttachmentSheet = false }
+                                } else {
+                                    toggleEmojiSheet
                                 },
                                 onKeyboardClick = {
                                     showEmojiSheet = false
@@ -1687,6 +1786,32 @@ fun ConversationContent(
                                             imageBytes = imageBytes,
                                         )
                                     )
+                                },
+                                onEditLast = editLast@{
+                                    val target = uiState.lastEditableMessage() ?: return@editLast false
+                                    onUiAction(
+                                        ConversationListUiAction.EditMessage(
+                                            messageId = target.id,
+                                            versionTag = target.versionTag,
+                                            ignoreDraft = false,
+                                        )
+                                    )
+                                    true
+                                },
+                                attachmentActions = popoverAttachmentActions,
+                                emojiPopoverContent = if (composerPopovers) {
+                                    {
+                                        ExpressionPanel(
+                                            conversationId = conversation.conversation.id,
+                                            onUiAction = onUiAction,
+                                            onBackSpace = { textFieldState.programmaticBackspace() },
+                                            onEmojiSelected = { textFieldState.addTextAfterSelection(it) },
+                                            modifier = Modifier.fillMaxSize(),
+                                            searchFirst = true,
+                                        )
+                                    }
+                                } else {
+                                    null
                                 },
                                 onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) },
                             )
@@ -1739,38 +1864,14 @@ fun ConversationContent(
                             },
                         )
                     }
-                    AttachmentOptions(onGalleryClick = {
-                        showAttachmentSheet = false
-                        galleryLauncher.launch()
-                    }, onFileClick = {
-                        showAttachmentSheet = false
-                        fileLauncher.launch()
-                    }, onContactClick = {
-                        showAttachmentSheet = false
-                        onUiAction(
-                            ConversationListUiAction.OpenShareContact(conversation.conversation.id)
-                        )
-                    }, onLocationClick = {
-                        Logger.d(tag = "LocationShare") { "share location clicked" }
-                        showAttachmentSheet = false
-                        onUiAction(
-                            ConversationListUiAction.OpenShareLocation(conversation.conversation.id)
-                        )
-                    }, onEventClick = {
-                        showAttachmentSheet = false
-                        showEventComposer = true
-                    }, onGroodleClick = {
-                        showAttachmentSheet = false
-                        showGroodleComposer = true
-                    }, onDicesClick = {
-                        showAttachmentSheet = false
-                        showDiceRollComposer = true
-                    }, onPollClick = {
-                        showAttachmentSheet = false
-                        showPollComposer = true
-                    })
+                    AttachmentOptions(attachmentActions, onPicked = { showAttachmentSheet = false })
                 }
             } // AttachmentOptionsDisplay wrapper Box
+
+            FileDropOverlay(
+                preview = dropPreview,
+                modifier = Modifier.matchParentSize(),
+            )
         } // Box (clipToBounds)
     }
 
@@ -2013,7 +2114,7 @@ private fun PinnedMessagesSheet(
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = previewText,
+                                text = previewText.withEmojiFont(),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 2,
@@ -2074,14 +2175,14 @@ private fun ConnectIdentityRow(
     rowState: AutoConnectRowState?,
     onAutoConnect: () -> Unit,
 ) {
-    val profileProvider = koinInject<PublicProfileProvider>()
+    val contactInfo = koinInject<ContactInfoGateway>()
     var resolvedName by remember(odinId) { mutableStateOf(odinId.domainName) }
 
     LaunchedEffect(odinId) {
-        try {
-            resolvedName = profileProvider.getPublicProfile(odinId).name
-        } catch (_: Exception) {
-        }
+        runCatching { contactInfo.displayName(odinId) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { resolvedName = it }
     }
 
     Row(
@@ -2242,19 +2343,58 @@ private val FloatingDateShape = RoundedCornerShape(12.dp)
 private fun getDateSectionLabel(messageDate: LocalDate): String {
     val timezone = TimeZone.currentSystemDefault()
     val today = Clock.System.now().toLocalDateTime(timezone).date
+    return dateSectionLabel(
+        messageDate = messageDate,
+        today = today,
+        todayLabel = stringResource(MR.string.time_today),
+        yesterdayLabel = stringResource(MR.string.time_yesterday),
+    )
+}
+
+internal fun dateSectionLabel(
+    messageDate: LocalDate,
+    today: LocalDate,
+    todayLabel: String,
+    yesterdayLabel: String,
+): String {
     val yesterday = today.minus(1, DateTimeUnit.DAY)
 
     return when (messageDate) {
-        today -> stringResource(MR.string.time_today)
-        yesterday -> stringResource(MR.string.time_yesterday)
+        today -> todayLabel
+        yesterday -> yesterdayLabel
         else -> {
             val format = LocalDate.Format {
                 monthName(MonthNames.ENGLISH_ABBREVIATED)
                 char(' ')
                 day()
+                if (messageDate.year != today.year) {
+                    chars(", ")
+                    year()
+                }
             }
             messageDate.format(format)
         }
+    }
+}
+
+/**
+ * A single `animateScrollToItem(totalItemsCount - 1)` goes stale mid-flight: a
+ * `nearTop` prepend lands while it animates, shifting every index by a page, and
+ * its scroll compensation cancels the animation — so it finishes on a mid-history
+ * row. Re-aim until the list really ends in view.
+ */
+private suspend fun LazyListState.animateScrollToNewestItem() {
+    repeat(SCROLL_TO_NEWEST_ATTEMPTS) {
+        val target = layoutInfo.totalItemsCount - 1
+        if (target < 0) return
+        try {
+            animateScrollToItem(target)
+        } catch (e: CancellationException) {
+            // Compose's MutationInterruptedException is internal; a still-active context
+            // means the prepend compensation took the scroll, not the caller going away.
+            if (!currentCoroutineContext().isActive) throw e
+        }
+        if (layoutInfo.visibleItemsInfo.lastOrNull()?.index == layoutInfo.totalItemsCount - 1) return
     }
 }
 

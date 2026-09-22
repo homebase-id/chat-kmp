@@ -20,19 +20,24 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Brightness6
+import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.Keyboard
+import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Storage
@@ -44,6 +49,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -70,6 +76,7 @@ import id.homebase.core.ui.screens.appearance.getStringResourceForTheme
 import id.homebase.core.ui.theme.ExtendedColors
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogText
@@ -77,13 +84,16 @@ import id.homebase.core.widget.DialogTitle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
+import id.homebase.resources.webdrop_home_subtitle
+import id.homebase.resources.webdrop_label
+import id.homebase.resources.settings_data_storage
 import id.homebase.resources.app_version
 import id.homebase.resources.cancel
 import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.contactbook_settings_section
 import id.homebase.resources.location_settings_section
-import id.homebase.resources.menu_back
 import id.homebase.resources.moments_settings_section
 import id.homebase.resources.settings
 import id.homebase.resources.settings_appearance
@@ -94,13 +104,20 @@ import id.homebase.resources.settings_delete_account_desc
 import id.homebase.resources.settings_delete_account_dialog_text
 import id.homebase.resources.settings_delete_account_dialog_title
 import id.homebase.resources.settings_edit_profile
+import id.homebase.resources.settings_profile_card
+import id.homebase.resources.settings_profile_card_desc
 import id.homebase.resources.settings_help
 import id.homebase.resources.settings_help_desc
+import id.homebase.resources.settings_keyboard
+import id.homebase.resources.settings_keyboard_desc
 import id.homebase.resources.settings_location_desc
 import id.homebase.resources.settings_logout
 import id.homebase.resources.settings_logout_desc
 import id.homebase.resources.settings_logout_in_progress
+import id.homebase.resources.settings_media
+import id.homebase.resources.settings_media_desc
 import id.homebase.resources.settings_moments_desc
+import id.homebase.resources.settings_native_feed
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_notifications_status_checking
 import id.homebase.resources.settings_notifications_status_error
@@ -116,6 +133,8 @@ import id.homebase.resources.settings_storage
 import id.homebase.resources.settings_storage_desc
 import id.homebase.resources.settings_storage_used
 import id.homebase.resources.settings_vault_desc
+import id.homebase.resources.settings_email_desc
+import id.homebase.resources.email_settings_section
 import id.homebase.resources.vault_settings_section
 import org.jetbrains.compose.resources.stringResource
 
@@ -238,30 +257,18 @@ fun SettingsUi(
     uiState: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
     actions: SettingsActions,
+    // Defaults to hidden so previews and tests that do not care stay unchanged.
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        stringResource(MR.string.settings),
-                        modifier = Modifier.testTag("settingsTitle")
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = actions.onBack,
-                        modifier = Modifier.testTag("settingsBackButton"),
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back)
-                        )
-                    }
-                },
+            SettingsTopBar(
+                title = stringResource(MR.string.settings),
+                titleModifier = Modifier.testTag("settingsTitle"),
+                navigationIconModifier = Modifier.testTag("settingsBackButton"),
+                onBack = actions.onBack,
                 scrollBehavior = scrollBehavior,
             )
         }
@@ -279,6 +286,18 @@ fun SettingsUi(
                     onEditProfile = { onAction(SettingsUiAction.ProfileInfoClicked) },
                     onEditAvatar = { onAction(SettingsUiAction.AvatarClicked) },
                 )
+            }
+
+            actions.onProfileCard?.let { onProfileCard ->
+                item {
+                    SettingsRow(
+                        modifier = Modifier.testTag("profileCardButton"),
+                        icon = Icons.Outlined.ContactPage,
+                        title = stringResource(MR.string.settings_profile_card),
+                        supportingText = stringResource(MR.string.settings_profile_card_desc),
+                        action = SettingsRowAction.Navigate(onProfileCard),
+                    )
+                }
             }
 
             item {
@@ -325,8 +344,40 @@ fun SettingsUi(
                     action = SettingsRowAction.Navigate(actions.onAppearance),
                 )
             }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("mediaButton"),
+                    icon = Icons.Outlined.PermMedia,
+                    title = stringResource(MR.string.settings_media),
+                    supportingText = stringResource(MR.string.settings_media_desc),
+                    action = SettingsRowAction.Navigate(actions.onMedia),
+                )
+            }
+
+            if (isDesktopOrWeb()) {
+                item {
+                    SettingsRow(
+                        modifier = Modifier.testTag("keyboardButton"),
+                        icon = Icons.Outlined.Keyboard,
+                        title = stringResource(MR.string.settings_keyboard),
+                        supportingText = stringResource(MR.string.settings_keyboard_desc),
+                        action = SettingsRowAction.Navigate(actions.onKeyboard),
+                    )
+                }
+            }
 
             item { HubSectionHeader(stringResource(MR.string.settings_section_apps)) }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("nativeFeedToggle"),
+                    icon = Icons.Outlined.DynamicFeed,
+                    title = stringResource(MR.string.settings_native_feed),
+                    action = SettingsRowAction.Toggle(
+                        checked = uiState.useNativeFeed,
+                        onCheckedChange = { onAction(SettingsUiAction.SetUseNativeFeed(it)) },
+                    ),
+                )
+            }
             item {
                 SettingsRow(
                     modifier = Modifier.testTag("momentsSettingsButton"),
@@ -343,6 +394,24 @@ fun SettingsUi(
                     title = stringResource(MR.string.vault_settings_section),
                     supportingText = stringResource(MR.string.settings_vault_desc),
                     action = SettingsRowAction.Navigate(actions.onVaultSettings),
+                )
+            }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("emailSettingsButton"),
+                    icon = Icons.Outlined.MailOutline,
+                    title = stringResource(MR.string.email_settings_section),
+                    supportingText = stringResource(MR.string.settings_email_desc),
+                    action = SettingsRowAction.Navigate(actions.onEmailSettings),
+                )
+            }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("webDropButton"),
+                    icon = Icons.Outlined.Redeem,
+                    title = stringResource(MR.string.webdrop_label),
+                    supportingText = stringResource(MR.string.webdrop_home_subtitle),
+                    action = SettingsRowAction.Navigate(actions.onOpenWebDrop),
                 )
             }
             item {
@@ -369,7 +438,7 @@ fun SettingsUi(
                 SettingsRow(
                     modifier = Modifier.testTag("storageButton"),
                     icon = Icons.Outlined.Storage,
-                    title = stringResource(MR.string.settings_storage),
+                    title = stringResource(MR.string.settings_data_storage),
                     supportingText = uiState.storageUsedBytes
                         ?.let { stringResource(MR.string.settings_storage_used, formatBytes(it)) }
                         ?: stringResource(MR.string.settings_storage_desc),
@@ -466,7 +535,6 @@ private fun IdentityHeader(
                         options = AvatarOptions(size = 72.dp),
                         sharedTransitionScope = null,
                         animatedVisibilityScope = null,
-                        cacheBustKey = it.profileImageLastModified,
                     )
                 }
             }
@@ -557,14 +625,19 @@ fun SettingsUiPreview() {
                 onBack = {},
                 onNotifications = {},
                 onAppearance = {},
+                onMedia = {},
+                onKeyboard = {},
                 onStorage = {},
                 onHelp = {},
                 onMomentsSettings = {},
                 onVaultSettings = {},
+                onEmailSettings = {},
+                onOpenWebDrop = {},
                 onLocation = {},
                 onContactBookSettings = {},
                 onProfileEdit = {},
                 onProfileAvatarEdit = {},
+                onProfileCard = {},
             ),
         )
     }

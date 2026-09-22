@@ -25,6 +25,8 @@ import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.FallbackAvatar
+import id.homebase.core.ui.theme.emojiFontFamily
+import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.initials
 import kotlin.time.Instant
@@ -45,13 +47,14 @@ fun MessageSearchItem(
     // AnnotatedString, so the highlight offsets are computed against exactly the
     // string being drawn — the stale-offset crash class cannot occur.
     val highlightColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.35f)
-    val previewText = remember(message, searchQuery, highlightColor) {
+    val emojiFamily = emojiFontFamily()
+    val previewText = remember(message, searchQuery, highlightColor, emojiFamily) {
         val plain = markdownToPlainPreview(message, maxCodePoints = 200)
-        buildSearchHighlightedText(
+        (buildSearchHighlightedText(
             plain = plain,
             searchQuery = searchQuery,
             highlightColor = highlightColor,
-        ) ?: AnnotatedString(plain)
+        ) ?: AnnotatedString(plain)).withEmojiFont(emojiFamily)
     }
     Row(
         modifier = Modifier
@@ -92,7 +95,7 @@ fun MessageSearchItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = memberName,
+                    text = memberName.withEmojiFont(emojiFamily),
                     style = MaterialTheme.typography.bodyLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

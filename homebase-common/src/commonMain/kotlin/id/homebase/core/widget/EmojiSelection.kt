@@ -71,6 +71,7 @@ import id.homebase.resources.emoji_none_found
 import id.homebase.resources.emoji_search_placeholder
 import id.homebase.resources.error
 import id.homebase.resources.search
+import id.homebase.core.ui.theme.withEmojiFont
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
@@ -78,6 +79,8 @@ import org.jetbrains.compose.resources.stringResource
 fun EmojiSelection(
     modifier: Modifier = Modifier,
     messageInputMode: Boolean = false,
+    // Focuses search on open, so keep it off the docked panel: focus there raises the soft keyboard.
+    searchFirst: Boolean = false,
     onBackSpace: () -> Unit = {},
     onEmojiSelected: (String) -> Unit,
 ) {
@@ -133,12 +136,15 @@ fun EmojiSelection(
         Column(
             modifier = modifier
         ) {
-            if (!messageInputMode) {
+            if (!messageInputMode || searchFirst) {
                 MinimalSearchTextField(
                     textFieldState = searchQuery,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                     placeHolderText = stringResource(MR.string.emoji_search_placeholder)
                 )
+                if (searchFirst) {
+                    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                }
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
@@ -147,7 +153,7 @@ fun EmojiSelection(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (messageInputMode) {
+                if (messageInputMode && !searchFirst) {
                     if (!isSearchActive) {
                         IconButton(onClick = {
                             isSearchActive = !isSearchActive
@@ -201,13 +207,15 @@ fun EmojiSelection(
                                 tonalElevation = if (selectedSection == section) 4.dp else 0.dp
                             ) {
                                 Text(
-                                    text = EmojiParser.getSectionEmoji(section),
+                                    text = EmojiParser.getSectionEmoji(section).withEmojiFont(),
                                     fontSize = 24.sp,
                                     modifier = Modifier.padding(4.dp)
                                 )
                             }
                         }
                     }
+                } else if (searchFirst) {
+                    Spacer(modifier = Modifier.weight(1f))
                 }
                 if (messageInputMode) {
                     VerticalDivider(modifier = Modifier.height(24.dp).padding(start = 8.dp))
@@ -255,7 +263,7 @@ fun EmojiSelection(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = emoji.emoji,
+                            text = emoji.emoji.withEmojiFont(),
                             autoSize = TextAutoSize.StepBased(14.sp, 24.sp),
                             textAlign = TextAlign.Center
                         )
@@ -304,7 +312,7 @@ fun EmojiSelection(
                                             modifier = Modifier.size(40.dp)
                                         ) {
                                             Text(
-                                                text = emoji.emoji,
+                                                text = emoji.emoji.withEmojiFont(),
                                                 fontSize = 20.sp
                                             )
                                         }
@@ -317,7 +325,7 @@ fun EmojiSelection(
                                                 modifier = Modifier.size(40.dp)
                                             ) {
                                                 Text(
-                                                    text = emoji.emoji,
+                                                    text = emoji.emoji.withEmojiFont(),
                                                     fontSize = 20.sp
                                                 )
                                             }

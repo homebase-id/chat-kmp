@@ -40,7 +40,7 @@ fun VaultAddEntrySheet(
     onTakePhoto: () -> Unit,
     onChooseGallery: () -> Unit,
     onChooseFile: () -> Unit,
-    onAddNote: () -> Unit,
+    onAddNote: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -75,11 +75,13 @@ fun VaultAddEntrySheet(
                 label = stringResource(MR.string.vault_choose_file),
                 onClick = onChooseFile,
             )
-            SheetActionRow(
-                icon = Icons.AutoMirrored.Outlined.NoteAdd,
-                label = stringResource(MR.string.vault_add_note),
-                onClick = onAddNote,
-            )
+            if (onAddNote != null) {
+                SheetActionRow(
+                    icon = Icons.AutoMirrored.Outlined.NoteAdd,
+                    label = stringResource(MR.string.vault_add_note),
+                    onClick = onAddNote,
+                )
+            }
         }
     }
 }

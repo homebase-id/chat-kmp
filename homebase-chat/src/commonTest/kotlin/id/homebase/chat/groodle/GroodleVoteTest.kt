@@ -100,4 +100,38 @@ class GroodleVoteTest {
         val votes = GroodleVote.myVotes(own, slotCount = 3, allowMaybe = false)
         assertEquals(mapOf(1 to GroodleVote.Choice.YES), votes)
     }
+
+    @Test
+    fun change_sets_choice_and_clears_only_that_slots_other_choices() {
+        val change = GroodleVote.change(
+            slotIndex1Based = 2,
+            currentChoice = GroodleVote.Choice.YES,
+            tapped = GroodleVote.Choice.NO,
+            allowMaybe = true,
+        )
+        assertEquals("slot:2", change.scope)
+        assertEquals(setOf("_2N"), change.add)
+        assertEquals(setOf("_2Y", "_2M"), change.remove)
+    }
+
+    @Test
+    fun change_never_touches_a_maybe_code_when_maybe_is_disallowed() {
+        val change = GroodleVote.change(2, null, GroodleVote.Choice.YES, allowMaybe = false)
+        assertEquals(setOf("_2Y"), change.add)
+        assertEquals(setOf("_2N"), change.remove)
+    }
+
+    @Test
+    fun change_on_current_choice_clears_the_slot() {
+        val change = GroodleVote.change(3, GroodleVote.Choice.MAYBE, GroodleVote.Choice.MAYBE, allowMaybe = true)
+        assertEquals(emptySet(), change.add)
+        assertEquals(setOf("_3Y", "_3N", "_3M"), change.remove)
+    }
+
+    @Test
+    fun change_scope_differs_per_slot() {
+        val a = GroodleVote.change(1, null, GroodleVote.Choice.YES, allowMaybe = true)
+        val b = GroodleVote.change(2, null, GroodleVote.Choice.YES, allowMaybe = true)
+        assertEquals(false, a.scope == b.scope)
+    }
 }

@@ -43,10 +43,13 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.driveAccess
+import id.homebase.api.video.VideoPrefetchDriveAccess
 import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -107,6 +110,7 @@ actual fun VideoPlayerSurface(
     val context = LocalContext.current
     val driveFileProvider = koinInject<DriveFileProvider>()
     val fileOperationsProvider = koinInject<id.homebase.api.file.FileOperationsProvider>()
+    val peerFileProvider = koinInject<PeerFileByGlobalTransitProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
     val playerPool = koinInject<ExoPlayerPool>()
     val scope = rememberCoroutineScope()
@@ -296,7 +300,13 @@ actual fun VideoPlayerSurface(
 
         withContext(Dispatchers.IO) {
             try {
-                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, fileOps = fileOperationsProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
+                val videoData = VideoPlayerData(
+                    data.fileId, data.driveId, data.payloadKey, data.keyHeader,
+                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId,
+                )
+                val videoAccess =
+                    videoData.driveAccess(driveFileProvider, peerFileProvider, fileOperationsProvider)
+                when (val content = resolveVideoContent(videoData, videoAccess, fileOps = fileOperationsProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
                         // Subscribe to the preloader's live bytes progress BEFORE kicking off the
                         // preload, so StateFlow's initial value and every subsequent emit lands.
@@ -312,15 +322,15 @@ actual fun VideoPlayerSurface(
                         // If MediaItem's preload was cancelled when the chat list left composition,
                         // this is the only path that drives real progress — ExoPlayer's own data-source
                         // fetches bypass onDownloadProgress entirely.
-                        videoPreloader.preload(
-                            VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent)
-                        )
+                        // The preloader reads our own drive, so for a followed identity it would fetch the
+                        // wrong file. Playback warms the chunk cache itself; only progress goes dark.
+                        if (data.remoteOdinId == null) videoPreloader.preload(videoData)
                         val dataSourceFactory = DataSource.Factory {
                             HomebaseVideoDataSource(
                                 strippedPlaylist = content.originalPlaylist.lines()
                                     .filter { !it.startsWith("#EXT-X-KEY") }
                                     .joinToString("\n"),
-                                driveFileProvider = driveFileProvider,
+                                driveFileProvider = videoAccess,
                                 driveId = data.driveId,
                                 fileId = data.fileId,
                                 payloadKey = data.payloadKey,
@@ -561,7 +571,7 @@ private fun isTenBitFormat(format: Format?): Boolean {
 @UnstableApi
 private class HomebaseVideoDataSource(
     private val strippedPlaylist: String,
-    private val driveFileProvider: DriveFileProvider,
+    private val driveFileProvider: VideoPrefetchDriveAccess,
     private val driveId: Uuid,
     private val fileId: Uuid,
     private val payloadKey: String,

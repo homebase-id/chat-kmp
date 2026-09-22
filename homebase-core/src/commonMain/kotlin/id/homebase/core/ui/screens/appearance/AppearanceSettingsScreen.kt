@@ -8,9 +8,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Brightness6
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
@@ -40,13 +40,13 @@ import id.homebase.core.settings.setPlatformSystemLocale
 import id.homebase.core.widget.SettingsOptionRow
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.language
 import id.homebase.resources.language_danish
 import id.homebase.resources.language_english_gb
 import id.homebase.resources.language_english_us
 import id.homebase.resources.language_system
-import id.homebase.resources.menu_back
 import id.homebase.resources.settings_appearance
 import id.homebase.resources.settings_haptic_feedback
 import id.homebase.resources.theme
@@ -92,16 +92,9 @@ fun AppearanceSettingsUi(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.settings_appearance)) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back)
-                        )
-                    }
-                },
+            SettingsTopBar(
+                title = stringResource(MR.string.settings_appearance),
+                onBack = onBackClick,
             )
         },
     ) { innerPadding ->
@@ -128,7 +121,7 @@ fun AppearanceSettingsUi(
                 ),
             )
             AnimatedVisibility(visible = languageExpanded) {
-                Column {
+                Column(modifier = Modifier.selectableGroup()) {
                     uiState.availableLanguages.forEach { language ->
                         SettingsOptionRow(
                             label = stringResource(getStringResourceForLanguage(language)),
@@ -153,7 +146,7 @@ fun AppearanceSettingsUi(
                 ),
             )
             AnimatedVisibility(visible = themeExpanded) {
-                Column {
+                Column(modifier = Modifier.selectableGroup()) {
                     ThemeState.entries.forEach { theme ->
                         SettingsOptionRow(
                             label = theme.getStringResourceForTheme(),

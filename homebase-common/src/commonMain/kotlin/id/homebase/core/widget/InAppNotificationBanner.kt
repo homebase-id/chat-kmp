@@ -25,6 +25,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.notifications.RichNotificationData
+import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.initials
 
 /**
@@ -71,7 +72,7 @@ fun InAppNotificationBanner(
                     // Name + message preview
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = notification.senderName,
+                            text = notification.senderName.withEmojiFont(),
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -79,7 +80,7 @@ fun InAppNotificationBanner(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            text = notification.body,
+                            text = notification.body.withEmojiFont(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,

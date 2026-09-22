@@ -126,4 +126,35 @@ class PollVoteTest {
     )
 
     private fun json(code: String) = """{"emoji":"$code"}"""
+
+    @Test fun change_single_choice_sets_tapped_and_clears_every_other_option() {
+        val change = PollVote.change(tapped = 1, own = setOf(0), optionCount = 3, allowMultiple = false)
+        assertEquals("poll", change.scope)
+        assertEquals(setOf("_p1"), change.add)
+        assertEquals(setOf("_p0", "_p2"), change.remove)
+    }
+
+    @Test fun change_single_choice_retap_clears_all_options() {
+        val change = PollVote.change(tapped = 1, own = setOf(1), optionCount = 3, allowMultiple = false)
+        assertEquals(emptySet(), change.add)
+        assertEquals(setOf("_p0", "_p1", "_p2"), change.remove)
+    }
+
+    @Test fun change_single_choice_with_ghost_votes_converges_on_tapped() {
+        val change = PollVote.change(tapped = 1, own = setOf(0, 1), optionCount = 3, allowMultiple = false)
+        assertEquals(setOf("_p1"), change.add)
+        assertEquals(setOf("_p0", "_p2"), change.remove)
+    }
+
+    @Test fun change_multi_select_adds_or_removes_only_the_tapped_option() {
+        val add = PollVote.change(tapped = 2, own = setOf(0), optionCount = 3, allowMultiple = true)
+        assertEquals("poll:2", add.scope)
+        assertEquals(setOf("_p2"), add.add)
+        assertEquals(emptySet(), add.remove)
+
+        val remove = PollVote.change(tapped = 0, own = setOf(0, 2), optionCount = 3, allowMultiple = true)
+        assertEquals("poll:0", remove.scope)
+        assertEquals(emptySet(), remove.add)
+        assertEquals(setOf("_p0"), remove.remove)
+    }
 }

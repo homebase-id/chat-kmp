@@ -12,13 +12,16 @@ import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.image.HomebaseImageLoader
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -201,5 +204,44 @@ class SavedStickerTest {
         ).toSavedSticker()
         assertNotNull(sticker)
         assertNull(sticker.toImageData())
+    }
+
+    private fun trayData(contentType: String, bytesWritten: Long?) = buildStickerFile(
+        payloads = listOf(
+            PayloadDescriptor(
+                key = StickerProtocol.STICKER_PAYLOAD_KEY,
+                contentType = contentType,
+                iv = Base64.encode(ByteArray(16)),
+                bytesWritten = bytesWritten,
+            )
+        ),
+    ).toSavedSticker()!!
+        // Every sticker ships a WebP preview, a GIF included.
+        .copy(previewThumbnail = EmbeddedThumb(20, 20, "image/webp", "AAAA"))
+        .toImageData()!!
+
+    @Test
+    fun toImageData_smallGif_reachesTheLoadersAnimatedBranch() {
+        // A GIF shrunk to exactly the block-aligned cap is stored with a whole 16-byte PKCS7 block.
+        val data = trayData("image/gif", TRAY_ANIMATED_MAX_BYTES + 16)
+        assertEquals("image/gif", data.payloadContentType)
+        assertTrue(data.effectiveContentType in HomebaseImageLoader.THUMBLESS_CONTENT_TYPES)
+        assertFalse(data.loadFullPayload, "must stay on the thumb fetcher path and cache key")
+    }
+
+    @Test
+    fun toImageData_gifOverTheCapOrOfUnknownSize_keepsThePreview() {
+        for (bytes in listOf(TRAY_ANIMATED_MAX_BYTES + 17, null)) {
+            val data = trayData("image/gif", bytes)
+            assertNull(data.payloadContentType, "bytesWritten=$bytes")
+            assertEquals("image/webp", data.effectiveContentType)
+        }
+    }
+
+    @Test
+    fun toImageData_staticSticker_staysOnTheThumbnailPath() {
+        val data = trayData("image/png", TRAY_ANIMATED_MAX_BYTES + 1)
+        assertEquals("image/png", data.payloadContentType)
+        assertTrue(data.effectiveContentType !in HomebaseImageLoader.THUMBLESS_CONTENT_TYPES)
     }
 }

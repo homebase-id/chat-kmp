@@ -20,4 +20,12 @@
         <item quantity="one">· %1$d member</item>
         <item quantity="other">· %1$d members</item>
     </plurals>
+    <plurals name="chat_drop_files_count">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+    <plurals name="chat_drop_images_count">
+        <item quantity="one">%1$d image</item>
+        <item quantity="other">%1$d images</item>
+    </plurals>
 </resources>

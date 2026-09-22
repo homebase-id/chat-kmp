@@ -1,6 +1,10 @@
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+
 package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
+import id.homebase.api.file.readWebFileBytes
+import id.homebase.api.util.toBlobObjectUrl
 import kotlinx.browser.window
 import kotlinx.io.files.Path
 
@@ -18,5 +22,40 @@ actual fun getUriHandler(): FileSystemHandler {
         override fun shareFile(file: Path, onError: (Throwable) -> Unit) {}
         override fun shareText(text: String, onError: (Throwable) -> Unit) {}
         override fun openAppStore(onError: (Throwable) -> Unit) {}
+
+        override fun saveFile(
+            file: Path,
+            suggestedName: String,
+            onSuccess: (String) -> Unit,
+            onError: (Throwable) -> Unit,
+        ) {
+            runCatching {
+                val path = file.toString()
+                val bytes = readWebFileBytes(path) ?: error("No decrypted file at $path")
+                val mimeType = detectContentTypeFromExtensionOrHint(suggestedName)
+                triggerBrowserDownload(bytes.toBlobObjectUrl(mimeType), suggestedName)
+            }.onSuccess { onSuccess(DOWNLOADS_LOCATION) }.onFailure(onError)
+        }
     }
 }
+
+private const val DOWNLOADS_LOCATION = "Downloads"
+
+/*
+ * The Path is into the in-memory FakeFileSystem the decrypt-on-demand flow wrote to
+ * (MediaDownloadHandler), not something the browser can fetch — read the bytes back and hand them
+ * to the user as a Blob object URL.
+ */
+private fun triggerBrowserDownload(url: String, fileName: String): Unit = js(
+    """{
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // Revoking in the same task cancels the download in Safari and Firefox.
+        setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+    }"""
+)

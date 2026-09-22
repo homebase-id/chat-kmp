@@ -3,6 +3,7 @@
 package id.homebase.api.client.profile
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.UuidSerializer
@@ -45,6 +46,10 @@ data class ProfileAttribute(
     val keyHeader: KeyHeader? = null,
     val payloads: List<PayloadDescriptor>? = null,
     val isEncrypted: Boolean = false,
+    /** The file's full ACL (circles included); a hand-built attribute gets the plain ACL the server writes for [visibility]. */
+    val acl: AccessControlList = AccessControlList(requiredSecurityGroup = visibility.wireValue),
+    /** odin-js orders same-type attributes by this, lowest first. */
+    val priority: Int = 0,
 ) {
     /** Reads a string-valued [data] key, or null if absent/non-string. */
     fun string(key: String): String? = (data[key] as? JsonPrimitive)?.contentOrNull

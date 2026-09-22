@@ -96,9 +96,11 @@ import id.homebase.core.ui.assets.MessageSent
 import id.homebase.core.ui.assets.MessageSentAndDelivered
 import id.homebase.core.ui.assets.MessageSentAndRead
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.ui.theme.withEmojiFont
+
 import id.homebase.core.util.getOdinIdColor
 import id.homebase.core.util.initials
-import id.homebase.core.util.isDesktop
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.stripComposerLineBreakArtifacts
@@ -138,7 +140,7 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
-private val GroupMessageAvatarOptions = AvatarOptions(size = Dimens.Conversation.itemAvatarSize)
+private val GroupMessageAvatarOptions = AvatarOptions(size = Dimens.Message.senderAvatarSize)
 
 /**
  * Displays a message bubble for messages sent to other users.
@@ -187,7 +189,7 @@ fun SentMessageBubble(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
-    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
@@ -226,7 +228,7 @@ fun SentMessageBubble(
             // align with the colored bubble's center, not the bubble+pill.
             val iconsRowYOffset = if (message.reactionPreview != null) (-13).dp else 0.dp
             Row(modifier = Modifier.offset(y = iconsRowYOffset)) {
-                if (onMessageInfo != null && isDesktop() && !message.isDeleted) {
+                if (onMessageInfo != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Menu },
@@ -239,7 +241,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (onReply != null && isDesktop() && !message.isDeleted) {
+                if (onReply != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { onReply.invoke() },
@@ -252,7 +254,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (onAddReaction != null && isDesktop() && !message.isDeleted) {
+                if (onAddReaction != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Reaction },
@@ -358,6 +360,7 @@ fun SentMessageBubble(
                         decryptedFiles = decryptedFiles,
                         liveControls = liveControls,
                         sentByYou = true,
+                        showVoiceNoteSender = true,
                         currentOdinId = currentOdinId,
                         clusterPosition = clusterPosition,
                         onLongClick = {
@@ -517,7 +520,7 @@ fun ReceivedMessageBubble(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
-    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
@@ -539,6 +542,8 @@ fun ReceivedMessageBubble(
     val mediaOnly = !message.content.hasContent() && hasMedia
     val emojiOnly = message.content.isEmojiContentOnly() && !hasMedia
     val hasVisibleBackground = !mediaOnly && !emojiOnly
+    val isVoiceNote = mediaOnly &&
+        filteredPayloads.singleOrNull()?.isAudio() == true
     val clipboardManager = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val haptics = rememberHaptics()
@@ -554,13 +559,16 @@ fun ReceivedMessageBubble(
             .padding(top = clusterPosition.topSpacing(), bottom = clusterPosition.bottomSpacing()),
     ) {
         if (isGroupConversation) {
-            val showAvatar = clusterPosition == MessageClusterPosition.ALONE ||
-                clusterPosition == MessageClusterPosition.END
+            // A voice note draws the sender inside its own bubble, so the gutter yields to it
+            // rather than showing the same face twice.
+            val showAvatar = !isVoiceNote &&
+                (clusterPosition == MessageClusterPosition.ALONE ||
+                    clusterPosition == MessageClusterPosition.END)
             Box(
                 modifier = Modifier
                     .align(Alignment.Bottom)
                     .padding(start = 4.dp, end = 8.dp)
-                    .size(Dimens.Conversation.itemAvatarSize),
+                    .size(Dimens.Message.senderAvatarSize),
             ) {
                 if (showAvatar && message.originalAuthor != null) {
                     val initials = remember(message.displayName) {
@@ -626,6 +634,7 @@ fun ReceivedMessageBubble(
                             decryptedFiles = decryptedFiles,
                         liveControls = liveControls,
                             sentByYou = false,
+                            showVoiceNoteSender = true,
                             currentOdinId = currentOdinId,
                             clusterPosition = clusterPosition,
                             authorName = if (renderAuthorName && hasVisibleBackground) authorNameTxt
@@ -696,7 +705,7 @@ fun ReceivedMessageBubble(
             Row(
                 modifier = Modifier.wrapContentWidth().offset(y = iconsRowYOffset),
             ) {
-                if (onAddReaction != null && isDesktop() && !message.isDeleted) {
+                if (onAddReaction != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Reaction },
@@ -709,7 +718,7 @@ fun ReceivedMessageBubble(
                         )
                     }
                 }
-                if (onReply != null && isDesktop() && !message.isDeleted) {
+                if (onReply != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { onReply() },
@@ -722,7 +731,7 @@ fun ReceivedMessageBubble(
                         )
                     }
                 }
-                if (onMessageInfo != null && isDesktop() && !message.isDeleted) {
+                if (onMessageInfo != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Menu },
@@ -1036,14 +1045,14 @@ fun InlineReplyPreview(
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
-    // Build HomebaseImageData from the original message's first visual payload (image or video)
+    val mediaPayloads = remember(replyMessage?.payloads) { replyMessage?.payloads.mediaPayloads() }
+    // A voice note's embedded thumb is its waveform and a PDF's is a 20px page, so only visual media gets one.
+    val showThumbnail = replyMessage == null || mediaPayloads.firstOrNull()?.isVisualMedia() == true
+
     val imageData: HomebaseImageData? = remember(replyPreview, replyMessage, driveId) {
         if (replyMessage == null || driveId == null) return@remember null
-        val firstVisualPayload = replyMessage.payloads?.firstOrNull {
-            val ct = it.contentType ?: ""
-            ct.startsWith("image/") || ct.startsWith("video/") ||
-                ct == "application/vnd.apple.mpegurl"
-        } ?: return@remember null
+        val firstVisualPayload = mediaPayloads.firstOrNull()?.takeIf { it.isVisualMedia() }
+            ?: return@remember null
         val payloadIv = try {
             firstVisualPayload.iv?.let { Base64.decode(it) }
         } catch (_: Exception) {
@@ -1067,8 +1076,8 @@ fun InlineReplyPreview(
     }
 
     // Fallback: decode embedded base64 thumbnail if we can't build HomebaseImageData
-    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData) {
-        if (imageData != null) return@remember null
+    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData, showThumbnail) {
+        if (imageData != null || !showThumbnail) return@remember null
         replyPreview.previewThumbnail?.content?.let { base64Content ->
             try {
                 val bytes = Base64.decode(base64Content)
@@ -1082,13 +1091,6 @@ fun InlineReplyPreview(
     val hasThumb = imageData != null || thumbnailBitmap != null
     val hasImage = hasThumb || replyPreview.previewThumbnail != null
 
-    // Content-type label for media replies (reuses shared logic with ReplyPreviewBar)
-    val mediaPayloads = remember(replyMessage?.payloads) {
-        replyMessage?.payloads?.filter { payload ->
-            payload.key != ChatProtocol.DefaultPayloadKey &&
-                !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
-        } ?: emptyList()
-    }
     // Strip richeditor's `<br>` empty-paragraph artifacts from the quoted body so a reply to a
     // legacy `<br>` message shows its real text, not a stray break / blank quote (#1104).
     val replyText = remember(replyPreview.message) { replyPreview.message.stripComposerLineBreakArtifacts() }
@@ -1123,10 +1125,10 @@ fun InlineReplyPreview(
 
     // Mirror the link-preview / Signal QuoteView bounded-block pattern: the body
     // is already capped at 80 codepoints on the header (payload-free), so this is
-    // a pure presentational choice. Desktop has the horizontal room for a second
-    // line; on mobile we keep a single line to stay compact. The author name stays
-    // single-line on every platform.
-    val replyPreviewMaxLines = if (isDesktop()) 2 else 1
+    // a pure presentational choice. Desktop and web have the horizontal room for a
+    // second line; on mobile we keep a single line to stay compact. The author name
+    // stays single-line on every platform.
+    val replyPreviewMaxLines = if (isDesktopOrWeb()) 2 else 1
 
     Row(
         modifier = Modifier
@@ -1155,7 +1157,7 @@ fun InlineReplyPreview(
                     youLabel = stringResource(MR.string.you),
                 )
                 Text(
-                    text = authorDisplayName,
+                    text = authorDisplayName.withEmojiFont(),
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                     color = contentColor,
                     maxLines = 1,
@@ -1180,7 +1182,7 @@ fun InlineReplyPreview(
                             }
                         }
                         Text(
-                            text = displayMessage,
+                            text = displayMessage.withEmojiFont(),
                             style = MaterialTheme.typography.bodySmall,
                             color = contentColor.copy(alpha = 0.7f),
                             maxLines = replyPreviewMaxLines,

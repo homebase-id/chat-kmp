@@ -9,6 +9,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.XorIdUtil
+import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.chat.services.content.MessageContent
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
@@ -113,6 +114,9 @@ data class MessageUiModel(
     val hasMore: Boolean
 ) {
     fun isAuthoredBy(domain: OdinId?): Boolean = (originalAuthor == domain)
+
+    fun isEditableBy(domain: OdinId?): Boolean =
+        isAuthoredBy(domain) && (messageContent?.actions ?: ActionPolicy.Standard).allowEdit
 
     // The exit cutoff, asked by the rendered list, the pinned bar and the jump
     // coordinator alike — three copies of `userDate <= exitedAt` would drift.

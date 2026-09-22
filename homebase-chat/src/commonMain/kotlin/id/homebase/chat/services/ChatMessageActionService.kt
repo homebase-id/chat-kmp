@@ -6,10 +6,8 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.ExportDestination
 import id.homebase.api.client.drives.files.PayloadDownloadService
-import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
-import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResult
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.client.drives.upload.FileIdFileIdentifier
@@ -24,6 +22,8 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.api.client.drives.files.reactions.ReactionContent
+import id.homebase.api.crypto.Md5
+import id.homebase.chat.services.outbox.MutationOutcome
 import id.homebase.chat.services.convo.ConversationParticipantLookup
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.LocalLastReadUpdater
@@ -241,43 +241,42 @@ class ChatMessageActionService(
 
         val reactionJson = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
 
-        // Run the optimistic write first so the bubble updates immediately.
-        // Previously a `requireFileId(messageId)` call ran ahead of this and
-        // did a QueryBatch(1000, NewestFirst) over the whole chat drive just
-        // to look up the fileId for the outbox payload — easily ~500 ms on a
-        // busy drive, all of it spent gating the optimistic update behind
-        // outbox bookkeeping. The optimistic writer already does its own
-        // selectHomebaseFileByUnique and hands the original file (which
-        // carries fileId) back to us; reuse that for the outbox row.
-        val (resultType, original) = optimisticWriter.writeReactionToggle(
-            chatDrive,
-            messageId,
-            reactionJson
-        )
-        if (original == null) return ToggleReactionResult(resultType = resultType)
-
-        try {
-            val result = outboxSync.tryEnqueue(
-                request = ToggleReactionOutboxRequest(
-                    driveId = chatDrive,
-                    fileId = original.fileId,
-                    reaction = reactionJson,
-                    recipients = getRecipients(conversationId),
-                )
-            )
-            if (!result.enqueued) {
-                Logger.w("toggleReaction: outbox enqueue → $result — rolling back optimistic write")
-                optimisticWriter.rollbackWrite(chatDrive, original)
-            }
-        } catch (t: Throwable) {
-            Logger.e("toggleReaction failed to enqueue", t)
-            try {
-                optimisticWriter.rollbackWrite(chatDrive, original)
-            } catch (_: Exception) {
-            }
+        // The writer's own point lookup supplies fileId — nothing here may scan the
+        // drive (the old requireFileId QueryBatch cost ~500 ms ahead of the bubble update).
+        val (resultType, _) = optimisticWriter.toggleReaction(chatDrive, messageId, reactionJson) {
+            getRecipients(conversationId)
         }
-
         return ToggleReactionResult(resultType = resultType)
+    }
+
+    /**
+     * Applies a vote-style reaction change (RSVP, Groodle slot, poll option) as one
+     * idempotent set-state row: removes first, then adds. The row is keyed per
+     * (message, scope) so a newer tap replaces a still-pending one.
+     */
+    suspend fun setReactions(
+        conversationId: Uuid,
+        messageId: Uuid,
+        change: ReactionSetChange,
+    ): MutationOutcome {
+        require(change.add.none { it in change.remove }) { "add and remove overlap" }
+        if ((change.add + change.remove).any { !isValidEmoji(it) }) {
+            return MutationOutcome.Refused(IllegalArgumentException("invalid reaction code"))
+        }
+        val toJson = { code: String -> OdinSystemSerializer.serialize(ReactionContent(emoji = code)) }
+        val rowKey = Md5.toGuidId("reaction-set:$messageId:${change.scope}")
+        val outcome = optimisticWriter.setReactions(
+            driveId = chatDrive,
+            uniqueId = messageId,
+            rowKey = rowKey,
+            add = change.add.map(toJson).toSet(),
+            remove = change.remove.map(toJson).toSet(),
+        ) { getRecipients(conversationId) }
+        Logger.i(tag = REACTIONS_TAG) {
+            "setReactions msg=$messageId scope=${change.scope} add=${change.add} remove=${change.remove} " +
+                "rowKey=$rowKey outcome=$outcome"
+        }
+        return outcome
     }
 
     // -------------------- DELETE --------------------
@@ -330,10 +329,6 @@ class ChatMessageActionService(
         }
 
         val conversation = conversationService.getConversation(msg.conversationId) ?: return
-        // msg.fileId is already populated by messageLookup.getMessage above —
-        // an extra requireFileId(messageId) here would issue a second
-        // selectHomebaseFileByUnique for the exact same row.
-        val fileId = msg.fileId
 
         // Soft-delete only for now — propagates to other clients via sync.
         // Hard-delete will be added as a second phase (user invokes delete again on soft-deleted msg).
@@ -345,30 +340,7 @@ class ChatMessageActionService(
             null
         }
 
-        val original = optimisticWriter.writeDelete(chatDrive, messageId)
-
-        try {
-            val result = outboxSync.tryEnqueue(
-                request = DeleteLocalFilesByFileIdRequest(
-                    driveId = chatDrive,
-                    fileIds = listOf(fileId),
-                    recipients = recipients,
-                    hardDelete = hardDelete,
-                )
-            )
-            if (!result.enqueued && original != null) {
-                Logger.w("deleteMessage: outbox enqueue → $result — rolling back optimistic write")
-                optimisticWriter.rollbackWrite(chatDrive, original)
-            }
-        } catch (t: Throwable) {
-            Logger.e("deleteMessage failed to enqueue", t)
-            if (original != null) {
-                try {
-                    optimisticWriter.rollbackWrite(chatDrive, original)
-                } catch (_: Exception) {
-                }
-            }
-        }
+        optimisticWriter.deleteFile(chatDrive, messageId, recipients, hardDelete)
     }
 
     

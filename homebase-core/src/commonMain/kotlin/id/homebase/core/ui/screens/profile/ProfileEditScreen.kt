@@ -20,13 +20,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Cake
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Info
@@ -54,7 +54,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.staticCompositionLocalOf
+import id.homebase.resources.profile_edit_circles_fallback_hint
+import id.homebase.resources.profile_edit_preview_section_vetted
+import id.homebase.resources.profile_edit_preview_section_vetted_desc
+import id.homebase.resources.profile_edit_visibility_circles
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -71,9 +77,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
-import id.homebase.core.ui.screens.contactbook.components.AdaptiveSheet
+import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.contactbook_detail_location
@@ -81,7 +88,7 @@ import id.homebase.resources.contactbook_detail_name
 import id.homebase.resources.contactbook_error_birthday
 import id.homebase.resources.contactbook_error_email
 import id.homebase.resources.contactbook_error_phone
-import id.homebase.resources.menu_back
+import id.homebase.resources.profile_card_open
 import id.homebase.resources.profile_edit_add_attribute
 import id.homebase.resources.profile_edit_add_attribute_title
 import id.homebase.resources.profile_edit_additional_name
@@ -114,8 +121,8 @@ import id.homebase.resources.profile_edit_preview_enter
 import id.homebase.resources.profile_edit_preview_exit
 import id.homebase.resources.profile_edit_preview_section_public
 import id.homebase.resources.profile_edit_preview_section_public_desc
-import id.homebase.resources.profile_edit_preview_section_vetted
-import id.homebase.resources.profile_edit_preview_section_vetted_desc
+import id.homebase.resources.profile_edit_preview_section_circles
+import id.homebase.resources.profile_edit_preview_section_circles_desc
 import id.homebase.resources.profile_edit_public_hint
 import id.homebase.resources.profile_edit_retry
 import id.homebase.resources.profile_edit_status
@@ -142,6 +149,7 @@ fun ProfileEditScreen(
     avatarViewModel: ProfileAvatarEditViewModel,
     onBack: () -> Unit,
     onNavigateToCropper: (Uuid) -> Unit,
+    onOpenCard: (() -> Unit)?,
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
     val avatarUiState by avatarViewModel.state.collectAsStateWithLifecycle()
@@ -186,16 +194,9 @@ fun ProfileEditScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.profile_edit_title)) },
-                navigationIcon = {
-                    IconButton(onClick = { viewModel.onAction(ProfileEditAction.BackClicked) }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
-                        )
-                    }
-                },
+            SettingsTopBar(
+                title = stringResource(MR.string.profile_edit_title),
+                onBack = { viewModel.onAction(ProfileEditAction.BackClicked) },
                 actions = {
                     if (!uiState.isLoading && !uiState.loadFailed) {
                         IconButton(onClick = { previewMode = !previewMode }) {
@@ -206,6 +207,14 @@ fun ProfileEditScreen(
                                     else MR.string.profile_edit_preview_enter
                                 ),
                             )
+                        }
+                        if (onOpenCard != null) {
+                            IconButton(onClick = onOpenCard) {
+                                Icon(
+                                    imageVector = Icons.Outlined.ContactPage,
+                                    contentDescription = stringResource(MR.string.profile_card_open),
+                                )
+                            }
                         }
                     }
                 },
@@ -227,15 +236,17 @@ fun ProfileEditScreen(
                 if (uiState.savingAttributes.isNotEmpty()) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
-                ProfileForm(
-                    uiState = uiState,
-                    onAction = viewModel::onAction,
-                    avatarUiState = avatarUiState,
-                    onAvatarAction = avatarViewModel::onAction,
-                    onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
-                    onPickConnectedPhoto = { connectedPhotoPicker.launch() },
-                    modifier = Modifier.fillMaxSize(),
-                )
+                CompositionLocalProvider(LocalReviewEnabled provides uiState.reviewEnabled) {
+                    ProfileForm(
+                        uiState = uiState,
+                        onAction = viewModel::onAction,
+                        avatarUiState = avatarUiState,
+                        onAvatarAction = avatarViewModel::onAction,
+                        onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
+                        onPickConnectedPhoto = { connectedPhotoPicker.launch() },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
     }
@@ -249,7 +260,7 @@ private fun LoadingState(modifier: Modifier) {
 }
 
 @Composable
-private fun LoadFailedState(modifier: Modifier, onRetry: () -> Unit) {
+internal fun LoadFailedState(modifier: Modifier, onRetry: () -> Unit) {
     Column(
         modifier = modifier.padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -268,9 +279,9 @@ private fun LoadFailedState(modifier: Modifier, onRetry: () -> Unit) {
 }
 
 /**
- * Mirrors [ProfilePreview]'s Public/Vetted split: everyone-visible fields first, then everything a
- * vetted (connected) contact can see. There's no screen-wide Save — tapping a row expands it in
- * place with a Public|Vetted toggle (defaulting to that row's own section) and its field(s); the
+ * Mirrors [ProfilePreview]'s Public/Circles split: everyone-visible fields first, then everything a
+ * contact in one of your circles can see. There's no screen-wide Save — tapping a row expands it in
+ * place with a Public|Circles toggle (defaulting to that row's own section) and its field(s); the
  * checkmark persists just that one attribute at whichever tier is currently selected.
  */
 @Composable
@@ -291,7 +302,7 @@ private fun ProfileForm(
     var addDialogTarget by remember { mutableStateOf<Pair<AttributeSpec, ProfileVisibility>?>(null) }
 
     // An attribute qualifies once it's missing from either tier — if it already has a value in one
-    // tier, that tier's row is already on screen and its own Public|Vetted toggle can add the other.
+    // tier, that tier's row is already on screen and its own Public|Circles toggle can add the other.
     val missingAttributes = ATTRIBUTE_SPECS.filter {
         displayValueFor(it.type, uiState.anonymousValues) == null ||
             displayValueFor(it.type, uiState.connectedValues) == null
@@ -322,8 +333,14 @@ private fun ProfileForm(
 
             ProfileFieldsSection(
                 tier = ProfileVisibility.CONNECTED,
-                title = stringResource(MR.string.profile_edit_preview_section_vetted),
-                description = stringResource(MR.string.profile_edit_preview_section_vetted_desc),
+                title = stringResource(
+                    if (uiState.reviewEnabled) MR.string.profile_edit_preview_section_circles
+                    else MR.string.profile_edit_preview_section_vetted
+                ),
+                description = stringResource(
+                    if (uiState.reviewEnabled) MR.string.profile_edit_preview_section_circles_desc
+                    else MR.string.profile_edit_preview_section_vetted_desc
+                ),
                 uiState = uiState,
                 onAction = onAction,
                 editingRows = editingRows,
@@ -646,7 +663,7 @@ private fun SectionHeader(title: String, description: String) {
 
 /**
  * One profile attribute rendered contact-detail style — icon, label, current value. Tapping the row
- * expands it in place with a Public|Vetted toggle (defaulting to [sectionTier], the section it's
+ * expands it in place with a Public|Circles toggle (defaulting to [sectionTier], the section it's
  * listed under) and [content]'s field(s) for whichever tier is currently selected. The checkmark
  * dispatches [ProfileEditAction.SaveAttribute] for that (type, tier) and collapses immediately —
  * [content]'s fields already write straight through as they change, so the value shown is correct
@@ -719,7 +736,8 @@ private fun EditableFieldGroup(
                         if (selectedTier == ProfileVisibility.ANONYMOUS) {
                             MR.string.profile_edit_public_hint
                         } else {
-                            MR.string.profile_edit_connected_fallback_hint
+                            if (LocalReviewEnabled.current) MR.string.profile_edit_circles_fallback_hint
+                            else MR.string.profile_edit_connected_fallback_hint
                         }
                     ),
                     style = MaterialTheme.typography.bodySmall,
@@ -730,10 +748,18 @@ private fun EditableFieldGroup(
     }
 }
 
+/** Dark launch: provided around [ProfileForm] so the deep tier toggles and hints can keep main's "Vetted" wording. */
+private val LocalReviewEnabled = staticCompositionLocalOf { false }
+
 /** Picks which of an attribute's two independent tier records a row's [content] shows/edits. */
 @Composable
-private fun TierToggle(selected: ProfileVisibility, onSelect: (ProfileVisibility) -> Unit) {
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+internal fun TierToggle(
+    selected: ProfileVisibility,
+    onSelect: (ProfileVisibility) -> Unit,
+    modifier: Modifier = Modifier,
+    reviewEnabled: Boolean = LocalReviewEnabled.current,
+) {
+    SingleChoiceSegmentedButtonRow(modifier = modifier.fillMaxWidth()) {
         SegmentedButton(
             selected = selected == ProfileVisibility.ANONYMOUS,
             onClick = { onSelect(ProfileVisibility.ANONYMOUS) },
@@ -744,7 +770,14 @@ private fun TierToggle(selected: ProfileVisibility, onSelect: (ProfileVisibility
             selected = selected == ProfileVisibility.CONNECTED,
             onClick = { onSelect(ProfileVisibility.CONNECTED) },
             shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-            label = { Text(stringResource(MR.string.profile_edit_visibility_connected)) },
+            label = {
+                Text(
+                    stringResource(
+                        if (reviewEnabled) MR.string.profile_edit_visibility_circles
+                        else MR.string.profile_edit_visibility_connected
+                    )
+                )
+            },
         )
     }
 }
@@ -879,7 +912,8 @@ private fun AddAttributeDialog(
                         if (tier == ProfileVisibility.ANONYMOUS) {
                             MR.string.profile_edit_public_hint
                         } else {
-                            MR.string.profile_edit_connected_fallback_hint
+                            if (LocalReviewEnabled.current) MR.string.profile_edit_circles_fallback_hint
+                            else MR.string.profile_edit_connected_fallback_hint
                         }
                     ),
                     style = MaterialTheme.typography.bodySmall,

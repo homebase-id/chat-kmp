@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.ImageMetadata
@@ -53,7 +54,6 @@ data class ConversationListUiState(
      */
     val liveSharePinAnyUntilMs: Long? = null,
     val uiDialog: ConversationListUiDialog? = null,
-    val uiEvent: ConversationListUiEvent? = null,
     /** Non-null while a long-ish service op is in flight. Drives the full-screen
      *  scrim+spinner overlay so the user gets visible feedback that something is
      *  happening; otherwise the brief delay between tap and follow-up UI feels
@@ -63,13 +63,10 @@ data class ConversationListUiState(
      *  - `chat_introduce_preflight_in_progress` — introduction preflight check
      *  Null means no overlay. Cleared on both success and error. */
     val inFlightOperationLabel: StringResource? = null,
-    /** When non-null, the screen should pop the scaffold detail pane (i.e. close the
-     *  open conversation). Use a dedicated state field rather than [uiEvent] because
-     *  delete fires multiple events back-to-back (close + snackbar) and `uiEvent` is
-     *  a single slot — successive sends overwrite each other and the close was being
-     *  eaten by the snackbar. The screen calls [closeDetailPaneRequestConsumed] when
-     *  it has handled the request. */
-    val closeDetailPaneRequest: Uuid? = null,
+    /** Id of the #1 conversation as of the last time the list was on screen, mirrored from
+     *  [id.homebase.core.settings.UserPreferences.conversationListTopId]. Compared against the
+     *  current #1 by [shouldScrollToTop] on every return to the list. */
+    val listTopSnapshotId: Uuid? = null,
 )
 
 @Immutable
@@ -83,6 +80,7 @@ data class MessageListUiState(
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
     val replyToMessage: MessageUiModel? = null,
+    val mediaQuality: MediaQuality = MediaQuality.STANDARD,
     val battleTargetMessage: MessageUiModel? = null,
     val isSearchActive: Boolean = false,
     val searchQuery: String = "",
@@ -96,6 +94,7 @@ data class MessageListUiState(
     val isReactionsLoading: Boolean = false,
     /** Non-null while the sticker-tap bottom sheet is open; null otherwise. */
     val stickerOptionsSheet: StickerOptionsSheetState? = null,
+    val pendingGifPaste: PendingGifPaste? = null,
     val downloadingFiles: Set<String> = emptySet(),
     val recordingData: RecordingData? = null,
     val uiSheet: MessageListUiSheet? = null,
@@ -155,6 +154,8 @@ data class MessageListUiState(
     val scrollToLatestRequest: Uuid? = null,
     val awaitingJumpMessageId: Uuid? = null,
     val savedContactIdentities: Set<OdinId> = emptySet(),
+    /** Lowercased odinId -> display name, for the mention chips in message bodies. */
+    val mentionNames: ImmutableMap<String, String> = persistentMapOf(),
 )
 
 /**
@@ -193,6 +194,9 @@ data class StickerOptionsSheetState(
     val isAlreadySaved: Boolean,
     val stickerImage: HomebaseImageData,
 )
+
+@Immutable
+class PendingGifPaste(val conversationId: Uuid, val bytes: ByteArray)
 
 @Immutable
 data class PendingOutgoingMessage(
@@ -315,6 +319,9 @@ sealed class RecipientModel(val name: String) {
 @Immutable
 sealed interface FullScreenOverlay {
 
+    /** Read-only views of a message that already exists in the conversation. */
+    sealed interface MediaViewer : FullScreenOverlay
+
     data class ViewMessageData(
         val messageId: Uuid,
         val title: String,
@@ -325,7 +332,12 @@ sealed interface FullScreenOverlay {
         val payloads: List<PayloadDescriptor>,
         val keyHeader: KeyHeader,
         val selectedPayloadKey: String,
-    ) : FullScreenOverlay
+        /** False for a public feed post: plaintext payloads, no per-payload IV. */
+        val isEncrypted: Boolean = true,
+        /** Set with [globalTransitId] to read the payloads over peer; both null for local media. */
+        val remoteOdinId: OdinId? = null,
+        val globalTransitId: Uuid? = null,
+    ) : FullScreenOverlay.MediaViewer
 
     data class AttachmentData(
         val selected: Uuid,
@@ -352,7 +364,12 @@ sealed interface FullScreenOverlay {
         val payload: PayloadDescriptor,
         val localFilePath: String? = null,
         val uploadMessageId: Uuid? = null,
-    ) : FullScreenOverlay
+        /** False for a public feed post: plaintext payload, no per-payload IV. */
+        val isEncrypted: Boolean = true,
+        /** Set together for a followed identity's post; playback then reads the author's drive by gtid. */
+        val remoteOdinId: OdinId? = null,
+        val globalTransitId: Uuid? = null,
+    ) : FullScreenOverlay.MediaViewer
 
     @Immutable
     data class PdfViewerData(
@@ -361,8 +378,38 @@ sealed interface FullScreenOverlay {
         val payloadKey: String,
         val title: String,
         val userDate: Instant,
-    ) : FullScreenOverlay
+    ) : FullScreenOverlay.MediaViewer
 }
+
+internal fun MessageListUiState.lastEditableMessage(): MessageUiModel? {
+    // A window paged into history doesn't hold the newest messages, so its last one isn't the last sent.
+    if (isEditingMessageId != null || hasNewerMessages) return null
+    val self = ownerSession?.odinId ?: return null
+    return messages.asReversed().firstNotNullOfOrNull { item ->
+        (item as? MessageListContentModel.Message)?.message?.takeIf {
+            // With no server version tag, an edit only lands by amending a still-queued create.
+            it.isEditableBy(self) && !it.isDeleted && (it.versionTag != Uuid.NIL || it.isPendingSend)
+        }
+    }
+}
+
+/**
+ * Leaving a conversation drops only the read-only viewers: [FullScreenOverlay.AttachmentData]
+ * is the composer editor, whose picked files and crop/draw/trim edits exist nowhere else and
+ * would be destroyed with no way to get them back.
+ */
+internal fun MessageListUiState.closeMediaViewer(): MessageListUiState =
+    if (fullScreenOverlay is FullScreenOverlay.MediaViewer) copy(fullScreenOverlay = null) else this
+
+/**
+ * A viewer rendered inside the messages pane only covers that pane, so on a two-pane layout it
+ * has to be lifted above the scaffold to own the window. On a single-pane layout the pane already
+ * is the window, and staying there keeps the thumbnail→fullscreen shared-element transition.
+ */
+internal fun MessageListUiState.hoistedMediaViewer(
+    isExpandedLayout: Boolean,
+): FullScreenOverlay.MediaViewer? =
+    if (isExpandedLayout) fullScreenOverlay as? FullScreenOverlay.MediaViewer else null
 
 sealed class AttachmentPendingFile(val attachmentId: Uuid) {
     /**

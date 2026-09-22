@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Package visibility (API 30+): without this, getLaunchIntentForPackage returns null and
+         Thunderbird reads as "not installed" even when it is there. -->
+    <queries>
+        <package android:name="net.thunderbird.android" />
+    </queries>
+
     <!-- Location add-on background tracking. Both receivers merge into the app
          manifest; the app module declares the runtime permissions
          (ACCESS_BACKGROUND_LOCATION, RECEIVE_BOOT_COMPLETED). -->

@@ -3,7 +3,9 @@ package id.homebase.chat.services.builder
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.api.video.toVideoQuality
 import id.homebase.upload.PayloadBundle
 
 object MessageAttachmentBuilder {
@@ -11,17 +13,25 @@ object MessageAttachmentBuilder {
     suspend fun buildSingle(
         attachment: AttachmentInput,
         fileOperationsProvider: FileOperationsProvider,
-        payloadKey: String
+        payloadKey: String,
+        mediaQuality: MediaQuality = MediaQuality.STANDARD,
     ): PayloadBundle {
         return build(
             attachments = listOf(attachment),
-            fileOperationsProvider = fileOperationsProvider
+            fileOperationsProvider = fileOperationsProvider,
+            mediaQuality = mediaQuality,
         ) { _, _ -> payloadKey }
     }
 
+    /**
+     * [mediaQuality] defaults to STANDARD so callers that send incidental images — group avatars,
+     * event covers — get the downscale without threading the preference. Only the four user-media
+     * send paths read the real setting.
+     */
     suspend fun build(
         attachments: List<AttachmentInput>,
         fileOperationsProvider: FileOperationsProvider,
+        mediaQuality: MediaQuality = MediaQuality.STANDARD,
         payloadKeyFactory: (index: Int, attachment: AttachmentInput) -> String
     ): PayloadBundle {
         val bundles =
@@ -36,7 +46,22 @@ object MessageAttachmentBuilder {
                                 attachment.filePath,
                                 payloadKey,
                                 fileOperationsProvider,
+                                mediaQuality,
                             )
+
+                        // Thumbs are cut from the original bytes, not from this encode — a thumb of
+                        // a thumb is needlessly soft.
+                        val primary =
+                            if (mediaQuality == MediaQuality.STANDARD) {
+                                standardQualityImage(
+                                    attachment = attachment,
+                                    sourceBytes = thumbs.sourceBytes,
+                                    payloadKey = payloadKey,
+                                    fileOperationsProvider = fileOperationsProvider,
+                                )
+                            } else {
+                                attachment
+                            }
 
                         // Sticker is opt-in only: the "Send as sticker" toggle, the sticker
                         // tool, and the background-remover all set forceSticker=true. We do
@@ -45,11 +70,20 @@ object MessageAttachmentBuilder {
                         // as a normal image (issue #854). When it IS a sticker we detect the
                         // real format so the download is named "StickerFile.<ext>"; ordinary
                         // photos keep the legacy "" so nothing changes for them.
+                        //
+                        // Quality is recorded only for a HIGH ordinary photo: STANDARD keeps
+                        // the legacy "" (absent reads as standard), and a sticker's bytes are
+                        // bounded at 512px regardless of the toggle, so "HD" would be a lie.
                         val descriptorContent =
                             if (attachment.forceSticker) {
                                 DescriptorContent.descriptorContentFromImage(
                                     isSticker = true,
                                     format = ImageFormatDetector.detectFormat(thumbs.sourceBytes),
+                                )
+                            } else if (mediaQuality == MediaQuality.HIGH) {
+                                DescriptorContent.descriptorContentFromImage(
+                                    isSticker = false,
+                                    quality = MediaQuality.HIGH,
                                 )
                             } else {
                                 ""
@@ -60,8 +94,8 @@ object MessageAttachmentBuilder {
                                 listOf(
                                     PayloadFile(
                                         key = payloadKey,
-                                        filePath = attachment.filePath,
-                                        contentType = attachment.contentType,
+                                        filePath = primary.filePath,
+                                        contentType = primary.contentType,
                                         previewThumbnail = thumbs.preview,
                                         descriptorContent = descriptorContent
                                     )
@@ -126,6 +160,7 @@ object MessageAttachmentBuilder {
                                         trimStartMs = attachment.trimStartMs,
                                         trimEndMs = attachment.trimEndMs,
                                         inputBlobUrl = attachment.inputBlobUrl,
+                                        videoQuality = mediaQuality.toVideoQuality(),
                                     )
                                 ),
                             thumbnails = emptyList(),

@@ -48,6 +48,7 @@ import id.homebase.chat.services.convo.matchesConversationQuery
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.chat.widget.mentionNamesOf
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
@@ -79,6 +80,7 @@ import id.homebase.resources.contactbook_error_message
 import id.homebase.resources.conversation_jump_message_after_exit
 import id.homebase.resources.conversation_jump_message_unavailable
 import id.homebase.resources.live_share_ended
+import id.homebase.api.image.MediaQuality
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
@@ -196,14 +198,20 @@ class ConversationListViewModel(
     private val enricher = ConversationEnricher()
     val ownerSession = ownerSessionRepository.user
 
-    private val _uiState = MutableStateFlow(ConversationListUiState())
+    private val _uiState = MutableStateFlow(
+        ConversationListUiState(listTopSnapshotId = userPreferences.conversationListTopId)
+    )
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
+
+    private val events = ConversationListEvents()
+    val uiEvents: Flow<ConversationListUiEvent> = events.events
 
     private val _messagesUiState = MutableStateFlow(
         MessageListUiState(
             userDefaultReactions = userPreferences.preferredUserReactions
                 .distinctByEmoji()
-                .toPersistentList()
+                .toPersistentList(),
+            mediaQuality = userPreferences.mediaQuality,
         )
     )
     val messagesUiState: StateFlow<MessageListUiState> = _messagesUiState.asStateFlow()
@@ -285,6 +293,10 @@ class ConversationListViewModel(
         sendEvent = ::sendEvent,
         dispatch = ::onAction,
         addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
+        // Not a bound reference: stickerCreator is initialised below this.
+        sendSticker = { conversationId, bytes, contentType ->
+            stickerCreator.send(conversationId, bytes, contentType)
+        },
     )
 
     private val conversationLifecycleHandler = ConversationLifecycleHandler(
@@ -328,6 +340,7 @@ class ConversationListViewModel(
             val suffix = when (contentType) {
                 "image/jpeg" -> ".jpg"
                 "image/webp" -> ".webp"
+                "image/gif" -> ".gif"
                 else -> ".png"
             }
             val path = fileOperationsProvider.writeBytesToTempFile(bytes, "sticker_editor_", suffix)
@@ -464,6 +477,14 @@ class ConversationListViewModel(
         get() = stickerPermissionViewModel
 
     init {
+        // The process-global mirror the notification, live-location and draft collectors read is
+        // a projection of the selection, never a second write, so the two cannot diverge.
+        viewModelScope.launch {
+            _uiState.map { it.selectedConversationId }
+                .distinctUntilChanged()
+                .collect(ActiveConversation::selectConversation)
+        }
+
         // Once the Stickers drive is authorized (the user completed the extend-permissions
         // flow, or it was already granted), delegate activation to StickerService — it
         // registers + mounts the drive (idempotently) and cold-loads the tray. This VM owns
@@ -887,11 +908,25 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
-            contactService.contacts
-                .map { contacts -> contacts.mapTo(mutableSetOf()) { it.odinId } }
+            contactService.savedContactIdentities.collect { identities ->
+                _messagesUiState.update { it.copy(savedContactIdentities = identities) }
+            }
+        }
+
+        // Projected here, not in composition: contactService.contacts re-emits on connection-status
+        // churn, which the names do not read, and a snapshot read inside ConversationContent would
+        // recompose the whole screen on every one of those.
+        viewModelScope.launch {
+            combine(
+                contactService.contacts,
+                effectiveOwnerSessionFlow(
+                    live = ownerSessionRepository.user,
+                    credentials = credentialsManager.credentialsFlow,
+                ),
+            ) { contacts, session -> mentionNamesOf(contacts, session) }
                 .distinctUntilChanged()
-                .collect { identities ->
-                    _messagesUiState.update { it.copy(savedContactIdentities = identities) }
+                .collect { names ->
+                    _messagesUiState.update { it.copy(mentionNames = names) }
                 }
         }
 
@@ -1050,7 +1085,6 @@ class ConversationListViewModel(
             messageActionsHandler.processPendingSharedContent(conversationId, trigger)
         }
 
-        ActiveConversation.selectConversation(conversationId)
         loadMessagesForConversation(conversationId, messageId, scrollToBottom, trigger)
     }
 
@@ -1096,10 +1130,6 @@ class ConversationListViewModel(
         }.onFailure { Logger.e(throwable = it, tag = "LiveRelay") { "live-share update failed" } }
     }
 
-    fun eventConsumed() {
-        _uiState.update { it.copy(uiEvent = null) }
-    }
-
     fun dialogClosed() {
         _uiState.update { it.copy(uiDialog = null) }
     }
@@ -1132,7 +1162,6 @@ class ConversationListViewModel(
                 // notification tap so a late-arriving sync can't yank them
                 // to a different one.
                 pendingNotificationTap.clear()
-                ActiveConversation.selectConversation(action.conversationId)
                 loadMessagesForConversation(
                     action.conversationId,
                     action.messageId,
@@ -1267,13 +1296,12 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.NewConversationClicked -> {
-                _uiState.value = _uiState.value.copy(
-                    uiEvent = NavigateToNewConversation
-                )
+                sendEvent(NavigateToNewConversation)
             }
 
+            is ConversationListUiAction.SnapshotListTop -> snapshotListTop()
+
             is ConversationListUiAction.ClearSelection -> {
-                ActiveConversation.selectConversation(null)
                 currentConversationJob?.cancel()
                 // Drop the frozen unread boundary so re-entering recomputes it from
                 // the (now advanced) lastRead — a fully-read conversation then shows
@@ -1281,7 +1309,7 @@ class ConversationListViewModel(
                 _uiState.value.selectedConversationId?.let { frozenUnreadBoundary.remove(it) }
                 _uiState.update { it.copy(selectedConversationId = null) }
                 _messagesUiState.update {
-                    it.copy(
+                    it.closeMediaViewer().copy(
                         messages = persistentListOf(),
                         isLoadingMessages = false,
                         pinnedMessages = persistentListOf(),
@@ -1527,14 +1555,15 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ConfirmLeaveAndDeleteConversation -> conversationLifecycleHandler.handleConfirmLeaveAndDeleteConversation(action)
 
-            is ConversationListUiAction.CloseDetailPaneRequestConsumed -> conversationLifecycleHandler.handleCloseDetailPaneRequestConsumed()
-
             is ConversationListUiAction.AcceptRejoin -> conversationLifecycleHandler.handleAcceptRejoin(action)
 
             is ConversationListUiAction.DeclineRejoin -> conversationLifecycleHandler.handleDeclineRejoin(action)
 
             /* Clipboard image paste */
             is ConversationListUiAction.AttachClipboardImage -> attachmentHandler.handleAttachClipboardImage(action)
+            is ConversationListUiAction.SendPastedGifAsSticker -> attachmentHandler.handleSendPastedGifAsSticker()
+            is ConversationListUiAction.SendPastedGifAsGif -> attachmentHandler.handleSendPastedGifAsGif()
+            is ConversationListUiAction.DismissPastedGif -> attachmentHandler.handleDismissPastedGif()
 
             is ConversationListUiAction.RequestCropAttachment -> attachmentHandler.handleRequestCropAttachment(action)
 
@@ -1548,6 +1577,12 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ApplyTrimResult -> attachmentHandler.handleApplyTrimResult(action)
 
+            is ConversationListUiAction.ToggleMediaQuality -> {
+                userPreferences.mediaQuality =
+                    if (userPreferences.mediaQuality == MediaQuality.HIGH) MediaQuality.STANDARD
+                    else MediaQuality.HIGH
+                _messagesUiState.update { it.copy(mediaQuality = userPreferences.mediaQuality) }
+            }
             is ConversationListUiAction.ToggleStickerAttachment -> attachmentHandler.handleToggleStickerAttachment(action)
 
             is ConversationListUiAction.ShowRecordingHelp -> attachmentHandler.handleShowRecordingHelp()
@@ -1601,7 +1636,12 @@ class ConversationListViewModel(
                 stickerHandler.handleRemoveStickerFromMessage(action)
 
             is ConversationListUiAction.SaveContactCard -> {
-                sendEvent(ConversationListUiEvent.NavigateToSaveContactCard(action.descriptor))
+                sendEvent(
+                    ConversationListUiEvent.NavigateToSaveContactCard(
+                        action.descriptor,
+                        action.alreadySaved,
+                    )
+                )
             }
 
             is ConversationListUiAction.MessageIdentity -> {
@@ -1635,6 +1675,20 @@ class ConversationListViewModel(
                 currentSearchResultIndex = startIndex,
             )
         }
+    }
+
+    /**
+     * Search results share [ConversationListUiState.conversationsContent] with the conversation
+     * list, and their #1 row has nothing to do with the list's — never snapshot one.
+     */
+    private fun snapshotListTop() {
+        if (conversationSearchTextState.text.isNotEmpty()) return
+        val items =
+            _uiState.value.conversationsContent as? ConversationListContentState.Items ?: return
+        val topId = resolveTopConversationId(items.list) ?: return
+        if (topId == _uiState.value.listTopSnapshotId) return
+        userPreferences.conversationListTopId = topId
+        _uiState.update { it.copy(listTopSnapshotId = topId) }
     }
 
     private fun updateListContent() {
@@ -1817,26 +1871,22 @@ class ConversationListViewModel(
         // the Pane's remember only re-evaluates ONCE, with the resolved scroll.
         // The brief blank-screen window is the same one uncached switches
         // already have (a few ms of groupBy + clustering on Dispatchers.Default).
-        _messagesUiState.update {
-            it.copy(
+        _messagesUiState.update { state ->
+            val base = if (isNewSelection) state.closeMediaViewer() else state
+            base.copy(
                 scrollPosition = null,
                 isLoadingMessages = true,
                 replyToMessage = null,
                 // Drop the previous conversation's pinned bar on a real switch so it
                 // doesn't flash stale pins before the new conversation's collector emits.
-                pinnedMessages = if (isNewSelection) persistentListOf() else it.pinnedMessages,
-                currentPinIndex = if (isNewSelection) 0 else it.currentPinIndex,
+                pinnedMessages = if (isNewSelection) persistentListOf() else base.pinnedMessages,
+                currentPinIndex = if (isNewSelection) 0 else base.currentPinIndex,
                 awaitingJumpMessageId = null,
             )
         }
 
-        // Flip the selected id NOW, not after messages arrive. The scaffold's
-        // detail-pane navigation in NotificationNavigationEffects keys off this
-        // value via LaunchedEffect(selectedConversationId); waiting for the first
-        // ChatMessagesData.Messages emission held the navigation hostage to a
-        // potentially slow DB read on cold-start / post-reconnect. The detail pane
-        // already shows isLoadingMessages = true above; messages will fill in via
-        // the collect block below.
+        // Flipped before the messages arrive, so navigation isn't held hostage to a cold-start
+        // DB read.
         Logger.i(tag = "ConversationListViewModel") {
             "selectedConversationId set id=$conversationId (pending messages) trigger=$trigger"
         }
@@ -2197,7 +2247,7 @@ class ConversationListViewModel(
     }
 
     private fun sendEvent(event: ConversationListUiEvent) {
-        _uiState.update { it.copy(uiEvent = event) }
+        events.send(event)
     }
 
     /**
@@ -2318,7 +2368,6 @@ fun synthesizeOwnerSession(
         profileImageFileId = null,
         profileImageFileKey = null,
         profileImagePreviewThumbnail = null,
-        profileImageLastModified = null,
         status = null,
     )
 }

@@ -2,6 +2,7 @@ package id.homebase.chat.poll
 
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.common.OdinId
+import id.homebase.chat.services.ReactionSetChange
 import id.homebase.chat.services.decodeReactionCode
 import id.homebase.core.widget.EmojiReaction
 
@@ -42,10 +43,35 @@ object PollVote {
         ownReactions.mapNotNull { optionOf(it) }.filter { it in 0 until optionCount }.toSet()
 
     /**
+     * The reaction change a tap on [tapped] declares, given the user's current
+     * [own] votes. Multi-select polls treat every option as its own scope (an
+     * idempotent add or remove of just that code). Single-choice polls cover all
+     * [optionCount] codes: tapping the chosen option clears it, anything else
+     * sets it and clears the rest.
+     */
+    fun change(tapped: Int, own: Set<Int>, optionCount: Int, allowMultiple: Boolean): ReactionSetChange {
+        require(tapped in 0 until optionCount) { "option $tapped out of range" }
+        val code = codeFor(tapped)
+        if (allowMultiple) {
+            return if (tapped in own) {
+                ReactionSetChange(scope = "poll:$tapped", add = emptySet(), remove = setOf(code))
+            } else {
+                ReactionSetChange(scope = "poll:$tapped", add = setOf(code), remove = emptySet())
+            }
+        }
+        val allCodes = (0 until optionCount).map { codeFor(it) }.toSet()
+        return if (own == setOf(tapped)) {
+            ReactionSetChange(scope = "poll", add = emptySet(), remove = allCodes)
+        } else {
+            ReactionSetChange(scope = "poll", add = setOf(code), remove = allCodes - code)
+        }
+    }
+
+    /**
      * Aggregate vote count per option, read from the server-side reaction
      * preview. Returns an [IntArray] of length [optionCount] (zeroed when no
      * votes). Aggregate counts can't be de-duped per voter, so correctness
-     * relies on the bubble's clear-then-set on vote change (same as Groodle).
+     * relies on the bubble writing each vote as a set-state (same as Groodle).
      */
     fun counts(summary: ReactionSummary?, optionCount: Int): IntArray {
         val out = IntArray(optionCount)

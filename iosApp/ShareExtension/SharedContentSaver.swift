@@ -1,5 +1,6 @@
 import Foundation
 import UniformTypeIdentifiers
+import os
 
 /// Saves shared content from the extension context into the App Group container
 /// for the main app to pick up and send.
@@ -41,12 +42,14 @@ struct SharedContentSaver {
         let targetConversationId: String
     }
 
+    /// Tests pass `containerURL` to redirect the writes into a directory they can make unwritable.
     static func save(
         extensionContext: NSExtensionContext,
         conversationId: String,
+        containerURL: URL? = nil,
         completion: @escaping (Bool) -> Void
     ) {
-        guard let containerURL = FileManager.default
+        guard let containerURL = containerURL ?? FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: appGroupId)
         else {
             completion(false)
@@ -126,9 +129,14 @@ struct SharedContentSaver {
                             let ext = imageExtensionForData(imageData)
                             let name = "share_\(Int(Date().timeIntervalSince1970 * 1000)).\(ext)"
                             let destURL = filesDir.appendingPathComponent(name)
-                            try? imageData.write(to: destURL)
-                            fileNames.append(name)
-                            mimeTypes.append(mimeTypeForExtension(ext))
+                            do {
+                                try imageData.write(to: destURL)
+                                fileNames.append(name)
+                                mimeTypes.append(mimeTypeForExtension(ext))
+                            } catch {
+                                os_log("Share extension: dropping image %{public}@, write failed: %{public}@",
+                                       name, error.localizedDescription)
+                            }
                         }
                         group.leave()
                     }
@@ -215,12 +223,14 @@ struct SharedContentSaver {
                 targetConversationId: conversationId
             )
 
-            // Write descriptor JSON
-            if let jsonData = try? JSONEncoder().encode(descriptor) {
-                let descriptorURL = containerURL.appendingPathComponent(sharedContentFile)
-                try? jsonData.write(to: descriptorURL)
+            let descriptorURL = containerURL.appendingPathComponent(sharedContentFile)
+            do {
+                let jsonData = try JSONEncoder().encode(descriptor)
+                try jsonData.write(to: descriptorURL)
                 completion(true)
-            } else {
+            } catch {
+                os_log("Share extension: descriptor write to %{public}@ failed (%d file(s) staged), reporting failure: %{public}@",
+                       descriptorURL.path, fileNames.count, error.localizedDescription)
                 completion(false)
             }
         }

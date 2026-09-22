@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
@@ -18,8 +17,12 @@ import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.EMERGENCY_LOCATION_CIRCLE_ID
 import id.homebase.core.config.locationLabeledDrive
+import id.homebase.core.contactbook.EmergencyContactService
+import id.homebase.core.contactbook.LOCATE_VERIFY_TTL_MS
+import id.homebase.core.contactbook.LocateVerifyStatus
 import id.homebase.core.contactbook.locatableContacts
 import id.homebase.core.location.LocationPreferences
+import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.location.emergency.EmergencyLocateService
 import id.homebase.core.location.tracking.LocationPointStore
 import id.homebase.core.location.tracking.LocationTracker
@@ -32,7 +35,6 @@ import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.core.util.initials
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,13 +46,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
@@ -67,13 +67,14 @@ class LocationViewModel(
     private val contactRepository: ContactRepository,
     private val connectionService: ConnectionService,
     private val contactService: ContactService,
-    private val temporalDriveReadProvider: TemporalDriveReadProvider,
+    private val emergencyContacts: EmergencyContactService,
     private val credentialsManager: CredentialsManager,
     private val receiveStore: LiveLocationReceiveStore,
     private val liveShareService: LiveLocationShareService,
     private val conversationService: ConversationService,
     private val emergencyLocateService: EmergencyLocateService,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val developerPreferences: DeveloperPreferences,
     tracker: LocationTracker,
 ) : ViewModel() {
 
@@ -112,9 +113,6 @@ class LocationViewModel(
     // Synchronous one-shot guard for the auto-activate collector below — see MomentsViewModel.
     private var activationKicked = false
 
-    // The location drive we preflight per "who I can locate" entry (same alias the reconciler uses).
-    private val locationDrive = locationLabeledDrive.drive.alias
-
     init {
         // "Who can locate you" = the members of our emergency-location-access circle. We host this
         // circle on our OWN identity, so its membership is the source of truth — no app-data flag.
@@ -132,17 +130,30 @@ class LocationViewModel(
                     .distinctBy { it.odinId }
                     .sortedBy { it.name.lowercase() }
                     .toList()
+                // Real and pending come out of the same snapshot, so they cannot disagree about
+                // who has converted — the exclusion below is a like-for-like filter, not a race.
+                val memberIds = members.map { it.odinId }.toSet()
+                val pending = circleState.pendingMembersOf(EMERGENCY_LOCATION_CIRCLE_ID)
+                    .asSequence()
+                    .map { it.odinId }
+                    .filterNot { it.domainName.lowercase() == self }
+                    .distinct()
+                    .map { contactService.resolveByOdinId(it) }
+                    .filterNot { it.odinId in memberIds }
+                    .sortedBy { it.name.lowercase() }
+                    .toList()
                 _uiState.update {
                     it.copy(
                         whoCanLocateMe = members,
                         whoCanLocateMeLoaded = circleState.isLoaded,
-                        // Drop anyone who just converted from pending to real — closes the
-                        // window where a stale pending snapshot and a freshly-updated real
-                        // membership list briefly disagree and render the same person twice
-                        // (#1096). checkWhoCanLocateMePending re-derives the full pending set
-                        // on its own cadence; this only prevents the transient overlap.
-                        whoCanLocateMePending = it.whoCanLocateMePending
-                            .filterNot { pending -> members.any { m -> m.odinId == pending.odinId } },
+                        // Flag off: main's path — checkWhoCanLocateMePending owns the pending list;
+                        // this only drops anyone who just converted to real (#1096).
+                        whoCanLocateMePending = if (developerPreferences.connectionReviewEnabled.value) {
+                            pending
+                        } else {
+                            it.whoCanLocateMePending
+                                .filterNot { p -> members.any { m -> m.odinId == p.odinId } }
+                        },
                     )
                 }
             }
@@ -166,6 +177,17 @@ class LocationViewModel(
                         it.copy(whoICanLocate = members, whoICanLocateLoaded = true)
                     }
                 }
+        }
+
+        viewModelScope.launch {
+            emergencyContacts.status.collect { status ->
+                _uiState.update { it.copy(whoICanLocateStatus = status) }
+            }
+        }
+        viewModelScope.launch {
+            emergencyContacts.staleIds.collect { stale ->
+                _uiState.update { it.copy(staleLocatableCount = stale.size) }
+            }
         }
 
         viewModelScope.launch {
@@ -318,117 +340,43 @@ class LocationViewModel(
         }
     }
 
-    /** Runs the periodic locatable-verify loop while the section is expanded; null when collapsed. */
-    private var locatableVerifyJob: Job? = null
+    private var emergencyVerifyJob: Job? = null
 
     /**
-     * Expanded: start the link-freshness loop — an immediate [verifyLocatablePass], then one every
-     * [LOCATE_VERIFY_TTL_MS] so ages and states stay current while the section is open. Every
-     * expand (re-)starts the loop; the per-row TTL inside the pass is what makes a quick re-expand
-     * cheap. The expand-triggered pass shows spinners (visible feedback that a verify is running);
-     * the periodic follow-ups are silent so the open list doesn't flash a spinner every minute.
-     * Collapsed: cancel the loop (and any in-flight verifies with it) and sweep Loading
-     * placeholders — a cancelled first verify must not leave a stuck Loading that blocks the next
-     * expand forever (needsReverify(Loading) == false).
-     *
-     * A sibling collector re-runs a silent pass whenever the app comes online, so a row that
-     * timed out to Unreachable while offline clears the moment the connection arrives instead of
-     * waiting out the TTL (#998). Rows still inside their online-wait are in Loading →
-     * needsReverify == false → the reconnect pass skips them while their own in-flight verify
-     * wakes on the same transition.
+     * Emergency screen visible: an immediate spinner-showing pass, then a silent pass every
+     * [LOCATE_VERIFY_TTL_MS] plus one on every offline→online transition (#998). Leaving the
+     * screen cancels the loop; a cancelled verify restores its previous value.
      */
-    private fun setLocatableExpanded(expanded: Boolean) {
-        if (expanded) {
-            if (locatableVerifyJob?.isActive == true) return
-            locatableVerifyJob = viewModelScope.launch {
+    private fun setEmergencyScreenVisible(visible: Boolean) {
+        if (visible) {
+            if (emergencyVerifyJob?.isActive == true) return
+            emergencyVerifyJob = viewModelScope.launch {
                 launch {
                     authConnectionCoordinator.isOnline
-                        .drop(1) // skip the replayed current value; react to transitions only
+                        .drop(1)
                         .filter { it }
-                        .collect { verifyLocatablePass(showSpinner = false) }
+                        .collect { emergencyContacts.refreshAll() }
                 }
-                var expandTriggered = true
+                var entryPass = true
                 while (true) {
-                    verifyLocatablePass(showSpinner = expandTriggered)
-                    expandTriggered = false
+                    emergencyContacts.refreshAll(showSpinner = entryPass)
+                    entryPass = false
                     delay(LOCATE_VERIFY_TTL_MS)
                 }
             }
         } else {
-            locatableVerifyJob?.cancel()
-            locatableVerifyJob = null
-            _uiState.update { s ->
-                s.copy(
-                    whoICanLocateStatus =
-                        s.whoICanLocateStatus.filterValues { it != LocateVerifyStatus.Loading },
-                )
-            }
+            emergencyVerifyJob?.cancel()
+            emergencyVerifyJob = null
         }
     }
 
-    /**
-     * One preflight pass over the "who I can locate" entries: does the peer still grant us temporal
-     * read access to their location drive, and how fresh is their newest data? Members are verified
-     * in parallel child coroutines and the pass returns once all resolve, so loop iterations never
-     * overlap a still-running verify. Members with a verify in flight or a result younger than
-     * [LOCATE_VERIFY_TTL_MS] are skipped (#950). [showSpinner] (the expand-triggered pass) marks
-     * each verifying row Loading so the user sees the verify happen; the periodic follow-up passes
-     * pass false and keep the old value visible until the new result lands, so an open list never
-     * flashes spinners every minute. A row with no prior result always spins. Each verify first
-     * waits up to [LOCATE_VERIFY_ONLINE_WAIT_MS] for the app to be online (#998) — a no-op when it
-     * already is — so an expand right after cold start spins instead of flashing broken clouds. A
-     * network/parse failure after that is inconclusive → [LocateVerifyStatus.Unreachable]
-     * (disconnected icon, retried after the TTL), never [Broken]; this mirrors
-     * [EmergencyContactReconciler]'s leave-untouched rule.
-     */
-    private suspend fun verifyLocatablePass(showSpinner: Boolean) {
-        val now = Clock.System.now().toEpochMilliseconds()
-        coroutineScope {
-            _uiState.value.whoICanLocate.forEach { member ->
-                val key = member.odinId.domainName
-                val current = _uiState.value.whoICanLocateStatus[key]
-                if (!current.needsReverify(now)) return@forEach
-                if (showSpinner || current == null) {
-                    _uiState.update {
-                        it.copy(whoICanLocateStatus = it.whoICanLocateStatus + (key to LocateVerifyStatus.Loading))
-                    }
-                }
-                launch {
-                    // Just-opened app: hold the row in Loading for up to
-                    // LOCATE_VERIFY_ONLINE_WAIT_MS while the connection comes up, so a
-                    // not-online-yet expand spins instead of flashing broken clouds (#998).
-                    // Already online → first{} returns immediately; still offline after the
-                    // wait → the verify throws and records Unreachable as before.
-                    withTimeoutOrNull(LOCATE_VERIFY_ONLINE_WAIT_MS) {
-                        authConnectionCoordinator.isOnline.first { it }
-                    }
-                    val status = try {
-                        temporalDriveReadProvider.verifyTemporalAccess(member.odinId, locationDrive)
-                    } catch (e: CancellationException) {
-                        throw e // never record a cancelled verify as Unreachable
-                    } catch (_: Exception) {
-                        null
-                    }
-                    val verifiedAt = Clock.System.now().toEpochMilliseconds()
-                    _uiState.update {
-                        val next = when {
-                            // Inconclusive (threw) → Unreachable; the TTL retries it next pass.
-                            status == null ->
-                                it.whoICanLocateStatus + (key to LocateVerifyStatus.Unreachable(verifiedAt))
-                            // Gate on hasAccess alone (windowSeconds is not a reliable discriminator, #875).
-                            !status.hasAccess ->
-                                it.whoICanLocateStatus + (key to LocateVerifyStatus.Broken(verifiedAt))
-                            // newestFileModified == 0 (ZeroTime) means no files yet → Active(null) = "no data".
-                            else -> it.whoICanLocateStatus + (key to LocateVerifyStatus.Active(
-                                newestModifiedMs = status.newestFileModified.milliseconds.takeIf { ms -> ms > 0 },
-                                verifiedAtMs = verifiedAt,
-                            ))
-                        }
-                        it.copy(whoICanLocateStatus = next)
-                    }
-                }
-            }
-        }
+    private var staleReverifyJob: Job? = null
+
+    /** Tile home: reconfirm only the contacts already known to be stale, never the whole list. */
+    private fun reverifyStaleLocatable() {
+        val stale = emergencyContacts.staleIds.value
+        if (stale.isEmpty() || staleReverifyJob?.isActive == true) return
+        staleReverifyJob = viewModelScope.launch { emergencyContacts.refreshAll(only = stale) }
     }
 
     fun onAction(action: LocationUiAction) {
@@ -488,10 +436,9 @@ class LocationViewModel(
                 viewModelScope.launch { liveShareService.stopAll() }
             }
 
-            is LocationUiAction.SetLocatableExpanded -> setLocatableExpanded(action.expanded)
+            is LocationUiAction.SetEmergencyScreenVisible -> setEmergencyScreenVisible(action.visible)
 
-            is LocationUiAction.SetWhoCanLocateMeExpanded ->
-                if (action.expanded) checkWhoCanLocateMePending()
+            LocationUiAction.TileHomeVisible -> reverifyStaleLocatable()
 
             is LocationUiAction.RemoveEmergencyContact -> removeEmergencyContact(action.odinId)
 
@@ -541,20 +488,40 @@ class LocationViewModel(
         }
     }
 
+    /** Revoke [odinId]'s emergency-circle grant, real or still-pending — one API call covers
+     *  both (revoke also silently drops a still-sealed deposit). */
+    private fun removeEmergencyContact(odinId: String) {
+        if (odinId in _uiState.value.removingEmergencyContacts) return
+        _uiState.update { it.copy(removingEmergencyContacts = it.removingEmergencyContacts + odinId) }
+        viewModelScope.launch {
+            try {
+                connectionService.removeFromCircle(Uuid.parseHex(EMERGENCY_LOCATION_CIRCLE_ID), OdinId(odinId))
+                // Flag off: main's pending list isn't read from the snapshot, so drop them by hand.
+                if (!developerPreferences.connectionReviewEnabled.value) {
+                    _uiState.update {
+                        it.copy(
+                            whoCanLocateMePending = it.whoCanLocateMePending
+                                .filterNot { contact -> contact.odinId.domainName == odinId },
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "removeFromCircle failed for $odinId" }
+                _events.tryEmit(LocationUiEvent.EmergencyContactActionFailed)
+            } finally {
+                _uiState.update { it.copy(removingEmergencyContacts = it.removingEmergencyContacts - odinId) }
+            }
+        }
+    }
+
     private var whoCanLocateMePendingJob: Job? = null
 
     /**
-     * Live read, never a periodic loop (a sealed deposit doesn't change moment to moment, and a
-     * conversion to real membership already flips whoCanLocateMe via ConnectionService's normal
-     * refresh). Runs on every [refresh] (screen entry/resume) rather than only on section-expand
-     * — a contact just added from the picker lands as a pending deposit far more often than not,
-     * and gating this behind manual expand left it invisible until the user thought to tap the
-     * section, which reads as "the add silently failed" (#1096). The explicit
-     * [LocationUiAction.SetWhoCanLocateMeExpanded] trigger stays too, so opening the section
-     * mid-session (no intervening resume) still gets a fresh read. Delegates the actual fan-out
-     * to [ConnectionService.findPendingMembers] — circle-agnostic, shared with the Contact
-     * Book's generic circle-management screen — and applies the one Location-specific rule: you
-     * are never your own emergency contact.
+     * Flag off only: main's live pending read, run on every [refresh] so a contact just added
+     * from the picker (usually a sealed deposit) shows at once (#1096). You are never your own
+     * emergency contact.
      */
     private fun checkWhoCanLocateMePending() {
         if (whoCanLocateMePendingJob?.isActive == true) return
@@ -569,10 +536,8 @@ class LocationViewModel(
 
                 _uiState.update {
                     it.copy(
-                        // Exclude against the CURRENT whoCanLocateMe, not the snapshot findPendingMembers
-                        // started from — someone can convert from pending to real while this fan-out is
-                        // still in flight, and rendering both lists un-deduped briefly shows them twice
-                        // (#1096).
+                        // Exclude against the CURRENT whoCanLocateMe: someone can convert while
+                        // the lookup is in flight (#1096).
                         whoCanLocateMePending = pending
                             .distinct()
                             .map { odinId -> contactService.resolveByOdinId(odinId) }
@@ -586,31 +551,6 @@ class LocationViewModel(
             } catch (e: Exception) {
                 Logger.w(e, TAG) { "checkWhoCanLocateMePending failed" }
                 _uiState.update { it.copy(whoCanLocateMePendingChecking = false) }
-            }
-        }
-    }
-
-    /** Revoke [odinId]'s emergency-circle grant, real or still-pending — one API call covers
-     *  both (revoke also silently drops a still-sealed deposit). */
-    private fun removeEmergencyContact(odinId: String) {
-        if (odinId in _uiState.value.removingEmergencyContacts) return
-        _uiState.update { it.copy(removingEmergencyContacts = it.removingEmergencyContacts + odinId) }
-        viewModelScope.launch {
-            try {
-                connectionService.removeFromCircle(Uuid.parseHex(EMERGENCY_LOCATION_CIRCLE_ID), OdinId(odinId))
-                _uiState.update {
-                    it.copy(
-                        whoCanLocateMePending = it.whoCanLocateMePending
-                            .filterNot { contact -> contact.odinId.domainName == odinId },
-                    )
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.w(e, TAG) { "removeFromCircle failed for $odinId" }
-                _events.tryEmit(LocationUiEvent.EmergencyContactActionFailed)
-            } finally {
-                _uiState.update { it.copy(removingEmergencyContacts = it.removingEmergencyContacts - odinId) }
             }
         }
     }
@@ -676,11 +616,7 @@ class LocationViewModel(
             refreshCounts()
         }
         loadDashboard()
-        // Re-derive "who can locate me" pending status on every resume (not just on manual
-        // section-expand) — otherwise returning here right after adding someone shows nothing
-        // for them until the section happens to be expanded, which reads as "the add failed"
-        // (#1096: a real add landed as a pending deposit and stayed invisible until expand).
-        checkWhoCanLocateMePending()
+        if (!developerPreferences.connectionReviewEnabled.value) checkWhoCanLocateMePending()
     }
 
     /** Dashboard data: today's traces (map preview), the device list, and the

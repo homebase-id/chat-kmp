@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Button
@@ -47,12 +46,14 @@ import coil3.compose.AsyncImage
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.cd_profile_avatar_change_photo
-import id.homebase.resources.menu_back
 import id.homebase.resources.profile_avatar_edit_acl_anonymous
+import id.homebase.resources.profile_avatar_edit_acl_circles
 import id.homebase.resources.profile_avatar_edit_acl_connected
 import id.homebase.resources.profile_avatar_edit_anonymous_desc
+import id.homebase.resources.profile_avatar_edit_circles_desc
 import id.homebase.resources.profile_avatar_edit_connected_desc
 import id.homebase.resources.profile_avatar_edit_error_delete
 import id.homebase.resources.profile_avatar_edit_error_too_large
@@ -99,16 +100,9 @@ fun ProfileAvatarEditScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.profile_avatar_edit_title)) },
-                navigationIcon = {
-                    IconButton(onClick = { viewModel.onAction(ProfileAvatarEditAction.BackClicked) }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
-                        )
-                    }
-                },
+            SettingsTopBar(
+                title = stringResource(MR.string.profile_avatar_edit_title),
+                onBack = { viewModel.onAction(ProfileAvatarEditAction.BackClicked) },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -137,8 +131,14 @@ fun ProfileAvatarEditScreen(
             Spacer(Modifier.height(24.dp))
 
             PhotoTierSection(
-                title = stringResource(MR.string.profile_avatar_edit_acl_connected),
-                description = stringResource(MR.string.profile_avatar_edit_connected_desc),
+                title = stringResource(
+                    if (uiState.reviewEnabled) MR.string.profile_avatar_edit_acl_circles
+                    else MR.string.profile_avatar_edit_acl_connected
+                ),
+                description = stringResource(
+                    if (uiState.reviewEnabled) MR.string.profile_avatar_edit_circles_desc
+                    else MR.string.profile_avatar_edit_connected_desc
+                ),
                 tier = uiState.connected,
                 onPick = { connectedPicker.launch() },
                 onRemove = { viewModel.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.CONNECTED)) },
@@ -152,7 +152,7 @@ fun ProfileAvatarEditScreen(
 
 /** Renders a tier's currently-stored photo (both tiers fetch/decrypt the same way), or a
  *  placeholder when there's none — shared by [ProfileAvatarEditScreen] and the compact photo
- *  picker embedded directly in [ProfileEditScreen]'s Public/Vetted sections. */
+ *  picker embedded directly in [ProfileEditScreen]'s Public/Circles sections. */
 @Composable
 internal fun ExistingAvatarContent(existing: ProfileAttribute?, logTag: String) {
     val imageData = existing?.photoImageData()

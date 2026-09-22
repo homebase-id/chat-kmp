@@ -17,6 +17,7 @@ import java.io.File
 import kotlin.coroutines.resume
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.test.runTest
@@ -79,7 +80,7 @@ class CompressVideoAndroidInstrumentedTest {
             // sample.mp4 is 320x180 / h264 / ~35kbps — way below STANDARD's
             // 720p / 2.5M target. The already-optimal check returns null and
             // the caller falls back to the original file.
-            assertEquals(null, out, "Already-optimal fixture must short-circuit to null")
+            assertNull(out, "Already-optimal fixture must short-circuit to null")
         } finally {
             fixture.delete()
         }

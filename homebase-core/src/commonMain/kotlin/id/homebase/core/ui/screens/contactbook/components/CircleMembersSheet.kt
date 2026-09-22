@@ -33,6 +33,7 @@ import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.circle_drive_unknown
@@ -78,8 +79,9 @@ fun CircleMembersSheet(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = state.circleName,
+                CircleLabel(
+                    emoji = state.circleEmoji,
+                    name = state.circleName,
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f),
                 )

@@ -5,6 +5,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.OnApplyWindowInsetsListener
 import androidx.core.view.ViewCompat
@@ -30,3 +31,7 @@ actual fun keyboardHeightAsState(): State<Int> {
 
     return keyboardHeight
 }
+
+// A soft keyboard composes over the InputConnection and emits no key event at all, and
+// android.view.KeyEvent carries no composition flag for the hardware-keyboard case.
+actual fun KeyEvent.isImeComposing(): Boolean = false

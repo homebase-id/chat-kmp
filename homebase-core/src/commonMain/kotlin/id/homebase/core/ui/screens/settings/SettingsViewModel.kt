@@ -6,12 +6,13 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
-import id.homebase.api.client.profile.PublicProfileProviderCached
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.sync.database.DatabaseSizeProbe
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.SubscriptionVerificationStatus
+import id.homebase.core.notifications.WebPushService
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.util.PlatformInfo
@@ -31,15 +32,21 @@ class SettingsViewModel(
     private val userPreferences: UserPreferences,
     private val platformInfo: PlatformInfo,
     private val databaseSizeProbe: DatabaseSizeProbe,
-    private val publicProfileProviderCached: PublicProfileProviderCached,
+    private val contactInfo: ContactInfoGateway,
     private val driveFileProviderCached: DriveFileProviderCached,
+    private val webPushService: WebPushService,
 ) : ViewModel() {
 
     private companion object {
         const val TAG = "Settings"
     }
 
-    private val _uiState = MutableStateFlow(SettingsUiState(appVersion = platformInfo.versionName))
+    private val _uiState = MutableStateFlow(
+        SettingsUiState(
+            useNativeFeed = userPreferences.useNativeFeed,
+            appVersion = platformInfo.versionName,
+        ),
+    )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
@@ -73,7 +80,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             val bytes = withContext(Dispatchers.Default) {
                 runCatching {
-                    val caches = publicProfileProviderCached.getCacheStats() +
+                    val caches = contactInfo.getCacheStats() +
                         driveFileProviderCached.getCacheStats()
                     caches.sumOf { if (it.sizeBytes == CacheStats.UNAVAILABLE) 0L else it.sizeBytes } +
                         databaseSizeProbe.sizeBytes()
@@ -132,6 +139,11 @@ class SettingsViewModel(
             SettingsUiAction.DeleteAccount -> {
                 _uiState.update { it.copy(uiDialog = SettingsUiDialog.DeleteAccount) }
             }
+
+            is SettingsUiAction.SetUseNativeFeed -> {
+                userPreferences.useNativeFeed = action.enabled
+                _uiState.update { it.copy(useNativeFeed = action.enabled) }
+            }
         }
     }
 
@@ -163,6 +175,9 @@ class SettingsViewModel(
                 .onFailure { Logger.e(throwable = it, tag = TAG) { "purgeLogs failed" } }
             runCatching { notificationService.deleteToken() }
                 .onFailure { Logger.e(throwable = it, tag = TAG) { "deleteToken failed" } }
+            // deleteToken() drops the server side; the browser subscription is separate state.
+            runCatching { webPushService.disableLocally() }
+                .onFailure { Logger.e(throwable = it, tag = TAG) { "web push unsubscribe failed" } }
             runCatching { shareCacheStorage.clearConversationCache() }
                 .onFailure { Logger.e(throwable = it, tag = TAG) { "clearConversationCache failed" } }
 

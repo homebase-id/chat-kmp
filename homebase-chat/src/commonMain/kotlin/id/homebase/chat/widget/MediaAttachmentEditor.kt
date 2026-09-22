@@ -11,12 +11,17 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -29,12 +34,15 @@ import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Draw
+import androidx.compose.material.icons.filled.Hd
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -50,6 +58,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -60,11 +69,17 @@ import id.homebase.api.video.IndexedFrame
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.pdf.generatePdfThumbnail
+import id.homebase.core.ui.assets.HdOff
+import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.util.resolveContentType
 import id.homebase.chat.widget.video.TrimDurationLabel
 import id.homebase.chat.widget.video.TrimmableVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoTrimScrubber
+import id.homebase.api.image.MediaQuality
 import id.homebase.resources.MR
+import id.homebase.resources.cd_media_quality_high_off
+import id.homebase.resources.cd_media_quality_high_on
+import id.homebase.resources.chat_media_quality_hd
 import id.homebase.resources.cd_file_attachment
 import id.homebase.resources.cd_gallery_thumbnail
 import id.homebase.resources.cd_image_attachment
@@ -92,23 +107,37 @@ internal data class EditorToolset(
     val showCrop: Boolean,
     val showDraw: Boolean,
     val showSave: Boolean,
+    val showQuality: Boolean = false,
 )
 
 /** Pure decision for the per-attachment tool row. Crop/Draw apply only to
- *  editable images (FileImage / Gallery); Save applies to any current
+ *  editable non-GIF images (FileImage / Gallery); Save applies to any current
  *  attachment. A tool is shown only when its callback was supplied. */
 internal fun editorToolsetFor(
     current: AttachmentPendingFile?,
     canCrop: Boolean,   // onCropImage != null
     canDraw: Boolean,   // onDrawImage != null
     canSave: Boolean,   // onSaveFile  != null
+    canSetQuality: Boolean = false, // onToggleMediaQuality != null
 ): EditorToolset {
     val isEditableImage =
         current is AttachmentPendingFile.FileImage || current is AttachmentPendingFile.Gallery
+    // Crop and draw re-encode to a single-frame JPEG, which would freeze a GIF. iOS gallery mimeType is "image/*".
+    val isNonGifImage = when (current) {
+        is AttachmentPendingFile.FileImage ->
+            (current.sourceContentType ?: resolveContentType(fileName = current.file.name)) != "image/gif"
+        is AttachmentPendingFile.Gallery ->
+            current.image.mimeType != "image/gif" && resolveContentType(fileName = current.image.fileName) != "image/gif"
+        else -> false
+    }
+    // Quality only bites on media we re-encode. A document or a voice note ships untouched either
+    // way, so offering the toggle there would be a lie.
+    val isQualityRelevant = isEditableImage || current is AttachmentPendingFile.FileVideo
     return EditorToolset(
-        showCrop = canCrop && isEditableImage,
-        showDraw = canDraw && isEditableImage,
+        showCrop = canCrop && isNonGifImage,
+        showDraw = canDraw && isNonGifImage,
         showSave = canSave && current != null,
+        showQuality = canSetQuality && isQualityRelevant,
     )
 }
 
@@ -127,6 +156,12 @@ fun MediaAttachmentEditor(
     onAddImage: (() -> Unit)? = null,
     onCameraClick: (() -> Unit)? = null,
     onRemoveFile: ((attachmentId: Uuid) -> Unit)? = null,
+    /**
+     * Signal and Telegram both make this button the setting rather than a per-send override, so
+     * the toggle writes straight through to the global preference.
+     */
+    mediaQuality: MediaQuality = MediaQuality.STANDARD,
+    onToggleMediaQuality: (() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
     collapseSecondaryChrome: Boolean = false,
     centerImageInPage: Boolean = false,
@@ -197,7 +232,8 @@ fun MediaAttachmentEditor(
                 userScrollEnabled = true,
                 beyondViewportPageCount = 1
             ) { page ->
-                when (val attachment = attachments[page]) {
+                // The pager composes a stale page index for one frame after the list shrinks.
+                when (val attachment = attachments.getOrNull(page) ?: return@HorizontalPager) {
                     is AttachmentPendingFile.File -> {
                         val isPdf = remember(attachment.file) {
                             resolveContentType(fileName = attachment.file.name) == "application/pdf"
@@ -408,7 +444,7 @@ fun MediaAttachmentEditor(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 attachments.forEach { attachment ->
-                    val isSelected = attachments[pagerState.currentPage].attachmentId == attachment.attachmentId
+                    val isSelected = activeAttachment?.attachmentId == attachment.attachmentId
                     Box(
                         modifier = Modifier
                             .size(60.dp)
@@ -555,6 +591,7 @@ fun MediaAttachmentEditor(
             canCrop = onCropImage != null,
             canDraw = onDrawImage != null,
             canSave = onSaveFile != null,
+            canSetQuality = onToggleMediaQuality != null,
         )
         AnimatedVisibility(visible = !collapseSecondaryChrome) {
         Row(
@@ -594,10 +631,38 @@ fun MediaAttachmentEditor(
                     Icon(Icons.Default.Download, contentDescription = stringResource(MR.string.save))
                 }
             }
+            if (toolset.showQuality) {
+                Spacer(modifier = Modifier.weight(1f))
+                val isHigh = mediaQuality == MediaQuality.HIGH
+                FilterChip(
+                    modifier = Modifier.testTag("mediaQualityChip"),
+                    selected = isHigh,
+                    onClick = { onToggleMediaQuality!!() },
+                    label = { Text(stringResource(MR.string.chat_media_quality_hd)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = if (isHigh) Icons.Default.Hd
+                            else HomebaseIcons.HdOff,
+                            contentDescription = stringResource(
+                                if (isHigh) MR.string.cd_media_quality_high_on
+                                else MR.string.cd_media_quality_high_off
+                            ),
+                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                        )
+                    },
+                )
+            }
         }
         } // end AnimatedVisibility (tool row)
 
-        bottomBar()
+        // max, not sum: the ime inset already spans the nav bar, so stacking them double-counts.
+        Box(
+            modifier = Modifier.windowInsetsPadding(
+                WindowInsets.ime.union(WindowInsets.navigationBars)
+            )
+        ) {
+            bottomBar()
+        }
     }
 }
 

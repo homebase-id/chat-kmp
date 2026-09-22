@@ -5,16 +5,22 @@ import id.homebase.core.gallery.GalleryImage
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 class MediaAttachmentEditorToolsetTest {
 
-    private fun fileImage(): AttachmentPendingFile.FileImage {
+    private fun fileImage(name: String = "i.png", sourceContentType: String? = null): AttachmentPendingFile.FileImage {
         val id = Uuid.random()
-        return AttachmentPendingFile.FileImage(id = id, file = PlatformFile("/tmp/i-$id.png"))
+        return AttachmentPendingFile.FileImage(
+            id = id,
+            file = PlatformFile("/tmp/$id-$name"),
+            sourceContentType = sourceContentType,
+        )
     }
 
-    private fun gallery(): AttachmentPendingFile.Gallery {
+    private fun gallery(mimeType: String = "image/png", fileName: String = "g.png"): AttachmentPendingFile.Gallery {
         val id = Uuid.random()
         return AttachmentPendingFile.Gallery(
             id = id,
@@ -22,8 +28,8 @@ class MediaAttachmentEditorToolsetTest {
                 id = id.toString(),
                 file = PlatformFile("/tmp/g-$id.png"),
                 dateAdded = 0L,
-                mimeType = "image/png",
-                fileName = "g.png",
+                mimeType = mimeType,
+                fileName = fileName,
                 galleryName = "Camera",
             ),
         )
@@ -45,6 +51,23 @@ class MediaAttachmentEditorToolsetTest {
             EditorToolset(showCrop = true, showDraw = true, showSave = true),
             editorToolsetFor(fileImage(), canCrop = true, canDraw = true, canSave = true),
         )
+    }
+
+    @Test
+    fun gif_hidesCropAndDraw_keepsSave() {
+        val gifs = listOf(
+            fileImage(name = "clipboard_image.gif"),
+            fileImage(name = "photopicker-1000022602", sourceContentType = "image/gif"),
+            gallery(mimeType = "image/gif", fileName = "g"),
+            gallery(mimeType = "image/*", fileName = "IMG_0001.GIF"),
+        )
+        for (gif in gifs) {
+            assertEquals(
+                EditorToolset(showCrop = false, showDraw = false, showSave = true),
+                editorToolsetFor(gif, canCrop = true, canDraw = true, canSave = true),
+                gif.toString(),
+            )
+        }
     }
 
     @Test
@@ -101,6 +124,32 @@ class MediaAttachmentEditorToolsetTest {
         assertEquals(
             EditorToolset(showCrop = true, showDraw = true, showSave = false),
             editorToolsetFor(fileImage(), canCrop = true, canDraw = true, canSave = false),
+        )
+    }
+
+    @Test
+    fun quality_showsForImagesAndVideo_hidesForDocuments() {
+        fun showQuality(current: AttachmentPendingFile?) =
+            editorToolsetFor(
+                current,
+                canCrop = true,
+                canDraw = true,
+                canSave = true,
+                canSetQuality = true,
+            ).showQuality
+
+        assertTrue(showQuality(fileImage()))
+        assertTrue(showQuality(gallery()))
+        assertTrue(showQuality(video()))
+        // A document ships byte-for-byte in both modes, so offering the toggle would mislead.
+        assertFalse(showQuality(file()))
+        assertFalse(showQuality(null))
+    }
+
+    @Test
+    fun quality_hiddenWhenTheCallbackIsNotWired() {
+        assertFalse(
+            editorToolsetFor(fileImage(), canCrop = true, canDraw = true, canSave = true).showQuality,
         )
     }
 }

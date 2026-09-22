@@ -209,6 +209,7 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.cryptography.core)
             implementation(libs.cryptography.provider.optimal)
+            implementation(libs.cryptography.random)
             implementation(libs.sqldelight.runtime)
             implementation(libs.sqldelight.coroutines.extensions)
             implementation(libs.navigation.compose)

@@ -422,6 +422,10 @@ data class MatrixSnapshot(
     val cropRect: RectF,
     val viewportSize: Size,
 ) {
+    /** Canonical [id.homebase.imageeditor.core.Bounds] space to canvas pixels. */
+    val cropToCanvas: Matrix2D
+        get() = Matrix2D(viewLocal).also { it.preConcat(cropFrameMatrix) }
+
     companion object {
         val EMPTY: MatrixSnapshot = MatrixSnapshot(
             viewLocal = Matrix2D(),

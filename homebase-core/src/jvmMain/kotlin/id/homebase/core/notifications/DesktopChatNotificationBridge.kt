@@ -90,6 +90,7 @@ class DesktopChatNotificationBridge(
             val payload = buildSyntheticPayload(
                 senderId = senderId,
                 conversationId = message.conversationId,
+                messageId = message.id,
                 createdEpochMs = message.created.toEpochMilliseconds(),
                 body = message.content,
             )
@@ -112,6 +113,7 @@ class DesktopChatNotificationBridge(
     private fun buildSyntheticPayload(
         senderId: String,
         conversationId: Uuid,
+        messageId: Uuid,
         createdEpochMs: Long,
         body: String,
     ): PushNotification {
@@ -122,6 +124,7 @@ class DesktopChatNotificationBridge(
             options = PushNotificationPayloadOptions(
                 appId = chatAppIdDashed,
                 typeId = conversationId.toString(),
+                tagId = messageId.toString(),
                 unEncryptedMessage = preview,
                 silent = false,
             ),

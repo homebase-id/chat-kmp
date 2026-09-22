@@ -5,6 +5,7 @@ import kotlin.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import id.homebase.core.session.IdentityScoped
 
 /**
  * In-memory hand-off between the moments compose screen and the audience
@@ -24,7 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * Singleton-scoped so navigating back from audience → compose preserves the
  * draft. Cleared on successful post and on explicit cancel.
  */
-class MomentCreateFlowState {
+class MomentCreateFlowState : IdentityScoped {
 
     data class Draft(
         val attachments: List<AttachmentPendingFile>,

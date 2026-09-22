@@ -31,6 +31,10 @@ sealed class Route {
     data object ProfileAvatarEdit : Route()
 
     @Serializable
+    @SerialName("profile-card")
+    data object ProfileCard : Route()
+
+    @Serializable
     @SerialName("create-conversation")
     data object CreateConversation : Route()
 
@@ -104,12 +108,40 @@ sealed class Route {
     data object StorageSettings : Route()
 
     @Serializable
+    @SerialName("media-settings")
+    data object MediaSettings : Route()
+
+    @Serializable
+    @SerialName("keyboard-settings")
+    data object KeyboardSettings : Route()
+
+    @Serializable
     @SerialName("defragmenter")
     data object Defragmenter : Route()
 
     @Serializable
+    @SerialName("email")
+    data object Email : Route()
+
+    @Serializable
+    @SerialName("email-thunderbird")
+    data object EmailThunderbirdSetup : Route()
+
+    @Serializable
+    @SerialName("email-secrets")
+    data object EmailSecrets : Route()
+
+    @Serializable
+    @SerialName("email-settings")
+    data object EmailSettings : Route()
+
+    @Serializable
     @SerialName("vault")
     data object Vault : Route()
+
+    @Serializable
+    @SerialName("webdrop")
+    data object WebDrop : Route()
 
     @Serializable
     @SerialName("vault-settings")
@@ -144,6 +176,11 @@ sealed class Route {
     @SerialName("contactbook-circle-member-add")
     data class CircleMemberAdd(val circleId: String, val circleName: String) : Route()
 
+    /** Contacts that qualify for one of this app's circles but are not in it yet. */
+    @Serializable
+    @SerialName("contactbook-enrollment-candidates")
+    data object EnrollmentCandidates : Route()
+
     @Serializable
     @SerialName("contactbook-add")
     // identityOnly: launched from a chat flow, where a contact is only useful if it has a
@@ -154,6 +191,17 @@ sealed class Route {
     @Serializable
     @SerialName("feed")
     data object Feed : Route()
+
+    @Serializable
+    @SerialName("post_detail")
+    data class PostDetail(val postId: String) : Route()
+
+    // ponytail: Route.PostCompose (the post composer) removed while feed compose is disabled
+    // Restore it + the PostCompose destination in AppNavHost to re-enable.
+
+    @Serializable
+    @SerialName("feed_following")
+    data object Following : Route()
 
     @Serializable
     @SerialName("moments")
@@ -239,6 +287,22 @@ sealed class Route {
     @Serializable
     @SerialName("location-emergency-contact-add")
     data object LocationEmergencyContactAdd : Route()
+
+    @Serializable
+    @SerialName("location-emergency")
+    data object LocationEmergency : Route()
+
+    @Serializable
+    @SerialName("location-history-overview")
+    data object LocationHistoryOverview : Route()
+
+    @Serializable
+    @SerialName("location-live-sharing")
+    data object LocationLiveSharing : Route()
+
+    @Serializable
+    @SerialName("location-settings")
+    data object LocationSettings : Route()
 
     @Serializable
     @SerialName("crop")

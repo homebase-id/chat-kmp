@@ -224,7 +224,6 @@ class ConversationMapper(
                     unreadCount = 0,
                     avatarTiny = appData.previewThumbnail,
                     avatarInitials = "",
-                    avatarUrl = "",
                     participants = participants,
                     isPinned = isPinnedByTag,
                     lastRead = localAppData?.lastReadTime?.toInstant()
@@ -236,6 +235,9 @@ class ConversationMapper(
                     isGroup = isGroup,
                     isLegacyGroup = isLegacyGroup,
                     exitedAt = exitedAt,
+                    archivedAt = if (conversationState == ConversationState.Archived) {
+                        localAppData?.archivedAt?.toInstant()
+                    } else null,
                     fileUpdated = metadata.updated.toInstant(),
                     fileCreated = metadata.created.toInstant(),
                 )
@@ -269,7 +271,6 @@ class ConversationMapper(
                     latestMessageTimestamp = UnixTimeUtc(0).toInstant(),
                     unreadCount = 0,
                     avatarInitials = "",
-                    avatarUrl = "",
                     avatarTiny = null,
                     participants = emptyList(),
                     lastRead = UnixTimeUtc(0).toInstant(),
@@ -391,7 +392,6 @@ class ConversationMapper(
             unreadCount = 0,
             avatarTiny = appData.previewThumbnail,
             avatarInitials = "",
-            avatarUrl = "",
             participants = emptyList(),
             lastRead = UnixTimeUtc(0).toInstant(),
             avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),

@@ -30,6 +30,7 @@ private val LightColorScheme =
                 errorContainer = LightColors.ErrorContainer,
                 onErrorContainer = LightColors.OnErrorContainer,
                 outline = LightColors.Outline,
+                outlineVariant = LightColors.OutlineVariant,
                 surfaceContainerLowest = LightColors.Surface,
                 surfaceContainerLow = LightColors.Surface1,
                 surfaceContainer = LightColors.Surface2,
@@ -59,6 +60,7 @@ private val DarkColorScheme =
                 errorContainer = DarkColors.ErrorContainer,
                 onErrorContainer = DarkColors.OnErrorContainer,
                 outline = DarkColors.Outline,
+                outlineVariant = DarkColors.OutlineVariant,
                 surfaceContainerLowest = DarkColors.Surface,
                 surfaceContainerLow = DarkColors.Surface1,
                 surfaceContainer = DarkColors.Surface2,
@@ -163,7 +165,7 @@ fun HomebaseTheme(
         CompositionLocalProvider(LocalHomebaseExtendedColors provides extendedColors) {
                 MaterialTheme(
                         colorScheme = colorScheme,
-                        typography = HomebaseTypography,
+                        typography = appTypography(),
                         content = content
                 )
         }

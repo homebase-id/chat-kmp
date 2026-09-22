@@ -33,12 +33,15 @@ class MissingPermissionsResult(
      * carries the live callback-server port.
      */
     val buildExtendPermissionUrl: () -> String
-) {
-    val hasMissingPermissions: Boolean
-        get() =
-            missingDrives.isNotEmpty() ||
-                    missingPermissions.isNotEmpty() ||
-                    missingAllConnectedCircle
+)
+
+sealed interface PermissionCheckResult {
+    /** The security context could not be fetched, so no verdict was reached. */
+    data object Unknown : PermissionCheckResult
+
+    data object AllGranted : PermissionCheckResult
+
+    data class Missing(val details: MissingPermissionsResult) : PermissionCheckResult
 }
 
 /**
@@ -50,21 +53,21 @@ class PermissionExtensionManager(
     private val securityContextProvider: SecurityContextProvider,
     private val hostIdentity: String
 ) {
-    /**
-     * Check if the app is missing any required permissions.
-     *
-     * @param config Configuration with required drives and permissions
-     * @return MissingPermissionsResult if there are missing permissions, null if all granted
-     */
     suspend fun getMissingPermissions(
         config: PermissionExtensionConfig
-    ): MissingPermissionsResult? {
+    ): PermissionCheckResult {
         val context = securityContextProvider.getSecurityContext()
         if (context == null) {
             Logger.w(tag = TAG) { "Could not fetch security context" }
-            return null
+            return PermissionCheckResult.Unknown
         }
+        return getMissingPermissions(config, context)
+    }
 
+    fun getMissingPermissions(
+        config: PermissionExtensionConfig,
+        context: SecurityContext
+    ): PermissionCheckResult {
         // Get all drive grants from permission groups
         val driveGrants =
             context.permissionContext.permissionGroups.flatMap { group ->
@@ -99,8 +102,11 @@ class PermissionExtensionManager(
                             }
                         allPermissions >= requestingPermission
                     }
+                val hasKey = !requestedDrive.requireStorageKey ||
+                        DrivePermission.Read !in requestedDrive.permissions ||
+                        context.canDecrypt(requestedDrive.alias, requestedDrive.type)
 
-                !hasAccess
+                !hasAccess || !hasKey
             }
 
         // Find missing app permissions
@@ -113,31 +119,32 @@ class PermissionExtensionManager(
         val hasAllConnectedCircle = context.caller.isGrantedConnectedIdentitiesSystemCircle
         val missingAllConnectedCircle = config.needsAllConnected && !hasAllConnectedCircle
 
-        // If nothing is missing, return null
         if (missingDrives.isEmpty() &&
             missingPermissions.isEmpty() &&
             !missingAllConnectedCircle
         ) {
-            return null
+            return PermissionCheckResult.AllGranted
         }
 
         val missingPermissionValues = missingPermissions.map { it.value }
 
-        return MissingPermissionsResult(
-            missingDrives = missingDrives,
-            missingPermissions = missingPermissions,
-            missingAllConnectedCircle = missingAllConnectedCircle,
-            buildExtendPermissionUrl = {
-                getExtendPermissionUrl(
-                    host = hostIdentity,
-                    appId = config.appId,
-                    missingDrives = missingDrives,
-                    circleDrives = config.circleDrives,
-                    missingPermissions = missingPermissionValues,
-                    needsAllConnected = missingAllConnectedCircle,
-                    returnUrl = config.returnUrl()
-                )
-            }
+        return PermissionCheckResult.Missing(
+            MissingPermissionsResult(
+                missingDrives = missingDrives,
+                missingPermissions = missingPermissions,
+                missingAllConnectedCircle = missingAllConnectedCircle,
+                buildExtendPermissionUrl = {
+                    getExtendPermissionUrl(
+                        host = hostIdentity,
+                        appId = config.appId,
+                        missingDrives = missingDrives,
+                        circleDrives = config.circleDrives,
+                        missingPermissions = missingPermissionValues,
+                        needsAllConnected = missingAllConnectedCircle,
+                        returnUrl = config.returnUrl()
+                    )
+                }
+            )
         )
     }
 

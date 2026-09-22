@@ -10,6 +10,7 @@ data class SettingsUiState(
     val isLoggingOut: Boolean = false,
     val ownerSession: OwnerSession? = null,
     val notificationStatus: NotificationVerificationStatus = NotificationVerificationStatus.CHECKING,
+    val useNativeFeed: Boolean = true,
     val theme: ThemeState = ThemeState.System,
     val appVersion: String = "",
     /** Null until the off-main measurement lands; the row shows a description meanwhile. */
@@ -26,6 +27,7 @@ sealed interface SettingsUiAction {
     data object OpenOwnerConsoleClicked : SettingsUiAction
     data object ProfileInfoClicked : SettingsUiAction
     data object SecuritySetupClicked : SettingsUiAction
+    data class SetUseNativeFeed(val enabled: Boolean) : SettingsUiAction
     data object AvatarClicked : SettingsUiAction
 }
 

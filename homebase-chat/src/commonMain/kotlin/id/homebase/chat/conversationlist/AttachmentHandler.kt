@@ -36,9 +36,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
+import id.homebase.core.files.materializeForUpload
 
 /**
  * Handles attachment-editor and audio-recording action arms (attach / unattach
@@ -66,6 +68,7 @@ internal class AttachmentHandler(
     private val sendEvent: (ConversationListUiEvent) -> Unit,
     private val dispatch: (ConversationListUiAction) -> Unit,
     private val addMessageWithFiles: (conversationId: Uuid, content: String, files: List<AttachmentPendingFile>) -> Unit,
+    private val sendSticker: (conversationId: Uuid, bytes: ByteArray, contentType: String) -> Unit,
 ) {
 
     // Tracks in-flight video thumbnail extraction per pending attachment so the editor can
@@ -269,9 +272,8 @@ internal class AttachmentHandler(
                         val rawPath = gallery.file.toPlayableUrl()
                         // iOS quick-switch hands a bare PHAsset localIdentifier (ph://… / …/L0/…)
                         // that AVPlayer (the editor preview) and the thumbnail/duration probe can't
-                        // open — materialize it to a real temp file first. Other platforms
-                        // (Android content://, desktop real path) are already playable; pass through.
-                        // The send path resolves file (the identifier) on its own, so it's untouched.
+                        // open — materialize it to a real temp file first. Android content:// and
+                        // desktop paths are playable as-is; send resolves `file` separately either way.
                         val playable = if (rawPath.startsWith("ph://") || rawPath.contains("/L0/")) {
                             fileOperationsProvider.resolveToFilePath(rawPath)
                         } else {
@@ -323,6 +325,32 @@ internal class AttachmentHandler(
     }
 
     fun handleAttachClipboardImage(action: ConversationListUiAction.AttachClipboardImage) {
+        val bytes = action.imageBytes
+        if (ImageFormatDetector.isAnimatedGif(bytes)) {
+            messagesUiState.update { it.copy(pendingGifPaste = PendingGifPaste(action.conversationId, bytes)) }
+            return
+        }
+        stageClipboardImage(action.conversationId, bytes)
+    }
+
+    fun handleSendPastedGifAsSticker() {
+        val paste = takePendingGifPaste() ?: return
+        sendSticker(paste.conversationId, paste.bytes, "image/gif")
+    }
+
+    fun handleSendPastedGifAsGif() {
+        val paste = takePendingGifPaste() ?: return
+        stageClipboardImage(paste.conversationId, paste.bytes)
+    }
+
+    fun handleDismissPastedGif() {
+        takePendingGifPaste()
+    }
+
+    private fun takePendingGifPaste(): PendingGifPaste? =
+        messagesUiState.getAndUpdate { it.copy(pendingGifPaste = null) }.pendingGifPaste
+
+    private fun stageClipboardImage(conversationId: Uuid, imageBytes: ByteArray) {
         scope.launch {
             try {
                 // The temp file's EXTENSION is what the send path turns into the wire
@@ -334,9 +362,9 @@ internal class AttachmentHandler(
                 // THUMBLESS_CONTENT_TYPES, image/png isn't) and the GIF would not animate.
                 // Sniff the magic bytes and pick the matching extension so the bytes and
                 // their declared type agree end to end. We never re-encode the bytes.
-                val suffix = clipboardImageSuffix(action.imageBytes)
+                val suffix = clipboardImageSuffix(imageBytes)
                 val tempPath = fileOperationsProvider.writeBytesToTempFile(
-                    action.imageBytes,
+                    imageBytes,
                     "clipboard_image",
                     suffix
                 )
@@ -346,7 +374,7 @@ internal class AttachmentHandler(
                     platformFile
                 )
                 val conversation = uiState.value.activeConversations.find {
-                    it.conversation.id == action.conversationId
+                    it.conversation.id == conversationId
                 }
                 if (conversation == null) return@launch
 
@@ -358,7 +386,7 @@ internal class AttachmentHandler(
                 } else {
                     FullScreenOverlay.AttachmentData(
                         conversationTitle = conversation.getDisplayName(),
-                        conversationId = action.conversationId,
+                        conversationId = conversationId,
                         selected = newFile.attachmentId,
                         attachments = listOf(newFile),
                     )

@@ -40,7 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import id.homebase.api.common.publicImageUrl
+import id.homebase.api.common.OdinId
 import id.homebase.chat.widget.AvatarFullScreenViewer
 import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ChatMediaFullScreenHost
@@ -109,7 +109,7 @@ fun ConversationSettingsUi(
     var fullScreenItem by remember { mutableStateOf<SharedMediaItem?>(null) }
     // The contact's photo opened full-screen. Kept out of [fullScreenItem]: that
     // one is a chat attachment, this is a profile image. Null = closed.
-    var fullScreenAvatarUrl by remember { mutableStateOf<String?>(null) }
+    var fullScreenAvatar by remember { mutableStateOf<OdinId?>(null) }
 
     val isWithSelf = uiState.conversation?.isWithSelf == true
     // Larger primary line = resolved full name; smaller line = the raw odinId.
@@ -124,7 +124,7 @@ fun ConversationSettingsUi(
             // Suppress this screen's app bar while the full-screen viewer is open
             // so the viewer's own top bar doesn't stack under it (see
             // ChatMediaFullScreenHost / ConversationMediaScreen).
-            if (fullScreenItem == null && fullScreenAvatarUrl == null) {
+            if (fullScreenItem == null && fullScreenAvatar == null) {
                 TopAppBar(
                     title = {},
                     navigationIcon = {
@@ -181,7 +181,7 @@ fun ConversationSettingsUi(
                         // The identity's public photo. One that serves none renders
                         // initials, which PublicAvatar leaves un-tappable.
                         onAvatarClick = conversation.avatarModel.odinId?.let { odinId ->
-                            { fullScreenAvatarUrl = odinId.publicImageUrl() }
+                            { fullScreenAvatar = odinId }
                         },
                     )
 
@@ -230,11 +230,11 @@ fun ConversationSettingsUi(
                 onDismiss = { fullScreenItem = null },
             )
 
-            fullScreenAvatarUrl?.let { url ->
+            fullScreenAvatar?.let { odinId ->
                 AvatarFullScreenViewer(
-                    source = SubSamplingImageSource.Url(url),
+                    source = SubSamplingImageSource.Avatar(odinId),
                     title = displayName,
-                    onDismiss = { fullScreenAvatarUrl = null },
+                    onDismiss = { fullScreenAvatar = null },
                 )
             }
         }

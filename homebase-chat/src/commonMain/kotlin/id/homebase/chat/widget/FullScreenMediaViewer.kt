@@ -67,6 +67,8 @@ import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.chat_image_unavailable
+import id.homebase.resources.chat_media_quality_hd
+import id.homebase.resources.chat_message_image_attachment
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
 import id.homebase.resources.share
@@ -82,12 +84,13 @@ fun FullScreenMediaViewer(
     modifier: Modifier = Modifier,
     data: FullScreenOverlay.ViewMessageData,
     isDownloading: Boolean = false,
-    onShare: (messageId: Uuid, payloadKey: String) -> Unit,
-    onSave: (messageId: Uuid, payloadKey: String) -> Unit,
+    // Null hides the control rather than leaving it present-but-dead.
+    onShare: ((messageId: Uuid, payloadKey: String) -> Unit)? = null,
+    onSave: ((messageId: Uuid, payloadKey: String) -> Unit)? = null,
     // Save a viewed sticker into the user's library. Default no-op for non-chat hosts
     // (Moments) that have no sticker library; the chat pane passes a real handler.
     onSaveSticker: (messageId: Uuid, payloadKey: String) -> Unit = { _, _ -> },
-    onDelete: (messageId: Uuid) -> Unit,
+    onDelete: ((messageId: Uuid) -> Unit)? = null,
     onDismiss: () -> Unit,
     onNavigateToMessage: (() -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope,
@@ -144,14 +147,21 @@ fun FullScreenMediaViewer(
                     initialValue = localAttachmentStore.get(data.messageId, payload.key),
                 )
 
-            when (val resolved = resolveMediaPageSource(localContext, payload.iv != null, payloadIv)) {
+            when (
+                val resolved = resolveMediaPageSource(
+                    localContext,
+                    payload.iv != null,
+                    payloadIv,
+                    data.isEncrypted,
+                )
+            ) {
                 is MediaPageSource.LocalFile -> {
                     val source = remember(resolved.path) {
                         SubSamplingImageSource.LocalFile(filePath = resolved.path)
                     }
                     ZoomableSubSamplingImage(
                         source = source,
-                        contentDescription = payload.descriptorContent,
+                        contentDescription = stringResource(MR.string.chat_message_image_attachment),
                         onTap = { showUI = !showUI },
                         sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
                         animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
@@ -168,16 +178,18 @@ fun FullScreenMediaViewer(
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
                             loadFullPayload = true,
                             lastModified = payload.lastModified,
-                            keyHeader = KeyHeader(
-                                iv = resolved.iv,
-                                aesKey = data.keyHeader.aesKey,
-                            ),
+                            isEncrypted = resolved.iv != null,
+                            keyHeader = resolved.iv
+                                ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
+                                ?: KeyHeader.empty(),
+                            remoteOdinId = data.remoteOdinId,
+                            globalTransitId = data.globalTransitId,
                         )
                         SubSamplingImageSource.Remote(imageData)
                     }
                     ZoomableSubSamplingImage(
                         source = source,
-                        contentDescription = payload.descriptorContent,
+                        contentDescription = stringResource(MR.string.chat_message_image_attachment),
                         onTap = { showUI = !showUI },
                         sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
                         animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
@@ -223,8 +235,13 @@ fun FullScreenMediaViewer(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
+                        val currentIsHighQuality = data.payloads
+                            .firstOrNull { it.key == currentPayloadKey }
+                            ?.isHighQualityImage() == true
+                        val hdLabel = stringResource(MR.string.chat_media_quality_hd)
+                        val timestamp = formatTimestamp(data.userDate)
                         Text(
-                            text = formatTimestamp(data.userDate),
+                            text = if (currentIsHighQuality) "$timestamp · $hdLabel" else timestamp,
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }
@@ -240,46 +257,54 @@ fun FullScreenMediaViewer(
 
                 },
                 actions = {
-                    Box {
-                        IconButton(onClick = {
-                            showMenu = true
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = stringResource(MR.string.chat_options)
+                    // Offer "Save sticker" only when the current payload is a real
+                    // transparent sticker (descriptor ImageFile(isSticker = true)),
+                    // never on an ordinary photo.
+                    val currentIsSticker = data.payloads
+                        .firstOrNull { it.key == currentPayloadKey }
+                        ?.descriptorInfo()
+                        ?.let { it is DescriptorContent.ImageFile && it.isSticker } == true
+                    val hasMenuItems = onSave != null || onDelete != null ||
+                        onNavigateToMessage != null || currentIsSticker
+                    if (hasMenuItems) {
+                        Box {
+                            IconButton(onClick = {
+                                showMenu = true
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = stringResource(MR.string.chat_options)
+                                )
+                            }
+                            FullScreenMediaMenu(
+                                showMenu = showMenu,
+                                dismissMenu = { showMenu = false },
+                                onSave = onSave?.let { save ->
+                                    {
+                                        showMenu = false
+                                        save(data.messageId, currentPayloadKey)
+                                    }
+                                },
+                                onSaveSticker = if (currentIsSticker) {
+                                    {
+                                        showMenu = false
+                                        onSaveSticker(data.messageId, currentPayloadKey)
+                                    }
+                                } else null,
+                                onDelete = onDelete?.let { delete ->
+                                    {
+                                        showMenu = false
+                                        delete(data.messageId)
+                                    }
+                                },
+                                onNavigateToMessage = onNavigateToMessage?.let {
+                                    {
+                                        showMenu = false
+                                        it()
+                                    }
+                                },
                             )
                         }
-                        // Offer "Save sticker" only when the current payload is a real
-                        // transparent sticker (descriptor ImageFile(isSticker = true)),
-                        // never on an ordinary photo.
-                        val currentIsSticker = data.payloads
-                            .firstOrNull { it.key == currentPayloadKey }
-                            ?.descriptorInfo()
-                            ?.let { it is DescriptorContent.ImageFile && it.isSticker } == true
-                        FullScreenMediaMenu(
-                            showMenu = showMenu,
-                            dismissMenu = { showMenu = false },
-                            onSave = {
-                                showMenu = false
-                                onSave(data.messageId, currentPayloadKey)
-                            },
-                            onSaveSticker = if (currentIsSticker) {
-                                {
-                                    showMenu = false
-                                    onSaveSticker(data.messageId, currentPayloadKey)
-                                }
-                            } else null,
-                            onDelete = {
-                                showMenu = false
-                                onDelete(data.messageId)
-                            },
-                            onNavigateToMessage = onNavigateToMessage?.let {
-                                {
-                                    showMenu = false
-                                    it()
-                                }
-                            },
-                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -336,7 +361,9 @@ fun FullScreenMediaViewer(
                             }
                         }
                     }
-                    if (railIv != null) {
+                    // Same plaintext rule as the page above: an unencrypted file has no
+                    // rail IV either, and still has bytes to show.
+                    if (railIv != null || !data.isEncrypted) {
                         val thumbImageData = remember(
                             data.driveId,
                             data.fileId,
@@ -354,10 +381,12 @@ fun FullScreenMediaViewer(
                                 // the animated original instead of a never-generated
                                 // server thumbnail (its preview thumb is WebP).
                                 payloadContentType = payload.contentType,
-                                keyHeader = KeyHeader(
-                                    iv = railIv,
-                                    aesKey = data.keyHeader.aesKey
-                                )
+                                isEncrypted = railIv != null,
+                                keyHeader = railIv
+                                    ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
+                                    ?: KeyHeader.empty(),
+                                remoteOdinId = data.remoteOdinId,
+                                globalTransitId = data.globalTransitId,
                             )
                         }
                         HomebaseImage(
@@ -371,7 +400,7 @@ fun FullScreenMediaViewer(
                                     shape = RoundedCornerShape(8.dp)
                                 ),
                             contentScale = ContentScale.Crop,
-                            contentDescription = payload.descriptorContent,
+                            contentDescription = stringResource(MR.string.chat_message_image_attachment),
                             animatedVisibilityScope = animatedVisibilityScope,
                             sharedTransitionScope = null,
                         )
@@ -380,11 +409,13 @@ fun FullScreenMediaViewer(
                 if (data.payloads.size > 1) {
                     Spacer(modifier = Modifier.height(16.dp))
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    IconButton(onClick = { onShare(data.messageId, currentPayloadKey) }) {
-                        Icon(Icons.Default.Share, contentDescription = stringResource(MR.string.share))
+                if (onShare != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        IconButton(onClick = { onShare(data.messageId, currentPayloadKey) }) {
+                            Icon(Icons.Default.Share, contentDescription = stringResource(MR.string.share))
+                        }
                     }
                 }
             }

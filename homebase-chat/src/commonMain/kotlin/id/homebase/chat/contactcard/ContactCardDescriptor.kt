@@ -56,6 +56,9 @@ data class ContactCardDescriptor(
             it.domainName.equals(author?.trim(), ignoreCase = true) || it in savedContacts
         }
 
+    // Identity only: a phone/email match needs every override blob, which the first frame lacks.
+    fun isSavedIn(savedContacts: Set<OdinId>): Boolean = identity() in savedContacts
+
     fun isValid(): Boolean {
         if (displayName.codePointCount() > MAX_NAME_CODEPOINTS) return false
         if (odinId.codePointCount() > MAX_VALUE_CODEPOINTS) return false

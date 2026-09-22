@@ -390,10 +390,9 @@ class MomentDetailViewModel(
             is MomentDetailUiAction.MediaClicked -> {
                 val moment = uiState.value.moment ?: return
                 val payload = moment.payloads.firstOrNull { it.key == action.payloadKey } ?: return
-                val contentType = payload.contentType ?: ""
 
                 when {
-                    contentType.startsWith("image/") -> {
+                    payload.isImage() -> {
                         _overlay.value = FullScreenOverlay.ViewMessageData(
                             messageId = moment.id,
                             // Empty title for moments — the chat viewer renders this
@@ -413,8 +412,7 @@ class MomentDetailViewModel(
                         )
                     }
 
-                    contentType.startsWith("video/") ||
-                            contentType == "application/vnd.apple.mpegurl" -> {
+                    payload.isVideo() -> {
                         val ivBytes = payload.iv?.let { Base64.decode(it) }
                         // The video player needs a per-payload KeyHeader (the
                         // payload's IV + the moment's master AES key). If the IV

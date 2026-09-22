@@ -1,10 +1,12 @@
 package id.homebase.core.image
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.PayloadTooLargeException
 import id.homebase.api.client.RetryConfig
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.client.withRetry
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
@@ -40,6 +42,7 @@ data class CachedImage(val bytes: ByteArray, val contentType: String, val size: 
 class HomebaseImageLoader(
     private val driveFileProvider: DriveFileProvider,
     private val fileOperationsProvider: FileOperationsProvider,
+    private val peerFileProvider: PeerFileByGlobalTransitProvider,
 ) {
     // Durable scope hosting full-payload loads so a cancelled caller (e.g. a
     // prefetch whose grid item left composition) does not abort a load that
@@ -69,13 +72,18 @@ class HomebaseImageLoader(
 
         // Default retry configuration for image loading.
         // retryOn unwraps the RuntimeException wrapper produced below so the real
-        // cause (e.g. NotFoundException) still short-circuits retries.
+        // cause (e.g. NotFoundException) still short-circuits retries. A 403 is a
+        // standing answer, not a blip: retrying it four times with backoff only
+        // multiplies the log noise.
         val DEFAULT_RETRY_CONFIG = RetryConfig(
             maxRetries = 3,
             initialDelayMs = 500L,
             maxDelayMs = 5000L,
             backoffMultiplier = 2.0,
-            retryOn = { e -> (e.cause ?: e) !is NotFoundException }
+            retryOn = { e ->
+                val cause = e.cause ?: e
+                cause !is NotFoundException && cause !is ForbiddenException
+            }
         )
     }
 
@@ -131,15 +139,30 @@ class HomebaseImageLoader(
         // Fetch from server with retry
         return withRetry(retryConfig, TAG) {
             val response = try {
-                driveFileProvider.getThumbBytesDecrypted(
-                    driveId = data.driveId,
-                    fileId = data.fileId,
-                    payloadKey = data.payloadKey,
-                    keyHeader = data.keyHeader,
-                    width = nativeSize.pixelWidth,
-                    height = nativeSize.pixelHeight,
-                    lastModified = data.lastModified,
-                )
+                if (data.isOverPeer) {
+                    // Followed-post media lives on the author's drive: read the thumbnail over peer
+                    // by globalTransitId. On 404 (no server thumb) the caller keeps the embedded
+                    // preview — no regression.
+                    peerFileProvider.getThumbOverPeerByGlobalTransitId(
+                        peer = data.remoteOdinId!!,
+                        driveId = data.driveId,
+                        globalTransitId = data.globalTransitId!!,
+                        payloadKey = data.payloadKey,
+                        width = nativeSize.pixelWidth,
+                        height = nativeSize.pixelHeight,
+                        keyHeader = data.keyHeader,
+                    )
+                } else {
+                    driveFileProvider.getThumbBytesDecrypted(
+                        driveId = data.driveId,
+                        fileId = data.fileId,
+                        payloadKey = data.payloadKey,
+                        keyHeader = data.keyHeader,
+                        width = nativeSize.pixelWidth,
+                        height = nativeSize.pixelHeight,
+                        lastModified = data.lastModified,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -203,19 +226,29 @@ class HomebaseImageLoader(
     }
 
     private fun fullPayloadCacheKey(data: HomebaseImageData): String =
-        "${data.driveId}/${data.fileId}/${data.payloadKey}/${data.lastModified ?: 0}"
+        "${data.remoteOdinId?.let { "$it@" } ?: ""}${data.driveId}/${data.fileId}/${data.payloadKey}/${data.lastModified ?: 0}"
 
     private suspend fun fetchFullPayloadUncached(
         data: HomebaseImageData, retryConfig: RetryConfig
     ): CachedImage? {
         return withRetry(retryConfig, TAG) {
             val response = try {
-                driveFileProvider.getPayloadBytesDecrypted(
-                    driveId = data.driveId,
-                    fileId = data.fileId,
-                    key = data.payloadKey,
-                    keyHeader = data.keyHeader
-                )
+                if (data.isOverPeer) {
+                    peerFileProvider.getPayloadOverPeerByGlobalTransitId(
+                        peer = data.remoteOdinId!!,
+                        driveId = data.driveId,
+                        globalTransitId = data.globalTransitId!!,
+                        payloadKey = data.payloadKey,
+                        keyHeader = data.keyHeader,
+                    )
+                } else {
+                    driveFileProvider.getPayloadBytesDecrypted(
+                        driveId = data.driveId,
+                        fileId = data.fileId,
+                        key = data.payloadKey,
+                        keyHeader = data.keyHeader,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PayloadTooLargeException) {

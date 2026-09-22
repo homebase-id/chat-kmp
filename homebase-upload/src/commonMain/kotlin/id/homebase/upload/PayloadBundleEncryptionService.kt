@@ -93,6 +93,7 @@ class PayloadBundleEncryptionService(
                         trimStartMs = payload.trimStartMs,
                         trimEndMs = payload.trimEndMs,
                         inputBlobUrl = payload.inputBlobUrl,
+                        videoQuality = payload.videoQuality,
                     )
 
                     newPayloads += result.payloads

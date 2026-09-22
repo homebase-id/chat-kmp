@@ -26,6 +26,8 @@ data class VaultUiState(
      * survives navigating out to the crop/draw screen and back. Null when the editor is closed.
      */
     val pendingEditor: VaultPendingEditor? = null,
+    /** Gates the gallery's "Send as WebDrop" affordances on the WebDrop drive being activated. */
+    val webDropActivated: Boolean = false,
 )
 
 /** Which editor screen a crop/draw request routes to. */
@@ -141,6 +143,7 @@ sealed interface VaultUiAction {
     data class EntryClicked(val file: VaultEntry) : VaultUiAction
     data class ShareFile(val file: VaultEntry) : VaultUiAction
     data class SharePage(val file: VaultEntry, val payloadKey: String) : VaultUiAction
+    data class SendAsWebDrop(val file: VaultEntry) : VaultUiAction
     data class SavePage(val file: VaultEntry, val payloadKey: String) : VaultUiAction
     data class RenameFile(val file: VaultEntry, val newName: String) : VaultUiAction
     data class DeleteFile(val file: VaultEntry) : VaultUiAction
@@ -161,6 +164,9 @@ sealed interface VaultUiEvent {
         val fileName: String,
     ) : VaultUiEvent
     data class Error(val error: VaultError) : VaultUiEvent
+
+    /** The WebDrop draft is seeded; the screen should navigate to the WebDrop composer. */
+    data object OpenWebDrop : VaultUiEvent
     data class OpenNoteEditor(val sectionId: Uuid, val entryId: Uuid? = null) : VaultUiEvent
     data class NavigateToCropper(val requestId: Uuid) : VaultUiEvent
     data class NavigateToDrawer(val requestId: Uuid) : VaultUiEvent
@@ -179,6 +185,8 @@ sealed interface VaultError {
     data object DeletePageFailed : VaultError
     data object SaveNotesFailed : VaultError
     data class UpdateLabelFailed(val fileName: String) : VaultError
+    data object WebDropPrepareFailed : VaultError
+    data class WebDropTooManyFiles(val max: Int) : VaultError
     data object DownloadPageFailed : VaultError
     data object OutboxUploadFailed : VaultError
     data object EditPageFailed : VaultError

@@ -27,6 +27,7 @@ import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.resources.MR
 import id.homebase.resources.chat_pinned_bar_count
 import id.homebase.resources.chat_pinned_bar_cycle
@@ -94,7 +95,7 @@ fun PinnedMessagesBar(
                     )
                 }
                 Text(
-                    text = previewText,
+                    text = previewText.withEmojiFont(),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,

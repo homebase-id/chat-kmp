@@ -62,6 +62,36 @@ class NotificationService: UNNotificationServiceExtension {
         let unEncryptedMessage = options["unEncryptedMessage"] as? String
         let appDisplayName = payload["appDisplayName"] as? String ?? "Homebase"
 
+        // Sequenced ahead of the avatar fetch rather than raced with it: the tray read is a
+        // local call that returns in milliseconds, so nesting costs almost nothing of the
+        // 30s budget and needs no join, and it puts the badge on `content` — which is also
+        // `bestAttemptContent` — before any terminal contentHandler path can run.
+        applyBadgeFromTray(to: content) { [weak self] in
+            guard let self = self else {
+                contentHandler(content)
+                return
+            }
+            self.decorate(
+                content: content,
+                senderId: senderId,
+                appId: appId,
+                typeId: typeId,
+                unEncryptedMessage: unEncryptedMessage,
+                appDisplayName: appDisplayName,
+                contentHandler: contentHandler
+            )
+        }
+    }
+
+    private func decorate(
+        content: UNMutableNotificationContent,
+        senderId: String,
+        appId: String,
+        typeId: String,
+        unEncryptedMessage: String?,
+        appDisplayName: String,
+        contentHandler: @escaping (UNNotificationContent) -> Void
+    ) {
         // Set default content
         content.title = appDisplayName
         content.body = formatBody(
@@ -130,6 +160,38 @@ class NotificationService: UNNotificationServiceExtension {
         }
     }
 
+    // MARK: - App Icon Badge
+
+    private let badgeQueue = DispatchQueue(label: "id.homebase.nse.badge")
+
+    /// The tray is the count, so nothing is persisted between runs: a notification the
+    /// user swiped away or an extension run iOS skipped costs one push of drift, not a
+    /// stored total that never comes back. `+1` is this notification, not yet in the tray.
+    ///
+    /// Counted here rather than sent as `aps.badge`: the payload transits the
+    /// Odin.PushNotification relay and Firebase, and the unread total must not join it.
+    private func applyBadgeFromTray(
+        to content: UNMutableNotificationContent,
+        then next: @escaping () -> Void
+    ) {
+        let queue = badgeQueue
+        var resumed = false
+        let resume: (Int?) -> Void = { delivered in
+            queue.async {
+                guard !resumed else { return }
+                resumed = true
+                if let delivered = delivered {
+                    content.badge = NSNumber(value: delivered + 1)
+                }
+                next()
+            }
+        }
+
+        UNUserNotificationCenter.current().getDeliveredNotifications { resume($0.count) }
+        // The push outranks the badge, so a tray read that never calls back can't hold it.
+        queue.asyncAfter(deadline: .now() + 2) { resume(nil) }
+    }
+
     // MARK: - Communication Notification Style
 
     private func applyCommunicationStyle(
@@ -172,7 +234,11 @@ class NotificationService: UNNotificationServiceExtension {
 
         do {
             let updatedContent = try content.updating(from: intent)
-            return updatedContent
+            guard let restamped = updatedContent.mutableCopy() as? UNMutableNotificationContent
+            else { return updatedContent }
+            // updating(from:) is not documented to carry the badge across.
+            restamped.badge = content.badge
+            return restamped
         } catch {
             return nil
         }

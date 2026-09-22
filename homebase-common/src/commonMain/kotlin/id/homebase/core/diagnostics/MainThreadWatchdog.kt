@@ -33,7 +33,8 @@ import kotlin.time.TimeSource
  *    `delay(tickIntervalMs)` and compares it to the wall-clock gap after waking up. If the gap
  *    vastly exceeds what was requested, the loop itself was starved — logged as
  *    [StallKind.WatchdogStarved] the instant it recovers. Needs nothing to run *during* the
- *    freeze.
+ *    freeze. Process CPU time is sampled either side of the same gap so the breadcrumb says
+ *    whether the OS suspended us or we froze ourselves (see [classifyStallCause]).
  *  - **[MainThreadLivenessProbe]** (Android/JVM only): a raw OS thread, scheduled directly by
  *    the OS rather than any coroutine dispatcher, independently checks the UI thread is alive.
  *    It survives `Dispatchers.Default` pool exhaustion that would otherwise silence this loop
@@ -41,6 +42,9 @@ import kotlin.time.TimeSource
  *
  * Both detectors report through one shared, throttled [StallReporter], so the same incident
  * can't produce two log lines.
+ *
+ * Both also share one remaining blind spot: they report only once the stall *ends*, so a process
+ * killed while stalled writes nothing. [ProcessHeartbeat] closes that from the next launch.
  *
  * Platform notes (see `captureMainThreadStackTrace` actuals):
  *  - Android: stack comes from the main `Looper` thread, ~1s before the OS ANR cutoff.
@@ -55,7 +59,9 @@ class MainThreadWatchdog(
     throttleMs: Long = 30_000,
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val workDispatcher: CoroutineDispatcher = Dispatchers.Default,
-    log: (String) -> Unit = { Logger.w(tag = TAG) { it } },
+    private val log: (String) -> Unit = { Logger.w(tag = TAG) { it } },
+    private val heartbeat: ProcessHeartbeat? = null,
+    private val heartbeatIntervalMs: Long = 5_000,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + workDispatcher)
     private val timeOrigin = TimeSource.Monotonic.markNow()
@@ -65,6 +71,10 @@ class MainThreadWatchdog(
     private var livenessHandle: MainThreadLivenessProbe.Handle? = null
 
     fun start() {
+        heartbeat?.let { hb ->
+            hb.postMortem()?.let(log)
+            hb.beat()
+        }
         installMainThreadLivenessProbe()
         installMemoryDiagnostics()
         livenessHandle = MainThreadLivenessProbe.startIfAvailable(
@@ -86,6 +96,7 @@ class MainThreadWatchdog(
         }
 
         scope.launch {
+            var lastBeatMs = nowMs()
             while (isActive) {
                 val pong = CompletableDeferred<Unit>()
                 val postedAt = nowMs()
@@ -116,10 +127,12 @@ class MainThreadWatchdog(
                 // rescheduling us: if that takes far longer than requested, the watchdog's own
                 // loop — not just the UI thread — was starved.
                 val checkpointMs = nowMs()
+                val checkpointTimes = captureProcessTimes()
                 delay(tickIntervalMs)
                 val actualGapMs = nowMs() - checkpointMs
                 val starvedMs = detectWatchdogStarvation(expectedGapMs = tickIntervalMs, actualGapMs = actualGapMs)
                 if (starvedMs != null) {
+                    val processDelta = processTimesDelta(checkpointTimes, captureProcessTimes())
                     val stack = captureMainThreadStackTrace()
                     reporter.reportIfDue {
                         renderStallMessage(
@@ -128,10 +141,16 @@ class MainThreadWatchdog(
                                 source = StallSource.CoroutineLoop,
                                 observedMs = starvedMs,
                                 memory = MemoryDiagnostics.capture(),
+                                processDelta = processDelta,
                             ),
                             stack = stack,
                         )
                     }
+                }
+
+                if (heartbeat != null && nowMs() - lastBeatMs >= heartbeatIntervalMs) {
+                    lastBeatMs = nowMs()
+                    heartbeat.beat()
                 }
             }
         }

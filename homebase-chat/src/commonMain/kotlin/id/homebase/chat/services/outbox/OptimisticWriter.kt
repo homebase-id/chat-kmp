@@ -15,6 +15,7 @@ import id.homebase.api.client.drives.files.LocalAppMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionEntry
 import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.client.drives.files.reactions.SetReactionsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.eventbus.BackendEvent
@@ -24,6 +25,11 @@ import id.homebase.api.sync.database.CancelOutcome
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.EnqueueResult
+import id.homebase.api.sync.database.enqueued
+import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
+import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
+import kotlinx.coroutines.CancellationException
 import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -51,7 +57,7 @@ class OptimisticWriter(
     private val fileProcessor: MainIndexMetaHelpers.HomebaseFileProcessor =
         MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
 
-    // Per-message lock guarding the read-modify-write inside writeReactionToggle.
+    // Per-message lock guarding the read-modify-write inside writeReactionToggle and setReactions.
     // Without this, rapid taps on the bottom sheet have all five coroutines
     // read the same starting state, each compute "remove my one", and last-
     // writer-wins clobbers most of the removes. Per-(driveId, uniqueId) so
@@ -365,7 +371,7 @@ class OptimisticWriter(
             credentials.getIdentityId(), driveId, uid
         ) ?: throw IllegalStateException("no file by uid")
 
-        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+        val lastModified = existingFile.optimisticStamp()
 
         val existing = existingFile.fileMetadata.localAppData
         val existingTags = existing?.tags.orEmpty()
@@ -494,22 +500,177 @@ class OptimisticWriter(
         }
     }
 
-    /** Marks a file as deleted in the local DB and emits BatchReceived so the UI
-     *  immediately shows it as "Deleted File" without waiting for the outbox.
-     *  Returns the original file so the caller can rollback if the outbox enqueue fails. */
-    suspend fun writeDelete(driveId: Uuid, uniqueId: Uuid): HomebaseFile? {
+    /**
+     * Soft-deletes a file: queues the server delete, then marks the local row deleted
+     * and emits BatchReceived so the UI shows it before the outbox round-trip. The
+     * enqueue is the gate — a refused enqueue leaves the row untouched, so there is
+     * never a local mutation the server will not learn about. Once queued, a failing
+     * local write is non-fatal: the outbox delivers and sync brings the row back.
+     */
+    suspend fun deleteFile(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        recipients: List<OdinId>?,
+        hardDelete: Boolean = false,
+    ): MutationOutcome = writeDelete(driveId, uniqueId) { original ->
+        outboxSync.tryEnqueue(
+            request = DeleteLocalFilesByFileIdRequest(
+                driveId = driveId,
+                fileIds = listOf(original.fileId),
+                recipients = recipients,
+                hardDelete = hardDelete,
+            )
+        )
+    }
+
+    /**
+     * Local half of [deleteFile] alone, for a caller whose server delete is keyed by a
+     * fileId it already holds and is already durably queued.
+     */
+    suspend fun writeDeleteAlreadyQueued(driveId: Uuid, uniqueId: Uuid): MutationOutcome =
+        writeDelete(driveId, uniqueId, enqueue = null)
+
+    /**
+     * Toggles the caller's reaction: queues the server toggle, then updates
+     * `reactionPreview` and `localAppData.localReactions` and emits BatchReceived.
+     * [recipients] resolves from the pre-toggle row inside the gate, so a throw there
+     * leaves the row untouched too. Runs under the per-message lock, so rapid taps
+     * enqueue in the order their local toggles apply. The result type is
+     * [ToggleReactionResultType.None] unless the outcome is [MutationOutcome.Queued].
+     */
+    suspend fun toggleReaction(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        reactionJson: String,
+        recipients: suspend (original: HomebaseFile) -> List<OdinId>,
+    ): Pair<ToggleReactionResultType, MutationOutcome> =
+        writeReactionToggle(driveId, uniqueId, reactionJson) { original ->
+            outboxSync.tryEnqueue(
+                request = ToggleReactionOutboxRequest(
+                    driveId = driveId,
+                    fileId = original.fileId,
+                    reaction = reactionJson,
+                    recipients = recipients(original),
+                )
+            )
+        }
+
+    /**
+     * Declares the caller's reaction state for one scope of a message: [remove] is deleted,
+     * [add] is added, as ONE outbox row keyed by [rowKey] (see [OutboxSync.replaceEnqueue])
+     * that replaces any still-pending row for the same scope. Unlike [toggleReaction] the
+     * intent is fixed at tap time, so a retry cannot flip it. The local mirror only counts
+     * reactions that actually change, so re-applying the same state is a no-op there too.
+     */
+    suspend fun setReactions(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        rowKey: Uuid,
+        add: Set<String>,
+        remove: Set<String>,
+        recipients: suspend (original: HomebaseFile) -> List<OdinId>,
+    ): MutationOutcome = reactionLockFor(driveId, uniqueId).withLock {
         val credentials = credentialsManager.requireActiveCredentials()
 
         val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
             credentials.getIdentityId(), driveId, uniqueId
-        ) ?: return null
+        )
+        if (existingFile == null) {
+            Logger.w(tag = TAG) { "Optimistic reaction set: no row for uniqueId=$uniqueId" }
+            return@withLock MutationOutcome.NoRow
+        }
 
-        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+        gate("reaction set", uniqueId) {
+            outboxSync.replaceEnqueue(
+                request = SetReactionsOutboxRequest(
+                    driveId = driveId,
+                    fileId = existingFile.fileId,
+                    add = add.toList(),
+                    remove = remove.toList(),
+                    recipients = recipients(existingFile),
+                ),
+                uniqueId = rowKey,
+                dependencyUniqueId = uniqueId,
+            )
+        }?.let { return@withLock it }
+
+        val currentLocalReactions =
+            existingFile.fileMetadata.localAppData?.localReactions.orEmpty()
+        val actuallyRemoved = remove.filter { it in currentLocalReactions }
+        val actuallyAdded = add.filter { it !in currentLocalReactions }
+        val updatedLocalReactions = currentLocalReactions - actuallyRemoved.toSet() + actuallyAdded
+        Logger.i(tag = TAG) {
+            "Optimistic reaction set uniqueId=$uniqueId rowKey=$rowKey own before=$currentLocalReactions " +
+                "after=$updatedLocalReactions"
+        }
+
+        val currentReactions =
+            existingFile.fileMetadata.reactionPreview?.reactions.orEmpty().toMutableMap()
+        for (reactionJson in actuallyRemoved) {
+            val key = currentReactions.entries
+                .firstOrNull { it.value.reactionContent == reactionJson }?.key ?: continue
+            val entry = currentReactions.getValue(key)
+            if (entry.count <= 1) currentReactions.remove(key)
+            else currentReactions[key] = entry.copy(count = entry.count - 1)
+        }
+        for (reactionJson in actuallyAdded) {
+            val key = currentReactions.entries
+                .firstOrNull { it.value.reactionContent == reactionJson }?.key
+            if (key == null) {
+                currentReactions[reactionJson] = ReactionEntry(
+                    key = reactionJson,
+                    count = 1,
+                    reactionContent = reactionJson
+                )
+            } else {
+                val entry = currentReactions.getValue(key)
+                currentReactions[key] = entry.copy(count = entry.count + 1)
+            }
+        }
+
+        val updatedFile = existingFile.copy(
+            fileMetadata = existingFile.fileMetadata.copy(
+                updated = existingFile.optimisticStamp(),
+                reactionPreview = (existingFile.fileMetadata.reactionPreview
+                    ?: ReactionSummary()).copy(
+                    reactions = currentReactions
+                ),
+                localAppData = (existingFile.fileMetadata.localAppData
+                    ?: LocalAppMetadata()).copy(
+                    localReactions = updatedLocalReactions
+                ),
+            )
+        )
+
+        try {
+            upsertAndEmit(credentials.getIdentityId(), driveId, updatedFile)
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) {
+                "Optimistic reaction set failed (non-fatal, already queued) for uniqueId=$uniqueId"
+            }
+        }
+        MutationOutcome.Queued
+    }
+
+    private suspend fun writeDelete(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        enqueue: (suspend (original: HomebaseFile) -> EnqueueResult)?,
+    ): MutationOutcome {
+        val credentials = credentialsManager.requireActiveCredentials()
+
+        val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), driveId, uniqueId
+        ) ?: return MutationOutcome.NoRow
+
+        if (enqueue != null) {
+            gate("delete", uniqueId) { enqueue(existingFile) }?.let { return it }
+        }
 
         val deletedFile = existingFile.copy(
             fileState = FileState.Deleted,
             fileMetadata = existingFile.fileMetadata.copy(
-                updated = lastModified,
+                updated = existingFile.optimisticStamp(),
                 payloads = emptyList(),
                 appData = existingFile.fileMetadata.appData.copy(
                     content = "",
@@ -527,66 +688,33 @@ class OptimisticWriter(
         )
 
         try {
-            val batch = listOf(deletedFile)
-            fileProcessor.baseUpsertEntryZapZap(
-                identityId = credentials.getIdentityId(),
-                driveId = driveId,
-                fileHeaders = batch,
-                cursor = null
-            )
-
-            eventBus.emit(
-                BackendEvent.DataEvent.BatchReceived(
-                    driveId = driveId,
-                    batchData = batch,
-                )
-            )
+            upsertAndEmit(credentials.getIdentityId(), driveId, deletedFile)
         } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "Optimistic delete failed for uniqueId=$uniqueId" }
-            return null
+            Logger.e(throwable = e, tag = TAG) {
+                "Optimistic delete failed (non-fatal, already queued) for uniqueId=$uniqueId"
+            }
         }
 
-        return existingFile
+        return MutationOutcome.Queued
     }
 
-    /** Restores a file that was optimistically deleted. Call when the outbox enqueue fails. */
-    suspend fun rollbackWrite(driveId: Uuid, original: HomebaseFile) {
-        val credentials = credentialsManager.requireActiveCredentials()
-        try {
-            val batch = listOf(original)
-            fileProcessor.baseUpsertEntryZapZap(
-                identityId = credentials.getIdentityId(),
-                driveId = driveId,
-                fileHeaders = batch,
-                cursor = null
-            )
-
-            eventBus.emit(
-                BackendEvent.DataEvent.BatchReceived(
-                    driveId = driveId,
-                    batchData = batch,
-                )
-            )
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "Optimistic delete rollback failed for fileId=${original.fileId}" }
-        }
-    }
-
-    /** Optimistically updates the reactionPreview AND localAppData.localReactions
-     *  on a message and emits BatchReceived. Returns the original file for
-     *  rollback, and the optimistic result type. */
-    suspend fun writeReactionToggle(
+    private suspend fun writeReactionToggle(
         driveId: Uuid,
         uniqueId: Uuid,
         reactionJson: String,
-    ): Pair<ToggleReactionResultType, HomebaseFile?> = reactionLockFor(driveId, uniqueId).withLock {
+        enqueue: suspend (original: HomebaseFile) -> EnqueueResult,
+    ): Pair<ToggleReactionResultType, MutationOutcome> = reactionLockFor(driveId, uniqueId).withLock {
         val credentials = credentialsManager.requireActiveCredentials()
 
         val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
             credentials.getIdentityId(), driveId, uniqueId
-        ) ?: return@withLock Pair(ToggleReactionResultType.None, null)
+        ) ?: return@withLock Pair(ToggleReactionResultType.None, MutationOutcome.NoRow)
 
-        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+        gate("reaction toggle", uniqueId) { enqueue(existingFile) }?.let {
+            return@withLock Pair(ToggleReactionResultType.None, it)
+        }
+
+        val lastModified = existingFile.optimisticStamp()
 
         // isAdding is per-user, not per-aggregate: in groups, another user
         // having reacted with the same emoji must not flip our toggle into a
@@ -645,35 +773,85 @@ class OptimisticWriter(
         )
 
         try {
-            val batch = listOf(updatedFile)
-            fileProcessor.baseUpsertEntryZapZap(
-                identityId = credentials.getIdentityId(),
-                driveId = driveId,
-                fileHeaders = batch,
-                cursor = null
-            )
-
-            eventBus.emit(
-                BackendEvent.DataEvent.BatchReceived(
-                    driveId = driveId,
-                    batchData = batch,
-                )
-            )
+            upsertAndEmit(credentials.getIdentityId(), driveId, updatedFile)
         } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "Optimistic reaction toggle failed for uniqueId=$uniqueId" }
-            return@withLock Pair(ToggleReactionResultType.None, null)
+            Logger.e(throwable = e, tag = TAG) {
+                "Optimistic reaction toggle failed (non-fatal, already queued) for uniqueId=$uniqueId"
+            }
         }
 
         val resultType = if (isAdding)
             ToggleReactionResultType.Added
         else
             ToggleReactionResultType.Deleted
-        Pair(resultType, existingFile)
+        Pair(resultType, MutationOutcome.Queued)
     }
+
+    // Null means "queued, go ahead". A throw from the enqueue (recipient resolution,
+    // typically) is a refusal like any other; only cancellation propagates.
+    private suspend fun gate(
+        what: String,
+        uniqueId: Uuid,
+        enqueue: suspend () -> EnqueueResult,
+    ): MutationOutcome.Refused? {
+        val result = try {
+            enqueue()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            Logger.e(throwable = t, tag = TAG) {
+                "Optimistic $what: enqueue threw for uniqueId=$uniqueId — row left untouched"
+            }
+            return MutationOutcome.Refused(t)
+        }
+        if (result.enqueued) return null
+        Logger.w(tag = TAG) {
+            "Optimistic $what: outbox enqueue → $result for uniqueId=$uniqueId — row left untouched"
+        }
+        return MutationOutcome.Refused((result as? EnqueueResult.Failed)?.cause)
+    }
+
+    // Emits only what passed the DriveMainIndex monotonic guard: a host write that landed
+    // between the read and this upsert owns the row, and observers must not see the stale
+    // optimistic copy.
+    private suspend fun upsertAndEmit(identityId: Uuid, driveId: Uuid, file: HomebaseFile) {
+        val written = fileProcessor.baseUpsertEntryZapZap(
+            identityId = identityId,
+            driveId = driveId,
+            fileHeaders = listOf(file),
+            cursor = null
+        )
+        if (written.isEmpty()) {
+            Logger.w(tag = TAG) {
+                "Optimistic write for fileId=${file.fileId} lost to a newer row — not emitted"
+            }
+            return
+        }
+        eventBus.emit(
+            BackendEvent.DataEvent.BatchReceived(
+                driveId = driveId,
+                batchData = written,
+            )
+        )
+    }
+
+    // Stamped past the row that was read so the mutation wins the DriveMainIndex
+    // monotonic guard.
+    private fun HomebaseFile.optimisticStamp(): UnixTimeUtc =
+        fileMetadata.updated.addMilliseconds(1)
 
     suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalAppdataContentOutboxRequest? =
         stampConversationLocalAppData(driveId, conversationId, "stampConversationExitedAt") {
             it.copy(lastExitedAt = UnixTimeUtc())
+        }
+
+    suspend fun stampConversationArchivedAt(
+        driveId: Uuid,
+        conversationId: Uuid,
+        archivedAt: UnixTimeUtc?,
+    ): UpdateLocalAppdataContentOutboxRequest? =
+        stampConversationLocalAppData(driveId, conversationId, "stampConversationArchivedAt") {
+            it.copy(archivedAt = archivedAt)
         }
 
     suspend fun stampConversationLastReadTime(
@@ -784,7 +962,7 @@ class OptimisticWriter(
     ): UpdateLocalAppdataContentOutboxRequest? {
         val credentials = credentialsManager.requireActiveCredentials()
 
-        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+        val lastModified = existingFile.optimisticStamp()
         val updatedFile = existingFile.copy(
             fileMetadata = existingFile.fileMetadata.copy(
                 localAppData = (existingFile.fileMetadata.localAppData ?: LocalAppMetadata()).copy(
@@ -857,7 +1035,7 @@ class OptimisticWriter(
             credentials.getIdentityId(), driveId, uniqueId
         ) ?: return
 
-        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+        val lastModified = existingFile.optimisticStamp()
 
         val updatedFile = existingFile.copy(
             fileMetadata = existingFile.fileMetadata.copy(
@@ -887,4 +1065,12 @@ class OptimisticWriter(
             Logger.e(throwable = e, tag = TAG) { "Optimistic tag update failed for uniqueId=$uniqueId" }
         }
     }
+}
+
+/** How an optimistic mutation ended. [Queued] means the server request is durable; the local
+ *  write is best-effort after that. [Refused] carries the enqueue failure, if any. */
+sealed interface MutationOutcome {
+    data object Queued : MutationOutcome
+    data object NoRow : MutationOutcome
+    data class Refused(val cause: Throwable?) : MutationOutcome
 }

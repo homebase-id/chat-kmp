@@ -40,6 +40,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PersonAddAlt1
 import androidx.compose.material.icons.outlined.PersonRemove
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.WavingHand
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -93,6 +94,7 @@ import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.ok
 import id.homebase.resources.contactbook_action_blocked
 import id.homebase.resources.contactbook_action_request_accepted
 import id.homebase.resources.contactbook_action_request_cancelled
@@ -139,6 +141,15 @@ import id.homebase.resources.contactbook_error_clear_unsupported
 import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.menu_back
+import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionSheet
+import id.homebase.resources.contact_review_failed
+import id.homebase.resources.contact_unreview_action
+import id.homebase.resources.contact_unreview_blocked
+import id.homebase.resources.contact_unreview_blocked_title
+import id.homebase.resources.contact_unreview_body
+import id.homebase.resources.contact_unreview_confirm
+import id.homebase.resources.contact_unreview_failed
+import id.homebase.resources.contact_unreview_title
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
@@ -208,10 +219,7 @@ fun ContactDetailScreen(
         }
     }
 
-    // Returning here (e.g. from another contact's detail opened via the circle-detail dialog)
-    // needs to re-check pending circles explicitly — same StateFlow-conflation gap as the
-    // Contact Book's circle sheet: a pending-only change doesn't alter real membership, so
-    // ConnectionService.circles never re-emits and the reactive path alone can't catch it (#1096).
+    // Flag off: main's pending circles are a live read, so a resume has to re-check them.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -295,6 +303,25 @@ fun ContactDetailScreen(
         )
     }
 
+    uiState.review?.let { review ->
+        val entry = uiState.entry
+        ReviewConnectionSheet(
+            displayName = entry?.displayName.orEmpty(),
+            odinId = entry?.odinId,
+            avatar = entry?.let { { ContactBookAvatar(entry = it, size = 52.dp) } },
+            introducedBy = review.introducedBy,
+            connectedAtMs = review.connectedAtMs,
+            groups = uiState.reviewCircleGroups,
+            alreadyHeldCircleIds = review.alreadyHeldCircleIds,
+            isSubmitting = review.isSubmitting,
+            errorText = if (review.failed) {
+                stringResource(MR.string.contact_review_failed)
+            } else null,
+            onSubmit = { ids -> viewModel.onAction(ContactDetailAction.ReviewSubmitted(ids)) },
+            onDismiss = { viewModel.onAction(ContactDetailAction.ReviewDismissed) },
+        )
+    }
+
     uiState.circleDetail?.let { detail ->
         CircleMembersSheet(
             state = detail,
@@ -311,6 +338,15 @@ fun ContactDetailScreen(
         snackbarHostState = snackbarHostState,
         onNavigateToConversation = onOpenConversation,
     )
+
+    uiState.unreview?.let { unreview ->
+        UnreviewDialog(
+            displayName = uiState.entry?.displayName.orEmpty(),
+            state = unreview,
+            onConfirm = { viewModel.onAction(ContactDetailAction.UnreviewConfirmed) },
+            onDismiss = { viewModel.onAction(ContactDetailAction.UnreviewDismissed) },
+        )
+    }
 
     uiState.confirm?.let { confirm ->
         ConfirmDialog(
@@ -393,9 +429,12 @@ private fun ContactDetailContent(
                 uiState.isPendingIncoming -> PendingRequestProfile(
                     entry = entry,
                     assignableCircles = uiState.assignableCircles,
+                    review = uiState.requestReview,
+                    reviewCircleGroups = uiState.reviewCircleGroups,
                     onAccept = { selectedCircleIds ->
                         onAction(ContactDetailAction.AcceptRequestClicked(selectedCircleIds))
                     },
+                    onReviewSubmit = { ids -> onAction(ContactDetailAction.RequestReviewSubmitted(ids)) },
                     onReject = { onAction(ContactDetailAction.RejectRequestClicked) },
                     actionInProgress = uiState.actionInProgress,
                     onAvatarClick = onAvatarClick,
@@ -440,6 +479,14 @@ private fun ContactDetailContent(
                             )
                             when (currentTab) {
                                 ContactDetailTab.DETAILS -> {
+                                    if (uiState.isAccessRevoked) AccessRevokedBanner()
+                                    if (uiState.needsReview && uiState.reviewEnabled) {
+                                        NeedsReviewBanner(
+                                            onReview = {
+                                                onAction(ContactDetailAction.ReviewClicked)
+                                            },
+                                        )
+                                    }
                                     uiState.introducedByName?.let { IntroducedBySection(it) }
                                     ContactFieldsSection(
                                         entry = entry,
@@ -458,6 +505,7 @@ private fun ContactDetailContent(
                                         CirclesSection(
                                             circles = uiState.circles,
                                             isConnected = uiState.isConnected,
+                                            reviewEnabled = uiState.reviewEnabled,
                                             onCircleClicked = {
                                                 onAction(ContactDetailAction.CircleClicked(it))
                                             },
@@ -580,6 +628,13 @@ private fun ManagementMenu(
                 leadingIcon = { Icon(Icons.Outlined.Sync, contentDescription = null) },
                 onClick = { open = false; onAction(ContactDetailAction.SyncClicked) },
             )
+            if (uiState.isConnected && !uiState.needsReview && uiState.reviewEnabled) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.contact_unreview_action)) },
+                    leadingIcon = { Icon(Icons.Outlined.WavingHand, contentDescription = null) },
+                    onClick = { open = false; onAction(ContactDetailAction.UnreviewClicked) },
+                )
+            }
             if (uiState.isConnected) {
                 DropdownMenuItem(
                     text = {
@@ -784,6 +839,55 @@ private fun DetailHeader(
             }
         }
     }
+}
+
+@Composable
+private fun UnreviewDialog(
+    displayName: String,
+    state: UnreviewState,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val blocked = state.blockingCircles.isNotEmpty()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                stringResource(
+                    if (blocked) MR.string.contact_unreview_blocked_title
+                    else MR.string.contact_unreview_title
+                )
+            )
+        },
+        text = {
+            Text(
+                when {
+                    blocked -> stringResource(
+                        MR.string.contact_unreview_blocked,
+                        displayName,
+                        state.blockingCircles.joinToString(),
+                    )
+                    state.failed -> stringResource(MR.string.contact_unreview_failed)
+                    // Says plainly that nothing is revoked. "Remove access" would be a lie:
+                    // every circle and grant survives, only the vouching is withdrawn.
+                    else -> stringResource(MR.string.contact_unreview_body, displayName)
+                }
+            )
+        },
+        confirmButton = {
+            // Nothing to confirm once the server has refused — the fix is elsewhere.
+            if (!blocked) {
+                TextButton(onClick = onConfirm, enabled = !state.isSubmitting) {
+                    Text(stringResource(MR.string.contact_unreview_confirm))
+                }
+            } else {
+                TextButton(onClick = onDismiss) { Text(stringResource(MR.string.ok)) }
+            }
+        },
+        dismissButton = if (blocked) null else {
+            { TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) } }
+        },
+    )
 }
 
 @Composable

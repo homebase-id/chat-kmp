@@ -60,7 +60,9 @@ import kotlin.io.encoding.Base64
 fun FullScreenVideoPlayer(
     data: FullScreenOverlay.VideoPlayerData,
     onDismiss: () -> Unit,
-    onSave: () -> Unit,
+    // Null when the host cannot save — the overflow menu is then absent rather than
+    // present-but-dead (Save is its only item).
+    onSave: (() -> Unit)? = null,
     isDownloading: Boolean = false,
     modifier: Modifier = Modifier,
     uploadStatus: UploadStatus? = null,
@@ -146,7 +148,9 @@ fun FullScreenVideoPlayer(
 
         // Thumbnail + play button overlay, hidden once user taps play
         if (!isPlaying) {
-            if (payloadIv != null) {
+            // An unencrypted (public) payload carries no IV — that means plaintext, not
+            // "not uploaded yet", so it still has a poster frame worth requesting.
+            if (payloadIv != null || !data.isEncrypted) {
                 val imageData = remember(
                     data.driveId,
                     data.fileId,
@@ -160,8 +164,10 @@ fun FullScreenVideoPlayer(
                         previewThumbnail = data.payload.previewThumbnail?.toEmbeddedThumb(),
                         requestedSize = ImageSize.THUMB_MEDIUM,
                         lastModified = data.payload.lastModified,
-                        isEncrypted = true,
-                        keyHeader = KeyHeader(iv = payloadIv, aesKey = data.keyHeader.aesKey)
+                        isEncrypted = payloadIv != null,
+                        keyHeader = payloadIv
+                            ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
+                            ?: KeyHeader.empty(),
                     )
                 }
                 HomebaseImage(
@@ -233,7 +239,7 @@ fun FullScreenVideoPlayer(
                         modifier = Modifier.padding(end = 8.dp),
                     )
                 }
-                if (!isLocalPlayback) {
+                if (!isLocalPlayback && onSave != null) {
                     Box {
                         IconButton(onClick = { showMenu = true }) {
                             Icon(

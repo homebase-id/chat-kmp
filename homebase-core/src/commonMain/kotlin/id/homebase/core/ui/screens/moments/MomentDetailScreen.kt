@@ -98,12 +98,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -133,6 +127,7 @@ import id.homebase.core.moments.services.MomentCommentItem
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.moments.services.MomentsVideoSession
+import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.common.widget.ImageInfoOverlay
 import id.homebase.common.widget.VideoInfoOverlay
 import id.homebase.core.ui.screens.moments.widget.MomentDatePill
@@ -145,6 +140,7 @@ import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.widget.composerKeyHandler
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogTitle
@@ -198,6 +194,7 @@ import id.homebase.resources.reactions
 import id.homebase.resources.read_by
 import id.homebase.resources.sending_to
 import id.homebase.resources.uploaded
+import id.homebase.core.ui.theme.withEmojiFont
 import kotlin.time.Instant
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1347,9 +1344,7 @@ private fun MomentMediaScaffold(
                                 onLongPress = { showCurrentInfo = false },
                             )
                         }
-                    val isVideo = infoPayload.contentType?.startsWith("video/") == true ||
-                        infoPayload.contentType == "application/vnd.apple.mpegurl"
-                    if (isVideo) {
+                    if (infoPayload.isVideo()) {
                         val videoDescriptor =
                             infoPayload.descriptorInfo() as? DescriptorContent.VideoFile
                         VideoInfoOverlay(
@@ -1542,10 +1537,7 @@ private fun MomentDetailContent(
         snapshotFlow {
             val payload = moment.payloads.getOrNull(pagerState.currentPage)
                 ?: return@snapshotFlow null
-            val ct = payload.contentType ?: ""
-            val isVideo = ct.startsWith("video/") ||
-                ct == "application/vnd.apple.mpegurl"
-            if (isVideo) payload.key else null
+            if (payload.isVideo()) payload.key else null
         }.collect { autoplayKey ->
             if (autoplayKey != playingPayloadKey) {
                 Logger.d(tag = "MomentReels") {
@@ -1631,9 +1623,6 @@ private fun MomentDetailContent(
                 userScrollEnabled = pageCount > 1 && !zoomedPageActive,
             ) { page ->
                 val payload = moment.payloads[page]
-                val contentType = payload.contentType ?: ""
-                val isVideo = contentType.startsWith("video/") ||
-                    contentType == "application/vnd.apple.mpegurl"
 
                 // Single tap anywhere on the media: on mobile it opens the
                 // comments sheet; on the desktop docked layout (comments already
@@ -1658,7 +1647,7 @@ private fun MomentDetailContent(
                             onClick = onMediaTap,
                         ),
                 ) {
-                    if (isVideo) {
+                    if (payload.isVideo()) {
                         // Inline-playable video tile. ButtonOnly tapMode skips
                         // the full-surface tap detector so the tap above opens
                         // the panel; a centred play/pause affordance
@@ -3113,6 +3102,7 @@ private fun AddCommentRow(
     modifier: Modifier = Modifier,
 ) {
     val canSend = draft.isNotBlank() && !isPosting
+    val enterSendsMessage = rememberEnterSendsMessage()
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -3124,22 +3114,10 @@ private fun AddCommentRow(
             placeholder = { Text(stringResource(MR.string.moments_detail_add_comment_hint)) },
             modifier = Modifier
                 .weight(1f)
-                // Enter sends (primarily for desktop's hardware keyboard);
-                // Shift+Enter is left for the platform so it isn't hijacked.
-                // We consume every plain Enter so it never inserts into the
-                // field, and only post when there's a non-blank, non-in-flight
-                // draft.
-                .onPreviewKeyEvent { e ->
-                    if (e.type == KeyEventType.KeyDown &&
-                        (e.key == Key.Enter || e.key == Key.NumPadEnter) &&
-                        !e.isShiftPressed
-                    ) {
-                        if (canSend) onSend()
-                        true
-                    } else {
-                        false
-                    }
-                },
+                .composerKeyHandler(
+                    enterSendsMessage = enterSendsMessage,
+                    onSend = { if (canSend) onSend() },
+                ),
             singleLine = true,
             enabled = !isPosting,
         )
@@ -3259,7 +3237,7 @@ private fun CommentRow(
             }
         } else {
             Text(
-                text = comment.body,
+                text = comment.body.withEmojiFont(),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.fillMaxWidth(),
             )

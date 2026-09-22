@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -94,6 +93,8 @@ import id.homebase.resources.vault_error_download
 import id.homebase.resources.vault_error_download_page
 import id.homebase.resources.vault_error_edit_page
 import id.homebase.resources.vault_error_open_editor
+import id.homebase.resources.vault_error_webdrop_prepare
+import id.homebase.resources.vault_error_webdrop_too_many_files
 import id.homebase.resources.vault_error_outbox_upload
 import id.homebase.resources.vault_error_rename_file
 import id.homebase.resources.vault_error_rename_section
@@ -129,6 +130,10 @@ fun VaultScreen(
     onNavigateToNoteEditor: (sectionId: String, entryId: String?) -> Unit = { _, _ -> },
     onNavigateToCropper: (Uuid) -> Unit = {},
     onNavigateToDrawer: (Uuid) -> Unit = {},
+    onNavigateToWebDrop: () -> Unit = {},
+    /** Set by the host when the already-selected Vault tab is re-tapped. */
+    scrollToTop: Boolean = false,
+    onScrollToTopHandled: () -> Unit = {},
 ) {
     val vaultPreferences = koinInject<VaultPreferences>()
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
@@ -159,6 +164,16 @@ fun VaultScreen(
         }
     }
 
+    LaunchedEffect(scrollToTop) {
+        if (scrollToTop) {
+            // Clear the saved position too, or closing the gallery would scroll back down.
+            savedScrollIndex = 0
+            savedScrollOffset = 0
+            vaultListState.animateScrollToItem(0)
+            onScrollToTopHandled()
+        }
+    }
+
     var pendingError by remember { mutableStateOf<VaultError?>(null) }
 
     pendingError?.let { error ->
@@ -184,6 +199,7 @@ fun VaultScreen(
                 is VaultUiEvent.Error -> {
                     pendingError = event.error
                 }
+                is VaultUiEvent.OpenWebDrop -> onNavigateToWebDrop()
                 is VaultUiEvent.OpenNoteEditor -> {
                     onNavigateToNoteEditor(
                         event.sectionId.toString(),
@@ -395,6 +411,10 @@ fun VaultScreen(
                             onSharePage = { key ->
                                 viewModel.onAction(VaultUiAction.SharePage(overlay.file, key))
                             },
+                            webDropEnabled = uiState.webDropActivated,
+                            onSendAsWebDrop = {
+                                viewModel.onAction(VaultUiAction.SendAsWebDrop(overlay.file))
+                            },
                             onSavePage = { key ->
                                 viewModel.onAction(VaultUiAction.SavePage(overlay.file, key))
                             },
@@ -486,8 +506,7 @@ fun VaultScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp)
-                                    .imePadding(),
+                                    .padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 OutlinedTextField(
@@ -528,8 +547,7 @@ fun VaultScreen(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp)
-                                    .imePadding(),
+                                    .padding(16.dp),
                             ) {
                                 Text(stringResource(MR.string.vault_editor_add))
                             }
@@ -598,10 +616,11 @@ fun VaultScreen(
                 showImageAddSheet = false
                 pendingPickerAction = VaultPickerAction.File
             },
+            // A note is its own entry in a section, so it can't be appended to an existing entry.
             onAddNote = {
                 showImageAddSheet = false
                 pendingPickerAction = VaultPickerAction.Note
-            },
+            }.takeIf { fileForAppend == null },
             onDismiss = {
                 showImageAddSheet = false
                 activeSectionForEntry = null
@@ -701,4 +720,7 @@ private fun resolveVaultError(error: VaultError): String = when (error) {
     VaultError.OutboxUploadFailed -> stringResource(MR.string.vault_error_outbox_upload)
     VaultError.EditPageFailed -> stringResource(MR.string.vault_error_edit_page)
     VaultError.OpenEditorFailed -> stringResource(MR.string.vault_error_open_editor)
+    VaultError.WebDropPrepareFailed -> stringResource(MR.string.vault_error_webdrop_prepare)
+    is VaultError.WebDropTooManyFiles ->
+        stringResource(MR.string.vault_error_webdrop_too_many_files, error.max)
 }

@@ -166,6 +166,41 @@ class NotificationSettingsUiTest {
         assertEquals(5, taps)
     }
 
+    /**
+     * The status panel is unconditional on web, where it is the only view of subscription health.
+     * Everywhere else it stays behind the five-tap gesture — this pins that it did not leak out.
+     */
+    @Test
+    fun pushStatusPanelStaysBehindTheDebugGestureOffWeb() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                NotificationSettingsUi(
+                    uiState = NotificationSettingsUiState(showDebugInfo = false),
+                    onAction = {},
+                    onBackClick = {},
+                    onOpenSystemSettings = {},
+                )
+            }
+        }
+        onNodeWithTag("pushNotificationStatusCard").assertDoesNotExist()
+    }
+
+    @Test
+    fun pushStatusPanelShowsOnceTheDebugGestureUnlocksIt() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                NotificationSettingsUi(
+                    uiState = NotificationSettingsUiState(showDebugInfo = true),
+                    onAction = {},
+                    onBackClick = {},
+                    onOpenSystemSettings = {},
+                )
+            }
+        }
+        onNodeWithTag("pushNotificationStatusCard").assertExists()
+        onNodeWithText("Device Token").assertExists()
+    }
+
     @Test
     fun contentLevelPickerShowsEveryLevelWhenExpanded() = runComposeUiTest {
         var selected: NotificationContentLevel? = null

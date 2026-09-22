@@ -26,9 +26,9 @@ sealed interface ConversationListUiAction {
     data object NewConversationClicked : ConversationListUiAction
     data object ClearSelection : ConversationListUiAction
 
-    /** The screen has handled [ConversationListUiState.closeDetailPaneRequest] (popped
-     *  the scaffold detail pane); clear it so it doesn't fire again on next recompose. */
-    data object CloseDetailPaneRequestConsumed : ConversationListUiAction
+    /** Record the current #1 conversation as the one the user has seen. Dispatched whenever the
+     *  list leaves the screen, and once per return to it. */
+    data object SnapshotListTop : ConversationListUiAction
 
     /** Combined leave-and-delete for a group conversation the user is still in.
      *  Service-side: calls [ConversationService.leaveGroup] then
@@ -154,9 +154,16 @@ sealed interface ConversationListUiAction {
 
     data class DeleteConversation(val conversationId: Uuid) : ConversationListUiAction
     data class ConfirmDeleteConversation(val conversationId: Uuid) : ConversationListUiAction
-    data class ArchiveConversation(val conversationId: Uuid) : ConversationListUiAction
+    /** [isUndo] marks the inverse of a just-confirmed archive, which must not offer an undo of its own. */
+    data class ArchiveConversation(
+        val conversationId: Uuid,
+        val isUndo: Boolean = false,
+    ) : ConversationListUiAction
 
-    data class UnarchiveConversation(val conversationId: Uuid) : ConversationListUiAction
+    data class UnarchiveConversation(
+        val conversationId: Uuid,
+        val isUndo: Boolean = false,
+    ) : ConversationListUiAction
 
 
     data class ClearConversation(val conversationId: Uuid) : ConversationListUiAction
@@ -273,6 +280,10 @@ sealed interface ConversationListUiAction {
         val imageBytes: ByteArray,
     ) : ConversationListUiAction
 
+    data object SendPastedGifAsSticker : ConversationListUiAction
+    data object SendPastedGifAsGif : ConversationListUiAction
+    data object DismissPastedGif : ConversationListUiAction
+
     /** User tapped the crop button on an image attachment. */
     data class RequestCropAttachment(
         val conversationId: Uuid,
@@ -316,6 +327,13 @@ sealed interface ConversationListUiAction {
         val trimStartMs: Long?,
         val trimEndMs: Long?,
     ) : ConversationListUiAction
+
+    /**
+     * User tapped HD in the attachment editor. Writes through to the global media-quality
+     * preference, the way Signal's and Telegram's equivalents do — it is the setting, surfaced
+     * a second time where it matters.
+     */
+    data object ToggleMediaQuality : ConversationListUiAction
 
     /** User toggled Send-as-sticker on an image attachment. */
     data class ToggleStickerAttachment(
@@ -436,7 +454,10 @@ sealed interface ConversationListUiAction {
 
     /** Save a received contact card to the contact book — the editor lives in :homebase-core, so
      *  this leaves the module the same way OpenShareLocation does. */
-    data class SaveContactCard(val descriptor: ContactCardDescriptor) : ConversationListUiAction
+    data class SaveContactCard(
+        val descriptor: ContactCardDescriptor,
+        val alreadySaved: Boolean,
+    ) : ConversationListUiAction
 
     /** Open (creating if needed) the 1:1 conversation with the identity on a shared contact card. */
     data class MessageIdentity(val odinId: String) : ConversationListUiAction

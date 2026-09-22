@@ -16,8 +16,7 @@ import kotlin.uuid.Uuid
 // new key would have to be added to each of those filters.
 internal fun contactCardPhotoPayload(payloads: List<PayloadDescriptor>?): PayloadDescriptor? =
     payloads?.firstOrNull {
-        it.contentType?.startsWith("image/") == true &&
-            it.key.startsWith(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB)
+        it.isImage() && it.key.startsWith(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB)
     }
 
 @OptIn(ExperimentalEncodingApi::class, ExperimentalUuidApi::class)

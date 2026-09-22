@@ -31,6 +31,7 @@ import kotlinx.datetime.toInstant
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+import id.homebase.core.session.IdentityScoped
 
 private const val TAG = "MomentComposeViewModel"
 
@@ -39,7 +40,7 @@ class MomentComposeViewModel(
     private val fileOperationsProvider: FileOperationsProvider,
     private val cropResultBus: CropResultBus,
     private val drawResultBus: DrawResultBus,
-) : ViewModel() {
+) : ViewModel(), IdentityScoped {
 
     private val _uiState = MutableStateFlow(restoreFromDraft())
     val uiState: StateFlow<MomentComposeUiState> = _uiState.asStateFlow()

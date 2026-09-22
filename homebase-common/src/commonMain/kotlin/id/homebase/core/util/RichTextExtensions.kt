@@ -98,18 +98,22 @@ fun RichTextState.applyMarkDownContent(
     return this.apply {
         try {
             setMarkdown(content)
-            // richeditor's setMarkdown silently drops some structure (e.g. leading
-            // spaces on an indented block after a blank line) without throwing, and
-            // toMarkdown() would then persist that lossy form on the next save and
-            // trip the editor's dirty check. setText round-trips the exact bytes, so
-            // prefer it whenever the rich parse isn't byte-faithful — the note reads
-            // as raw markdown but nothing is silently mangled (issue #927 Section B).
-            if (toMarkdown() != content) setText(content)
+            // setMarkdown silently drops every block construct it can't render inline (a code
+            // fence loses its markers, a rule vanishes) and toMarkdown() would persist that loss
+            // on the next save, so anything it can't round-trip is edited as raw source instead.
+            if (toMarkdown() != content) editAsRawMarkdown(content)
         } catch (e: Exception) {
             Logger.e(tag = "RichTextExtensions") { "setMarkdown failed, preserving raw text: $e" }
-            setText(content)
+            editAsRawMarkdown(content)
         }
     }
+}
+
+// clear() is load-bearing: setText redistributes the source across whatever paragraphs and spans
+// the failed setMarkdown left behind, scrambling the bytes and keeping its code-block box drawn.
+private fun RichTextState.editAsRawMarkdown(content: String) {
+    clear()
+    setText(content)
 }
 
 private fun findPrecedingCharacterStart(text: String, offset: Int): Int {

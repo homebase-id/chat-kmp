@@ -17,10 +17,14 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Metered-vs-unmetered for the "only on Wi-Fi" auto-save guard. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!--    <uses-permission android:name="android.permission.CAMERA" />-->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Raise-to-ear voice notes: PROXIMITY_SCREEN_OFF_WAKE_LOCK blanks the screen. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Location add-on: background tracking (requires the Play Console
@@ -95,11 +99,15 @@
             </intent-filter>
         </service>
 
-        <!-- Share receiver for incoming content from other apps -->
+        <!-- Share receiver for incoming content from other apps.
+             windowSoftInputMode is load-bearing: the activity is edge-to-edge and its Compose
+             content pads for WindowInsets.ime itself, so leaving it unspecified lets the system
+             apply its own legacy IME adjustment too and the caption row is lifted twice. -->
         <activity
             android:name=".share.ShareReceiverActivity"
             android:exported="true"
             android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Material3.DayNight.NoActionBar"
             android:label="Homebase Chat">
             <intent-filter>

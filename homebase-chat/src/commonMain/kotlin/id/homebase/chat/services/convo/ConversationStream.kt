@@ -35,11 +35,15 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -100,6 +104,18 @@ class ConversationStream(
     val conversations: StateFlow<ConversationsData> = _conversations.asStateFlow()
     val shareableConversations: StateFlow<List<ShareableConversation>> =
         _shareableConversations.asStateFlow()
+
+    // Archived / left / removed threads are counted, matching the per-row unread badge.
+    // Gated on hasUnreadCounts: before that pass every item reads 0, and emitting it would
+    // blank the app-icon badge on each cold start until the enrichment lands.
+    val totalUnreadCount: Flow<Int> = conversations
+        .filter { it.enrichment.hasUnreadCounts }
+        .map(::sumUnread)
+        .distinctUntilChanged()
+
+    /** Latest unread total, or null before the unread enrichment pass has run. */
+    fun currentUnreadTotal(): Int? =
+        conversations.value.takeIf { it.enrichment.hasUnreadCounts }?.let(::sumUnread)
 
     // region Recovery: missing or deleted conversation file
     /** Hook for explicit (non-sync) conversation recovery.
@@ -169,6 +185,8 @@ class ConversationStream(
     /** Called when a message arrives for an archived conversation.
      *  Wired in AppModule to ConversationService.unarchiveConversation(). */
     var onUnarchiveConversation: (suspend (conversationId: Uuid) -> Unit)? = null
+
+    private val autoUnarchiveGate = AutoUnarchiveGate()
     // endregion
 
     // region Unread-count dirty bits
@@ -503,10 +521,13 @@ class ConversationStream(
 
             // region Auto-unarchive: Signal-style unarchive on incoming message
             if (matchingConversation?.conversationState == ConversationState.Archived) {
-                // Only unarchive for messages from others, not our own synced messages
-                if (!m.isAuthoredBy(credentialsManager.getActiveDomain())) {
+                // A status message (rename, join, leave) is not re-engagement.
+                if (!m.isStatusMessage && !m.isAuthoredBy(credentialsManager.getActiveDomain())) {
                     Logger.i("ConversationStream: unarchiving conversation ${m.conversationId} due to incoming message from ${m.originalAuthor}")
-                    val unarchived = matchingConversation.copy(conversationState = ConversationState.Active)
+                    val unarchived = matchingConversation.copy(
+                        conversationState = ConversationState.Active,
+                        archivedAt = null,
+                    )
                     _conversations.value = _conversations.value.copy(
                         items = _conversations.value.items.map { if (it.id == unarchived.id) unarchived else it }
                     )
@@ -585,7 +606,6 @@ class ConversationStream(
                         unreadCount = 0,
                         avatarTiny = null,
                         avatarInitials = "",
-                        avatarUrl = "",
                         participants = placeholderParticipants,
                         lastRead = UnixTimeUtc(0).toInstant(),
                         avatarModel = placeholderAvatar,
@@ -946,26 +966,13 @@ class ConversationStream(
                     ui.copy(conversationState = ConversationState.Left)
                 } else ui
 
-                // Reconcile the disk row against the prior in-memory row so the
-                // reload doesn't throw away local state:
-                //  - lastRead = max, dirty kept only while our local read still
-                //    leads disk (same rule as the WS receive merge), so an
-                //    un-flushed local advance survives and still flushes.
-                //  - unreadCount carried forward to avoid a flicker-to-0 (the
-                //    disk row is always 0); when lastRead actually changed vs.
-                //    the prior (a peer advance pulled to disk), mark it
-                //    unread-dirty so the Stopped pipeline's recount corrects it.
-                val prior = priorById[withLeft.id]
-                val finalUi = if (prior != null) {
-                    val reconciled = prior.reconciledWithRemoteLastRead(withLeft.lastRead)
-                    if (reconciled.lastRead != prior.lastRead) markUnreadDirty(withLeft.id)
-                    withLeft.copy(
-                        lastRead = reconciled.lastRead,
-                        dirty = reconciled.dirty,
-                        unreadCount = prior.unreadCount,
-                    )
-                } else withLeft
-                finalUi to file
+                // Reconcile the disk row against the prior in-memory row so the reload
+                // doesn't throw away state the disk row cannot carry — the message
+                // preview, the computed unreadCount, an un-flushed lastRead advance.
+                // See [mergeReloadedConversationRow].
+                val reload = mergeReloadedConversationRow(withLeft, priorById[withLeft.id])
+                if (reload.remoteLastReadAdvanced) markUnreadDirty(withLeft.id)
+                reload.merged to file
             }
 
         val basic = basicWithSource.map { it.first }
@@ -1151,15 +1158,41 @@ class ConversationStream(
         }
 
         val current = _conversations.value
+        val toUnarchive = ArrayList<Pair<Uuid, Instant>>()
         val updated = current.items.map { ui ->
             val pair = msgByConversation[ui.id] ?: return@map ui
-            mapper.applyLastMessage(ui, pair.first, domain, sqlUserDateMs = pair.second)
+            val patched = mapper.applyLastMessage(ui, pair.first, domain, sqlUserDateMs = pair.second)
+            val archivedAt = patched.archivedAt
+            if (archivedAt == null || !shouldAutoUnarchive(
+                    state = patched.conversationState,
+                    archivedAt = archivedAt,
+                    lastMessageUserDate = pair.second
+                        ?.let { Instant.fromEpochMilliseconds(it) }
+                        ?: patched.latestMessageTimestamp,
+                    lastMessageIsFromActiveUser = patched.lastMessageIsFromActiveUser,
+                )
+            ) return@map patched
+            toUnarchive += ui.id to archivedAt
+            patched.copy(conversationState = ConversationState.Active, archivedAt = null)
         }
 
         _conversations.value = current.copy(
             items = updated,
             enrichment = current.enrichment.copy(hasLastMessages = true),
         )
+
+        for ((id, baseline) in toUnarchive) {
+            if (!autoUnarchiveGate.markFired(id, baseline)) continue
+            Logger.i("ConversationStream: auto-unarchiving $id — message arrived after it was archived")
+            try {
+                onUnarchiveConversation?.invoke(id)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Never let one bad conversation file abort the enrichment pass.
+                Logger.e(e) { "ConversationStream: failed to auto-unarchive $id: ${e.message}" }
+            }
+        }
 
         Logger.i(tag = "ConvListPerf") {
             "enrichWithLastMessages end-to-end=${Clock.System.now().toEpochMilliseconds() - startedAt}ms " +
@@ -1580,6 +1613,8 @@ class ConversationStream(
         }
     }
 }
+
+private fun sumUnread(data: ConversationsData): Int = data.items.sumOf { it.unreadCount }
 
 data class ConversationsData(
     val dataReady: Boolean = true,

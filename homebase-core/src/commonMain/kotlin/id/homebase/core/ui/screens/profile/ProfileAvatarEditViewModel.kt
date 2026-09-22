@@ -70,9 +70,12 @@ class ProfileAvatarEditViewModel(
     private val profileRepository: ProfileRepository,
     private val cropResultBus: CropResultBus,
     private val fileOperationsProvider: FileOperationsProvider,
+    developerPreferences: id.homebase.core.settings.DeveloperPreferences,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(ProfileAvatarEditUiState())
+    private val _state = MutableStateFlow(
+        ProfileAvatarEditUiState(reviewEnabled = developerPreferences.connectionReviewEnabled.value),
+    )
     val state: StateFlow<ProfileAvatarEditUiState> = _state.asStateFlow()
 
     private val _events = MutableSharedFlow<ProfileAvatarEditEvent>(extraBufferCapacity = 8)

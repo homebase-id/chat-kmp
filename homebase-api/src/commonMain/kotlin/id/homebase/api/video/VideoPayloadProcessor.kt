@@ -3,6 +3,7 @@ package id.homebase.api.video
 import co.touchlab.kermit.Logger
 import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.HLS_PLAYLIST_CONTENT_TYPE
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.files.WholePercentProgressGate
@@ -12,6 +13,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.withResolvedFile
 import id.homebase.api.image.createThumbnails
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.util.isBlobUrl
 import io.ktor.utils.io.core.toByteArray
 import okio.Path.Companion.toPath
 import kotlin.time.Duration
@@ -62,14 +64,15 @@ class VideoPayloadProcessor(
         trimStartMs: Long?,
         trimEndMs: Long?,
         videoQuality: VideoQuality,
-        // Web only: a blob: URL for the original. When present it's the ffmpeg/decoder INPUT read
-        // (poster + compress), so the original is read in JS — never copied into Kotlin or base64'd.
-        // null on native → falls back to the okio path. Read-only here; revoked by writeFileFromUrl.
+        // Web only: a blob: URL for the original, read by ffmpeg/decoder in JS (poster + compress)
+        // so the bytes never enter Kotlin. Read-only here; revoked by writeFileFromUrl.
         inputBlobUrl: String?,
     ): VideoProcessResult {
         // The okio path stays the source of truth for size, the compress-skip fallback, and the
         // non-HLS encrypt of an uncompressed clip; inputBlobUrl only short-circuits the INPUT reads.
-        val ffmpegInputPath = inputBlobUrl ?: payload.filePath
+        // Only a real blob: handle may bypass the resolved path — a raw content:// or PHAsset id
+        // here is unreadable by native ffmpeg.
+        val ffmpegInputPath = inputBlobUrl?.takeIf { it.isBlobUrl() } ?: payload.filePath
 
         /* ---------- PHASE 1: THUMBNAILS ---------- */
 
@@ -313,7 +316,7 @@ class VideoPayloadProcessor(
         val metadata =
             VideoMetadata(
                 mimeType =
-                    if (isSegmented) "application/vnd.apple.mpegurl" else "video/mp4",
+                    if (isSegmented) HLS_PLAYLIST_CONTENT_TYPE else "video/mp4",
                 isSegmented = isSegmented,
                 fileSize = fileOperationsProvider.getFileSize(finalVideoPath),
                 duration = durationMs.toFloat(),

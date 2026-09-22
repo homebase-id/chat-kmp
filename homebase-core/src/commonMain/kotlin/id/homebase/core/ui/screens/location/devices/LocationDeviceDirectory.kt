@@ -8,12 +8,12 @@ import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.common.time.UnixTimeUtcRange
+import id.homebase.api.device.deviceDisplayName
+import id.homebase.api.device.devicePlatform
 import id.homebase.api.sync.database.BufferedLocationPoint
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.core.location.tracking.LocationDeviceId
-import id.homebase.core.location.tracking.deviceDisplayName
-import id.homebase.core.location.tracking.devicePlatform
 import id.homebase.core.ui.screens.location.history.DeviceTrace
 import id.homebase.core.ui.screens.location.history.LocationHistoryAssembler
 import id.homebase.core.ui.screens.location.model.HOUR_MS

@@ -3,7 +3,6 @@ package id.homebase.chat.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.FileStateFilter
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
@@ -45,7 +44,7 @@ import kotlin.uuid.Uuid
 class ChatMessageStream(
     private val credentialsManager: CredentialsManager,
     private val contactService: ContactService,
-    private val ownerSessionRepository: OwnerSessionRepository,
+    private val ownerDisplayName: () -> String?,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
@@ -1039,7 +1038,7 @@ class ChatMessageStream(
         // contact/domain path until the session's site data has loaded, or when
         // it carries no displayName).
         if (author == credentialsManager.requireActiveDomain()) {
-            ownerSessionRepository.user.value?.displayName
+            ownerDisplayName()
                 ?.takeIf { it != author.toString() && it.isNotBlank() }
                 ?.let { return it }
         }

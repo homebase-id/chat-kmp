@@ -8,6 +8,7 @@ import id.homebase.api.common.BatchResult
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.widget.mediaPayloads
 import id.homebase.core.avatars.ConversationAvatarModel
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
@@ -93,12 +94,7 @@ fun collectConversationOverview(
         // A card's photo is the subject's avatar, not a picture shared into the conversation.
         if (message.messageContent is MessageContent.ContactCard) continue
 
-        val payloads = message.payloads?.filter {
-            it.key != ChatProtocol.DefaultPayloadKey &&
-                    !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
-        } ?: emptyList()
-
-        for (payload in payloads) {
+        for (payload in message.payloads.mediaPayloads()) {
             fun item(isSticker: Boolean = false) = SharedMediaItem(
                 fileId = message.fileId,
                 messageId = message.id,
@@ -109,18 +105,16 @@ fun collectConversationOverview(
                 date = message.userDate,
                 senderName = message.displayName,
             )
-            val contentType = payload.contentType
             when {
                 payload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> Unit // links not a tab
                 payload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> locations.add(item())
-                contentType == null -> Unit
-                contentType.startsWith("image/") -> {
+                payload.contentType == null -> Unit
+                payload.isImage() -> {
                     val isSticker = (payload.descriptorInfo() as? id.homebase.api.client.drives.files.DescriptorContent.ImageFile)?.isSticker == true
                     media.add(item(isSticker))
                 }
-                contentType.startsWith("video/") ||
-                        contentType == "application/vnd.apple.mpegurl" -> media.add(item())
-                contentType.startsWith("audio/") -> audio.add(item())
+                payload.isVideo() -> media.add(item())
+                payload.isAudio() -> audio.add(item())
                 else -> files.add(item())
             }
         }
@@ -144,11 +138,7 @@ fun collectConversationOverview(
 fun collectLocations(batch: BatchResult<MessageUiModel>): List<SharedMediaItem> {
     val locations = mutableListOf<SharedMediaItem>()
     for (message in batch.records) {
-        val payloads = message.payloads?.filter {
-            it.key != ChatProtocol.DefaultPayloadKey &&
-                    !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
-        } ?: emptyList()
-        for (payload in payloads) {
+        for (payload in message.payloads.mediaPayloads()) {
             if (payload.key == ChatProtocol.PAYLOAD_KEY_LOCATION) {
                 locations.add(
                     SharedMediaItem(

@@ -1,6 +1,7 @@
 package id.homebase.core.logging
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.isRecoverablePermissionFailure
 import id.homebase.api.client.isRecoverableServerConflict
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.core.crash.CrashReporting
@@ -103,15 +104,20 @@ fun setupIOSCrashHandler() {
         // NOT abort the app. Record it as a non-fatal (full stack + breadcrumb) so
         // it stays debuggable, then return WITHOUT terminating. Any non-network
         // throwable falls through and still crashes normally below.
-        if (throwable.isTransientNetworkFailure() || throwable.isRecoverableServerConflict()) {
+        if (throwable.isTransientNetworkFailure() ||
+            throwable.isRecoverableServerConflict() ||
+            throwable.isRecoverablePermissionFailure()
+        ) {
             try {
                 crashlyticsRecordException(throwable)
                 crashlyticsLogFatalBreadcrumb(throwable)
                 Logger.w(tag = TAG) {
-                    val kind = if (throwable.isRecoverableServerConflict()) {
-                        "Recoverable server conflict (stale versionTag; write dropped, drive-sync reconciles)"
-                    } else {
-                        "Transient network failure"
+                    val kind = when {
+                        throwable.isRecoverableServerConflict() ->
+                            "Recoverable server conflict (stale versionTag; write dropped, drive-sync reconciles)"
+                        throwable.isRecoverablePermissionFailure() ->
+                            "Permission denied by the server (403; the grant was revoked or narrowed)"
+                        else -> "Transient network failure"
                     }
                     "$kind (no local handler); app not crashing: ${throwable.message}"
                 }

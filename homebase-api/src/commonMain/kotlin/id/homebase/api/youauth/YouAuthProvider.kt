@@ -11,6 +11,7 @@ import id.homebase.api.crypto.generateEccKeyPair
 import id.homebase.api.crypto.performEcdhKeyAgreement
 import id.homebase.api.crypto.publicKeyFromJwkBase64Url
 import id.homebase.api.crypto.publicKeyToJwkBase64Url
+import id.homebase.api.device.deviceDisplayName
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
@@ -55,6 +56,7 @@ class YouAuthProvider(
         returnUrl: String,
         appName: String,
         appId: String,
+        appSlug: String? = null,
         drives: List<TargetDriveAccessRequest> = emptyList(),
         publicKey: EccKeyPair,
         password: SecureByteArray,
@@ -71,7 +73,8 @@ class YouAuthProvider(
             AppAuthorizationParams.create(
                 appName = appName,
                 appId = appId,
-                friendlyName = clientFriendlyName ?: "Homebase KMP App",
+                appSlug = appSlug,
+                friendlyName = clientFriendlyName ?: deviceDisplayName(),
                 drives = drives,
                 circleDrives = circleDrives,
                 circles = circles,
@@ -84,7 +87,7 @@ class YouAuthProvider(
         return YouAuthorizationParams(
             clientId = appId,
             clientType = ClientType.app,
-            clientInfo = clientFriendlyName ?: "Homebase KMP App",
+            clientInfo = clientFriendlyName ?: deviceDisplayName(),
             publicKey = publicKeyToJwkBase64Url(publicKey.publicKey),
             permissionRequest = permissionRequest.toJson(),
             state = state ?: "",

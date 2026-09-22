@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
@@ -126,7 +127,8 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
         val permissions = parsePermission(permissionElement)
 
         return DriveGrant(
-            permissionedDrive = PermissionedDrive(drive = drive, permission = permissions)
+            permissionedDrive = PermissionedDrive(drive = drive, permission = permissions),
+            hasStorageKey = grantJson["hasStorageKey"]?.jsonPrimitive?.booleanOrNull ?: false
         )
     }
 
@@ -208,7 +210,8 @@ fun getUniqueDrivesWithHighestPermission(grants: List<DriveGrant>): List<DriveGr
                         PermissionedDrive(
                             drive = existing.permissionedDrive.drive,
                             permission = mergedPermissions
-                        )
+                        ),
+                    hasStorageKey = existing.hasStorageKey || grantedDrive.hasStorageKey
                 )
         } else {
             result.add(grantedDrive)
