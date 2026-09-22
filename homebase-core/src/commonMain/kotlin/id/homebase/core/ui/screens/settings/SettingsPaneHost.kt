@@ -26,6 +26,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
+import id.homebase.core.ui.screens.card.ProfileCardScreen
+import id.homebase.core.ui.screens.card.ProfileCardViewModel
+import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.help.HelpScreen
@@ -58,17 +61,22 @@ internal data class SettingsPaneActions(
     val onNavigateToDefragmenter: () -> Unit,
 )
 
-private enum class ProfilePage { Edit, Avatar }
+private enum class ProfilePage { Edit, Avatar, Card }
 
 @Composable
 internal fun SettingsPaneHost(
     onDismiss: () -> Unit,
     actions: SettingsPaneActions,
+    profileCardEnabled: Boolean,
 ) {
     // Plain remember, not rememberSaveable: the pane exists only on desktop/web, which have no
     // configuration change or process death to restore across.
     var category by remember { mutableStateOf(SettingsCategory.General) }
     var profilePage by remember { mutableStateOf<ProfilePage?>(null) }
+    var cardOpenedFromEdit by remember { mutableStateOf(false) }
+    // Pre-warms the card page; its host lives as long as the Settings entry.
+    val cardViewModel = if (profileCardEnabled) koinViewModel<ProfileCardViewModel>() else null
+    cardViewModel?.let { StartCardHostWhenSettled(it) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -115,6 +123,10 @@ internal fun SettingsPaneHost(
                             onSelectCategory = { category = it },
                             onProfileEdit = { profilePage = ProfilePage.Edit },
                             onProfileAvatarEdit = { profilePage = ProfilePage.Avatar },
+                            onProfileCard = {
+                                cardOpenedFromEdit = false
+                                profilePage = ProfilePage.Card
+                            }.takeIf { cardViewModel != null },
                             actions = actions,
                         )
                     }
@@ -128,6 +140,10 @@ internal fun SettingsPaneHost(
                                 avatarViewModel = koinViewModel(),
                                 onBack = { profilePage = null },
                                 onNavigateToCropper = actions.onNavigateToCropper,
+                                onOpenCard = {
+                                    cardOpenedFromEdit = true
+                                    profilePage = ProfilePage.Card
+                                }.takeIf { cardViewModel != null },
                             )
 
                             ProfilePage.Avatar -> ProfileAvatarEditScreen(
@@ -135,6 +151,13 @@ internal fun SettingsPaneHost(
                                 onBack = { profilePage = null },
                                 onNavigateToCropper = actions.onNavigateToCropper,
                             )
+
+                            ProfilePage.Card -> cardViewModel?.let {
+                                ProfileCardScreen(
+                                    viewModel = it,
+                                    onBack = { profilePage = if (cardOpenedFromEdit) ProfilePage.Edit else null },
+                                )
+                            }
                         }
                     }
                 }
@@ -150,6 +173,7 @@ private fun CategoryPage(
     onSelectCategory: (SettingsCategory) -> Unit,
     onProfileEdit: () -> Unit,
     onProfileAvatarEdit: () -> Unit,
+    onProfileCard: (() -> Unit)?,
     actions: SettingsPaneActions,
 ) {
     when (category) {
@@ -171,6 +195,7 @@ private fun CategoryPage(
                 onContactBookSettings = { onSelectCategory(SettingsCategory.Contacts) },
                 onProfileEdit = onProfileEdit,
                 onProfileAvatarEdit = onProfileAvatarEdit,
+                onProfileCard = onProfileCard,
             ),
         )
 

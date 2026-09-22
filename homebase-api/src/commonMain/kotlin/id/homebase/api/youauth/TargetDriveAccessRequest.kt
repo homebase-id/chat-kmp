@@ -22,6 +22,7 @@ import kotlinx.serialization.serializer
  * @param attributes Optional key-value attributes for the drive
  * @param allowAnonymousRead Whether anonymous read access is allowed
  * @param allowSubscriptions Whether subscriptions are allowed
+ * @param requireStorageKey Read counts as granted only with the drive's storage key; client-side, never sent
  */
 data class TargetDriveAccessRequest(
     val alias: String,
@@ -33,7 +34,8 @@ data class TargetDriveAccessRequest(
     val driveTypeSlug: String? = null,
     val attributes: Map<String, String>? = null,
     val allowAnonymousRead: Boolean? = null,
-    val allowSubscriptions: Boolean? = null
+    val allowSubscriptions: Boolean? = null,
+    val requireStorageKey: Boolean = false,
 ) {
     /**
      * Convert to a map for serialization using short keys matching the API.
