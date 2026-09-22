@@ -495,6 +495,19 @@ class DriveRegistryTest {
     }
 
     @Test
+    fun bootstrapStoresTheServerRegistryLocallyWhenTheLocalRowIsMissing() = runTest {
+        val db = createTestDatabaseManager()
+        val serverFile = buildRegistryFile(listOf(feedLabeledDrive))
+        val recorder = WriteRecorder(existingServerFile = serverFile)
+        val registry = buildRegistry(db, recorder = recorder)
+
+        registry.bootstrap()
+
+        assertEquals(listOf(feedLabeledDrive.drive.alias), registry.loadDrives().map { it.drive.alias })
+        db.close()
+    }
+
+    @Test
     fun bootstrapReturnsEmptyWhenLocalEmptyAndServerHasNoFile() = runTest {
         val db = createTestDatabaseManager()
         val recorder = WriteRecorder()  // existingServerFile = null
@@ -833,6 +846,39 @@ class DriveRegistryTest {
 
         assertEquals(listOf(vaultDrive.drive.alias), unmounted)
         assertTrue(mounted.isEmpty())
+
+        registry.stop()
+        db.close()
+    }
+
+    @Test
+    fun observerKeepsBaselineWhenChatSyncLandsWithoutTheRegistryFile() = runTest {
+        // Windowed chat sync skips a registry file older than its window. Bootstrap served the
+        // server list; a Chat Stopped with no local row must not read as "every drive removed".
+        val db = createTestDatabaseManager()
+        val eventBus = EventBus()
+        val registry = buildRegistry(db, eventBus = eventBus)
+
+        val unmounted = mutableListOf<Uuid>()
+        registry.start(
+            onMount = {},
+            onUnmount = { unmounted += it },
+            initialBaseline = setOf(feedLabeledDrive.drive.alias),
+        )
+        advanceUntilIdle()
+
+        launch {
+            eventBus.emit(
+                BackendEvent.DriveEvent.Stopped(
+                    SystemDriveConstants.chatDrive.alias,
+                    1014,
+                    BackendEvent.DriveResult.Completed,
+                )
+            )
+        }.join()
+        advanceUntilIdle()
+
+        assertTrue(unmounted.isEmpty())
 
         registry.stop()
         db.close()

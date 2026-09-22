@@ -22,6 +22,7 @@ import id.homebase.api.client.isUnauthorized
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.core.config.LabeledDrive
 import kotlinx.coroutines.CancellationException
@@ -105,12 +106,15 @@ class DriveRegistry(
      * offline. Returns an empty list when no registry file exists yet (fresh install)
      * or when credentials aren't active.
      */
-    suspend fun loadDrives(): List<LabeledDrive> {
-        val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return emptyList()
-        val chatDriveId = SystemDriveConstants.chatDrive.alias
+    suspend fun loadDrives(): List<LabeledDrive> = loadLocalRegistry() ?: emptyList()
+
+    // Null = no registry row locally, which is "not synced yet", never "no drives": the file is
+    // never deleted, and the windowed chat sync can skip a registry file older than its window.
+    private suspend fun loadLocalRegistry(): List<LabeledDrive>? {
+        val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return null
         val file = databaseManager.driveMainIndex.selectHomebaseFileByUnique(
-            identityId, chatDriveId, REGISTRY_UNIQUE_ID,
-        ) ?: return emptyList()
+            identityId, SystemDriveConstants.chatDrive.alias, REGISTRY_UNIQUE_ID,
+        ) ?: return null
         return parseRegistryContent(file)
     }
 
@@ -192,8 +196,11 @@ class DriveRegistry(
 
     private suspend fun runBootstrap(): List<LabeledDrive> {
         Logger.i(tag = TAG) { "bootstrap() begin" }
-        val local = loadDrives()
-        Logger.i(tag = TAG) { "bootstrap local-DB returned ${local.size} drive(s)" }
+        val localOrNull = loadLocalRegistry()
+        val local = localOrNull ?: emptyList()
+        Logger.i(tag = TAG) {
+            "bootstrap local-DB returned ${local.size} drive(s) (fileExists=${localOrNull != null})"
+        }
 
         // Always reconcile against the server, even when the local cache is non-empty.
         // The local index is only as fresh as the last chat-drive sync delivered: a drive
@@ -201,7 +208,9 @@ class DriveRegistry(
         // this device's local index yet, and nothing would mount it at login. (Returning
         // local-when-non-empty was the reconciliation bug — a stale cache never caught up
         // until some later chat-drive sync happened to redeliver the registry file.)
-        val server = fetchServerRegistry()
+        val serverFile = fetchServerRegistryFile()
+        if (serverFile != null && localOrNull == null) storeLocally(serverFile)
+        val server = serverFile?.let { parseRegistryContent(it) }
 
         if (server == null) {
             // Offline / fetch error / no registry file on the server yet. Trust the local
@@ -223,9 +232,11 @@ class DriveRegistry(
         return merged
     }
 
-    private suspend fun fetchServerRegistry(): List<LabeledDrive>? = try {
+    private suspend fun fetchServerRegistry(): List<LabeledDrive>? =
+        fetchServerRegistryFile()?.let { parseRegistryContent(it) }
+
+    private suspend fun fetchServerRegistryFile(): HomebaseFile? = try {
         getFileHeaderByUid(SystemDriveConstants.chatDrive.alias, REGISTRY_UNIQUE_ID)
-            ?.let { parseRegistryContent(it) }
     } catch (e: CancellationException) {
         // Don't swallow cancellation — let the caller's scope tear down cleanly.
         throw e
@@ -262,6 +273,24 @@ class DriveRegistry(
             "reconcileWithServer: server has ${server.size} drive(s), ${added.size} new to this device"
         }
         for (drive in added) onMount(drive)
+    }
+
+    // Reconnects and the observer read the local index; without the row they see no drives at all.
+    private suspend fun storeLocally(file: HomebaseFile) {
+        val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return
+        try {
+            MainIndexMetaHelpers.HomebaseFileProcessor(databaseManager).baseUpsertEntryZapZap(
+                identityId = identityId,
+                driveId = SystemDriveConstants.chatDrive.alias,
+                fileHeader = file,
+                cursor = null,
+            )
+            Logger.i(tag = TAG) { "registry file missing locally — stored the server copy" }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "failed to store server registry file locally" }
+        }
     }
 
     private fun unionByAlias(
@@ -415,7 +444,10 @@ class DriveRegistry(
         onMount: suspend (LabeledDrive) -> Unit,
         onUnmount: suspend (Uuid) -> Unit,
     ) {
-        val fresh = loadDrives()
+        val fresh = loadLocalRegistry() ?: run {
+            Logger.w(tag = TAG) { "reconcile: no local registry file — keeping mounted drives" }
+            return
+        }
         val freshDriveIds = fresh.mapTo(HashSet()) { it.drive.alias }
         val added: List<LabeledDrive>
         val removed: List<Uuid>
