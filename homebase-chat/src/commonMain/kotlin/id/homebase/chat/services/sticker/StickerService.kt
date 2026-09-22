@@ -34,9 +34,6 @@ import kotlin.uuid.Uuid
 
 private const val TAG = "StickerService"
 
-// GIFs get no server thumbnails, so receivers download and animate the whole file.
-internal const val STICKER_GIF_MAX_BYTES = 2L * 1024 * 1024
-
 /**
  * Persists and resolves saved stickers on the dedicated Stickers drive.
  *
