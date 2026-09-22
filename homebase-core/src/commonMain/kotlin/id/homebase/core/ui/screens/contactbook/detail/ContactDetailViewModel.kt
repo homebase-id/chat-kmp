@@ -7,9 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.ClientException
 import id.homebase.api.client.ForbiddenException
-import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionNetworkProvider
@@ -41,6 +39,10 @@ import id.homebase.core.contactbook.reconcileAction
 import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
+import id.homebase.core.ui.screens.contactbook.ConnectionRequestFailure
+import id.homebase.core.ui.screens.contactbook.connectionRequestFailure
+import id.homebase.core.ui.screens.contactbook.isTerminal
+import id.homebase.core.ui.screens.contactbook.toCircleUuids
 import id.homebase.core.ui.screens.contactbook.assignableCircles
 import id.homebase.core.ui.screens.contactbook.CircleAccessState
 import id.homebase.core.ui.screens.contactbook.ContactState
@@ -794,7 +796,7 @@ class ContactDetailViewModel(
             try {
                 connectionRequestService.acceptIncomingRequest(
                     OdinId(odinId),
-                    circleIds.map { Uuid.parseHex(it) },
+                    circleIds.toCircleUuids(),
                 )
                 _uiState.update { it.copy(requestReview = it.requestReview?.copy(isSubmitting = false)) }
                 _events.tryEmit(ContactDetailEvent.RequestAccepted)
@@ -802,13 +804,14 @@ class ContactDetailViewModel(
                 throw e
             } catch (e: Exception) {
                 Logger.w(e, TAG) { "Accepting $odinId from the review failed" }
-                // Retrying can't fix a withdrawn request or a missing permission.
-                val terminal = e is ForbiddenException ||
-                    (e is ClientException && e.errorCode == OdinClientErrorCode.IncomingRequestNotFound)
+                val failure = e.connectionRequestFailure()
                 _uiState.update {
-                    it.copy(requestReview = it.requestReview?.copy(isSubmitting = false, failed = !terminal))
+                    it.copy(
+                        requestReview = it.requestReview
+                            ?.copy(isSubmitting = false, failed = !failure.isTerminal),
+                    )
                 }
-                if (terminal) emitConnectionError(e)
+                if (failure.isTerminal) emitConnectionError(e)
             }
         }
     }
@@ -941,12 +944,10 @@ class ContactDetailViewModel(
      */
     private fun emitConnectionError(error: Throwable) {
         _events.tryEmit(
-            when {
-                error is ForbiddenException -> ContactDetailEvent.ConnectionForbidden
-                error is ClientException &&
-                    error.errorCode == OdinClientErrorCode.IncomingRequestNotFound ->
-                    ContactDetailEvent.RequestWithdrawn
-                else -> ContactDetailEvent.Error
+            when (error.connectionRequestFailure()) {
+                ConnectionRequestFailure.Forbidden -> ContactDetailEvent.ConnectionForbidden
+                ConnectionRequestFailure.Withdrawn -> ContactDetailEvent.RequestWithdrawn
+                ConnectionRequestFailure.Transient -> ContactDetailEvent.Error
             }
         )
     }

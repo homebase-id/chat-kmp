@@ -5,9 +5,6 @@ package id.homebase.core.ui.screens.contactbook.add
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.ClientException
-import id.homebase.api.client.ForbiddenException
-import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.ContactRepository
@@ -23,13 +20,18 @@ import id.homebase.chat.services.convo.contact.ConnectionState
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.settings.DeveloperPreferences
+import id.homebase.core.ui.screens.contactbook.ConnectionRequestFailure
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
+import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.assignableCircles
+import id.homebase.core.ui.screens.contactbook.connectionRequestFailure
+import id.homebase.core.ui.screens.contactbook.isTerminal
 import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 import id.homebase.core.ui.screens.contactbook.detail.ReviewSheetState
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.saveContactDraft
+import id.homebase.core.ui.screens.contactbook.toCircleUuids
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -45,7 +47,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 
 /**
  * Drives the full-screen Add Contact flow. By default it leads with the Homebase ID and resolves
@@ -105,12 +106,14 @@ class AddContactViewModel(
                     .firstOrNull { it.key.domainName.lowercase() == d }
                     ?.value?.status
             }
+            // Taken once: the relation below is derived from it, so the two can't disagree.
+            val incomingRequest = domain
+                ?.let { d -> incoming.firstOrNull { it.senderOdinId.domainName.lowercase() == d } }
             val relation = when {
                 domain == null -> IdentityRelation.NONE
                 status == ConnectionStatus.Connected -> IdentityRelation.CONNECTED
                 status == ConnectionStatus.Blocked -> IdentityRelation.BLOCKED
-                incoming.any { it.senderOdinId.domainName.lowercase() == domain } ->
-                    IdentityRelation.INCOMING_PENDING
+                incomingRequest != null -> IdentityRelation.INCOMING_PENDING
                 outgoing.any { it.recipientOdinId.domainName.lowercase() == domain } ->
                     IdentityRelation.OUTGOING_PENDING
                 else -> IdentityRelation.NONE
@@ -118,15 +121,17 @@ class AddContactViewModel(
             val alreadySaved = domain != null &&
                 contacts.any { it.content.odinId?.lowercase() == domain }
             val reviewEnabled = developerPreferences.connectionReviewEnabled.value
-            val incomingRequest = domain
+            val requestUnderReview = incomingRequest
                 ?.takeIf { reviewEnabled && relation == IdentityRelation.INCOMING_PENDING }
-                ?.let { d -> incoming.firstOrNull { it.senderOdinId.domainName.lowercase() == d } }
             s.copy(
                 relation = relation,
                 alreadySaved = alreadySaved,
                 assignableCircles = circ.assignableCircles(reviewEnabled),
-                reviewCircleGroups = circ.reviewCircleGroups(),
-                requestReview = incomingRequest?.let { request ->
+                // This fold re-runs on every keystroke in the identity field; the groups are read
+                // only while a request is actually under review.
+                reviewCircleGroups =
+                    if (requestUnderReview != null) circ.reviewCircleGroups() else ReviewCircleGroups(),
+                requestReview = requestUnderReview?.let { request ->
                     (s.requestReview ?: ReviewSheetState()).copy(
                         introducedBy = request.introducerOdinId?.domainName,
                         incomingRequest = IncomingRequestSummary(
@@ -180,11 +185,7 @@ class AddContactViewModel(
             AddContactAction.SaveClicked -> save()
             AddContactAction.MessageClicked -> openConversation()
             is AddContactAction.AcceptRequestClicked -> {
-                // Circle ids arrive as 32-char N-format strings; the accept API takes Uuids. Drop
-                // any that fail to parse rather than aborting the accept.
-                val circleUuids = action.circleIds.mapNotNull {
-                    runCatching { Uuid.parseHex(it) }.getOrNull()
-                }
+                val circleUuids = action.circleIds.toCircleUuids()
                 handleRequestAction(AddContactEvent.RequestAccepted) {
                     connectionRequestService.acceptIncomingRequest(it, circleUuids)
                 }
@@ -220,15 +221,7 @@ class AddContactViewModel(
                     .onFailure {
                         if (it is CancellationException) throw it
                         Logger.w(it) { "Request action failed for $odinId" }
-                        // Accept raced a since-completed cancel-outgoing on the sender's side;
-                        // ConnectionRequestService.acceptIncomingRequest already dropped the
-                        // stale local copy before rethrowing — just show the specific message.
-                        val withdrawn = it is ClientException &&
-                            it.errorCode == OdinClientErrorCode.IncomingRequestNotFound
-                        _events.tryEmit(
-                            if (withdrawn) AddContactEvent.RequestWithdrawn
-                            else AddContactEvent.RequestActionFailed
-                        )
+                        _events.tryEmit(failureEvent(it.connectionRequestFailure()))
                     }
             } finally {
                 _state.update { it.copy(actionInProgress = false) }
@@ -249,30 +242,28 @@ class AddContactViewModel(
         }
         viewModelScope.launch {
             try {
-                connectionRequestService.acceptIncomingRequest(
-                    odinId,
-                    circleIds.map { Uuid.parseHex(it) },
-                )
+                connectionRequestService.acceptIncomingRequest(odinId, circleIds.toCircleUuids())
                 _state.update { it.copy(requestReview = null) }
                 _events.tryEmit(AddContactEvent.RequestAccepted)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Logger.w(e) { "Accepting $odinId from the review failed" }
-                val withdrawn = e is ClientException &&
-                    e.errorCode == OdinClientErrorCode.IncomingRequestNotFound
-                // Retrying can't fix a withdrawn request or a missing permission.
-                val terminal = withdrawn || e is ForbiddenException
+                val failure = e.connectionRequestFailure()
                 _state.update {
-                    it.copy(requestReview = it.requestReview?.copy(isSubmitting = false, failed = !terminal))
+                    it.copy(
+                        requestReview = it.requestReview
+                            ?.copy(isSubmitting = false, failed = !failure.isTerminal),
+                    )
                 }
-                when {
-                    withdrawn -> _events.tryEmit(AddContactEvent.RequestWithdrawn)
-                    terminal -> _events.tryEmit(AddContactEvent.RequestActionFailed)
-                }
+                if (failure.isTerminal) _events.tryEmit(failureEvent(failure))
             }
         }
     }
+
+    private fun failureEvent(failure: ConnectionRequestFailure): AddContactEvent =
+        if (failure == ConnectionRequestFailure.Withdrawn) AddContactEvent.RequestWithdrawn
+        else AddContactEvent.RequestActionFailed
 
     /** Debounced identity lookup, mirroring `ConnectRequestViewModel.startRecipientResolution`. */
     private fun startResolution(rawValue: String) {
