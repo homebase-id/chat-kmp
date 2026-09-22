@@ -1,9 +1,15 @@
 package id.homebase.api.video
 
+import co.touchlab.kermit.LogWriter
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
+import co.touchlab.kermit.platformLogWriter
+import id.homebase.api.video.GifShrinker.OverBudget
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -52,7 +58,9 @@ class GifShrinkerTest {
     fun gifWithinBudget_isUntouched() = runTest {
         val small = gif(size = 900)
         val ffmpeg = FakeFfmpeg()
-        assertSame(small, shrink(small, ffmpeg))
+        val result = shrink(small, ffmpeg)
+        assertSame(small, result.bytes)
+        assertNull(result.overBudget)
         assertTrue(ffmpeg.calls.isEmpty())
     }
 
@@ -60,7 +68,9 @@ class GifShrinkerTest {
     fun nonGif_isUntouched() = runTest {
         val png = ByteArray(5_000).also { byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47).copyInto(it) }
         val ffmpeg = FakeFfmpeg()
-        assertSame(png, shrink(png, ffmpeg))
+        val result = shrink(png, ffmpeg)
+        assertSame(png, result.bytes)
+        assertNull(result.overBudget)
         assertTrue(ffmpeg.calls.isEmpty())
     }
 
@@ -68,7 +78,9 @@ class GifShrinkerTest {
     fun firstStepWithinBudget_stopsTheLadder() = runTest {
         val fits = gif(size = 600)
         val ffmpeg = FakeFfmpeg(fits)
-        assertSame(fits, shrink(input, ffmpeg))
+        val result = shrink(input, ffmpeg)
+        assertSame(fits, result.bytes)
+        assertNull(result.overBudget)
         assertEquals(1, ffmpeg.calls.size)
         assertTrue("scale=512:288:flags=lanczos" in ffmpeg.graphs[0], ffmpeg.graphs[0])
         assertTrue("max_colors=128" in ffmpeg.graphs[0], ffmpeg.graphs[0])
@@ -78,7 +90,7 @@ class GifShrinkerTest {
     fun fallsThroughToSmallerSteps() = runTest {
         val fits = gif(size = 800)
         val ffmpeg = FakeFfmpeg(gif(size = 3_000), gif(size = 2_500), fits)
-        assertSame(fits, shrink(input, ffmpeg))
+        assertSame(fits, shrink(input, ffmpeg).bytes)
         assertEquals(3, ffmpeg.calls.size)
         assertTrue("scale=384:216:" in ffmpeg.graphs[1] && "max_colors=128" in ffmpeg.graphs[1], ffmpeg.graphs[1])
         assertTrue("scale=384:216:" in ffmpeg.graphs[2] && "max_colors=64" in ffmpeg.graphs[2], ffmpeg.graphs[2])
@@ -118,54 +130,115 @@ class GifShrinkerTest {
     fun nothingFits_keepsTheSmallestResult() = runTest {
         val smallest = gif(size = 2_200)
         val ffmpeg = FakeFfmpeg(gif(size = 3_000), smallest, gif(size = 2_500))
-        assertSame(smallest, shrink(input, ffmpeg))
+        val result = shrink(input, ffmpeg)
+        assertSame(smallest, result.bytes)
+        assertEquals(OverBudget.LadderExhausted, result.overBudget)
     }
 
     @Test
     fun noStepBeatsTheOriginal_keepsTheOriginal() = runTest {
         val ffmpeg = FakeFfmpeg(gif(size = 6_000), gif(size = 7_000), gif(size = 8_000))
-        assertSame(input, shrink(input, ffmpeg))
+        val result = shrink(input, ffmpeg)
+        assertSame(input, result.bytes)
+        assertEquals(OverBudget.LadderExhausted, result.overBudget)
         assertEquals(3, ffmpeg.calls.size)
     }
 
     @Test
     fun ffmpegFailure_keepsTheOriginal() = runTest {
         val failed = FakeFfmpeg(null, gif(size = 600))
-        assertSame(input, shrink(input, failed))
+        val result = shrink(input, failed)
+        assertSame(input, result.bytes)
+        assertEquals(OverBudget.FfmpegFailed, result.overBudget)
         assertEquals(1, failed.calls.size)
 
-        assertSame(input, GifShrinker.shrink(input, BUDGET) { _, _, _ -> error("ffmpeg crashed") })
+        val threw = GifShrinker.shrink(input, BUDGET) { _, _, _ -> error("ffmpeg crashed") }
+        assertSame(input, threw.bytes)
+        assertEquals(OverBudget.FfmpegFailed, threw.overBudget)
     }
 
     @Test
     fun stillOutputOfAnAnimation_keepsTheOriginal() = runTest {
-        assertSame(input, shrink(input, FakeFfmpeg(gif(frames = 1, size = 600))))
+        val result = shrink(input, FakeFfmpeg(gif(frames = 1, size = 600)))
+        assertSame(input, result.bytes)
+        assertEquals(OverBudget.FrameLoss, result.overBudget)
     }
 
     @Test
     fun timeout_keepsTheOriginal() = runTest {
-        assertSame(input, GifShrinker.shrink(input, BUDGET) { _, _, _ -> awaitCancellation() })
+        val result = GifShrinker.shrink(input, BUDGET) { _, _, _ -> awaitCancellation() }
+        assertSame(input, result.bytes)
+        assertEquals(OverBudget.Timeout, result.overBudget)
     }
 
     @Test
     fun inputOverTheByteCap_isUntouched() = runTest {
         val huge = ByteArray(GifShrinker.MAX_INPUT_BYTES + 1).also { gif().copyInto(it) }
         val ffmpeg = FakeFfmpeg()
-        assertSame(huge, shrink(huge, ffmpeg))
+        val result = shrink(huge, ffmpeg)
+        assertSame(huge, result.bytes)
+        assertEquals(OverBudget.InputTooLarge, result.overBudget)
         assertTrue(ffmpeg.calls.isEmpty())
     }
 
     @Test
-    fun inputOverThePixelCap_isUntouched() = runTest {
-        // 1024² scales to 512² for the first pass: 128 frames is exactly the cap, 129 is over.
+    fun overThePixelCapAtEveryStep_isUntouched() = runTest {
+        // At 10 fps no step drops frames, so 384² is the smallest frame: 227 frames fit the cap, 228 don't.
         val atCap = FakeFfmpeg(gif(size = 600))
-        shrink(gif(width = 1024, height = 1024, frames = 128, size = 5_000), atCap)
+        shrink(gif(width = 1024, height = 1024, frames = 227, delayCs = 10, size = 5_000), atCap)
         assertEquals(1, atCap.calls.size)
 
         val overCap = FakeFfmpeg()
-        val big = gif(width = 1024, height = 1024, frames = 129, size = 5_000)
-        assertSame(big, shrink(big, overCap))
+        val big = gif(width = 1024, height = 1024, frames = 228, delayCs = 10, size = 5_000)
+        val result = shrink(big, overCap)
+        assertSame(big, result.bytes)
+        assertEquals(OverBudget.TooManyPixels, result.overBudget)
         assertTrue(overCap.calls.isEmpty())
+    }
+
+    @Test
+    fun overThePixelCapAtTheFirstStep_startsAtTheFirstStepUnderIt() = runTest {
+        // 1024² scales to 512² for step 1: 128 frames is exactly the cap, 129 is over it but fits at 384².
+        val atCap = FakeFfmpeg(gif(size = 600))
+        shrink(gif(width = 1024, height = 1024, frames = 128, size = 5_000), atCap)
+        assertTrue("scale=512:512:" in atCap.graphs.single(), atCap.graphs.toString())
+
+        val overCap = FakeFfmpeg(gif(size = 600))
+        shrink(gif(width = 1024, height = 1024, frames = 129, size = 5_000), overCap)
+        assertTrue("scale=384:384:" in overCap.graphs.single() && "max_colors=128" in overCap.graphs.single())
+    }
+
+    @Test
+    fun longGifStartingAtTheFpsStep_isCappedAtThatStepsFramesAndSize() = runTest {
+        // 600 frames at 25 fps: 512x288 buffers 88M pixels, but step 3 keeps 288 frames of 384x216 = 24M.
+        val long = gif(frames = 600, size = 5_000)
+        val ffmpeg = FakeFfmpeg(gif(frames = 2, size = 300))
+        val result = GifShrinker.shrink(long, 500, ffmpeg::transcode)
+        assertNull(result.overBudget)
+        assertTrue(ffmpeg.graphs.single().startsWith("fps=12,scale=384:216:"), ffmpeg.graphs.toString())
+    }
+
+    @Test
+    fun overBudget_logsOneWarningWithTheReasonAndNumbers() = runTest {
+        val warnings = mutableListOf<String>()
+        Logger.setLogWriters(
+            listOf(
+                object : LogWriter() {
+                    override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
+                        if (severity >= Severity.Warn) warnings += message
+                    }
+                }
+            )
+        )
+        try {
+            shrink(input, overBudget())
+        } finally {
+            Logger.setLogWriters(listOf(platformLogWriter()))
+        }
+        val line = warnings.single()
+        assertTrue("LadderExhausted" in line, line)
+        assertTrue("800x450 30f 25 fps 5000 B -> 3000 B" in line, line)
+        assertTrue("start=1 steps=3" in line, line)
     }
 
     @Test

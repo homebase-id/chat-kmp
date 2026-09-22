@@ -10,6 +10,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.coroutines.ContinuationInterceptor
@@ -29,6 +30,7 @@ private fun CoroutineScope.testDispatcher(): CoroutineDispatcher =
 private class Rec {
     val infos = mutableListOf<StringResource>()
     val saved = mutableListOf<Pair<ByteArray, String>>()
+    val pending = mutableListOf<ByteArray>()
     val sent = mutableListOf<Triple<Uuid, ByteArray, String>>()
     var driveAwaits = 0
 }
@@ -42,7 +44,11 @@ private fun creator(
     outline: suspend (ByteArray) -> ByteArray = { it + 9 },
     saveResult: Uuid? = Uuid.random(),
     normalize: suspend (ByteArray, String) -> Pair<ByteArray, String> = { b, ct -> b to ct },
-    send: suspend (Uuid, ByteArray, String) -> Unit = { cid, b, ct -> rec.sent += Triple(cid, b, ct) },
+    // Like addMessageWithFiles: the pending bubble shows at once, the upload waits for the normalized bytes.
+    send: suspend (Uuid, ByteArray, String, suspend () -> Pair<ByteArray, String>) -> Unit = { cid, b, _, normalized ->
+        rec.pending += b
+        scope.launch { val (nb, nct) = normalized(); rec.sent += Triple(cid, nb, nct) }
+    },
 ) = StickerCreator(
     scope = scope,
     saveSticker = { b, ct -> rec.saved += b to ct; saveResult },
@@ -134,9 +140,41 @@ class StickerCreatorTest {
         assertTrue(rec.saved.isEmpty()); assertEquals(0, rec.driveAwaits); assertTrue(rec.infos.isEmpty())
     }
 
+    @Test fun send_shows_the_pending_sticker_before_normalizing_finishes() = runTest {
+        val rec = Rec()
+        val gif = byteArrayOf(0x47, 0x49, 0x46)
+        val shrunk = CompletableDeferred<Pair<ByteArray, String>>()
+        val c = creator(this, rec, isTransparent = { false }, normalize = { _, _ -> shrunk.await() })
+        c.send(convo, gif, "image/gif")
+        advanceUntilIdle()
+        assertTrue(rec.pending.single().contentEquals(gif)); assertTrue(rec.sent.isEmpty())
+
+        shrunk.complete(byteArrayOf(0x47) to "image/gif")
+        advanceUntilIdle()
+        assertTrue(rec.sent.single().second.contentEquals(byteArrayOf(0x47)))
+    }
+
+    @Test fun confirm_shows_the_pending_sticker_then_saves_and_sends_one_normalize() = runTest {
+        val rec = Rec()
+        var normalizes = 0
+        val shrunk = CompletableDeferred<Unit>()
+        val c = creator(this, rec, isTransparent = { false }, cutOut = { byteArrayOf(1) }, outline = { byteArrayOf(2) },
+            normalize = { _, ct -> normalizes++; shrunk.await(); byteArrayOf(3) to ct })
+        c.create(byteArrayOf(0), "image/jpeg", convo); advanceUntilIdle()
+        c.confirm(); advanceUntilIdle()
+        assertTrue(rec.pending.single().contentEquals(byteArrayOf(2)))
+        assertTrue(rec.saved.isEmpty()); assertTrue(rec.sent.isEmpty())
+
+        shrunk.complete(Unit); advanceUntilIdle()
+        assertEquals(1, normalizes)
+        assertTrue(rec.saved.single().first.contentEquals(byteArrayOf(3)))
+        assertTrue(rec.sent.single().second.contentEquals(byteArrayOf(3)))
+        assertEquals(MR.string.chat_sticker_saved, rec.infos.single())
+    }
+
     @Test fun send_only_failure_reports_send_failed() = runTest {
         val rec = Rec()
-        val c = creator(this, rec, isTransparent = { false }, send = { _, _, _ -> throw RuntimeException("send boom") })
+        val c = creator(this, rec, isTransparent = { false }, send = { _, _, _, _ -> throw RuntimeException("send boom") })
         c.send(convo, byteArrayOf(0x47, 0x49, 0x46), "image/gif")
         advanceUntilIdle()
         assertTrue(rec.saved.isEmpty())
@@ -229,7 +267,7 @@ class StickerCreatorTest {
         val c = StickerCreator(
             scope = this,
             saveSticker = { b, ct -> rec.saved += b to ct; Uuid.random() },
-            sendSticker = { _, _, _ -> throw RuntimeException("send boom") },
+            sendSticker = { _, _, _, _ -> throw RuntimeException("send boom") },
             sendInfo = { rec.infos += it },
             awaitDriveGranted = {},
             isTransparent = { false }, bgRemovalSupported = { true },
