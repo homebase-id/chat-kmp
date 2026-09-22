@@ -891,7 +891,7 @@
     <string name="chat_gif_paste_as_sticker">Send as sticker</string>
     <string name="chat_gif_paste_as_gif">Send as GIF</string>
     <string name="cd_gif_paste_preview">Pasted GIF</string>
-    <string name="cd_gif_paste_as_sticker">Save to my stickers and send</string>
+    <string name="cd_gif_paste_as_sticker">Send it as a sticker</string>
     <string name="cd_gif_paste_as_gif">Open in the editor to send as a GIF</string>
 
     <!-- Groodle (group-scheduling poll) -->

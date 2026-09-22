@@ -147,21 +147,32 @@ class StickerCreator(
         val opt = s.variants.firstOrNull { it.kind == s.selected } ?: return
         Logger.d(tag = TAG) { "confirm: variant=${s.selected} bytes=${opt.bytes.size}B ${opt.contentType}" }
         _state.value = null
-        saveAndSend(s.conversationId, opt.bytes, opt.contentType)
+        normalizeAndSend(s.conversationId, opt.bytes, opt.contentType, saveToLibrary = true)
     }
 
-    fun saveAndSend(conversationId: Uuid, original: ByteArray, originalContentType: String) {
+    fun send(conversationId: Uuid, bytes: ByteArray, contentType: String) =
+        normalizeAndSend(conversationId, bytes, contentType, saveToLibrary = false)
+
+    private fun normalizeAndSend(
+        conversationId: Uuid,
+        original: ByteArray,
+        originalContentType: String,
+        saveToLibrary: Boolean,
+    ) {
         scope.launch {
             try {
                 val (bytes, contentType) = normalize(original, originalContentType)
-                awaitDriveGranted()
-                val saved = saveSticker(bytes, contentType)
+                val savedInfo = if (saveToLibrary) {
+                    awaitDriveGranted()
+                    if (saveSticker(bytes, contentType) != null) MR.string.chat_sticker_saved
+                    else MR.string.chat_sticker_save_failed
+                } else null
                 sendSticker(conversationId, bytes, contentType) // suspend; a failure throws → caught below
-                sendInfo(if (saved != null) MR.string.chat_sticker_saved else MR.string.chat_sticker_save_failed)
+                savedInfo?.let(sendInfo)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Logger.e(e, TAG) { "Sticker save and send failed" }
+                Logger.e(e, TAG) { "Sticker send failed (saveToLibrary=$saveToLibrary)" }
                 sendInfo(MR.string.chat_sticker_send_failed)
             }
         }

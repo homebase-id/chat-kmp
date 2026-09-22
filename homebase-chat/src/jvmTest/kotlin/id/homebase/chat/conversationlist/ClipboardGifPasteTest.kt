@@ -55,7 +55,7 @@ class ClipboardGifPasteTest {
         sendEvent = {},
         dispatch = {},
         addMessageWithFiles = { _, _, _ -> },
-        saveAndSendSticker = { cid, bytes, contentType -> stickerSends += Triple(cid, bytes, contentType) },
+        sendSticker = { cid, bytes, contentType -> stickerSends += Triple(cid, bytes, contentType) },
     )
 
     private fun conversation() = EnrichedConversationUiModel(
@@ -140,7 +140,7 @@ class ClipboardGifPasteTest {
     }
 
     @Test
-    fun sendAsSticker_savesAndSendsTheOriginalGifOnce() {
+    fun sendAsSticker_sendsTheOriginalGifOnce() {
         paste(animatedGif)
 
         handler.handleSendPastedGifAsSticker()
