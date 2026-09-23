@@ -3,14 +3,10 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
@@ -48,7 +44,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -131,21 +126,6 @@ fun StartCardHostWhenSettled(viewModel: ProfileCardViewModel) {
         viewModel.startHost()
     }
 }
-
-internal fun cardSheetEnterTransition(): EnterTransition {
-    val motion = MotionScheme.standard()
-    return slideInVertically(motion.slowSpatialSpec()) { it } + fadeIn(motion.defaultEffectsSpec())
-}
-
-internal fun cardSheetExitTransition(): ExitTransition {
-    val motion = MotionScheme.standard()
-    return slideOutVertically(motion.defaultSpatialSpec()) { it } + fadeOut(motion.slowEffectsSpec())
-}
-
-// Viewer and editor show the same card, so moving between them fades rather than slides.
-internal fun cardFadeIn(): EnterTransition = fadeIn(MotionScheme.standard().defaultEffectsSpec())
-
-internal fun cardFadeOut(): ExitTransition = fadeOut(MotionScheme.standard().defaultEffectsSpec())
 
 @Composable
 internal fun CardExpressiveTheme(content: @Composable () -> Unit) {

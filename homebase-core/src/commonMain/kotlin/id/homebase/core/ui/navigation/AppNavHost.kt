@@ -8,14 +8,6 @@ import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.email.EmailViewModel
 import id.homebase.core.ui.screens.email.EmailScreen
 import id.homebase.core.email.EmailPreferences
-import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -162,10 +154,6 @@ import id.homebase.core.ui.screens.card.CardTapShareDriver
 import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
 import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
-import id.homebase.core.ui.screens.card.cardFadeIn
-import id.homebase.core.ui.screens.card.cardFadeOut
-import id.homebase.core.ui.screens.card.cardSheetEnterTransition
-import id.homebase.core.ui.screens.card.cardSheetExitTransition
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.profile.ProfileEditScreen
 import id.homebase.core.ui.screens.settings.SettingsActions
@@ -987,41 +975,16 @@ fun AppNavHost(
                         }
                     }
 
+                    val motion = MaterialTheme.motionScheme
                     NavHost(
                         navController = navController,
                         startDestination = Route.AppLoading,
                         modifier = Modifier.weight(1f),
-                        enterTransition = {
-                            if (isBetweenTopLevelRoutes()) EnterTransition.None
-                            else if (targetState.destination.isVerticalSlideRoute()) EnterTransition.None
-                            else slideInHorizontally(
-                                initialOffsetX = { 1000 }, animationSpec = tween(500)
-                            )
-                        },
-                        exitTransition = {
-                            if (isBetweenTopLevelRoutes()) ExitTransition.None
-                            else if (targetState.destination.isSheetRoute()) ExitTransition.KeepUntilTransitionsFinished
-                            else if (targetState.destination.isVerticalSlideRoute()) ExitTransition.None
-                            else slideOutHorizontally(
-                                targetOffsetX = { -1000 }, animationSpec = tween(500)
-                            )
-                        },
-                        popEnterTransition = {
-                            if (isBetweenTopLevelRoutes()) EnterTransition.None
-                            else if (initialState.destination.isVerticalSlideRoute() ||
-                                initialState.destination.isSheetRoute()
-                            ) EnterTransition.None
-                            else slideInHorizontally(
-                                initialOffsetX = { -1000 }, animationSpec = tween(500)
-                            )
-                        },
-                        popExitTransition = {
-                            if (isBetweenTopLevelRoutes()) ExitTransition.None
-                            else if (initialState.destination.isVerticalSlideRoute()) ExitTransition.None
-                            else slideOutHorizontally(
-                                targetOffsetX = { 1000 }, animationSpec = tween(500)
-                            )
-                        }) {
+                        enterTransition = { navEnter(motion) },
+                        exitTransition = { navExit(motion) },
+                        popEnterTransition = { navPopEnter(motion) },
+                        popExitTransition = { navPopExit(motion) },
+                    ) {
                         composable<Route.AppLoading> {
                             AppLoadingScreen(
                                 viewModel = koinViewModel(),
@@ -1737,12 +1700,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ProfileCard>(
-                            enterTransition = { cardSheetEnterTransition() },
-                            exitTransition = { cardFadeOut() },
-                            popEnterTransition = { cardFadeIn() },
-                            popExitTransition = { cardSheetExitTransition() },
-                        ) { entry ->
+                        composable<Route.ProfileCard> { entry ->
                             if (isAuthenticated) {
                                 ProfileCardScreen(
                                     viewModel = koinViewModel(
@@ -1754,10 +1712,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ProfileCardEditor>(
-                            enterTransition = { cardFadeIn() },
-                            popExitTransition = { cardFadeOut() },
-                        ) { entry ->
+                        composable<Route.ProfileCardEditor> { entry ->
                             if (isAuthenticated) {
                                 ProfileCardEditorScreen(
                                     viewModel = koinViewModel(
@@ -2238,32 +2193,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.VaultNoteEditor>(
-                            enterTransition = {
-                                slideInVertically(
-                                    initialOffsetY = { it },
-                                    animationSpec = tween(400),
-                                )
-                            },
-                            exitTransition = {
-                                slideOutVertically(
-                                    targetOffsetY = { it },
-                                    animationSpec = tween(400),
-                                )
-                            },
-                            popEnterTransition = {
-                                slideInVertically(
-                                    initialOffsetY = { it },
-                                    animationSpec = tween(400),
-                                )
-                            },
-                            popExitTransition = {
-                                slideOutVertically(
-                                    targetOffsetY = { it },
-                                    animationSpec = tween(400),
-                                )
-                            },
-                        ) { backStackEntry ->
+                        composable<Route.VaultNoteEditor> { backStackEntry ->
                             if (isAuthenticated) {
                                 val route = backStackEntry.toRoute<Route.VaultNoteEditor>()
                                 val sectionUuid = Uuid.parse(route.sectionId)
@@ -2407,29 +2337,8 @@ private fun NavHostController.selectConversationOnChatList(
     return true
 }
 
-private fun NavDestination?.isTopLevelRoute(): Boolean {
-    return this?.hasRoute(Route.ChatList::class) == true ||
-            this?.hasRoute(Route.Feed::class) == true ||
-            this?.hasRoute(Route.Moments::class) == true ||
-            this?.hasRoute(Route.Home::class) == true ||
-            this?.hasRoute(Route.Vault::class) == true ||
-            this?.hasRoute(Route.Email::class) == true ||
-            this?.hasRoute(Route.Location::class) == true ||
-            this?.hasRoute(Route.ContactBook::class) == true
-}
-
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
-    return initialState.destination.isTopLevelRoute() && targetState.destination.isTopLevelRoute()
-}
-
-private fun NavDestination?.isVerticalSlideRoute(): Boolean {
-    return this?.hasRoute(Route.VaultNoteEditor::class) == true
-}
-
-private fun NavDestination?.isSheetRoute(): Boolean = this?.hasRoute(Route.ProfileCard::class) == true
-
 private fun NavDestination?.isCardRoute(): Boolean =
-    isSheetRoute() || this?.hasRoute(Route.ProfileCardEditor::class) == true
+    this?.hasRoute(Route.ProfileCard::class) == true || this?.hasRoute(Route.ProfileCardEditor::class) == true
 
 sealed class TopLevelRoute(
     val route: Route,
