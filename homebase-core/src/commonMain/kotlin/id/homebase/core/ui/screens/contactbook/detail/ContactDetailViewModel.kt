@@ -958,11 +958,15 @@ class ContactDetailViewModel(
         )
     }
 
-    /** The server refuses to disconnect a blocked identity, so a 400 here means our Connected was stale. */
-    private suspend fun onDisconnectFailed(error: Throwable, name: String) {
-        if (error is ClientException && error.errorCode == OdinClientErrorCode.BlockedConnection) {
+    /** A refusal with [staleCode] means our status was out of date: re-read it rather than show an error. */
+    private suspend fun onConnectionActionFailed(
+        error: Throwable,
+        staleCode: OdinClientErrorCode,
+        staleEvent: ContactDetailEvent,
+    ) {
+        if (error is ClientException && error.errorCode == staleCode) {
             connectionService.refresh()
-            _events.tryEmit(ContactDetailEvent.DisconnectRefusedBlocked(name))
+            _events.tryEmit(staleEvent)
         } else {
             emitConnectionError(error)
         }
@@ -974,7 +978,7 @@ class ContactDetailViewModel(
         val domain = odinId
         val wasConnected = _uiState.value.isConnected
         val wasBlocked = _uiState.value.isBlocked
-        val name = entry?.displayName ?: domain.orEmpty()
+        val refusedBlocked = ContactDetailEvent.DisconnectRefusedBlocked(_uiState.value.displayName)
         _uiState.update { it.copy(confirm = null, actionInProgress = true) }
         viewModelScope.launch {
             try {
@@ -993,7 +997,9 @@ class ContactDetailViewModel(
                                 connectionNetworkProvider.disconnect(OdinId(domain))
                             }
                                 .onSuccess { connectionService.refresh() }
-                                .onFailure { onDisconnectFailed(it, name) }
+                                .onFailure {
+                                    onConnectionActionFailed(it, OdinClientErrorCode.BlockedConnection, refusedBlocked)
+                                }
                                 .isSuccess
                             if (!disconnected) return@launch
                         }
@@ -1019,13 +1025,15 @@ class ContactDetailViewModel(
                     ContactDetailConfirm.DISCONNECT -> when {
                         domain == null -> Unit
                         // Blocked while the dialog was open.
-                        wasBlocked -> _events.tryEmit(ContactDetailEvent.DisconnectRefusedBlocked(name))
+                        wasBlocked -> _events.tryEmit(refusedBlocked)
                         else -> runCatching { connectionNetworkProvider.disconnect(OdinId(domain)) }
                             .onSuccess {
                                 connectionService.refresh()
                                 _events.tryEmit(ContactDetailEvent.Disconnected)
                             }
-                            .onFailure { onDisconnectFailed(it, name) }
+                            .onFailure {
+                                onConnectionActionFailed(it, OdinClientErrorCode.BlockedConnection, refusedBlocked)
+                            }
                     }
                     ContactDetailConfirm.REMOVE_BLOCKED -> {
                         if (domain != null) {
@@ -1034,15 +1042,12 @@ class ContactDetailViewModel(
                                     connectionService.refresh()
                                     _events.tryEmit(ContactDetailEvent.BlockedConnectionRemoved)
                                 }
-                                .onFailure { e ->
-                                    if (e is ClientException &&
-                                        e.errorCode == OdinClientErrorCode.IdentityIsNotBlocked
-                                    ) {
-                                        connectionService.refresh()
-                                        _events.tryEmit(ContactDetailEvent.NotBlocked)
-                                    } else {
-                                        emitConnectionError(e)
-                                    }
+                                .onFailure {
+                                    onConnectionActionFailed(
+                                        it,
+                                        OdinClientErrorCode.IdentityIsNotBlocked,
+                                        ContactDetailEvent.NotBlocked,
+                                    )
                                 }
                         }
                     }

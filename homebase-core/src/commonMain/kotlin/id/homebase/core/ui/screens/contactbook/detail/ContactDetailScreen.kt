@@ -367,7 +367,7 @@ fun ContactDetailScreen(
         ConfirmDialog(
             confirm = confirm,
             isConnected = uiState.isConnected,
-            name = uiState.entry?.displayName.orEmpty(),
+            name = uiState.displayName,
             onConfirm = { viewModel.onAction(ContactDetailAction.ConfirmYes) },
             onDismiss = { viewModel.onAction(ContactDetailAction.ConfirmDismiss) },
         )
@@ -947,14 +947,10 @@ private fun ConfirmDialog(
             MR.string.contactbook_detail_remove_blocked,
         )
     }
-    val titleText = if (confirm == ContactDetailConfirm.REMOVE_BLOCKED) {
-        stringResource(title, name)
-    } else {
-        stringResource(title)
-    }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(titleText) },
+        // Titles without a placeholder ignore [name].
+        title = { Text(stringResource(title, name)) },
         text = { Text(stringResource(message)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {

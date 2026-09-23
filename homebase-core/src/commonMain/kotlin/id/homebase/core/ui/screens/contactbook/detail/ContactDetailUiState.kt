@@ -119,6 +119,7 @@ data class ContactDetailUiState(
     val hasOdinId: Boolean get() = !entry?.odinId.isNullOrBlank()
     val isConnected: Boolean get() = connectionStatus == ConnectionStatus.Connected
     val isBlocked: Boolean get() = connectionStatus == ConnectionStatus.Blocked
+    val displayName: String get() = entry?.displayName ?: entry?.odinId.orEmpty()
 
     /**
      * A pending incoming request from someone we're not connected to yet. In this state the
@@ -254,7 +255,6 @@ sealed interface ContactDetailEvent {
     data object Disconnected : ContactDetailEvent
     data class DisconnectRefusedBlocked(val name: String) : ContactDetailEvent
     data object BlockedConnectionRemoved : ContactDetailEvent
-    /** Remove was refused because they were no longer blocked; the refreshed status is on screen. */
     data object NotBlocked : ContactDetailEvent
     /** Best-effort profile sync was requested; the enriched contact lands later via drive sync. */
     data object SyncStarted : ContactDetailEvent

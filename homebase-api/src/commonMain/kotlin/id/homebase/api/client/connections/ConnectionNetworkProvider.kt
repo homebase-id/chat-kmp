@@ -28,13 +28,7 @@ class ConnectionNetworkProvider(
         postOdinId("/connections/disconnect", odinId)
     }
 
-    /**
-     * Severs a blocked connection's grant, circle grants and access token; the identity stays
-     * blocked, and a later [unblock] leaves them at None rather than restoring the connection.
-     *
-     * @throws id.homebase.api.client.ClientException [OdinClientErrorCode.IdentityIsNotBlocked]
-     *   when [odinId] is not blocked.
-     */
+    /** The identity stays blocked; a later [unblock] leaves them at None, not connected. */
     suspend fun removeBlockedConnection(odinId: OdinId) {
         postOdinId("/connections/remove-blocked-connection", odinId)
     }
