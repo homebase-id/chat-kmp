@@ -133,6 +133,7 @@ enum class OdinClientErrorCode(val value: Int) {
      *  (POST /connections/circles/add), unlike every other 403 cause on that endpoint (missing
      *  ManageCircleMembership, contact not connected), which stay codeless. */
     CannotSourceDriveStorageKeyForGrant(4173),
+    IdentityIsNotBlocked(4175),
 
     // Connection errors 50xx
     NotAnAutoConnection(5001),
