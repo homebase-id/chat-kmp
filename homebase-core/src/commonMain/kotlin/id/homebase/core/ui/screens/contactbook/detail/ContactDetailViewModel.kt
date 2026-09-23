@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
+import id.homebase.core.ui.screens.contactbook.resolveCircleMemberEntries
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -381,7 +382,7 @@ class ContactDetailViewModel(
                             ) == ContactState.New,
                         reviewCircleGroups = circ.reviewCircleGroups(),
                         circles = circleItems,
-                        blockedDomains = conn.blockedDomains(),
+                        connectionStatuses = conn.statusByDomain(),
                         assignableCircles = assignableCircles,
                         isLoading = false,
                         isSelf = isSelf,
@@ -453,7 +454,7 @@ class ContactDetailViewModel(
         val match = circ.circles.firstOrNull { it.circle.id.equals(circleId, ignoreCase = true) } ?: return
         val domain = odinId
         val memberDomains = match.members.map { it.domainName }.toSet()
-        val members = resolveCircleContactEntries(memberDomains, latestContacts).sortedBy { it.sortKey }
+        val members = resolveCircleMemberEntries(memberDomains, latestContacts).sortedBy { it.sortKey }
         // Members and pending deposits come out of the one circle snapshot, so the roster is
         // complete the moment the dialog opens — no second read, and no window where the two
         // lists disagree about who has converted.
@@ -461,7 +462,7 @@ class ContactDetailViewModel(
             .map { it.odinId.domainName }
             .filterNot { d -> memberDomains.any { it.equals(d, ignoreCase = true) } }
             .toSet()
-        val pending = resolveCircleContactEntries(pendingDomains, latestContacts)
+        val pending = resolveCircleMemberEntries(pendingDomains, latestContacts)
             .sortedBy { it.sortKey }
         val reviewEnabled = developerPreferences.connectionReviewEnabled.value
         val isRealMember = domain != null && memberDomains.any { it.equals(domain, ignoreCase = true) }
@@ -544,7 +545,7 @@ class ContactDetailViewModel(
                 Logger.w(e, TAG) { "findPendingMembers failed for ${circle.circle.id}" }
                 emptyList()
             }
-            val pendingEntries = resolveCircleContactEntries(
+            val pendingEntries = resolveCircleMemberEntries(
                 pending.map { it.domainName }.toSet(),
                 latestContacts,
             ).sortedBy { it.sortKey }
@@ -574,26 +575,6 @@ class ContactDetailViewModel(
 
     fun onCircleDetailDismiss() {
         _uiState.update { it.copy(circleDetail = null) }
-    }
-
-    private fun resolveCircleContactEntries(
-        domains: Set<String>,
-        contacts: List<ContactBookEntry>,
-    ): List<ContactBookEntry> {
-        val byOdin = contacts.filter { !it.odinId.isNullOrBlank() }.associateBy { it.odinId!!.lowercase() }
-        return domains.map { domain -> byOdin[domain.lowercase()] ?: syntheticCircleContactEntry(domain) }
-    }
-
-    private fun syntheticCircleContactEntry(domain: String): ContactBookEntry {
-        val uid = Md5.toGuidId(domain.lowercase())
-        return ContactBookEntry(
-            uniqueId = uid,
-            fileId = uid,
-            versionTag = null,
-            odinId = domain,
-            displayName = domain,
-            source = ContactBookSource.CONNECTION,
-        )
     }
 
     // endregion

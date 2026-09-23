@@ -81,8 +81,8 @@ data class ContactDetailUiState(
     /** Open circle-detail dialog (tapped a chip in [circles]), or null when dismissed. View-only
      *  from this screen — [CircleMembersUi.manageable] is always false here. */
     val circleDetail: CircleMembersUi? = null,
-    /** Lowercased; marks blocked members in the circle roster. */
-    val blockedDomains: Set<String> = emptySet(),
+    /** By lowercased domain, for the circle roster. */
+    val connectionStatuses: Map<String, ConnectionStatus> = emptyMap(),
     /** The existing 1:1 conversation, if one exists (never created just to view details). */
     val conversationId: Uuid? = null,
     val overview: ConversationOverview? = null,

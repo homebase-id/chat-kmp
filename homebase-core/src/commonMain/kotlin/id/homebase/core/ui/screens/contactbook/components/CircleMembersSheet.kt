@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.contactbook.components
 
+import id.homebase.api.client.connections.ConnectionStatus
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,7 +67,8 @@ fun CircleMembersSheet(
     onMemberClick: (ContactBookEntry) -> Unit,
     onAddMemberClick: () -> Unit,
     onRemoveMemberClick: (ContactBookEntry) -> Unit,
-    blockedDomains: Set<String> = emptySet(),
+    /** By lowercased domain; members missing from it are not connections. */
+    connectionStatuses: Map<String, ConnectionStatus>,
 ) {
     var confirmRemove by remember { mutableStateOf<ContactBookEntry?>(null) }
 
@@ -155,10 +157,11 @@ fun CircleMembersSheet(
                     }
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
                         items(allMembers, key = { it.uniqueId.toString() }) { entry ->
-                            val blocked = entry.odinId?.lowercase() in blockedDomains
+                            val status = entry.odinId?.lowercase()?.let { connectionStatuses[it] }
+                            val blocked = status == ConnectionStatus.Blocked
                             ContactBookRow(
                                 entry = entry,
-                                connected = !blocked,
+                                connected = status == ConnectionStatus.Connected,
                                 onClick = { onMemberClick(entry) },
                                 trailing = if (state.manageable || blocked) {
                                     {

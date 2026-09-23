@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.contactbook
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.connections.CircleWithMembers
+import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import io.github.vinceglb.filekit.PlatformFile
@@ -173,8 +174,8 @@ data class ContactBookUiState(
     val circleContacts: List<ContactBookEntry> = emptyList(),
     /** Known tab, Blocked pill; with the review flag on these are left out of All. */
     val blockedContacts: List<ContactBookEntry> = emptyList(),
-    /** Lowercased; marks blocked members in circle rosters, since a plain block keeps their grants. */
-    val blockedDomains: Set<String> = emptySet(),
+    /** By lowercased domain, for circle rosters; a plain block keeps a member's circle grants. */
+    val connectionStatuses: Map<String, ConnectionStatus> = emptyMap(),
     /** Per-domain (lowercased) contact state, for the row's trailing state icon. */
     val contactStates: Map<String, ContactState> = emptyMap(),
     /** True until the circle memberships the three states need have loaded. */

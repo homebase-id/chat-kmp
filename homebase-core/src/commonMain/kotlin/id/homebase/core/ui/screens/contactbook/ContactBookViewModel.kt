@@ -190,9 +190,9 @@ class ContactBookViewModel(
                 // pending used to live outside the value entirely.
                 _circleMembers.update {
                     it?.copy(
-                        members = entriesForDomains(domains, entries.value).sortedBy { m -> m.sortKey },
+                        members = resolveCircleMemberEntries(domains, entries.value).sortedBy { m -> m.sortKey },
                         pendingMembers = if (reviewEnabled) {
-                            entriesForDomains(pendingDomains, entries.value).sortedBy { m -> m.sortKey }
+                            resolveCircleMemberEntries(pendingDomains, entries.value).sortedBy { m -> m.sortKey }
                         } else {
                             it.pendingMembers
                         },
@@ -326,7 +326,7 @@ class ContactBookViewModel(
             .sortedBy { it.sortKey }
 
         fun visibleEntries(domains: Set<String>) =
-            entriesForDomains(domains, overriddenContacts)
+            resolveCircleMemberEntries(domains, overriddenContacts)
                 .filter { it.matches(ui.query) }
                 .sortedBy { it.sortKey }
 
@@ -386,7 +386,7 @@ class ContactBookViewModel(
             vetted = vetted,
             circleContacts = circleContacts,
             blockedContacts = blockedContacts,
-            blockedDomains = blockedDomains,
+            connectionStatuses = contactsData.connections.statusByDomain(),
             contactStates = contactStates,
             statesLoading = circlesData.loading,
             reviewEnabled = ui.reviewEnabled,
@@ -415,16 +415,6 @@ class ContactBookViewModel(
             hasDriveError = header.hasDriveError,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ContactBookUiState())
-
-    /** Resolves a set of identity domains to entries, reusing the saved contact when one exists. */
-    private fun entriesForDomains(
-        domains: Set<String>,
-        contacts: List<ContactBookEntry>,
-    ): List<ContactBookEntry> {
-        val byOdin = contacts.filter { !it.odinId.isNullOrBlank() }
-            .associateBy { it.odinId!!.lowercase() }
-        return domains.map { domain -> byOdin[domain] ?: syntheticContact(domain) }
-    }
 
     /** A display-only "(you)" entry for the signed-in user, matched by their own name/handle. */
     private fun selfContact(session: OwnerSession): ContactBookEntry {
@@ -648,13 +638,13 @@ class ContactBookViewModel(
         // keeps this in sync going forward (an add/remove from elsewhere no longer leaves this
         // sheet stale, #1096).
         val domains = circle.members.map { it.domainName }.toSet()
-        val members = entriesForDomains(domains, entries.value).sortedBy { it.sortKey }
+        val members = resolveCircleMemberEntries(domains, entries.value).sortedBy { it.sortKey }
         // Pending deposits ride the same bundle as the members, so the sheet is complete on open.
         val pendingDomains = circle.pendingMembers
             .map { it.odinId.domainName.lowercase() }
             .filterNot { it in domains.map { d -> d.lowercase() } }
             .toSet()
-        val pending = entriesForDomains(pendingDomains, entries.value).sortedBy { it.sortKey }
+        val pending = resolveCircleMemberEntries(pendingDomains, entries.value).sortedBy { it.sortKey }
         val reviewEnabled = developerPreferences.connectionReviewEnabled.value
         // Ambient circles are enrolled with no owner present, so hand-managing a member means
         // nothing — the app re-enrols them. A review circle is the owner's own choice and stays
@@ -714,7 +704,7 @@ class ContactBookViewModel(
                 Logger.w(e, "ContactBookViewModel") { "findPendingMembers failed for ${circle.circle.id}" }
                 emptyList()
             }
-            val pendingEntries = entriesForDomains(
+            val pendingEntries = resolveCircleMemberEntries(
                 pending.map { it.domainName }.toSet(),
                 entries.value,
             ).sortedBy { it.sortKey }

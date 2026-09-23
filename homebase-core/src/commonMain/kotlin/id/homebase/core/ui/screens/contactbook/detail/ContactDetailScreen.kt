@@ -341,7 +341,7 @@ fun ContactDetailScreen(
     uiState.circleDetail?.let { detail ->
         CircleMembersSheet(
             state = detail,
-            blockedDomains = uiState.blockedDomains,
+            connectionStatuses = uiState.connectionStatuses,
             onDismiss = { viewModel.onAction(ContactDetailAction.CircleDetailDismiss) },
             onMemberClick = { viewModel.onAction(ContactDetailAction.CircleMemberClicked(it)) },
             onAddMemberClick = {},
