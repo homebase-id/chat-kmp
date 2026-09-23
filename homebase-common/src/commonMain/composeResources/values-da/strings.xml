@@ -1639,7 +1639,7 @@
     <string name="contactbook_detail_disconnect_title">Afbryd forbindelsen?</string>
     <string name="contactbook_detail_disconnect_message">Dette fjerner permanent jeres forbindelse og den adgang, den gav. De får ikke besked. For at forbinde igen skal du sende en ny forbindelsesanmodning.</string>
     <string name="contactbook_detail_remove_blocked_title">Fjern %1$s?</string>
-    <string name="contactbook_detail_remove_blocked_message">De forbliver blokeret, og du kan fjerne blokeringen senere, men jeres forbindelse og alt, du har delt gennem den, forsvinder. Hvis du fjerner blokeringen, kommer den ikke tilbage — de skal sende dig en ny forbindelsesanmodning.</string>
+    <string name="contactbook_detail_remove_blocked_message">De forbliver blokeret, og du kan fjerne blokeringen senere. Men dette fjerner permanent jeres forbindelse og den adgang, den gav. Hvis du fjerner blokeringen, gendannes den ikke — de skal sende dig en ny forbindelsesanmodning.</string>
     <string name="contactbook_detail_delete_title">Slet kontakt?</string>
     <string name="contactbook_detail_delete_message">Dette fjerner kontakten fra din adressebog.</string>
     <string name="contactbook_detail_delete_message_connected">Dette fjerner kontakten fra din adressebog og afbryder jeres forbindelse, hvilket fjerner den adgang, den gav. De får ikke besked. For at forbinde igen skal du sende en ny forbindelsesanmodning.</string>
