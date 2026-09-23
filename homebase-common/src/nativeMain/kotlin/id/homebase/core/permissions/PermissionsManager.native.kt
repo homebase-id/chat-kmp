@@ -266,16 +266,13 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
                     if (isGranted) {
                         onPermissionStatus(permission, PermissionStatus.GRANTED, false)
                     } else {
-                        onPermissionStatus(permission, PermissionStatus.DENIED, false)
+                        onPermissionStatus(permission, PermissionStatus.DENIED, true)
                     }
                 }
             }
 
-            AVAuthorizationStatusDenied -> {
-                onPermissionStatus(permission, PermissionStatus.DENIED, false)
-            }
-
-            else -> error("Unknown camera status $status")
+            // iOS never re-prompts after a denial, and Restricted (parental controls/MDM) can't be granted in-app.
+            else -> onPermissionStatus(permission, PermissionStatus.DENIED, true)
         }
     }
 
