@@ -381,7 +381,7 @@ class ContactDetailViewModel(
                             ) == ContactState.New,
                         reviewCircleGroups = circ.reviewCircleGroups(),
                         circles = circleItems,
-                        circleDetail = it.circleDetail?.copy(blockedDomains = conn.blockedDomains()),
+                        blockedDomains = conn.blockedDomains(),
                         assignableCircles = assignableCircles,
                         isLoading = false,
                         isSelf = isSelf,
@@ -487,7 +487,6 @@ class ContactDetailViewModel(
                         else -> null
                     },
                     viewerContactId = viewerEntry?.uniqueId,
-                    blockedDomains = connectionService.connections.value.blockedDomains(),
                 ),
             )
         }
@@ -974,13 +973,30 @@ class ContactDetailViewModel(
         }
     }
 
+    private suspend fun disconnectConnection(odinId: OdinId): Result<Unit> =
+        runCatching { connectionNetworkProvider.disconnect(odinId) }
+            .onSuccess { connectionService.refresh() }
+            .onFailure {
+                onConnectionActionFailed(
+                    it,
+                    OdinClientErrorCode.BlockedConnection,
+                    ContactDetailEvent.DisconnectRefusedBlocked(_uiState.value.displayName),
+                )
+            }
+
+    private suspend fun removeBlockedConnection(odinId: OdinId): Result<Unit> =
+        runCatching { connectionNetworkProvider.removeBlockedConnection(odinId) }
+            .onSuccess { connectionService.refresh() }
+            .onFailure {
+                onConnectionActionFailed(it, OdinClientErrorCode.IdentityIsNotBlocked, ContactDetailEvent.NotBlocked)
+            }
+
     private fun handleConfirm() {
         val confirm = _uiState.value.confirm ?: return
         val entry = _uiState.value.entry
         val domain = odinId
         val wasConnected = _uiState.value.isConnected
         val wasBlocked = _uiState.value.isBlocked
-        val refusedBlocked = ContactDetailEvent.DisconnectRefusedBlocked(_uiState.value.displayName)
         _uiState.update { it.copy(confirm = null, actionInProgress = true) }
         viewModelScope.launch {
             try {
@@ -990,30 +1006,15 @@ class ContactDetailViewModel(
                             _events.tryEmit(ContactDetailEvent.Back)
                             return@launch
                         }
-                        // Sever the connection first, or deleting the entry leaves its access live;
-                        // abort the delete if that fails. A blocked contact stays blocked.
+                        // Sever first so deleting the entry can't leave its access live.
+                        val id = domain?.let(::OdinId)
                         val severed = when {
-                            domain == null -> null
-                            wasConnected -> runCatching {
-                                connectionNetworkProvider.disconnect(OdinId(domain))
-                            }.onFailure {
-                                onConnectionActionFailed(it, OdinClientErrorCode.BlockedConnection, refusedBlocked)
-                            }
-                            wasBlocked -> runCatching {
-                                connectionNetworkProvider.removeBlockedConnection(OdinId(domain))
-                            }.onFailure {
-                                onConnectionActionFailed(
-                                    it,
-                                    OdinClientErrorCode.IdentityIsNotBlocked,
-                                    ContactDetailEvent.NotBlocked,
-                                )
-                            }
+                            id == null -> null
+                            wasConnected -> disconnectConnection(id)
+                            wasBlocked -> removeBlockedConnection(id)
                             else -> null
                         }
-                        if (severed != null) {
-                            if (severed.isFailure) return@launch
-                            connectionService.refresh()
-                        }
+                        if (severed?.isFailure == true) return@launch
                         // repo.delete does the optimistic remove and restores on failure.
                         val event = try {
                             if (contactRepository.delete(entry.uniqueId)) ContactDetailEvent.DeletedAndBack
@@ -1036,30 +1037,16 @@ class ContactDetailViewModel(
                     ContactDetailConfirm.DISCONNECT -> when {
                         domain == null -> Unit
                         // Blocked while the dialog was open.
-                        wasBlocked -> _events.tryEmit(refusedBlocked)
-                        else -> runCatching { connectionNetworkProvider.disconnect(OdinId(domain)) }
-                            .onSuccess {
-                                connectionService.refresh()
-                                _events.tryEmit(ContactDetailEvent.Disconnected)
-                            }
-                            .onFailure {
-                                onConnectionActionFailed(it, OdinClientErrorCode.BlockedConnection, refusedBlocked)
-                            }
+                        wasBlocked -> _events.tryEmit(
+                            ContactDetailEvent.DisconnectRefusedBlocked(_uiState.value.displayName),
+                        )
+                        else -> disconnectConnection(OdinId(domain))
+                            .onSuccess { _events.tryEmit(ContactDetailEvent.Disconnected) }
                     }
                     ContactDetailConfirm.REMOVE_BLOCKED -> {
                         if (domain != null) {
-                            runCatching { connectionNetworkProvider.removeBlockedConnection(OdinId(domain)) }
-                                .onSuccess {
-                                    connectionService.refresh()
-                                    _events.tryEmit(ContactDetailEvent.BlockedConnectionRemoved)
-                                }
-                                .onFailure {
-                                    onConnectionActionFailed(
-                                        it,
-                                        OdinClientErrorCode.IdentityIsNotBlocked,
-                                        ContactDetailEvent.NotBlocked,
-                                    )
-                                }
+                            removeBlockedConnection(OdinId(domain))
+                                .onSuccess { _events.tryEmit(ContactDetailEvent.BlockedConnectionRemoved) }
                         }
                     }
                 }

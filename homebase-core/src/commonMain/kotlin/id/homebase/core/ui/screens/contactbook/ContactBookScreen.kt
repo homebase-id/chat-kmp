@@ -363,6 +363,7 @@ fun ContactBookScreen(
     uiState.circleMembers?.let { members ->
         CircleMembersSheet(
             state = members,
+            blockedDomains = uiState.blockedDomains,
             onDismiss = { viewModel.onAction(ContactBookUiAction.CircleMembersDismiss) },
             onMemberClick = { viewModel.onAction(ContactBookUiAction.ContactClicked(it)) },
             onAddMemberClick = {

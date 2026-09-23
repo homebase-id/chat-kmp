@@ -341,6 +341,7 @@ fun ContactDetailScreen(
     uiState.circleDetail?.let { detail ->
         CircleMembersSheet(
             state = detail,
+            blockedDomains = uiState.blockedDomains,
             onDismiss = { viewModel.onAction(ContactDetailAction.CircleDetailDismiss) },
             onMemberClick = { viewModel.onAction(ContactDetailAction.CircleMemberClicked(it)) },
             onAddMemberClick = {},
@@ -939,7 +940,6 @@ private fun ConfirmDialog(
         )
         ContactDetailConfirm.DELETE -> Triple(
             MR.string.contactbook_detail_delete_title,
-            // Deleting a connected or blocked contact also severs the connection — warn about that.
             when {
                 isConnected -> MR.string.contactbook_detail_delete_message_connected
                 isBlocked -> MR.string.contactbook_detail_delete_message_blocked

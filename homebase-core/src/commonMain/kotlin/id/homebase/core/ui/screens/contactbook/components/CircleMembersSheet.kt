@@ -66,6 +66,7 @@ fun CircleMembersSheet(
     onMemberClick: (ContactBookEntry) -> Unit,
     onAddMemberClick: () -> Unit,
     onRemoveMemberClick: (ContactBookEntry) -> Unit,
+    blockedDomains: Set<String> = emptySet(),
 ) {
     var confirmRemove by remember { mutableStateOf<ContactBookEntry?>(null) }
 
@@ -154,7 +155,7 @@ fun CircleMembersSheet(
                     }
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
                         items(allMembers, key = { it.uniqueId.toString() }) { entry ->
-                            val blocked = entry.odinId?.lowercase() in state.blockedDomains
+                            val blocked = entry.odinId?.lowercase() in blockedDomains
                             ContactBookRow(
                                 entry = entry,
                                 connected = !blocked,
@@ -204,8 +205,7 @@ fun CircleMembersSheet(
     }
 }
 
-/** Trailing content for a circle-member row: an optional "Pending" label (a sealed deposit
- *  that hasn't converted into a real grant yet) plus a remove button. */
+/** Pending means a sealed deposit that hasn't converted into a real grant yet. */
 @Composable
 private fun CircleMemberTrailing(
     pending: Boolean,

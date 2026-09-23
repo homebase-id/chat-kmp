@@ -68,8 +68,6 @@ data class CircleMembersUi(
     /** uniqueIds currently being removed — drives a per-row spinner in place of the remove "X"
      *  so a tap has visible feedback while the call is in flight. */
     val removingMemberIds: Set<Uuid> = emptySet(),
-    /** Lowercased domains of members who are blocked; a plain block keeps their circle grants. */
-    val blockedDomains: Set<String> = emptySet(),
     /** Drives this circle grants access to — sourced synchronously from the circle definition
      *  already loaded with [members], no extra network call. */
     val drives: List<CircleDriveUi> = emptyList(),
@@ -175,6 +173,8 @@ data class ContactBookUiState(
     val circleContacts: List<ContactBookEntry> = emptyList(),
     /** Known tab, Blocked pill; with the review flag on these are left out of All. */
     val blockedContacts: List<ContactBookEntry> = emptyList(),
+    /** Lowercased; marks blocked members in circle rosters, since a plain block keeps their grants. */
+    val blockedDomains: Set<String> = emptySet(),
     /** Per-domain (lowercased) contact state, for the row's trailing state icon. */
     val contactStates: Map<String, ContactState> = emptyMap(),
     /** True until the circle memberships the three states need have loaded. */

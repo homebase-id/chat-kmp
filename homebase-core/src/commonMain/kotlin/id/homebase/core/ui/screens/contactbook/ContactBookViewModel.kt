@@ -325,34 +325,31 @@ class ContactBookViewModel(
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
 
-        fun entriesInState(state: ContactState) =
-            entriesForDomains(domainsInState(state), overriddenContacts)
+        fun visibleEntries(domains: Set<String>) =
+            entriesForDomains(domains, overriddenContacts)
                 .filter { it.matches(ui.query) }
                 .sortedBy { it.sortKey }
 
-        val newContacts = entriesInState(ContactState.New)
-        val circleContacts = entriesInState(ContactState.Circle)
-        // Filtered from all, not built from connections: contacts with no connection belong here.
-        // No New tab while the review is dark, so nobody is carved out of this one.
-        val newDomains = if (ui.reviewEnabled) domainsInState(ContactState.New) else emptySet()
+        val newContacts = visibleEntries(domainsInState(ContactState.New))
+        val circleContacts = visibleEntries(domainsInState(ContactState.Circle))
         val blockedDomains = contactsData.connections.blockedDomains()
-        val hiddenFromAll = if (ui.reviewEnabled) newDomains + blockedDomains else emptySet()
+        val blockedContacts = visibleEntries(blockedDomains)
+        // Filtered from all, not built from connections: contacts with no connection belong here.
+        // With the review dark there is no New tab or Blocked pill, so nobody is carved out.
+        val hiddenFromAll = if (ui.reviewEnabled) {
+            domainsInState(ContactState.New) + blockedDomains
+        } else {
+            emptySet()
+        }
         val knownContacts = all.filterNot { it.odinId?.lowercase() in hiddenFromAll }
-        val blockedContacts = entriesForDomains(blockedDomains, overriddenContacts)
-            .filter { it.matches(ui.query) }
-            .sortedBy { it.sortKey }
 
         // Flag off: main's pills — confirmed is the server-computed `vetted` flag, no circle load needed.
         @Suppress("DEPRECATION")
         val confirmedDomains = connectedRegs.filterValues { it.vetted }
             .keys.map { it.domainName.lowercase() }
             .toSet()
-        val unvetted = entriesForDomains(connectedDomains - confirmedDomains, overriddenContacts)
-            .filter { it.matches(ui.query) }
-            .sortedBy { it.sortKey }
-        val vetted = entriesForDomains(confirmedDomains, overriddenContacts)
-            .filter { it.matches(ui.query) }
-            .sortedBy { it.sortKey }
+        val unvetted = visibleEntries(connectedDomains - confirmedDomains)
+        val vetted = visibleEntries(confirmedDomains)
 
         // Pending connection requests, projected onto contact entries the same way New is:
         // reuse the saved contact when we have one, else a synthetic display-only entry for the
@@ -389,6 +386,7 @@ class ContactBookViewModel(
             vetted = vetted,
             circleContacts = circleContacts,
             blockedContacts = blockedContacts,
+            blockedDomains = blockedDomains,
             contactStates = contactStates,
             statesLoading = circlesData.loading,
             reviewEnabled = ui.reviewEnabled,
@@ -399,7 +397,7 @@ class ContactBookViewModel(
                 .reviewCircleGroups(),
             circles = circlesData.circles.filter { it.matchesQuery(ui.query) },
             circlesLoading = circlesData.loading,
-            circleMembers = circlesData.members?.copy(blockedDomains = blockedDomains),
+            circleMembers = circlesData.members,
             isLoading = !contactsData.loaded,
             searchQuery = ui.query,
             // A pill left selected across a flag flip falls back to All rather than an empty view.
