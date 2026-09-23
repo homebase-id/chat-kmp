@@ -8,6 +8,23 @@ import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.email.EmailViewModel
 import id.homebase.core.ui.screens.email.EmailScreen
 import id.homebase.core.email.EmailPreferences
+import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.navigation.NavGraphBuilder
+import id.homebase.chat.conversationlist.chatOwnsWindow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -282,14 +299,17 @@ fun AppNavHost(
     val currentDestination = navBackStackEntry?.destination
     // A settings pane floats over the screen beneath it, which stays mounted. The rail and bottom
     // bar must keep tracking that screen or they vanish (and reflow it) the moment a pane opens.
-    val chromeDestination = if (isDesktopOrWeb()) {
-        val backStack by navController.currentBackStack.collectAsStateWithLifecycle()
+    val backStack by navController.currentBackStack.collectAsStateWithLifecycle()
+    val chromeEntry = if (isDesktopOrWeb()) {
         backStack.lastOrNull {
             it.destination !is FloatingWindow && it.destination !is NavGraph
-        }?.destination
+        }
     } else {
-        currentDestination
+        navBackStackEntry
     }
+    val chromeDestination = chromeEntry?.destination
+    // Walked back from the top so the tab stays lit while its bar slides away under a pushed screen.
+    val selectedTab = backStack.lastOrNull { it.destination.isTopLevelRoute() }?.destination
     val momentsPreferences = koinInject<MomentsPreferences>()
     val momentsIconVisible by momentsPreferences.iconVisible.collectAsStateWithLifecycle()
     val momentsFeedService = koinInject<MomentsFeedService>()
@@ -384,17 +404,6 @@ fun AppNavHost(
         }
     }
 
-    // Track if we're showing only the detail pane (list hidden) in a top level screen
-    var showingOnlyDetailPane by remember { mutableStateOf(false) }
-
-    // The feed's media viewer is inline in the NavHost (a Dialog paints grey safe-area strips on iOS), so it
-    // renders *under* this Scaffold's bottom bar unless the screen reports it up.
-    var isFeedMediaOpen by remember { mutableStateOf(false) }
-
-    // Same contract for the chat's two-pane media viewer, which additionally has to displace the
-    // navigation rail to own the whole window.
-    var isChatMediaOpen by remember { mutableStateOf(false) }
-
     // This Scaffold's SnackbarHost is anchored to the bottom of the window, where the chat
     // composer is: a notice raised here would sit on top of the input field.
     var isChatComposerOpen by remember { mutableStateOf(false) }
@@ -424,30 +433,81 @@ fun AppNavHost(
     // Check if current destination is a top-level route. Uses the static route-type
     // check (not topLevelRoutes) so the bottom nav still shows on the Vault screen even
     // when the user has hidden the Vault icon from the nav bar.
-    val isTopLevelRoute =
-        chromeDestination.isTopLevelRoute() ||
-                topLevelRoutes.any { topLevelRoute ->
-                    chromeDestination?.hasRoute(topLevelRoute.route::class) == true
-                }
+    val isTopLevelRoute = chromeDestination.isTopLevelRoute()
 
-    // Only show bottom nav if on a top-level route AND not showing only detail pane
-    val isOnTopLevelScreen = isAuthenticated && isTopLevelRoute && !showingOnlyDetailPane
+    val showNavigationRail = isExpandedLayout()
+    val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
+    // The full-screen image editor (newly-picked images) is a state-driven overlay, not a nav
+    // destination, so it folds into the same gate the gallery uses.
+    val isVaultOverlayOpen = vaultUiState.fullScreenOverlay != null || vaultUiState.pendingEditor != null
+    val chromeOwnedByScreen =
+        chromeEntry != null && entryOwnsWindow(chromeEntry, showNavigationRail, isVaultOverlayOpen)
+    val isOnTopLevelScreen = isAuthenticated && isTopLevelRoute && !chromeOwnedByScreen
 
     // Safe only because login's top-left is bare in both its layouts: brand artwork on the
     // two-pane, plain surface in portrait — the traffic lights land on nothing either way.
     val paintsUnderTitleBar = chromeDestination?.hasRoute(Route.Login::class) == true
     // The card fills its sheet to the screen's bottom edge; its own chrome pads for the navigation bar.
     val paintsUnderNavigationBar = chromeDestination.isCardRoute()
-    val showNavigationRail = isExpandedLayout()
-    val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
-    val isVaultGalleryOpen = vaultUiState.fullScreenOverlay != null
-    // The full-screen image editor (newly-picked images) is a state-driven overlay, not a
-    // nav destination, so it doesn't hide the bottom nav on its own — fold it into the same
-    // gate the gallery uses.
-    val isVaultEditorOpen = vaultUiState.pendingEditor != null
-    val showBottomNavigationBar =
-        isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen && !isVaultEditorOpen &&
-                !isFeedMediaOpen && !isChatMediaOpen
+    val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail
+    val railVisible = isOnTopLevelScreen && showNavigationRail
+    val contentInsets = ScaffoldDefaults.contentWindowInsets.only(
+        if (paintsUnderNavigationBar) WindowInsetsSides.Horizontal
+        else WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+    )
+    // Tab roots pad for the bar themselves, so a push or pop never re-measures the screen under it.
+    var bottomBarHeightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val bottomBarPadding = with(density) {
+        (bottomBarHeightPx - contentInsets.getBottom(density)).coerceAtLeast(0).toDp()
+    }
+    val chromeMotion = MaterialTheme.motionScheme
+    val pendingUpgradeState = uiState.pendingUpgrade
+    val tabRoot: @Composable (NavBackStackEntry, @Composable () -> Unit) -> Unit = { entry, content ->
+        val ownsWindow = entryOwnsWindow(entry, showNavigationRail, isVaultOverlayOpen)
+        val barPadding = if (showNavigationRail || ownsWindow) 0.dp else bottomBarPadding
+        val showUpdate = uiState.updateAvailable && !ownsWindow
+        val showUpgradeRunning = pendingUpgradeState is PendingUpgradeState.UpgradeRunning && !ownsWindow
+        Column(
+            modifier = Modifier
+                .consumeWindowInsets(PaddingValues(bottom = barPadding))
+                .padding(bottom = barPadding),
+        ) {
+            // Not statusBarsPadding(): outside Android it consumes into a legacy modifier-local
+            // channel the screens' TopAppBars cannot see, so they would re-pad the top inset.
+            AnimatedVisibility(
+                visible = showUpdate,
+                enter = expandVertically(chromeMotion.defaultSpatialSpec()) + fadeIn(chromeMotion.defaultEffectsSpec()),
+                exit = shrinkVertically(chromeMotion.fastSpatialSpec()) + fadeOut(chromeMotion.fastEffectsSpec()),
+            ) {
+                UpdateAvailableBanner(
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
+                    versionName = uiState.updateAvailableVersion,
+                    onUpdateClick = { viewModel.triggerUpdate() },
+                )
+            }
+            AnimatedVisibility(
+                visible = showUpgradeRunning,
+                enter = expandVertically(chromeMotion.defaultSpatialSpec()) + fadeIn(chromeMotion.defaultEffectsSpec()),
+                exit = shrinkVertically(chromeMotion.fastSpatialSpec()) + fadeOut(chromeMotion.fastEffectsSpec()),
+            ) {
+                UpgradeRunningStrip(
+                    modifier = if (showUpdate) Modifier else Modifier.windowInsetsPadding(WindowInsets.statusBars),
+                )
+            }
+            Box(
+                modifier = Modifier.weight(1f).then(
+                    if (showUpdate || showUpgradeRunning) {
+                        Modifier.consumeWindowInsets(WindowInsets.statusBars)
+                    } else {
+                        Modifier
+                    }
+                ),
+            ) {
+                content()
+            }
+        }
+    }
 
     // Get the lifecycle owner of the current composable
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -768,16 +828,19 @@ fun AppNavHost(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         // Leave the top inset to each screen: consuming it here pads everything
         // below the status bar, so no screen's TopAppBar can extend behind it.
-        contentWindowInsets = ScaffoldDefaults.contentWindowInsets.only(
-            if (paintsUnderNavigationBar) WindowInsetsSides.Horizontal
-            else WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
-        ),
+        contentWindowInsets = contentInsets,
         bottomBar = {
-            if (showBottomNavigationBar) {
-                ShortNavigationBar {
+            AnimatedVisibility(
+                visible = showBottomNavigationBar,
+                enter = slideInVertically(chromeMotion.defaultSpatialSpec()) { it } +
+                    fadeIn(chromeMotion.defaultEffectsSpec()),
+                exit = slideOutVertically(chromeMotion.defaultSpatialSpec()) { it } +
+                    fadeOut(chromeMotion.fastEffectsSpec()),
+            ) {
+                ShortNavigationBar(modifier = Modifier.onSizeChanged { bottomBarHeightPx = it.height }) {
                     topLevelRoutes.forEach { topLevelRoute ->
                         val isSelected =
-                            chromeDestination?.hasRoute(topLevelRoute.route::class) == true
+                            selectedTab?.hasRoute(topLevelRoute.route::class) == true
                         ShortNavigationBarItem(
                             icon = {
                                 TopLevelNavIcon(
@@ -818,91 +881,81 @@ fun AppNavHost(
                     }
                 }
             }
-        }) { paddingValues ->
-        Box(
-            modifier = Modifier.fillMaxSize().consumeWindowInsets(paddingValues)
-                .padding(paddingValues)
-        ) {
+        }) { _ ->
+        // Laid out under the bar, not above it: tabRoot pads the tab screens instead.
+        Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(contentInsets)) {
             Row(modifier = Modifier.fillMaxSize()) {
-                val railVisible =
-                    showNavigationRail && isAuthenticated && isOnTopLevelScreen && !isChatMediaOpen
-                if (railVisible) {
-                    NavigationRail(
-                        modifier = Modifier.width(NavigationRailWidth),
-                        header = { Spacer(modifier = Modifier.height(8.dp + topInset)) },
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    ) {
-                        topLevelRoutes.forEach { topLevelRoute ->
-                            val isSelected =
-                                chromeDestination?.hasRoute(topLevelRoute.route::class) == true
-                            RailItem(
-                                topLevelRoute = topLevelRoute,
-                                selected = isSelected,
-                                showMomentsBadge = momentsUnseenCount > 0,
-                                showLocationBadge = locationAttention,
-                                onClick = {
-                                    when {
-                                        isSelected -> navController.currentBackStackEntry
-                                            ?.savedStateHandle?.set(SCROLL_TO_TOP_KEY, true)
+                AnimatedVisibility(
+                    visible = railVisible,
+                    enter = expandHorizontally(chromeMotion.defaultSpatialSpec()) +
+                        fadeIn(chromeMotion.defaultEffectsSpec()),
+                    exit = shrinkHorizontally(chromeMotion.defaultSpatialSpec()) +
+                        fadeOut(chromeMotion.fastEffectsSpec()),
+                ) {
+                    Row {
+                        NavigationRail(
+                            modifier = Modifier.width(NavigationRailWidth),
+                            header = { Spacer(modifier = Modifier.height(8.dp + topInset)) },
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        ) {
+                            topLevelRoutes.forEach { topLevelRoute ->
+                                val isSelected =
+                                    selectedTab?.hasRoute(topLevelRoute.route::class) == true
+                                RailItem(
+                                    topLevelRoute = topLevelRoute,
+                                    selected = isSelected,
+                                    showMomentsBadge = momentsUnseenCount > 0,
+                                    showLocationBadge = locationAttention,
+                                    onClick = {
+                                        when {
+                                            isSelected -> navController.currentBackStackEntry
+                                                ?.savedStateHandle?.set(SCROLL_TO_TOP_KEY, true)
 
-                                        topLevelRoute is TopLevelRoute.Moments -> openMoments()
-                                        topLevelRoute is TopLevelRoute.Vault -> openVault()
-                                    topLevelRoute is TopLevelRoute.Email -> openEmail()
-                                        topLevelRoute is TopLevelRoute.Location -> openLocation()
-                                        else -> navController.navigate(topLevelRoute.route) {
+                                            topLevelRoute is TopLevelRoute.Moments -> openMoments()
+                                            topLevelRoute is TopLevelRoute.Vault -> openVault()
+                                        topLevelRoute is TopLevelRoute.Email -> openEmail()
+                                            topLevelRoute is TopLevelRoute.Location -> openLocation()
+                                            else -> navController.navigate(topLevelRoute.route) {
+                                                popUpTo(Route.ChatList) { saveState = true }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        }
+                                    })
+                            }
+
+                            if (isDesktopOrWeb()) {
+                                Spacer(modifier = Modifier.weight(1f))
+                                RailActionItem(
+                                    icon = Icons.Default.Archive,
+                                    contentDescription = stringResource(MR.string.chat_archived_chats),
+                                    onClick = {
+                                        navController.navigate(Route.ChatList) {
                                             popUpTo(Route.ChatList) { saveState = true }
                                             launchSingleTop = true
                                             restoreState = true
                                         }
-                                    }
-                                })
+                                        runCatching { navController.getBackStackEntry<Route.ChatList>() }
+                                            .getOrNull()
+                                            ?.savedStateHandle?.set(SHOW_ARCHIVED_KEY, true)
+                                    },
+                                )
+                                RailActionItem(
+                                    icon = Icons.Outlined.Settings,
+                                    contentDescription = stringResource(MR.string.settings),
+                                    onClick = { navController.navigate(Route.Settings) },
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
                         }
-
-                        if (isDesktopOrWeb()) {
-                            Spacer(modifier = Modifier.weight(1f))
-                            RailActionItem(
-                                icon = Icons.Default.Archive,
-                                contentDescription = stringResource(MR.string.chat_archived_chats),
-                                onClick = {
-                                    navController.navigate(Route.ChatList) {
-                                        popUpTo(Route.ChatList) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                    runCatching { navController.getBackStackEntry<Route.ChatList>() }
-                                        .getOrNull()
-                                        ?.savedStateHandle?.set(SHOW_ARCHIVED_KEY, true)
-                                },
-                            )
-                            RailActionItem(
-                                icon = Icons.Outlined.Settings,
-                                contentDescription = stringResource(MR.string.settings),
-                                onClick = { navController.navigate(Route.Settings) },
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
+                        VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
-                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
 
-                val showUpdateBanner = isOnTopLevelScreen && uiState.updateAvailable
                 Column(
-                    // Not statusBarsPadding(): outside Android it consumes into a legacy
-                    // modifier-local channel the NavHost's TopAppBars cannot see, so they
-                    // re-pad the top inset and the header drops a safe-area below the banner.
-                    modifier = if (showUpdateBanner) {
-                        Modifier.windowInsetsPadding(WindowInsets.statusBars)
-                    } else {
-                        Modifier
-                    }.padding(top = if (railVisible || paintsUnderTitleBar) 0.dp else topInset),
+                    modifier = Modifier.padding(top = if (railVisible || paintsUnderTitleBar) 0.dp else topInset),
                 ) {
                     if (isOnTopLevelScreen) {
-                        if (showUpdateBanner) {
-                            UpdateAvailableBanner(
-                                versionName = uiState.updateAvailableVersion,
-                                onUpdateClick = { viewModel.triggerUpdate() }
-                            )
-                        }
                         val pendingUpgrade = uiState.pendingUpgrade
                         if (pendingUpgrade is PendingUpgradeState.ShowSnackbar && !isChatComposerOpen) {
                             LaunchedEffect(pendingUpgrade) {
@@ -948,42 +1001,16 @@ fun AppNavHost(
                                 },
                             )
                         }
-
-                        if (pendingUpgrade is PendingUpgradeState.UpgradeRunning) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                tonalElevation = 2.dp,
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(20.dp),
-                                        strokeWidth = 2.dp,
-                                    )
-                                    Text(
-                                        text = stringResource(MR.string.upgrade_running_message),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    )
-                                }
-                            }
-                        }
                     }
 
-                    val motion = MaterialTheme.motionScheme
                     NavHost(
                         navController = navController,
                         startDestination = Route.AppLoading,
                         modifier = Modifier.weight(1f),
-                        enterTransition = { navEnter(motion) },
-                        exitTransition = { navExit(motion) },
-                        popEnterTransition = { navPopEnter(motion) },
-                        popExitTransition = { navPopExit(motion) },
+                        enterTransition = { navEnter(chromeMotion) },
+                        exitTransition = { navExit(chromeMotion) },
+                        popEnterTransition = { navPopEnter(chromeMotion) },
+                        popExitTransition = { navPopExit(chromeMotion) },
                     ) {
                         composable<Route.AppLoading> {
                             AppLoadingScreen(
@@ -1012,7 +1039,7 @@ fun AppNavHost(
                             )
                         }
 
-                        composable<Route.Home> {
+                        tab<Route.Home>(tabRoot) {
                             if (isAuthenticated) {
                                 HomeScreen(
                                     viewModel = koinViewModel(),
@@ -1026,7 +1053,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Feed> { entry ->
+                        tab<Route.Feed>(tabRoot) { entry ->
                             if (isAuthenticated) {
                                 // Read on each Feed entry so the Settings toggle takes effect on return.
                                 val useNativeFeed = koinInject<UserPreferences>().useNativeFeed
@@ -1044,7 +1071,7 @@ fun AppNavHost(
                                         onAuthorClick = {
                                             navController.navigateToIdentity(it.domainName)
                                         },
-                                        onFullScreenMediaChanged = { isFeedMediaOpen = it },
+                                        onFullScreenMediaChanged = { entry.savedStateHandle[OWNS_WINDOW_KEY] = it },
                                         scrollToTop = scrollFeedToTop,
                                         onScrollToTopHandled = {
                                             entry.savedStateHandle[SCROLL_TO_TOP_KEY] = false
@@ -1076,7 +1103,7 @@ fun AppNavHost(
                         // controller, so the screen could only show its 404 empty state. The screen,
                         // VM and provider are kept; re-add this destination once the routes ship.
 
-                        composable<Route.ContactBook> {
+                        tab<Route.ContactBook>(tabRoot) {
                             if (isAuthenticated) {
                                 if (!contactBookOnboardingComplete) {
                                     ContactBookOnboardingScreen(viewModel = contactBookViewModel)
@@ -1189,7 +1216,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ChatList> { backStackEntry ->
+                        tab<Route.ChatList>(tabRoot) { backStackEntry ->
                             if (isAuthenticated) {
                                 val conversationListViewModel: ConversationListViewModel =
                                     koinViewModel()
@@ -1340,15 +1367,6 @@ fun AppNavHost(
                                     },
                                     onNavigateToDrawer = { requestId ->
                                         navController.navigate(Route.Draw(requestId.toString()))
-                                    },
-                                    onDetailPaneVisibilityChanged = {
-                                        // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
-                                        @Suppress("AssignedValueIsNeverRead")
-                                        showingOnlyDetailPane = it
-                                    },
-                                    onMediaViewerVisibilityChanged = {
-                                        @Suppress("AssignedValueIsNeverRead")
-                                        isChatMediaOpen = it
                                     },
                                     onComposerVisibilityChanged = {
                                         @Suppress("AssignedValueIsNeverRead")
@@ -1747,7 +1765,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Moments> {
+                        tab<Route.Moments>(tabRoot) {
                             if (isAuthenticated) {
                                 MomentsScreen(
                                     viewModel = koinViewModel(),
@@ -1856,7 +1874,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Location> {
+                        tab<Route.Location>(tabRoot) {
                             if (isAuthenticated) {
                                 LocationScreen(
                                     viewModel = locationViewModel,
@@ -2051,7 +2069,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Vault> { entry ->
+                        tab<Route.Vault>(tabRoot) { entry ->
                             if (isAuthenticated) {
                                 val scrollVaultToTop by entry.savedStateHandle
                                     .getStateFlow(SCROLL_TO_TOP_KEY, false)
@@ -2134,7 +2152,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Email> {
+                        tab<Route.Email>(tabRoot) {
                             if (isAuthenticated) {
                                 EmailScreen(
                                     viewModel = emailViewModel,
@@ -2335,6 +2353,71 @@ private fun NavHostController.selectConversationOnChatList(
     entry.savedStateHandle["pendingScrollToMessageId"] = messageId?.toString()
     entry.savedStateHandle["pendingFromShareIntent"] = fromShareIntent
     return true
+}
+
+private const val OWNS_WINDOW_KEY = "ownsWindow"
+
+// A screen whose own full-screen state (open conversation, media viewer) needs the whole window,
+// read from the entry itself so it cannot outlive the screen that raised it.
+@Composable
+private fun entryOwnsWindow(
+    entry: NavBackStackEntry,
+    isExpanded: Boolean,
+    isVaultOverlayOpen: Boolean,
+): Boolean {
+    val destination = entry.destination
+    return when {
+        destination.hasRoute(Route.ChatList::class) -> {
+            val chat: ConversationListViewModel = koinViewModel(viewModelStoreOwner = entry)
+            val ui by chat.uiState.collectAsStateWithLifecycle()
+            val messages by chat.messagesUiState.collectAsStateWithLifecycle()
+            val owns by remember(chat, isExpanded) {
+                derivedStateOf { chatOwnsWindow(ui, messages, isExpanded) }
+            }
+            owns
+        }
+
+        destination.hasRoute(Route.Vault::class) -> isVaultOverlayOpen
+        else -> entry.savedStateHandle.getStateFlow(OWNS_WINDOW_KEY, false)
+            .collectAsStateWithLifecycle().value
+    }
+}
+
+private inline fun <reified T : Any> NavGraphBuilder.tab(
+    noinline root: @Composable (NavBackStackEntry, @Composable () -> Unit) -> Unit,
+    noinline content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit,
+) {
+    composable<T> { entry ->
+        val scope = this
+        root(entry) { scope.content(entry) }
+    }
+}
+
+@Composable
+private fun UpgradeRunningStrip(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        tonalElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+            )
+            Text(
+                text = stringResource(MR.string.upgrade_running_message),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
+    }
 }
 
 private fun NavDestination?.isCardRoute(): Boolean =

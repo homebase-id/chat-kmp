@@ -184,8 +184,6 @@ fun ConversationListScreen(
     onNavigateToMessageInfo: (conversationId: Uuid, messageId: Uuid, fileId: Uuid) -> Unit,
     onNavigateToCropper: (requestId: Uuid) -> Unit = {},
     onNavigateToDrawer: (requestId: Uuid) -> Unit = {},
-    onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
-    onMediaViewerVisibilityChanged: (Boolean) -> Unit = {},
     onComposerVisibilityChanged: (Boolean) -> Unit = {},
     onSaveContactCard: (card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit = { _, _ -> },
     /** Hosts the new-conversation flow inside the list pane on an expanded window instead of
@@ -559,11 +557,9 @@ fun ConversationListScreen(
             messagesSearchTextState = viewModel.messagesSearchTextState,
             onUiAction = viewModel::onAction,
             onNavigateToSettingsScreen = onNavigateToSettingsScreen,
-            onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged,
             newConversationPane = newConversationPane,
             showNewConversationPane = newConversationInPane,
             onNewConversationPaneDismissed = { newConversationInPane = false },
-            onMediaViewerVisibilityChanged = onMediaViewerVisibilityChanged,
             onComposerVisibilityChanged = onComposerVisibilityChanged,
         )
 
@@ -776,14 +772,12 @@ fun ConversationListUi(
     messagesSearchTextState: TextFieldState,
     onUiAction: (ConversationListUiAction) -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
-    onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
     newConversationPane: (@Composable (
         onDismiss: () -> Unit,
         onConversationOpened: (Uuid) -> Unit,
     ) -> Unit)? = null,
     showNewConversationPane: Boolean = false,
     onNewConversationPaneDismissed: () -> Unit = {},
-    onMediaViewerVisibilityChanged: (Boolean) -> Unit = {},
     onComposerVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
@@ -830,20 +824,11 @@ fun ConversationListUi(
         listPaneWasVisible = !isListPaneHidden
     }
 
-    // Notify parent about detail pane visibility in compact view
-    LaunchedEffect(isListPaneHidden) { onDetailPaneVisibilityChanged(isListPaneHidden) }
-
     LaunchedEffect(isComposerVisible) { onComposerVisibilityChanged(isComposerVisible) }
 
     val hoistedMediaViewer = messagesUiState.hoistedMediaViewer(isExpanded)
-    // The rail lives above this screen, so the viewer can only own the window if the rail is told
-    // to stand down — same contract the feed and the Vault gallery already use.
-    LaunchedEffect(hoistedMediaViewer != null) {
-        onMediaViewerVisibilityChanged(hoistedMediaViewer != null)
-    }
     DisposableEffect(Unit) {
         onDispose {
-            onMediaViewerVisibilityChanged(false)
             onComposerVisibilityChanged(false)
         }
     }
