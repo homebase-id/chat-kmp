@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.widget.MediaItem
+import id.homebase.chat.widget.SharedMediaHero
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
@@ -49,6 +50,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun ConversationOverviewSection(
     overview: ConversationOverview,
+    hero: SharedMediaHero,
     onMediaClick: (SharedMediaItem) -> Unit,
     onSeeAll: () -> Unit,
 ) {
@@ -81,20 +83,22 @@ fun ConversationOverviewSection(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(strip) { item ->
-                MediaItem(
-                    payload = item.payload,
-                    fileId = item.fileId,
-                    driveId = chatTargetDrive.alias,
-                    previewThumbnail = item.previewThumbnail,
-                    keyHeader = item.keyHeader,
-                    imageSize = ImageSize.THUMB_MEDIUM,
-                    isSticker = item.isSticker,
-                    modifier = Modifier.size(76.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    onClick = { onMediaClick(item) },
-                    sharedTransitionScope = null,
-                    animatedVisibilityScope = null,
-                )
+                hero.Tile(item, Modifier.size(76.dp)) { sharedTransitionScope, animatedVisibilityScope ->
+                    MediaItem(
+                        payload = item.payload,
+                        fileId = item.fileId,
+                        driveId = chatTargetDrive.alias,
+                        previewThumbnail = item.previewThumbnail,
+                        keyHeader = item.keyHeader,
+                        imageSize = ImageSize.THUMB_MEDIUM,
+                        isSticker = item.isSticker,
+                        modifier = Modifier.size(76.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        onClick = { onMediaClick(item) },
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                    )
+                }
             }
         }
     }

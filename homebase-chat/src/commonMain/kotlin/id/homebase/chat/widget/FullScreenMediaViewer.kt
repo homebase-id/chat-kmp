@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -163,8 +164,8 @@ fun FullScreenMediaViewer(
                         source = source,
                         contentDescription = stringResource(MR.string.chat_message_image_attachment),
                         onTap = { showUI = !showUI },
-                        sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
-                        animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
+                        sharedTransitionScope = if (page == pagerState.settledPage) sharedTransitionScope else null,
+                        animatedVisibilityScope = if (page == pagerState.settledPage) animatedVisibilityScope else null,
                         sharedContentStateKey = "image-${data.fileId}-${payload.key}",
                     )
                 }
@@ -191,8 +192,8 @@ fun FullScreenMediaViewer(
                         source = source,
                         contentDescription = stringResource(MR.string.chat_message_image_attachment),
                         onTap = { showUI = !showUI },
-                        sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
-                        animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
+                        sharedTransitionScope = if (page == pagerState.settledPage) sharedTransitionScope else null,
+                        animatedVisibilityScope = if (page == pagerState.settledPage) animatedVisibilityScope else null,
                         sharedContentStateKey = "image-${data.fileId}-${payload.key}",
                     )
                 }
@@ -326,6 +327,7 @@ fun FullScreenMediaViewer(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
+                    .navigationBarsPadding()
                     .padding(16.dp)
             ) {
                 if (data.content.isNotBlank()) {

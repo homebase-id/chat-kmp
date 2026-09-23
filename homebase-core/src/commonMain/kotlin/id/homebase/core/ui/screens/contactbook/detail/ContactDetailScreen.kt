@@ -373,13 +373,15 @@ private fun ContactDetailContent(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
-    Scaffold(
-        topBar = {
-            // While the full-screen media viewer is open it draws its own top bar
-            // (contact name + date + back/menu). Suppress this screen's app bar so
-            // the two don't stack — the viewer's opaque surface already covers the
-            // content beneath it. Mirrors ConversationMediaScreen.
-            if (uiState.fullScreenMedia == null) {
+    ChatMediaFullScreenHost(
+        item = uiState.fullScreenMedia,
+        driveId = chatTargetDrive.alias,
+        title = uiState.entry?.displayName.orEmpty(),
+        snackbarHostState = snackbarHostState,
+        onDismiss = { onAction(ContactDetailAction.CloseMedia) },
+    ) { hero ->
+        Scaffold(
+            topBar = {
                 TopAppBar(
                     title = {},
                     navigationIcon = {
@@ -407,182 +409,175 @@ private fun ContactDetailContent(
                         }
                     },
                 )
-            }
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            val entry = uiState.entry
-            when {
-                entry == null && uiState.isLoading -> Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) { CircularProgressIndicator() }
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+        ) { padding ->
+            Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+                val entry = uiState.entry
+                when {
+                    entry == null && uiState.isLoading -> Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) { CircularProgressIndicator() }
 
-                entry == null -> {}
+                    entry == null -> {}
 
-                // A pending incoming request has no connection-scoped data (contact fields,
-                // groups-in-common, circles are empty; Activity needs a conversation and About
-                // needs synced ext_data — none exist before connecting). Show a self-contained
-                // public-profile card to inform Accept/Reject instead of the placeholder tabs
-                // (#921). Once accepted, this same screen flips to the full detail below.
-                uiState.isPendingIncoming -> PendingRequestProfile(
-                    entry = entry,
-                    assignableCircles = uiState.assignableCircles,
-                    review = uiState.requestReview,
-                    reviewCircleGroups = uiState.reviewCircleGroups,
-                    onAccept = { selectedCircleIds ->
-                        onAction(ContactDetailAction.AcceptRequestClicked(selectedCircleIds))
-                    },
-                    onReviewSubmit = { ids -> onAction(ContactDetailAction.RequestReviewSubmitted(ids)) },
-                    onReject = { onAction(ContactDetailAction.RejectRequestClicked) },
-                    actionInProgress = uiState.actionInProgress,
-                    onAvatarClick = onAvatarClick,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
-                )
+                    // A pending incoming request has no connection-scoped data (contact fields,
+                    // groups-in-common, circles are empty; Activity needs a conversation and About
+                    // needs synced ext_data — none exist before connecting). Show a self-contained
+                    // public-profile card to inform Accept/Reject instead of the placeholder tabs
+                    // (#921). Once accepted, this same screen flips to the full detail below.
+                    uiState.isPendingIncoming -> PendingRequestProfile(
+                        entry = entry,
+                        assignableCircles = uiState.assignableCircles,
+                        review = uiState.requestReview,
+                        reviewCircleGroups = uiState.reviewCircleGroups,
+                        onAccept = { selectedCircleIds ->
+                            onAction(ContactDetailAction.AcceptRequestClicked(selectedCircleIds))
+                        },
+                        onReviewSubmit = { ids -> onAction(ContactDetailAction.RequestReviewSubmitted(ids)) },
+                        onReject = { onAction(ContactDetailAction.RejectRequestClicked) },
+                        actionInProgress = uiState.actionInProgress,
+                        onAvatarClick = onAvatarClick,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                    )
 
-                else -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        DetailHeader(
-                            uiState = uiState,
-                            onAction = onAction,
-                            onAvatarClick = onAvatarClick,
-                            onConnect = onConnect,
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
-                        )
-
-                        if (contactDetailTabs.size > 1) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TabRow(selectedTabIndex = contactDetailTabs.indexOf(currentTab)) {
-                                contactDetailTabs.forEach { tab ->
-                                    Tab(
-                                        selected = tab == currentTab,
-                                        onClick = { onSelectTab(tab) },
-                                        text = { Text(stringResource(tab.labelRes)) },
-                                    )
-                                }
-                            }
-                        }
-
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .verticalScroll(tabScroll),
-                        ) {
-                            Spacer(
-                                modifier = Modifier.height(
-                                    if (contactDetailTabs.size > 1) 12.dp else 20.dp
-                                )
+                    else -> {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            DetailHeader(
+                                uiState = uiState,
+                                onAction = onAction,
+                                onAvatarClick = onAvatarClick,
+                                onConnect = onConnect,
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope,
                             )
-                            when (currentTab) {
-                                ContactDetailTab.DETAILS -> {
-                                    if (uiState.isAccessRevoked) AccessRevokedBanner()
-                                    if (uiState.needsReview && uiState.reviewEnabled) {
-                                        NeedsReviewBanner(
-                                            onReview = {
-                                                onAction(ContactDetailAction.ReviewClicked)
-                                            },
-                                        )
-                                    }
-                                    uiState.introducedByName?.let { IntroducedBySection(it) }
-                                    ContactFieldsSection(
-                                        entry = entry,
-                                        expanded = detailsExpanded,
-                                        onToggleMore = onToggleDetails,
-                                    )
-                                    // Circles + groups-in-common only apply to Homebase identities.
-                                    if (uiState.hasOdinId) {
-                                        GroupsInCommonSection(
-                                            groups = uiState.groupsInCommon,
-                                            isConnected = uiState.isConnected,
-                                            onOpenGroup = {
-                                                onAction(ContactDetailAction.OpenGroup(it))
-                                            },
-                                        )
-                                        CirclesSection(
-                                            circles = uiState.circles,
-                                            isConnected = uiState.isConnected,
-                                            reviewEnabled = uiState.reviewEnabled,
-                                            onCircleClicked = {
-                                                onAction(ContactDetailAction.CircleClicked(it))
-                                            },
-                                        )
-                                    }
-                                }
 
-                                ContactDetailTab.ABOUT -> {
-                                    if (uiState.hasAboutContent) {
-                                        // Bio, then social handles, then experience. All text here
-                                        // is selectable/copyable (one selection scope for the whole
-                                        // tab — it reads like a profile page).
-                                        SelectionContainer {
-                                            Column {
-                                                BioSection(entry.shortBio)
-                                                SocialSection(entry.socialHandles)
-                                                ExperienceSection(
-                                                    uiState.experience,
-                                                    uiState.experienceImage,
-                                                )
-                                            }
-                                        }
-                                    } else {
-                                        TabEmptyMessage(
-                                            stringResource(MR.string.contactbook_detail_about_empty),
-                                        )
-                                    }
-                                }
-
-                                ContactDetailTab.ACTIVITY -> {
-                                    if (uiState.hasActivityContent) {
-                                        RecentMediaSection(
-                                            overview = uiState.overview,
-                                            onMediaClick = {
-                                                onAction(ContactDetailAction.OpenMedia(it))
-                                            },
-                                            onSeeAll = {
-                                                onAction(ContactDetailAction.SeeAllMediaClicked)
-                                            },
-                                        )
-                                    } else {
-                                        TabEmptyMessage(
-                                            stringResource(MR.string.contactbook_detail_activity_empty),
+                            if (contactDetailTabs.size > 1) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                TabRow(selectedTabIndex = contactDetailTabs.indexOf(currentTab)) {
+                                    contactDetailTabs.forEach { tab ->
+                                        Tab(
+                                            selected = tab == currentTab,
+                                            onClick = { onSelectTab(tab) },
+                                            text = { Text(stringResource(tab.labelRes)) },
                                         )
                                     }
                                 }
                             }
-                            Spacer(modifier = Modifier.height(24.dp))
+
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .verticalScroll(tabScroll),
+                            ) {
+                                Spacer(
+                                    modifier = Modifier.height(
+                                        if (contactDetailTabs.size > 1) 12.dp else 20.dp
+                                    )
+                                )
+                                when (currentTab) {
+                                    ContactDetailTab.DETAILS -> {
+                                        if (uiState.isAccessRevoked) AccessRevokedBanner()
+                                        if (uiState.needsReview && uiState.reviewEnabled) {
+                                            NeedsReviewBanner(
+                                                onReview = {
+                                                    onAction(ContactDetailAction.ReviewClicked)
+                                                },
+                                            )
+                                        }
+                                        uiState.introducedByName?.let { IntroducedBySection(it) }
+                                        ContactFieldsSection(
+                                            entry = entry,
+                                            expanded = detailsExpanded,
+                                            onToggleMore = onToggleDetails,
+                                        )
+                                        // Circles + groups-in-common only apply to Homebase identities.
+                                        if (uiState.hasOdinId) {
+                                            GroupsInCommonSection(
+                                                groups = uiState.groupsInCommon,
+                                                isConnected = uiState.isConnected,
+                                                onOpenGroup = {
+                                                    onAction(ContactDetailAction.OpenGroup(it))
+                                                },
+                                            )
+                                            CirclesSection(
+                                                circles = uiState.circles,
+                                                isConnected = uiState.isConnected,
+                                                reviewEnabled = uiState.reviewEnabled,
+                                                onCircleClicked = {
+                                                    onAction(ContactDetailAction.CircleClicked(it))
+                                                },
+                                            )
+                                        }
+                                    }
+
+                                    ContactDetailTab.ABOUT -> {
+                                        if (uiState.hasAboutContent) {
+                                            // Bio, then social handles, then experience. All text here
+                                            // is selectable/copyable (one selection scope for the whole
+                                            // tab — it reads like a profile page).
+                                            SelectionContainer {
+                                                Column {
+                                                    BioSection(entry.shortBio)
+                                                    SocialSection(entry.socialHandles)
+                                                    ExperienceSection(
+                                                        uiState.experience,
+                                                        uiState.experienceImage,
+                                                    )
+                                                }
+                                            }
+                                        } else {
+                                            TabEmptyMessage(
+                                                stringResource(MR.string.contactbook_detail_about_empty),
+                                            )
+                                        }
+                                    }
+
+                                    ContactDetailTab.ACTIVITY -> {
+                                        if (uiState.hasActivityContent) {
+                                            RecentMediaSection(
+                                                overview = uiState.overview,
+                                                hero = hero,
+                                                onMediaClick = {
+                                                    onAction(ContactDetailAction.OpenMedia(it))
+                                                },
+                                                onSeeAll = {
+                                                    onAction(ContactDetailAction.SeeAllMediaClicked)
+                                                },
+                                            )
+                                        } else {
+                                            TabEmptyMessage(
+                                                stringResource(MR.string.contactbook_detail_activity_empty),
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(24.dp))
+                            }
                         }
                     }
                 }
-            }
 
-            ChatMediaFullScreenHost(
-                item = uiState.fullScreenMedia,
-                driveId = chatTargetDrive.alias,
-                title = uiState.entry?.displayName.orEmpty(),
-                snackbarHostState = snackbarHostState,
-                onDismiss = { onAction(ContactDetailAction.CloseMedia) },
-            )
-
-            if (uiState.actionInProgress) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
-                        .pointerInput(Unit) {
-                            // Swallow taps so the action can't be re-triggered while it runs.
-                            awaitPointerEventScope {
-                                while (true) {
-                                    awaitPointerEvent().changes.forEach { it.consume() }
+                if (uiState.actionInProgress) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
+                            .pointerInput(Unit) {
+                                // Swallow taps so the action can't be re-triggered while it runs.
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        awaitPointerEvent().changes.forEach { it.consume() }
+                                    }
                                 }
-                            }
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                    }
                 }
             }
         }

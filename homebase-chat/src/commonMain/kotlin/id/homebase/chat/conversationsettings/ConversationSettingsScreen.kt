@@ -119,123 +119,123 @@ fun ConversationSettingsUi(
         if (isWithSelf) uiState.ownerSession?.displayName ?: it.name else uiState.contactName ?: it.name
     }.orEmpty()
 
-    Scaffold(
-        topBar = {
-            // Suppress this screen's app bar while the full-screen viewer is open
-            // so the viewer's own top bar doesn't stack under it (see
-            // ChatMediaFullScreenHost / ConversationMediaScreen).
-            if (fullScreenItem == null && fullScreenAvatar == null) {
-                TopAppBar(
-                    title = {},
-                    navigationIcon = {
-                        IconButton(onClick = { onUiAction(ConversationSettingsUiAction.BackClicked)  }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(MR.string.menu_back)
+    ChatMediaFullScreenHost(
+        item = fullScreenItem,
+        driveId = chatTargetDrive.alias,
+        title = uiState.conversation?.name.orEmpty(),
+        snackbarHostState = snackbarHostState,
+        onDismiss = { fullScreenItem = null },
+    ) { hero ->
+        Scaffold(
+            topBar = {
+                // The avatar viewer draws inside the content slot; its own top bar must not stack
+                // under this one.
+                if (fullScreenAvatar == null) {
+                    TopAppBar(
+                        title = {},
+                        navigationIcon = {
+                            IconButton(onClick = { onUiAction(ConversationSettingsUiAction.BackClicked)  }) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(MR.string.menu_back)
+                                )
+                            }
+                        },
+                        actions = {
+                            // Same unified live-location pin as the list / in-chat top bars (#1012).
+                            LiveShareIndicator(
+                                untilMs = uiState.liveShareUntilMs,
+                                onClick = onNavigateToLiveLocationMap,
                             )
-                        }
-                    },
-                    actions = {
-                        // Same unified live-location pin as the list / in-chat top bars (#1012).
-                        LiveShareIndicator(
-                            untilMs = uiState.liveShareUntilMs,
-                            onClick = onNavigateToLiveLocationMap,
-                        )
-                    },
-                )
-            }
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { padding ->
-        Box(modifier = Modifier.padding(padding)) {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState())
-            ) {
-                if (uiState.conversation == null) {
-                    if (uiState.isLoading) {
-                        LoadingListItem()
-                    } else {
-                        ErrorInfoItem(stringResource(MR.string.error_no_group_loaded))
-                    }
-                }
-
-                uiState.conversation?.let { conversation ->
-                    // Suppress the subtitle when it would duplicate the name
-                    // (unresolved contact, self, or group).
-                    val subtitle = (if (isWithSelf) {
-                        uiState.ownerSession?.odinId?.domainName
-                    } else {
-                        conversation.name
-                    })?.takeIf { it.isNotBlank() && it != displayName }
-                    AvatarNameDisplay(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .padding(bottom = 16.dp),
-                        displayName = displayName,
-                        subtitle = subtitle,
-                        avatarModel = conversation.avatarModel,
-                        // No drill-in: the overview below already shows everything
-                        // ContactInfo would, for this conversation.
-                        onClick = null,
-                        // The identity's public photo. One that serves none renders
-                        // initials, which PublicAvatar leaves un-tappable.
-                        onAvatarClick = conversation.avatarModel.odinId?.let { odinId ->
-                            { fullScreenAvatar = odinId }
                         },
                     )
+                }
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+        ) { padding ->
+            Box(modifier = Modifier.padding(padding)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
+                    if (uiState.conversation == null) {
+                        if (uiState.isLoading) {
+                            LoadingListItem()
+                        } else {
+                            ErrorInfoItem(stringResource(MR.string.error_no_group_loaded))
+                        }
+                    }
 
-                    // Server-stamped conversation creation date — accurate and
-                    // sync-independent. Hidden for note-to-self and when unknown.
-                    if (!isWithSelf && conversation.fileCreated.toEpochMilliseconds() > 0) {
-                        Text(
-                            text = stringResource(
-                                MR.string.conversation_chatting_since,
-                                formatMediumDate(conversation.fileCreated),
-                            ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    uiState.conversation?.let { conversation ->
+                        // Suppress the subtitle when it would duplicate the name
+                        // (unresolved contact, self, or group).
+                        val subtitle = (if (isWithSelf) {
+                            uiState.ownerSession?.odinId?.domainName
+                        } else {
+                            conversation.name
+                        })?.takeIf { it.isNotBlank() && it != displayName }
+                        AvatarNameDisplay(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp)
                                 .padding(bottom = 16.dp),
-                            textAlign = TextAlign.Center,
+                            displayName = displayName,
+                            subtitle = subtitle,
+                            avatarModel = conversation.avatarModel,
+                            // No drill-in: the overview below already shows everything
+                            // ContactInfo would, for this conversation.
+                            onClick = null,
+                            // The identity's public photo. One that serves none renders
+                            // initials, which PublicAvatar leaves un-tappable.
+                            onAvatarClick = conversation.avatarModel.odinId?.let { odinId ->
+                                { fullScreenAvatar = odinId }
+                            },
                         )
-                    }
 
-                    uiState.overview?.let { overview ->
-                        ConversationOverviewSection(
-                            overview = overview,
-                            onMediaClick = { fullScreenItem = it },
-                            onSeeAll = { onSeeAllMedia(conversationId) },
-                        )
-                    }
+                        // Server-stamped conversation creation date — accurate and
+                        // sync-independent. Hidden for note-to-self and when unknown.
+                        if (!isWithSelf && conversation.fileCreated.toEpochMilliseconds() > 0) {
+                            Text(
+                                text = stringResource(
+                                    MR.string.conversation_chatting_since,
+                                    formatMediumDate(conversation.fileCreated),
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 16.dp),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
 
-                    if (uiState.groupsInCommon.isNotEmpty()) {
-                        GroupsInCommonSection(
-                            groups = uiState.groupsInCommon,
-                            onOpenConversation = onOpenConversation,
-                        )
-                    }
+                        uiState.overview?.let { overview ->
+                            ConversationOverviewSection(
+                                overview = overview,
+                                hero = hero,
+                                onMediaClick = { fullScreenItem = it },
+                                onSeeAll = { onSeeAllMedia(conversationId) },
+                            )
+                        }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                        if (uiState.groupsInCommon.isNotEmpty()) {
+                            GroupsInCommonSection(
+                                groups = uiState.groupsInCommon,
+                                onOpenConversation = onOpenConversation,
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
                 }
-            }
 
-            ChatMediaFullScreenHost(
-                item = fullScreenItem,
-                driveId = chatTargetDrive.alias,
-                title = uiState.conversation?.name.orEmpty(),
-                snackbarHostState = snackbarHostState,
-                onDismiss = { fullScreenItem = null },
-            )
-
-            fullScreenAvatar?.let { odinId ->
-                AvatarFullScreenViewer(
-                    source = SubSamplingImageSource.Avatar(odinId),
-                    title = displayName,
-                    onDismiss = { fullScreenAvatar = null },
-                )
+                fullScreenAvatar?.let { odinId ->
+                    AvatarFullScreenViewer(
+                        source = SubSamplingImageSource.Avatar(odinId),
+                        title = displayName,
+                        onDismiss = { fullScreenAvatar = null },
+                    )
+                }
             }
         }
     }

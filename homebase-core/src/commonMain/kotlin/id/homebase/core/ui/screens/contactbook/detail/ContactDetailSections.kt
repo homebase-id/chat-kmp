@@ -66,6 +66,7 @@ import id.homebase.chat.conversationsettings.ConversationOverview
 import id.homebase.chat.conversationsettings.GroupInCommonItem
 import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.chat.widget.MediaItem
+import id.homebase.chat.widget.SharedMediaHero
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.config.chatTargetDrive
@@ -127,6 +128,7 @@ import kotlin.uuid.ExperimentalUuidApi
 @Composable
 fun RecentMediaSection(
     overview: ConversationOverview?,
+    hero: SharedMediaHero,
     onMediaClick: (SharedMediaItem) -> Unit,
     onSeeAll: () -> Unit,
 ) {
@@ -159,7 +161,7 @@ fun RecentMediaSection(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(media.take(50)) { item ->
-                SharedMediaThumb(item, size = 84.dp) { onMediaClick(item) }
+                SharedMediaThumb(item, size = 84.dp, hero = hero) { onMediaClick(item) }
             }
         }
         // Has non-media shared content but no media to strip: "See all" above leads to it.
@@ -665,21 +667,23 @@ fun SocialSection(handles: List<Pair<ContactSocialNetwork, String>>) {
 }
 
 @Composable
-private fun SharedMediaThumb(item: SharedMediaItem, size: Dp, onClick: () -> Unit) {
-    MediaItem(
-        payload = item.payload,
-        fileId = item.fileId,
-        driveId = chatTargetDrive.alias,
-        previewThumbnail = item.previewThumbnail,
-        keyHeader = item.keyHeader,
-        imageSize = ImageSize.THUMB_MEDIUM,
-        isSticker = item.isSticker,
-        modifier = Modifier.size(size),
-        shape = RoundedCornerShape(12.dp),
-        onClick = onClick,
-        sharedTransitionScope = null,
-        animatedVisibilityScope = null,
-    )
+private fun SharedMediaThumb(item: SharedMediaItem, size: Dp, hero: SharedMediaHero, onClick: () -> Unit) {
+    hero.Tile(item, Modifier.size(size)) { sharedTransitionScope, animatedVisibilityScope ->
+        MediaItem(
+            payload = item.payload,
+            fileId = item.fileId,
+            driveId = chatTargetDrive.alias,
+            previewThumbnail = item.previewThumbnail,
+            keyHeader = item.keyHeader,
+            imageSize = ImageSize.THUMB_MEDIUM,
+            isSticker = item.isSticker,
+            modifier = Modifier.size(size),
+            shape = RoundedCornerShape(12.dp),
+            onClick = onClick,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
+        )
+    }
 }
 
 /** One contact-detail row. [synced] is non-null when the user overrode this field — it holds the
