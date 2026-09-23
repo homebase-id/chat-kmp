@@ -134,7 +134,15 @@ class ComposerKeyActionTest {
     }
 
     @Test
-    fun bareEnterBreaksTheLineByDefault() = runCaption(
+    fun bareEnterSendsByDefault() = runCaption(
+        enterSendsMessage = true,
+        press = { pressKey(Key.Enter) },
+    ) {
+        assertEquals(1, it.sends)
+    }
+
+    @Test
+    fun bareEnterBreaksTheLineWhenThePreferenceIsOff() = runCaption(
         enterSendsMessage = false,
         press = { pressKey(Key.Enter) },
     ) {
