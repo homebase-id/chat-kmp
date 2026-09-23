@@ -4,15 +4,25 @@ package id.homebase.core.ui.screens.card
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.viewinterop.UIKitView
+import id.homebase.core.image.NativeImageDecoder
+import kotlin.coroutines.resume
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCSignatureOverride
+import kotlinx.cinterop.useContents
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSError
 import platform.Foundation.NSHTTPURLResponse
+import platform.Foundation.NSNumber
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
 import platform.UIKit.UIColor
+import platform.UIKit.UIImage
 import platform.UIKit.UIScrollViewContentInsetAdjustmentBehavior
 import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationAction
@@ -23,6 +33,7 @@ import platform.WebKit.WKNavigationResponsePolicy
 import platform.WebKit.WKNavigationTypeOther
 import platform.WebKit.WKScriptMessage
 import platform.WebKit.WKScriptMessageHandlerProtocol
+import platform.WebKit.WKSnapshotConfiguration
 import platform.WebKit.WKUserContentController
 import platform.WebKit.WKUserScript
 import platform.WebKit.WKUserScriptInjectionTime
@@ -31,6 +42,7 @@ import platform.WebKit.WKWebViewConfiguration
 import platform.darwin.NSObject
 
 private const val MESSAGE_HANDLER = "homebaseCard"
+private const val COVER_DOWNSCALE = 2.0
 
 actual fun createCardHost(odinId: String): CardHost = IosCardHost(cardPageUrl(odinId))
 
@@ -87,6 +99,17 @@ internal class IosCardHost(pageUrl: String) : CardHostBase(pageUrl) {
 
     override fun send(command: CardCommand) {
         webView.evaluateJavaScript(command.script(), null)
+    }
+
+    override suspend fun snapshot(): ImageBitmap? {
+        if (webView.window == null) return null
+        val width = webView.bounds.useContents { size.width }
+        if (width <= 0.0) return null
+        val configuration = WKSnapshotConfiguration().apply { snapshotWidth = NSNumber(double = width / COVER_DOWNSCALE) }
+        val image = suspendCancellableCoroutine<UIImage?> { continuation ->
+            webView.takeSnapshotWithConfiguration(configuration) { snapshot, _ -> continuation.resume(snapshot) }
+        } ?: return null
+        return withContext(Dispatchers.Default) { NativeImageDecoder.decodeUIImage(image)?.toComposeImageBitmap() }
     }
 
     override fun release() {

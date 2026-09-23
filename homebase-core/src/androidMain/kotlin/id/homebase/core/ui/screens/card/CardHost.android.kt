@@ -2,6 +2,8 @@ package id.homebase.core.ui.screens.card
 
 import android.content.Context
 import android.content.MutableContextWrapper
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
@@ -17,6 +19,8 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatformTools
@@ -42,6 +46,7 @@ internal class AndroidCardHost(context: Context, pageUrl: String) : CardHostBase
     // Lets the pre-created WebView borrow the showing Activity, then drop it so it doesn't leak.
     private val contextWrapper = MutableContextWrapper(appContext)
     private var attachments = 0
+    private var coverBitmap: Bitmap? = null
 
     var webView by mutableStateOf(newWebView())
         private set
@@ -71,7 +76,21 @@ internal class AndroidCardHost(context: Context, pageUrl: String) : CardHostBase
         webView.evaluateJavascript(command.script(), null)
     }
 
+    override suspend fun snapshot(): ImageBitmap? {
+        val view = webView
+        if (!view.isAttachedToWindow || view.width == 0 || view.height == 0) return null
+        val width = view.width / COVER_DOWNSCALE
+        val height = view.height / COVER_DOWNSCALE
+        val bitmap = coverBitmap?.takeIf { it.width == width && it.height == height }
+            ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { coverBitmap = it }
+        bitmap.eraseColor(Color.TRANSPARENT)
+        // Draws the WebView alone, so the chrome floating over it stays out of the cover.
+        view.draw(Canvas(bitmap).apply { scale(1f / COVER_DOWNSCALE, 1f / COVER_DOWNSCALE) })
+        return bitmap.asImageBitmap()
+    }
+
     override fun release() {
+        coverBitmap = null
         webView.removeJavascriptInterface(JS_BRIDGE_NAME)
         (webView.parent as? ViewGroup)?.removeView(webView)
         webView.destroy()
@@ -129,5 +148,7 @@ internal class AndroidCardHost(context: Context, pageUrl: String) : CardHostBase
 
     private companion object {
         const val JS_BRIDGE_NAME = "homebaseCardHost"
+        const val COVER_DOWNSCALE = 2
     }
 }
+

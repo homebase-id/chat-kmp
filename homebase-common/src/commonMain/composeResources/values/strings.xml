@@ -2273,8 +2273,10 @@
     <string name="profile_card_error">Couldn't show your card.</string>
     <string name="profile_card_share_failed">Couldn't create the card image.</string>
     <string name="profile_card_unsupported">Your Homebase server doesn't support profile cards yet.</string>
-    <string name="profile_card_channel_access">Some posts your connections can see aren't shown. Allow access to your channels.</string>
-    <string name="profile_card_channel_access_allow">Allow</string>
+    <string name="profile_card_edit">Edit card</string>
+    <string name="profile_card_editor_title">Card design</string>
+    <string name="profile_card_edit_profile">Edit profile details</string>
+    <string name="profile_card_design_save_failed">Couldn't save the card design.</string>
     <string name="settings_profile_card">Profile card</string>
     <string name="settings_profile_card_desc">See how others see you, and share it as an image</string>
 

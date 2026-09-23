@@ -116,23 +116,23 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
         park()
     }
 
-    override fun render(payload: CardPayload) {
-        awaitReply(CardEvent.Ready::class)
-        super.render(payload)
-    }
-
-    override fun exportPng() {
-        awaitReply(CardEvent.Png::class)
-        super.exportPng()
-    }
-
     override fun loadUrl(url: String) {
         sawLoading = false
         awaitReply(CardEvent.Loaded::class)
         panel.loadUrl(url)
     }
 
-    override fun send(command: CardCommand) = panel.evaluateJavaScript(command.script()) {}
+    override fun send(command: CardCommand) {
+        awaitReply(
+            when (command) {
+                is CardCommand.Render -> CardEvent.Ready::class
+                CardCommand.ExportPng -> CardEvent.Png::class
+                CardCommand.ProbeEdges -> CardEvent.Edges::class
+                CardCommand.RequestPaint -> CardEvent.Painted::class
+            },
+        )
+        panel.evaluateJavaScript(command.script()) {}
+    }
 
     override fun release() {
         val parent = panel.parent ?: return

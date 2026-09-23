@@ -39,14 +39,13 @@ private val cardSocialFields = mapOf(
 fun buildCardPayload(
     odinId: String,
     attributes: List<ProfileAttribute>,
-    tier: ProfileVisibility,
     design: String,
     photoSrc: String?,
     headerSrc: String?,
     tagLine: String?,
     posts: List<CardPost> = emptyList(),
 ): CardPayload {
-    val values = attributes.visibleValues(tier)
+    val values = attributes.visibleValues(ProfileVisibility.ANONYMOUS)
     fun text(field: ProfileField) = values[field]?.trim()?.ifEmpty { null }
     return CardPayload(
         design = design,
@@ -57,10 +56,10 @@ fun buildCardPayload(
             displayName = profileNameValue(values)?.trim(),
             headline = tagLine?.trim()?.ifEmpty { null } ?: text(ProfileField.STATUS),
             // The public site's card shows the summary, never the full bio.
-            bio = attributes.visibleBio(tier)?.trim()?.ifEmpty { null },
+            bio = attributes.visibleBio(ProfileVisibility.ANONYMOUS)?.trim()?.ifEmpty { null },
             photo = photoSrc?.ifBlank { null }?.let(::CardImage),
             header = headerSrc?.ifBlank { null }?.let(::CardImage),
-            links = cardLinks(attributes.visibleLinks(tier)),
+            links = cardLinks(attributes.visibleLinks(ProfileVisibility.ANONYMOUS)),
             socials = cardSocialFields.mapNotNull { (type, social) ->
                 text(social.field)?.let { socialUsername(type, it) }?.let { CardSocial(type = type, username = it) }
             },
@@ -69,7 +68,6 @@ fun buildCardPayload(
     )
 }
 
-// A link kept at both tiers is two records, so the vetted card would list it twice.
 private fun cardLinks(links: List<ProfileAttribute>): List<CardLink> =
     links
         .mapNotNull { link ->
@@ -77,7 +75,6 @@ private fun cardLinks(links: List<ProfileAttribute>): List<CardLink> =
                 ?: return@mapNotNull null
             (link.string(ProfileAttributeTypes.KEY_LINK_TEXT)?.trim()?.ifEmpty { null } ?: target) to target
         }
-        .distinctBy { (_, target) -> target }
         .mapIndexed { index, (text, target) -> CardLink(id = "${index + 1}", text = text, target = target) }
 
 internal fun isWebUrl(url: String): Boolean {

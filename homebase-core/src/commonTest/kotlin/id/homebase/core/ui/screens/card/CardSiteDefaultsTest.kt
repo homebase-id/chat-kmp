@@ -53,14 +53,13 @@ class CardSiteDefaultsTest {
         data = JsonObject(mapOf(ProfileAttributeTypes.KEY_STATUS to JsonPrimitive(status))),
     )
 
-    private fun headline(tagLine: String?, status: String?, tier: ProfileVisibility = ProfileVisibility.ANONYMOUS) =
+    private fun headline(tagLine: String?, status: String?) =
         buildCardPayload(
             odinId = odinId.toString(),
             attributes = listOfNotNull(
                 status?.let { statusRecord(ProfileVisibility.ANONYMOUS, it) },
                 statusRecord(ProfileVisibility.CONNECTED, "Vetted status"),
             ),
-            tier = tier,
             design = CardDesign.BOARD,
             photoSrc = null,
             headerSrc = null,
@@ -96,14 +95,12 @@ class CardSiteDefaultsTest {
     fun tagLineWinsOverStatus() {
         assertEquals("Ring-bearer", headline(tagLine = "Ring-bearer", status = "Bag End"))
         assertEquals("Ring-bearer", headline(tagLine = "  Ring-bearer \n", status = null))
-        assertEquals("Ring-bearer", headline(tagLine = "Ring-bearer", status = "Bag End", tier = ProfileVisibility.CONNECTED))
     }
 
     @Test
     fun missingOrBlankTagLineFallsBackToStatus() {
         assertEquals("Bag End", headline(tagLine = null, status = "Bag End"))
         assertEquals("Bag End", headline(tagLine = " \n ", status = "Bag End"))
-        assertEquals("Vetted status", headline(tagLine = null, status = "Bag End", tier = ProfileVisibility.CONNECTED))
         assertNull(headline(tagLine = null, status = null))
     }
 
