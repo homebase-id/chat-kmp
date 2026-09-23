@@ -2277,6 +2277,14 @@
     <string name="profile_card_editor_title">Card design</string>
     <string name="profile_card_edit_profile">Edit profile details</string>
     <string name="profile_card_design_save_failed">Couldn't save the card design.</string>
+    <string name="profile_card_nfc">Share card by tapping phones</string>
+    <string name="profile_card_nfc_title">Hold your phone near another phone</string>
+    <string name="profile_card_nfc_body">Touch the backs of the phones together while Homebase is open. Your card opens on theirs.</string>
+    <string name="profile_card_nfc_off">NFC is turned off. Turn it on to share your card by tapping phones.</string>
+    <string name="profile_card_nfc_open_settings">Open NFC settings</string>
+    <string name="profile_card_nfc_switch">Share my card by tap while Homebase is open</string>
+    <string name="profile_card_nfc_switch_desc">Another phone can open your card by touching yours</string>
+    <string name="profile_card_nfc_shared">Card shared</string>
     <string name="settings_profile_card">Profile card</string>
     <string name="settings_profile_card_desc">See how others see you, and share it as an image</string>
 

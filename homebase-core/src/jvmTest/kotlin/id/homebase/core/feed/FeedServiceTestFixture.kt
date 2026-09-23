@@ -138,7 +138,7 @@ private class PassthroughEncryptor : PayloadBundleEncryptor {
 
 // JdbcSqliteDriver is on the jvmTest *runtime* classpath but not the compile classpath, so it can't be named
 // directly without a build-file edit.
-private fun newInMemoryJdbcDriver(): SqlDriver {
+internal fun newInMemoryJdbcDriver(): SqlDriver {
     val cls = Class.forName("app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver")
     val ctor = cls.getConstructor(String::class.java, java.util.Properties::class.java)
     return ctor.newInstance("jdbc:sqlite:", java.util.Properties()) as SqlDriver

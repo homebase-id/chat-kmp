@@ -108,6 +108,7 @@ import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.contactbook.EmergencyContactService
 import id.homebase.core.ui.screens.card.CardPreferences
+import id.homebase.core.ui.screens.card.CardTapShare
 import id.homebase.core.ui.screens.card.DefaultProfileCardSource
 import id.homebase.core.ui.screens.card.ProfileCardSource
 import id.homebase.core.ui.screens.card.ProfileCardViewModel
@@ -861,6 +862,7 @@ val appModule = module {
     singleOf(::HomebaseImageLoader)
     factoryOf(::DefaultProfileCardSource) bind ProfileCardSource::class
     singleOf(::CardPreferences)
+    singleOf(::CardTapShare)
     singleOf(::ChatMessageActionService)
     singleOf(::DiceRollPreferences)
     singleOf(::EventReminderPreferences)

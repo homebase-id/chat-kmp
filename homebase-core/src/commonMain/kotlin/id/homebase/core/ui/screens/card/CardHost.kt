@@ -27,6 +27,10 @@ internal enum class CardPageHost(val param: String) { APP("app"), FRAME("frame")
 
 internal fun cardOrigin(odinId: String): String = "https://$odinId"
 
+// No saved design leaves the choice to the page, as the viewer falls back to the site default.
+internal fun cardLinkUrl(odinId: String, design: String?): String =
+    "${cardOrigin(odinId)}/card" + (design?.let { "?design=$it" } ?: "")
+
 internal fun cardPageUrl(odinId: String, host: CardPageHost = CardPageHost.APP): String =
     "${cardOrigin(odinId)}/card?host=${host.param}"
 
