@@ -337,7 +337,7 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun savingPublishesTheDesignOnceAndRefetchesTheSiteDefaultsNextTime() = runTest(dispatcher) {
+    fun savingPublishesTheDesignOnceWithoutRefetchingTheSiteDefaults() = runTest(dispatcher) {
         val source = FakeSource(profile)
         val vm = viewModel(FakeHost(), source)
         assertEquals(1, source.siteDefaultLoads)
@@ -350,7 +350,7 @@ class ProfileCardViewModelTest {
 
         vm.onScreenShown()
         advanceUntilIdle()
-        assertEquals(2, source.siteDefaultLoads)
+        assertEquals(1, source.siteDefaultLoads)
         assertEquals(CardDesign.COLLAGE, vm.uiState.value.savedDesign)
     }
 

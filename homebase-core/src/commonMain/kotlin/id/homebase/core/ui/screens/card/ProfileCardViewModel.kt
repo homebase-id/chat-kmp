@@ -294,13 +294,10 @@ class ProfileCardViewModel(
             }
             if (saved) {
                 render()
+                unpublishedDesign = design
                 val access = designAccess
-                if (access == null) {
-                    publishDesign(design)
-                } else {
-                    unpublishedDesign = design
-                    _events.tryEmit(ProfileCardEvent.OpenLink(access.buildExtendPermissionUrl()))
-                }
+                if (access == null) publishDesign(design)
+                else _events.tryEmit(ProfileCardEvent.OpenLink(access.buildExtendPermissionUrl()))
             }
             _events.tryEmit(if (saved) ProfileCardEvent.DesignSaved else ProfileCardEvent.DesignSaveFailed)
         }
@@ -308,19 +305,12 @@ class ProfileCardViewModel(
 
     // The public card follows the home page; a failure here leaves the local save, which this viewer shows, standing.
     private fun publishDesign(design: String) {
-        unpublishedDesign = design
         publishJob?.cancel()
         publishJob = viewModelScope.launch {
-            when (attempt("publishing card design $design") { source.publishDesign(design) }) {
-                CardDesignPublish.Published -> {
-                    unpublishedDesign = null
-                    siteDefaults = null
-                }
-                CardDesignPublish.NoTheme -> {
-                    unpublishedDesign = null
-                    Logger.i(tag = TAG) { "no home page theme to publish card design $design to" }
-                }
-                null -> Unit
+            val result = attempt("publishing card design $design") { source.publishDesign(design) } ?: return@launch
+            unpublishedDesign = null
+            if (result == CardDesignPublish.NoTheme) {
+                Logger.i(tag = TAG) { "no home page theme to publish card design $design to" }
             }
         }
     }
