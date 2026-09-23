@@ -381,6 +381,7 @@ class ContactDetailViewModel(
                             ) == ContactState.New,
                         reviewCircleGroups = circ.reviewCircleGroups(),
                         circles = circleItems,
+                        circleDetail = it.circleDetail?.copy(blockedDomains = conn.blockedDomains()),
                         assignableCircles = assignableCircles,
                         isLoading = false,
                         isSelf = isSelf,
@@ -486,6 +487,7 @@ class ContactDetailViewModel(
                         else -> null
                     },
                     viewerContactId = viewerEntry?.uniqueId,
+                    blockedDomains = connectionService.connections.value.blockedDomains(),
                 ),
             )
         }

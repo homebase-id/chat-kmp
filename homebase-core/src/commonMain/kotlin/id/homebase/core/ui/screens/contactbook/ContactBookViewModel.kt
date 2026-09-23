@@ -335,10 +335,7 @@ class ContactBookViewModel(
         // Filtered from all, not built from connections: contacts with no connection belong here.
         // No New tab while the review is dark, so nobody is carved out of this one.
         val newDomains = if (ui.reviewEnabled) domainsInState(ContactState.New) else emptySet()
-        val blockedDomains = contactsData.connections.map
-            .filterValues { it.status == ConnectionStatus.Blocked }
-            .keys.map { it.domainName.lowercase() }
-            .toSet()
+        val blockedDomains = contactsData.connections.blockedDomains()
         val hiddenFromAll = if (ui.reviewEnabled) newDomains + blockedDomains else emptySet()
         val knownContacts = all.filterNot { it.odinId?.lowercase() in hiddenFromAll }
         val blockedContacts = entriesForDomains(blockedDomains, overriddenContacts)
@@ -402,7 +399,7 @@ class ContactBookViewModel(
                 .reviewCircleGroups(),
             circles = circlesData.circles.filter { it.matchesQuery(ui.query) },
             circlesLoading = circlesData.loading,
-            circleMembers = circlesData.members,
+            circleMembers = circlesData.members?.copy(blockedDomains = blockedDomains),
             isLoading = !contactsData.loaded,
             searchQuery = ui.query,
             // A pill left selected across a flag flip falls back to All rather than an empty view.
