@@ -1328,6 +1328,7 @@
     <string name="vault_settings_open">Open Vault</string>
     <string name="vault_settings_show_icon">Show Vault icon in bottom bar</string>
     <string name="vault_settings_biometrics">Biometrics protection</string>
+    <string name="vault_settings_biometrics_unavailable">This device can't verify your identity, so the Vault opens unlocked.</string>
     <string name="vault_biometric_prompt_title">Unlock Vault</string>
     <string name="vault_biometric_prompt_subtitle">Authenticate to access your documents</string>
     <string name="vault_empty_title">Your vault is empty</string>

@@ -1286,7 +1286,7 @@ val appModule = module {
             webDropShareFlowState = get(),
         )
     }
-    viewModelOf(::VaultSettingsViewModel)
+    viewModel { VaultSettingsViewModel(vaultPreferences = get()) }
 
     viewModel {
         EmailViewModel(
