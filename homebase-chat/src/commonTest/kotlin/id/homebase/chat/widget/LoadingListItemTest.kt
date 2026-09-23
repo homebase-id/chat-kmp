@@ -18,7 +18,7 @@ class LoadingListItemTest {
                 LoadingListItem()
             }
         }
-        // LoadingListItem renders a CircularProgressIndicator with no accessible text.
+        // LoadingListItem renders a LoadingIndicator with no accessible text.
         // This test verifies the composable renders without error.
         waitForIdle()
     }

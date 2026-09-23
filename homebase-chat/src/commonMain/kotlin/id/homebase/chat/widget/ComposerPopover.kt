@@ -2,7 +2,6 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.layout.WindowInsets
@@ -78,10 +77,10 @@ internal fun ComposerPopover(
         AnimatedVisibility(
             visibleState = visibleState,
             enter = scaleIn(
-                animationSpec = spring(dampingRatio = 0.8f, stiffness = 380f),
+                animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                 initialScale = 0.7f,
                 transformOrigin = TransformOrigin(if (growsFromRight) 1f else 0f, 1f),
-            ) + fadeIn(spring(stiffness = 1600f)),
+            ) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
         ) {
             Surface(
                 modifier = Modifier

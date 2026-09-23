@@ -1,8 +1,6 @@
 package id.homebase.core.ui.screens.feed.widget
 
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
@@ -15,7 +13,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import id.homebase.api.util.codePointCount
 import id.homebase.api.util.truncateToCodePoints
@@ -64,13 +61,7 @@ fun PostBody(
 
     if (caption.isBlank()) return
 
-    // (MaterialTheme.motionScheme is internal in JetBrains material3 1.9.0, so the spring is hand-tuned.)
-    val expandSpring = spring<IntSize>(
-        dampingRatio = Spring.DampingRatioLowBouncy,
-        stiffness = Spring.StiffnessMediumLow,
-    )
-
-    Column(modifier = modifier.animateContentSize(animationSpec = expandSpring)) {
+    Column(modifier = modifier.animateContentSize(animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec())) {
         ChatMarkdown(
             content = displayed,
             color = MaterialTheme.colorScheme.onSurface,

@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -97,7 +97,7 @@ fun AppLoadingUi(
                     modifier = Modifier.size(72.dp)
                 )
                 Spacer(modifier = Modifier.height(24.dp))
-                CircularProgressIndicator()
+                LoadingIndicator()
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = stringResource(MR.string.loading),

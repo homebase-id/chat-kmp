@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,10 +15,12 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -38,6 +41,7 @@ import id.homebase.core.moments.MomentsAlbumZoom
 import coil3.compose.AsyncImage
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.util.formatMomentDate
+import id.homebase.core.widget.connectedButtonShapes
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlin.uuid.Uuid
@@ -83,7 +87,7 @@ fun MomentsAlbumGrid(
     val grouped = remember(moments, zoom) { groupMoments(moments, zoom) }
 
     Column(modifier = modifier) {
-        AlbumZoomChips(
+        AlbumZoomButtonGroup(
             current = zoom,
             onChange = onZoomChange,
             modifier = Modifier
@@ -125,7 +129,7 @@ fun MomentsAlbumGrid(
 }
 
 @Composable
-private fun AlbumZoomChips(
+private fun AlbumZoomButtonGroup(
     current: MomentsAlbumZoom,
     onChange: (MomentsAlbumZoom) -> Unit,
     modifier: Modifier = Modifier,
@@ -135,17 +139,21 @@ private fun AlbumZoomChips(
         MomentsAlbumZoom.Month to stringResource(MR.string.moments_album_zoom_month),
         MomentsAlbumZoom.Year to stringResource(MR.string.moments_album_zoom_year),
     )
-    androidx.compose.foundation.layout.Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    val entries = MomentsAlbumZoom.entries
+    Row(
+        modifier = modifier.selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MomentsAlbumZoom.entries.forEach { z ->
-            FilterChip(
-                selected = z == current,
-                onClick = { if (z != current) onChange(z) },
-                label = { Text(text = labels.getValue(z)) },
-            )
+        entries.forEachIndexed { index, z ->
+            ToggleButton(
+                checked = z == current,
+                onCheckedChange = { if (z != current) onChange(z) },
+                shapes = connectedButtonShapes(index, entries.size),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(text = labels.getValue(z))
+            }
         }
     }
 }
