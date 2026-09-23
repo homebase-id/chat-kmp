@@ -1,6 +1,8 @@
 package id.homebase.core.widget
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
@@ -16,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -28,6 +31,10 @@ import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.initials
 
+private class LastShown {
+    var event: RichNotificationData? = null
+}
+
 /**
  * Signal-style in-app notification banner displayed at the top of the screen.
  * Shows sender avatar (loaded via URL), name, and message preview. Tappable to navigate.
@@ -39,13 +46,20 @@ fun InAppNotificationBanner(
     onTap: (RichNotificationData) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val lastShown = remember { LastShown() }
+    if (event != null) lastShown.event = event
+    // Cleared together with `visible`, so the exit has to draw the one that is leaving.
+    val shown = event ?: lastShown.event
+    val motion = MaterialTheme.motionScheme
     AnimatedVisibility(
         visible = visible && event != null,
-        enter = slideInVertically(initialOffsetY = { -it }),
-        exit = slideOutVertically(targetOffsetY = { -it }),
+        enter = slideInVertically(motion.defaultSpatialSpec()) { -it } +
+            fadeIn(motion.defaultEffectsSpec()),
+        exit = slideOutVertically(motion.fastSpatialSpec()) { -it } +
+            fadeOut(motion.fastEffectsSpec()),
         modifier = modifier.statusBarsPadding(),
     ) {
-        event?.let { notification ->
+        shown?.let { notification ->
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
