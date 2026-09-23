@@ -1517,6 +1517,8 @@
     <string name="contactbook_filter_circles">Kredse</string>
     <string name="contactbook_new_empty">Intet venter på dig.</string>
     <string name="contactbook_circles_filter_empty">Der er ingen i dine kredse endnu.</string>
+    <string name="contactbook_filter_blocked">Blokeret</string>
+    <string name="contactbook_blocked_filter_empty">Du har ikke blokeret nogen.</string>
     <string name="contactbook_circle_new">Nye</string>
 
     <string name="circle_access_incomplete">Ingen nøgle endnu</string>

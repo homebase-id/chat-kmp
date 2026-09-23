@@ -335,7 +335,15 @@ class ContactBookViewModel(
         // Filtered from all, not built from connections: contacts with no connection belong here.
         // No New tab while the review is dark, so nobody is carved out of this one.
         val newDomains = if (ui.reviewEnabled) domainsInState(ContactState.New) else emptySet()
-        val knownContacts = all.filterNot { it.odinId?.lowercase() in newDomains }
+        val blockedDomains = contactsData.connections.map
+            .filterValues { it.status == ConnectionStatus.Blocked }
+            .keys.map { it.domainName.lowercase() }
+            .toSet()
+        val hiddenFromAll = if (ui.reviewEnabled) newDomains + blockedDomains else emptySet()
+        val knownContacts = all.filterNot { it.odinId?.lowercase() in hiddenFromAll }
+        val blockedContacts = entriesForDomains(blockedDomains, overriddenContacts)
+            .filter { it.matches(ui.query) }
+            .sortedBy { it.sortKey }
 
         // Flag off: main's pills — confirmed is the server-computed `vetted` flag, no circle load needed.
         @Suppress("DEPRECATION")
@@ -383,6 +391,7 @@ class ContactBookViewModel(
             unvetted = unvetted,
             vetted = vetted,
             circleContacts = circleContacts,
+            blockedContacts = blockedContacts,
             contactStates = contactStates,
             statesLoading = circlesData.loading,
             reviewEnabled = ui.reviewEnabled,
@@ -400,7 +409,8 @@ class ContactBookViewModel(
             filter = when {
                 ui.reviewEnabled && (ui.filter == ContactFilter.UNVETTED || ui.filter == ContactFilter.VETTED) ->
                     ContactFilter.ALL
-                !ui.reviewEnabled && ui.filter == ContactFilter.CIRCLES -> ContactFilter.ALL
+                !ui.reviewEnabled && (ui.filter == ContactFilter.CIRCLES || ui.filter == ContactFilter.BLOCKED) ->
+                    ContactFilter.ALL
                 else -> ui.filter
             },
             overlay = ui.overlay,
