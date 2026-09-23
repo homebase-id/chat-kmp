@@ -13,6 +13,7 @@ import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.ArgbImage
 import id.homebase.api.image.ImageUtils
+import id.homebase.api.youauth.MissingPermissionsResult
 import id.homebase.core.image.HomebaseImageData
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -37,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -50,6 +52,10 @@ import kotlinx.serialization.json.JsonPrimitive
 class ProfileCardViewModelTest {
 
     private val dispatcher = UnconfinedTestDispatcher()
+
+    private companion object {
+        const val DESIGN_ACCESS_URL = "https://frodo.dotyou.cloud/owner/appupdate?d=home"
+    }
 
     @BeforeTest
     fun setUp() = Dispatchers.setMain(dispatcher)
@@ -93,6 +99,7 @@ class ProfileCardViewModelTest {
         private val defaults: suspend () -> CardSiteDefaults = { CardSiteDefaults(design = CardDesign.POSTER) },
         private val posts: suspend () -> List<CardPostEntry> = { emptyList() },
     ) : ProfileCardSource {
+        override val accessGranted = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         val imageRequests = mutableListOf<String>()
         val imageEdges = mutableMapOf<String, Int>()
         val written = mutableListOf<ByteArray>()
@@ -100,7 +107,10 @@ class ProfileCardViewModelTest {
 
         override suspend fun odinId() = OdinId("frodo.dotyou.cloud")
         override suspend fun attributes() = attributes
-        override suspend fun siteDefaults(odinId: OdinId) = defaults()
+        override suspend fun siteDefaults(odinId: OdinId): CardSiteDefaults {
+            siteDefaultLoads++
+            return defaults()
+        }
 
         override suspend fun posts(odinId: OdinId): List<CardPostEntry> {
             postLoads++
@@ -126,6 +136,26 @@ class ProfileCardViewModelTest {
         override suspend fun saveDesign(design: String) {
             onSaveDesign(design)
             savedDesigns += design
+        }
+
+        var designAccessMissing = false
+        val publishedDesigns = mutableListOf<String>()
+        var onPublishDesign: suspend (String) -> CardDesignPublish = { CardDesignPublish.Published }
+        var siteDefaultLoads = 0
+
+        override suspend fun missingDesignAccess(odinId: OdinId): MissingPermissionsResult? {
+            if (!designAccessMissing) return null
+            return MissingPermissionsResult(
+                missingDrives = emptyList(),
+                missingPermissions = emptyList(),
+                missingAllConnectedCircle = false,
+                buildExtendPermissionUrl = { DESIGN_ACCESS_URL },
+            )
+        }
+
+        override suspend fun publishDesign(design: String): CardDesignPublish {
+            publishedDesigns += design
+            return onPublishDesign(design)
         }
     }
 
@@ -291,6 +321,96 @@ class ProfileCardViewModelTest {
 
         assertEquals(CardDesign.COLLAGE, vm.uiState.value.design)
         assertEquals(CardDesign.COLLAGE, host.rendered.last().design)
+    }
+
+    private suspend fun TestScope.saveCollectingEvents(
+        vm: ProfileCardViewModel,
+        design: String,
+    ): List<ProfileCardEvent> {
+        val events = mutableListOf<ProfileCardEvent>()
+        val collector = backgroundScope.launch { vm.events.collect { events += it } }
+        vm.onDesignSelected(design)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+        collector.cancel()
+        return events
+    }
+
+    @Test
+    fun savingPublishesTheDesignOnceAndRefetchesTheSiteDefaultsNextTime() = runTest(dispatcher) {
+        val source = FakeSource(profile)
+        val vm = viewModel(FakeHost(), source)
+        assertEquals(1, source.siteDefaultLoads)
+
+        val events = saveCollectingEvents(vm, CardDesign.COLLAGE)
+
+        assertEquals(listOf<ProfileCardEvent>(ProfileCardEvent.DesignSaved), events)
+        assertEquals(listOf(CardDesign.COLLAGE), source.savedDesigns)
+        assertEquals(listOf(CardDesign.COLLAGE), source.publishedDesigns)
+
+        vm.onScreenShown()
+        advanceUntilIdle()
+        assertEquals(2, source.siteDefaultLoads)
+        assertEquals(CardDesign.COLLAGE, vm.uiState.value.savedDesign)
+    }
+
+    @Test
+    fun aFailedPublishKeepsTheLocalDesignAndStillReportsSaved() = runTest(dispatcher) {
+        val source = FakeSource(profile).apply { onPublishDesign = { throw IllegalStateException("offline") } }
+        val host = FakeHost()
+        val vm = viewModel(host, source)
+
+        val events = saveCollectingEvents(vm, CardDesign.DOSSIER)
+
+        assertEquals(listOf<ProfileCardEvent>(ProfileCardEvent.DesignSaved), events)
+        assertEquals(listOf(CardDesign.DOSSIER), source.savedDesigns)
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.savedDesign)
+        assertEquals(CardDesign.DOSSIER, host.rendered.last().design)
+    }
+
+    @Test
+    fun withoutAThemeNothingIsReportedAndTheLocalDesignStands() = runTest(dispatcher) {
+        val source = FakeSource(profile).apply { onPublishDesign = { CardDesignPublish.NoTheme } }
+        val vm = viewModel(FakeHost(), source)
+
+        val events = saveCollectingEvents(vm, CardDesign.BOARD)
+
+        assertEquals(listOf<ProfileCardEvent>(ProfileCardEvent.DesignSaved), events)
+        assertEquals(CardDesign.BOARD, vm.uiState.value.savedDesign)
+        vm.onScreenShown()
+        advanceUntilIdle()
+        assertEquals(1, source.siteDefaultLoads)
+    }
+
+    @Test
+    fun aMissingGrantAsksForItInsteadOfWritingAndWritesOnceGranted() = runTest(dispatcher) {
+        val source = FakeSource(profile).apply { designAccessMissing = true }
+        val vm = viewModel(FakeHost(), source)
+
+        val events = saveCollectingEvents(vm, CardDesign.COLLAGE)
+
+        assertEquals(listOf(ProfileCardEvent.OpenLink(DESIGN_ACCESS_URL), ProfileCardEvent.DesignSaved), events)
+        assertEquals(listOf(CardDesign.COLLAGE), source.savedDesigns)
+        assertTrue(source.publishedDesigns.isEmpty())
+
+        source.designAccessMissing = false
+        source.accessGranted.emit(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf(CardDesign.COLLAGE), source.publishedDesigns)
+    }
+
+    @Test
+    fun aDeclinedGrantLeavesTheLocalDesignAndWritesNothing() = runTest(dispatcher) {
+        val source = FakeSource(profile).apply { designAccessMissing = true }
+        val vm = viewModel(FakeHost(), source)
+        saveCollectingEvents(vm, CardDesign.DOSSIER)
+
+        source.accessGranted.emit(Unit)
+        advanceUntilIdle()
+
+        assertTrue(source.publishedDesigns.isEmpty())
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.savedDesign)
     }
 
     @Test
