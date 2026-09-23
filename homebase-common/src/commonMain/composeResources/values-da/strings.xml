@@ -1011,6 +1011,7 @@
     <string name="vault_settings_open">Åbn Vault</string>
     <string name="vault_settings_show_icon">Vis Vault-ikonet i bundbjælken</string>
     <string name="vault_settings_biometrics">Biometrisk beskyttelse</string>
+    <string name="vault_settings_biometrics_unavailable">Denne enhed kan ikke bekræfte din identitet, så Vault åbnes uden lås.</string>
     <string name="vault_biometric_prompt_title">Lås Vault op</string>
     <string name="vault_biometric_prompt_subtitle">Godkend for at få adgang til dine dokumenter</string>
     <string name="vault_empty_title">Din Vault er tom</string>

@@ -14,3 +14,6 @@ sealed interface BiometricResult {
  * configured — in which case the caller should proceed without the gate.
  */
 expect suspend fun authenticateBiometric(title: String, subtitle: String): BiometricResult
+
+// False means authenticateBiometric can only return Unavailable, so a biometric lock would not protect anything.
+expect fun isDeviceAuthAvailable(): Boolean

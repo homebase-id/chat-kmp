@@ -4,3 +4,5 @@ package id.homebase.core.vault
 // when the result is Unavailable, which matches the desired UX.
 actual suspend fun authenticateBiometric(title: String, subtitle: String): BiometricResult =
     BiometricResult.Unavailable
+
+actual fun isDeviceAuthAvailable(): Boolean = false
