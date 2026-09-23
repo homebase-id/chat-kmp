@@ -988,20 +988,29 @@ class ContactDetailViewModel(
                             _events.tryEmit(ContactDetailEvent.Back)
                             return@launch
                         }
-                        // A connected contact must be disconnected before its record is removed —
-                        // otherwise deleting the address-book entry leaves the connection (and the
-                        // access it granted) live. Tear that down first; abort the delete if it
-                        // fails so we don't silently drop the contact while the connection lingers.
-                        if (wasConnected && domain != null) {
-                            val disconnected = runCatching {
+                        // Sever the connection first, or deleting the entry leaves its access live;
+                        // abort the delete if that fails. A blocked contact stays blocked.
+                        val severed = when {
+                            domain == null -> null
+                            wasConnected -> runCatching {
                                 connectionNetworkProvider.disconnect(OdinId(domain))
+                            }.onFailure {
+                                onConnectionActionFailed(it, OdinClientErrorCode.BlockedConnection, refusedBlocked)
                             }
-                                .onSuccess { connectionService.refresh() }
-                                .onFailure {
-                                    onConnectionActionFailed(it, OdinClientErrorCode.BlockedConnection, refusedBlocked)
-                                }
-                                .isSuccess
-                            if (!disconnected) return@launch
+                            wasBlocked -> runCatching {
+                                connectionNetworkProvider.removeBlockedConnection(OdinId(domain))
+                            }.onFailure {
+                                onConnectionActionFailed(
+                                    it,
+                                    OdinClientErrorCode.IdentityIsNotBlocked,
+                                    ContactDetailEvent.NotBlocked,
+                                )
+                            }
+                            else -> null
+                        }
+                        if (severed != null) {
+                            if (severed.isFailure) return@launch
+                            connectionService.refresh()
                         }
                         // repo.delete does the optimistic remove and restores on failure.
                         val event = try {

@@ -2038,6 +2038,7 @@
     <string name="contactbook_detail_delete_title">Delete contact?</string>
     <string name="contactbook_detail_delete_message">This removes the contact from your address book.</string>
     <string name="contactbook_detail_delete_message_connected">This removes the contact from your address book and disconnects your connection, removing the access it granted. They won't be notified. To reconnect, you'll need to send a new connection request.</string>
+    <string name="contactbook_detail_delete_message_blocked">This removes the contact from your address book and permanently removes your connection and the access it granted. They stay blocked. Unblocking won't restore the connection — they'd have to send you a new connection request.</string>
     <string name="contactbook_detail_danger_zone">Danger zone</string>
 
     <string name="contactbook_edit_title_new">New contact</string>

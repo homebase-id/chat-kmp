@@ -115,6 +115,7 @@ import id.homebase.resources.contactbook_detail_blocked
 import id.homebase.resources.contactbook_detail_connect
 import id.homebase.resources.contactbook_detail_delete
 import id.homebase.resources.contactbook_detail_delete_message
+import id.homebase.resources.contactbook_detail_delete_message_blocked
 import id.homebase.resources.contactbook_detail_delete_message_connected
 import id.homebase.resources.contactbook_detail_delete_title
 import id.homebase.resources.contactbook_detail_disconnect
@@ -367,6 +368,7 @@ fun ContactDetailScreen(
         ConfirmDialog(
             confirm = confirm,
             isConnected = uiState.isConnected,
+            isBlocked = uiState.isBlocked,
             name = uiState.displayName,
             onConfirm = { viewModel.onAction(ContactDetailAction.ConfirmYes) },
             onDismiss = { viewModel.onAction(ContactDetailAction.ConfirmDismiss) },
@@ -919,6 +921,7 @@ private fun UnreviewDialog(
 private fun ConfirmDialog(
     confirm: ContactDetailConfirm,
     isConnected: Boolean,
+    isBlocked: Boolean,
     name: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
@@ -936,9 +939,12 @@ private fun ConfirmDialog(
         )
         ContactDetailConfirm.DELETE -> Triple(
             MR.string.contactbook_detail_delete_title,
-            // Deleting a connected contact also tears down the connection — warn about that.
-            if (isConnected) MR.string.contactbook_detail_delete_message_connected
-            else MR.string.contactbook_detail_delete_message,
+            // Deleting a connected or blocked contact also severs the connection — warn about that.
+            when {
+                isConnected -> MR.string.contactbook_detail_delete_message_connected
+                isBlocked -> MR.string.contactbook_detail_delete_message_blocked
+                else -> MR.string.contactbook_detail_delete_message
+            },
             MR.string.contactbook_detail_delete,
         )
         ContactDetailConfirm.REMOVE_BLOCKED -> Triple(

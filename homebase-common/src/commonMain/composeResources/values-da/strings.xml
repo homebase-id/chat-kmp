@@ -1643,6 +1643,7 @@
     <string name="contactbook_detail_delete_title">Slet kontakt?</string>
     <string name="contactbook_detail_delete_message">Dette fjerner kontakten fra din adressebog.</string>
     <string name="contactbook_detail_delete_message_connected">Dette fjerner kontakten fra din adressebog og afbryder jeres forbindelse, hvilket fjerner den adgang, den gav. De får ikke besked. For at forbinde igen skal du sende en ny forbindelsesanmodning.</string>
+    <string name="contactbook_detail_delete_message_blocked">Dette fjerner kontakten fra din adressebog og fjerner permanent jeres forbindelse og den adgang, den gav. De forbliver blokeret. Hvis du fjerner blokeringen, gendannes forbindelsen ikke — de skal sende dig en ny forbindelsesanmodning.</string>
     <string name="contactbook_detail_danger_zone">Farezone</string>
 
     <string name="contactbook_edit_title_new">Ny kontakt</string>
