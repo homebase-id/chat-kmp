@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
@@ -7,10 +8,16 @@ import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.drives.QueryBatchRequest
+import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
+import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.query.FileQueryParams
+import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.drives.upload.UpdateFileByFileIdRequest
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.profile.ProfileAttribute
+import id.homebase.api.client.profile.ProfileProvider
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.common.OdinId
@@ -22,7 +29,6 @@ import id.homebase.api.youauth.PermissionExtensionManager
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
-import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.ui.screens.profile.photoImageData
 import id.homebase.core.ui.screens.profile.visiblePhoto
 import kotlin.coroutines.cancellation.CancellationException
@@ -42,6 +48,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filterIsInstance
@@ -58,20 +65,26 @@ import kotlinx.coroutines.withTimeoutOrNull
 private const val TAG = "ProfileCard"
 
 private val EXPORT_TIMEOUT = 30.seconds
+private val PAINT_TIMEOUT = 1.5.seconds
+
+class CardCover(val design: String, val image: ImageBitmap)
 
 data class ProfileCardUiState(
-    val tier: ProfileVisibility = ProfileVisibility.ANONYMOUS,
-    val design: String = CardDesign.BOARD,
-    val reviewEnabled: Boolean = false,
+    val savedDesign: String = CardDesign.BOARD,
+    val previewDesign: String? = null,
+    val isSavingDesign: Boolean = false,
     val loadFailed: Boolean = false,
     val isCardReady: Boolean = false,
     val cardFailed: Boolean = false,
     val cardUnsupported: Boolean = false,
     val isExporting: Boolean = false,
-    val channelAccessMissing: Boolean = false,
+    val edges: Map<String, CardEvent.Edges> = emptyMap(),
 ) {
+    val design: String get() = previewDesign ?: savedDesign
+    val cardTopArgb: Int? get() = edges[design]?.topArgb
+    val cardBottomArgb: Int? get() = edges[design]?.bottomArgb
     val canShare: Boolean get() = isCardReady && !isExporting
-    val showChannelAccessNotice: Boolean get() = channelAccessMissing && tier == ProfileVisibility.CONNECTED
+    val canSaveDesign: Boolean get() = previewDesign != null && previewDesign != savedDesign && !isSavingDesign
 }
 
 sealed interface ProfileCardEvent {
@@ -79,20 +92,24 @@ sealed interface ProfileCardEvent {
     data class OpenLink(val url: String) : ProfileCardEvent
     data object CardFailed : ProfileCardEvent
     data object ShareFailed : ProfileCardEvent
+    data object DesignSaved : ProfileCardEvent
+    data object DesignSaveFailed : ProfileCardEvent
 }
 
 interface ProfileCardSource {
-    val reviewEnabled: Boolean
     /** Emits when the user comes back from granting the app more access in the owner console. */
     val accessGranted: Flow<Unit>
     suspend fun odinId(): OdinId
     suspend fun attributes(): List<ProfileAttribute>
     suspend fun siteDefaults(odinId: OdinId): CardSiteDefaults
-    suspend fun posts(odinId: OdinId): CardPostsLoad
-    /** The request for the [channels] the app can't decrypt, or null when there are none or it can't tell. */
-    suspend fun missingChannelAccess(odinId: OdinId, channels: List<Uuid>): MissingPermissionsResult?
+    suspend fun posts(odinId: OdinId): List<CardPostEntry>
     suspend fun imageSrc(image: HomebaseImageData, maxEdge: Int): String?
     suspend fun writeShareImage(png: ByteArray): String
+    suspend fun savedDesign(): String?
+    suspend fun saveDesign(design: String)
+    /** The request for writing the design to the home page, or null when the app may or it can't tell. */
+    suspend fun missingDesignAccess(odinId: OdinId): MissingPermissionsResult?
+    suspend fun publishDesign(design: String): CardDesignPublish
 }
 
 class DefaultProfileCardSource(
@@ -101,14 +118,13 @@ class DefaultProfileCardSource(
     private val publicIdentityRepository: PublicIdentityRepository,
     private val imageLoader: HomebaseImageLoader,
     private val fileOperations: FileOperationsProvider,
-    private val developerPreferences: DeveloperPreferences,
     private val driveQueryProvider: DriveQueryProvider,
     private val driveFileProvider: DriveFileProvider,
+    private val driveUploadProvider: DriveUploadProvider,
     private val securityContextProvider: SecurityContextProvider,
     private val eventBus: EventBus,
+    private val cardPreferences: CardPreferences,
 ) : ProfileCardSource {
-    override val reviewEnabled: Boolean get() = developerPreferences.connectionReviewEnabled.value
-
     // The bus replays its last event, which may be an older return; only one after subscribing counts.
     override val accessGranted: Flow<Unit> = flow {
         emitAll(
@@ -125,16 +141,8 @@ class DefaultProfileCardSource(
     override suspend fun siteDefaults(odinId: OdinId): CardSiteDefaults =
         publicIdentityRepository.loadCardSiteDefaults(odinId)
 
-    override suspend fun posts(odinId: OdinId): CardPostsLoad =
+    override suspend fun posts(odinId: OdinId): List<CardPostEntry> =
         withContext(Dispatchers.Default) { loadCardPosts(odinId.domainName, postDrives) }
-
-    override suspend fun missingChannelAccess(odinId: OdinId, channels: List<Uuid>): MissingPermissionsResult? {
-        if (channels.isEmpty()) return null
-        val context = securityContextProvider.getSecurityContext() ?: return null
-        val result = PermissionExtensionManager(securityContextProvider, odinId.domainName)
-            .getMissingPermissions(channelAccessConfig(channels, context), context)
-        return (result as? PermissionCheckResult.Missing)?.details
-    }
 
     override suspend fun imageSrc(image: HomebaseImageData, maxEdge: Int): String? =
         withContext(Dispatchers.Default) { loadCardImageSrc(image, imageLoader, maxEdge) }
@@ -152,13 +160,42 @@ class DefaultProfileCardSource(
 
     override suspend fun writeShareImage(png: ByteArray): String =
         fileOperations.writeBytesToShareOutboundFile(png, ".png")
+
+    override suspend fun savedDesign(): String? = cardPreferences.design.value
+
+    override suspend fun saveDesign(design: String) = cardPreferences.setDesign(design)
+
+    override suspend fun missingDesignAccess(odinId: OdinId): MissingPermissionsResult? {
+        val context = securityContextProvider.getSecurityContext() ?: return null
+        val result = PermissionExtensionManager(securityContextProvider, odinId.domainName)
+            .getMissingPermissions(designAccessConfig(context), context)
+        return (result as? PermissionCheckResult.Missing)?.details
+    }
+
+    override suspend fun publishDesign(design: String): CardDesignPublish = publishCardDesign(design, themeFiles)
+
+    private val themeFiles = object : CardThemeFiles {
+        override suspend fun query() = driveQueryProvider.queryBatch(
+            driveId = SystemDriveConstants.homePageConfigDrive.alias,
+            request = QueryBatchRequest(
+                queryParams = FileQueryParams(
+                    fileType = listOf(ProfileProvider.PROFILE_ATTRIBUTE_FILE_TYPE),
+                    tagsMatchAtLeastOne = listOf(THEME_ATTRIBUTE_TYPE),
+                ),
+                resultOptionsRequest = QueryBatchResultOptionsRequest(maxRecords = 10, includeMetadataHeader = true),
+            ),
+        ).searchResults
+
+        override suspend fun update(request: UpdateFileByFileIdRequest) =
+            driveUploadProvider.updateFileByFileId(request, onVersionConflict = { null })
+    }
 }
 
 private class CardContent(
     val odinId: OdinId,
     val attributes: List<ProfileAttribute>,
     val siteDefaults: CardSiteDefaults,
-    val photos: Map<ProfileVisibility, HomebaseImageData?>,
+    val photo: HomebaseImageData?,
 )
 
 private data class ImageKey(
@@ -182,21 +219,28 @@ class ProfileCardViewModel(
     private val _host = MutableStateFlow<CardHost?>(null)
     val host: StateFlow<CardHost?> = _host.asStateFlow()
 
-    private val _uiState = MutableStateFlow(ProfileCardUiState(reviewEnabled = source.reviewEnabled))
+    private val _uiState = MutableStateFlow(ProfileCardUiState())
     val uiState: StateFlow<ProfileCardUiState> = _uiState.asStateFlow()
+
+    // A still of the live card, which the next opening slides in with while the native view attaches.
+    private val _cover = MutableStateFlow<CardCover?>(null)
+    val cover: StateFlow<CardCover?> = _cover.asStateFlow()
 
     private val _events = MutableSharedFlow<ProfileCardEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<ProfileCardEvent> = _events.asSharedFlow()
 
     private var content: CardContent? = null
     private var siteDefaults: CardSiteDefaults? = null
-    private var designPicked = false
+    private val readyCount = MutableStateFlow(0)
+    private var coverStale = false
     private var lastRendered: CardPayload? = null
     private val imageSrcs = mutableMapOf<ImageKey, Deferred<String?>>()
     private val failedImages = mutableSetOf<ImageKey>()
-    private var posts: Map<ProfileVisibility, List<CardPost>> = emptyMap()
+    private var posts: List<CardPost> = emptyList()
     private var postsFresh = false
-    private var channelAccess: MissingPermissionsResult? = null
+    private var designAccess: MissingPermissionsResult? = null
+    private var unpublishedDesign: String? = null
+    private var publishJob: Job? = null
     private var shownBefore = false
     private var hostJob: Job? = null
     private var loadJob: Job? = null
@@ -205,11 +249,12 @@ class ProfileCardViewModel(
 
     init {
         load()
+        viewModelScope.launch { checkDesignAccess() }
         viewModelScope.launch {
             source.accessGranted.collect {
-                postsJob?.cancel()
-                postsFresh = false
-                loadPosts(source.odinId())
+                checkDesignAccess()
+                val design = unpublishedDesign
+                if (design != null && designAccess == null) publishDesign(design)
             }
         }
     }
@@ -224,17 +269,54 @@ class ProfileCardViewModel(
         }
     }
 
-    fun onTierSelected(tier: ProfileVisibility) {
-        if (tier == _uiState.value.tier) return
-        _uiState.update { it.copy(tier = tier) }
+    fun onDesignSelected(design: String) {
+        if (design == _uiState.value.design) return
+        _uiState.update { it.copy(previewDesign = design) }
         render()
     }
 
-    fun onDesignSelected(design: String) {
-        designPicked = true
-        if (design == _uiState.value.design) return
-        _uiState.update { it.copy(design = design) }
+    fun onPreviewDiscarded() {
+        if (_uiState.value.previewDesign == null) return
+        _uiState.update { it.copy(previewDesign = null) }
         render()
+    }
+
+    fun onSaveDesign() {
+        val state = _uiState.value
+        if (!state.canSaveDesign) return
+        val design = state.previewDesign ?: return
+        _uiState.update { it.copy(isSavingDesign = true) }
+        viewModelScope.launch {
+            val saved = attempt("saving card design $design") { source.saveDesign(design) } != null
+            _uiState.update {
+                if (saved) it.copy(isSavingDesign = false, savedDesign = design, previewDesign = null)
+                else it.copy(isSavingDesign = false)
+            }
+            if (saved) {
+                render()
+                unpublishedDesign = design
+                val access = designAccess
+                if (access == null) publishDesign(design)
+                else _events.tryEmit(ProfileCardEvent.OpenLink(access.buildExtendPermissionUrl()))
+            }
+            _events.tryEmit(if (saved) ProfileCardEvent.DesignSaved else ProfileCardEvent.DesignSaveFailed)
+        }
+    }
+
+    // The public card follows the home page; a failure here leaves the local save, which this viewer shows, standing.
+    private fun publishDesign(design: String) {
+        publishJob?.cancel()
+        publishJob = viewModelScope.launch {
+            val result = attempt("publishing card design $design") { source.publishDesign(design) } ?: return@launch
+            unpublishedDesign = null
+            if (result == CardDesignPublish.NoTheme) {
+                Logger.i(tag = TAG) { "no home page theme to publish card design $design to" }
+            }
+        }
+    }
+
+    private suspend fun checkDesignAccess() {
+        designAccess = attempt("design access check") { source.missingDesignAccess(source.odinId()) }
     }
 
     /** Picks up profile edits made since the pre-warm; the warm card shows until they land. */
@@ -249,11 +331,6 @@ class ProfileCardViewModel(
     }
 
     fun onRetry() = load()
-
-    fun onAllowChannelAccess() {
-        val url = channelAccess?.buildExtendPermissionUrl?.invoke() ?: return
-        _events.tryEmit(ProfileCardEvent.OpenLink(url))
-    }
 
     fun onShareClicked() {
         val host = _host.value
@@ -289,25 +366,64 @@ class ProfileCardViewModel(
         viewModelScope.launch {
             host.events.collect { event ->
                 when (event) {
-                    is CardEvent.Ready -> _uiState.update {
-                        it.copy(isCardReady = true, cardFailed = false, cardUnsupported = false)
+                    is CardEvent.Ready -> {
+                        _uiState.update { it.copy(isCardReady = true, cardFailed = false, cardUnsupported = false) }
+                        readyCount.update { it + 1 }
                     }
+                    is CardEvent.Edges -> onEdges(event)
                     is CardEvent.Link -> openLink(event.href)
                     is CardEvent.Error -> onCardError(event)
-                    CardEvent.Loaded, is CardEvent.Png -> Unit
+                    CardEvent.Loaded, is CardEvent.Png, CardEvent.Painted -> Unit
                 }
             }
         }
         viewModelScope.launch {
             host.isLoaded.collect { loaded ->
-                if (!loaded) _uiState.update { it.copy(isCardReady = false) }
+                if (!loaded) {
+                    _uiState.update { it.copy(isCardReady = false) }
+                    readyCount.value = 0
+                }
             }
         }
     }
 
+    private fun onEdges(edges: CardEvent.Edges) {
+        _uiState.update { it.copy(edges = it.edges + (it.design to edges)) }
+    }
+
+    // Per attached view: every render the page reports is awaited onto the screen, then its edges are probed.
+    suspend fun paintWhileAttached(onPainted: () -> Unit) {
+        val host = _host.value ?: return
+        coverStale = false
+        readyCount.collectLatest { count ->
+            if (count == 0) return@collectLatest
+            val painted = withTimeoutOrNull(PAINT_TIMEOUT) {
+                host.events.onSubscription { host.requestPaint() }.first { it is CardEvent.Painted }
+            }
+            if (painted == null) Logger.w(tag = TAG) { "no paint reply after $PAINT_TIMEOUT" }
+            host.probeEdges()
+            coverStale = true
+            onPainted()
+        }
+    }
+
+    // Only a painted, not-yet-captured card is worth a still: anything else would capture the cover itself.
+    suspend fun captureCover() {
+        val host = _host.value ?: return
+        if (!coverStale) return
+        coverStale = false
+        val state = _uiState.value
+        val image = attempt("capturing the card cover") { host.snapshot() }
+        if (image == null) {
+            coverStale = true
+            return
+        }
+        _cover.value = CardCover(state.design, image)
+    }
+
     private fun onCardError(error: CardEvent.Error) {
         val state = _uiState.value
-        Logger.w(tag = TAG) { "card error design=${state.design} tier=${state.tier}: ${error.message}" }
+        Logger.w(tag = TAG) { "card error design=${state.design}: ${error.message}" }
         if (error.unsupported) {
             _uiState.update { it.copy(cardUnsupported = true) }
             return
@@ -333,11 +449,12 @@ class ProfileCardViewModel(
                 val defaults = async {
                     siteDefaults ?: attempt("site defaults") { source.siteDefaults(odinId) }?.also { siteDefaults = it }
                 }
+                val stored = async { attempt("saved card design") { source.savedDesign() } }
                 val attributes = attempt("profile attributes") { source.attributes() }
                 if (attributes == null) {
                     _uiState.update { it.copy(loadFailed = content == null) }
                 } else {
-                    onLoaded(odinId, attributes, defaults.await() ?: CardSiteDefaults())
+                    onLoaded(odinId, attributes, defaults.await() ?: CardSiteDefaults(), stored.await())
                 }
             }
         }
@@ -347,55 +464,43 @@ class ProfileCardViewModel(
         odinId: OdinId,
         attributes: List<ProfileAttribute>,
         defaults: CardSiteDefaults,
+        storedDesign: String?,
     ) {
-        val photos = cardTiers.associateWith { attributes.visiblePhoto(it)?.photoImageData() }
-        content = CardContent(odinId, attributes, defaults, photos)
-        // Both tiers up front, so switching tier never waits on an encode.
-        photos.values.filterNotNull().forEach { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE) }
-        _uiState.update {
-            it.copy(loadFailed = false, design = if (designPicked) it.design else defaults.design)
-        }
+        val photo = attributes.visiblePhoto(ProfileVisibility.ANONYMOUS)?.photoImageData()
+        content = CardContent(odinId, attributes, defaults, photo)
+        photo?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE) }
+        val saved = storedDesign ?: defaults.design
+        _uiState.update { it.copy(loadFailed = false, savedDesign = saved) }
         loadPosts(odinId)
         render()
     }
 
-    // Both tiers in one load, thumbnails included, so the card never waits on posts and a tier switch never refetches.
+    // Thumbnails included, so the card never waits on posts.
     private fun loadPosts(odinId: OdinId) {
         if (postsFresh || postsJob?.isActive == true) return
         postsJob = viewModelScope.launch {
             val loaded = attempt("card posts") { source.posts(odinId) } ?: return@launch
-            launch { checkChannelAccess(odinId, loaded.homePageChannels) }
-            val withImages = loaded.posts.mapValues { (_, entries) ->
-                entries.map { it.post to it.image?.let { image -> imageSrcAsync(image, CARD_POST_IMAGE_MAX_EDGE) } }
-            }
-            posts = withImages.mapValues { (_, entries) ->
-                entries.map { (post, src) -> src?.await()?.let { post.copy(image = CardImage(it)) } ?: post }
-            }
+            val withImages = loaded.map { it.post to it.image?.let { image -> imageSrcAsync(image, CARD_POST_IMAGE_MAX_EDGE) } }
+            posts = withImages.map { (post, src) -> src?.await()?.let { post.copy(image = CardImage(it)) } ?: post }
             postsFresh = true
             render()
         }
     }
 
-    private suspend fun checkChannelAccess(odinId: OdinId, channels: List<Uuid>) {
-        val missing = attempt("channel access check") { source.missingChannelAccess(odinId, channels) }
-        channelAccess = missing
-        _uiState.update { it.copy(channelAccessMissing = missing != null) }
-    }
-
     private fun render() {
-        val content = content ?: return
         val state = _uiState.value
+        _cover.update { cover -> cover?.takeIf { it.design == state.savedDesign } }
+        val content = content ?: return
         renderJob?.cancel()
         renderJob = viewModelScope.launch {
             val payload = buildCardPayload(
                 odinId = content.odinId.domainName,
                 attributes = content.attributes,
-                tier = state.tier,
                 design = state.design,
-                photoSrc = content.photos[state.tier]?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE).await() },
+                photoSrc = content.photo?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE).await() },
                 headerSrc = content.siteDefaults.header?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE).await() },
                 tagLine = content.siteDefaults.tagLine,
-                posts = posts[state.tier].orEmpty(),
+                posts = posts,
             )
             if (payload != lastRendered) {
                 lastRendered = payload
@@ -404,7 +509,7 @@ class ProfileCardViewModel(
         }
     }
 
-    // Once per image for the ViewModel's life, so a design or tier switch never re-encodes; failures retry on the next show.
+    // Once per image for the ViewModel's life, so a design switch never re-encodes; failures retry on the next show.
     private fun imageSrcAsync(image: HomebaseImageData, maxEdge: Int): Deferred<String?> {
         val key = ImageKey(image.driveId, image.fileId, image.payloadKey, image.lastModified, maxEdge)
         return imageSrcs.getOrPut(key) {

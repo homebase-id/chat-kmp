@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
+import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
 import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.ProfileCardViewModel
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
@@ -61,7 +62,7 @@ internal data class SettingsPaneActions(
     val onNavigateToDefragmenter: () -> Unit,
 )
 
-private enum class ProfilePage { Edit, Avatar, Card }
+private enum class ProfilePage { Edit, Avatar, Card, CardEditor }
 
 @Composable
 internal fun SettingsPaneHost(
@@ -156,6 +157,18 @@ internal fun SettingsPaneHost(
                                 ProfileCardScreen(
                                     viewModel = it,
                                     onBack = { profilePage = if (cardOpenedFromEdit) ProfilePage.Edit else null },
+                                    onEdit = { profilePage = ProfilePage.CardEditor },
+                                )
+                            }
+
+                            ProfilePage.CardEditor -> cardViewModel?.let {
+                                ProfileCardEditorScreen(
+                                    viewModel = it,
+                                    onBack = { profilePage = ProfilePage.Card },
+                                    onEditProfile = {
+                                        cardOpenedFromEdit = false
+                                        profilePage = ProfilePage.Edit
+                                    },
                                 )
                             }
                         }

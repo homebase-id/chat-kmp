@@ -66,6 +66,7 @@ kotlin {
 
     compilerOptions {
         optIn.add("kotlin.uuid.ExperimentalUuidApi")
+        optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
     }
 
     sourceSets {
@@ -164,6 +165,8 @@ kotlin {
             implementation(libs.nucleus.notification.linux)
             implementation(libs.kermit.io)
             implementation(libs.pdfbox)
+            implementation(libs.jna)
+            implementation(libs.jna.platform)
             // `api` so desktopApp's existing direct kmpnotifier dep stays
             // consistent and `RichNotificationDisplayer.jvm.kt` can reach the
             // type from the same source set's classpath.

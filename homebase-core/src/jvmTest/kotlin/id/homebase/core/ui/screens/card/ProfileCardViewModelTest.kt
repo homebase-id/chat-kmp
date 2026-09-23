@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
@@ -37,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -50,6 +52,10 @@ import kotlinx.serialization.json.JsonPrimitive
 class ProfileCardViewModelTest {
 
     private val dispatcher = UnconfinedTestDispatcher()
+
+    private companion object {
+        const val DESIGN_ACCESS_URL = "https://frodo.dotyou.cloud/owner/appupdate?d=home"
+    }
 
     @BeforeTest
     fun setUp() = Dispatchers.setMain(dispatcher)
@@ -70,6 +76,17 @@ class ProfileCardViewModelTest {
         }
 
         override fun exportPng() = onExport()
+        var edgeProbes = 0
+        override fun probeEdges() {
+            edgeProbes++
+        }
+        var onPaintRequest: () -> Unit = {}
+        override fun requestPaint() = onPaintRequest()
+        var snapshots = 0
+        override suspend fun snapshot(): ImageBitmap {
+            snapshots++
+            return ImageBitmap(2, 2)
+        }
         override fun dispose() {
             disposed = true
         }
@@ -80,37 +97,24 @@ class ProfileCardViewModelTest {
     private class FakeSource(
         private val attributes: List<ProfileAttribute>,
         private val defaults: suspend () -> CardSiteDefaults = { CardSiteDefaults(design = CardDesign.POSTER) },
-        private val posts: suspend () -> Map<ProfileVisibility, List<CardPostEntry>> = { emptyMap() },
-        private val homePageChannels: List<Uuid> = emptyList(),
-        var lackingAccess: Set<Uuid> = emptySet(),
+        private val posts: suspend () -> List<CardPostEntry> = { emptyList() },
     ) : ProfileCardSource {
-        override val reviewEnabled = false
         override val accessGranted = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         val imageRequests = mutableListOf<String>()
         val imageEdges = mutableMapOf<String, Int>()
         val written = mutableListOf<ByteArray>()
-        val accessChecks = mutableListOf<List<Uuid>>()
         var postLoads = 0
 
         override suspend fun odinId() = OdinId("frodo.dotyou.cloud")
         override suspend fun attributes() = attributes
-        override suspend fun siteDefaults(odinId: OdinId) = defaults()
-
-        override suspend fun posts(odinId: OdinId): CardPostsLoad {
-            postLoads++
-            return CardPostsLoad(posts(), homePageChannels)
+        override suspend fun siteDefaults(odinId: OdinId): CardSiteDefaults {
+            siteDefaultLoads++
+            return defaults()
         }
 
-        override suspend fun missingChannelAccess(odinId: OdinId, channels: List<Uuid>): MissingPermissionsResult? {
-            accessChecks += channels
-            val missing = channels.filter { it in lackingAccess }
-            if (missing.isEmpty()) return null
-            return MissingPermissionsResult(
-                missingDrives = emptyList(),
-                missingPermissions = emptyList(),
-                missingAllConnectedCircle = false,
-                buildExtendPermissionUrl = { "https://frodo.dotyou.cloud/owner/appupdate?d=${missing.joinToString()}" },
-            )
+        override suspend fun posts(odinId: OdinId): List<CardPostEntry> {
+            postLoads++
+            return posts()
         }
 
         override suspend fun imageSrc(image: HomebaseImageData, maxEdge: Int): String {
@@ -122,6 +126,36 @@ class ProfileCardViewModelTest {
         override suspend fun writeShareImage(png: ByteArray): String {
             written += png
             return "/cache/share_outbound/share_1.png"
+        }
+
+        val savedDesigns = mutableListOf<String>()
+        var onSaveDesign: suspend (String) -> Unit = {}
+
+        override suspend fun savedDesign(): String? = savedDesigns.lastOrNull()
+
+        override suspend fun saveDesign(design: String) {
+            onSaveDesign(design)
+            savedDesigns += design
+        }
+
+        var designAccessMissing = false
+        val publishedDesigns = mutableListOf<String>()
+        var onPublishDesign: suspend (String) -> CardDesignPublish = { CardDesignPublish.Published }
+        var siteDefaultLoads = 0
+
+        override suspend fun missingDesignAccess(odinId: OdinId): MissingPermissionsResult? {
+            if (!designAccessMissing) return null
+            return MissingPermissionsResult(
+                missingDrives = emptyList(),
+                missingPermissions = emptyList(),
+                missingAllConnectedCircle = false,
+                buildExtendPermissionUrl = { DESIGN_ACCESS_URL },
+            )
+        }
+
+        override suspend fun publishDesign(design: String): CardDesignPublish {
+            publishedDesigns += design
+            return onPublishDesign(design)
         }
     }
 
@@ -169,12 +203,14 @@ class ProfileCardViewModelTest {
     @Test
     fun rendersThePublicCardInTheSiteDesignAsSoonAsDataIsReady() = runTest(dispatcher) {
         val host = FakeHost()
-        viewModel(host, FakeSource(profile))
+        val source = FakeSource(profile)
+        viewModel(host, source)
 
         val payload = host.rendered.single()
         assertEquals(CardDesign.POSTER, payload.design)
         assertEquals("Frodo", payload.data.firstName)
         assertEquals("data:image/jpeg;base64,pub_photo", payload.data.photo?.src)
+        assertEquals(listOf("pub_photo"), source.imageRequests)
     }
 
     @Test
@@ -220,21 +256,6 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun tierSwitchRerendersOnTheSameHostWithoutReencodingEitherPhoto() = runTest(dispatcher) {
-        val host = FakeHost()
-        val source = FakeSource(profile)
-        val vm = viewModel(host, source)
-
-        vm.onTierSelected(ProfileVisibility.CONNECTED)
-        vm.onTierSelected(ProfileVisibility.ANONYMOUS)
-
-        assertEquals(listOf("Frodo", "Mr. Frodo", "Frodo"), host.rendered.map { it.data.firstName })
-        assertEquals("data:image/jpeg;base64,vet_photo", host.rendered[1].data.photo?.src)
-        assertEquals(listOf("pub_photo", "vet_photo"), source.imageRequests.sorted())
-        assertEquals(ProfileVisibility.ANONYMOUS, vm.uiState.value.tier)
-    }
-
-    @Test
     fun designSwitchRerendersWithoutReencoding() = runTest(dispatcher) {
         val host = FakeHost()
         val source = FakeSource(profile)
@@ -260,6 +281,250 @@ class ProfileCardViewModelTest {
 
         assertEquals(CardDesign.COLLAGE, vm.uiState.value.design)
         assertEquals(listOf(CardDesign.COLLAGE), host.rendered.map { it.design })
+    }
+
+    @Test
+    fun anUnsavedEditorPreviewRevertsWhenDiscarded() = runTest(dispatcher) {
+        val host = FakeHost()
+        val vm = viewModel(host, FakeSource(profile))
+
+        vm.onDesignSelected(CardDesign.DOSSIER)
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
+        assertEquals(CardDesign.POSTER, vm.uiState.value.savedDesign)
+        assertTrue(vm.uiState.value.canSaveDesign)
+
+        vm.onPreviewDiscarded()
+
+        assertEquals(CardDesign.POSTER, vm.uiState.value.design)
+        assertFalse(vm.uiState.value.canSaveDesign)
+        assertEquals(listOf(CardDesign.POSTER, CardDesign.DOSSIER, CardDesign.POSTER), host.rendered.map { it.design })
+    }
+
+    @Test
+    fun aSavedDesignOutlivesTheSiteDefaultOnTheNextShowing() = runTest(dispatcher) {
+        val host = FakeHost()
+        val source = FakeSource(profile)
+        val vm = viewModel(host, source)
+        vm.onDesignSelected(CardDesign.COLLAGE)
+
+        val event = async { vm.events.first() }
+        vm.onSaveDesign()
+
+        assertEquals(ProfileCardEvent.DesignSaved, event.await())
+        assertEquals(listOf(CardDesign.COLLAGE), source.savedDesigns)
+        assertEquals(CardDesign.COLLAGE, vm.uiState.value.savedDesign)
+        assertNull(vm.uiState.value.previewDesign)
+        assertFalse(vm.uiState.value.isSavingDesign)
+
+        vm.onScreenShown()
+        advanceUntilIdle()
+
+        assertEquals(CardDesign.COLLAGE, vm.uiState.value.design)
+        assertEquals(CardDesign.COLLAGE, host.rendered.last().design)
+    }
+
+    private suspend fun TestScope.saveCollectingEvents(
+        vm: ProfileCardViewModel,
+        design: String,
+    ): List<ProfileCardEvent> {
+        val events = mutableListOf<ProfileCardEvent>()
+        val collector = backgroundScope.launch { vm.events.collect { events += it } }
+        vm.onDesignSelected(design)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+        collector.cancel()
+        return events
+    }
+
+    @Test
+    fun savingPublishesTheDesignOnceWithoutRefetchingTheSiteDefaults() = runTest(dispatcher) {
+        val source = FakeSource(profile)
+        val vm = viewModel(FakeHost(), source)
+        assertEquals(1, source.siteDefaultLoads)
+
+        val events = saveCollectingEvents(vm, CardDesign.COLLAGE)
+
+        assertEquals(listOf<ProfileCardEvent>(ProfileCardEvent.DesignSaved), events)
+        assertEquals(listOf(CardDesign.COLLAGE), source.savedDesigns)
+        assertEquals(listOf(CardDesign.COLLAGE), source.publishedDesigns)
+
+        vm.onScreenShown()
+        advanceUntilIdle()
+        assertEquals(1, source.siteDefaultLoads)
+        assertEquals(CardDesign.COLLAGE, vm.uiState.value.savedDesign)
+    }
+
+    @Test
+    fun aFailedPublishKeepsTheLocalDesignAndStillReportsSaved() = runTest(dispatcher) {
+        val source = FakeSource(profile).apply { onPublishDesign = { throw IllegalStateException("offline") } }
+        val host = FakeHost()
+        val vm = viewModel(host, source)
+
+        val events = saveCollectingEvents(vm, CardDesign.DOSSIER)
+
+        assertEquals(listOf<ProfileCardEvent>(ProfileCardEvent.DesignSaved), events)
+        assertEquals(listOf(CardDesign.DOSSIER), source.savedDesigns)
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.savedDesign)
+        assertEquals(CardDesign.DOSSIER, host.rendered.last().design)
+    }
+
+    @Test
+    fun withoutAThemeNothingIsReportedAndTheLocalDesignStands() = runTest(dispatcher) {
+        val source = FakeSource(profile).apply { onPublishDesign = { CardDesignPublish.NoTheme } }
+        val vm = viewModel(FakeHost(), source)
+
+        val events = saveCollectingEvents(vm, CardDesign.BOARD)
+
+        assertEquals(listOf<ProfileCardEvent>(ProfileCardEvent.DesignSaved), events)
+        assertEquals(CardDesign.BOARD, vm.uiState.value.savedDesign)
+        vm.onScreenShown()
+        advanceUntilIdle()
+        assertEquals(1, source.siteDefaultLoads)
+    }
+
+    @Test
+    fun aMissingGrantAsksForItInsteadOfWritingAndWritesOnceGranted() = runTest(dispatcher) {
+        val source = FakeSource(profile).apply { designAccessMissing = true }
+        val vm = viewModel(FakeHost(), source)
+
+        val events = saveCollectingEvents(vm, CardDesign.COLLAGE)
+
+        assertEquals(listOf(ProfileCardEvent.OpenLink(DESIGN_ACCESS_URL), ProfileCardEvent.DesignSaved), events)
+        assertEquals(listOf(CardDesign.COLLAGE), source.savedDesigns)
+        assertTrue(source.publishedDesigns.isEmpty())
+
+        source.designAccessMissing = false
+        source.accessGranted.emit(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf(CardDesign.COLLAGE), source.publishedDesigns)
+    }
+
+    @Test
+    fun aDeclinedGrantLeavesTheLocalDesignAndWritesNothing() = runTest(dispatcher) {
+        val source = FakeSource(profile).apply { designAccessMissing = true }
+        val vm = viewModel(FakeHost(), source)
+        saveCollectingEvents(vm, CardDesign.DOSSIER)
+
+        source.accessGranted.emit(Unit)
+        advanceUntilIdle()
+
+        assertTrue(source.publishedDesigns.isEmpty())
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.savedDesign)
+    }
+
+    @Test
+    fun aDesignSavedEarlierWinsOverTheSiteDesign() = runTest(dispatcher) {
+        val host = FakeHost()
+        val source = FakeSource(profile).apply { savedDesigns += CardDesign.DOSSIER }
+        val vm = viewModel(host, source)
+
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.savedDesign)
+        assertEquals(listOf(CardDesign.DOSSIER), host.rendered.map { it.design })
+    }
+
+    @Test
+    fun edgesAreProbedOnlyOnceTheRenderHasPaintedAndFollowTheirDesign() = runTest(dispatcher) {
+        val host = FakeHost().apply { onPaintRequest = { send(CardEvent.Painted) } }
+        val vm = viewModel(host, FakeSource(profile))
+        var paints = 0
+        backgroundScope.launch { vm.paintWhileAttached { paints++ } }
+
+        assertEquals(0, host.edgeProbes)
+        host.send(CardEvent.Ready(layout = CardDesign.POSTER, ms = 1))
+        assertEquals(1, host.edgeProbes)
+        assertEquals(1, paints)
+        host.send(CardEvent.Edges(topArgb = 0xFF111111.toInt(), bottomArgb = 0xFF222222.toInt()))
+        assertEquals(0xFF222222.toInt(), vm.uiState.value.cardBottomArgb)
+
+        vm.onDesignSelected(CardDesign.COLLAGE)
+        assertNull(vm.uiState.value.cardBottomArgb)
+        vm.onDesignSelected(CardDesign.POSTER)
+        assertEquals(0xFF111111.toInt(), vm.uiState.value.cardTopArgb)
+        assertEquals(0xFF222222.toInt(), vm.uiState.value.cardBottomArgb)
+    }
+
+    @Test
+    fun aPageThatNeverAnswersThePaintRequestStillGoesLive() = runTest(dispatcher) {
+        val host = FakeHost()
+        val vm = viewModel(host, FakeSource(profile))
+        var paints = 0
+        backgroundScope.launch { vm.paintWhileAttached { paints++ } }
+
+        host.send(CardEvent.Ready(layout = CardDesign.POSTER, ms = 1))
+        advanceTimeBy(2.seconds)
+
+        assertEquals(1, paints)
+        assertEquals(1, host.edgeProbes)
+    }
+
+    @Test
+    fun theCoverIsCapturedOncePerPaintAndDroppedWhenTheSavedDesignChanges() = runTest(dispatcher) {
+        val host = FakeHost().apply { onPaintRequest = { send(CardEvent.Painted) } }
+        val vm = viewModel(host, FakeSource(profile))
+        backgroundScope.launch { vm.paintWhileAttached {} }
+
+        vm.captureCover()
+        assertEquals(0, host.snapshots)
+
+        host.send(CardEvent.Ready(layout = CardDesign.POSTER, ms = 1))
+        vm.captureCover()
+        vm.captureCover()
+        assertEquals(1, host.snapshots)
+        assertEquals(CardDesign.POSTER, assertNotNull(vm.cover.value).design)
+
+        vm.onDesignSelected(CardDesign.DOSSIER)
+        vm.onSaveDesign()
+        assertNull(vm.cover.value)
+    }
+
+    @Test
+    fun aFailedSaveKeepsThePreviewAndTheSavedDesign() = runTest(dispatcher) {
+        val host = FakeHost()
+        val source = FakeSource(profile).apply { onSaveDesign = { throw IllegalStateException("offline") } }
+        val vm = viewModel(host, source)
+        vm.onDesignSelected(CardDesign.DOSSIER)
+
+        val event = async { vm.events.first() }
+        vm.onSaveDesign()
+
+        assertEquals(ProfileCardEvent.DesignSaveFailed, event.await())
+        val state = vm.uiState.value
+        assertEquals(CardDesign.DOSSIER, state.design)
+        assertEquals(CardDesign.POSTER, state.savedDesign)
+        assertFalse(state.isSavingDesign)
+        assertTrue(state.canSaveDesign)
+    }
+
+    @Test
+    fun savingShowsProgressAndIgnoresARepeatTap() = runTest(dispatcher) {
+        val host = FakeHost()
+        val gate = CompletableDeferred<Unit>()
+        val source = FakeSource(profile).apply { onSaveDesign = { gate.await() } }
+        val vm = viewModel(host, source)
+        vm.onDesignSelected(CardDesign.BOARD)
+
+        vm.onSaveDesign()
+        vm.onSaveDesign()
+        assertTrue(vm.uiState.value.isSavingDesign)
+        assertFalse(vm.uiState.value.canSaveDesign)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.isSavingDesign)
+        assertEquals(listOf(CardDesign.BOARD), source.savedDesigns)
+    }
+
+    @Test
+    fun savingTheUnchangedDesignDoesNothing() = runTest(dispatcher) {
+        val source = FakeSource(profile)
+        val vm = viewModel(FakeHost(), source)
+
+        vm.onSaveDesign()
+
+        assertTrue(source.savedDesigns.isEmpty())
+        assertFalse(vm.uiState.value.isSavingDesign)
     }
 
     @Test
@@ -385,24 +650,17 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun postsLoadOnceForBothTiersWithSharedSmallThumbnails() = runTest(dispatcher) {
+    fun postsRenderWithSmallThumbnailsEncodedOnce() = runTest(dispatcher) {
         val host = FakeHost()
-        val shared = cardPost("shared", imageKey = "post_img")
-        val source = FakeSource(
-            profile,
-            posts = { mapOf(ProfileVisibility.ANONYMOUS to listOf(shared), ProfileVisibility.CONNECTED to listOf(shared, cardPost("vetted"))) },
-        )
+        val source = FakeSource(profile, posts = { listOf(cardPost("pictured", imageKey = "post_img"), cardPost("plain")) })
         val vm = viewModel(host, source)
 
-        val publicPosts = host.rendered.last().data.posts
-        assertEquals(listOf("shared"), publicPosts.map { it.id })
-        assertEquals(CardImage("data:image/jpeg;base64,post_img"), publicPosts.single().image)
+        val posts = host.rendered.last().data.posts
+        assertEquals(listOf("pictured", "plain"), posts.map { it.id })
+        assertEquals(CardImage("data:image/jpeg;base64,post_img"), posts[0].image)
+        assertNull(posts[1].image)
 
-        vm.onTierSelected(ProfileVisibility.CONNECTED)
-        assertEquals(listOf("shared", "vetted"), host.rendered.last().data.posts.map { it.id })
-        assertNull(host.rendered.last().data.posts[1].image)
-
-        vm.onTierSelected(ProfileVisibility.ANONYMOUS)
+        vm.onDesignSelected(CardDesign.DOSSIER)
         assertEquals(1, source.postLoads)
         assertEquals(1, source.imageRequests.count { it == "post_img" })
         assertEquals(CARD_POST_IMAGE_MAX_EDGE, source.imageEdges["post_img"])
@@ -411,7 +669,7 @@ class ProfileCardViewModelTest {
 
     @Test
     fun thePreWarmPostsServeTheFirstShowingAndALaterOneRefetches() = runTest(dispatcher) {
-        val source = FakeSource(profile, posts = { mapOf(ProfileVisibility.ANONYMOUS to listOf(cardPost("p1"))) })
+        val source = FakeSource(profile, posts = { listOf(cardPost("p1")) })
         val vm = viewModel(FakeHost(), source)
         assertEquals(1, source.postLoads)
 
@@ -428,7 +686,7 @@ class ProfileCardViewModelTest {
         var fail = true
         val source = FakeSource(profile, posts = {
             if (fail) error("channel drives unavailable")
-            mapOf(ProfileVisibility.ANONYMOUS to listOf(cardPost("p1")))
+            listOf(cardPost("p1"))
         })
         val vm = viewModel(host, source)
         assertEquals(emptyList(), host.rendered.last().data.posts)
@@ -439,72 +697,6 @@ class ProfileCardViewModelTest {
 
         assertEquals(2, source.postLoads)
         assertEquals(listOf("p1"), host.rendered.last().data.posts.map { it.id })
-    }
-
-    @Test
-    fun theChannelNoticeShowsOnTheVettedTierWhileAHomePageChannelLacksAccess() = runTest(dispatcher) {
-        val shown = Uuid.random()
-        val locked = Uuid.random()
-        val source = FakeSource(profile, homePageChannels = listOf(shown, locked), lackingAccess = setOf(locked))
-        val vm = viewModel(FakeHost(), source)
-
-        assertEquals(listOf(listOf(shown, locked)), source.accessChecks)
-        assertTrue(vm.uiState.value.channelAccessMissing)
-        assertFalse(vm.uiState.value.showChannelAccessNotice)
-
-        vm.onTierSelected(ProfileVisibility.CONNECTED)
-        assertTrue(vm.uiState.value.showChannelAccessNotice)
-
-        vm.onTierSelected(ProfileVisibility.ANONYMOUS)
-        assertFalse(vm.uiState.value.showChannelAccessNotice)
-    }
-
-    @Test
-    fun noNoticeWhenEveryChannelIsReadable() = runTest(dispatcher) {
-        val vm = viewModel(FakeHost(), FakeSource(profile, homePageChannels = listOf(Uuid.random())))
-
-        vm.onTierSelected(ProfileVisibility.CONNECTED)
-
-        assertFalse(vm.uiState.value.showChannelAccessNotice)
-    }
-
-    @Test
-    fun allowOpensTheOwnerConsoleRequest() = runTest(dispatcher) {
-        val locked = Uuid.random()
-        val vm = viewModel(FakeHost(), FakeSource(profile, homePageChannels = listOf(locked), lackingAccess = setOf(locked)))
-        val events = mutableListOf<ProfileCardEvent>()
-        backgroundScope.launch { vm.events.collect { events += it } }
-
-        vm.onAllowChannelAccess()
-
-        assertEquals(
-            listOf<ProfileCardEvent>(ProfileCardEvent.OpenLink("https://frodo.dotyou.cloud/owner/appupdate?d=$locked")),
-            events,
-        )
-    }
-
-    @Test
-    fun aGrantReloadsThePostsAndClearsTheNotice() = runTest(dispatcher) {
-        val locked = Uuid.random()
-        var granted = false
-        val source = FakeSource(
-            profile,
-            posts = { if (granted) mapOf(ProfileVisibility.CONNECTED to listOf(cardPost("secret"))) else emptyMap() },
-            homePageChannels = listOf(locked),
-            lackingAccess = setOf(locked),
-        )
-        val host = FakeHost()
-        val vm = viewModel(host, source)
-        vm.onTierSelected(ProfileVisibility.CONNECTED)
-        assertTrue(vm.uiState.value.showChannelAccessNotice)
-
-        granted = true
-        source.lackingAccess = emptySet()
-        source.accessGranted.emit(Unit)
-
-        assertEquals(2, source.postLoads)
-        assertFalse(vm.uiState.value.showChannelAccessNotice)
-        assertEquals(listOf("secret"), host.rendered.last().data.posts.map { it.id })
     }
 
     @Test

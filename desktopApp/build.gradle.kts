@@ -1,5 +1,7 @@
+import org.gradle.api.logging.Logger
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
+import java.io.File
 import java.util.Properties
 
 val versionProps = Properties()
@@ -233,4 +235,51 @@ compose.desktop {
             }
         }
     }
+}
+
+// jpackage exposes no hook to add files to a .deb and wipes its resource dir mid-task, so patch
+// the built .deb in place; LinuxBiometricAuth reads the installed policy.
+val vaultUnlockPolicy = layout.projectDirectory.file("linux/id.homebase.feed.vault-unlock.policy").asFile
+
+// Registered in the Compose plugin's afterEvaluate, so tasks.named() would fail here.
+tasks.matching { it.name == "packageDeb" || it.name == "packageReleaseDeb" }.configureEach {
+    val taskName = name
+    doLast {
+        if (!System.getProperty("os.name").lowercase().startsWith("linux")) return@doLast
+        val deb = outputs.files.asFileTree.matching { include("**/*.deb") }.files.singleOrNull()
+            ?: error("$taskName: expected exactly one .deb output to patch with $vaultUnlockPolicy")
+        installPolkitPolicyIntoDeb(deb, vaultUnlockPolicy, logger)
+    }
+}
+
+private fun installPolkitPolicyIntoDeb(deb: File, policy: File, logger: Logger) {
+    val workDir = File(deb.parentFile, "${deb.nameWithoutExtension}-polkit-patch")
+    workDir.deleteRecursively()
+    workDir.mkdirs()
+    runProcess("dpkg-deb", "-R", deb.absolutePath, workDir.absolutePath)
+
+    val dest = workDir.resolve("usr/share/polkit-1/actions/${policy.name}")
+    dest.parentFile.mkdirs()
+    policy.copyTo(dest, overwrite = true)
+    dest.setExecutable(false, false)
+    dest.setWritable(false, false)
+    dest.setReadable(true, false)
+
+    val hasFakeroot = runCatching { runProcess("which", "fakeroot") }.isSuccess
+    if (!hasFakeroot) {
+        logger.warn(
+            "fakeroot not found: rebuilding $deb without it will own every file in the package " +
+                "as the build user instead of root — install fakeroot on the packaging host."
+        )
+    }
+    val rebuild = if (hasFakeroot) arrayOf("fakeroot", "dpkg-deb", "-b") else arrayOf("dpkg-deb", "-b")
+    runProcess(*rebuild, workDir.absolutePath, deb.absolutePath)
+
+    workDir.deleteRecursively()
+}
+
+private fun runProcess(vararg command: String) {
+    val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+    val output = process.inputStream.bufferedReader().readText()
+    check(process.waitFor() == 0) { "${command.joinToString(" ")} failed:\n$output" }
 }

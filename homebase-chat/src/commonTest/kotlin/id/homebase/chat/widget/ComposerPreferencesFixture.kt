@@ -11,7 +11,7 @@ import org.koin.dsl.module
 // The composer fields read their key preferences through rememberEnterSendsMessage() and friends -> koinInject.
 @Composable
 internal fun WithComposerPreferences(
-    enterSendsMessage: Boolean = false,
+    enterSendsMessage: Boolean = true,
     arrowUpEditsLastMessage: Boolean = true,
     content: @Composable () -> Unit,
 ) {

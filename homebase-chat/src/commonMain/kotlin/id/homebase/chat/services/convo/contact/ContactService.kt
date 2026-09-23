@@ -50,9 +50,9 @@ class ContactService(
                 savedIds to (contacts + unsaved).map { it.withConnection(connectionState) }
             }.collect { (savedIds, merged) ->
                 _savedContactIdentities.value = savedIds
+                // Publish lookups before the list so an observer of contacts never resolves against a stale map.
+                contactByOdinId.value = merged.associateBy { it.odinId }
                 _contacts.value = merged
-                contactByOdinId.value =
-                    merged.associateBy { it.odinId }
             }
         }
     }

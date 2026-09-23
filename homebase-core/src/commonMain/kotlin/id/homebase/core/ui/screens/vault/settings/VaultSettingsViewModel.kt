@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.vault.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.vault.isDeviceAuthAvailable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,12 +12,14 @@ import kotlinx.coroutines.launch
 
 class VaultSettingsViewModel(
     private val vaultPreferences: VaultPreferences,
+    deviceAuthAvailable: () -> Boolean = ::isDeviceAuthAvailable,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
         VaultSettingsUiState(
             iconVisible = vaultPreferences.iconVisible.value,
             biometricsEnabled = vaultPreferences.biometricsEnabled.value,
+            deviceAuthAvailable = deviceAuthAvailable(),
         )
     )
     val uiState: StateFlow<VaultSettingsUiState> = _uiState.asStateFlow()
@@ -43,6 +46,7 @@ class VaultSettingsViewModel(
                 viewModelScope.launch { vaultPreferences.setIconVisible(action.visible) }
             }
             is VaultSettingsUiAction.SetBiometricsEnabled -> {
+                if (action.enabled && !_uiState.value.deviceAuthAvailable) return
                 viewModelScope.launch { vaultPreferences.setBiometricsEnabled(action.enabled) }
             }
         }

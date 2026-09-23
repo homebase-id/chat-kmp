@@ -1,9 +1,7 @@
 package id.homebase.core.ui.screens.feed.widget
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -162,7 +160,6 @@ fun PostInteracts(
     }
 }
 
-// MaterialTheme.motionScheme is internal in JetBrains material3 1.9.0, so the spring is tuned here.
 @Composable
 private fun FeedActionButton(
     icon: ImageVector,
@@ -176,10 +173,7 @@ private fun FeedActionButton(
 
     val scale by animateFloatAsState(
         targetValue = if (pressed) 1.18f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
         label = "feed-action-scale",
     )
     val tint by animateColorAsState(
@@ -188,6 +182,7 @@ private fun FeedActionButton(
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
+        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
         label = "feed-action-tint",
     )
 
@@ -232,15 +227,13 @@ private fun LikeButton(
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) 1.18f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
         label = "like-scale",
     )
     val tint by animateColorAsState(
         targetValue = if (pressed) MaterialTheme.colorScheme.onSurface
         else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
         label = "like-tint",
     )
     val own = ownReactions.firstOrNull()?.takeUnless { it.startsWith('_') }

@@ -250,8 +250,6 @@ GitHub Actions workflows in `.github/workflows/`:
 
 There is no `test.yml`; unit tests run inside `build-check.yml`.
 
-Do NOT use slash (/) in Git branch names
-
 ## Stacked PRs
 
 GitHub's native stacked pull requests: an ordered chain where each branch targets the branch
@@ -273,7 +271,7 @@ Rules:
 - If two layers can only be reviewed together, they're one PR.
 - Work blocked on an undecided question is a separate issue, not a stack layer.
 - CI must be green on every layer before merging — the stack merge is all-or-nothing.
-- Branch names still must not contain `/`.
+- Branch names never contain `/` (this applies to every branch, stacked or not).
 
 ## Before you merge: remind me to run a simplify pass
 
@@ -341,8 +339,7 @@ writing or modifying any screen/composable, verify:
   `.distinctUntilChanged()` runs the *same* comparison a second time. For scalar samples
   it's just waste; for samples like `Pair<Int, List<...>>` the doubled O(n) `List.equals`
   on every snapshot commit can stall the Compose UI dispatcher (Main) for seconds during
-  bursty mutations like `LazyListState.scrollToItem` (build 1394 watchdog stack landed
-  here at `ConversationContent.kt:817`). If you genuinely need a different equality (e.g.
+  bursty mutations like `LazyListState.scrollToItem`. If you genuinely need a different equality (e.g.
   comparing only one field of a heavy value), shape the snapshotFlow block to *return*
   that key — don't bolt distinctUntilChanged on top.
 
@@ -353,9 +350,7 @@ writing or modifying any screen/composable, verify:
   that measure runs (a `snapshotFlow {}` body, a `derivedStateOf`, a save-scroll
   effect on the same frame the state was created) gets `Int.MAX_VALUE` back. Using
   that as `for (i in firstVisibleIndex downTo 0)` walks ~2.1B iterations and
-  freezes the UI dispatcher for seconds (build 1419 watchdog landed exactly here
-  in `ConversationContent.kt`'s floatingDateLabel snapshotFlow with
-  `idx=2147483647 items=0`). Use the
+  freezes the UI dispatcher for seconds. Use the
   `LazyListState.boundedFirstVisibleItemIndex(itemsSize: Int)` extension in
   `id.homebase.core.util.ScrollPosition.kt` — it returns `null` for an empty list
   and a clamped index otherwise.
@@ -420,8 +415,8 @@ rides on the message header rather than as a payload), follow the recipe in
 `ChatProtocol` dataType integer, the `MessageContent` sealed-interface subtype with its
 nullable-descriptor parse-failure contract, choosing an `ActionPolicy`, parser/bubble/
 composer/attachment-sheet wiring, the strings the bubble needs, and the `Unknown` chip
-that gives older receivers a visible "please update the app" fallback. Existing kinds:
-Event (`dataType = 210`) and DiceRoll (`dataType = 212`).
+that gives older receivers a visible "please update the app" fallback. Taken dataType
+integers are the `*MessageDataType` constants in `ChatProtocol.kt`; pick the next free one.
 
 **Don't duplicate envelope fields in the descriptor.** The HomebaseFile envelope already
 carries the message identity, sender, and timestamp — your descriptor JSON must NOT

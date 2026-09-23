@@ -75,6 +75,7 @@ kotlin {
 
     compilerOptions {
         optIn.add("kotlin.uuid.ExperimentalUuidApi")
+        optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
     }
 
     sourceSets {
@@ -154,6 +155,7 @@ kotlin {
             implementation(libs.composenativewebview)
         }
         androidMain.dependencies {
+            implementation(libs.androidx.activity.compose)
             implementation(libs.koin.android)
             implementation(libs.play.app.update)
             implementation(libs.composenativewebview)
