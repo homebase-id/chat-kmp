@@ -16,11 +16,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -56,8 +54,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
@@ -86,14 +82,12 @@ import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.screens.profile.LoadFailedState
 import id.homebase.core.util.getUriHandler
@@ -101,8 +95,6 @@ import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.resources.MR
 import id.homebase.resources.close
 import id.homebase.resources.file_saved_to
-import id.homebase.resources.profile_card_channel_access
-import id.homebase.resources.profile_card_channel_access_allow
 import id.homebase.resources.profile_card_design_board
 import id.homebase.resources.profile_card_design_collage
 import id.homebase.resources.profile_card_design_dossier
@@ -113,9 +105,6 @@ import id.homebase.resources.profile_card_save
 import id.homebase.resources.profile_card_share
 import id.homebase.resources.profile_card_share_failed
 import id.homebase.resources.profile_card_unsupported
-import id.homebase.resources.profile_edit_visibility_circles
-import id.homebase.resources.profile_edit_visibility_connected
-import id.homebase.resources.profile_edit_visibility_public
 import kotlin.math.exp
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -302,7 +291,8 @@ fun ProfileCardScreen(
                         coverHeld = coverHeld,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    Column(
+                    SnackbarHost(
+                        hostState = snackbarHostState,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .then(
@@ -310,13 +300,7 @@ fun ProfileCardScreen(
                                 else Modifier.navigationBarsPadding().padding(bottom = TOOLBAR_BAND_HEIGHT),
                             )
                             .padding(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        if (uiState.showChannelAccessNotice) {
-                            ChannelAccessNotice(onAllow = viewModel::onAllowChannelAccess)
-                        }
-                        SnackbarHost(snackbarHostState)
-                    }
+                    )
                 }
                 SheetTopChrome(
                     onClose = leave,
@@ -344,11 +328,6 @@ fun ProfileCardScreen(
                             toolbarContentColor = MaterialTheme.colorScheme.onSurface,
                         ),
                     ) {
-                        CardTierToggle(
-                            selected = uiState.tier,
-                            reviewEnabled = uiState.reviewEnabled,
-                            onSelect = viewModel::onTierSelected,
-                        )
                         ShareAction(
                             isExporting = uiState.isExporting,
                             enabled = uiState.canShare,
@@ -373,7 +352,7 @@ private data class CardBands(val top: Boolean, val bottom: Boolean)
 
 private fun cardBands(design: String): CardBands = when (design) {
     CardDesign.POSTER -> CardBands(top = false, bottom = true)
-    // Its avatar reaches into the top strip; the bottom is decoration only, in both tiers.
+    // Its avatar reaches into the top strip; the bottom is decoration only.
     CardDesign.BOARD -> CardBands(top = true, bottom = false)
     else -> CardBands(top = true, bottom = true)
 }
@@ -540,31 +519,6 @@ internal fun CardSurface(
 }
 
 @Composable
-private fun CardTierToggle(
-    selected: ProfileVisibility,
-    reviewEnabled: Boolean,
-    onSelect: (ProfileVisibility) -> Unit,
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
-        cardTiers.forEachIndexed { index, tier ->
-            ToggleButton(
-                checked = selected == tier,
-                onCheckedChange = { onSelect(tier) },
-                shapes = connectedShapes(index, cardTiers.size),
-            ) {
-                Text(stringResource(tierLabel(tier, reviewEnabled)), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-}
-
-private fun tierLabel(tier: ProfileVisibility, reviewEnabled: Boolean): StringResource = when {
-    tier == ProfileVisibility.ANONYMOUS -> MR.string.profile_edit_visibility_public
-    reviewEnabled -> MR.string.profile_edit_visibility_circles
-    else -> MR.string.profile_edit_visibility_connected
-}
-
-@Composable
 internal fun connectedShapes(index: Int, count: Int): ToggleButtonShapes = when (index) {
     0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
     count - 1 -> ButtonGroupDefaults.connectedTrailingButtonShapes()
@@ -590,32 +544,6 @@ private fun ShareAction(
                     if (saveInsteadOfShare) MR.string.profile_card_save else MR.string.profile_card_share,
                 ),
             )
-        }
-    }
-}
-
-@Composable
-private fun ChannelAccessNotice(onAllow: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        shape = MaterialTheme.shapes.large,
-        shadowElevation = 3.dp,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = stringResource(MR.string.profile_card_channel_access),
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.weight(1f).padding(vertical = 8.dp),
-            )
-            TextButton(onClick = onAllow) {
-                Text(stringResource(MR.string.profile_card_channel_access_allow))
-            }
         }
     }
 }

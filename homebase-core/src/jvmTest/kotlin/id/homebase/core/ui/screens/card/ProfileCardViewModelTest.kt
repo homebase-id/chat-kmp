@@ -13,7 +13,6 @@ import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.ArgbImage
 import id.homebase.api.image.ImageUtils
-import id.homebase.api.youauth.MissingPermissionsResult
 import id.homebase.core.image.HomebaseImageData
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -92,37 +91,20 @@ class ProfileCardViewModelTest {
     private class FakeSource(
         private val attributes: List<ProfileAttribute>,
         private val defaults: suspend () -> CardSiteDefaults = { CardSiteDefaults(design = CardDesign.POSTER) },
-        private val posts: suspend () -> Map<ProfileVisibility, List<CardPostEntry>> = { emptyMap() },
-        private val homePageChannels: List<Uuid> = emptyList(),
-        var lackingAccess: Set<Uuid> = emptySet(),
+        private val posts: suspend () -> List<CardPostEntry> = { emptyList() },
     ) : ProfileCardSource {
-        override val reviewEnabled = false
-        override val accessGranted = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         val imageRequests = mutableListOf<String>()
         val imageEdges = mutableMapOf<String, Int>()
         val written = mutableListOf<ByteArray>()
-        val accessChecks = mutableListOf<List<Uuid>>()
         var postLoads = 0
 
         override suspend fun odinId() = OdinId("frodo.dotyou.cloud")
         override suspend fun attributes() = attributes
         override suspend fun siteDefaults(odinId: OdinId) = defaults()
 
-        override suspend fun posts(odinId: OdinId): CardPostsLoad {
+        override suspend fun posts(odinId: OdinId): List<CardPostEntry> {
             postLoads++
-            return CardPostsLoad(posts(), homePageChannels)
-        }
-
-        override suspend fun missingChannelAccess(odinId: OdinId, channels: List<Uuid>): MissingPermissionsResult? {
-            accessChecks += channels
-            val missing = channels.filter { it in lackingAccess }
-            if (missing.isEmpty()) return null
-            return MissingPermissionsResult(
-                missingDrives = emptyList(),
-                missingPermissions = emptyList(),
-                missingAllConnectedCircle = false,
-                buildExtendPermissionUrl = { "https://frodo.dotyou.cloud/owner/appupdate?d=${missing.joinToString()}" },
-            )
+            return posts()
         }
 
         override suspend fun imageSrc(image: HomebaseImageData, maxEdge: Int): String {
@@ -191,12 +173,14 @@ class ProfileCardViewModelTest {
     @Test
     fun rendersThePublicCardInTheSiteDesignAsSoonAsDataIsReady() = runTest(dispatcher) {
         val host = FakeHost()
-        viewModel(host, FakeSource(profile))
+        val source = FakeSource(profile)
+        viewModel(host, source)
 
         val payload = host.rendered.single()
         assertEquals(CardDesign.POSTER, payload.design)
         assertEquals("Frodo", payload.data.firstName)
         assertEquals("data:image/jpeg;base64,pub_photo", payload.data.photo?.src)
+        assertEquals(listOf("pub_photo"), source.imageRequests)
     }
 
     @Test
@@ -239,21 +223,6 @@ class ProfileCardViewModelTest {
         store.clear()
 
         assertEquals(0, built)
-    }
-
-    @Test
-    fun tierSwitchRerendersOnTheSameHostWithoutReencodingEitherPhoto() = runTest(dispatcher) {
-        val host = FakeHost()
-        val source = FakeSource(profile)
-        val vm = viewModel(host, source)
-
-        vm.onTierSelected(ProfileVisibility.CONNECTED)
-        vm.onTierSelected(ProfileVisibility.ANONYMOUS)
-
-        assertEquals(listOf("Frodo", "Mr. Frodo", "Frodo"), host.rendered.map { it.data.firstName })
-        assertEquals("data:image/jpeg;base64,vet_photo", host.rendered[1].data.photo?.src)
-        assertEquals(listOf("pub_photo", "vet_photo"), source.imageRequests.sorted())
-        assertEquals(ProfileVisibility.ANONYMOUS, vm.uiState.value.tier)
     }
 
     @Test
@@ -370,7 +339,7 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun theCoverIsCapturedOncePerPaintAndDroppedWhenTheTierChanges() = runTest(dispatcher) {
+    fun theCoverIsCapturedOncePerPaintAndDroppedWhenTheSavedDesignChanges() = runTest(dispatcher) {
         val host = FakeHost().apply { onPaintRequest = { send(CardEvent.Painted) } }
         val vm = viewModel(host, FakeSource(profile))
         backgroundScope.launch { vm.paintWhileAttached {} }
@@ -382,9 +351,10 @@ class ProfileCardViewModelTest {
         vm.captureCover()
         vm.captureCover()
         assertEquals(1, host.snapshots)
-        assertEquals(ProfileVisibility.ANONYMOUS, assertNotNull(vm.cover.value).tier)
+        assertEquals(CardDesign.POSTER, assertNotNull(vm.cover.value).design)
 
-        vm.onTierSelected(ProfileVisibility.CONNECTED)
+        vm.onDesignSelected(CardDesign.DOSSIER)
+        vm.onSaveDesign()
         assertNull(vm.cover.value)
     }
 
@@ -560,24 +530,17 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun postsLoadOnceForBothTiersWithSharedSmallThumbnails() = runTest(dispatcher) {
+    fun postsRenderWithSmallThumbnailsEncodedOnce() = runTest(dispatcher) {
         val host = FakeHost()
-        val shared = cardPost("shared", imageKey = "post_img")
-        val source = FakeSource(
-            profile,
-            posts = { mapOf(ProfileVisibility.ANONYMOUS to listOf(shared), ProfileVisibility.CONNECTED to listOf(shared, cardPost("vetted"))) },
-        )
+        val source = FakeSource(profile, posts = { listOf(cardPost("pictured", imageKey = "post_img"), cardPost("plain")) })
         val vm = viewModel(host, source)
 
-        val publicPosts = host.rendered.last().data.posts
-        assertEquals(listOf("shared"), publicPosts.map { it.id })
-        assertEquals(CardImage("data:image/jpeg;base64,post_img"), publicPosts.single().image)
+        val posts = host.rendered.last().data.posts
+        assertEquals(listOf("pictured", "plain"), posts.map { it.id })
+        assertEquals(CardImage("data:image/jpeg;base64,post_img"), posts[0].image)
+        assertNull(posts[1].image)
 
-        vm.onTierSelected(ProfileVisibility.CONNECTED)
-        assertEquals(listOf("shared", "vetted"), host.rendered.last().data.posts.map { it.id })
-        assertNull(host.rendered.last().data.posts[1].image)
-
-        vm.onTierSelected(ProfileVisibility.ANONYMOUS)
+        vm.onDesignSelected(CardDesign.DOSSIER)
         assertEquals(1, source.postLoads)
         assertEquals(1, source.imageRequests.count { it == "post_img" })
         assertEquals(CARD_POST_IMAGE_MAX_EDGE, source.imageEdges["post_img"])
@@ -586,7 +549,7 @@ class ProfileCardViewModelTest {
 
     @Test
     fun thePreWarmPostsServeTheFirstShowingAndALaterOneRefetches() = runTest(dispatcher) {
-        val source = FakeSource(profile, posts = { mapOf(ProfileVisibility.ANONYMOUS to listOf(cardPost("p1"))) })
+        val source = FakeSource(profile, posts = { listOf(cardPost("p1")) })
         val vm = viewModel(FakeHost(), source)
         assertEquals(1, source.postLoads)
 
@@ -603,7 +566,7 @@ class ProfileCardViewModelTest {
         var fail = true
         val source = FakeSource(profile, posts = {
             if (fail) error("channel drives unavailable")
-            mapOf(ProfileVisibility.ANONYMOUS to listOf(cardPost("p1")))
+            listOf(cardPost("p1"))
         })
         val vm = viewModel(host, source)
         assertEquals(emptyList(), host.rendered.last().data.posts)
@@ -614,72 +577,6 @@ class ProfileCardViewModelTest {
 
         assertEquals(2, source.postLoads)
         assertEquals(listOf("p1"), host.rendered.last().data.posts.map { it.id })
-    }
-
-    @Test
-    fun theChannelNoticeShowsOnTheVettedTierWhileAHomePageChannelLacksAccess() = runTest(dispatcher) {
-        val shown = Uuid.random()
-        val locked = Uuid.random()
-        val source = FakeSource(profile, homePageChannels = listOf(shown, locked), lackingAccess = setOf(locked))
-        val vm = viewModel(FakeHost(), source)
-
-        assertEquals(listOf(listOf(shown, locked)), source.accessChecks)
-        assertTrue(vm.uiState.value.channelAccessMissing)
-        assertFalse(vm.uiState.value.showChannelAccessNotice)
-
-        vm.onTierSelected(ProfileVisibility.CONNECTED)
-        assertTrue(vm.uiState.value.showChannelAccessNotice)
-
-        vm.onTierSelected(ProfileVisibility.ANONYMOUS)
-        assertFalse(vm.uiState.value.showChannelAccessNotice)
-    }
-
-    @Test
-    fun noNoticeWhenEveryChannelIsReadable() = runTest(dispatcher) {
-        val vm = viewModel(FakeHost(), FakeSource(profile, homePageChannels = listOf(Uuid.random())))
-
-        vm.onTierSelected(ProfileVisibility.CONNECTED)
-
-        assertFalse(vm.uiState.value.showChannelAccessNotice)
-    }
-
-    @Test
-    fun allowOpensTheOwnerConsoleRequest() = runTest(dispatcher) {
-        val locked = Uuid.random()
-        val vm = viewModel(FakeHost(), FakeSource(profile, homePageChannels = listOf(locked), lackingAccess = setOf(locked)))
-        val events = mutableListOf<ProfileCardEvent>()
-        backgroundScope.launch { vm.events.collect { events += it } }
-
-        vm.onAllowChannelAccess()
-
-        assertEquals(
-            listOf<ProfileCardEvent>(ProfileCardEvent.OpenLink("https://frodo.dotyou.cloud/owner/appupdate?d=$locked")),
-            events,
-        )
-    }
-
-    @Test
-    fun aGrantReloadsThePostsAndClearsTheNotice() = runTest(dispatcher) {
-        val locked = Uuid.random()
-        var granted = false
-        val source = FakeSource(
-            profile,
-            posts = { if (granted) mapOf(ProfileVisibility.CONNECTED to listOf(cardPost("secret"))) else emptyMap() },
-            homePageChannels = listOf(locked),
-            lackingAccess = setOf(locked),
-        )
-        val host = FakeHost()
-        val vm = viewModel(host, source)
-        vm.onTierSelected(ProfileVisibility.CONNECTED)
-        assertTrue(vm.uiState.value.showChannelAccessNotice)
-
-        granted = true
-        source.lackingAccess = emptySet()
-        source.accessGranted.emit(Unit)
-
-        assertEquals(2, source.postLoads)
-        assertFalse(vm.uiState.value.showChannelAccessNotice)
-        assertEquals(listOf("secret"), host.rendered.last().data.posts.map { it.id })
     }
 
     @Test

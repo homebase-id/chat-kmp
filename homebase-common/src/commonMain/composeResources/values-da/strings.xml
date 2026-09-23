@@ -1778,8 +1778,6 @@
     <string name="profile_card_error">Kunne ikke vise dit kort.</string>
     <string name="profile_card_share_failed">Kunne ikke lave kortbilledet.</string>
     <string name="profile_card_unsupported">Din Homebase-server understøtter ikke profilkort endnu.</string>
-    <string name="profile_card_channel_access">Nogle opslag, som dine forbindelser kan se, vises ikke. Giv adgang til dine kanaler.</string>
-    <string name="profile_card_channel_access_allow">Tillad</string>
     <string name="profile_card_edit">Rediger kort</string>
     <string name="profile_card_editor_title">Kortdesign</string>
     <string name="profile_card_edit_profile">Rediger profiloplysninger</string>
