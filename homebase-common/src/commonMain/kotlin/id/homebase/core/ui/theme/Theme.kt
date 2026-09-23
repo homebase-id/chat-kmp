@@ -1,7 +1,7 @@
 package id.homebase.core.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -163,7 +163,7 @@ fun HomebaseTheme(
         UpdateEdgeToEdge(darkTheme, followsSystemTheme)
 
         CompositionLocalProvider(LocalHomebaseExtendedColors provides extendedColors) {
-                MaterialTheme(
+                MaterialExpressiveTheme(
                         colorScheme = colorScheme,
                         typography = appTypography(),
                         content = content

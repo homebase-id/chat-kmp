@@ -66,6 +66,7 @@ kotlin {
 
     compilerOptions {
         optIn.add("kotlin.uuid.ExperimentalUuidApi")
+        optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
     }
 
     sourceSets {
