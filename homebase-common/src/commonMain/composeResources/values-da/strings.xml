@@ -1782,6 +1782,14 @@
     <string name="profile_card_editor_title">Kortdesign</string>
     <string name="profile_card_edit_profile">Rediger profiloplysninger</string>
     <string name="profile_card_design_save_failed">Kunne ikke gemme kortdesignet.</string>
+    <string name="profile_card_nfc">Del kort ved at holde telefonerne sammen</string>
+    <string name="profile_card_nfc_title">Hold din telefon tæt på en anden telefon</string>
+    <string name="profile_card_nfc_body">Rør telefonernes bagsider mod hinanden, mens Homebase er åben. Dit kort åbnes på deres.</string>
+    <string name="profile_card_nfc_off">NFC er slået fra. Slå det til for at dele dit kort ved at holde telefonerne sammen.</string>
+    <string name="profile_card_nfc_open_settings">Åbn NFC-indstillinger</string>
+    <string name="profile_card_nfc_switch">Del mit kort ved berøring, mens Homebase er åben</string>
+    <string name="profile_card_nfc_switch_desc">En anden telefon kan åbne dit kort ved at røre din</string>
+    <string name="profile_card_nfc_shared">Kort delt</string>
     <string name="settings_profile_card">Profilkort</string>
     <string name="settings_profile_card_desc">Se hvordan andre ser dig, og del det som et billede</string>
 

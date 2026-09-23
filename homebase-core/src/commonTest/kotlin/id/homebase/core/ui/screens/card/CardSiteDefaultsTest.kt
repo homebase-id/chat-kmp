@@ -144,6 +144,22 @@ class CardSiteDefaultsTest {
     }
 
     @Test
+    fun aStoredCardDesignWinsOverTheThemeMapping() {
+        val stored = assertNotNull(cardSiteDefaults(siteData(themeSection("""{"themeId":"555","cardDesign":"dossier"}"""))))
+        assertEquals(CardDesign.DOSSIER, stored.design)
+        val noTheme = assertNotNull(cardSiteDefaults(siteData(themeSection("""{"themeId":"0","cardDesign":"collage"}"""))))
+        assertEquals(CardDesign.COLLAGE, noTheme.design)
+    }
+
+    @Test
+    fun anUnknownCardDesignFallsBackToTheThemeMapping() {
+        listOf("\"neon\"", "\"\"", "\"Poster\"", "3", "null").forEach {
+            val defaults = assertNotNull(cardSiteDefaults(siteData(themeSection("""{"themeId":"555","cardDesign":$it}"""))))
+            assertEquals(CardDesign.POSTER, defaults.design, "cardDesign=$it")
+        }
+    }
+
+    @Test
     fun malformedThemeSectionIsIgnored() {
         assertNull(cardSiteDefaults(siteData("""{"name":"theme","files":[{"header":{"fileMetadata":{"appData":{"content":"not json"}}}}]}""")))
         assertNull(cardSiteDefaults(siteData("""{"name":"theme","files":[{"header":{"fileMetadata":{"appData":{"content":"[1,2]"}}}}]}""")))

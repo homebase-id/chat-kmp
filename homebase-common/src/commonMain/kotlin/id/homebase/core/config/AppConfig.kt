@@ -149,6 +149,7 @@ private const val VAULT_DRIVE_SLUG = "vault"
 private const val VAULT_DRIVE_TYPE_SLUG = "vault"
 private const val WEBDROP_DRIVE_SLUG = "webdrop"
 private const val WEBDROP_DRIVE_TYPE_SLUG = "webdrop"
+private const val HOME_PAGE_DRIVE_SLUG = "home"
 
 // Labeled drives — drive definition co-located with its human-readable label
 val chatLabeledDrive = LabeledDrive(drive = SystemDriveConstants.chatDrive, label = "Chat")
@@ -158,6 +159,7 @@ val profileLabeledDrive = LabeledDrive(drive = SystemDriveConstants.profileDrive
 val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, label = "Feed")
 val publicChannelLabeledDrive =
     LabeledDrive(drive = SystemDriveConstants.publicPostChannelDrive, label = "Public Channel")
+val homePageLabeledDrive = LabeledDrive(drive = SystemDriveConstants.homePageConfigDrive, label = "Home page")
 val momentsLabeledDrive = LabeledDrive(
     drive = TargetDrive(
         alias = Uuid.parse("a85f8562-6c74-4947-896b-619812cafccc"),
@@ -331,6 +333,16 @@ val emailTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
         driveSlug = EMAIL_DRIVE_SLUG,
         driveTypeSlug = EMAIL_DRIVE_TYPE_SLUG,
     )
+)
+
+fun homePageDriveAccessRequest(permissions: List<DrivePermission>) = TargetDriveAccessRequest(
+    alias = homePageLabeledDrive.drive.alias.toString(),
+    type = homePageLabeledDrive.drive.type.toString(),
+    name = homePageLabeledDrive.label,
+    description = "Drive with your home page settings, where your profile card design is kept",
+    permissions = permissions,
+    driveSlug = HOME_PAGE_DRIVE_SLUG,
+    driveTypeSlug = PROFILE_DRIVE_TYPE_SLUG,
 )
 
 // Mandatory drives — always mounted; required for the chat app to function.

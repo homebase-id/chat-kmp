@@ -41,7 +41,8 @@ internal fun cardSiteDefaults(siteData: JsonArray): CardSiteDefaults? {
     val fileId = file.string("fileId")?.let(Uuid::parseOrNull)
     val headerKey = data.string("headerImageKey")?.takeIf(String::isNotBlank)
     return CardSiteDefaults(
-        design = cardDesignForTheme((data["themeId"] as? JsonPrimitive)?.content),
+        design = data.string(CARD_DESIGN_KEY)?.takeIf { it in CardDesign.all }
+            ?: cardDesignForTheme((data["themeId"] as? JsonPrimitive)?.content),
         tagLine = data.string("tagLine")?.takeIf(String::isNotBlank),
         header = if (fileId != null && headerKey != null) {
             HomebaseImageData(

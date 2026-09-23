@@ -180,6 +180,7 @@ fun ProfileCardScreen(
     val fileSystemHandler = getUriHandler()
     // Desktop and web have no share sheet; saving is their way to get the image out.
     val saveInsteadOfShare = remember { isDesktopOrWeb() }
+    val nfc = rememberCardNfc()
     val errCard = stringResource(MR.string.profile_card_error)
     val errShare = stringResource(MR.string.profile_card_share_failed)
 
@@ -334,6 +335,7 @@ fun ProfileCardScreen(
                             saveInsteadOfShare = saveInsteadOfShare,
                             onClick = viewModel::onShareClicked,
                         )
+                        nfc?.let { CardNfcAction(it) }
                         IconButton(onClick = onEdit) {
                             Icon(
                                 imageVector = Icons.Outlined.Edit,
