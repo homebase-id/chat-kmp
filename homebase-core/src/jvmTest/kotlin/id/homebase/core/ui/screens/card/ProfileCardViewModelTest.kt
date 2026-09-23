@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
@@ -70,6 +71,17 @@ class ProfileCardViewModelTest {
         }
 
         override fun exportPng() = onExport()
+        var edgeProbes = 0
+        override fun probeEdges() {
+            edgeProbes++
+        }
+        var onPaintRequest: () -> Unit = {}
+        override fun requestPaint() = onPaintRequest()
+        var snapshots = 0
+        override suspend fun snapshot(): ImageBitmap {
+            snapshots++
+            return ImageBitmap(2, 2)
+        }
         override fun dispose() {
             disposed = true
         }
@@ -122,6 +134,16 @@ class ProfileCardViewModelTest {
         override suspend fun writeShareImage(png: ByteArray): String {
             written += png
             return "/cache/share_outbound/share_1.png"
+        }
+
+        val savedDesigns = mutableListOf<String>()
+        var onSaveDesign: suspend (String) -> Unit = {}
+
+        override suspend fun savedDesign(): String? = savedDesigns.lastOrNull()
+
+        override suspend fun saveDesign(design: String) {
+            onSaveDesign(design)
+            savedDesigns += design
         }
     }
 
@@ -260,6 +282,159 @@ class ProfileCardViewModelTest {
 
         assertEquals(CardDesign.COLLAGE, vm.uiState.value.design)
         assertEquals(listOf(CardDesign.COLLAGE), host.rendered.map { it.design })
+    }
+
+    @Test
+    fun anUnsavedEditorPreviewRevertsWhenDiscarded() = runTest(dispatcher) {
+        val host = FakeHost()
+        val vm = viewModel(host, FakeSource(profile))
+
+        vm.onDesignSelected(CardDesign.DOSSIER)
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
+        assertEquals(CardDesign.POSTER, vm.uiState.value.savedDesign)
+        assertTrue(vm.uiState.value.canSaveDesign)
+
+        vm.onPreviewDiscarded()
+
+        assertEquals(CardDesign.POSTER, vm.uiState.value.design)
+        assertFalse(vm.uiState.value.canSaveDesign)
+        assertEquals(listOf(CardDesign.POSTER, CardDesign.DOSSIER, CardDesign.POSTER), host.rendered.map { it.design })
+    }
+
+    @Test
+    fun aSavedDesignOutlivesTheSiteDefaultOnTheNextShowing() = runTest(dispatcher) {
+        val host = FakeHost()
+        val source = FakeSource(profile)
+        val vm = viewModel(host, source)
+        vm.onDesignSelected(CardDesign.COLLAGE)
+
+        val event = async { vm.events.first() }
+        vm.onSaveDesign()
+
+        assertEquals(ProfileCardEvent.DesignSaved, event.await())
+        assertEquals(listOf(CardDesign.COLLAGE), source.savedDesigns)
+        assertEquals(CardDesign.COLLAGE, vm.uiState.value.savedDesign)
+        assertNull(vm.uiState.value.previewDesign)
+        assertFalse(vm.uiState.value.isSavingDesign)
+
+        vm.onScreenShown()
+        advanceUntilIdle()
+
+        assertEquals(CardDesign.COLLAGE, vm.uiState.value.design)
+        assertEquals(CardDesign.COLLAGE, host.rendered.last().design)
+    }
+
+    @Test
+    fun aDesignSavedEarlierWinsOverTheSiteDesign() = runTest(dispatcher) {
+        val host = FakeHost()
+        val source = FakeSource(profile).apply { savedDesigns += CardDesign.DOSSIER }
+        val vm = viewModel(host, source)
+
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.savedDesign)
+        assertEquals(listOf(CardDesign.DOSSIER), host.rendered.map { it.design })
+    }
+
+    @Test
+    fun edgesAreProbedOnlyOnceTheRenderHasPaintedAndFollowTheirDesign() = runTest(dispatcher) {
+        val host = FakeHost().apply { onPaintRequest = { send(CardEvent.Painted) } }
+        val vm = viewModel(host, FakeSource(profile))
+        var paints = 0
+        backgroundScope.launch { vm.paintWhileAttached { paints++ } }
+
+        assertEquals(0, host.edgeProbes)
+        host.send(CardEvent.Ready(layout = CardDesign.POSTER, ms = 1))
+        assertEquals(1, host.edgeProbes)
+        assertEquals(1, paints)
+        host.send(CardEvent.Edges(topArgb = 0xFF111111.toInt(), bottomArgb = 0xFF222222.toInt()))
+        assertEquals(0xFF222222.toInt(), vm.uiState.value.cardBottomArgb)
+
+        vm.onDesignSelected(CardDesign.COLLAGE)
+        assertNull(vm.uiState.value.cardBottomArgb)
+        vm.onDesignSelected(CardDesign.POSTER)
+        assertEquals(0xFF111111.toInt(), vm.uiState.value.cardTopArgb)
+        assertEquals(0xFF222222.toInt(), vm.uiState.value.cardBottomArgb)
+    }
+
+    @Test
+    fun aPageThatNeverAnswersThePaintRequestStillGoesLive() = runTest(dispatcher) {
+        val host = FakeHost()
+        val vm = viewModel(host, FakeSource(profile))
+        var paints = 0
+        backgroundScope.launch { vm.paintWhileAttached { paints++ } }
+
+        host.send(CardEvent.Ready(layout = CardDesign.POSTER, ms = 1))
+        advanceTimeBy(2.seconds)
+
+        assertEquals(1, paints)
+        assertEquals(1, host.edgeProbes)
+    }
+
+    @Test
+    fun theCoverIsCapturedOncePerPaintAndDroppedWhenTheTierChanges() = runTest(dispatcher) {
+        val host = FakeHost().apply { onPaintRequest = { send(CardEvent.Painted) } }
+        val vm = viewModel(host, FakeSource(profile))
+        backgroundScope.launch { vm.paintWhileAttached {} }
+
+        vm.captureCover()
+        assertEquals(0, host.snapshots)
+
+        host.send(CardEvent.Ready(layout = CardDesign.POSTER, ms = 1))
+        vm.captureCover()
+        vm.captureCover()
+        assertEquals(1, host.snapshots)
+        assertEquals(ProfileVisibility.ANONYMOUS, assertNotNull(vm.cover.value).tier)
+
+        vm.onTierSelected(ProfileVisibility.CONNECTED)
+        assertNull(vm.cover.value)
+    }
+
+    @Test
+    fun aFailedSaveKeepsThePreviewAndTheSavedDesign() = runTest(dispatcher) {
+        val host = FakeHost()
+        val source = FakeSource(profile).apply { onSaveDesign = { throw IllegalStateException("offline") } }
+        val vm = viewModel(host, source)
+        vm.onDesignSelected(CardDesign.DOSSIER)
+
+        val event = async { vm.events.first() }
+        vm.onSaveDesign()
+
+        assertEquals(ProfileCardEvent.DesignSaveFailed, event.await())
+        val state = vm.uiState.value
+        assertEquals(CardDesign.DOSSIER, state.design)
+        assertEquals(CardDesign.POSTER, state.savedDesign)
+        assertFalse(state.isSavingDesign)
+        assertTrue(state.canSaveDesign)
+    }
+
+    @Test
+    fun savingShowsProgressAndIgnoresARepeatTap() = runTest(dispatcher) {
+        val host = FakeHost()
+        val gate = CompletableDeferred<Unit>()
+        val source = FakeSource(profile).apply { onSaveDesign = { gate.await() } }
+        val vm = viewModel(host, source)
+        vm.onDesignSelected(CardDesign.BOARD)
+
+        vm.onSaveDesign()
+        vm.onSaveDesign()
+        assertTrue(vm.uiState.value.isSavingDesign)
+        assertFalse(vm.uiState.value.canSaveDesign)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.isSavingDesign)
+        assertEquals(listOf(CardDesign.BOARD), source.savedDesigns)
+    }
+
+    @Test
+    fun savingTheUnchangedDesignDoesNothing() = runTest(dispatcher) {
+        val source = FakeSource(profile)
+        val vm = viewModel(FakeHost(), source)
+
+        vm.onSaveDesign()
+
+        assertTrue(source.savedDesigns.isEmpty())
+        assertFalse(vm.uiState.value.isSavingDesign)
     }
 
     @Test

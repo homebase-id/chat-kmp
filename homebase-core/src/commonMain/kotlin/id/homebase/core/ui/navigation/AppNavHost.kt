@@ -155,8 +155,13 @@ import id.homebase.core.ui.screens.location.livelocation.LiveLocationScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
 import id.homebase.core.ui.screens.location.share.ShareLocationScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
+import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
 import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
+import id.homebase.core.ui.screens.card.cardFadeIn
+import id.homebase.core.ui.screens.card.cardFadeOut
+import id.homebase.core.ui.screens.card.cardSheetEnterTransition
+import id.homebase.core.ui.screens.card.cardSheetExitTransition
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.profile.ProfileEditScreen
 import id.homebase.core.ui.screens.settings.SettingsActions
@@ -429,6 +434,8 @@ fun AppNavHost(
     // Safe only because login's top-left is bare in both its layouts: brand artwork on the
     // two-pane, plain surface in portrait — the traffic lights land on nothing either way.
     val paintsUnderTitleBar = chromeDestination?.hasRoute(Route.Login::class) == true
+    // The card fills its sheet to the screen's bottom edge; its own chrome pads for the navigation bar.
+    val paintsUnderNavigationBar = chromeDestination.isCardRoute()
     val showNavigationRail = isExpandedLayout()
     val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
     val isVaultGalleryOpen = vaultUiState.fullScreenOverlay != null
@@ -759,8 +766,10 @@ fun AppNavHost(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         // Leave the top inset to each screen: consuming it here pads everything
         // below the status bar, so no screen's TopAppBar can extend behind it.
-        contentWindowInsets = ScaffoldDefaults.contentWindowInsets
-            .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+        contentWindowInsets = ScaffoldDefaults.contentWindowInsets.only(
+            if (paintsUnderNavigationBar) WindowInsetsSides.Horizontal
+            else WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+        ),
         bottomBar = {
             if (showBottomNavigationBar) {
                 NavigationBar {
@@ -977,6 +986,7 @@ fun AppNavHost(
                         },
                         exitTransition = {
                             if (isBetweenTopLevelRoutes()) ExitTransition.None
+                            else if (targetState.destination.isSheetRoute()) ExitTransition.KeepUntilTransitionsFinished
                             else if (targetState.destination.isVerticalSlideRoute()) ExitTransition.None
                             else slideOutHorizontally(
                                 targetOffsetX = { -1000 }, animationSpec = tween(500)
@@ -984,7 +994,9 @@ fun AppNavHost(
                         },
                         popEnterTransition = {
                             if (isBetweenTopLevelRoutes()) EnterTransition.None
-                            else if (initialState.destination.isVerticalSlideRoute()) EnterTransition.None
+                            else if (initialState.destination.isVerticalSlideRoute() ||
+                                initialState.destination.isSheetRoute()
+                            ) EnterTransition.None
                             else slideInHorizontally(
                                 initialOffsetX = { -1000 }, animationSpec = tween(500)
                             )
@@ -1711,13 +1723,34 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ProfileCard> { entry ->
+                        composable<Route.ProfileCard>(
+                            enterTransition = { cardSheetEnterTransition() },
+                            exitTransition = { cardFadeOut() },
+                            popEnterTransition = { cardFadeIn() },
+                            popExitTransition = { cardSheetExitTransition() },
+                        ) { entry ->
                             if (isAuthenticated) {
                                 ProfileCardScreen(
                                     viewModel = koinViewModel(
                                         viewModelStoreOwner = rememberCardHostOwner(navController, entry),
                                     ),
                                     onBack = { navController.popBackStack() },
+                                    onEdit = { navController.navigate(Route.ProfileCardEditor) },
+                                )
+                            }
+                        }
+
+                        composable<Route.ProfileCardEditor>(
+                            enterTransition = { cardFadeIn() },
+                            popExitTransition = { cardFadeOut() },
+                        ) { entry ->
+                            if (isAuthenticated) {
+                                ProfileCardEditorScreen(
+                                    viewModel = koinViewModel(
+                                        viewModelStoreOwner = rememberCardHostOwner(navController, entry),
+                                    ),
+                                    onBack = { navController.popBackStack() },
+                                    onEditProfile = { navController.navigate(Route.ProfileEdit) },
                                 )
                             }
                         }
@@ -2338,6 +2371,7 @@ private fun rememberCardHostOwner(navController: NavHostController, entry: NavBa
         val backStack = navController.currentBackStack.value
         backStack.lastOrNull { it.destination.hasRoute(Route.Settings::class) }
             ?: backStack.lastOrNull { it.destination.hasRoute(Route.ProfileEdit::class) }
+            ?: backStack.lastOrNull { it.destination.hasRoute(Route.ProfileCard::class) }
             ?: entry
     }
 
@@ -2377,6 +2411,11 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelR
 private fun NavDestination?.isVerticalSlideRoute(): Boolean {
     return this?.hasRoute(Route.VaultNoteEditor::class) == true
 }
+
+private fun NavDestination?.isSheetRoute(): Boolean = this?.hasRoute(Route.ProfileCard::class) == true
+
+private fun NavDestination?.isCardRoute(): Boolean =
+    isSheetRoute() || this?.hasRoute(Route.ProfileCardEditor::class) == true
 
 sealed class TopLevelRoute(
     val route: Route,

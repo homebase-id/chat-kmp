@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.card
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import co.touchlab.kermit.Logger
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.util.truncateToCodePoints
@@ -38,6 +39,9 @@ interface CardHost {
     val isLoaded: StateFlow<Boolean>
     fun render(payload: CardPayload)
     fun exportPng()
+    fun probeEdges()
+    fun requestPaint()
+    suspend fun snapshot(): ImageBitmap?
     fun dispose()
 }
 
@@ -90,6 +94,16 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
         if (_isLoaded.value) send(CardCommand.ExportPng) else onPageError("exportPng before the page loaded")
     }
 
+    override fun probeEdges() {
+        if (_isLoaded.value) send(CardCommand.ProbeEdges)
+    }
+
+    override fun requestPaint() {
+        if (_isLoaded.value) send(CardCommand.RequestPaint)
+    }
+
+    override suspend fun snapshot(): ImageBitmap? = null
+
     override fun dispose() {
         if (!scope.isActive) return
         scope.cancel()
@@ -126,6 +140,7 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
             is CardEvent.Png -> CardLog.info("png ${decodedSize(event.base64)}B ${event.width}x${event.height}")
             is CardEvent.Link -> CardLog.info("link ${event.href}")
             is CardEvent.Error -> CardLog.error(event.message)
+            is CardEvent.Edges, CardEvent.Painted -> Unit
         }
         _events.tryEmit(event)
     }

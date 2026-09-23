@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
@@ -42,6 +43,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filterIsInstance
@@ -58,10 +60,15 @@ import kotlinx.coroutines.withTimeoutOrNull
 private const val TAG = "ProfileCard"
 
 private val EXPORT_TIMEOUT = 30.seconds
+private val PAINT_TIMEOUT = 1.5.seconds
+
+class CardCover(val design: String, val tier: ProfileVisibility, val image: ImageBitmap)
 
 data class ProfileCardUiState(
     val tier: ProfileVisibility = ProfileVisibility.ANONYMOUS,
-    val design: String = CardDesign.BOARD,
+    val savedDesign: String = CardDesign.BOARD,
+    val previewDesign: String? = null,
+    val isSavingDesign: Boolean = false,
     val reviewEnabled: Boolean = false,
     val loadFailed: Boolean = false,
     val isCardReady: Boolean = false,
@@ -69,9 +76,14 @@ data class ProfileCardUiState(
     val cardUnsupported: Boolean = false,
     val isExporting: Boolean = false,
     val channelAccessMissing: Boolean = false,
+    val edges: Map<String, CardEvent.Edges> = emptyMap(),
 ) {
+    val design: String get() = previewDesign ?: savedDesign
+    val cardTopArgb: Int? get() = edges[design]?.topArgb
+    val cardBottomArgb: Int? get() = edges[design]?.bottomArgb
     val canShare: Boolean get() = isCardReady && !isExporting
     val showChannelAccessNotice: Boolean get() = channelAccessMissing && tier == ProfileVisibility.CONNECTED
+    val canSaveDesign: Boolean get() = previewDesign != null && previewDesign != savedDesign && !isSavingDesign
 }
 
 sealed interface ProfileCardEvent {
@@ -79,6 +91,8 @@ sealed interface ProfileCardEvent {
     data class OpenLink(val url: String) : ProfileCardEvent
     data object CardFailed : ProfileCardEvent
     data object ShareFailed : ProfileCardEvent
+    data object DesignSaved : ProfileCardEvent
+    data object DesignSaveFailed : ProfileCardEvent
 }
 
 interface ProfileCardSource {
@@ -93,6 +107,8 @@ interface ProfileCardSource {
     suspend fun missingChannelAccess(odinId: OdinId, channels: List<Uuid>): MissingPermissionsResult?
     suspend fun imageSrc(image: HomebaseImageData, maxEdge: Int): String?
     suspend fun writeShareImage(png: ByteArray): String
+    suspend fun savedDesign(): String?
+    suspend fun saveDesign(design: String)
 }
 
 class DefaultProfileCardSource(
@@ -106,6 +122,7 @@ class DefaultProfileCardSource(
     private val driveFileProvider: DriveFileProvider,
     private val securityContextProvider: SecurityContextProvider,
     private val eventBus: EventBus,
+    private val cardPreferences: CardPreferences,
 ) : ProfileCardSource {
     override val reviewEnabled: Boolean get() = developerPreferences.connectionReviewEnabled.value
 
@@ -152,6 +169,10 @@ class DefaultProfileCardSource(
 
     override suspend fun writeShareImage(png: ByteArray): String =
         fileOperations.writeBytesToShareOutboundFile(png, ".png")
+
+    override suspend fun savedDesign(): String? = cardPreferences.design.value
+
+    override suspend fun saveDesign(design: String) = cardPreferences.setDesign(design)
 }
 
 private class CardContent(
@@ -185,12 +206,17 @@ class ProfileCardViewModel(
     private val _uiState = MutableStateFlow(ProfileCardUiState(reviewEnabled = source.reviewEnabled))
     val uiState: StateFlow<ProfileCardUiState> = _uiState.asStateFlow()
 
+    // A still of the live card, which the next opening slides in with while the native view attaches.
+    private val _cover = MutableStateFlow<CardCover?>(null)
+    val cover: StateFlow<CardCover?> = _cover.asStateFlow()
+
     private val _events = MutableSharedFlow<ProfileCardEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<ProfileCardEvent> = _events.asSharedFlow()
 
     private var content: CardContent? = null
     private var siteDefaults: CardSiteDefaults? = null
-    private var designPicked = false
+    private val readyCount = MutableStateFlow(0)
+    private var coverStale = false
     private var lastRendered: CardPayload? = null
     private val imageSrcs = mutableMapOf<ImageKey, Deferred<String?>>()
     private val failedImages = mutableSetOf<ImageKey>()
@@ -231,10 +257,31 @@ class ProfileCardViewModel(
     }
 
     fun onDesignSelected(design: String) {
-        designPicked = true
         if (design == _uiState.value.design) return
-        _uiState.update { it.copy(design = design) }
+        _uiState.update { it.copy(previewDesign = design) }
         render()
+    }
+
+    fun onPreviewDiscarded() {
+        if (_uiState.value.previewDesign == null) return
+        _uiState.update { it.copy(previewDesign = null) }
+        render()
+    }
+
+    fun onSaveDesign() {
+        val state = _uiState.value
+        if (!state.canSaveDesign) return
+        val design = state.previewDesign ?: return
+        _uiState.update { it.copy(isSavingDesign = true) }
+        viewModelScope.launch {
+            val saved = attempt("saving card design $design") { source.saveDesign(design) } != null
+            _uiState.update {
+                if (saved) it.copy(isSavingDesign = false, savedDesign = design, previewDesign = null)
+                else it.copy(isSavingDesign = false)
+            }
+            if (saved) render()
+            _events.tryEmit(if (saved) ProfileCardEvent.DesignSaved else ProfileCardEvent.DesignSaveFailed)
+        }
     }
 
     /** Picks up profile edits made since the pre-warm; the warm card shows until they land. */
@@ -289,20 +336,59 @@ class ProfileCardViewModel(
         viewModelScope.launch {
             host.events.collect { event ->
                 when (event) {
-                    is CardEvent.Ready -> _uiState.update {
-                        it.copy(isCardReady = true, cardFailed = false, cardUnsupported = false)
+                    is CardEvent.Ready -> {
+                        _uiState.update { it.copy(isCardReady = true, cardFailed = false, cardUnsupported = false) }
+                        readyCount.update { it + 1 }
                     }
+                    is CardEvent.Edges -> onEdges(event)
                     is CardEvent.Link -> openLink(event.href)
                     is CardEvent.Error -> onCardError(event)
-                    CardEvent.Loaded, is CardEvent.Png -> Unit
+                    CardEvent.Loaded, is CardEvent.Png, CardEvent.Painted -> Unit
                 }
             }
         }
         viewModelScope.launch {
             host.isLoaded.collect { loaded ->
-                if (!loaded) _uiState.update { it.copy(isCardReady = false) }
+                if (!loaded) {
+                    _uiState.update { it.copy(isCardReady = false) }
+                    readyCount.value = 0
+                }
             }
         }
+    }
+
+    private fun onEdges(edges: CardEvent.Edges) {
+        _uiState.update { it.copy(edges = it.edges + (it.design to edges)) }
+    }
+
+    // Per attached view: every render the page reports is awaited onto the screen, then its edges are probed.
+    suspend fun paintWhileAttached(onPainted: () -> Unit) {
+        val host = _host.value ?: return
+        coverStale = false
+        readyCount.collectLatest { count ->
+            if (count == 0) return@collectLatest
+            val painted = withTimeoutOrNull(PAINT_TIMEOUT) {
+                host.events.onSubscription { host.requestPaint() }.first { it is CardEvent.Painted }
+            }
+            if (painted == null) Logger.w(tag = TAG) { "no paint reply after $PAINT_TIMEOUT" }
+            host.probeEdges()
+            coverStale = true
+            onPainted()
+        }
+    }
+
+    // Only a painted, not-yet-captured card is worth a still: anything else would capture the cover itself.
+    suspend fun captureCover() {
+        val host = _host.value ?: return
+        if (!coverStale) return
+        coverStale = false
+        val state = _uiState.value
+        val image = attempt("capturing the card cover") { host.snapshot() }
+        if (image == null) {
+            coverStale = true
+            return
+        }
+        _cover.value = CardCover(state.design, state.tier, image)
     }
 
     private fun onCardError(error: CardEvent.Error) {
@@ -333,11 +419,12 @@ class ProfileCardViewModel(
                 val defaults = async {
                     siteDefaults ?: attempt("site defaults") { source.siteDefaults(odinId) }?.also { siteDefaults = it }
                 }
+                val stored = async { attempt("saved card design") { source.savedDesign() } }
                 val attributes = attempt("profile attributes") { source.attributes() }
                 if (attributes == null) {
                     _uiState.update { it.copy(loadFailed = content == null) }
                 } else {
-                    onLoaded(odinId, attributes, defaults.await() ?: CardSiteDefaults())
+                    onLoaded(odinId, attributes, defaults.await() ?: CardSiteDefaults(), stored.await())
                 }
             }
         }
@@ -347,14 +434,14 @@ class ProfileCardViewModel(
         odinId: OdinId,
         attributes: List<ProfileAttribute>,
         defaults: CardSiteDefaults,
+        storedDesign: String?,
     ) {
         val photos = cardTiers.associateWith { attributes.visiblePhoto(it)?.photoImageData() }
         content = CardContent(odinId, attributes, defaults, photos)
         // Both tiers up front, so switching tier never waits on an encode.
         photos.values.filterNotNull().forEach { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE) }
-        _uiState.update {
-            it.copy(loadFailed = false, design = if (designPicked) it.design else defaults.design)
-        }
+        val saved = storedDesign ?: defaults.design
+        _uiState.update { it.copy(loadFailed = false, savedDesign = saved) }
         loadPosts(odinId)
         render()
     }
@@ -383,8 +470,9 @@ class ProfileCardViewModel(
     }
 
     private fun render() {
-        val content = content ?: return
         val state = _uiState.value
+        _cover.update { cover -> cover?.takeIf { it.design == state.savedDesign && it.tier == state.tier } }
+        val content = content ?: return
         renderJob?.cancel()
         renderJob = viewModelScope.launch {
             val payload = buildCardPayload(
