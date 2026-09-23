@@ -31,6 +31,8 @@ import id.homebase.resources.contactbook_requests_header
 import id.homebase.resources.contactbook_new_empty
 import id.homebase.resources.contactbook_filter_circles
 import id.homebase.resources.contactbook_circles_filter_empty
+import id.homebase.resources.contactbook_filter_blocked
+import id.homebase.resources.contactbook_blocked_filter_empty
 import id.homebase.resources.contactbook_circle_unvetted
 import id.homebase.resources.contactbook_unvetted_empty
 import id.homebase.resources.contactbook_vetted
@@ -66,6 +68,7 @@ fun ContactBookContent(
             uiState.filter == ContactFilter.CIRCLES -> uiState.circleContacts
             uiState.filter == ContactFilter.UNVETTED -> uiState.unvetted
             uiState.filter == ContactFilter.VETTED -> uiState.vetted
+            uiState.filter == ContactFilter.BLOCKED -> uiState.blockedContacts
             else -> uiState.knownContacts
         }
 
@@ -91,6 +94,9 @@ fun ContactBookContent(
 
                 uiState.filter == ContactFilter.VETTED ->
                     CenterText(stringResource(MR.string.contactbook_vetted_empty))
+
+                uiState.filter == ContactFilter.BLOCKED ->
+                    CenterText(stringResource(MR.string.contactbook_blocked_filter_empty))
 
                 else -> ContactBookEmptyState(
                     onAddClick = { onAction(ContactBookUiAction.AddClicked) },
@@ -212,6 +218,11 @@ private fun FilterRow(
                 selected = filter == ContactFilter.CIRCLES,
                 onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.CIRCLES)) },
                 label = { Text(stringResource(MR.string.contactbook_filter_circles)) },
+            )
+            FilterChip(
+                selected = filter == ContactFilter.BLOCKED,
+                onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.BLOCKED)) },
+                label = { Text(stringResource(MR.string.contactbook_filter_blocked)) },
             )
         } else {
             FilterChip(

@@ -8,8 +8,8 @@ import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
  * Resolve a set of circle-member domains (odinIds) to contact-book rows for display in
  * [id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet]. Identities that
  * aren't in the address book fall back to a synthetic domain-named entry rather than being
- * dropped, so the roster always accounts for every member. Shared by contact detail and the
- * moments audience circle roster.
+ * dropped, so the roster always accounts for every member. Shared by every circle roster and
+ * the Contact Book pill lists.
  */
 fun resolveCircleMemberEntries(
     domains: Set<String>,
