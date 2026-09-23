@@ -848,10 +848,11 @@ fun ConversationListUi(
         }
     }
 
-    @Suppress("DEPRECATION") BackHandler(detail is ChatDetail.Open) {
-        if (messagesUiState.fullScreenOverlay != null) {
+    val hasOverlay = messagesUiState.fullScreenOverlay != null
+    @Suppress("DEPRECATION") BackHandler(detail is ChatDetail.Open && (hasOverlay || !isExpanded)) {
+        if (hasOverlay) {
             onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
-        } else if (!isExpanded) {
+        } else {
             onUiAction(ConversationListUiAction.ClearSelection)
         }
     }
