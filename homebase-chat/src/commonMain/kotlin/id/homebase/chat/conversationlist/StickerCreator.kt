@@ -24,6 +24,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -75,7 +76,13 @@ sealed interface StickerCreateState {
 class StickerCreator(
     private val scope: CoroutineScope,
     private val saveSticker: suspend (bytes: ByteArray, contentType: String) -> Uuid?,
-    private val sendSticker: suspend (conversationId: Uuid, bytes: ByteArray, contentType: String) -> Unit,
+    // Shows the sticker as pending from the raw bytes at once; the send itself waits for [normalized].
+    private val sendSticker: suspend (
+        conversationId: Uuid,
+        bytes: ByteArray,
+        contentType: String,
+        normalized: suspend () -> Pair<ByteArray, String>,
+    ) -> Unit,
     private val sendInfo: (StringResource) -> Unit,
     private val awaitDriveGranted: suspend () -> Unit,
     private val isTransparent: (ByteArray) -> Boolean = ImageUtils::hasNonOpaquePixels,
@@ -162,15 +169,18 @@ class StickerCreator(
         saveToLibrary: Boolean,
     ) {
         scope.launch {
+            // Not a child: a child's failure would fail this launch past its catch; this one surfaces at await().
+            val normalized = scope.async { normalize(original, originalContentType) }
             try {
-                val (bytes, contentType) = normalize(original, originalContentType)
-                val savedInfo = if (saveToLibrary) {
+                sendSticker(conversationId, original, originalContentType, normalized::await)
+                if (saveToLibrary) {
                     awaitDriveGranted()
-                    if (saveSticker(bytes, contentType) != null) MR.string.chat_sticker_saved
-                    else MR.string.chat_sticker_save_failed
-                } else null
-                sendSticker(conversationId, bytes, contentType) // suspend; a failure throws → caught below
-                savedInfo?.let(sendInfo)
+                    val (bytes, contentType) = normalized.await()
+                    sendInfo(
+                        if (saveSticker(bytes, contentType) != null) MR.string.chat_sticker_saved
+                        else MR.string.chat_sticker_save_failed
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
