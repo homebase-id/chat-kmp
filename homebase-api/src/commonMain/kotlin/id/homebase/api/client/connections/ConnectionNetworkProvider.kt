@@ -28,6 +28,11 @@ class ConnectionNetworkProvider(
         postOdinId("/connections/disconnect", odinId)
     }
 
+    /** The identity stays blocked; a later [unblock] leaves them at None, not connected. */
+    suspend fun removeBlockedConnection(odinId: OdinId) {
+        postOdinId("/connections/remove-blocked-connection", odinId)
+    }
+
     private companion object {
         const val TAG = "ConnectionNetworkProvider"
     }
