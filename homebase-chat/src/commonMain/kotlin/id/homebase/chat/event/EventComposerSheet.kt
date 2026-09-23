@@ -147,7 +147,7 @@ fun EventComposerSheet(
         EventComposerContent(
             conversationId = conversationId,
             onDismiss = onDismiss,
-            onSent = onSent,
+            onSent = { dismiss(onSent) },
             onRequestClose = requestClose,
             onUnsavedContentChange = reportUnsaved,
         )

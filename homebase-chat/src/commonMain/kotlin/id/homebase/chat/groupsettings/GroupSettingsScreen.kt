@@ -906,7 +906,7 @@ fun GroupSettingsSheets(
                 HealProgressSheetContent(
                     items = sheet.items,
                     finished = sheet.finished,
-                    onClose = { onSheetClosed() },
+                    onClose = { dismiss() },
                 )
             }
         }

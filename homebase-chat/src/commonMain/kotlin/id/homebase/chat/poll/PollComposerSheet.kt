@@ -85,7 +85,7 @@ fun PollComposerSheet(
         PollComposerContent(
             conversationId = conversationId,
             onDismiss = onDismiss,
-            onSent = onSent,
+            onSent = { dismiss(onSent) },
             onRequestClose = requestClose,
             onUnsavedContentChange = reportUnsaved,
         )

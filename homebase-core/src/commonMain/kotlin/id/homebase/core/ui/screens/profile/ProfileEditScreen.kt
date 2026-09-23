@@ -864,7 +864,7 @@ private fun AddAttributeSheet(
                 modifier = Modifier.padding(vertical = 8.dp),
             )
             missing.forEach { spec ->
-                AddAttributeRow(spec) { onPick(spec) }
+                AddAttributeRow(spec) { dismiss { onPick(spec) } }
             }
         }
     }
