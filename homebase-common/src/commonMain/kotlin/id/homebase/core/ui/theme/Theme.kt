@@ -149,18 +149,21 @@ val LocalHomebaseExtendedColors = staticCompositionLocalOf { LightExtendedColors
  * @param darkTheme Whether to use dark theme. Defaults to system setting.
  * @param followsSystemTheme Whether [darkTheme] merely mirrors the OS setting (the
  * user picked "System") rather than forcing a variant — see [UpdateEdgeToEdge].
+ * @param updatesSystemChrome False for a themed island (e.g. the forced-dark camera) that must not
+ * restyle the host activity's or window's bars.
  * @param content The content to display with this theme.
  */
 @Composable
 fun HomebaseTheme(
         darkTheme: Boolean = isSystemInDarkTheme(),
         followsSystemTheme: Boolean = true,
+        updatesSystemChrome: Boolean = true,
         content: @Composable () -> Unit
 ) {
         val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
         val extendedColors = if (darkTheme) DarkExtendedColors else LightExtendedColors
 
-        UpdateEdgeToEdge(darkTheme, followsSystemTheme)
+        if (updatesSystemChrome) UpdateEdgeToEdge(darkTheme, followsSystemTheme)
 
         CompositionLocalProvider(LocalHomebaseExtendedColors provides extendedColors) {
                 MaterialExpressiveTheme(
