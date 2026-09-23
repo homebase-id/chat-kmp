@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.profile_card_design_save_failed
@@ -207,7 +208,7 @@ private fun DesignPicker(
                 checked = design == selected,
                 onCheckedChange = { onSelect(design) },
                 enabled = enabled,
-                shapes = connectedShapes(index, designs.size),
+                shapes = connectedButtonShapes(index, designs.size),
                 modifier = Modifier.weight(1f),
             ) {
                 Text(stringResource(designLabel(design)), maxLines = 1, overflow = TextOverflow.Ellipsis)
