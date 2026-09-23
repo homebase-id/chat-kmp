@@ -84,9 +84,11 @@ fun HomebaseIdField(
         else -> MaterialTheme.colorScheme.surfaceContainer
     }
     // The tonal fill carries the state change; a 1dp-to-2dp outline on its own is near invisible
-    // against a pale surface. Default spring spec — MaterialTheme.motionScheme is internal in
-    // Compose Multiplatform's material3 1.9.0, so no theme-tracking spec is reachable here.
-    val containerColor by animateColorAsState(targetValue = containerTarget)
+    // against a pale surface.
+    val containerColor by animateColorAsState(
+        targetValue = containerTarget,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+    )
 
     OutlinedTextField(
         value = value,

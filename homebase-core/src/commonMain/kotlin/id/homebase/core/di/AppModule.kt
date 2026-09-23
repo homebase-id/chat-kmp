@@ -107,6 +107,8 @@ import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.contactbook.EmergencyContactService
+import id.homebase.core.ui.screens.card.CardPreferences
+import id.homebase.core.ui.screens.card.CardTapShare
 import id.homebase.core.ui.screens.card.DefaultProfileCardSource
 import id.homebase.core.ui.screens.card.ProfileCardSource
 import id.homebase.core.ui.screens.card.ProfileCardViewModel
@@ -164,6 +166,7 @@ import id.homebase.core.config.feedLabeledDrive
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.moments.services.MomentsUserStateStore
 import id.homebase.core.sync.DriveRegistry
+import id.homebase.core.sync.RegistryDriveFileType
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
@@ -478,6 +481,7 @@ val appModule = module {
                     fullSyncWindow = 14.days,
                     initialQueries = listOf(
                         FileQueryParams(fileType = listOf(ChatProtocol.ConversationFileType)),
+                        FileQueryParams(fileType = listOf(RegistryDriveFileType)),
                     ),
                 ),
             ),
@@ -716,6 +720,7 @@ val appModule = module {
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
+                get<CardPreferences>().reset()
                 get<ContactRepository>().apply { reset(); start() }
                 // Hydrate the saved-stickers tray for the new identity (mirror Vault).
                 get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
@@ -856,6 +861,8 @@ val appModule = module {
     singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
     singleOf(::HomebaseImageLoader)
     factoryOf(::DefaultProfileCardSource) bind ProfileCardSource::class
+    singleOf(::CardPreferences)
+    singleOf(::CardTapShare)
     singleOf(::ChatMessageActionService)
     singleOf(::DiceRollPreferences)
     singleOf(::EventReminderPreferences)
@@ -1279,7 +1286,7 @@ val appModule = module {
             webDropShareFlowState = get(),
         )
     }
-    viewModelOf(::VaultSettingsViewModel)
+    viewModel { VaultSettingsViewModel(vaultPreferences = get()) }
 
     viewModel {
         EmailViewModel(

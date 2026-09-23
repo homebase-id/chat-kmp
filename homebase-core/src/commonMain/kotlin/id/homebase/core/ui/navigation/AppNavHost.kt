@@ -39,10 +39,10 @@ import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ShortNavigationBar
+import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -50,6 +50,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
@@ -155,8 +156,16 @@ import id.homebase.core.ui.screens.location.livelocation.LiveLocationScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
 import id.homebase.core.ui.screens.location.share.ShareLocationScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
+import id.homebase.core.haptics.HapticEvent
+import id.homebase.core.haptics.rememberHaptics
+import id.homebase.core.ui.screens.card.CardTapShareDriver
+import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
 import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
+import id.homebase.core.ui.screens.card.cardFadeIn
+import id.homebase.core.ui.screens.card.cardFadeOut
+import id.homebase.core.ui.screens.card.cardSheetEnterTransition
+import id.homebase.core.ui.screens.card.cardSheetExitTransition
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.profile.ProfileEditScreen
 import id.homebase.core.ui.screens.settings.SettingsActions
@@ -225,6 +234,7 @@ import id.homebase.imageeditor.ui.CropScreen
 import id.homebase.imageeditor.ui.DrawScreen
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.navigation.toRoute
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -241,6 +251,7 @@ import androidx.compose.material3.TextButton
 import id.homebase.core.upgrade.PendingUpgradeState
 import id.homebase.resources.cancel
 import id.homebase.resources.pending_upgrade_snackbar_message
+import id.homebase.resources.profile_card_nfc_shared
 import id.homebase.resources.pending_upgrade_snackbar_action
 import id.homebase.resources.pending_upgrade_title
 import id.homebase.resources.database_upgrade_snackbar
@@ -400,6 +411,14 @@ fun AppNavHost(
     // composer is: a notice raised here would sit on top of the input field.
     var isChatComposerOpen by remember { mutableStateOf(false) }
 
+    val cardSharedMessage = stringResource(MR.string.profile_card_nfc_shared)
+    val haptics = rememberHaptics()
+    val cardSharedScope = rememberCoroutineScope()
+    CardTapShareDriver {
+        haptics.perform(HapticEvent.Confirm)
+        if (!isChatComposerOpen) cardSharedScope.launch { snackbarHostState.showSnackbar(cardSharedMessage) }
+    }
+
     // Latched out of the composer gate below so the notice survives being suppressed on a chat
     // screen, and is consumed only once it has actually run its course.
     val dbUpgrade by DatabaseManager.databaseUpgradeState.collectAsStateWithLifecycle()
@@ -429,6 +448,8 @@ fun AppNavHost(
     // Safe only because login's top-left is bare in both its layouts: brand artwork on the
     // two-pane, plain surface in portrait — the traffic lights land on nothing either way.
     val paintsUnderTitleBar = chromeDestination?.hasRoute(Route.Login::class) == true
+    // The card fills its sheet to the screen's bottom edge; its own chrome pads for the navigation bar.
+    val paintsUnderNavigationBar = chromeDestination.isCardRoute()
     val showNavigationRail = isExpandedLayout()
     val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
     val isVaultGalleryOpen = vaultUiState.fullScreenOverlay != null
@@ -759,15 +780,17 @@ fun AppNavHost(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         // Leave the top inset to each screen: consuming it here pads everything
         // below the status bar, so no screen's TopAppBar can extend behind it.
-        contentWindowInsets = ScaffoldDefaults.contentWindowInsets
-            .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+        contentWindowInsets = ScaffoldDefaults.contentWindowInsets.only(
+            if (paintsUnderNavigationBar) WindowInsetsSides.Horizontal
+            else WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+        ),
         bottomBar = {
             if (showBottomNavigationBar) {
-                NavigationBar {
+                ShortNavigationBar {
                     topLevelRoutes.forEach { topLevelRoute ->
                         val isSelected =
                             chromeDestination?.hasRoute(topLevelRoute.route::class) == true
-                        NavigationBarItem(
+                        ShortNavigationBarItem(
                             icon = {
                                 TopLevelNavIcon(
                                     topLevelRoute = topLevelRoute,
@@ -977,6 +1000,7 @@ fun AppNavHost(
                         },
                         exitTransition = {
                             if (isBetweenTopLevelRoutes()) ExitTransition.None
+                            else if (targetState.destination.isSheetRoute()) ExitTransition.KeepUntilTransitionsFinished
                             else if (targetState.destination.isVerticalSlideRoute()) ExitTransition.None
                             else slideOutHorizontally(
                                 targetOffsetX = { -1000 }, animationSpec = tween(500)
@@ -984,7 +1008,9 @@ fun AppNavHost(
                         },
                         popEnterTransition = {
                             if (isBetweenTopLevelRoutes()) EnterTransition.None
-                            else if (initialState.destination.isVerticalSlideRoute()) EnterTransition.None
+                            else if (initialState.destination.isVerticalSlideRoute() ||
+                                initialState.destination.isSheetRoute()
+                            ) EnterTransition.None
                             else slideInHorizontally(
                                 initialOffsetX = { -1000 }, animationSpec = tween(500)
                             )
@@ -1711,13 +1737,34 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ProfileCard> { entry ->
+                        composable<Route.ProfileCard>(
+                            enterTransition = { cardSheetEnterTransition() },
+                            exitTransition = { cardFadeOut() },
+                            popEnterTransition = { cardFadeIn() },
+                            popExitTransition = { cardSheetExitTransition() },
+                        ) { entry ->
                             if (isAuthenticated) {
                                 ProfileCardScreen(
                                     viewModel = koinViewModel(
                                         viewModelStoreOwner = rememberCardHostOwner(navController, entry),
                                     ),
                                     onBack = { navController.popBackStack() },
+                                    onEdit = { navController.navigate(Route.ProfileCardEditor) },
+                                )
+                            }
+                        }
+
+                        composable<Route.ProfileCardEditor>(
+                            enterTransition = { cardFadeIn() },
+                            popExitTransition = { cardFadeOut() },
+                        ) { entry ->
+                            if (isAuthenticated) {
+                                ProfileCardEditorScreen(
+                                    viewModel = koinViewModel(
+                                        viewModelStoreOwner = rememberCardHostOwner(navController, entry),
+                                    ),
+                                    onBack = { navController.popBackStack() },
+                                    onEditProfile = { navController.navigate(Route.ProfileEdit) },
                                 )
                             }
                         }
@@ -2338,6 +2385,7 @@ private fun rememberCardHostOwner(navController: NavHostController, entry: NavBa
         val backStack = navController.currentBackStack.value
         backStack.lastOrNull { it.destination.hasRoute(Route.Settings::class) }
             ?: backStack.lastOrNull { it.destination.hasRoute(Route.ProfileEdit::class) }
+            ?: backStack.lastOrNull { it.destination.hasRoute(Route.ProfileCard::class) }
             ?: entry
     }
 
@@ -2377,6 +2425,11 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelR
 private fun NavDestination?.isVerticalSlideRoute(): Boolean {
     return this?.hasRoute(Route.VaultNoteEditor::class) == true
 }
+
+private fun NavDestination?.isSheetRoute(): Boolean = this?.hasRoute(Route.ProfileCard::class) == true
+
+private fun NavDestination?.isCardRoute(): Boolean =
+    isSheetRoute() || this?.hasRoute(Route.ProfileCardEditor::class) == true
 
 sealed class TopLevelRoute(
     val route: Route,

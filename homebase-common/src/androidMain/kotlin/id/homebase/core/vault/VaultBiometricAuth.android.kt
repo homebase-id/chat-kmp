@@ -1,5 +1,6 @@
 package id.homebase.core.vault
 
+import android.content.Context
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -8,17 +9,24 @@ import id.homebase.api.ActivityProvider
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
+private val DEVICE_AUTHENTICATORS =
+    BiometricManager.Authenticators.BIOMETRIC_STRONG or
+        BiometricManager.Authenticators.BIOMETRIC_WEAK or
+        BiometricManager.Authenticators.DEVICE_CREDENTIAL
+
+private fun canAuthenticate(context: Context): Boolean =
+    BiometricManager.from(context).canAuthenticate(DEVICE_AUTHENTICATORS) == BiometricManager.BIOMETRIC_SUCCESS
+
+actual fun isDeviceAuthAvailable(): Boolean {
+    val activity = ActivityProvider.getActivity() as? FragmentActivity ?: return false
+    return canAuthenticate(activity)
+}
+
 actual suspend fun authenticateBiometric(title: String, subtitle: String): BiometricResult {
     val activity = ActivityProvider.getActivity() as? FragmentActivity
         ?: return BiometricResult.Unavailable
 
-    val manager = BiometricManager.from(activity)
-    val canAuth = manager.canAuthenticate(
-        BiometricManager.Authenticators.BIOMETRIC_STRONG or
-            BiometricManager.Authenticators.BIOMETRIC_WEAK or
-            BiometricManager.Authenticators.DEVICE_CREDENTIAL
-    )
-    if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) return BiometricResult.Unavailable
+    if (!canAuthenticate(activity)) return BiometricResult.Unavailable
 
     return suspendCancellableCoroutine { cont ->
         val executor = ContextCompat.getMainExecutor(activity)
@@ -45,11 +53,7 @@ actual suspend fun authenticateBiometric(title: String, subtitle: String): Biome
         val info = BiometricPrompt.PromptInfo.Builder()
             .setTitle(title)
             .setSubtitle(subtitle)
-            .setAllowedAuthenticators(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                    BiometricManager.Authenticators.BIOMETRIC_WEAK or
-                    BiometricManager.Authenticators.DEVICE_CREDENTIAL
-            )
+            .setAllowedAuthenticators(DEVICE_AUTHENTICATORS)
             .build()
 
         activity.runOnUiThread { prompt.authenticate(info) }

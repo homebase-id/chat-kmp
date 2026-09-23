@@ -2,6 +2,7 @@ package id.homebase.core.di
 
 import coil3.ImageLoader
 import coil3.PlatformContext
+import coil3.SingletonImageLoader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.WebFileOperationsProvider
 import id.homebase.api.sync.database.DatabaseDriverFactory
@@ -54,7 +55,7 @@ actual fun platformModule(): Module = module {
     single<UpdateAppManager> { WebUpdateAppManager() }
     single<ShakeDetector> { WebShakeDetector() }
 
-    single {
+    single(createdAtStart = true) {
         // Web intentionally does NOT register PublicImageFetcher.Factory here, even though
         // android/desktop/native do. On web that fetcher routes public avatars (/pub/image)
         // through getPublicImage() (app httpClient + cache), which fails on this target and
@@ -63,6 +64,7 @@ actual fun platformModule(): Module = module {
         // "parity"/consistency fix — it's a regression here (verified). (Unrelated, separate
         // low-frequency cosmetic issue: a host-less "https:///pub/image" can resolve to the
         // app's own origin and fail; adding the Factory does not fix that either.)
+        // No diskCache guard as on other targets: Coil has no disk cache on wasmJs.
         ImageLoader.Builder(PlatformContext.INSTANCE)
                 .components {
                     add(HomebaseImageKeyer())
@@ -76,5 +78,11 @@ actual fun platformModule(): Module = module {
                     add(AnimatedSkiaDecoder.Factory())
                 }
                 .build()
+                .also(::installAsCoilSingleton)
     }
+}
+
+// Bare AsyncImage calls use Coil's singleton; see AppModule.android.kt.
+private fun installAsCoilSingleton(loader: ImageLoader) {
+    SingletonImageLoader.setSafe { loader }
 }

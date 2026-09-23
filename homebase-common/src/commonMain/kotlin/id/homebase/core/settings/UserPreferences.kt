@@ -104,7 +104,7 @@ class UserPreferences(private val settings: Settings) {
         }
 
     var enterSendsMessage: Boolean
-        get() = settings.getBoolean("composer_enter_sends", false)
+        get() = settings.getBoolean("composer_enter_sends", true)
         set(value) {
             settings.putBoolean("composer_enter_sends", value)
             _preferenceState.value = _preferenceState.value.copy(enterSendsMessage = value)
@@ -205,7 +205,7 @@ data class PreferenceState(
     val mediaQuality: MediaQuality = MediaQuality.STANDARD,
     val autoSaveIncomingMedia: Boolean = false,
     val autoSaveOnUnmeteredOnly: Boolean = true,
-    val enterSendsMessage: Boolean = false,
+    val enterSendsMessage: Boolean = true,
     val arrowUpEditsLastMessage: Boolean = true,
 )
 

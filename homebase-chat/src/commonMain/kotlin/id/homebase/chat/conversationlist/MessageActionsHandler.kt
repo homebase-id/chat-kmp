@@ -687,8 +687,11 @@ internal class MessageActionsHandler(
         content: String,
         files: List<AttachmentPendingFile>,
         replyTo: MessageUiModel? = null,
+        // Slow work that runs under the "Preparing…" placeholder instead of delaying it.
+        prepare: suspend (List<AttachmentInput>) -> List<AttachmentInput> = { it },
     ) {
         val sentAt = UnixTimeUtc.now()
+        fun payloadKey(index: Int) = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
         scope.launch {
             // If any FileVideo entries still have a thumbnail extraction in flight (the
             // user hit Send before the background poster task finished), wait on it once
@@ -791,7 +794,7 @@ internal class MessageActionsHandler(
             // re-put once we have it — avoids blocking the placeholder on image I/O.
             val imagePathsToRefine = mutableListOf<Pair<String, String>>()
             resolvedFiles.forEachIndexed { index, file ->
-                val payloadKey = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
+                val payloadKey = payloadKey(index)
                 val ctx: LocalAttachmentContext? = when (file) {
                     is AttachmentPendingFile.FileVideo -> {
                         val bytes = file.thumbnailBytes
@@ -850,11 +853,10 @@ internal class MessageActionsHandler(
                             else null
                         }.getOrNull()
                         if (aspect != null) {
-                            localVideoContextStore.put(
-                                newMessageId,
-                                payloadKey,
-                                LocalAttachmentContext.Image(localFilePath = path, aspectRatio = aspect),
-                            )
+                            // Keep the path: prepare may already have pointed the preview at the file actually sent.
+                            val current = localVideoContextStore.get(newMessageId, payloadKey) as? LocalAttachmentContext.Image
+                                ?: LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null)
+                            localVideoContextStore.put(newMessageId, payloadKey, current.copy(aspectRatio = aspect))
                         }
                     }
                 }
@@ -895,13 +897,20 @@ internal class MessageActionsHandler(
 
             scope.launch {
                 try {
+                    val prepared = prepare(attachments)
+                    prepared.forEachIndexed { index, input ->
+                        if (input.filePath == attachments[index].filePath) return@forEachIndexed
+                        val preview = localVideoContextStore.get(newMessageId, payloadKey(index))
+                        if (preview is LocalAttachmentContext.Image) {
+                            localVideoContextStore.put(newMessageId, payloadKey(index), preview.copy(localFilePath = input.filePath))
+                        }
+                    }
                     val bundle = MessageAttachmentBuilder.build(
-                        attachments = attachments,
+                        attachments = prepared,
                         fileOperationsProvider = fileOperationsProvider,
                         mediaQuality = userPreferences.mediaQuality,
-                        payloadKeyFactory = { index, _ ->
-                            "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
-                        })
+                        payloadKeyFactory = { index, _ -> payloadKey(index) },
+                    )
 
                     if (replyTo != null) {
                         Logger.d(tag = TAG) { "addMessageWithFiles: reply message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }

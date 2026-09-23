@@ -31,21 +31,13 @@ internal const val CARD_POST_LIMIT = 12
 internal const val CARD_POST_IMAGE_MAX_EDGE = 400
 private const val POST_PAGE_SIZE = 30
 
-// Ceiling for a channel whose newest posts are mostly hidden from a tier: 300 posts, then give up.
+// Ceiling for a channel whose newest posts are mostly not public: 300 posts, then give up.
 private const val MAX_POST_PAGES = 10
 private const val DEFAULT_PAYLOAD_KEY = "dflt_key"
 private const val PUBLIC_CHANNEL_SLUG = "public-posts"
 
-internal val cardTiers = listOf(ProfileVisibility.ANONYMOUS, ProfileVisibility.CONNECTED)
-
 /** A post for the card, its thumbnail not loaded yet. */
 data class CardPostEntry(val post: CardPost, val image: HomebaseImageData?)
-
-/** [homePageChannels] also holds every channel whose definition the app can't see, since any of those may be shown. */
-data class CardPostsLoad(
-    val posts: Map<ProfileVisibility, List<CardPostEntry>>,
-    val homePageChannels: List<Uuid>,
-)
 
 interface CardPostDrives {
     suspend fun channelIds(): List<Uuid>
@@ -53,54 +45,28 @@ interface CardPostDrives {
     suspend fun payloadText(channelId: Uuid, fileId: Uuid, key: String): String?
 }
 
-internal class CardChannel(val slug: String, val tiers: Set<ProfileVisibility>)
+internal class CardChannel(val slug: String)
 
-internal class TieredPost(val entry: CardPostEntry, val tiers: Set<ProfileVisibility>)
-
-private class ChannelLoad(val posts: List<TieredPost>, val onHomePage: Boolean)
-
-private val hiddenChannel = ChannelLoad(emptyList(), onHomePage = false)
-private val unreadableChannel = ChannelLoad(emptyList(), onHomePage = true)
-
-/**
- * The newest [CARD_POST_LIMIT] posts each tier can read, across the home-page channels, fetched once
- * for both tiers. A channel that fails (no read grant, say) is logged and left out.
- */
-suspend fun loadCardPosts(odinId: String, drives: CardPostDrives): CardPostsLoad = coroutineScope {
-    val ids = drives.channelIds()
-    val channels = ids.map { async { channelPosts(odinId, it, drives) } }.awaitAll()
-    CardPostsLoad(
-        posts = cardTiers.associateWith { tier ->
-            mergeCardPosts(channels.map { channel -> channel.posts.filter { tier in it.tiers }.map { it.entry } })
-        },
-        homePageChannels = ids.filterIndexed { index, _ -> channels[index].onHomePage },
-    )
+/** The newest [CARD_POST_LIMIT] public posts across the home-page channels. A channel that fails is logged and left out. */
+suspend fun loadCardPosts(odinId: String, drives: CardPostDrives): List<CardPostEntry> = coroutineScope {
+    mergeCardPosts(drives.channelIds().map { async { channelPosts(odinId, it, drives) } }.awaitAll())
 }
 
 internal fun mergeCardPosts(channels: List<List<CardPostEntry>>): List<CardPostEntry> =
     channels.flatten().sortedByDescending { it.post.date }.take(CARD_POST_LIMIT)
 
-private suspend fun channelPosts(odinId: String, channelId: Uuid, drives: CardPostDrives): ChannelLoad = try {
+private suspend fun channelPosts(odinId: String, channelId: Uuid, drives: CardPostDrives): List<CardPostEntry> = try {
     val definition = drives.query(channelId, definitionQuery(channelId)).searchResults
         .firstOrNull { !it.isSoftDeleted() }
-    if (definition == null) {
-        // The server leaves encrypted files out for a reader without the drive's key, so an empty result may hide one.
-        Logger.i(tag = TAG) { "channel $channelId shows no definition" }
-        unreadableChannel
-    } else {
-        val content = channelDefinition(channelId, definition, drives)
-        val channel = content?.let { cardChannel(definition, it) }
-        when {
-            content == null -> unreadableChannel
-            channel == null -> hiddenChannel
-            else -> ChannelLoad(pagePosts(odinId, channelId, channel, drives), onHomePage = true)
-        }
-    }
+    val channel = definition
+        ?.let { channelDefinition(channelId, it, drives) }
+        ?.let { cardChannel(definition, it) }
+    if (channel == null) emptyList() else pagePosts(odinId, channelId, channel, drives)
 } catch (e: CancellationException) {
     throw e
 } catch (e: Exception) {
     Logger.w(tag = TAG, throwable = e) { "channel $channelId skipped" }
-    unreadableChannel
+    emptyList()
 }
 
 private suspend fun channelDefinition(channelId: Uuid, definition: HomebaseFile, drives: CardPostDrives): ChannelDefinition? {
@@ -113,29 +79,27 @@ private suspend fun channelDefinition(channelId: Uuid, definition: HomebaseFile,
 }
 
 internal fun cardChannel(definition: HomebaseFile, content: ChannelDefinition): CardChannel? {
-    if (!content.showOnHomePage) return null
-    val tiers = cardTiers.filterTo(mutableSetOf()) { definition.serverMetadata.accessControlList.isVisibleTo(it) }
-    return CardChannel(content.slug.ifBlank { PUBLIC_CHANNEL_SLUG }, tiers).takeIf { tiers.isNotEmpty() }
+    if (!content.showOnHomePage || !definition.isPublic()) return null
+    return CardChannel(content.slug.ifBlank { PUBLIC_CHANNEL_SLUG })
 }
 
-private suspend fun pagePosts(odinId: String, channelId: Uuid, channel: CardChannel, drives: CardPostDrives): List<TieredPost> {
-    val kept = mutableListOf<TieredPost>()
+private suspend fun pagePosts(odinId: String, channelId: Uuid, channel: CardChannel, drives: CardPostDrives): List<CardPostEntry> {
+    val kept = mutableListOf<CardPostEntry>()
     var cursor: String? = null
     repeat(MAX_POST_PAGES) {
         val page = drives.query(channelId, postsQuery(cursor))
         page.searchResults.mapNotNullTo(kept) { cardPost(odinId, channel, it) }
-        val enough = channel.tiers.all { tier -> kept.count { tier in it.tiers } >= CARD_POST_LIMIT }
         val next = page.cursorState
-        if (enough || !page.hasMoreRows || next == null || next == cursor) return kept
+        if (kept.size >= CARD_POST_LIMIT || !page.hasMoreRows || next == null || next == cursor) return kept
         cursor = next
     }
     return kept
 }
 
-internal fun cardPost(odinId: String, channel: CardChannel, file: HomebaseFile): TieredPost? {
-    if (file.isSoftDeleted()) return null
-    val tiers = channel.tiers.filterTo(mutableSetOf()) { file.serverMetadata.accessControlList.isVisibleTo(it) }
-    if (tiers.isEmpty()) return null
+private fun HomebaseFile.isPublic() = serverMetadata.accessControlList.isVisibleTo(ProfileVisibility.ANONYMOUS)
+
+internal fun cardPost(odinId: String, channel: CardChannel, file: HomebaseFile): CardPostEntry? {
+    if (file.isSoftDeleted() || !file.isPublic()) return null
     val content = file.fileMetadata.appData.content
         ?.let { runCatching { OdinSystemSerializer.deserialize<PostContent>(it) }.getOrNull() }
         ?: return null
@@ -149,7 +113,7 @@ internal fun cardPost(odinId: String, channel: CardChannel, file: HomebaseFile):
         minutes = content.readingTimeStats?.minutes,
         type = content.type.name.lowercase(),
     )
-    return TieredPost(CardPostEntry(post, postImage(file, content)), tiers)
+    return CardPostEntry(post, postImage(file, content))
 }
 
 internal fun cardPostHref(odinId: String, channelSlug: String, postKey: String): String =

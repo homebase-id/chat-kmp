@@ -12,9 +12,6 @@ import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
-import id.homebase.api.client.profile.ProfileVisibility
-import id.homebase.api.client.profile.ProfileVisibility.ANONYMOUS
-import id.homebase.api.client.profile.ProfileVisibility.CONNECTED
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -118,11 +115,10 @@ class CardPostsTest {
         override suspend fun payloadText(channelId: Uuid, fileId: Uuid, key: String): String? = null
     }
 
-    private fun slugs(result: CardPostsLoad, tier: ProfileVisibility) =
-        result.posts.getValue(tier).map { it.post.href.substringAfterLast('/') }
+    private fun slugs(result: List<CardPostEntry>) = result.map { it.post.href.substringAfterLast('/') }
 
     @Test
-    fun eachTierKeepsOnlyPostsItsViewerCanRead() = runTest {
+    fun onlyPublicPostsOnPublicHomePageChannelsAreKept() = runTest {
         val publicChannel = Uuid.random()
         val connectionsChannel = Uuid.random()
         val hiddenChannel = Uuid.random()
@@ -143,8 +139,8 @@ class CardPostsTest {
 
         val result = loadCardPosts(odinId, drives)
 
-        assertEquals(listOf("public"), slugs(result, ANONYMOUS))
-        assertEquals(listOf("public", "connections", "in-inner"), slugs(result, CONNECTED))
+        assertEquals(listOf("public"), slugs(result))
+        assertNull(drives.postPages[connectionsChannel])
         assertNull(drives.postPages[hiddenChannel])
     }
 
@@ -159,7 +155,7 @@ class CardPostsTest {
             ),
         )
 
-        val posts = loadCardPosts(odinId, drives).posts.getValue(ANONYMOUS).map { it.post }
+        val posts = loadCardPosts(odinId, drives).map { it.post }
 
         assertEquals(CARD_POST_LIMIT, posts.size)
         assertEquals(listOf("b10", "a10", "b9", "a9", "b8", "a8", "b7", "a7", "b6", "a6", "b5", "a5"), posts.map { it.href.substringAfterLast('/') })
@@ -168,7 +164,7 @@ class CardPostsTest {
     }
 
     @Test
-    fun aChannelPagesUntilTwelveSurviveForEachTierItServes() = runTest {
+    fun aChannelPagesUntilTwelvePublicPostsSurvive() = runTest {
         val channel = Uuid.random()
         val hidden = (1..30).map { post("owner$it", acl = owner, created = 1000L - it) }
         val visible = (1..40).map { post("p$it", created = 500L - it) }
@@ -177,7 +173,7 @@ class CardPostsTest {
         val result = loadCardPosts(odinId, drives)
 
         assertEquals(2, drives.postPages[channel])
-        assertEquals((1..12).map { "p$it" }, slugs(result, ANONYMOUS))
+        assertEquals((1..12).map { "p$it" }, slugs(result))
     }
 
     @Test
@@ -185,7 +181,7 @@ class CardPostsTest {
         val channel = Uuid.random()
         val drives = FakeDrives(mapOf(channel to (definition() to (1..3).map { post("p$it", created = 10L - it) })))
 
-        assertEquals(listOf("p1", "p2", "p3"), slugs(loadCardPosts(odinId, drives), ANONYMOUS))
+        assertEquals(listOf("p1", "p2", "p3"), slugs(loadCardPosts(odinId, drives)))
         assertEquals(1, drives.postPages[channel])
     }
 
@@ -200,59 +196,28 @@ class CardPostsTest {
             ),
         )
 
-        assertEquals(listOf("ok"), slugs(loadCardPosts(odinId, drives), CONNECTED))
-    }
-
-    @Test
-    fun homePageChannelsLeaveOutOnlyTheOnesKnownToBeHidden() = runTest {
-        val shown = Uuid.random()
-        val offHomePage = Uuid.random()
-        val ownerOnly = Uuid.random()
-        val noGrant = Uuid.random()
-        val undecryptable = Uuid.random()
-        val noDefinition = Uuid.random()
-        val decryptFailure = file(
-            FeedProtocol.ChannelDefinitionFileType,
-            """{"message":"Decryption Failure","deliveryStatus":50,"isEdited":false}""",
-            connected,
-        )
-        val drives = FakeDrives(
-            mapOf(
-                shown to (definition() to listOf(post("ok", created = 1))),
-                offHomePage to (definition(showOnHomePage = false) to emptyList()),
-                ownerOnly to (definition(acl = owner) to emptyList()),
-                noGrant to (null to emptyList()),
-                undecryptable to (decryptFailure to listOf(post("never", created = 2))),
-            ),
-            withoutDefinition = setOf(noDefinition),
-        )
-
-        val result = loadCardPosts(odinId, drives)
-
-        assertEquals(listOf(shown, noGrant, undecryptable, noDefinition), result.homePageChannels)
-        assertEquals(listOf("ok"), slugs(result, CONNECTED))
-        assertNull(drives.postPages[undecryptable])
+        assertEquals(listOf("ok"), slugs(loadCardPosts(odinId, drives)))
     }
 
     @Test
     fun hrefUsesTheChannelSlugThenPostSlugOrId() {
-        val channel = CardChannel("notes", setOf(ANONYMOUS))
+        val channel = CardChannel("notes")
         val withSlug = assertNotNull(cardPost(odinId, channel, post("there-and-back")))
-        assertEquals("https://frodo.dotyou.cloud/posts/notes/there-and-back", withSlug.entry.post.href)
+        assertEquals("https://frodo.dotyou.cloud/posts/notes/there-and-back", withSlug.post.href)
 
         val noSlug = assertNotNull(cardPost(odinId, channel, post("", content = PostContent(id = "abc123", slug = ""))))
-        assertEquals("https://frodo.dotyou.cloud/posts/notes/abc123", noSlug.entry.post.href)
+        assertEquals("https://frodo.dotyou.cloud/posts/notes/abc123", noSlug.post.href)
 
         assertNull(cardPost(odinId, channel, post("", content = PostContent(id = "", slug = ""))))
 
         val publicChannel = assertNotNull(cardChannel(definition(slug = ""), ChannelDefinition(name = "Main", slug = "")))
         assertEquals("public-posts", publicChannel.slug)
-        assertEquals(setOf(ANONYMOUS, CONNECTED), publicChannel.tiers)
+        assertNull(cardChannel(definition(acl = connected), ChannelDefinition(name = "Inner", slug = "inner")))
     }
 
     @Test
     fun postFieldsFollowTheContract() {
-        val channel = CardChannel("notes", setOf(ANONYMOUS))
+        val channel = CardChannel("notes")
         val article = PostContent(
             id = "a1",
             slug = "long-read",
@@ -262,7 +227,7 @@ class CardPostsTest {
             readingTimeStats = ReadingTimeStats(minutes = 3.2),
         )
         val file = post("long-read", content = article, userDate = 1_700_000_000_000, created = 5)
-        val built = assertNotNull(cardPost(odinId, channel, file)).entry.post
+        val built = assertNotNull(cardPost(odinId, channel, file)).post
 
         assertEquals(file.fileId.toString(), built.id)
         assertEquals(1_700_000_000_000, built.date)
@@ -271,7 +236,7 @@ class CardPostsTest {
         assertEquals(3.2, built.minutes)
         assertEquals("article", built.type)
 
-        val tweet = assertNotNull(cardPost(odinId, channel, post("t", content = PostContent(id = "t", slug = "t", caption = " ")))).entry.post
+        val tweet = assertNotNull(cardPost(odinId, channel, post("t", content = PostContent(id = "t", slug = "t", caption = " ")))).post
         assertNull(tweet.title)
         assertNull(tweet.excerpt)
         assertEquals("tweet", tweet.type)

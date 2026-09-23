@@ -8,7 +8,6 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
-import androidx.compose.ui.test.withKeyDown
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -85,7 +84,7 @@ class ComposerEmojiTypeaheadTest {
         waitForIdle()
 
         onNodeWithTag(ATTACHMENT_CAPTION_FIELD_TAG).performKeyInput {
-            withKeyDown(Key.ShiftLeft) { pressKey(Key.Enter) }
+            pressKey(Key.Enter)
         }
         waitForIdle()
 

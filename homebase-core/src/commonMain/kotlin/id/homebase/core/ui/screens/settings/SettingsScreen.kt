@@ -104,6 +104,7 @@ import id.homebase.resources.settings_delete_account_desc
 import id.homebase.resources.settings_delete_account_dialog_text
 import id.homebase.resources.settings_delete_account_dialog_title
 import id.homebase.resources.settings_edit_profile
+import id.homebase.core.ui.screens.card.CardTapShareSettingsRow
 import id.homebase.resources.settings_profile_card
 import id.homebase.resources.settings_profile_card_desc
 import id.homebase.resources.settings_help
@@ -298,6 +299,7 @@ fun SettingsUi(
                         action = SettingsRowAction.Navigate(onProfileCard),
                     )
                 }
+                item { CardTapShareSettingsRow() }
             }
 
             item {

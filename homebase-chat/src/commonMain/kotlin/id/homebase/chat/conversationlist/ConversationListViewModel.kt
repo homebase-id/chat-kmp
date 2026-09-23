@@ -336,21 +336,21 @@ class ConversationListViewModel(
         saveSticker = { bytes, contentType ->
             stickerService.saveSticker(bytes = bytes, contentType = contentType, scope = viewModelScope)
         },
-        sendSticker = { conversationId, bytes, contentType ->
-            val suffix = when (contentType) {
-                "image/jpeg" -> ".jpg"
-                "image/webp" -> ".webp"
-                "image/gif" -> ".gif"
-                else -> ".png"
-            }
-            val path = fileOperationsProvider.writeBytesToTempFile(bytes, "sticker_editor_", suffix)
+        sendSticker = { conversationId, bytes, contentType, normalized ->
             messageActionsHandler.addMessageWithFiles(
                 conversationId, "",
                 listOf(AttachmentPendingFile.FileImage(
                     id = Uuid.generateV7(),
-                    file = platformFileFromPath(path),
+                    file = platformFileFromPath(writeStickerTempFile(bytes, contentType)),
                     forceSticker = true,
                 )),
+                prepare = { inputs ->
+                    val (ready, readyType) = normalized()
+                    if (ready === bytes) inputs else {
+                        val path = writeStickerTempFile(ready, readyType)
+                        inputs.map { it.copy(filePath = path, contentType = readyType) }
+                    }
+                },
             )
         },
         sendInfo = { res -> sendEvent(ConversationListUiEvent.ShowInfoMessage(res)) },
@@ -460,6 +460,16 @@ class ConversationListViewModel(
         stickerPermissionViewModel.recheckPermissions()
         stickerPermissionViewModel.permissionsGranted.first { it }
         stickerService.activate()
+    }
+
+    private suspend fun writeStickerTempFile(bytes: ByteArray, contentType: String): String {
+        val suffix = when (contentType) {
+            "image/jpeg" -> ".jpg"
+            "image/webp" -> ".webp"
+            "image/gif" -> ".gif"
+            else -> ".png"
+        }
+        return fileOperationsProvider.writeBytesToTempFile(bytes, "sticker_editor_", suffix)
     }
 
     /** Create-a-sticker chooser state (null = no flow). Observed by ConversationListScreen. */
