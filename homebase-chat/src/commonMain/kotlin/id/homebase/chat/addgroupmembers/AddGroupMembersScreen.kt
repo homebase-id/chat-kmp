@@ -104,9 +104,6 @@ fun AddGroupMembersUi(
     onUiAction: (AddGroupMembersUiAction) -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
 
     Scaffold(
         modifier = Modifier.imePadding(),
@@ -157,6 +154,8 @@ fun AddGroupMembersUi(
                     CircularProgressIndicator()
                 }
             } else {
+                // The field only exists once loading ends; requesting focus any earlier is a no-op.
+                LaunchedEffect(Unit) { focusRequester.requestFocus() }
                 StyledSearchTextField(
                     modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
                         .focusRequester(focusRequester),
