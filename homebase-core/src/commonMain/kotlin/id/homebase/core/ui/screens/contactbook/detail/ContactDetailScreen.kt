@@ -128,6 +128,12 @@ import id.homebase.resources.contactbook_detail_tab_about
 import id.homebase.resources.contactbook_detail_tab_activity
 import id.homebase.resources.contactbook_detail_tab_details
 import id.homebase.resources.contactbook_detail_unblock
+import id.homebase.resources.contactbook_detail_remove_blocked
+import id.homebase.resources.contactbook_detail_remove_blocked_message
+import id.homebase.resources.contactbook_detail_remove_blocked_title
+import id.homebase.resources.contactbook_action_blocked_connection_removed
+import id.homebase.resources.contactbook_action_not_blocked
+import id.homebase.resources.contactbook_action_disconnect_blocked
 import id.homebase.resources.contactbook_detail_cancel_request
 import id.homebase.resources.contactbook_detail_not_connected
 import id.homebase.resources.contactbook_detail_pending
@@ -151,6 +157,7 @@ import id.homebase.resources.contact_unreview_confirm
 import id.homebase.resources.contact_unreview_failed
 import id.homebase.resources.contact_unreview_title
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -181,6 +188,8 @@ fun ContactDetailScreen(
     val msgBlocked = stringResource(MR.string.contactbook_action_blocked)
     val msgUnblocked = stringResource(MR.string.contactbook_action_unblocked)
     val msgDisconnected = stringResource(MR.string.contactbook_action_disconnected)
+    val msgBlockedRemoved = stringResource(MR.string.contactbook_action_blocked_connection_removed)
+    val msgNotBlocked = stringResource(MR.string.contactbook_action_not_blocked)
     val msgSyncStarted = stringResource(MR.string.contactbook_action_sync_started)
     val msgRequestAccepted = stringResource(MR.string.contactbook_action_request_accepted)
     val msgRequestRejected = stringResource(MR.string.contactbook_action_request_rejected)
@@ -209,6 +218,12 @@ fun ContactDetailScreen(
                 ContactDetailEvent.Blocked -> snackbarHostState.showSnackbar(msgBlocked)
                 ContactDetailEvent.Unblocked -> snackbarHostState.showSnackbar(msgUnblocked)
                 ContactDetailEvent.Disconnected -> snackbarHostState.showSnackbar(msgDisconnected)
+                is ContactDetailEvent.DisconnectRefusedBlocked -> snackbarHostState.showSnackbar(
+                    getString(MR.string.contactbook_action_disconnect_blocked, event.name),
+                )
+                ContactDetailEvent.BlockedConnectionRemoved ->
+                    snackbarHostState.showSnackbar(msgBlockedRemoved)
+                ContactDetailEvent.NotBlocked -> snackbarHostState.showSnackbar(msgNotBlocked)
                 ContactDetailEvent.SyncStarted -> snackbarHostState.showSnackbar(msgSyncStarted)
                 ContactDetailEvent.RequestAccepted -> snackbarHostState.showSnackbar(msgRequestAccepted)
                 ContactDetailEvent.RequestRejected -> snackbarHostState.showSnackbar(msgRequestRejected)
@@ -352,6 +367,7 @@ fun ContactDetailScreen(
         ConfirmDialog(
             confirm = confirm,
             isConnected = uiState.isConnected,
+            name = uiState.entry?.displayName.orEmpty(),
             onConfirm = { viewModel.onAction(ContactDetailAction.ConfirmYes) },
             onDismiss = { viewModel.onAction(ContactDetailAction.ConfirmDismiss) },
         )
@@ -652,6 +668,15 @@ private fun ManagementMenu(
                     leadingIcon = { Icon(Icons.Outlined.Block, contentDescription = null) },
                     onClick = { open = false; onAction(ContactDetailAction.UnblockClicked) },
                 )
+                DropdownMenuItem(
+                    text = {
+                        Text(stringResource(MR.string.contactbook_detail_remove_blocked), color = error)
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Outlined.PersonRemove, contentDescription = null, tint = error)
+                    },
+                    onClick = { open = false; onAction(ContactDetailAction.RemoveBlockedClicked) },
+                )
             } else {
                 DropdownMenuItem(
                     text = { Text(stringResource(MR.string.contactbook_detail_block), color = error) },
@@ -894,6 +919,7 @@ private fun UnreviewDialog(
 private fun ConfirmDialog(
     confirm: ContactDetailConfirm,
     isConnected: Boolean,
+    name: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -915,10 +941,20 @@ private fun ConfirmDialog(
             else MR.string.contactbook_detail_delete_message,
             MR.string.contactbook_detail_delete,
         )
+        ContactDetailConfirm.REMOVE_BLOCKED -> Triple(
+            MR.string.contactbook_detail_remove_blocked_title,
+            MR.string.contactbook_detail_remove_blocked_message,
+            MR.string.contactbook_detail_remove_blocked,
+        )
+    }
+    val titleText = if (confirm == ContactDetailConfirm.REMOVE_BLOCKED) {
+        stringResource(title, name)
+    } else {
+        stringResource(title)
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(title)) },
+        title = { Text(titleText) },
         text = { Text(stringResource(message)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {

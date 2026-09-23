@@ -1600,6 +1600,7 @@
     <string name="contactbook_detail_block">Blokér</string>
     <string name="contactbook_detail_unblock">Fjern blokering</string>
     <string name="contactbook_detail_disconnect">Afbryd forbindelse</string>
+    <string name="contactbook_detail_remove_blocked">Fjern forbindelse</string>
     <string name="contactbook_detail_connect">Send forbindelsesanmodning</string>
     <string name="contactbook_detail_not_connected">Ikke forbundet</string>
     <string name="contactbook_detail_pending">Forbindelsesanmodning afventer</string>
@@ -1637,6 +1638,8 @@
     <string name="contactbook_detail_block_message">De vil ikke kunne kontakte dig, og de får ikke besked. Du kan fjerne blokeringen senere for at gendanne forbindelsen.</string>
     <string name="contactbook_detail_disconnect_title">Afbryd forbindelsen?</string>
     <string name="contactbook_detail_disconnect_message">Dette fjerner permanent jeres forbindelse og den adgang, den gav. De får ikke besked. For at forbinde igen skal du sende en ny forbindelsesanmodning.</string>
+    <string name="contactbook_detail_remove_blocked_title">Fjern %1$s?</string>
+    <string name="contactbook_detail_remove_blocked_message">De forbliver blokeret, og du kan fjerne blokeringen senere, men jeres forbindelse og alt, du har delt gennem den, forsvinder. Hvis du fjerner blokeringen, kommer den ikke tilbage — de skal sende dig en ny forbindelsesanmodning.</string>
     <string name="contactbook_detail_delete_title">Slet kontakt?</string>
     <string name="contactbook_detail_delete_message">Dette fjerner kontakten fra din adressebog.</string>
     <string name="contactbook_detail_delete_message_connected">Dette fjerner kontakten fra din adressebog og afbryder jeres forbindelse, hvilket fjerner den adgang, den gav. De får ikke besked. For at forbinde igen skal du sende en ny forbindelsesanmodning.</string>
@@ -1688,6 +1691,9 @@
     <string name="contactbook_action_blocked">Kontakt blokeret.</string>
     <string name="contactbook_action_unblocked">Blokering af kontakt fjernet.</string>
     <string name="contactbook_action_disconnected">Forbindelsen er afbrudt.</string>
+    <string name="contactbook_action_disconnect_blocked">%1$s er blokeret. Fjern blokeringen for at forbinde igen.</string>
+    <string name="contactbook_action_blocked_connection_removed">Forbindelsen er fjernet. De er stadig blokeret.</string>
+    <string name="contactbook_action_not_blocked">De er ikke længere blokeret, så der var intet at fjerne.</string>
     <string name="contactbook_action_sync_started">Synkroniserer denne kontakt fra deres profil…</string>
     <string name="contactbook_action_request_accepted">Forbindelsesanmodning accepteret.</string>
     <string name="contactbook_action_request_rejected">Forbindelsesanmodning afvist.</string>

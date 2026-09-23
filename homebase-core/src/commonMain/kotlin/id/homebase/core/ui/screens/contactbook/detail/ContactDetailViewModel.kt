@@ -7,7 +7,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ClientException
 import id.homebase.api.client.ForbiddenException
+import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionNetworkProvider
@@ -649,6 +651,8 @@ class ContactDetailViewModel(
                 event = ContactDetailEvent.RequestCancelled,
             ) { connectionRequestService.cancelOutgoingRequest(it) }
             ContactDetailAction.UnblockClicked -> handleUnblock()
+            ContactDetailAction.RemoveBlockedClicked ->
+                _uiState.update { it.copy(confirm = ContactDetailConfirm.REMOVE_BLOCKED) }
             ContactDetailAction.ConfirmYes -> handleConfirm()
             ContactDetailAction.ConfirmDismiss -> _uiState.update { it.copy(confirm = null) }
             is ContactDetailAction.OpenMedia -> _uiState.update { it.copy(fullScreenMedia = action.item) }
@@ -954,11 +958,23 @@ class ContactDetailViewModel(
         )
     }
 
+    /** The server refuses to disconnect a blocked identity, so a 400 here means our Connected was stale. */
+    private suspend fun onDisconnectFailed(error: Throwable, name: String) {
+        if (error is ClientException && error.errorCode == OdinClientErrorCode.BlockedConnection) {
+            connectionService.refresh()
+            _events.tryEmit(ContactDetailEvent.DisconnectRefusedBlocked(name))
+        } else {
+            emitConnectionError(error)
+        }
+    }
+
     private fun handleConfirm() {
         val confirm = _uiState.value.confirm ?: return
         val entry = _uiState.value.entry
         val domain = odinId
         val wasConnected = _uiState.value.isConnected
+        val wasBlocked = _uiState.value.isBlocked
+        val name = entry?.displayName ?: domain.orEmpty()
         _uiState.update { it.copy(confirm = null, actionInProgress = true) }
         viewModelScope.launch {
             try {
@@ -977,7 +993,7 @@ class ContactDetailViewModel(
                                 connectionNetworkProvider.disconnect(OdinId(domain))
                             }
                                 .onSuccess { connectionService.refresh() }
-                                .onFailure { emitConnectionError(it) }
+                                .onFailure { onDisconnectFailed(it, name) }
                                 .isSuccess
                             if (!disconnected) return@launch
                         }
@@ -1000,14 +1016,34 @@ class ContactDetailViewModel(
                                 .onFailure { emitConnectionError(it) }
                         }
                     }
-                    ContactDetailConfirm.DISCONNECT -> {
+                    ContactDetailConfirm.DISCONNECT -> when {
+                        domain == null -> Unit
+                        // Blocked while the dialog was open.
+                        wasBlocked -> _events.tryEmit(ContactDetailEvent.DisconnectRefusedBlocked(name))
+                        else -> runCatching { connectionNetworkProvider.disconnect(OdinId(domain)) }
+                            .onSuccess {
+                                connectionService.refresh()
+                                _events.tryEmit(ContactDetailEvent.Disconnected)
+                            }
+                            .onFailure { onDisconnectFailed(it, name) }
+                    }
+                    ContactDetailConfirm.REMOVE_BLOCKED -> {
                         if (domain != null) {
-                            runCatching { connectionNetworkProvider.disconnect(OdinId(domain)) }
+                            runCatching { connectionNetworkProvider.removeBlockedConnection(OdinId(domain)) }
                                 .onSuccess {
                                     connectionService.refresh()
-                                    _events.tryEmit(ContactDetailEvent.Disconnected)
+                                    _events.tryEmit(ContactDetailEvent.BlockedConnectionRemoved)
                                 }
-                                .onFailure { emitConnectionError(it) }
+                                .onFailure { e ->
+                                    if (e is ClientException &&
+                                        e.errorCode == OdinClientErrorCode.IdentityIsNotBlocked
+                                    ) {
+                                        connectionService.refresh()
+                                        _events.tryEmit(ContactDetailEvent.NotBlocked)
+                                    } else {
+                                        emitConnectionError(e)
+                                    }
+                                }
                         }
                     }
                 }

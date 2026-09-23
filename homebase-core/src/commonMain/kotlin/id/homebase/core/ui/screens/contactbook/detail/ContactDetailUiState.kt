@@ -21,7 +21,7 @@ import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 
 /** A pending destructive action awaiting confirmation. */
-enum class ContactDetailConfirm { BLOCK, DISCONNECT, DELETE }
+enum class ContactDetailConfirm { BLOCK, DISCONNECT, DELETE, REMOVE_BLOCKED }
 
 /** One circle chip on the contact-detail screen. [pending] means this contact's grant on that
  *  circle is still a sealed deposit, read from the connection's `accessGrant.pendingCircleIds`. */
@@ -190,6 +190,7 @@ sealed interface ContactDetailAction {
     data object DeleteClicked : ContactDetailAction
     data object BlockClicked : ContactDetailAction
     data object UnblockClicked : ContactDetailAction
+    data object RemoveBlockedClicked : ContactDetailAction
     data object DisconnectClicked : ContactDetailAction
     /** Accept an incoming request and add the contact to the chosen circles (their 32-char
      *  N-format ids). Empty list = accept without adding to any circle (#921 Part B). */
@@ -251,6 +252,10 @@ sealed interface ContactDetailEvent {
     data object Blocked : ContactDetailEvent
     data object Unblocked : ContactDetailEvent
     data object Disconnected : ContactDetailEvent
+    data class DisconnectRefusedBlocked(val name: String) : ContactDetailEvent
+    data object BlockedConnectionRemoved : ContactDetailEvent
+    /** Remove was refused because they were no longer blocked; the refreshed status is on screen. */
+    data object NotBlocked : ContactDetailEvent
     /** Best-effort profile sync was requested; the enriched contact lands later via drive sync. */
     data object SyncStarted : ContactDetailEvent
     /** Connection-request action confirmations. */
