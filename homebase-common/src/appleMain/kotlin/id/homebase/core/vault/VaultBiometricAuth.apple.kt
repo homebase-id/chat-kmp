@@ -40,3 +40,8 @@ actual suspend fun authenticateBiometric(title: String, subtitle: String): Biome
         }
     }
 }
+
+@OptIn(ExperimentalForeignApi::class)
+actual fun isDeviceAuthAvailable(): Boolean = memScoped {
+    LAContext().canEvaluatePolicy(LAPolicyDeviceOwnerAuthentication, error = null)
+}

@@ -29,6 +29,7 @@ import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.vault_settings_biometrics
+import id.homebase.resources.vault_settings_biometrics_unavailable
 import id.homebase.resources.vault_settings_open
 import id.homebase.resources.vault_settings_section
 import id.homebase.resources.vault_settings_show_icon
@@ -95,14 +96,21 @@ fun VaultSettingsUi(
                     onCheckedChange = { onAction(VaultSettingsUiAction.SetIconVisible(it)) },
                 ),
             )
-            SettingsRow(
-                icon = Icons.Outlined.Fingerprint,
-                title = stringResource(MR.string.vault_settings_biometrics),
-                action = SettingsRowAction.Toggle(
-                    checked = uiState.biometricsEnabled,
-                    onCheckedChange = { onAction(VaultSettingsUiAction.SetBiometricsEnabled(it)) },
-                ),
-            )
+            if (uiState.showBiometricsRow) {
+                SettingsRow(
+                    icon = Icons.Outlined.Fingerprint,
+                    title = stringResource(MR.string.vault_settings_biometrics),
+                    supportingText = if (uiState.deviceAuthAvailable) {
+                        null
+                    } else {
+                        stringResource(MR.string.vault_settings_biometrics_unavailable)
+                    },
+                    action = SettingsRowAction.Toggle(
+                        checked = uiState.biometricsEnabled,
+                        onCheckedChange = { onAction(VaultSettingsUiAction.SetBiometricsEnabled(it)) },
+                    ),
+                )
+            }
             Spacer(modifier = Modifier
                 .fillMaxWidth()
                 .height(24.dp))
