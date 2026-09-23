@@ -50,6 +50,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
@@ -155,6 +156,9 @@ import id.homebase.core.ui.screens.location.livelocation.LiveLocationScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
 import id.homebase.core.ui.screens.location.share.ShareLocationScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
+import id.homebase.core.haptics.HapticEvent
+import id.homebase.core.haptics.rememberHaptics
+import id.homebase.core.ui.screens.card.CardTapShareDriver
 import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
 import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
@@ -230,6 +234,7 @@ import id.homebase.imageeditor.ui.CropScreen
 import id.homebase.imageeditor.ui.DrawScreen
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.navigation.toRoute
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -246,6 +251,7 @@ import androidx.compose.material3.TextButton
 import id.homebase.core.upgrade.PendingUpgradeState
 import id.homebase.resources.cancel
 import id.homebase.resources.pending_upgrade_snackbar_message
+import id.homebase.resources.profile_card_nfc_shared
 import id.homebase.resources.pending_upgrade_snackbar_action
 import id.homebase.resources.pending_upgrade_title
 import id.homebase.resources.database_upgrade_snackbar
@@ -404,6 +410,14 @@ fun AppNavHost(
     // This Scaffold's SnackbarHost is anchored to the bottom of the window, where the chat
     // composer is: a notice raised here would sit on top of the input field.
     var isChatComposerOpen by remember { mutableStateOf(false) }
+
+    val cardSharedMessage = stringResource(MR.string.profile_card_nfc_shared)
+    val haptics = rememberHaptics()
+    val cardSharedScope = rememberCoroutineScope()
+    CardTapShareDriver {
+        haptics.perform(HapticEvent.Confirm)
+        if (!isChatComposerOpen) cardSharedScope.launch { snackbarHostState.showSnackbar(cardSharedMessage) }
+    }
 
     // Latched out of the composer gate below so the notice survives being suppressed on a chat
     // screen, and is consumed only once it has actually run its course.

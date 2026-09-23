@@ -155,6 +155,7 @@ kotlin {
             implementation(libs.composenativewebview)
         }
         androidMain.dependencies {
+            implementation(libs.androidx.activity.compose)
             implementation(libs.koin.android)
             implementation(libs.play.app.update)
             implementation(libs.composenativewebview)

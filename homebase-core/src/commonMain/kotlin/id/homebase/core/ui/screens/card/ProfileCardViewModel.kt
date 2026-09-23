@@ -5,16 +5,28 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.drives.QueryBatchRequest
+import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
+import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.query.FileQueryParams
+import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.drives.upload.UpdateFileByFileIdRequest
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.profile.ProfileAttribute
+import id.homebase.api.client.profile.ProfileProvider
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.api.youauth.MissingPermissionsResult
+import id.homebase.api.youauth.PermissionCheckResult
+import id.homebase.api.youauth.PermissionExtensionManager
+import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.ui.screens.profile.photoImageData
@@ -29,6 +41,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -36,8 +49,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -79,6 +97,8 @@ sealed interface ProfileCardEvent {
 }
 
 interface ProfileCardSource {
+    /** Emits when the user comes back from granting the app more access in the owner console. */
+    val accessGranted: Flow<Unit>
     suspend fun odinId(): OdinId
     suspend fun attributes(): List<ProfileAttribute>
     suspend fun siteDefaults(odinId: OdinId): CardSiteDefaults
@@ -87,6 +107,9 @@ interface ProfileCardSource {
     suspend fun writeShareImage(png: ByteArray): String
     suspend fun savedDesign(): String?
     suspend fun saveDesign(design: String)
+    /** The request for writing the design to the home page, or null when the app may or it can't tell. */
+    suspend fun missingDesignAccess(odinId: OdinId): MissingPermissionsResult?
+    suspend fun publishDesign(design: String): CardDesignPublish
 }
 
 class DefaultProfileCardSource(
@@ -97,8 +120,20 @@ class DefaultProfileCardSource(
     private val fileOperations: FileOperationsProvider,
     private val driveQueryProvider: DriveQueryProvider,
     private val driveFileProvider: DriveFileProvider,
+    private val driveUploadProvider: DriveUploadProvider,
+    private val securityContextProvider: SecurityContextProvider,
+    private val eventBus: EventBus,
     private val cardPreferences: CardPreferences,
 ) : ProfileCardSource {
+    // The bus replays its last event, which may be an older return; only one after subscribing counts.
+    override val accessGranted: Flow<Unit> = flow {
+        emitAll(
+            eventBus.events.drop(eventBus.events.replayCache.size)
+                .filterIsInstance<BackendEvent.PermissionsExtensionReturned>()
+                .map { },
+        )
+    }
+
     override suspend fun odinId(): OdinId = ownerSessionRepository.user.filterNotNull().first().odinId
 
     override suspend fun attributes(): List<ProfileAttribute> = profileRepository.loadAttributes()
@@ -129,6 +164,31 @@ class DefaultProfileCardSource(
     override suspend fun savedDesign(): String? = cardPreferences.design.value
 
     override suspend fun saveDesign(design: String) = cardPreferences.setDesign(design)
+
+    override suspend fun missingDesignAccess(odinId: OdinId): MissingPermissionsResult? {
+        val context = securityContextProvider.getSecurityContext() ?: return null
+        val result = PermissionExtensionManager(securityContextProvider, odinId.domainName)
+            .getMissingPermissions(designAccessConfig(context), context)
+        return (result as? PermissionCheckResult.Missing)?.details
+    }
+
+    override suspend fun publishDesign(design: String): CardDesignPublish = publishCardDesign(design, themeFiles)
+
+    private val themeFiles = object : CardThemeFiles {
+        override suspend fun query() = driveQueryProvider.queryBatch(
+            driveId = SystemDriveConstants.homePageConfigDrive.alias,
+            request = QueryBatchRequest(
+                queryParams = FileQueryParams(
+                    fileType = listOf(ProfileProvider.PROFILE_ATTRIBUTE_FILE_TYPE),
+                    tagsMatchAtLeastOne = listOf(THEME_ATTRIBUTE_TYPE),
+                ),
+                resultOptionsRequest = QueryBatchResultOptionsRequest(maxRecords = 10, includeMetadataHeader = true),
+            ),
+        ).searchResults
+
+        override suspend fun update(request: UpdateFileByFileIdRequest) =
+            driveUploadProvider.updateFileByFileId(request, onVersionConflict = { null })
+    }
 }
 
 private class CardContent(
@@ -178,6 +238,9 @@ class ProfileCardViewModel(
     private val failedImages = mutableSetOf<ImageKey>()
     private var posts: List<CardPost> = emptyList()
     private var postsFresh = false
+    private var designAccess: MissingPermissionsResult? = null
+    private var unpublishedDesign: String? = null
+    private var publishJob: Job? = null
     private var shownBefore = false
     private var hostJob: Job? = null
     private var loadJob: Job? = null
@@ -186,6 +249,14 @@ class ProfileCardViewModel(
 
     init {
         load()
+        viewModelScope.launch { checkDesignAccess() }
+        viewModelScope.launch {
+            source.accessGranted.collect {
+                checkDesignAccess()
+                val design = unpublishedDesign
+                if (design != null && designAccess == null) publishDesign(design)
+            }
+        }
     }
 
     fun startHost() {
@@ -221,9 +292,31 @@ class ProfileCardViewModel(
                 if (saved) it.copy(isSavingDesign = false, savedDesign = design, previewDesign = null)
                 else it.copy(isSavingDesign = false)
             }
-            if (saved) render()
+            if (saved) {
+                render()
+                unpublishedDesign = design
+                val access = designAccess
+                if (access == null) publishDesign(design)
+                else _events.tryEmit(ProfileCardEvent.OpenLink(access.buildExtendPermissionUrl()))
+            }
             _events.tryEmit(if (saved) ProfileCardEvent.DesignSaved else ProfileCardEvent.DesignSaveFailed)
         }
+    }
+
+    // The public card follows the home page; a failure here leaves the local save, which this viewer shows, standing.
+    private fun publishDesign(design: String) {
+        publishJob?.cancel()
+        publishJob = viewModelScope.launch {
+            val result = attempt("publishing card design $design") { source.publishDesign(design) } ?: return@launch
+            unpublishedDesign = null
+            if (result == CardDesignPublish.NoTheme) {
+                Logger.i(tag = TAG) { "no home page theme to publish card design $design to" }
+            }
+        }
+    }
+
+    private suspend fun checkDesignAccess() {
+        designAccess = attempt("design access check") { source.missingDesignAccess(source.odinId()) }
     }
 
     /** Picks up profile edits made since the pre-warm; the warm card shows until they land. */

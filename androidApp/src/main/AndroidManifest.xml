@@ -17,6 +17,10 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-feature
+        android:name="android.hardware.nfc.hce"
+        android:required="false" />
     <!-- Metered-vs-unmetered for the "only on Wi-Fi" auto-save guard. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!--    <uses-permission android:name="android.permission.CAMERA" />-->
@@ -90,6 +94,18 @@
                 android:name="android.app.shortcuts"
                 android:resource="@xml/share_shortcuts" />
         </activity>
+        <service
+            android:name="id.homebase.core.ui.screens.card.CardNfcApduService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.cardemulation.host_apdu_service"
+                android:resource="@xml/card_nfc_apduservice" />
+        </service>
+
         <!-- FCM service: fast payload parsing + WorkManager expedited sync scheduling -->
         <service
             android:name=".DriveFcmService"
