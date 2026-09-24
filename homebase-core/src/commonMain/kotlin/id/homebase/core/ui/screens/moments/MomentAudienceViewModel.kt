@@ -6,6 +6,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.moments.services.MomentSource
 import id.homebase.core.moments.services.MomentsPostSenderService
@@ -33,6 +34,7 @@ class MomentAudienceViewModel(
     private val postSender: MomentsPostSenderService,
     private val flowState: MomentCreateFlowState,
     private val contactRepository: ContactRepository,
+    private val connectionService: ConnectionService,
 ) : ViewModel(), IdentityScoped {
 
     private val _uiState = MutableStateFlow(
@@ -62,6 +64,11 @@ class MomentAudienceViewModel(
         viewModelScope.launch {
             contactRepository.contacts.collect { list ->
                 latestContacts = list.mapNotNull { it.toContactBookEntry() }
+            }
+        }
+        viewModelScope.launch {
+            connectionService.connections.collect { connections ->
+                _uiState.update { it.copy(connectionStatuses = connections.statusByDomain()) }
             }
         }
     }

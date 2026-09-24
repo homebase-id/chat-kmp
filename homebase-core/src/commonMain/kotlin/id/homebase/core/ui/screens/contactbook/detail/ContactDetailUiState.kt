@@ -21,7 +21,7 @@ import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 
 /** A pending destructive action awaiting confirmation. */
-enum class ContactDetailConfirm { BLOCK, DISCONNECT, DELETE }
+enum class ContactDetailConfirm { BLOCK, DISCONNECT, DELETE, REMOVE_BLOCKED }
 
 /** One circle chip on the contact-detail screen. [pending] means this contact's grant on that
  *  circle is still a sealed deposit, read from the connection's `accessGrant.pendingCircleIds`. */
@@ -81,6 +81,8 @@ data class ContactDetailUiState(
     /** Open circle-detail dialog (tapped a chip in [circles]), or null when dismissed. View-only
      *  from this screen — [CircleMembersUi.manageable] is always false here. */
     val circleDetail: CircleMembersUi? = null,
+    /** By lowercased domain, for the circle roster. */
+    val connectionStatuses: Map<String, ConnectionStatus> = emptyMap(),
     /** The existing 1:1 conversation, if one exists (never created just to view details). */
     val conversationId: Uuid? = null,
     val overview: ConversationOverview? = null,
@@ -119,6 +121,7 @@ data class ContactDetailUiState(
     val hasOdinId: Boolean get() = !entry?.odinId.isNullOrBlank()
     val isConnected: Boolean get() = connectionStatus == ConnectionStatus.Connected
     val isBlocked: Boolean get() = connectionStatus == ConnectionStatus.Blocked
+    val displayName: String get() = entry?.displayName ?: entry?.odinId.orEmpty()
 
     /**
      * A pending incoming request from someone we're not connected to yet. In this state the
@@ -190,6 +193,7 @@ sealed interface ContactDetailAction {
     data object DeleteClicked : ContactDetailAction
     data object BlockClicked : ContactDetailAction
     data object UnblockClicked : ContactDetailAction
+    data object RemoveBlockedClicked : ContactDetailAction
     data object DisconnectClicked : ContactDetailAction
     /** Accept an incoming request and add the contact to the chosen circles (their 32-char
      *  N-format ids). Empty list = accept without adding to any circle (#921 Part B). */
@@ -251,6 +255,9 @@ sealed interface ContactDetailEvent {
     data object Blocked : ContactDetailEvent
     data object Unblocked : ContactDetailEvent
     data object Disconnected : ContactDetailEvent
+    data class DisconnectRefusedBlocked(val name: String) : ContactDetailEvent
+    data object BlockedConnectionRemoved : ContactDetailEvent
+    data object NotBlocked : ContactDetailEvent
     /** Best-effort profile sync was requested; the enriched contact lands later via drive sync. */
     data object SyncStarted : ContactDetailEvent
     /** Connection-request action confirmations. */
