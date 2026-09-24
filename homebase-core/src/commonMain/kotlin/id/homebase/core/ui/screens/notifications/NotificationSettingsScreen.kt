@@ -259,7 +259,13 @@ fun NotificationSettingsUi(
                     },
                 ),
             )
-            if (uiState.showContentLevelPicker) {
+            AnimatedVisibility(
+                visible = uiState.showContentLevelPicker,
+                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            ) {
                 Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
                     NotificationContentLevel.entries.forEach { level ->
                         SettingsOptionRow(

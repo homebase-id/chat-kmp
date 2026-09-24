@@ -138,6 +138,7 @@ import id.homebase.chat.conversationlist.RecipientModel
 import id.homebase.chat.conversationlist.RecipientType
 import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.chat.conversationlist.lastEditableMessage
+import id.homebase.chat.conversationlist.messageListKey
 import id.homebase.chat.conversationlist.resolveOwnSendFollowTarget
 import id.homebase.chat.createconversation.ContactItem
 import id.homebase.chat.createconversation.GroupOrConversationItem
@@ -1057,10 +1058,8 @@ fun ConversationContent(
                     ) return@SideEffect
                     val indexByKey = HashMap<String, Int>(mergedItems.size)
                     mergedItems.forEachIndexed { i, item ->
-                        when (item) {
-                            is MessageListContentModel.Message -> indexByKey[item.id] = i
-                            is PendingOutgoingMessage -> indexByKey["pending-${item.id}"] = i
-                            else -> {}
+                        if (item is MessageListContentModel.Message || item is PendingOutgoingMessage) {
+                            indexByKey[messageListKey(item)] = i
                         }
                     }
                     val anchor = visible.firstOrNull {
@@ -1145,13 +1144,7 @@ fun ConversationContent(
                         ) {
                             items(
                                 mergedItems,
-                                key = { item ->
-                                    when (item) {
-                                        is MessageListContentModel -> item.id
-                                        is PendingOutgoingMessage -> "pending-${item.id}"
-                                        else -> item.hashCode().toString()
-                                    }
-                                },
+                                key = ::messageListKey,
                                 // One contentType per row shape, so scrolling reuses a recycled
                                 // item's composition instead of discarding and rebuilding it.
                                 // A 45 s device profile of an image-heavy thread (iPhone 15,
@@ -1237,8 +1230,8 @@ fun ConversationContent(
                                         Box(
                                             modifier = if (animationsEnabled) {
                                                 Modifier.animateItem(
-                                                    fadeInSpec = tween(300),
-                                                    fadeOutSpec = tween(400),
+                                                    fadeInSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                                    fadeOutSpec = MaterialTheme.motionScheme.slowEffectsSpec(),
                                                 )
                                             } else {
                                                 Modifier
@@ -1258,8 +1251,8 @@ fun ConversationContent(
                                         val isHighlighted = uiState.highlightedMessageId == item.message.id
                                         val highlightAlpha by animateFloatAsState(
                                             targetValue = if (isHighlighted) 0.15f else 0f,
-                                            animationSpec = if (isHighlighted) tween(durationMillis = 300)
-                                            else tween(durationMillis = 600),
+                                            animationSpec = if (isHighlighted) MaterialTheme.motionScheme.defaultEffectsSpec()
+                                            else MaterialTheme.motionScheme.slowEffectsSpec(),
                                         )
                                         LaunchedEffect(isHighlighted) {
                                             if (!isHighlighted) return@LaunchedEffect

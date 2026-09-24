@@ -1437,6 +1437,13 @@ private fun MomentDetailContent(
         targetValue = if (commentsOpen) MOMENT_MEDIA_FRACTION_WITH_COMMENTS else 1f,
         label = "momentMediaShrink",
     )
+    // Flip crop/fit only once the height animation settles, so the frame doesn't re-crop mid-shrink.
+    val fitVideoToBand by remember(commentsOpen) {
+        derivedStateOf {
+            val fraction = mediaHeightFraction.value
+            if (commentsOpen) fraction == MOMENT_MEDIA_FRACTION_WITH_COMMENTS else fraction < 1f
+        }
+    }
 
     // Share the mute toggle with the feed via the app-session singleton so a
     // single tap persists across nav-in / nav-out of the detail screen.
@@ -1683,10 +1690,7 @@ private fun MomentDetailContent(
                             tapMode = MomentVideoTapMode.ButtonOnly,
                             showPauseAffordance = true,
                             useNativeControls = false,
-                            // While the comments sheet is open the media is
-                            // shrunk to the top band — show the whole frame
-                            // (fit) instead of the immersive crop-to-fill.
-                            fitToContent = commentsOpen,
+                            fitToContent = fitVideoToBand,
                         )
                     } else {
                         MomentMediaItem(
@@ -3121,7 +3125,8 @@ private fun AddCommentRow(
                     onSend = { if (canSend) onSend() },
                 ),
             singleLine = true,
-            enabled = !isPosting,
+            // Disabling would drop focus and take the keyboard down after every send.
+            readOnly = isPosting,
         )
         IconButton(onClick = onSend, enabled = canSend) {
             if (isPosting) {
