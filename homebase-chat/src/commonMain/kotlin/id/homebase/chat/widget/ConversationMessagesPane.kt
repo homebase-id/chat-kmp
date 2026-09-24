@@ -51,6 +51,7 @@ import id.homebase.chat.services.PaginatedConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.util.boundedFirstVisibleItemIndex
+import id.homebase.core.camera.CameraModes
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
@@ -106,7 +107,7 @@ fun ConversationMessagesPane(
             )
         }
     }
-    val cameraLauncher = rememberCameraManager { file ->
+    val cameraLauncher = rememberCameraManager(CameraModes.PhotoAndVideo) { file ->
         file?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(

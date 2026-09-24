@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import id.homebase.core.settings.rememberMirrorFrontCamera
 import id.homebase.core.util.PlatformCameraManager
 import io.github.vinceglb.filekit.PlatformFile
 import co.touchlab.kermit.Logger
@@ -33,9 +34,7 @@ class InAppCameraLauncher internal constructor() : PlatformCameraManager {
     internal var warmEngine: CameraEngine? = null
     internal var recordsVideo = false
 
-    override fun launch() = launch(CaptureMode.Photo)
-
-    fun launch(initialMode: CaptureMode) {
+    override fun launch(initialMode: CaptureMode) {
         if (openMode != null) return
         warmEngine = warmer?.warm(recordsVideo)
         openMode = initialMode
@@ -56,7 +55,6 @@ class InAppCameraLauncher internal constructor() : PlatformCameraManager {
 @Composable
 fun rememberInAppCameraManager(
     allowedModes: CameraModes,
-    mirrorFront: Boolean = true,
     awaitResultShown: Boolean = false,
     onOpenGallery: (() -> Unit)? = null,
     onResult: (PlatformFile?) -> Unit,
@@ -88,7 +86,7 @@ fun rememberInAppCameraManager(
         CameraCaptureDialog(
             allowedModes = allowedModes,
             initialMode = mode,
-            mirrorFront = mirrorFront,
+            mirrorFront = rememberMirrorFrontCamera(),
             warmEngine = launcher.warmEngine,
             handingOff = handoff != null,
             fade = { fade.value },

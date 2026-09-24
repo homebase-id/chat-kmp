@@ -1913,4 +1913,7 @@
     <string name="camera_recording_started">Optagelsen er startet</string>
     <string name="camera_recording_stopped">Optagelsen er stoppet, %1$s</string>
     <string name="camera_ae_af_lock">AE/AF-lås</string>
+    <string name="settings_media_camera_header">Kamera</string>
+    <string name="settings_media_mirror_front">Spejlvend frontkamera</string>
+    <string name="settings_media_mirror_front_description">Gem selfies og videoer fra frontkameraet, som de ser ud i forhåndsvisningen.</string>
 </resources>

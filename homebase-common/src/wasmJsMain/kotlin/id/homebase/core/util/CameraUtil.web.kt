@@ -1,22 +1,16 @@
 package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
+import id.homebase.core.camera.CameraModes
+import id.homebase.core.camera.CaptureMode
 import io.github.vinceglb.filekit.PlatformFile
 
 @Composable
-actual fun rememberCameraManager(onResult: (PlatformFile?) -> Unit): PlatformCameraManager {
-    return object : PlatformCameraManager {
-        override fun launch() {
-            // No-op on web
-        }
-    }
-}
+actual fun rememberCameraManager(
+    modes: CameraModes,
+    onResult: (PlatformFile?) -> Unit,
+): PlatformCameraManager = NoCameraManager
 
-@Composable
-actual fun rememberVideoRecorderManager(onResult: (PlatformFile?) -> Unit): PlatformVideoRecorderManager {
-    return object : PlatformVideoRecorderManager {
-        override fun launch() {
-            // No-op on web
-        }
-    }
+private object NoCameraManager : PlatformCameraManager {
+    override fun launch(initialMode: CaptureMode) = Unit
 }

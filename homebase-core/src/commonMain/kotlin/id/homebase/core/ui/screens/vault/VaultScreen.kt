@@ -248,8 +248,8 @@ fun VaultScreen(
 
     var fileForAppend by remember { mutableStateOf<VaultEntry?>(null) }
 
-    // Camera picker — single image. Initial capture opens the editor; while the
-    // editor is open the same launcher adds another image to the batch.
+    // Single photo. Initial capture opens the editor; while the editor is open the
+    // same launcher adds another image to the batch.
     val cameraLauncher = rememberCameraManager { file ->
         file?.let {
             if (uiState.pendingEditor != null) {
@@ -483,10 +483,7 @@ fun VaultScreen(
                         isPickerActive = true
                         imagePicker.launch()
                     },
-                    onCameraClick = {
-                        isPickerActive = true
-                        cameraLauncher.launch()
-                    },
+                    onCameraClick = { cameraLauncher.launch() },
                     onAddFile = {
                         isPickerActive = true
                         documentPicker.launch()
@@ -574,10 +571,8 @@ fun VaultScreen(
     var pendingPickerAction by remember { mutableStateOf<VaultPickerAction?>(null) }
     LaunchedEffect(pendingPickerAction) {
         when (pendingPickerAction) {
-            VaultPickerAction.Camera -> {
-                isPickerActive = true
-                cameraLauncher.launch()
-            }
+            // In-app camera: the Activity never stops, so no ON_RESUME would ever clear the flag.
+            VaultPickerAction.Camera -> cameraLauncher.launch()
             VaultPickerAction.Gallery -> {
                 isPickerActive = true
                 imagePicker.launch()

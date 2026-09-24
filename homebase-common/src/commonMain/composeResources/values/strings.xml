@@ -1544,6 +1544,9 @@
     <string name="settings_media_autosave_description">Photos and videos people send you are downloaded in the background and added to your album.</string>
     <string name="settings_media_autosave_unmetered">Only on Wi-Fi</string>
     <string name="settings_media_autosave_unmetered_description">Wait for an unmetered network instead of using mobile data.</string>
+    <string name="settings_media_camera_header">Camera</string>
+    <string name="settings_media_mirror_front">Mirror front camera</string>
+    <string name="settings_media_mirror_front_description">Save selfies and front-camera videos as they look in the preview.</string>
 
     <!-- Composer keyboard -->
     <string name="settings_composer_enter_sends">Enter sends the message</string>
