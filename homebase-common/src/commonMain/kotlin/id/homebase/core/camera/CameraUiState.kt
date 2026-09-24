@@ -21,4 +21,8 @@ data class CameraUiState(
     val isRecording: Boolean = false,
     val recordingStartedAtMs: Long? = null,
     val focusPoint: Offset? = null,
-)
+) {
+    fun hasLens(lens: CameraLens): Boolean = if (lens == CameraLens.Front) hasFrontLens else hasBackLens
+
+    fun clampZoom(ratio: Float): Float = ratio.coerceIn(minZoom, maxOf(minZoom, maxZoom))
+}
