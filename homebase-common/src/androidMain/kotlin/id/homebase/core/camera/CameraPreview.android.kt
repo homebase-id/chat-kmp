@@ -4,7 +4,6 @@ import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.SurfaceOrientedMeteringPointFactory
 import androidx.camera.viewfinder.compose.MutableCoordinateTransformer
 import androidx.camera.viewfinder.core.ImplementationMode
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -54,7 +53,7 @@ actual fun CameraPreview(
                     val surfacePoint = with(transformer) { offset.transform() }
                     androidEngine.focusAt(factory.createPoint(surfacePoint.x, surfacePoint.y), offset, lock)
                 }
-                detectTapGestures(
+                detectPreviewTaps(
                     onLongPress = { offset ->
                         focus(offset, lock = true)
                         currentOnLongPressFocus(offset)
