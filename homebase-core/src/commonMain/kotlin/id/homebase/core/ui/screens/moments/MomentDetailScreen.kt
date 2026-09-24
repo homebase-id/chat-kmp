@@ -106,6 +106,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -138,6 +139,7 @@ import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
 import id.homebase.core.ui.screens.moments.widget.MomentVideoTapMode
 import id.homebase.core.ui.screens.moments.widget.SenderAvatarBadge
+import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
@@ -1434,7 +1436,7 @@ private fun MomentDetailContent(
     // While the comments sheet is open, the media animates down to the top
     // third of the screen (top-aligned) so the tapped photo/video stays fully
     // visible above the sheet. 1f = full-screen immersive viewer (sheet closed).
-    val mediaHeightFraction by animateFloatAsState(
+    val mediaHeightFraction = animateFloatAsState(
         targetValue = if (commentsOpen) MOMENT_MEDIA_FRACTION_WITH_COMMENTS else 1f,
         label = "momentMediaShrink",
     )
@@ -1571,7 +1573,7 @@ private fun MomentDetailContent(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(mediaHeightFraction)
+                    .fillMaxHeightFraction { mediaHeightFraction.value }
                     .align(Alignment.TopCenter)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -1606,7 +1608,7 @@ private fun MomentDetailContent(
                 state = pagerState,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(mediaHeightFraction)
+                    .fillMaxHeightFraction { mediaHeightFraction.value }
                     .align(Alignment.TopCenter),
                 // This pager fills the whole page (mediaHeightFraction = 1f when
                 // comments are closed), so it sits under every swipe. A
@@ -3411,4 +3413,16 @@ private fun formatCapturedAt(epochMs: Long): String {
     val instant = Instant.fromEpochMilliseconds(epochMs)
     val local = instant.toLocalDateTime(TimeZone.currentSystemDefault())
     return capturedAtFormat.format(local)
+}
+
+// Read in the layout phase so the comments shrink relayouts the media without recomposing it.
+private fun Modifier.fillMaxHeightFraction(fraction: () -> Float): Modifier = layout { measurable, constraints ->
+    if (!constraints.hasBoundedHeight) {
+        val placeable = measurable.measure(constraints)
+        return@layout layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+    val height = (constraints.maxHeight * fraction()).roundToInt()
+        .coerceIn(constraints.minHeight, constraints.maxHeight)
+    val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
+    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
 }
