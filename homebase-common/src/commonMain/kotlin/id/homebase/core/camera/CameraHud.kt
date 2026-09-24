@@ -393,10 +393,10 @@ internal fun CameraCaptureContent(
     val keyFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { keyFocus.requestFocus() }
 
+    // No background here: CameraCaptureScreen already paints the scrim, and each full-screen fill costs GPU per frame.
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .background(colors.scrim)
             .onPreviewKeyEvent { event ->
                 if (event.key != Key.VolumeUp && event.key != Key.VolumeDown) return@onPreviewKeyEvent false
                 when (event.type) {
@@ -625,6 +625,7 @@ internal fun CameraCaptureContent(
                     topBar()
                 }
                 Box(Modifier.align(Alignment.CenterEnd).padding(end = 24.dp), contentAlignment = Alignment.Center) {
+                    lockHint()
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(RailGap),
@@ -633,7 +634,6 @@ internal fun CameraCaptureContent(
                         shutter()
                         lockTarget()
                     }
-                    lockHint()
                 }
                 Column(
                     Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
@@ -668,6 +668,7 @@ internal fun CameraCaptureContent(
                         .onSizeChanged { shutterRowWidthPx = it.width.toFloat() },
                     contentAlignment = Alignment.Center,
                 ) {
+                    lockHint()
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -677,7 +678,6 @@ internal fun CameraCaptureContent(
                         shutter()
                         flip()
                     }
-                    lockHint()
                 }
             }
         }
