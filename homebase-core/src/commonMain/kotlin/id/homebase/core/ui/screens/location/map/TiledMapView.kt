@@ -5,6 +5,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -18,8 +19,10 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import id.homebase.api.client.location.WebMercator
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.decodeToImageBitmap
@@ -141,9 +144,14 @@ fun TiledMapView(
             val ready = vp != null && canvasSize != IntSize.Zero
             val w = canvasSize.width.toFloat()
             val h = canvasSize.height.toFloat()
-            markerContent({ ux, uy ->
-                vp?.toPx(ux, uy, w, h) ?: Offset.Zero
-            }, ready)
+            // The canvas is drawn in absolute pixels; an RTL parent would mirror every marker off its spot.
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Box(modifier = Modifier.matchParentSize()) {
+                    markerContent({ ux, uy ->
+                        vp?.toPx(ux, uy, w, h) ?: Offset.Zero
+                    }, ready)
+                }
+            }
         }
     }
 }
