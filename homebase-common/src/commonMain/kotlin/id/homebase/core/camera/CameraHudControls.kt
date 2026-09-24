@@ -58,9 +58,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
@@ -93,6 +93,7 @@ import id.homebase.resources.camera_state_on
 import id.homebase.resources.camera_switch_lens
 import id.homebase.resources.camera_torch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.PI
@@ -121,7 +122,7 @@ internal val SideSlotSize = 56.dp
 internal fun TopBar(
     ui: CameraUiState,
     mic: MicPermission,
-    iconRotation: Float,
+    iconRotation: () -> Float,
     onClose: () -> Unit,
     onFlash: () -> Unit,
     onMic: () -> Unit,
@@ -173,7 +174,7 @@ private fun hudIconButtonColors() = IconButtonDefaults.iconButtonColors(
 )
 
 @Composable
-internal fun CameraCloseButton(onClick: () -> Unit, iconRotation: Float, modifier: Modifier = Modifier) {
+internal fun CameraCloseButton(onClick: () -> Unit, iconRotation: () -> Float, modifier: Modifier = Modifier) {
     IconButton(
         onClick = onClick,
         colors = hudIconButtonColors(),
@@ -183,13 +184,13 @@ internal fun CameraCloseButton(onClick: () -> Unit, iconRotation: Float, modifie
         Icon(
             imageVector = Icons.Filled.Close,
             contentDescription = stringResource(MR.string.camera_close),
-            modifier = Modifier.rotate(iconRotation),
+            modifier = Modifier.graphicsLayer { rotationZ = iconRotation() },
         )
     }
 }
 
 @Composable
-private fun FlashButton(ui: CameraUiState, iconRotation: Float, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun FlashButton(ui: CameraUiState, iconRotation: () -> Float, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val control = FlashPolicy.control(ui.mode, ui.hasFlashUnit)
     AnimatedVisibility(
         visible = control == FlashControl.Torch || (control == FlashControl.Flash && !ui.isRecording),
@@ -226,7 +227,7 @@ private fun FlashButton(ui: CameraUiState, iconRotation: Float, onClick: () -> U
             Icon(
                 imageVector = icon,
                 contentDescription = stringResource(if (torch) MR.string.camera_torch else MR.string.camera_flash),
-                modifier = Modifier.rotate(iconRotation),
+                modifier = Modifier.graphicsLayer { rotationZ = iconRotation() },
             )
         }
     }
@@ -329,9 +330,10 @@ internal fun RecordingAnnouncer(text: String) {
 
 /** Visual only: TalkBack locks a recording through the shutter's long-press action instead. */
 @Composable
-internal fun LockTarget(visible: Boolean, progress: Float, iconRotation: Float) {
+internal fun LockTarget(visible: Boolean, progress: () -> Float, iconRotation: () -> Float) {
     val colors = MaterialTheme.colorScheme
     val motion = MaterialTheme.motionScheme
+    val progress = progress()
     val engaged = progress >= LOCK_SNAP_FRACTION
     val scale by animateFloatAsState(if (engaged) 1.15f else 1f + progress * 0.1f, motion.fastSpatialSpec())
     val container by animateColorAsState(
@@ -361,7 +363,7 @@ internal fun LockTarget(visible: Boolean, progress: Float, iconRotation: Float) 
                     imageVector = if (engaged) Icons.Filled.Lock else Icons.Outlined.LockOpen,
                     contentDescription = null,
                     tint = content,
-                    modifier = Modifier.size(24.dp).rotate(iconRotation),
+                    modifier = Modifier.size(24.dp).graphicsLayer { rotationZ = iconRotation() },
                 )
             }
         }
@@ -369,7 +371,7 @@ internal fun LockTarget(visible: Boolean, progress: Float, iconRotation: Float) 
 }
 
 @Composable
-internal fun LockHint(visible: Boolean, direction: Offset, progress: Float, modifier: Modifier = Modifier) {
+internal fun LockHint(visible: Boolean, direction: Offset, progress: () -> Float, modifier: Modifier = Modifier) {
     val degrees = (atan2(direction.y, direction.x) * 180f / PI.toFloat())
     val reduceMotion = LocalReduceMotion.current
     AnimatedVisibility(
@@ -378,25 +380,17 @@ internal fun LockHint(visible: Boolean, direction: Offset, progress: Float, modi
         exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
         modifier = modifier,
     ) {
-        val shimmer = if (reduceMotion) {
-            0f
-        } else {
-            val transition = rememberInfiniteTransition()
-            val value by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(900)))
-            value
-        }
+        val shimmer = if (reduceMotion) null else rememberInfiniteTransition().animateFloat(0f, 1f, infiniteRepeatable(tween(900)))
         Row(
             modifier = Modifier
                 .testTag(LOCK_HINT_TAG)
                 .clearAndSetSemantics { }
                 .graphicsLayer {
                     rotationZ = degrees
-                    alpha = 1f - progress
+                    alpha = 1f - progress()
                 },
         ) {
             repeat(HINT_CHEVRONS) { index ->
-                val phase = ((shimmer * HINT_CHEVRONS) - index).let { if (it < 0f) it + HINT_CHEVRONS else it }
-                val lit = if (reduceMotion) 0.8f else (1f - (phase / HINT_CHEVRONS)).coerceIn(0.35f, 1f)
                 Icon(
                     imageVector = Icons.Filled.KeyboardArrowUp,
                     contentDescription = null,
@@ -405,7 +399,7 @@ internal fun LockHint(visible: Boolean, direction: Offset, progress: Float, modi
                         .size(20.dp)
                         .graphicsLayer {
                             rotationZ = 90f
-                            alpha = lit
+                            alpha = shimmer?.let { chevronAlpha(it.value, index) } ?: 0.8f
                         },
                 )
             }
@@ -415,6 +409,11 @@ internal fun LockHint(visible: Boolean, direction: Offset, progress: Float, modi
 
 private const val HINT_CHEVRONS = 3
 
+private fun chevronAlpha(shimmer: Float, index: Int): Float {
+    val phase = ((shimmer * HINT_CHEVRONS) - index).let { if (it < 0f) it + HINT_CHEVRONS else it }
+    return (1f - (phase / HINT_CHEVRONS)).coerceIn(0.35f, 1f)
+}
+
 @Composable
 internal fun FlipLensButton(
     visible: Boolean,
@@ -422,7 +421,7 @@ internal fun FlipLensButton(
     hidden: Boolean,
     lens: CameraLens,
     turns: Float,
-    iconRotation: Float,
+    iconRotation: () -> Float,
     onClick: () -> Unit,
 ) {
     val reduceMotion = LocalReduceMotion.current
@@ -471,7 +470,7 @@ internal fun FlipLensButton(
                 .size(28.dp)
                 .graphicsLayer {
                     rotationY = if (reduceMotion) 0f else spin
-                    rotationZ = iconRotation
+                    rotationZ = iconRotation()
                     alpha = fade.value
                     cameraDistance = 12f * density
                 },
@@ -499,7 +498,7 @@ internal fun StartingIndicator(visible: Boolean, modifier: Modifier = Modifier, 
 }
 
 @Composable
-internal fun FocusRing(point: Offset?, locked: Boolean, exposureBias: Float, showExposure: Boolean) {
+internal fun FocusRing(point: Offset?, locked: Boolean, exposureBias: () -> Float, showExposure: Boolean) {
     val reduceMotion = LocalReduceMotion.current
     val scale = remember { Animatable(1f) }
     val alpha = remember { Animatable(0f) }
@@ -515,15 +514,18 @@ internal fun FocusRing(point: Offset?, locked: Boolean, exposureBias: Float, sho
             scale.animateTo(1f, spring(dampingRatio = 0.6f, stiffness = 800f))
         }
     }
-    LaunchedEffect(point, locked, exposureBias) {
+    LaunchedEffect(point, locked) {
         if (point == null) {
             alpha.animateTo(0f, tween(150))
             return@LaunchedEffect
         }
-        alpha.snapTo(1f)
-        if (locked) return@LaunchedEffect
-        delay(RING_HOLD_MS)
-        alpha.animateTo(0f, tween(300))
+        // Every exposure nudge restarts the hold, so the ring stays up while it's being dragged.
+        snapshotFlow { exposureBias() }.collectLatest {
+            alpha.snapTo(1f)
+            if (locked) return@collectLatest
+            delay(RING_HOLD_MS)
+            alpha.animateTo(0f, tween(300))
+        }
     }
     val colors = MaterialTheme.colorScheme
     Box(Modifier.fillMaxSize().onSizeChanged { widthPx = it.width }) {
@@ -567,7 +569,7 @@ internal fun FocusRing(point: Offset?, locked: Boolean, exposureBias: Float, sho
                     tint = if (locked) colors.primary else colors.onSurface,
                     modifier = Modifier
                         .size(20.dp)
-                        .offset { IntOffset(0, (-exposureBias * (sliderHeightPx - 20.dp.toPx()) / 2).roundToInt()) }
+                        .offset { IntOffset(0, (-exposureBias() * (sliderHeightPx - 20.dp.toPx()) / 2).roundToInt()) }
                         .background(colors.scrim.copy(alpha = 0.4f), CircleShape),
                 )
             }

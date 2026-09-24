@@ -263,7 +263,7 @@ internal fun ShutterButton(
                 },
         )
         // Composed only while recording: an infinite transition on an idle shutter would redraw every frame.
-        if (recording) RecordingArc(color = record, ringScale = ringScale, still = reduceMotion, modifier = Modifier.matchParentSize())
+        if (recording) RecordingArc(color = record, ringScale = { ringScale }, still = reduceMotion, modifier = Modifier.matchParentSize())
         if (busy) {
             LoadingIndicator(
                 modifier = Modifier.size(InnerSize),
@@ -305,25 +305,23 @@ private fun Morph.toComposePath(progress: Float, size: Size, path: Path) {
 }
 
 @Composable
-private fun RecordingArc(color: Color, ringScale: Float, still: Boolean, modifier: Modifier) {
-    val start = if (still) {
-        0f
+private fun RecordingArc(color: Color, ringScale: () -> Float, still: Boolean, modifier: Modifier) {
+    val angle = if (still) {
+        null
     } else {
-        val sweep = rememberInfiniteTransition()
-        val angle by sweep.animateFloat(
+        rememberInfiniteTransition().animateFloat(
             initialValue = 0f,
             targetValue = 360f,
             animationSpec = infiniteRepeatable(tween(durationMillis = 1600, easing = LinearEasing)),
         )
-        angle
     }
     Box(
         modifier.drawBehind {
             val stroke = RingStroke.toPx()
-            val diameter = (size.minDimension - stroke) * ringScale
+            val diameter = (size.minDimension - stroke) * ringScale()
             drawArc(
                 color = color,
-                startAngle = start - 90f,
+                startAngle = (angle?.value ?: 0f) - 90f,
                 sweepAngle = ARC_SWEEP,
                 useCenter = false,
                 topLeft = Offset((size.width - diameter) / 2, (size.height - diameter) / 2),

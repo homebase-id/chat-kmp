@@ -127,7 +127,7 @@ internal fun CameraPermissionPane(
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .testTag(PERMISSION_PANE_TAG),
     ) {
-        CameraCloseButton(onClick = onDismiss, iconRotation = 0f, modifier = Modifier.padding(8.dp))
+        CameraCloseButton(onClick = onDismiss, iconRotation = { 0f }, modifier = Modifier.padding(8.dp))
         if (state == CameraPermissionState.Checking) {
             StartingIndicator(visible = true, modifier = Modifier.align(Alignment.Center), delayMs = 300)
             return@Box
