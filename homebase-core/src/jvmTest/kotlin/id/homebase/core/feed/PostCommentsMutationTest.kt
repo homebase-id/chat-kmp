@@ -366,7 +366,7 @@ class PostCommentsMutationTest {
             val service = service()
             val comments = service.commentsFor(ownPost(postId))
             advanceUntilIdle()
-            assertEquals(listOf(commentId), comments.value.map { it.id })
+            assertEquals(listOf(commentId), comments.value!!.map { it.id })
 
             blockingDriver!!.failOutboxInserts = true
             service.removeComment(commentId)
@@ -374,7 +374,7 @@ class PostCommentsMutationTest {
 
             assertEquals(0L, env.outboxCount(), "the delete must not be queued when the insert fails")
             assertEquals(
-                listOf(commentId), comments.value.map { it.id },
+                listOf(commentId), comments.value!!.map { it.id },
                 "a refused enqueue must leave the comment in place",
             )
         }

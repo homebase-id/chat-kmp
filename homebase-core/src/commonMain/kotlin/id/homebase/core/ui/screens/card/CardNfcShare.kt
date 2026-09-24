@@ -181,30 +181,8 @@ private fun TapShareRow(toggle: SettingsRowAction.Toggle, supportingText: String
 
 @Composable
 private fun NfcPulse(active: Boolean) {
-    val transition = rememberInfiniteTransition()
-    val progress by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1600, easing = LinearEasing), RepeatMode.Restart),
-    )
-    val ringColor = MaterialTheme.colorScheme.primary
     Box(modifier = Modifier.size(160.dp), contentAlignment = Alignment.Center) {
-        if (active) {
-            listOf(0f, 0.5f).forEach { phase ->
-                Surface(
-                    shape = CircleShape,
-                    color = ringColor,
-                    modifier = Modifier
-                        .size(160.dp)
-                        .graphicsLayer {
-                            val p = (progress + phase) % 1f
-                            scaleX = 0.45f + 0.55f * p
-                            scaleY = 0.45f + 0.55f * p
-                            alpha = (1f - p) * 0.35f
-                        },
-                ) {}
-            }
-        }
+        if (active) NfcPulseRings()
         Surface(
             shape = CircleShape,
             color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -215,5 +193,31 @@ private fun NfcPulse(active: Boolean) {
                 Icon(Icons.Outlined.Nfc, contentDescription = null, modifier = Modifier.size(40.dp))
             }
         }
+    }
+}
+
+// Its own composable so the infinite transition only runs while the rings are shown.
+@Composable
+private fun NfcPulseRings() {
+    val transition = rememberInfiniteTransition()
+    val progress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1600, easing = LinearEasing), RepeatMode.Restart),
+    )
+    val ringColor = MaterialTheme.colorScheme.primary
+    listOf(0f, 0.5f).forEach { phase ->
+        Surface(
+            shape = CircleShape,
+            color = ringColor,
+            modifier = Modifier
+                .size(160.dp)
+                .graphicsLayer {
+                    val p = (progress + phase) % 1f
+                    scaleX = 0.45f + 0.55f * p
+                    scaleY = 0.45f + 0.55f * p
+                    alpha = (1f - p) * 0.35f
+                },
+        ) {}
     }
 }

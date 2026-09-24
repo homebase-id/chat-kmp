@@ -3,12 +3,14 @@ package id.homebase.core.ui.screens.feed.widget
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -27,8 +29,9 @@ import kotlin.uuid.Uuid
 internal fun FeedMediaFullScreenHost(
     overlay: FullScreenOverlay?,
     onDismiss: () -> Unit,
-    content: @Composable () -> Unit,
+    content: @Composable (SharedTransitionScope, AnimatedVisibilityScope) -> Unit,
 ) {
+    val fadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
     SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = overlay,
@@ -41,10 +44,10 @@ internal fun FeedMediaFullScreenHost(
                     is FullScreenOverlay.PdfViewerData -> "pdf"
                 }
             },
-            transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) },
+            transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
         ) { target ->
             when (target) {
-                null -> content()
+                null -> content(this@SharedTransitionLayout, this@AnimatedContent)
 
                 // Share / save / delete need a feed-side action service to decrypt a payload to a file; until
                 // that exists no handler is passed, so those controls stay hidden rather than dead.

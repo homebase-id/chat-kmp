@@ -38,6 +38,7 @@ import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.layout.AnimatedPane
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
+import androidx.compose.material3.adaptive.layout.MutableThreePaneScaffoldState
 import androidx.compose.material3.adaptive.layout.PaneAdaptedValue
 import androidx.compose.material3.adaptive.layout.PaneExpansionAnchor
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
@@ -56,7 +57,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.backhandler.PredictiveBackHandler
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -142,7 +146,10 @@ import id.homebase.resources.error_unknown
 import id.homebase.resources.file_save_failed
 import id.homebase.resources.file_saved_to
 import id.homebase.resources.file_share_failed
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
@@ -764,6 +771,12 @@ private fun id.homebase.api.client.connections.IntroductionPreflightStatus.reaso
         MR.string.chat_introduce_preflight_reason_unknown
 }
 
+// Plain fields, not state: written and read only while composing the detail pane.
+private class LastOpenDetail {
+    var detail: ChatDetail.Open? = null
+    var messages: MessageListUiState = MessageListUiState()
+}
+
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ConversationListUi(
@@ -815,6 +828,7 @@ fun ConversationListUi(
     val isListPaneHidden =
         scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
     val isComposerVisible = detail is ChatDetail.Open
+    val lastOpenDetail = remember { LastOpenDetail() }
 
     // Record what the user last saw at the top, so the return can tell whether the list reordered
     // while they were gone. ON_STOP runs inside the lifecycle callback; a coroutine would not be
@@ -833,7 +847,17 @@ fun ConversationListUi(
     // Notify parent about detail pane visibility in compact view
     LaunchedEffect(isListPaneHidden) { onDetailPaneVisibilityChanged(isListPaneHidden) }
 
-    LaunchedEffect(isComposerVisible) { onComposerVisibilityChanged(isComposerVisible) }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(isComposerVisible) {
+        onComposerVisibilityChanged(isComposerVisible)
+        // The closed chat stays composed while its pane slides out, so its composer's own
+        // dispose-time keyboard hide would land only after the slide.
+        if (!isComposerVisible) {
+            focusManager.clearFocus()
+            keyboardController?.hide()
+        }
+    }
 
     val hoistedMediaViewer = messagesUiState.hoistedMediaViewer(isExpanded)
     // The rail lives above this screen, so the viewer can only own the window if the rail is told
@@ -848,11 +872,24 @@ fun ConversationListUi(
         }
     }
 
-    @Suppress("DEPRECATION") BackHandler(detail is ChatDetail.Open) {
-        if (messagesUiState.fullScreenOverlay != null) {
-            onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
-        } else if (!isExpanded) {
+    // What the value overload of ListDetailPaneScaffold does internally, held here so the back
+    // gesture can seek the list/detail transition.
+    val scaffoldState = remember { MutableThreePaneScaffoldState(scaffoldValue) }
+    LaunchedEffect(scaffoldValue) { scaffoldState.animateTo(scaffoldValue) }
+
+    val hasOverlay = messagesUiState.fullScreenOverlay != null
+    @Suppress("DEPRECATION") BackHandler(detail is ChatDetail.Open && hasOverlay) {
+        onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
+    }
+    @Suppress("DEPRECATION") PredictiveBackHandler(detail is ChatDetail.Open && !hasOverlay && !isExpanded) { progress ->
+        val listValue = chatScaffoldValue(isExpanded = false, detail = ChatDetail.None)
+        try {
+            progress.collect { scaffoldState.seekTo(it.progress, listValue) }
             onUiAction(ConversationListUiAction.ClearSelection)
+        } catch (e: CancellationException) {
+            // A cancelled gesture leaves the value unchanged, so nothing else animates it back.
+            withContext(NonCancellable) { scaffoldState.animateTo(scaffoldState.currentState) }
+            throw e
         }
     }
 
@@ -876,7 +913,7 @@ fun ConversationListUi(
                     }
                 },
                 directive = scaffoldDirective,
-                value = scaffoldValue,
+                scaffoldState = scaffoldState,
                 listPane = {
                     AnimatedPane(modifier = Modifier) {
                         val pane = newConversationPane
@@ -908,17 +945,25 @@ fun ConversationListUi(
                 detailPane = {
                     AnimatedPane {
                         if (detail is ChatDetail.Open) {
-                            key(detail.conversation.conversation.id) {
+                            lastOpenDetail.detail = detail
+                            lastOpenDetail.messages = messagesUiState
+                        }
+                        // On a compact window closing a chat hides this pane, which slides out with
+                        // whatever it renders: keep drawing the chat, not the empty placeholder.
+                        val closing = !isExpanded && detail !is ChatDetail.Open
+                        val shown = if (closing) lastOpenDetail.detail else detail
+                        if (shown is ChatDetail.Open) {
+                            key(shown.conversation.conversation.id) {
                                 ConversationMessagesPane(
-                                    conversation = detail.conversation,
-                                    uiState = messagesUiState,
+                                    conversation = shown.conversation,
+                                    uiState = if (closing) lastOpenDetail.messages else messagesUiState,
                                     textFieldState = messageInputTextFieldState,
                                     searchTextState = messagesSearchTextState,
                                     showBackButton = isListPaneHidden,
                                     onBackClick = {
-                                        onUiAction(ConversationListUiAction.ClearSelection)
+                                        if (!closing) onUiAction(ConversationListUiAction.ClearSelection)
                                     },
-                                    onUiAction = onUiAction,
+                                    onUiAction = if (closing) ({}) else onUiAction,
                                     hoistMediaViewer = isExpanded,
                                 )
                             }

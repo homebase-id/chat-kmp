@@ -448,9 +448,10 @@ fun MessageBubbleRaw(
     val timestamp = formatMessageTimestamp(message.userDate)
     val messageInfoText =
         if (message.isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp" else timestamp
-    val mediaOnly = remember { !message.content.hasContent() && hasMedia && message.messageAppData.replyPreview == null }
-    val replyMediaOnly = remember { !message.content.hasContent() && hasMedia && message.messageAppData.replyPreview != null }
-    val emojiOnly = remember { message.content.isEmojiContentOnly() && !hasMedia }
+    val hasReplyPreview = message.messageAppData.replyPreview != null
+    val mediaOnly = remember(message.content, hasMedia, hasReplyPreview) { !message.content.hasContent() && hasMedia && !hasReplyPreview }
+    val replyMediaOnly = remember(message.content, hasMedia, hasReplyPreview) { !message.content.hasContent() && hasMedia && hasReplyPreview }
+    val emojiOnly = remember(message.content, hasMedia) { message.content.isEmojiContentOnly() && !hasMedia }
 
     // A media-only sticker message must float directly on the chat wallpaper, so its
     // transparent pixels show the background — not the bubble fill. Detect it the same

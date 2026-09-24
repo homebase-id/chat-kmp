@@ -11,6 +11,7 @@ import id.homebase.core.widget.ReactionDisplayItem
 data class PostDetailUiState(
     val post: FeedPostItem? = null,
     val comments: List<PostCommentItem> = emptyList(),
+    val isLoadingComments: Boolean = false,
     val isLoading: Boolean = false,
     val replyingTo: PostCommentItem? = null,
     /** Null while credentials are still loading; the UI treats that as "not mine" until it lands. */
