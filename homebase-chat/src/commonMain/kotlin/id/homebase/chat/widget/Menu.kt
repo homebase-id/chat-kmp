@@ -109,6 +109,8 @@ import id.homebase.resources.settings
 import id.homebase.resources.share
 import kotlinx.collections.immutable.ImmutableList
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.pow
 
 @Composable
@@ -566,16 +568,17 @@ private fun <T> signalReveal(delayMillis: Int) = tween<T>(200, delayMillis, dece
 
 private fun <T> signalHide() = tween<T>(150, easing = decelerate(2f))
 
+private val AccelerateDecelerate = Easing { cos((it + 1f) * PI).toFloat() / 2f + 0.5f }
+
 // The bubble sits directly above the action menu; the reaction bar sits above both with a gap
 // of up to 140dp that the bubble fills. Placed in one pass so the first frame is already final.
 @Composable
-private fun AnimatedVisibilityScope.MessageLongPressLayout(
+internal fun AnimatedVisibilityScope.MessageLongPressLayout(
     alignEnd: Boolean,
     reactionMenu: (@Composable (background: Modifier, emoji: (Int) -> Modifier) -> Unit)?,
     bubble: @Composable () -> Unit,
     actionMenu: @Composable () -> Unit,
 ) {
-    val motion = MaterialTheme.motionScheme
     Layout(
         contents = listOf(
             {
@@ -596,8 +599,9 @@ private fun AnimatedVisibilityScope.MessageLongPressLayout(
             {
                 Box(
                     Modifier.animateEnterExit(
-                        enter = scaleIn(motion.defaultSpatialSpec(), initialScale = 0.9f),
-                        exit = scaleOut(motion.fastSpatialSpec(), targetScale = 0.9f),
+                        enter = scaleIn(tween(200, easing = AccelerateDecelerate), initialScale = 0.95f),
+                        // Signal hides the row under its snapshot; our row stays visible, so fade instead.
+                        exit = fadeOut(signalHide()),
                     ),
                 ) { bubble() }
             },
@@ -882,7 +886,7 @@ private fun PopupWithScrim(
                     modifier = Modifier
                         .animateEnterExit(
                             enter = fadeIn(motion.defaultEffectsSpec()),
-                            exit = fadeOut(motion.fastEffectsSpec()),
+                            exit = fadeOut(signalHide()),
                         )
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.8f))
