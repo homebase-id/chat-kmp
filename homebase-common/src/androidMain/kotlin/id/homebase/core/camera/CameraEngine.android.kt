@@ -4,8 +4,13 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.TotalCaptureResult
 import android.hardware.display.DisplayManager
 import android.view.Display
+import androidx.camera.camera2.interop.Camera2Interop
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -68,6 +73,7 @@ import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
 import java.io.File
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.math.exp
 import kotlin.math.ln
@@ -123,6 +129,7 @@ internal class AndroidCameraEngine(
     private var zoomAnimation: Job? = null
     private var focusClear: Job? = null
     private var released = false
+    private var previewGeneration = 0
 
     private var observedZoom: LiveData<ZoomState>? = null
     private val zoomObserver = Observer<ZoomState> { zoom ->
@@ -301,13 +308,33 @@ internal class AndroidCameraEngine(
         }
     }
 
-    private fun buildPreview(): Preview =
-        // Target rotation is read once at build time by the Compose viewfinder, hence the rebuild on rotation.
-        Preview.Builder()
+    // Target rotation is read once at build time by the Compose viewfinder, hence the rebuild on rotation.
+    @OptIn(ExperimentalCamera2Interop::class)
+    private fun buildPreview(): Preview {
+        val builder = Preview.Builder()
             .setResolutionSelector(RESOLUTION_16_9)
             .setTargetRotation(displayRotation)
-            .build()
-            .also { it.setSurfaceProvider { request -> _surfaceRequest.value = request } }
+        val generation = ++previewGeneration
+        val delivered = AtomicBoolean(false)
+        // Camera state OPEN precedes the first frame; this is the signal PreviewView's STREAMING state uses.
+        Camera2Interop.Extender(builder).setSessionCaptureCallback(
+            object : CameraCaptureSession.CaptureCallback() {
+                override fun onCaptureCompleted(
+                    session: CameraCaptureSession,
+                    request: CaptureRequest,
+                    result: TotalCaptureResult,
+                ) {
+                    if (delivered.compareAndSet(false, true)) mainExecutor.execute { onFirstFrame(generation) }
+                }
+            },
+        )
+        return builder.build().also { it.setSurfaceProvider { request -> _surfaceRequest.value = request } }
+    }
+
+    private fun onFirstFrame(generation: Int) {
+        if (released || generation != previewGeneration) return
+        _uiState.update { it.copy(awaitingFirstFrame = false) }
+    }
 
     private fun buildImageCapture(): ImageCapture =
         ImageCapture.Builder()
@@ -369,7 +396,7 @@ internal class AndroidCameraEngine(
     override fun setLens(lens: CameraLens) {
         val state = _uiState.value
         if (state.lens == lens || recording != null || !state.hasLens(lens)) return
-        _uiState.update { it.copy(lens = lens, focusPoint = null) }
+        _uiState.update { it.copy(lens = lens, focusPoint = null, awaitingFirstFrame = true) }
         rebindOrReport()
     }
 

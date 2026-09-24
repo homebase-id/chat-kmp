@@ -4,6 +4,8 @@ import androidx.compose.ui.geometry.Offset
 
 data class CameraUiState(
     val isBound: Boolean = false,
+    /** Bound, but the new camera hasn't delivered a frame yet: the preview still holds the previous lens's. */
+    val awaitingFirstFrame: Boolean = false,
     val isAvailable: Boolean = true,
     val lens: CameraLens = CameraLens.Back,
     val hasBackLens: Boolean = true,
