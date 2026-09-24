@@ -57,6 +57,8 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -760,6 +762,12 @@ private fun id.homebase.api.client.connections.IntroductionPreflightStatus.reaso
         MR.string.chat_introduce_preflight_reason_unknown
 }
 
+// Plain fields, not state: written and read only while composing the detail pane.
+private class LastOpenDetail {
+    var detail: ChatDetail.Open? = null
+    var messages: MessageListUiState = MessageListUiState()
+}
+
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ConversationListUi(
@@ -809,6 +817,7 @@ fun ConversationListUi(
     val isListPaneHidden =
         scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
     val isComposerVisible = detail is ChatDetail.Open
+    val lastOpenDetail = remember { LastOpenDetail() }
 
     // Record what the user last saw at the top, so the return can tell whether the list reordered
     // while they were gone. ON_STOP runs inside the lifecycle callback; a coroutine would not be
@@ -824,7 +833,17 @@ fun ConversationListUi(
         listPaneWasVisible = !isListPaneHidden
     }
 
-    LaunchedEffect(isComposerVisible) { onComposerVisibilityChanged(isComposerVisible) }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(isComposerVisible) {
+        onComposerVisibilityChanged(isComposerVisible)
+        // The closed chat stays composed while its pane slides out, so its composer's own
+        // dispose-time keyboard hide would land only after the slide.
+        if (!isComposerVisible) {
+            focusManager.clearFocus()
+            keyboardController?.hide()
+        }
+    }
 
     val hoistedMediaViewer = messagesUiState.hoistedMediaViewer(isExpanded)
     DisposableEffect(Unit) {
@@ -833,10 +852,11 @@ fun ConversationListUi(
         }
     }
 
-    @Suppress("DEPRECATION") BackHandler(detail is ChatDetail.Open) {
-        if (messagesUiState.fullScreenOverlay != null) {
+    val hasOverlay = messagesUiState.fullScreenOverlay != null
+    @Suppress("DEPRECATION") BackHandler(detail is ChatDetail.Open && (hasOverlay || !isExpanded)) {
+        if (hasOverlay) {
             onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
-        } else if (!isExpanded) {
+        } else {
             onUiAction(ConversationListUiAction.ClearSelection)
         }
     }
@@ -893,17 +913,25 @@ fun ConversationListUi(
                 detailPane = {
                     AnimatedPane {
                         if (detail is ChatDetail.Open) {
-                            key(detail.conversation.conversation.id) {
+                            lastOpenDetail.detail = detail
+                            lastOpenDetail.messages = messagesUiState
+                        }
+                        // On a compact window closing a chat hides this pane, which slides out with
+                        // whatever it renders: keep drawing the chat, not the empty placeholder.
+                        val closing = !isExpanded && detail !is ChatDetail.Open
+                        val shown = if (closing) lastOpenDetail.detail else detail
+                        if (shown is ChatDetail.Open) {
+                            key(shown.conversation.conversation.id) {
                                 ConversationMessagesPane(
-                                    conversation = detail.conversation,
-                                    uiState = messagesUiState,
+                                    conversation = shown.conversation,
+                                    uiState = if (closing) lastOpenDetail.messages else messagesUiState,
                                     textFieldState = messageInputTextFieldState,
                                     searchTextState = messagesSearchTextState,
                                     showBackButton = isListPaneHidden,
                                     onBackClick = {
-                                        onUiAction(ConversationListUiAction.ClearSelection)
+                                        if (!closing) onUiAction(ConversationListUiAction.ClearSelection)
                                     },
-                                    onUiAction = onUiAction,
+                                    onUiAction = if (closing) ({}) else onUiAction,
                                     hoistMediaViewer = isExpanded,
                                 )
                             }
