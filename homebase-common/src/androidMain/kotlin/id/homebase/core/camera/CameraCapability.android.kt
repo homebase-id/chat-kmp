@@ -11,8 +11,13 @@ import co.touchlab.kermit.Logger
 internal object CameraCapability {
     private const val TAG = "CameraCapability"
 
+    @Volatile private var cachedAnyLegacy: Boolean? = null
+
     /** LEGACY HALs advertise Preview+Image+Video but deliver broken streams, so they bind per mode. */
-    fun anyCameraIsLegacy(context: Context): Boolean {
+    fun anyCameraIsLegacy(context: Context): Boolean =
+        cachedAnyLegacy ?: queryAnyLegacy(context).also { cachedAnyLegacy = it }
+
+    private fun queryAnyLegacy(context: Context): Boolean {
         val manager = context.applicationContext.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         return try {
             manager.cameraIdList.any { id ->

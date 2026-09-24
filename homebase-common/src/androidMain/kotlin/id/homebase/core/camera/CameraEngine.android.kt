@@ -154,7 +154,6 @@ internal class AndroidCameraEngine(
         displayRotation = currentDisplayRotation()
         displayManager.registerDisplayListener(displayListener, null)
         scope.launch {
-            pruneOldCaptures()
             val cameraProvider = try {
                 ProcessCameraProvider.awaitInstance(context)
             } catch (e: Exception) {
@@ -208,7 +207,7 @@ internal class AndroidCameraEngine(
         val state = _uiState.value
         val selector = state.lens.selector
         val newPreview = buildPreview()
-        val newImage = buildImageCapture(state)
+        val newImage = buildImageCapture()
         val newVideo = buildVideoCapture(state)
 
         val perMode: List<UseCase> =
@@ -264,16 +263,18 @@ internal class AndroidCameraEngine(
         observe(bound)
         val info = bound.cameraInfo
         val hasFlash = info.hasFlashUnit()
+        val zoom = info.zoomState.value
         _uiState.update {
             it.copy(
                 hasFlashUnit = hasFlash,
                 supportsSimultaneousVideo = useCases.size == 3,
-                zoomRatio = info.zoomState.value?.zoomRatio ?: 1f,
-                minZoom = info.zoomState.value?.minZoomRatio ?: 1f,
-                maxZoom = info.zoomState.value?.maxZoomRatio ?: 1f,
+                zoomRatio = zoom?.zoomRatio ?: 1f,
+                minZoom = zoom?.minZoomRatio ?: 1f,
+                maxZoom = zoom?.maxZoomRatio ?: 1f,
                 focusPoint = null,
             )
         }
+        // A fresh ImageCapture defaults to FLASH_MODE_OFF, so every rebind re-seeds flash from state.
         imageCapture?.flashMode = FlashPolicy.effectivePhotoFlash(_uiState.value.flashMode, hasFlash).cameraXMode
         applyTorch()
     }
@@ -302,12 +303,10 @@ internal class AndroidCameraEngine(
             .build()
             .also { it.setSurfaceProvider { request -> _surfaceRequest.value = request } }
 
-    // A fresh ImageCapture defaults to FLASH_MODE_OFF, so every rebind re-seeds flash from state.
-    private fun buildImageCapture(state: CameraUiState): ImageCapture =
+    private fun buildImageCapture(): ImageCapture =
         ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
             .setResolutionSelector(RESOLUTION_16_9)
-            .setFlashMode(FlashPolicy.effectivePhotoFlash(state.flashMode, hasFlashUnit = true).cameraXMode)
             .setTargetRotation(captureRotation.surfaceRotation)
             .build()
 
@@ -363,9 +362,7 @@ internal class AndroidCameraEngine(
 
     override fun setLens(lens: CameraLens) {
         val state = _uiState.value
-        if (state.lens == lens || state.isRecording || recording != null) return
-        if (lens == CameraLens.Front && !state.hasFrontLens) return
-        if (lens == CameraLens.Back && !state.hasBackLens) return
+        if (state.lens == lens || recording != null || !state.hasLens(lens)) return
         _uiState.update { it.copy(lens = lens, focusPoint = null) }
         rebindOrReport()
     }
@@ -422,7 +419,7 @@ internal class AndroidCameraEngine(
     override fun setZoomRatio(ratio: Float, animate: Boolean) {
         val cam = camera ?: return
         val state = _uiState.value
-        val target = ratio.coerceIn(state.minZoom, maxOf(state.minZoom, state.maxZoom))
+        val target = state.clampZoom(ratio)
         zoomAnimation?.cancel()
         val from = state.zoomRatio
         if (!animate || from <= 0f || target <= 0f || from == target) {
@@ -585,12 +582,6 @@ internal class AndroidCameraEngine(
         return File(outputDir, "${prefix}_${System.currentTimeMillis()}.$extension")
     }
 
-    // materializeForUpload copies captures into the sandbox, so originals here are disposable.
-    private suspend fun pruneOldCaptures() = withContext(Dispatchers.IO) {
-        val cutoff = System.currentTimeMillis() - PRUNE_AGE_MS
-        outputDir.listFiles()?.filter { it.lastModified() < cutoff }?.forEach { it.delete() }
-    }
-
     private fun ProcessCameraProvider.hasCameraSafe(selector: CameraSelector): Boolean =
         try {
             hasCamera(selector)
@@ -607,7 +598,6 @@ internal class AndroidCameraEngine(
         const val ZOOM_ANIMATION_MS = 250L
         const val ZOOM_FRAME_MS = 16L
         const val FOCUS_AUTO_CANCEL_S = 3L
-        const val PRUNE_AGE_MS = 24L * 60 * 60 * 1000
 
         val RESOLUTION_16_9: ResolutionSelector = ResolutionSelector.Builder()
             .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)

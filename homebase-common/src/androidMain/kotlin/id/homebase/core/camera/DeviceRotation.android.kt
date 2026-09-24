@@ -16,8 +16,7 @@ import kotlinx.coroutines.delay
 actual fun rememberDeviceRotation(): QuarterTurn {
     val context = LocalContext.current
     var raw by remember { mutableStateOf<QuarterTurn?>(null) }
-    var committed by remember { mutableStateOf(QuarterTurn.R0) }
-    var hasCommitted by remember { mutableStateOf(false) }
+    var committed by remember { mutableStateOf<QuarterTurn?>(null) }
 
     DisposableEffect(context) {
         val listener = object : OrientationEventListener(context) {
@@ -32,12 +31,11 @@ actual fun rememberDeviceRotation(): QuarterTurn {
 
     LaunchedEffect(raw) {
         val next = raw ?: return@LaunchedEffect
-        if (hasCommitted) delay(DeviceRotation.SETTLE_MS)
+        if (committed != null) delay(DeviceRotation.SETTLE_MS)
         committed = next
-        hasCommitted = true
     }
 
-    return committed
+    return committed ?: QuarterTurn.R0
 }
 
 /** Clockwise physical rotation → CameraX target rotation (Surface.ROTATION_* is counter-clockwise). */

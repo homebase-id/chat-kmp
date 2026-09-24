@@ -115,6 +115,7 @@ import platform.darwin.NSObjectProtocol
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import platform.darwin.dispatch_queue_create
+import kotlin.coroutines.resume
 import kotlin.time.Clock
 
 @Composable
@@ -165,11 +166,11 @@ internal class IosCameraEngine : CameraEngine {
     private var subjectAreaObserver: NSObjectProtocol? = null
     private var focusClear: Job? = null
     private var released = false
+    private val outputDir = NSTemporaryDirectory() + CAMERA_CACHE_DIR
 
     fun start() {
         observeSession()
         onSessionQueue {
-            pruneOldCaptures()
             backDevice = firstDevice(BACK_DEVICE_TYPES, AVCaptureDevicePositionBack)
             frontDevice = firstDevice(FRONT_DEVICE_TYPES, AVCaptureDevicePositionFront)
             val hasBack = backDevice != null
@@ -195,6 +196,7 @@ internal class IosCameraEngine : CameraEngine {
             }
             session.startRunning()
             _uiState.update { it.copy(isBound = session.running, supportsSimultaneousVideo = true) }
+            pruneOldCaptures()
         }
     }
 
@@ -293,9 +295,7 @@ internal class IosCameraEngine : CameraEngine {
 
     override fun setLens(lens: CameraLens) {
         val state = _uiState.value
-        if (state.lens == lens || recordingDelegate != null) return
-        if (lens == CameraLens.Front && !state.hasFrontLens) return
-        if (lens == CameraLens.Back && !state.hasBackLens) return
+        if (state.lens == lens || recordingDelegate != null || !state.hasLens(lens)) return
         _uiState.update { it.copy(lens = lens, focusPoint = null) }
         onSessionQueue {
             session.beginConfiguration()
@@ -342,7 +342,7 @@ internal class IosCameraEngine : CameraEngine {
 
     override fun setZoomRatio(ratio: Float, animate: Boolean) {
         val state = _uiState.value
-        val target = ratio.coerceIn(state.minZoom, maxOf(state.minZoom, state.maxZoom))
+        val target = state.clampZoom(ratio)
         _uiState.update { it.copy(zoomRatio = target) }
         onSessionQueue {
             val device = currentDevice() ?: return@onSessionQueue
@@ -418,7 +418,7 @@ internal class IosCameraEngine : CameraEngine {
                         Logger.e(tag = TAG) { "Photo capture failed: ${error?.localizedDescription}" }
                         _errors.tryEmit(CameraError.PhotoFailed(error?.localizedDescription))
                     }
-                    if (cont.isActive) cont.resumeWith(Result.success(if (written) PlatformFile(url) else null))
+                    if (cont.isActive) cont.resume(if (written) PlatformFile(url) else null)
                 }
             }
             photoDelegates += delegate
@@ -535,22 +535,20 @@ internal class IosCameraEngine : CameraEngine {
     }
 
     private fun newOutputUrl(prefix: String, extension: String): NSURL? {
-        val dir = NSTemporaryDirectory() + CAMERA_CACHE_DIR
-        if (!NSFileManager.defaultManager.createDirectoryAtPath(dir, withIntermediateDirectories = true, attributes = null, error = null)) {
+        if (!NSFileManager.defaultManager.createDirectoryAtPath(outputDir, withIntermediateDirectories = true, attributes = null, error = null)) {
             _errors.tryEmit(CameraError.InsufficientStorage)
             return null
         }
         val name = "${prefix}_${Clock.System.now().toEpochMilliseconds()}.$extension"
-        return NSURL.fileURLWithPath("$dir/$name")
+        return NSURL.fileURLWithPath("$outputDir/$name")
     }
 
     // materializeForUpload copies captures into the sandbox, so originals here are disposable.
     private fun pruneOldCaptures() {
         val fm = NSFileManager.defaultManager
-        val dir = NSTemporaryDirectory() + CAMERA_CACHE_DIR
         val cutoff = NSDate().timeIntervalSince1970 - PRUNE_AGE_S
-        fm.contentsOfDirectoryAtPath(dir, error = null)?.filterIsInstance<String>()?.forEach { name ->
-            val path = "$dir/$name"
+        fm.contentsOfDirectoryAtPath(outputDir, error = null)?.filterIsInstance<String>()?.forEach { name ->
+            val path = "$outputDir/$name"
             val modified = fm.attributesOfItemAtPath(path, error = null)?.get(NSFileModificationDate) as? NSDate
             if (modified != null && modified.timeIntervalSince1970 < cutoff) fm.removeItemAtPath(path, error = null)
         }
