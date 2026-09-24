@@ -100,10 +100,6 @@ fun EditConversationGroupUi(
 ) {
     val focusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
-
     Scaffold(
         modifier = Modifier.imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -156,6 +152,8 @@ fun EditConversationGroupUi(
                         onClickRemove = { onUiAction(EditConversationGroupUiAction.RemoveGroupImage) },
                     )
                 }
+                // The field only exists once loading ends; requesting focus any earlier is a no-op.
+                LaunchedEffect(Unit) { focusRequester.requestFocus() }
                 MinimalTextField(
                     modifier = Modifier
                         .padding(16.dp)

@@ -276,6 +276,7 @@ fun MomentAudienceScreen(
                 onMemberClick = {},
                 onAddMemberClick = {},
                 onRemoveMemberClick = {},
+                connectionStatuses = uiState.connectionStatuses,
             )
         }
     }

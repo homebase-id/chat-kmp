@@ -51,7 +51,7 @@ fun LocationTraceCanvas(
      * interpolated leading edge + a playhead marker on the active segment). Null =
      * the static full-day view.
      */
-    playbackClockMs: Long? = null,
+    playbackClockMs: (() -> Long)? = null,
     /** Places the user lingered; drawn as dots sized by dwell length (see [dwellRadiusDp]). */
     dwellStops: List<DwellStop> = emptyList(),
 ) {
@@ -97,7 +97,7 @@ fun LocationTraceCanvas(
                 traceColors = traceColors,
                 showMapTiles = showMapTiles,
                 highlightLast = highlightLast,
-                playbackClockMs = playbackClockMs,
+                playbackClockMs = playbackClockMs?.invoke(),
             )
         },
     )
