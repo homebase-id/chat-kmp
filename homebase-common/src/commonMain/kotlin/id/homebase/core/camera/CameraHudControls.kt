@@ -16,6 +16,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,10 +44,12 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.outlined.Cameraswitch
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.MicOff
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconButtonShapes
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -62,7 +65,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -85,6 +90,7 @@ import id.homebase.resources.camera_lens_back
 import id.homebase.resources.camera_lens_front
 import id.homebase.resources.camera_no_mic
 import id.homebase.resources.camera_no_mic_a11y
+import id.homebase.resources.camera_open_gallery
 import id.homebase.resources.camera_recording_a11y
 import id.homebase.resources.camera_starting
 import id.homebase.resources.camera_state_auto
@@ -105,6 +111,7 @@ import kotlin.time.Clock
 internal const val CLOSE_TAG = "camera_close"
 internal const val FLASH_TAG = "camera_flash"
 internal const val FLIP_TAG = "camera_flip"
+internal const val GALLERY_TAG = "camera_gallery"
 internal const val MODE_PHOTO_TAG = "camera_mode_photo"
 internal const val MODE_VIDEO_TAG = "camera_mode_video"
 internal const val TIMER_TAG = "camera_timer"
@@ -487,6 +494,53 @@ internal fun FlipLensButton(
                     cameraDistance = 12f * density
                 },
         )
+    }
+}
+
+/** Shares the shutter row's start slot with the lock target, which only shows while recording. */
+@Composable
+internal fun GalleryButton(
+    visible: Boolean,
+    enabled: Boolean,
+    thumbnail: ImageBitmap?,
+    iconRotation: () -> Float,
+    onClick: () -> Unit,
+) {
+    val motion = MaterialTheme.motionScheme
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(motion.fastEffectsSpec()) + scaleIn(motion.fastSpatialSpec(), initialScale = 0.8f),
+        exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec(), targetScale = 0.8f),
+    ) {
+        val label = stringResource(MR.string.camera_open_gallery)
+        IconButton(
+            onClick = onClick,
+            enabled = enabled,
+            colors = hudIconButtonColors(),
+            shapes = IconButtonShapes(
+                shape = IconButtonDefaults.mediumSquareShape,
+                pressedShape = IconButtonDefaults.mediumPressedShape,
+            ),
+            modifier = Modifier
+                .size(SideSlotSize)
+                .graphicsLayer { rotationZ = iconRotation() }
+                .testTag(GALLERY_TAG),
+        ) {
+            if (thumbnail != null) {
+                Image(
+                    bitmap = thumbnail,
+                    contentDescription = label,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Outlined.PhotoLibrary,
+                    contentDescription = label,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+        }
     }
 }
 

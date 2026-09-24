@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -59,6 +60,7 @@ fun CameraCaptureDialog(
     allowedModes: CameraModes,
     initialMode: CaptureMode = CaptureMode.Photo,
     mirrorFront: Boolean = true,
+    onOpenGallery: (() -> Unit)? = null,
     onResult: (PlatformFile) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -68,6 +70,7 @@ fun CameraCaptureDialog(
             allowedModes = allowedModes,
             initialMode = initialMode,
             mirrorFront = mirrorFront,
+            onOpenGallery = onOpenGallery,
             onResult = onResult,
             onDismiss = onDismiss,
         )
@@ -79,6 +82,7 @@ fun CameraCaptureScreen(
     allowedModes: CameraModes,
     initialMode: CaptureMode = CaptureMode.Photo,
     mirrorFront: Boolean = true,
+    onOpenGallery: (() -> Unit)? = null,
     onResult: (PlatformFile) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -89,6 +93,7 @@ fun CameraCaptureScreen(
                 if (permissions.camera == CameraPermissionState.Granted) {
                     // Created only once granted: binding without the permission fails instead of waiting.
                     val engine = rememberCameraEngine()
+                    val thumbnailPx = with(LocalDensity.current) { SideSlotSize.roundToPx() }
                     CameraCaptureContent(
                         engine = engine,
                         allowedModes = allowedModes,
@@ -101,6 +106,8 @@ fun CameraCaptureScreen(
                         displayRotation = rememberDisplayRotation(),
                         onResult = onResult,
                         onDismiss = onDismiss,
+                        onOpenGallery = onOpenGallery,
+                        galleryThumbnail = onOpenGallery?.let { rememberLatestGalleryThumbnail(thumbnailPx) },
                     )
                 } else {
                     CameraPermissionPane(

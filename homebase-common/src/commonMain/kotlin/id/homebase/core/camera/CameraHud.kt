@@ -49,6 +49,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -148,6 +149,8 @@ internal fun CameraCaptureContent(
     onResult: (PlatformFile) -> Unit,
     onDismiss: () -> Unit,
     displayRotation: QuarterTurn = QuarterTurn.R0,
+    onOpenGallery: (() -> Unit)? = null,
+    galleryThumbnail: ImageBitmap? = null,
     preview: @Composable (Modifier) -> Unit = {
         CameraPreview(engine, it, onLongPressFocus = { haptics.perform(HapticEvent.Confirm) })
     },
@@ -672,6 +675,23 @@ internal fun CameraCaptureContent(
                 onHoldEnd = { if (heldRecording) stopRecording() },
             )
         }
+        val startSlot = @Composable {
+            Box(contentAlignment = Alignment.Center) {
+                if (onOpenGallery != null) {
+                    GalleryButton(
+                        visible = !looksRecording,
+                        enabled = !busy,
+                        thumbnail = galleryThumbnail,
+                        iconRotation = iconRotation,
+                        onClick = {
+                            haptics.perform(HapticEvent.Tick)
+                            onOpenGallery()
+                        },
+                    )
+                }
+                lockTarget()
+            }
+        }
         val flip = @Composable {
             FlipLensButton(
                 visible = ui.hasFrontLens && ui.hasBackLens,
@@ -697,7 +717,7 @@ internal fun CameraCaptureContent(
                     ) {
                         flip()
                         shutter()
-                        lockTarget()
+                        startSlot()
                     }
                 }
                 Column(
@@ -739,7 +759,7 @@ internal fun CameraCaptureContent(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        lockTarget()
+                        startSlot()
                         shutter()
                         flip()
                     }
