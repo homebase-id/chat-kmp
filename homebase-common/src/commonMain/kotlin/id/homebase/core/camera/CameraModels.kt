@@ -46,3 +46,23 @@ internal fun choosePhotoSize(sizes: List<Pair<Int, Int>>): Pair<Int, Int>? {
     fun pixels(size: Pair<Int, Int>) = size.first.toLong() * size.second
     return sizes.filter { pixels(it) <= MAX_PHOTO_PIXELS }.maxByOrNull(::pixels) ?: sizes.minByOrNull(::pixels)
 }
+
+internal data class VideoFormat(val width: Int, val height: Int, val maxFps: Double, val photoSizes: List<Pair<Int, Int>>)
+
+/**
+ * Index of the 4:3 format for Photo mode: one that can still record (30 fps, 1080–1440 tall) so a hold-to-record
+ * needs no reconfigure, taking the largest still up to 12 MP and then the largest video.
+ */
+internal fun choosePhotoModeFormat(formats: List<VideoFormat>): Int? {
+    fun pixels(size: Pair<Int, Int>) = size.first.toLong() * size.second
+    fun stillScore(format: VideoFormat) =
+        choosePhotoSize(format.photoSizes)?.let(::pixels)?.takeIf { it <= MAX_PHOTO_PIXELS } ?: 0L
+    return formats.withIndex()
+        .filter { (_, f) ->
+            val long = maxOf(f.width, f.height)
+            val short = minOf(f.width, f.height)
+            long * 3 == short * 4 && short in 1080..1440 && f.maxFps >= 30.0 && f.photoSizes.isNotEmpty()
+        }
+        .maxWithOrNull(compareBy({ stillScore(it.value) }, { pixels(it.value.width to it.value.height) }))
+        ?.index
+}

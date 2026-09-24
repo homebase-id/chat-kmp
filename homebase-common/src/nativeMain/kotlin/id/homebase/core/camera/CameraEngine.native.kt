@@ -41,6 +41,7 @@ import org.koin.compose.koinInject
 import platform.AVFoundation.AVAuthorizationStatusAuthorized
 import platform.AVFoundation.AVCaptureConnection
 import platform.AVFoundation.AVCaptureDevice
+import platform.AVFoundation.AVCaptureDeviceFormat
 import platform.AVFoundation.AVCaptureDeviceInput
 import platform.AVFoundation.AVCaptureDevicePosition
 import platform.AVFoundation.AVCaptureDevicePositionBack
@@ -68,11 +69,15 @@ import platform.AVFoundation.AVCaptureSessionInterruptionEndedNotification
 import platform.AVFoundation.AVCaptureSessionInterruptionReasonKey
 import platform.AVFoundation.AVCaptureSessionInterruptionReasonVideoDeviceInUseByAnotherClient
 import platform.AVFoundation.AVCaptureSessionPresetHigh
+import platform.AVFoundation.AVCaptureSessionPresetInputPriority
+import platform.AVFoundation.AVCaptureSessionPresetPhoto
 import platform.AVFoundation.AVCaptureSessionRuntimeErrorNotification
 import platform.AVFoundation.AVCaptureSessionWasInterruptedNotification
 import platform.AVFoundation.AVCaptureTorchModeOff
 import platform.AVFoundation.AVCaptureTorchModeOn
 import platform.AVFoundation.AVCaptureVideoPreviewLayer
+import platform.AVFoundation.AVFrameRateRange
+import platform.AVFoundation.AVLayerVideoGravityResizeAspect
 import platform.AVFoundation.AVLayerVideoGravityResizeAspectFill
 import platform.AVFoundation.AVMediaTypeAudio
 import platform.AVFoundation.AVMediaTypeVideo
@@ -98,7 +103,12 @@ import platform.AVFoundation.maxAvailableVideoZoomFactor
 import platform.AVFoundation.minAvailableVideoZoomFactor
 import platform.AVFoundation.rampToVideoZoomFactor
 import platform.AVFoundation.CMVideoDimensionsValue
+import platform.CoreMedia.CMFormatDescriptionGetMediaSubType
 import platform.CoreMedia.CMVideoDimensions
+import platform.CoreMedia.CMVideoFormatDescriptionGetDimensions
+import platform.CoreVideo.kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+import platform.CoreVideo.kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+import platform.QuartzCore.CATransaction
 import platform.Foundation.NSValue
 import platform.AVFoundation.subjectAreaChangeMonitoringEnabled
 import platform.AVFoundation.torchMode
@@ -189,7 +199,6 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
             _uiState.update { it.copy(hasBackLens = hasBack, hasFrontLens = hasFront, lens = lens) }
 
             session.beginConfiguration()
-            if (session.canSetSessionPreset(AVCaptureSessionPresetHigh)) session.sessionPreset = AVCaptureSessionPresetHigh
             val attached = attachVideoInput(lens)
             if (session.canAddOutput(photoOutput)) session.addOutput(photoOutput)
             if (session.canAddOutput(movieOutput)) session.addOutput(movieOutput)
@@ -207,16 +216,17 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
     private fun firstDevice(types: List<String?>, position: AVCaptureDevicePosition): AVCaptureDevice? =
         types.firstNotNullOfOrNull { AVCaptureDevice.defaultDeviceWithDeviceType(it, AVMediaTypeVideo, position) }
 
-    /**
-     * Session queue, after a commit that changed the device. One 16:9 preset serves both modes (as on Android), so
-     * neither a mode switch nor a hold from Photo reconfigures; stills must be allowed past the video size.
-     */
+    /** Session queue, after any commit that changed the device, format or preset. */
     private fun configureOutputsForDevice() {
         val format = currentDevice()?.activeFormat ?: return
-        val sizes = format.supportedMaxPhotoDimensions.mapNotNull { value ->
-            (value as? NSValue)?.CMVideoDimensionsValue?.useContents { width to height }
+        val gravity = format.dimensions().let { (w, h) -> if (w * 3 == h * 4) AVLayerVideoGravityResizeAspect else AVLayerVideoGravityResizeAspectFill }
+        dispatch_async(dispatch_get_main_queue()) {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            previewLayer.videoGravity = gravity
+            CATransaction.commit()
         }
-        choosePhotoSize(sizes)?.let { (width, height) ->
+        choosePhotoSize(format.photoSizes())?.let { (width, height) ->
             photoOutput.maxPhotoDimensions = cValue<CMVideoDimensions> {
                 this.width = width
                 this.height = height
@@ -243,9 +253,40 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
         if (!session.canAddInput(input)) return false
         session.addInput(input)
         videoInput = input
+        applyModeFormat(device, _uiState.value.mode)
         configureNewDevice(device)
         dispatch_async(dispatch_get_main_queue()) { onDeviceActivated(device) }
         return true
+    }
+
+    /**
+     * Session queue, inside begin/commitConfiguration with [device] attached; false when nothing changed. Photo gets a
+     * recordable 4:3 format so a hold from Photo records without reconfiguring, as the Camera app's QuickTake does.
+     */
+    private fun applyModeFormat(device: AVCaptureDevice, mode: CaptureMode): Boolean {
+        val format = if (mode == CaptureMode.Photo) photoModeFormat(device) else null
+        if (format != null) {
+            if (session.sessionPreset == AVCaptureSessionPresetInputPriority && device.activeFormat == format) return false
+            device.withConfigurationLock { activeFormat = format }
+            return true
+        }
+        val preset = listOfNotNull(AVCaptureSessionPresetPhoto.takeIf { mode == CaptureMode.Photo }, AVCaptureSessionPresetHigh)
+            .firstOrNull { session.canSetSessionPreset(it) } ?: return false
+        if (session.sessionPreset == preset) return false
+        session.sessionPreset = preset
+        return true
+    }
+
+    private fun photoModeFormat(device: AVCaptureDevice): AVCaptureDeviceFormat? {
+        // 10-bit formats can't be recorded as H.264.
+        val formats = device.formats.filterIsInstance<AVCaptureDeviceFormat>()
+            .filter { CMFormatDescriptionGetMediaSubType(it.formatDescription) in EIGHT_BIT_420 }
+        val specs = formats.map { format ->
+            val (width, height) = format.dimensions()
+            val maxFps = format.videoSupportedFrameRateRanges.maxOfOrNull { (it as? AVFrameRateRange)?.maxFrameRate ?: 0.0 } ?: 0.0
+            VideoFormat(width, height, maxFps, format.photoSizes())
+        }
+        return choosePhotoModeFormat(specs)?.let(formats::get)
     }
 
     /** Virtual (multi-lens) devices start on their widest lens; move to the main wide lens so "1×" is the default. */
@@ -339,7 +380,26 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
     override fun setMode(mode: CaptureMode) {
         if (_uiState.value.mode == mode || recordingDelegate != null) return
         _uiState.update { it.copy(mode = mode) }
-        onSessionQueue { currentDevice()?.let { applyTorchOnQueue(it) } }
+        onSessionQueue {
+            val device = currentDevice() ?: return@onSessionQueue
+            if (_uiState.value.mode == mode) reconfigureForMode(device, mode)
+            applyTorchOnQueue(device)
+        }
+    }
+
+    private fun reconfigureForMode(device: AVCaptureDevice, mode: CaptureMode) {
+        session.beginConfiguration()
+        val changed = applyModeFormat(device, mode)
+        if (changed) {
+            _uiState.update { it.copy(awaitingFirstFrame = true) }
+            val factor = (_uiState.value.zoomRatio / zoomMultiplier)
+                .coerceIn(device.minAvailableVideoZoomFactor, device.maxAvailableVideoZoomFactor)
+            device.withConfigurationLock { videoZoomFactor = factor }
+        }
+        session.commitConfiguration()
+        if (!changed) return
+        configureOutputsForDevice()
+        dispatch_async(dispatch_get_main_queue()) { _uiState.update { it.copy(awaitingFirstFrame = false) } }
     }
 
     override fun setMirrorFront(enabled: Boolean) {
@@ -385,7 +445,9 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
     }
 
     fun focusAt(layerPoint: CValue<CGPoint>, viewOffset: Offset) {
+        // A tap on the Photo letterbox maps outside the frame.
         val devicePoint = previewLayer.captureDevicePointOfInterestForPoint(layerPoint)
+            .useContents { CGPointMake(x.coerceIn(0.0, 1.0), y.coerceIn(0.0, 1.0)) }
         _uiState.update { it.copy(focusPoint = viewOffset) }
         focusClear?.cancel()
         focusClear = scope.launch {
@@ -590,6 +652,14 @@ private fun AVCaptureConnection.configure(mirror: Boolean, rotationAngle: Double
     }
     if (rotationAngle != null && isVideoRotationAngleSupported(rotationAngle)) videoRotationAngle = rotationAngle
 }
+
+private fun AVCaptureDeviceFormat.dimensions(): Pair<Int, Int> =
+    CMVideoFormatDescriptionGetDimensions(formatDescription).useContents { width to height }
+
+private fun AVCaptureDeviceFormat.photoSizes(): List<Pair<Int, Int>> =
+    supportedMaxPhotoDimensions.mapNotNull { value -> (value as? NSValue)?.CMVideoDimensionsValue?.useContents { width to height } }
+
+private val EIGHT_BIT_420 = setOf(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
 
 private inline fun AVCaptureDevice.withConfigurationLock(block: AVCaptureDevice.() -> Unit) {
     if (lockForConfiguration(null)) {
