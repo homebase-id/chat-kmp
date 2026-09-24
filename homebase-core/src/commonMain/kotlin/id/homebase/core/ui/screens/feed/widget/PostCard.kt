@@ -163,7 +163,7 @@ fun PostCard(
         PostMedia(
             post = post,
             onMediaClick = onMediaClick,
-            onDoubleTapLike = { onToggleReaction(DOUBLE_TAP_EMOJI) },
+            onDoubleTapLike = { if (DOUBLE_TAP_EMOJI !in post.ownReactions) onToggleReaction(DOUBLE_TAP_EMOJI) },
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         )
 
