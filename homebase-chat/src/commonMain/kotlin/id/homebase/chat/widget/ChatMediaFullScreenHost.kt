@@ -56,20 +56,26 @@ fun ChatMediaFullScreenHost(
     title: String,
     snackbarHostState: SnackbarHostState,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier,
     onNavigateToMessage: ((messageId: Uuid) -> Unit)? = null,
     content: @Composable (SharedMediaHero) -> Unit,
 ) {
-    SharedMediaOverlay(item, modifier, content) { shown, sharedTransitionScope, animatedVisibilityScope ->
-        SharedMediaViewer(
-            item = shown,
-            driveId = driveId,
-            title = title,
-            snackbarHostState = snackbarHostState,
-            onDismiss = onDismiss,
-            onNavigateToMessage = onNavigateToMessage,
-            sharedTransitionScope = sharedTransitionScope,
-            animatedVisibilityScope = animatedVisibilityScope,
+    Box(Modifier.fillMaxSize()) {
+        SharedMediaOverlay(item, Modifier.fillMaxSize(), content) { shown, sharedTransitionScope, animatedVisibilityScope ->
+            SharedMediaViewer(
+                item = shown,
+                driveId = driveId,
+                title = title,
+                snackbarHostState = snackbarHostState,
+                onDismiss = onDismiss,
+                onNavigateToMessage = onNavigateToMessage,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
+        }
+        // The only host for [snackbarHostState]: a second one under the fading viewer would draw it twice.
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
         )
     }
 }
@@ -104,8 +110,7 @@ class SharedMediaHero internal constructor(
     private val sharedTransitionScope: SharedTransitionScope,
     private val transition: Transition<SharedMediaItem?>,
 ) {
-    // Hidden while its item is open, so the tile and the viewer swap on one transition.
-    // [modifier] sizes the slot, which stays put while the tile is gone.
+    // Hidden while its item is open so tile and viewer swap on one transition; [modifier] keeps the slot sized.
     @Composable
     fun Tile(
         item: SharedMediaItem,
@@ -141,121 +146,67 @@ private fun SharedMediaViewer(
 ) {
     val scope = rememberCoroutineScope()
     val actionService = org.koin.compose.koinInject<ChatMessageActionService>()
-    val driveFileProvider = org.koin.compose.koinInject<DriveFileProvider>()
-    val fileOps = org.koin.compose.koinInject<FileOperationsProvider>()
     val fileSystemHandler = getUriHandler()
+    val saveItem = rememberSharedMediaSaver(driveId, snackbarHostState)
 
     val ext = remember(item) {
         item.payload.contentType?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "bin"
     }
-    val saveName = remember(item) { item.payload.filename() ?: "${item.payload.key}.$ext" }
 
-    Box(Modifier.fillMaxSize()) {
-        FullScreenMediaViewer(
-            data = FullScreenOverlay.ViewMessageData(
-                messageId = item.fileId,
-                title = title,
-                userDate = item.date,
-                content = "",
-                fileId = item.fileId,
-                driveId = driveId,
-                payloads = listOf(item.payload),
-                keyHeader = item.keyHeader,
-                selectedPayloadKey = item.payload.key,
-            ),
-            onShare = { _, _ ->
-                scope.launch {
-                    try {
-                        val iv = item.payload.iv?.let { Base64.decode(it) } ?: return@launch
-                        // Stream-decrypt straight into share_outbound (#845) —
-                        // bounded RAM for any payload size; the old byte path
-                        // buffered the whole payload (~2×) in memory.
-                        val path = actionService.streamPayloadToShareOutbound(
-                            item.fileId, item.payload.key, KeyHeader(iv, item.keyHeader.aesKey), ".$ext"
-                        )
-                        if (path != null) {
-                            fileSystemHandler.shareFile(
-                                file = Path(path),
-                                onError = { e ->
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(
-                                            TranslationUtil.getString(
-                                                MR.string.file_share_failed,
-                                                e.message ?: TranslationUtil.getString(MR.string.error_unknown),
-                                            )
+    FullScreenMediaViewer(
+        data = FullScreenOverlay.ViewMessageData(
+            messageId = item.fileId,
+            title = title,
+            userDate = item.date,
+            content = "",
+            fileId = item.fileId,
+            driveId = driveId,
+            payloads = listOf(item.payload),
+            keyHeader = item.keyHeader,
+            selectedPayloadKey = item.payload.key,
+        ),
+        onShare = { _, _ ->
+            scope.launch {
+                try {
+                    val iv = item.payload.iv?.let { Base64.decode(it) } ?: return@launch
+                    // Stream-decrypt straight into share_outbound (#845) —
+                    // bounded RAM for any payload size; the old byte path
+                    // buffered the whole payload (~2×) in memory.
+                    val path = actionService.streamPayloadToShareOutbound(
+                        item.fileId, item.payload.key, KeyHeader(iv, item.keyHeader.aesKey), ".$ext"
+                    )
+                    if (path != null) {
+                        fileSystemHandler.shareFile(
+                            file = Path(path),
+                            onError = { e ->
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        TranslationUtil.getString(
+                                            MR.string.file_share_failed,
+                                            e.message ?: TranslationUtil.getString(MR.string.error_unknown),
                                         )
-                                    }
-                                },
-                            )
-                        }
-                    } catch (e: Exception) {
-                        snackbarHostState.showSnackbar(
-                            TranslationUtil.getString(
-                                MR.string.file_share_failed,
-                                e.message ?: TranslationUtil.getString(MR.string.error_unknown),
-                            )
+                                    )
+                                }
+                            },
                         )
                     }
-                }
-            },
-            onSave = { _, _ ->
-                scope.launch {
-                    try {
-                        val iv = item.payload.iv?.let { Base64.decode(it) } ?: return@launch
-                        val outPath = "${fileOps.getCacheDirectory()}/$saveName"
-                        val ok = driveFileProvider.streamPayloadDecryptedToPath(
-                            driveId = driveId,
-                            fileId = item.fileId,
-                            key = item.payload.key,
-                            keyHeader = KeyHeader(iv, item.keyHeader.aesKey),
-                            outputPath = outPath,
-                            fileOps = fileOps,
+                } catch (e: Exception) {
+                    snackbarHostState.showSnackbar(
+                        TranslationUtil.getString(
+                            MR.string.file_share_failed,
+                            e.message ?: TranslationUtil.getString(MR.string.error_unknown),
                         )
-                        if (ok) {
-                            fileSystemHandler.saveFile(
-                                file = Path(outPath),
-                                suggestedName = saveName,
-                                onSuccess = { loc ->
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(
-                                            TranslationUtil.getString(MR.string.file_saved_to, loc)
-                                        )
-                                    }
-                                },
-                                onError = { e ->
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(
-                                            TranslationUtil.getString(
-                                                MR.string.file_save_failed,
-                                                e.message ?: TranslationUtil.getString(MR.string.error_unknown),
-                                            )
-                                        )
-                                    }
-                                },
-                            )
-                        }
-                    } catch (e: Exception) {
-                        snackbarHostState.showSnackbar(
-                            TranslationUtil.getString(
-                                MR.string.file_save_failed,
-                                e.message ?: TranslationUtil.getString(MR.string.error_unknown),
-                            )
-                        )
-                    }
+                    )
                 }
-            },
-            onDelete = { onDismiss() },
-            onDismiss = onDismiss,
-            onNavigateToMessage = onNavigateToMessage?.let { cb -> { cb(item.messageId) } },
-            sharedTransitionScope = sharedTransitionScope,
-            animatedVisibilityScope = animatedVisibilityScope,
-        )
-        // The viewer covers the screen's Scaffold, and with it that Scaffold's snackbars.
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
-        )
-    }
+            }
+        },
+        onSave = { _, _ -> saveItem(item) },
+        onDelete = { onDismiss() },
+        onDismiss = onDismiss,
+        onNavigateToMessage = onNavigateToMessage?.let { cb -> { cb(item.messageId) } },
+        sharedTransitionScope = sharedTransitionScope,
+        animatedVisibilityScope = animatedVisibilityScope,
+    )
 }
 
 /**

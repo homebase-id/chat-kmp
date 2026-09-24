@@ -55,7 +55,6 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -310,7 +309,6 @@ fun GroupSettingsScreen(
                     title = uiState.conversation?.name.orEmpty(),
                     snackbarHostState = snackbarHostState,
                     onDismiss = { fullScreenItem = null },
-                    modifier = Modifier.fillMaxSize(),
                 ) { hero ->
                     GroupSettingsUi(
                         snackbarHostState = snackbarHostState,
@@ -398,7 +396,6 @@ fun GroupSettingsUi(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {},

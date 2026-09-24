@@ -26,7 +26,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -116,7 +115,6 @@ fun ConversationMediaScreen(
                     },
                 )
             },
-            snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { padding ->
             Box(modifier = Modifier.padding(padding).fillMaxSize()) {
                 val overview = uiState.overview
@@ -211,7 +209,7 @@ private fun MediaGridTab(
                     keyHeader = item.keyHeader,
                     imageSize = ImageSize.THUMB_MEDIUM,
                     isSticker = item.isSticker,
-                    modifier = Modifier.aspectRatio(1f),
+                    modifier = Modifier.fillMaxSize(),
                     shape = RoundedCornerShape(8.dp),
                     onClick = { onClick(item) },
                     sharedTransitionScope = sharedTransitionScope,

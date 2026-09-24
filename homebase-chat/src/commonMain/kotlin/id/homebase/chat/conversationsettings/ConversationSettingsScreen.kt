@@ -24,7 +24,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -128,8 +127,7 @@ fun ConversationSettingsUi(
     ) { hero ->
         Scaffold(
             topBar = {
-                // The avatar viewer draws inside the content slot; its own top bar must not stack
-                // under this one.
+                // The avatar viewer draws in the content slot; don't stack its top bar under this one.
                 if (fullScreenAvatar == null) {
                     TopAppBar(
                         title = {},
@@ -151,7 +149,6 @@ fun ConversationSettingsUi(
                     )
                 }
             },
-            snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { padding ->
             Box(modifier = Modifier.padding(padding)) {
                 Column(

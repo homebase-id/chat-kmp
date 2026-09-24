@@ -131,6 +131,7 @@ fun FullScreenMediaViewer(
             state = pagerState,
         ) { page ->
             val payload = data.payloads[page]
+            val isSettled = page == pagerState.settledPage
             val payloadIv = remember(payload.iv) {
                 payload.iv?.let {
                     try {
@@ -164,8 +165,8 @@ fun FullScreenMediaViewer(
                         source = source,
                         contentDescription = stringResource(MR.string.chat_message_image_attachment),
                         onTap = { showUI = !showUI },
-                        sharedTransitionScope = if (page == pagerState.settledPage) sharedTransitionScope else null,
-                        animatedVisibilityScope = if (page == pagerState.settledPage) animatedVisibilityScope else null,
+                        sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
+                        animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
                         sharedContentStateKey = "image-${data.fileId}-${payload.key}",
                     )
                 }
@@ -192,8 +193,8 @@ fun FullScreenMediaViewer(
                         source = source,
                         contentDescription = stringResource(MR.string.chat_message_image_attachment),
                         onTap = { showUI = !showUI },
-                        sharedTransitionScope = if (page == pagerState.settledPage) sharedTransitionScope else null,
-                        animatedVisibilityScope = if (page == pagerState.settledPage) animatedVisibilityScope else null,
+                        sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
+                        animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
                         sharedContentStateKey = "image-${data.fileId}-${payload.key}",
                     )
                 }
