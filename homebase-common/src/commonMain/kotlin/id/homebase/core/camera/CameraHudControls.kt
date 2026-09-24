@@ -1,6 +1,7 @@
 package id.homebase.core.camera
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
@@ -507,6 +508,7 @@ internal fun GalleryButton(
     onClick: () -> Unit,
 ) {
     val motion = MaterialTheme.motionScheme
+    val reduceMotion = LocalReduceMotion.current
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(motion.fastEffectsSpec()) + scaleIn(motion.fastSpatialSpec(), initialScale = 0.8f),
@@ -526,19 +528,26 @@ internal fun GalleryButton(
                 .graphicsLayer { rotationZ = iconRotation() }
                 .testTag(GALLERY_TAG),
         ) {
-            if (thumbnail != null) {
-                Image(
-                    bitmap = thumbnail,
-                    contentDescription = label,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Outlined.PhotoLibrary,
-                    contentDescription = label,
-                    modifier = Modifier.size(28.dp),
-                )
+            Crossfade(
+                targetState = thumbnail,
+                animationSpec = if (reduceMotion) snap() else motion.defaultEffectsSpec(),
+            ) { shown ->
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    if (shown != null) {
+                        Image(
+                            bitmap = shown,
+                            contentDescription = label,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.PhotoLibrary,
+                            contentDescription = label,
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
+                }
             }
         }
     }
