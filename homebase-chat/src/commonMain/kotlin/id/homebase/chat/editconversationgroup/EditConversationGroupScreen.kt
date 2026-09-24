@@ -1,28 +1,31 @@
 package id.homebase.chat.editconversationgroup
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.maxLength
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.animateFloatingActionButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -90,7 +93,7 @@ fun EditConversationGroupScreen(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun EditConversationGroupUi(
     snackbarHostState: SnackbarHostState,
@@ -119,12 +122,10 @@ fun EditConversationGroupUi(
             )
         },
         floatingActionButton = {
-            Button(
-                onClick = { onUiAction(EditConversationGroupUiAction.SaveGroup) },
-                modifier = Modifier.defaultMinSize(minWidth = 56.dp),
-                enabled = uiState.saveAllowed && !uiState.isLoading,
-                shape = CircleShape
-
+            val canSave = uiState.saveAllowed && !uiState.isLoading
+            ExtendedFloatingActionButton(
+                onClick = { if (canSave) onUiAction(EditConversationGroupUiAction.SaveGroup) },
+                modifier = Modifier.animateFloatingActionButton(visible = canSave, alignment = Alignment.BottomEnd),
             ) {
                 Text(stringResource(MR.string.save))
             }
@@ -136,33 +137,41 @@ fun EditConversationGroupUi(
                 .padding(padding),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (uiState.isLoading) {
-                Box(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else {
-                uiState.conversation?.let { conversation ->
-                    GroupImage(
-                        url = uiState.groupImage?.toString(),
-                        avatarModel = if (uiState.imageChanged) null else conversation.avatarModel,
-                        onClickAdd = { onUiAction(EditConversationGroupUiAction.AddGroupImage) },
-                        onClickRemove = { onUiAction(EditConversationGroupUiAction.RemoveGroupImage) },
+            Crossfade(
+                targetState = uiState.isLoading,
+                modifier = Modifier.weight(1f),
+                animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+            ) { loading ->
+                if (loading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        uiState.conversation?.let { conversation ->
+                            GroupImage(
+                                url = uiState.groupImage?.toString(),
+                                avatarModel = if (uiState.imageChanged) null else conversation.avatarModel,
+                                onClickAdd = { onUiAction(EditConversationGroupUiAction.AddGroupImage) },
+                                onClickRemove = { onUiAction(EditConversationGroupUiAction.RemoveGroupImage) },
+                            )
+                    }
+                    // The field only exists once loading ends; requesting focus any earlier is a no-op.
+                    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                    MinimalTextField(
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester),
+                        state = groupNameTextState,
+                        inputTransformation = InputTransformation.maxLength(100),
+                        placeHolderText = stringResource(MR.string.chat_group_name_placeholder),
                     )
+                    }
                 }
-                // The field only exists once loading ends; requesting focus any earlier is a no-op.
-                LaunchedEffect(Unit) { focusRequester.requestFocus() }
-                MinimalTextField(
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth()
-                        .focusRequester(focusRequester),
-                    state = groupNameTextState,
-                    inputTransformation = InputTransformation.maxLength(100),
-                    placeHolderText = stringResource(MR.string.chat_group_name_placeholder),
-                )
             }
         }
     }
