@@ -62,13 +62,13 @@ internal fun GifPasteSheet(
                 icon = HomebaseIcons.StickerOutlined,
                 label = stringResource(MR.string.chat_gif_paste_as_sticker),
                 contentDescription = stringResource(MR.string.cd_gif_paste_as_sticker),
-                onClick = onSendAsSticker,
+                onClick = { dismiss(onSendAsSticker) },
             )
             StickerOptionRow(
                 icon = Icons.Default.GifBox,
                 label = stringResource(MR.string.chat_gif_paste_as_gif),
                 contentDescription = stringResource(MR.string.cd_gif_paste_as_gif),
-                onClick = onSendAsGif,
+                onClick = { dismiss(onSendAsGif) },
             )
         }
     }
