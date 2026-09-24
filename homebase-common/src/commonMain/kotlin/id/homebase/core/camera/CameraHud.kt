@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -109,6 +110,8 @@ private val ExposureTravel = 160.dp
 internal val ShutterRowPadding = 32.dp
 private val ShutterRowMaxWidth = 480.dp
 private val RailGap = 24.dp
+private val SidewaysSnackbarMaxWidth = 480.dp
+private val SidewaysSnackbarClearance = 192.dp
 
 @Composable
 internal fun CameraCaptureContent(
@@ -387,7 +390,9 @@ internal fun CameraCaptureContent(
     }
 
     val buttonState = CaptureButtonState.of(ui.mode, ui.isRecording, isRecordingLocked = !heldRecording)
-    val iconRotation = animatedUprightRotation(deviceRotation.uprightIconDegrees(displayRotation))
+    val uprightDegrees = deviceRotation.uprightIconDegrees(displayRotation)
+    val iconRotation = animatedUprightRotation(uprightDegrees)
+    val sideways = abs(uprightDegrees) % 180f == 90f
     val colors = MaterialTheme.colorScheme
     val motion = MaterialTheme.motionScheme
     val keyFocus = remember { FocusRequester() }
@@ -639,7 +644,7 @@ internal fun CameraCaptureContent(
                     Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    SnackbarHost(snackbar, modifier = Modifier.padding(horizontal = 16.dp))
+                    if (!sideways) SnackbarHost(snackbar, modifier = Modifier.padding(horizontal = 16.dp))
                     zoomControls()
                     Spacer(Modifier.height(12.dp))
                     modeCarousel()
@@ -652,7 +657,7 @@ internal fun CameraCaptureContent(
             ) {
                 topBar()
                 Spacer(Modifier.weight(1f))
-                SnackbarHost(snackbar, modifier = Modifier.padding(horizontal = 16.dp))
+                if (!sideways) SnackbarHost(snackbar, modifier = Modifier.padding(horizontal = 16.dp))
                 zoomControls()
                 Spacer(Modifier.height(16.dp))
                 if (modes.size > 1) {
@@ -680,6 +685,16 @@ internal fun CameraCaptureContent(
                     }
                 }
             }
+        }
+        if (sideways) {
+            // Laid out along the long edge, then turned with the icons so it reads upright in the user's hand.
+            SnackbarHost(
+                snackbar,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .requiredWidth(minOf(maxHeight - SidewaysSnackbarClearance, SidewaysSnackbarMaxWidth))
+                    .graphicsLayer { rotationZ = iconRotation },
+            )
         }
     }
 }

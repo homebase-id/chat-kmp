@@ -7,6 +7,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
@@ -58,6 +59,7 @@ class CameraCaptureScreenTest {
         haptics: Haptics = RecordingHaptics(),
         reduceMotion: Boolean = false,
         size: DpSize = PhoneSize,
+        deviceRotation: QuarterTurn = QuarterTurn.R0,
         onResult: (PlatformFile) -> Unit = {},
     ) {
         setContent {
@@ -72,7 +74,7 @@ class CameraCaptureScreenTest {
                             mic = mic,
                             onRequestMic = onRequestMic,
                             haptics = haptics,
-                            deviceRotation = QuarterTurn.R0,
+                            deviceRotation = deviceRotation,
                             onResult = onResult,
                             onDismiss = {},
                             preview = { Box(it) },
@@ -754,6 +756,26 @@ class CameraCaptureScreenTest {
         onNodeWithTag(SHUTTER_TAG).performClick()
         waitForIdle()
         assertTrue("stop" in engine.calls)
+    }
+
+    @Test
+    fun snackbarTurnsWithTheIconsWhenTheDeviceIsSideways() = runComposeUiTest {
+        val engine = FakeCameraEngine()
+        showCamera(engine, deviceRotation = QuarterTurn.R90)
+        engine.errors.tryEmit(CameraError.BindFailed)
+        waitForIdle()
+        val bounds = onNodeWithText("Couldn't start the camera").assertExists().fetchSemanticsNode().boundsInRoot
+        assertTrue(bounds.height > bounds.width, "sideways snackbar should read along the long edge: $bounds")
+    }
+
+    @Test
+    fun snackbarStaysFlatWhenTheDeviceIsUpright() = runComposeUiTest {
+        val engine = FakeCameraEngine()
+        showCamera(engine)
+        engine.errors.tryEmit(CameraError.BindFailed)
+        waitForIdle()
+        val bounds = onNodeWithText("Couldn't start the camera").assertExists().fetchSemanticsNode().boundsInRoot
+        assertTrue(bounds.width > bounds.height, "upright snackbar should lie flat: $bounds")
     }
 }
 
