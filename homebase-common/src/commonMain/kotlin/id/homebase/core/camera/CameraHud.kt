@@ -122,6 +122,10 @@ private const val FROZEN_FRAME_DIM = 0.6f
  * Once the preview has streamed, a rebind (flip, mode switch) dims the frame the surface still holds instead of
  * blacking it out; a first start has no frame to keep. A flip stays dimmed until the new lens's first frame.
  */
+/** Only a delivered frame counts: the camera reports bound (open, running) before the preview shows anything. */
+internal fun previewHasShown(shownBefore: Boolean, ui: CameraUiState): Boolean =
+    shownBefore || (ui.isBound && !ui.awaitingFirstFrame)
+
 internal fun previewScrimAlpha(isBound: Boolean, awaitingFirstFrame: Boolean, previewShown: Boolean): Float = when {
     isBound && !awaitingFirstFrame -> 0f
     previewShown -> FROZEN_FRAME_DIM
@@ -469,7 +473,7 @@ internal fun CameraCaptureContent(
             preview(Modifier.fillMaxSize())
         }
 
-        LaunchedEffect(ui.isBound) { if (ui.isBound) previewShown = true }
+        LaunchedEffect(ui.isBound, ui.awaitingFirstFrame) { previewShown = previewHasShown(previewShown, ui) }
         val blackout by animateFloatAsState(
             targetValue = previewScrimAlpha(ui.isBound, ui.awaitingFirstFrame, previewShown),
             animationSpec = motion.defaultEffectsSpec(),
@@ -498,6 +502,7 @@ internal fun CameraCaptureContent(
             exposureBias = { liveUi.value.exposureBias },
             exposureEv = { liveUi.value.exposureEv },
             showExposure = ui.exposureSupported,
+            labelRotation = iconRotation,
         )
 
         val scrim = colors.scrim
@@ -783,7 +788,7 @@ private fun ZoomControls(
         modifier = Modifier.graphicsLayer { this.alpha = alpha },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ZoomReadout(visible = readoutVisible, zoomRatio = zoomRatio)
+        ZoomReadout(visible = readoutVisible, zoomRatio = zoomRatio, rotation = iconRotation)
         ZoomPresetBar(
             presets = presets,
             zoomRatio = zoomRatio,
@@ -797,7 +802,7 @@ private fun ZoomControls(
 }
 
 @Composable
-private fun ZoomReadout(visible: Boolean, zoomRatio: () -> Float) {
+private fun ZoomReadout(visible: Boolean, zoomRatio: () -> Float, rotation: () -> Float) {
     val motion = MaterialTheme.motionScheme
     Box(Modifier.height(ZoomReadoutHeight), contentAlignment = Alignment.Center) {
         AnimatedVisibility(
@@ -811,6 +816,7 @@ private fun ZoomReadout(visible: Boolean, zoomRatio: () -> Float) {
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier
                     .testTag(ZOOM_READOUT_TAG)
+                    .graphicsLayer { rotationZ = rotation() }
                     .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f), CircleShape)
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             )

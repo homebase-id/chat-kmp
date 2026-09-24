@@ -16,6 +16,21 @@ class PreviewLayoutTest {
     }
 
     @Test
+    fun aFirstOpenStaysBlackUntilTheFirstFrameThenClears() {
+        val states = listOf(
+            CameraUiState(isBound = false, awaitingFirstFrame = true),
+            CameraUiState(isBound = true, awaitingFirstFrame = true),
+            CameraUiState(isBound = true, awaitingFirstFrame = false),
+        )
+        var shown = false
+        val alphas = states.map { ui ->
+            shown = previewHasShown(shown, ui)
+            previewScrimAlpha(ui.isBound, ui.awaitingFirstFrame, shown)
+        }
+        assertEquals(listOf(1f, 1f, 0f), alphas)
+    }
+
+    @Test
     fun theZoomPillLeavesAnEvenGapAtEveryDensity() {
         for (density in listOf(1f, 1.5f, 2f, 2.625f, 2.75f, 3f, 3.5f)) {
             val slot = (48 * density).roundToInt()
