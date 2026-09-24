@@ -58,12 +58,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.chat.services.collectContext
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.thumbSizesFrom
@@ -146,10 +146,7 @@ fun VaultGalleryDetailSheet(
                 ) {
                     val isPdf = descriptor.contentType == "application/pdf"
                     if (isImage || isPdf) {
-                        val localImage by localAttachmentStore.observe(file.uniqueId, descriptor.key)
-                            .collectAsStateWithLifecycle(
-                                initialValue = localAttachmentStore.get(file.uniqueId, descriptor.key),
-                            )
+                        val localImage by localAttachmentStore.collectContext(file.uniqueId, descriptor.key)
                         val localFilePath = (localImage as? LocalAttachmentContext.Image)?.localFilePath
 
                         val isPending = descriptor.iv == null

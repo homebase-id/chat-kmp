@@ -79,6 +79,9 @@ class ShareLocationViewModel(
     private val demandToken = locationService.acquireDemand(DemandReason.LiveMapOpen)
 
     private var geocodeJob: Job? = null
+
+    // Kept out of the UI state: it changes on every pan frame and only the send reads it.
+    private var pin: Pair<Double, Double>? = null
     private var lastResolvedLat: Double? = null
     private var lastResolvedLon: Double? = null
     private var recenterSeq = 0
@@ -164,7 +167,8 @@ class ShareLocationViewModel(
         // geocode — no "0.0, 0.0" chip.
         if (!userMoved && !hasRealPosition) return
         val (lat, lon) = WebMercator.unitToLatLon(unitX, unitY)
-        _uiState.update { it.copy(pinLat = lat, pinLon = lon) }
+        pin = lat to lon
+        _uiState.update { it.copy(hasPin = true) }
 
         val last = lastResolvedLat
         if (last != null && lastResolvedLon != null &&
@@ -215,8 +219,7 @@ class ShareLocationViewModel(
     /** Send the panned-to pin (+ comment) as a static location message, then pop. */
     fun sendStaticPin() {
         val state = _uiState.value
-        val lat = state.pinLat ?: return
-        val lon = state.pinLon ?: return
+        val (lat, lon) = pin ?: return
         if (state.isSending) return
         _uiState.update { it.copy(isSending = true) }
         viewModelScope.launch {

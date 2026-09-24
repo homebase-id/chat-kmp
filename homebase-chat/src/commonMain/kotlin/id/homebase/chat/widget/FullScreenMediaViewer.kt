@@ -78,6 +78,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
+import id.homebase.chat.services.collectContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -144,10 +145,7 @@ fun FullScreenMediaViewer(
 
             // Prefer a locally-available original (an image sent this session)
             // over a remote fetch + decrypt — same as VaultZoomableImage.
-            val localContext by localAttachmentStore.observe(data.messageId, payload.key)
-                .collectAsStateWithLifecycle(
-                    initialValue = localAttachmentStore.get(data.messageId, payload.key),
-                )
+            val localContext by localAttachmentStore.collectContext(data.messageId, payload.key)
 
             when (
                 val resolved = resolveMediaPageSource(

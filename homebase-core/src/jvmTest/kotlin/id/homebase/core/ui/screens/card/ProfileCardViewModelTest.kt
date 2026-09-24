@@ -479,6 +479,38 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun aDesignSwitchHoldsAStillOfTheOutgoingDesignUntilTheNewOnePaints() = runTest(dispatcher) {
+        val host = FakeHost().apply { onPaintRequest = { send(CardEvent.Painted) } }
+        val vm = viewModel(host, FakeSource(profile))
+        backgroundScope.launch { vm.paintWhileAttached {} }
+        host.send(CardEvent.Ready(layout = CardDesign.POSTER, ms = 1))
+        assertNull(vm.designCover.value)
+
+        vm.onDesignSelected(CardDesign.DOSSIER)
+
+        assertEquals(1, host.snapshots)
+        assertNotNull(vm.designCover.value)
+        assertTrue(vm.uiState.value.isSwitchingDesign)
+        assertEquals(CardDesign.DOSSIER, host.rendered.last().design)
+
+        host.send(CardEvent.Ready(layout = CardDesign.DOSSIER, ms = 1))
+
+        assertFalse(vm.uiState.value.isSwitchingDesign)
+    }
+
+    @Test
+    fun aDesignSwitchBeforeTheCardIsReadyTakesNoStill() = runTest(dispatcher) {
+        val host = FakeHost()
+        val vm = viewModel(host, FakeSource(profile))
+
+        vm.onDesignSelected(CardDesign.DOSSIER)
+
+        assertEquals(0, host.snapshots)
+        assertNull(vm.designCover.value)
+        assertFalse(vm.uiState.value.isSwitchingDesign)
+    }
+
+    @Test
     fun aFailedSaveKeepsThePreviewAndTheSavedDesign() = runTest(dispatcher) {
         val host = FakeHost()
         val source = FakeSource(profile).apply { onSaveDesign = { throw IllegalStateException("offline") } }

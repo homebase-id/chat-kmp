@@ -1,6 +1,11 @@
 package id.homebase.core.ui.screens.notifications
 
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -156,7 +161,13 @@ fun NotificationSettingsUi(
                 .verticalScroll(scrollState),
         ) {
             // ── Permission Section ──
-            if (!uiState.isPermissionGranted) {
+            AnimatedVisibility(
+                visible = uiState.isPermissionGranted == false,
+                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            ) {
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
@@ -248,7 +259,13 @@ fun NotificationSettingsUi(
                     },
                 ),
             )
-            if (uiState.showContentLevelPicker) {
+            AnimatedVisibility(
+                visible = uiState.showContentLevelPicker,
+                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            ) {
                 Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
                     NotificationContentLevel.entries.forEach { level ->
                         SettingsOptionRow(
