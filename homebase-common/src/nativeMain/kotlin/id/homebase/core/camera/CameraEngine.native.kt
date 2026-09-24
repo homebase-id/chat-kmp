@@ -480,7 +480,7 @@ internal class IosCameraEngine(private val outputDir: String, private val record
         // A tap on the Photo letterbox maps outside the frame.
         val devicePoint = previewLayer.captureDevicePointOfInterestForPoint(layerPoint)
             .useContents { CGPointMake(x.coerceIn(0.0, 1.0), y.coerceIn(0.0, 1.0)) }
-        _uiState.update { it.copy(focusPoint = viewOffset, focusLocked = lock, exposureBias = 0f) }
+        _uiState.update { it.copy(focusPoint = viewOffset, focusLocked = lock) }
         scheduleFocusClear()
         onSessionQueue {
             val device = currentDevice() ?: return@onSessionQueue
@@ -493,7 +493,6 @@ internal class IosCameraEngine(private val outputDir: String, private val record
                     exposurePointOfInterest = devicePoint
                     exposureMode = AVCaptureExposureModeAutoExpose
                 }
-                setExposureTargetBias(0f, completionHandler = null)
                 subjectAreaChangeMonitoringEnabled = !lock
             }
         }

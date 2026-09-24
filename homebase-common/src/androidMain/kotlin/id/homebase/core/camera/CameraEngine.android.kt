@@ -539,9 +539,9 @@ internal class AndroidCameraEngine(
         val action = FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE)
             .apply { if (lock) disableAutoCancel() else setAutoCancelDuration(FOCUS_AUTO_CANCEL_S, TimeUnit.SECONDS) }
             .build()
+        // The EV bias stays: resetting it along with the new AE region darkened the preview for a few frames.
         cam.cameraControl.startFocusAndMetering(action)
-        applyExposureBias(cam, 0f)
-        _uiState.update { it.copy(focusPoint = viewOffset, focusLocked = lock, exposureBias = 0f) }
+        _uiState.update { it.copy(focusPoint = viewOffset, focusLocked = lock) }
         scheduleFocusClear()
     }
 
