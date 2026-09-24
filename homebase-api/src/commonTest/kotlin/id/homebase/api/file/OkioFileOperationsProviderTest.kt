@@ -155,6 +155,15 @@ class OkioFileOperationsProviderTest {
     }
 
     @Test
+    fun uploadTempDirectoryIsWhereUploadTempPathsAreReserved() = runTest {
+        val ops = provider()
+
+        val path = ops.createUploadTempPath("IMG_", ".jpg")
+
+        assertEquals(ops.uploadTempDirectory(), path.substringBeforeLast('/'))
+    }
+
+    @Test
     fun getFileSizeOfMissingFileIsZero() {
         assertEquals(0L, provider().getFileSize("/tmp/homebase/does-not-exist.bin"))
     }

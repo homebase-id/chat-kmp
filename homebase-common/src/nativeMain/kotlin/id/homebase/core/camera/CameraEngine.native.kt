@@ -7,6 +7,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import co.touchlab.kermit.Logger
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.uploadTempDirectory
 import id.homebase.core.audio.AudioSession
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.cinterop.BetaInteropApi
@@ -33,6 +35,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import org.koin.compose.koinInject
 import platform.AVFoundation.AVAuthorizationStatusAuthorized
 import platform.AVFoundation.AVCaptureConnection
 import platform.AVFoundation.AVCaptureDevice
@@ -99,17 +102,13 @@ import platform.AVFoundation.videoZoomFactor
 import platform.AVFoundation.virtualDeviceSwitchOverVideoZoomFactors
 import platform.CoreGraphics.CGPoint
 import platform.CoreGraphics.CGPointMake
-import platform.Foundation.NSDate
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSNotification
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSNumber
 import platform.Foundation.NSOperationQueue
-import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
-import platform.Foundation.NSFileModificationDate
-import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.writeToURL
 import platform.darwin.NSObjectProtocol
 import platform.darwin.dispatch_async
@@ -120,7 +119,8 @@ import kotlin.time.Clock
 
 @Composable
 actual fun rememberCameraEngine(): CameraEngine {
-    val engine = remember { IosCameraEngine() }
+    val fileOps = koinInject<FileOperationsProvider>()
+    val engine = remember { IosCameraEngine(fileOps.uploadTempDirectory()) }
     DisposableEffect(engine) {
         engine.start()
         onDispose { engine.release() }
@@ -132,7 +132,7 @@ actual fun rememberCameraEngine(): CameraEngine {
  * Public methods run on main. Everything touching the session, inputs, outputs or device configuration
  * runs on [sessionQueue]: startRunning/commitConfiguration block for hundreds of ms.
  */
-internal class IosCameraEngine : CameraEngine {
+internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val sessionQueue = dispatch_queue_create("id.homebase.camera.session", null)
 
@@ -166,7 +166,6 @@ internal class IosCameraEngine : CameraEngine {
     private var subjectAreaObserver: NSObjectProtocol? = null
     private var focusClear: Job? = null
     private var released = false
-    private val outputDir = NSTemporaryDirectory() + CAMERA_CACHE_DIR
 
     fun start() {
         observeSession()
@@ -196,7 +195,6 @@ internal class IosCameraEngine : CameraEngine {
             }
             session.startRunning()
             _uiState.update { it.copy(isBound = session.running, supportsSimultaneousVideo = true) }
-            pruneOldCaptures()
         }
     }
 
@@ -543,24 +541,11 @@ internal class IosCameraEngine : CameraEngine {
         return NSURL.fileURLWithPath("$outputDir/$name")
     }
 
-    // materializeForUpload copies captures into the sandbox, so originals here are disposable.
-    private fun pruneOldCaptures() {
-        val fm = NSFileManager.defaultManager
-        val cutoff = NSDate().timeIntervalSince1970 - PRUNE_AGE_S
-        fm.contentsOfDirectoryAtPath(outputDir, error = null)?.filterIsInstance<String>()?.forEach { name ->
-            val path = "$outputDir/$name"
-            val modified = fm.attributesOfItemAtPath(path, error = null)?.get(NSFileModificationDate) as? NSDate
-            if (modified != null && modified.timeIntervalSince1970 < cutoff) fm.removeItemAtPath(path, error = null)
-        }
-    }
-
     private companion object {
         const val TAG = "IosCameraEngine"
-        const val CAMERA_CACHE_DIR = "camera"
         const val MAX_DISPLAY_ZOOM = 10.0
         const val ZOOM_RAMP_RATE = 8f
         const val FOCUS_INDICATOR_MS = 3_000L
-        const val PRUNE_AGE_S = 24.0 * 60 * 60
 
         val BACK_DEVICE_TYPES = listOf(
             AVCaptureDeviceTypeBuiltInTripleCamera,
