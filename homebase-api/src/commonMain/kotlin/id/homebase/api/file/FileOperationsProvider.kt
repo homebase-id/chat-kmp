@@ -154,11 +154,7 @@ interface FileOperationsProvider {
      * startup / "Clear caches".
      */
     suspend fun createUploadTempPath(prefix: String, suffix: String): String =
-        createStagingPathIn(
-            getCacheDirectory().trimEnd('/') + "/" + CacheAudit.UPLOAD_TEMP_DIR_NAME,
-            prefix,
-            suffix,
-        )
+        createStagingPathIn(uploadTempDirectory(), prefix, suffix)
 
     suspend fun writeStream(
         path: String,
@@ -175,6 +171,10 @@ interface FileOperationsProvider {
         const val DEFAULT_HEADER_BYTES: Int = 64 * 1024
     }
 }
+
+/** `<cacheDir>/upload-temp`, for writers that can't suspend (a capture that must start synchronously). */
+fun FileOperationsProvider.uploadTempDirectory(): String =
+    getCacheDirectory().trimEnd('/') + "/" + CacheAudit.UPLOAD_TEMP_DIR_NAME
 
 /**
  * Resolve [path] (which may be an Android `content://` URI) to a real

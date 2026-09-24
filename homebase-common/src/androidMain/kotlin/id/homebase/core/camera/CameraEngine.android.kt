@@ -44,6 +44,8 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import co.touchlab.kermit.Logger
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.uploadTempDirectory
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -63,6 +65,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import org.koin.compose.koinInject
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
@@ -74,7 +77,10 @@ import kotlin.time.Clock
 actual fun rememberCameraEngine(): CameraEngine {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val engine = remember(context, lifecycleOwner) { AndroidCameraEngine(context, lifecycleOwner) }
+    val fileOps = koinInject<FileOperationsProvider>()
+    val engine = remember(context, lifecycleOwner) {
+        AndroidCameraEngine(context, lifecycleOwner, File(fileOps.uploadTempDirectory()))
+    }
     DisposableEffect(engine) {
         engine.start()
         onDispose { engine.release() }
@@ -86,11 +92,11 @@ actual fun rememberCameraEngine(): CameraEngine {
 internal class AndroidCameraEngine(
     context: Context,
     private val lifecycleOwner: LifecycleOwner,
+    private val outputDir: File,
 ) : CameraEngine {
     private val context = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mainExecutor = ContextCompat.getMainExecutor(this.context)
-    private val outputDir = File(this.context.cacheDir, CAMERA_CACHE_DIR)
 
     private val _uiState = MutableStateFlow(CameraUiState())
     override val uiState: StateFlow<CameraUiState> = _uiState.asStateFlow()
@@ -592,7 +598,6 @@ internal class AndroidCameraEngine(
 
     private companion object {
         const val TAG = "AndroidCameraEngine"
-        const val CAMERA_CACHE_DIR = "camera"
         const val BIND_MAX_ATTEMPTS = 4
         const val BIND_RETRY_DELAY_MS = 500L
         const val ZOOM_ANIMATION_MS = 250L
