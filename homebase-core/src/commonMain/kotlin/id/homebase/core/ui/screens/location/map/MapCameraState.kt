@@ -68,9 +68,9 @@ class MapCameraState {
 
     /** Glide the view center to a unit-space point, keeping the zoom. No-op until the map has measured. */
     suspend fun animateCenterTo(unitX: Double, unitY: Double, spec: AnimationSpec<Float>) {
-        val from = effective ?: return
+        val target = effective?.copy(centerX = unitX, centerY = unitY) ?: return
         isUserPositioned = true
-        animateTo(from.copy(centerX = unitX, centerY = unitY), spec)
+        animateTo(target, spec)
     }
 
     internal suspend fun animateTo(target: MapViewport, spec: AnimationSpec<Float>) = motion {
@@ -95,8 +95,7 @@ class MapCameraState {
             }
     }
 
-    // A new motion (or a touch via stopMotion) cancels the running one; the caller still resumes, told
-    // whether it ran to the end.
+    // A new motion or stopMotion cancels the running one; returns whether this one ran to the end.
     private suspend fun motion(block: suspend () -> Unit): Boolean = coroutineScope {
         motionJob?.cancel()
         val job = launch { block() }.also { motionJob = it }
