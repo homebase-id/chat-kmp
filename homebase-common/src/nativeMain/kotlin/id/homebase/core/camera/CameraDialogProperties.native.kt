@@ -6,6 +6,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.window.DialogProperties
 import platform.UIKit.UIApplication
 import platform.UIKit.UIDevice
+import platform.UIKit.UIDeviceOrientation
+import platform.UIKit.UIInterfaceOrientationMask
+import platform.UIKit.UIInterfaceOrientationMaskLandscapeLeft
+import platform.UIKit.UIInterfaceOrientationMaskLandscapeRight
 import platform.UIKit.setNeedsUpdateOfSupportedInterfaceOrientations
 import platform.UIKit.UIInterfaceOrientationMaskPortrait
 import platform.UIKit.UIUserInterfaceIdiomPhone
@@ -45,12 +49,21 @@ internal actual fun CameraWindowEffect() {
 private fun applyOrientationLock() {
     val window = UIApplication.sharedApplication.keyWindow ?: return
     window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-    if (CameraOrientationLock.portraitOnly) {
+    // After a forced portrait UIKit won't rotate back on its own until the device moves again.
+    val mask = if (CameraOrientationLock.portraitOnly) UIInterfaceOrientationMaskPortrait else landscapeMaskForDevice()
+    if (mask != null) {
         window.windowScene?.requestGeometryUpdateWithPreferences(
-            UIWindowSceneGeometryPreferencesIOS(UIInterfaceOrientationMaskPortrait),
+            UIWindowSceneGeometryPreferencesIOS(mask),
             errorHandler = null,
         )
     }
+}
+
+// Device and interface landscape are mirrored: device LandscapeLeft = interface LandscapeRight.
+private fun landscapeMaskForDevice(): UIInterfaceOrientationMask? = when (UIDevice.currentDevice.orientation) {
+    UIDeviceOrientation.UIDeviceOrientationLandscapeLeft -> UIInterfaceOrientationMaskLandscapeRight
+    UIDeviceOrientation.UIDeviceOrientationLandscapeRight -> UIInterfaceOrientationMaskLandscapeLeft
+    else -> null
 }
 
 @Composable
