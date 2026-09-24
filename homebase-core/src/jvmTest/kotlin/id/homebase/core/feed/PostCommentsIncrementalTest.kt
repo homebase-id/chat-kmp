@@ -33,6 +33,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -192,8 +193,8 @@ class PostCommentsIncrementalTest {
         )
         advanceUntilIdle()
 
-        assertEquals(listOf(parentCommentId, replyId), comments.value.map { it.id })
-        assertEquals(parentCommentId, comments.value.last().replyToId)
+        assertEquals(listOf(parentCommentId, replyId), comments.value!!.map { it.id })
+        assertEquals(parentCommentId, comments.value!!.last().replyToId)
     }
 
     @Test
@@ -312,7 +313,7 @@ class PostCommentsIncrementalTest {
         )
         advanceUntilIdle()
 
-        val loaded = awaitOffTestClock { comments.first { it.isNotEmpty() } }
+        val loaded = awaitOffTestClock { comments.filterNotNull().first { it.isNotEmpty() } }
         assertEquals(listOf(peerCommentId), loaded.map { it.id })
         assertEquals("peer comment", loaded.single().body)
     }
@@ -348,7 +349,7 @@ class PostCommentsIncrementalTest {
         awaitOffTestClock { peerQueried.await() }
 
         assertEquals(
-            listOf(localCommentId), comments.value.map { it.id },
+            listOf(localCommentId), comments.value!!.map { it.id },
             "a failing peer read must not throw away the locally-known comments",
         )
     }
