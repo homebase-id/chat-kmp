@@ -48,6 +48,7 @@ import id.homebase.core.image.ImageSize
 import id.homebase.core.image.rememberFullScreenImagePrefetch
 import id.homebase.resources.MR
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.chat.services.collectContext
 
 private val CARD_WIDTH = 100.dp
 private val CARD_HEIGHT = 120.dp
@@ -129,10 +130,7 @@ fun VaultEntryCard(
             ) {
                 val localStore = localAttachmentStore
                 val firstPayloadKey = file.payloadDescriptors.firstOrNull()?.key ?: VaultEntry.DEFAULT_PAYLOAD_KEY
-                val localCtx = localStore.observe(file.uniqueId, firstPayloadKey)
-                    .collectAsStateWithLifecycle(
-                        initialValue = localStore.get(file.uniqueId, firstPayloadKey),
-                    ).value
+                val localCtx = localStore.collectContext(file.uniqueId, firstPayloadKey).value
                 val localImage = localCtx as? LocalAttachmentContext.Image
 
                 VaultCardThumbnail(
