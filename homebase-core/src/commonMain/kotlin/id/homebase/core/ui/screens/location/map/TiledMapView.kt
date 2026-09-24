@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -67,14 +68,21 @@ fun TiledMapView(
     // semantics the pre-camera `remember(resetViewportOn) { mutableStateOf(null) }` had.
     remember(resetViewportOn, camera) { camera.viewport = null }
 
-    val viewport = camera.viewport ?: fitViewport(bbox, canvasSize)
-    SideEffect { camera.effective = viewport }
+    // The live viewport is read only in derived state, draw and placement, so a gesture frame
+    // redraws the map without recomposing it or the caller's markers.
+    val fit = fitViewport(bbox, canvasSize)
+    SideEffect { camera.fit = fit }
 
     // ── Tile layer state ──
     val tileBitmaps = remember { mutableStateMapOf<MapTileKey, ImageBitmap>() }
-    val visibleTiles = if (showMapTiles && viewport != null && canvasSize != IntSize.Zero) {
-        visibleTileKeys(viewport, canvasSize)
-    } else emptyList()
+    val visibleTiles by remember(camera, showMapTiles) {
+        derivedStateOf {
+            val viewport = camera.effective
+            if (showMapTiles && viewport != null && canvasSize != IntSize.Zero) {
+                visibleTileKeys(viewport, canvasSize)
+            } else emptyList()
+        }
+    }
     LaunchedEffect(visibleTiles, showMapTiles) {
         if (!showMapTiles) return@LaunchedEffect
         // Concurrent fetches: the provider single-flights and runs downloads on
@@ -93,7 +101,7 @@ fun TiledMapView(
     val gestureModifier = if (!interactive) Modifier else {
         Modifier.pointerInput(resetViewportOn, camera) {
             detectTransformGestures { centroid, pan, zoom, _ ->
-                val current = camera.viewport ?: fitViewport(bbox, canvasSize) ?: return@detectTransformGestures
+                val current = camera.effective ?: return@detectTransformGestures
                 val newUnitsPerPx = (current.unitsPerPx / zoom)
                     .coerceIn(MIN_UNITS_PER_PX, MAX_UNITS_PER_PX)
                 // Keep the gesture centroid anchored while zooming, then pan.
@@ -112,7 +120,7 @@ fun TiledMapView(
 
     Box(modifier = modifier.fillMaxSize().onSizeChanged { canvasSize = it }.then(gestureModifier)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val vp = viewport ?: return@Canvas
+            val vp = camera.effective ?: return@Canvas
             fun project(ux: Double, uy: Double): Offset = vp.toPx(ux, uy, size.width, size.height)
 
             // ── Basemap tiles (under the overlay) ──
@@ -137,12 +145,12 @@ fun TiledMapView(
 
         // ── Composable marker overlay (avatar dots, …) ──
         if (markerContent != null) {
-            val vp = viewport
-            val ready = vp != null && canvasSize != IntSize.Zero
+            val hasViewport by remember(camera) { derivedStateOf { camera.effective != null } }
+            val ready = hasViewport && canvasSize != IntSize.Zero
             val w = canvasSize.width.toFloat()
             val h = canvasSize.height.toFloat()
             markerContent({ ux, uy ->
-                vp?.toPx(ux, uy, w, h) ?: Offset.Zero
+                camera.effective?.toPx(ux, uy, w, h) ?: Offset.Zero
             }, ready)
         }
     }
