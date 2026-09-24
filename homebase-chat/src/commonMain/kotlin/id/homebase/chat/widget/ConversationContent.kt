@@ -165,7 +165,6 @@ import id.homebase.core.util.rememberKeyboardPanelState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.core.camera.CameraModes
-import id.homebase.core.camera.CaptureMode
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.ReactionsBottomSheet
@@ -568,18 +567,6 @@ fun ConversationContent(
                 )
             )
         }
-    }
-
-    // The camera items sit in MessageInputBar's DropdownMenu popup; launching from onClick opens the
-    // camera mid popup-exit while the input regains focus (keyboard flash), so wait the exit out.
-    var pendingCameraLaunch by remember { mutableStateOf<CaptureMode?>(null) }
-    LaunchedEffect(pendingCameraLaunch) {
-        val mode = pendingCameraLaunch ?: return@LaunchedEffect
-        focusManager.clearFocus()
-        keyboardController?.hide()
-        delay(250) // let the DropdownMenu popup finish dismissing
-        cameraLauncher.launch(mode)
-        pendingCameraLaunch = null // reset AFTER launch — resetting first cancels this effect
     }
 
     val fileLauncher = rememberFilePickerLauncher { file ->
@@ -1693,8 +1680,7 @@ fun ConversationContent(
                                 onKeyboardClick = { showKeyboard() },
                                 onFocused = { bottomPanel.closeForKeyboard() },
                                 onAddAttachmentClick = { toggleAttachmentSheet() },
-                                onCameraClick = { pendingCameraLaunch = CaptureMode.Photo },
-                                onVideoRecordClick = { pendingCameraLaunch = CaptureMode.Video },
+                                onCameraClick = { cameraLauncher.launch() },
                                 onRecordingStarted = {
                                     onUiAction(
                                         ConversationListUiAction.StartRecording(

@@ -731,8 +731,6 @@
     <string name="chat_drop_folders_subtitle">Drop individual files instead</string>
     <string name="chat_drop_files_none_usable">Folders can't be attached. Drop files instead.</string>
     <string name="chat_message_camera">Camera</string>
-    <string name="chat_message_take_photo">Take photo</string>
-    <string name="chat_message_record_video">Record video</string>
     <string name="share_picker_next">Next</string>
     <string name="share_picker_send">Send</string>
     <string name="share_picker_new_webdrop">New WebDrop</string>

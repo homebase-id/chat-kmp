@@ -2,7 +2,6 @@ package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
 import id.homebase.core.camera.CameraModes
-import id.homebase.core.camera.CaptureMode
 import io.github.vinceglb.filekit.PlatformFile
 
 // Emits the camera dialog while open, so call it unconditionally, never inside an `if`.
@@ -13,5 +12,5 @@ expect fun rememberCameraManager(
 ): PlatformCameraManager
 
 interface PlatformCameraManager {
-    fun launch(initialMode: CaptureMode = CaptureMode.Photo)
+    fun launch()
 }
