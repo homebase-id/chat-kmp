@@ -1,6 +1,9 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package id.homebase.auth.login
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -18,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalTextStyle
@@ -69,96 +73,125 @@ internal fun LoginContent(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        when {
-            pendingAuthUrl == null && uiState.isLoading && uiState.driveProgresses.isNotEmpty() ->
-                LoginDriveSync(
-                    driveProgresses = uiState.driveProgresses,
-                    compact = compact,
-                    scale = scale,
-                )
-            else -> {
-                val lastIdentity = uiState.lastIdentity
-                val offeringLastIdentity = uiState.offeringLastIdentity
-                LoginHeadline(
-                    compact = compact,
-                    scale = scale,
-                    // The card names the identity right below, so the generic instruction under
-                    // "Welcome back" is telling the user something they can already see. On
-                    // expanded the brand panel and the field's own label already say it twice.
-                    // The domain rides the subtitle slot rather than the headline's light half:
-                    // as the second headline line it wrapped to two lines and moved the whole block
-                    // 18px mid-crossfade, every time an identity resolved under the cursor.
-                    subtitle = when {
-                        !compact || offeringLastIdentity -> null
-                        uiState.identityPreview?.displayName != null ->
-                            uiState.identityPreview.odinId.domainName
-                        else -> stringResource(MR.string.login_sub_title)
-                    },
-                    lead = when {
-                        offeringLastIdentity -> stringResource(MR.string.login_title_lead)
-                        // The brand panel already names the identity when it is showing.
-                        compact -> uiState.identityPreview?.displayName
-                            ?: stringResource(MR.string.login_title_lead)
-                        else -> stringResource(MR.string.login_title_lead)
-                    },
-                    rest = when {
-                        offeringLastIdentity -> stringResource(MR.string.login_welcome_back_rest)
-                        compact && uiState.identityPreview?.displayName != null -> null
-                        else -> stringResource(MR.string.login_title_rest)
-                    },
-                )
-                Spacer(modifier = Modifier.height(if (compact) 40.dp else 32.dp * scale))
-                StateSlot(scale = scale) {
-                if (pendingAuthUrl != null) {
-                    // The browser blocked the popup — re-open it from this fresh click gesture.
-                    LoginPopupBlocked(onContinue = onContinueAuth, scale = scale)
-                } else if (uiState.isAuthenticated) {
-                    LoginSuccess(scale = scale)
-                } else if (lastIdentity != null && offeringLastIdentity) {
-                    LastIdentityCard(
-                        identity = lastIdentity,
-                        showName = compact,
-                        onContinue = { onAction(LoginUiAction.ContinueAsLastIdentity) },
-                    )
-                    Spacer(modifier = Modifier.height(24.dp * scale))
-                    TextButton(
-                        onClick = { onAction(LoginUiAction.UseDifferentId) },
-                        modifier = Modifier.testTag("use_different_id_button"),
-                    ) {
-                        Text(
-                            text = stringResource(MR.string.login_use_different_id),
-                            style =
-                                if (scale >= 1.4f) MaterialTheme.typography.titleMedium
-                                else LocalTextStyle.current,
+        val motion = MaterialTheme.motionScheme
+        val syncing = pendingAuthUrl == null && uiState.isLoading && uiState.driveProgresses.isNotEmpty()
+        AnimatedContent(
+            targetState = syncing,
+            transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
+            contentAlignment = Alignment.Center,
+        ) { showSync ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                when {
+                    showSync ->
+                        LoginDriveSync(
+                            driveProgresses = uiState.driveProgresses,
+                            compact = compact,
+                            scale = scale,
                         )
+                    else -> {
+                        val lastIdentity = uiState.lastIdentity
+                        val offeringLastIdentity = uiState.offeringLastIdentity
+                        LoginHeadline(
+                            compact = compact,
+                            scale = scale,
+                            // The card names the identity right below, so the generic instruction under
+                            // "Welcome back" is telling the user something they can already see. On
+                            // expanded the brand panel and the field's own label already say it twice.
+                            // The domain rides the subtitle slot rather than the headline's light half:
+                            // as the second headline line it wrapped to two lines and moved the whole block
+                            // 18px mid-crossfade, every time an identity resolved under the cursor.
+                            subtitle = when {
+                                !compact || offeringLastIdentity -> null
+                                uiState.identityPreview?.displayName != null ->
+                                    uiState.identityPreview.odinId.domainName
+                                else -> stringResource(MR.string.login_sub_title)
+                            },
+                            lead = when {
+                                offeringLastIdentity -> stringResource(MR.string.login_title_lead)
+                                // The brand panel already names the identity when it is showing.
+                                compact -> uiState.identityPreview?.displayName
+                                    ?: stringResource(MR.string.login_title_lead)
+                                else -> stringResource(MR.string.login_title_lead)
+                            },
+                            rest = when {
+                                offeringLastIdentity -> stringResource(MR.string.login_welcome_back_rest)
+                                compact && uiState.identityPreview?.displayName != null -> null
+                                else -> stringResource(MR.string.login_title_rest)
+                            },
+                        )
+                        Spacer(modifier = Modifier.height(if (compact) 40.dp else 32.dp * scale))
+                        val slot = when {
+                            pendingAuthUrl != null -> LoginSlot.PopupBlocked
+                            uiState.isAuthenticated -> LoginSlot.Success
+                            lastIdentity != null && offeringLastIdentity -> LoginSlot.LastIdentity
+                            else -> LoginSlot.Form
+                        }
+                        StateSlot(scale = scale) {
+                            AnimatedContent(
+                                targetState = slot,
+                                transitionSpec = {
+                                    fadeIn(motion.defaultEffectsSpec()) togetherWith
+                                        fadeOut(motion.fastEffectsSpec()) using SizeTransform(clip = false)
+                                },
+                                contentAlignment = Alignment.Center,
+                            ) { shown ->
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    if (shown == LoginSlot.PopupBlocked && pendingAuthUrl != null) {
+                                        // The browser blocked the popup — re-open it from this fresh click gesture.
+                                        LoginPopupBlocked(onContinue = onContinueAuth, scale = scale)
+                                    } else if (shown == LoginSlot.Success) {
+                                        LoginSuccess(scale = scale)
+                                    } else if (shown == LoginSlot.LastIdentity && lastIdentity != null) {
+                                        LastIdentityCard(
+                                            identity = lastIdentity,
+                                            showName = compact,
+                                            onContinue = { onAction(LoginUiAction.ContinueAsLastIdentity) },
+                                        )
+                                        Spacer(modifier = Modifier.height(24.dp * scale))
+                                        TextButton(
+                                            onClick = { onAction(LoginUiAction.UseDifferentId) },
+                                            modifier = Modifier.testTag("use_different_id_button"),
+                                        ) {
+                                            Text(
+                                                text = stringResource(MR.string.login_use_different_id),
+                                                style =
+                                                    if (scale >= 1.4f) MaterialTheme.typography.titleMedium
+                                                    else LocalTextStyle.current,
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(16.dp * scale))
+                                        CreateAccountLink(onClick = { onAction(LoginUiAction.CreateAccount) }, scale = scale)
+                                    } else if (shown == LoginSlot.Form) {
+                                        LoginForm(
+                                            errorMessage = errorText,
+                                            errorDetails = uiState.errorDetails,
+                                            homebaseId = uiState.homebaseId,
+                                            statusText = if (uiState.isLoading) {
+                                                stringResource(
+                                                    if (uiState.isAwaitingAuthConfirmation) MR.string.login_waiting_for_browser
+                                                    else MR.string.login_authenticating
+                                                )
+                                            } else {
+                                                null
+                                            },
+                                            showCountdown = uiState.isPinging,
+                                            onIdentityInput = { onAction(LoginUiAction.IdentityInputChanged(it)) },
+                                            onLoginClick = { onAction(LoginUiAction.LoginClicked(it)) },
+                                            onCreateAccountClick = { onAction(LoginUiAction.CreateAccount) },
+                                            scale = scale,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
-                    Spacer(modifier = Modifier.height(16.dp * scale))
-                    CreateAccountLink(onClick = { onAction(LoginUiAction.CreateAccount) }, scale = scale)
-                } else {
-                    LoginForm(
-                        errorMessage = errorText,
-                        errorDetails = uiState.errorDetails,
-                        homebaseId = uiState.homebaseId,
-                        statusText = if (uiState.isLoading) {
-                            stringResource(
-                                if (uiState.isAwaitingAuthConfirmation) MR.string.login_waiting_for_browser
-                                else MR.string.login_authenticating
-                            )
-                        } else {
-                            null
-                        },
-                        showCountdown = uiState.isPinging,
-                        onIdentityInput = { onAction(LoginUiAction.IdentityInputChanged(it)) },
-                        onLoginClick = { onAction(LoginUiAction.LoginClicked(it)) },
-                        onCreateAccountClick = { onAction(LoginUiAction.CreateAccount) },
-                        scale = scale,
-                    )
-                }
                 }
             }
         }
     }
 }
+
+private enum class LoginSlot { PopupBlocked, Success, LastIdentity, Form }
 
 /**
  * Holds the height the tallest state needs so the headline above it cannot move: the column is
@@ -221,9 +254,12 @@ private fun LoginHeadline(lead: String, rest: String?, subtitle: String?, compac
             withStyle(SpanStyle(fontWeight = FontWeight.Light)) { append(' ').append(rest) }
         }
     }
+    val motion = MaterialTheme.motionScheme
     AnimatedContent(
         targetState = headline,
-        transitionSpec = { fadeIn() togetherWith fadeOut() },
+        transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
+        // The column is centred; the default TopStart left-anchors a width change mid-crossfade.
+        contentAlignment = Alignment.TopCenter,
     ) { text ->
         Text(
             text = text,

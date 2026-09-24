@@ -39,10 +39,10 @@ import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ShortNavigationBar
+import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -442,8 +442,11 @@ fun AppNavHost(
                     chromeDestination?.hasRoute(topLevelRoute.route::class) == true
                 }
 
-    // Only show bottom nav if on a top-level route AND not showing only detail pane
-    val isOnTopLevelScreen = isAuthenticated && isTopLevelRoute && !showingOnlyDetailPane
+    // The flag is ChatList's and outlives it (selection survives leaving the tab), so it only
+    // counts while ChatList is the screen under the chrome.
+    val isChatDetailOnly =
+        showingOnlyDetailPane && chromeDestination?.hasRoute(Route.ChatList::class) == true
+    val isOnTopLevelScreen = isAuthenticated && isTopLevelRoute && !isChatDetailOnly
 
     // Safe only because login's top-left is bare in both its layouts: brand artwork on the
     // two-pane, plain surface in portrait — the traffic lights land on nothing either way.
@@ -786,11 +789,11 @@ fun AppNavHost(
         ),
         bottomBar = {
             if (showBottomNavigationBar) {
-                NavigationBar {
+                ShortNavigationBar {
                     topLevelRoutes.forEach { topLevelRoute ->
                         val isSelected =
                             chromeDestination?.hasRoute(topLevelRoute.route::class) == true
-                        NavigationBarItem(
+                        ShortNavigationBarItem(
                             icon = {
                                 TopLevelNavIcon(
                                     topLevelRoute = topLevelRoute,

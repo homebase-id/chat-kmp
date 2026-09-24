@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -108,7 +109,9 @@ internal data class EditorToolset(
     val showDraw: Boolean,
     val showSave: Boolean,
     val showQuality: Boolean = false,
-)
+) {
+    val showToolbar: Boolean get() = showCrop || showDraw || showSave
+}
 
 /** Pure decision for the per-attachment tool row. Crop/Draw apply only to
  *  editable non-GIF images (FileImage / Gallery); Save applies to any current
@@ -601,34 +604,26 @@ fun MediaAttachmentEditor(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (toolset.showCrop) {
-                IconButton(
-                    onClick = { onCropImage!!(currentAttachment!!.attachmentId) },
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                    )
+            if (toolset.showToolbar) {
+                HorizontalFloatingToolbar(
+                    expanded = true,
+                    expandedShadowElevation = 0.dp,
                 ) {
-                    Icon(Icons.Default.Crop, contentDescription = stringResource(MR.string.crop))
-                }
-            }
-            if (toolset.showDraw) {
-                IconButton(
-                    onClick = { onDrawImage!!(currentAttachment!!.attachmentId) },
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                    )
-                ) {
-                    Icon(Icons.Default.Draw, contentDescription = stringResource(MR.string.draw))
-                }
-            }
-            if (toolset.showSave) {
-                IconButton(
-                    onClick = { onSaveFile!!(currentAttachment!!) },
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                    )
-                ) {
-                    Icon(Icons.Default.Download, contentDescription = stringResource(MR.string.save))
+                    if (toolset.showCrop) {
+                        IconButton(onClick = { onCropImage!!(currentAttachment!!.attachmentId) }) {
+                            Icon(Icons.Default.Crop, contentDescription = stringResource(MR.string.crop))
+                        }
+                    }
+                    if (toolset.showDraw) {
+                        IconButton(onClick = { onDrawImage!!(currentAttachment!!.attachmentId) }) {
+                            Icon(Icons.Default.Draw, contentDescription = stringResource(MR.string.draw))
+                        }
+                    }
+                    if (toolset.showSave) {
+                        IconButton(onClick = { onSaveFile!!(currentAttachment!!) }) {
+                            Icon(Icons.Default.Download, contentDescription = stringResource(MR.string.save))
+                        }
+                    }
                 }
             }
             if (toolset.showQuality) {
