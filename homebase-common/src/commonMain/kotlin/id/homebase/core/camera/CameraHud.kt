@@ -117,6 +117,17 @@ private val SidewaysSnackbarMaxWidth = 480.dp
 private val SidewaysSnackbarClearance = 192.dp
 private val CarouselHideDrop = 8.dp
 private const val FROZEN_FRAME_DIM = 0.6f
+
+/**
+ * Once the preview has streamed, a rebind (flip, mode switch) dims the frame the surface still holds instead of
+ * blacking it out; a first start has no frame to keep. A flip stays dimmed until the new lens's first frame.
+ */
+internal fun previewScrimAlpha(isBound: Boolean, awaitingFirstFrame: Boolean, previewShown: Boolean): Float = when {
+    isBound && !awaitingFirstFrame -> 0f
+    previewShown -> FROZEN_FRAME_DIM
+    else -> 1f
+}
+
 // A normal lens flip rebinds in about half a second; only a slower start earns a spinner.
 private const val STARTING_SPINNER_DELAY_MS = 700L
 
@@ -459,14 +470,8 @@ internal fun CameraCaptureContent(
         }
 
         LaunchedEffect(ui.isBound) { if (ui.isBound) previewShown = true }
-        // Once the preview has streamed, a rebind (flip, mode switch) dims the frame the surface still holds
-        // instead of blacking it out; a first start has no frame to keep.
         val blackout by animateFloatAsState(
-            targetValue = when {
-                ui.isBound -> 0f
-                previewShown -> FROZEN_FRAME_DIM
-                else -> 1f
-            },
+            targetValue = previewScrimAlpha(ui.isBound, ui.awaitingFirstFrame, previewShown),
             animationSpec = motion.defaultEffectsSpec(),
         )
         val modeDip = remember { Animatable(0f) }
