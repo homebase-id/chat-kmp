@@ -1,6 +1,18 @@
 package id.homebase.core.ui.screens.feed.widget
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -114,9 +126,7 @@ fun PostInteracts(
 
         // Only the Like button is gated on the viewer's react permission. Keeping the summary inside the
         // `canReact` branch left a post you may not react to with no tally AND no way into the roster.
-        reactionSummary?.let { summary ->
-            PostReactionSummary(summary = summary, onClick = onShowReactors)
-        }
+        PostReactionSummary(summary = reactionSummary, onClick = onShowReactors)
 
         // Left-grouped, no weight spacer: a far-right split left a large empty middle that read as unbalanced
         // when a post had no reactions.
@@ -237,16 +247,27 @@ private fun LikeButton(
         label = "like-tint",
     )
     val own = ownReactions.firstOrNull()?.takeUnless { it.startsWith('_') }
+    val motion = MaterialTheme.motionScheme
     IconButton(onClick = onClick, interactionSource = interactionSource, modifier = modifier) {
-        if (own == null) {
-            Icon(
-                imageVector = Icons.Outlined.FavoriteBorder,
-                contentDescription = stringResource(MR.string.feed_post_react),
-                tint = tint,
-                modifier = Modifier.scale(scale),
-            )
-        } else {
-            Text(text = own, fontSize = 20.sp, modifier = Modifier.scale(scale))
+        AnimatedContent(
+            targetState = own,
+            transitionSpec = {
+                (scaleIn(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()))
+                    .togetherWith(scaleOut(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()))
+            },
+            contentAlignment = Alignment.Center,
+            label = "own-reaction",
+        ) { shown ->
+            if (shown == null) {
+                Icon(
+                    imageVector = Icons.Outlined.FavoriteBorder,
+                    contentDescription = stringResource(MR.string.feed_post_react),
+                    tint = tint,
+                    modifier = Modifier.scale(scale),
+                )
+            } else {
+                Text(text = shown, fontSize = 20.sp, modifier = Modifier.scale(scale))
+            }
         }
     }
 }
@@ -255,54 +276,78 @@ private fun LikeButton(
 // matching the shared ReactionList.
 @Composable
 private fun PostReactionSummary(
-    summary: ReactionSummary,
+    summary: ReactionSummary?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val emojiCounts = remember(summary) {
-        summary.reactions.values.mapNotNull { entry ->
-            decodeReactionEmoji(entry.reactionContent)
-                ?.takeUnless { it.startsWith('_') }
-                ?.let { it to entry.count }
-        }
-    }
-    if (emojiCounts.isEmpty()) return
-    val total = remember(emojiCounts) { emojiCounts.sumOf { it.second } }
-    // Up to 5 distinct glyphs, matching the web feed.
-    val topEmojis = remember(emojiCounts) {
-        emojiCounts.sortedByDescending { it.second }.map { it.first }.distinct().take(5)
-    }
-
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            // Without onClickLabel the facepile is an unlabelled clickable and the roster is unreachable non-visually.
-            .clickable(onClickLabel = stringResource(MR.string.feed_post_show_reactors)) { onClick() }
-            .heightIn(min = 36.dp)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    val facepile = remember(summary) { summary?.toFacepile() }
+    val transition = updateTransition(facepile, label = "reaction-summary")
+    val motion = MaterialTheme.motionScheme
+    transition.AnimatedVisibility(
+        visible = { it != null },
+        modifier = modifier,
+        enter = expandHorizontally(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+        exit = shrinkHorizontally(motion.defaultSpatialSpec()) + fadeOut(motion.defaultEffectsSpec()),
     ) {
-        // Negative spacing overlaps each disc; the surface-coloured border separates them.
-        Row(horizontalArrangement = Arrangement.spacedBy((-6).dp)) {
-            topEmojis.forEach { emoji ->
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.surface),
-                ) {
-                    Box(modifier = Modifier.size(22.dp), contentAlignment = Alignment.Center) {
-                        Text(text = emoji, fontSize = 12.sp)
+        // Exiting, the target is already null; keep the facepile that was showing.
+        val shown = transition.targetState ?: transition.currentState ?: return@AnimatedVisibility
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                // Without onClickLabel the facepile is an unlabelled clickable and the roster is unreachable non-visually.
+                .clickable(onClickLabel = stringResource(MR.string.feed_post_show_reactors)) { onClick() }
+                .heightIn(min = 36.dp)
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Negative spacing overlaps each disc; the surface-coloured border separates them.
+            Row(horizontalArrangement = Arrangement.spacedBy((-6).dp)) {
+                shown.topEmojis.forEach { emoji ->
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.surface),
+                    ) {
+                        Box(modifier = Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+                            Text(text = emoji, fontSize = 12.sp)
+                        }
                     }
                 }
             }
+            Spacer(modifier = Modifier.width(6.dp))
+            AnimatedContent(
+                targetState = shown.total,
+                transitionSpec = {
+                    val up = targetState > initialState
+                    (slideInVertically(motion.fastSpatialSpec()) { if (up) it else -it } + fadeIn(motion.fastEffectsSpec()))
+                        .togetherWith(
+                            slideOutVertically(motion.fastSpatialSpec()) { if (up) -it else it } + fadeOut(motion.fastEffectsSpec()),
+                        )
+                },
+                label = "reaction-total",
+            ) { total ->
+                Text(
+                    text = total.toString(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(
-            text = total.toString(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
+}
+
+private data class Facepile(val topEmojis: List<String>, val total: Int)
+
+private fun ReactionSummary.toFacepile(): Facepile? {
+    val emojiCounts = reactions.values.mapNotNull { entry ->
+        decodeReactionEmoji(entry.reactionContent)
+            ?.takeUnless { it.startsWith('_') }
+            ?.let { it to entry.count }
+    }
+    if (emojiCounts.isEmpty()) return null
+    // Up to 5 distinct glyphs, matching the web feed.
+    val topEmojis = emojiCounts.sortedByDescending { it.second }.map { it.first }.distinct().take(5)
+    return Facepile(topEmojis, emojiCounts.sumOf { it.second })
 }
 
 private val QUICK_REACTIONS = listOf("❤️", "😆", "😥").toImmutableList()

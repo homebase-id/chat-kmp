@@ -753,6 +753,10 @@ private fun MomentPostCard(
     // heart in the feed and removing it on the detail screen produce
     // visually identical animations.
     val floatingController = rememberFloatingReactionController()
+    val toggleWithFeedback: (String) -> Unit = { emoji ->
+        floatingController.show(emoji, emoji in moment.ownReactions)
+        onAddReaction(emoji)
+    }
     val scope = rememberCoroutineScope()
 
     // Multi-tap state lives at the composable level (not inside
@@ -800,16 +804,8 @@ private fun MomentPostCard(
                                 } else {
                                     onCardClick(visiblePayloadKey)
                                 }
-                                2 -> {
-                                    val isRemoving = HeartEmoji in moment.ownReactions
-                                    floatingController.show(HeartEmoji, isRemoving)
-                                    onAddReaction(HeartEmoji)
-                                }
-                                else -> if (resolved >= 3) {
-                                    val isRemoving = FlameEmoji in moment.ownReactions
-                                    floatingController.show(FlameEmoji, isRemoving)
-                                    onAddReaction(FlameEmoji)
-                                }
+                                2 -> toggleWithFeedback(HeartEmoji)
+                                else -> if (resolved >= 3) toggleWithFeedback(FlameEmoji)
                             }
                         }
                     },
@@ -908,7 +904,7 @@ private fun MomentPostCard(
                         isUploading = uploadStatus != null,
                         isPlaying = isVideoPlaying,
                         onPlayTap = onToggleVideoPlay,
-                        onDoubleTap = { onAddReaction(HeartEmoji) },
+                        onDoubleTap = { toggleWithFeedback(HeartEmoji) },
                         isMuted = isMuted,
                         onToggleMute = onToggleMute,
                         sharedTransitionScope = null,
@@ -946,7 +942,7 @@ private fun MomentPostCard(
                         isUploading = uploadStatus != null,
                         isMuted = isMuted,
                         onToggleMute = onToggleMute,
-                        onDoubleTap = { onAddReaction(HeartEmoji) },
+                        onDoubleTap = { toggleWithFeedback(HeartEmoji) },
                         autoplayActive = autoplayActive,
                         onVisiblePayloadChanged = { visiblePayloadKey = it },
                         fitToContent = commentsOpen,
@@ -1018,22 +1014,14 @@ private fun MomentPostCard(
                     emoji = HeartEmoji,
                     count = heartCount,
                     isActive = HeartEmoji in moment.ownReactions,
-                    onClick = {
-                        val isRemoving = HeartEmoji in moment.ownReactions
-                        floatingController.show(HeartEmoji, isRemoving)
-                        onAddReaction(HeartEmoji)
-                    },
+                    onClick = { toggleWithFeedback(HeartEmoji) },
                     onLongPress = onShowReactors,
                 )
                 EmojiReactionButton(
                     emoji = FlameEmoji,
                     count = flameCount,
                     isActive = FlameEmoji in moment.ownReactions,
-                    onClick = {
-                        val isRemoving = FlameEmoji in moment.ownReactions
-                        floatingController.show(FlameEmoji, isRemoving)
-                        onAddReaction(FlameEmoji)
-                    },
+                    onClick = { toggleWithFeedback(FlameEmoji) },
                     onLongPress = onShowReactors,
                 )
             }
