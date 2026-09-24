@@ -158,18 +158,18 @@ fun EditConversationGroupUi(
                                 onClickAdd = { onUiAction(EditConversationGroupUiAction.AddGroupImage) },
                                 onClickRemove = { onUiAction(EditConversationGroupUiAction.RemoveGroupImage) },
                             )
-                    }
-                    // The field only exists once loading ends; requesting focus any earlier is a no-op.
-                    LaunchedEffect(Unit) { focusRequester.requestFocus() }
-                    MinimalTextField(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester),
-                        state = groupNameTextState,
-                        inputTransformation = InputTransformation.maxLength(100),
-                        placeHolderText = stringResource(MR.string.chat_group_name_placeholder),
-                    )
+                        }
+                        // The field only exists once loading ends; requesting focus any earlier is a no-op.
+                        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                        MinimalTextField(
+                            modifier = Modifier
+                                .padding(16.dp)
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester),
+                            state = groupNameTextState,
+                            inputTransformation = InputTransformation.maxLength(100),
+                            placeHolderText = stringResource(MR.string.chat_group_name_placeholder),
+                        )
                     }
                 }
             }

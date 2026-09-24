@@ -2,7 +2,6 @@ package id.homebase.chat.selectmembers
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -231,21 +230,20 @@ fun SelectMembersUi(
                         }
                     }
                     items(item.contacts, key = { it.odinId.domainName }) { contact ->
-                        Box(Modifier.animateItem()) {
-                            ContactItem(
-                                name = contact.name,
-                                subTitle = contact.odinId.domainName,
-                                selectionMode = true,
-                                isSelected = uiState.selectedContacts.contains(contact),
-                                odinId = contact.odinId,
-                                avatarInitials = contact.avatarInitials,
-                                onContactClick = {
-                                    onUiAction(
-                                        SelectMembersUiAction.ContactClicked(contact)
-                                    )
-                                },
-                            )
-                        }
+                        ContactItem(
+                            modifier = Modifier.animateItem(),
+                            name = contact.name,
+                            subTitle = contact.odinId.domainName,
+                            selectionMode = true,
+                            isSelected = uiState.selectedContacts.contains(contact),
+                            odinId = contact.odinId,
+                            avatarInitials = contact.avatarInitials,
+                            onContactClick = {
+                                onUiAction(
+                                    SelectMembersUiAction.ContactClicked(contact)
+                                )
+                            },
+                        )
                     }
                 }
             }

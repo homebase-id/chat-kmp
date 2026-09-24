@@ -209,25 +209,24 @@ fun AddGroupMembersUi(
                                     }
                                 }
                                 items(item.contacts, key = { it.odinId.domainName }) { contact ->
-                                    Box(Modifier.animateItem()) {
-                                        ContactItem(
-                                            name = contact.name,
-                                            subTitle = contact.odinId.domainName,
-                                            selectionMode = true,
-                                            isSelectionEnabled = !uiState.originalMembers.contains(contact.odinId),
-                                            isSelected = uiState.originalMembers.contains(contact.odinId) || uiState.selectedContacts.contains(contact),
-                                            odinId = contact.odinId,
-                                            avatarInitials = contact.avatarInitials,
-                                            onContactClick = {
-                                                onUiAction(
-                                                    AddGroupMembersUiAction.ContactClicked(contact)
-                                                )
-                                            },
-                                        )
-                                    }
+                                    ContactItem(
+                                        modifier = Modifier.animateItem(),
+                                        name = contact.name,
+                                        subTitle = contact.odinId.domainName,
+                                        selectionMode = true,
+                                        isSelectionEnabled = !uiState.originalMembers.contains(contact.odinId),
+                                        isSelected = uiState.originalMembers.contains(contact.odinId) || uiState.selectedContacts.contains(contact),
+                                        odinId = contact.odinId,
+                                        avatarInitials = contact.avatarInitials,
+                                        onContactClick = {
+                                            onUiAction(
+                                                AddGroupMembersUiAction.ContactClicked(contact)
+                                            )
+                                        },
+                                    )
                                 }
                             }
-                    }
+                        }
                     }
                 }
             }
