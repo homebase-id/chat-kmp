@@ -192,12 +192,15 @@ class FeedTimelineViewModel(
         val loaded = rawPosts
         reactionWindow = loaded.size + REACTION_WINDOW
         viewModelScope.launch { ownReactionResolver.resolve(loaded, reactionWindow) }
-        if (_uiState.value.endReached) return
+        if (_uiState.value.endReached || _uiState.value.isLoadingMore) return
+        _uiState.update { it.copy(isLoadingMore = true) }
         viewModelScope.launch {
             try {
                 timelineService.loadMore()
             } catch (t: Throwable) {
                 Logger.e(throwable = t, tag = TAG) { "loadMore failed: ${t.message}" }
+            } finally {
+                _uiState.update { it.copy(isLoadingMore = false) }
             }
         }
     }
