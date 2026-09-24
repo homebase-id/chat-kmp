@@ -14,6 +14,8 @@ import kotlin.uuid.Uuid
 @Immutable
 data class MomentsFeedUiState(
     val moments: List<MomentFeedItem> = emptyList(),
+    // An empty list alone can't tell "not loaded yet" from "no moments".
+    val isLoading: Boolean = false,
     val ownerSession: OwnerSession? = null,
     val connectionStatus: AppConnectionStatus = AppConnectionStatus.Connecting,
     val driveIsSyncing: Boolean = false,
