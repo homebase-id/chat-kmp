@@ -23,17 +23,31 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
 import id.homebase.resources.camera_zoom_level
 import id.homebase.resources.camera_zoom_preset_a11y
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.roundToInt
 
 internal const val ZOOM_PRESET_TAG = "camera_zoom_preset_"
 internal const val ZOOM_BAR_TAG = "camera_zoom_bar"
+private val ZoomSlot = 48.dp
+
+/**
+ * The pill's side in px, leaving an even gap to [slotPx] (the slot matches the 48dp touch target). An odd gap is
+ * halved twice, by the slot's centering and the button's touch-target inflation, and both round the same way,
+ * so the pill sat a pixel or two low.
+ */
+internal fun evenlyInsetSide(slotPx: Int, pillPx: Float): Int {
+    val inset = ((slotPx - pillPx) / 2f).roundToInt().coerceAtLeast(0)
+    return slotPx - 2 * inset
+}
 
 @Composable
 internal fun ZoomPresetBar(
@@ -82,7 +96,7 @@ internal fun ZoomPresetBar(
                 targetValue = if (checked) 44.dp else 36.dp,
                 animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
             )
-            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(ZoomSlot), contentAlignment = Alignment.Center) {
                 ToggleButton(
                     checked = checked,
                     onCheckedChange = { onSelect(preset) },
@@ -96,7 +110,11 @@ internal fun ZoomPresetBar(
                     ),
                     contentPadding = PaddingValues(0.dp),
                     modifier = Modifier
-                        .size(pillSize)
+                        .layout { measurable, _ ->
+                            val side = evenlyInsetSide(ZoomSlot.roundToPx(), pillSize.toPx())
+                            val placeable = measurable.measure(Constraints.fixed(side, side))
+                            layout(side, side) { placeable.place(0, 0) }
+                        }
                         .testTag(ZOOM_PRESET_TAG + preset.label)
                         .semantics { contentDescription = description },
                 ) {
