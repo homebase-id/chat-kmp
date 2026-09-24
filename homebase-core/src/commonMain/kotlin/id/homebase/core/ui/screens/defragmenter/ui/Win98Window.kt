@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.defragmenter.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -10,13 +11,11 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,6 +31,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.floor
@@ -196,27 +196,26 @@ fun Win98ProgressBar(
         sunken = true,
         background = Win98Palette.GrayFace,
     ) {
-        val widthDp = maxWidth
-        Row(
-            modifier = Modifier.fillMaxSize().padding(2.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            val segmentWidth = 10.dp
-            val segmentCount = max(1, floor(widthDp.value / (segmentWidth.value + 2)).toInt())
-            val filled = (clamped * segmentCount).toInt()
-            for (i in 0 until segmentCount) {
-                Box(
-                    modifier = Modifier
-                        .width(segmentWidth)
-                        .fillMaxHeight()
-                        .background(
-                            if (i < filled) Win98Palette.Teal else Win98Palette.GrayFace
-                        ),
+        val segmentCount = max(1, floor(maxWidth.value / (SEGMENT_WIDTH.value + 2)).toInt())
+        val filled = (clamped * segmentCount).toInt()
+        // Unfilled segments match the panel face, so only the filled ones need drawing.
+        Canvas(modifier = Modifier.fillMaxSize().padding(2.dp)) {
+            val segment = SEGMENT_WIDTH.roundToPx()
+            val step = segment + 2.dp.roundToPx()
+            for (i in 0 until filled) {
+                val start = i * step
+                val left = if (layoutDirection == LayoutDirection.Rtl) size.width - start - segment else start.toFloat()
+                drawRect(
+                    color = Win98Palette.Teal,
+                    topLeft = Offset(left, 0f),
+                    size = Size(segment.toFloat(), size.height),
                 )
             }
         }
     }
 }
+
+private val SEGMENT_WIDTH = 10.dp
 
 /**
  * Draws the 2-px raised/sunken bevel border used throughout Win98 chrome.

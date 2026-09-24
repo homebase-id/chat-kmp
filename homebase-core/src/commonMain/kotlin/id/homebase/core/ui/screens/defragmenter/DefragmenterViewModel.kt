@@ -285,8 +285,8 @@ class DefragmenterViewModel(
     private fun pause() {
         val s = _uiState.value
         if (s.phase !is DefragmenterPhase.Defragmenting) return
-        elapsedMsAtPause = s.elapsedMs
-        _uiState.update { it.copy(phase = DefragmenterPhase.Paused) }
+        elapsedMsAtPause += runStartMark?.elapsedNow()?.inWholeMilliseconds ?: 0L
+        _uiState.update { it.copy(phase = DefragmenterPhase.Paused, elapsedMs = elapsedMsAtPause) }
     }
 
     private fun resume() {
@@ -417,6 +417,7 @@ class DefragmenterViewModel(
         val durationNanos = ((1_000_000_000f / movesPerSecond) * MOVE_DURATION_FACTOR).toLong()
             .coerceAtLeast(16_000_000L) // at least one frame
         var spawnExhausted = false
+        var spawns = 0
         while (pendingMoves >= 1f && mergedInFlight.size < MAX_CONCURRENT_MOVES) {
             val fromIdx = nextFilledToMove(grid, state.cellStates)
             if (fromIdx < 0) {
@@ -449,6 +450,7 @@ class DefragmenterViewModel(
                 )
             )
             pendingMoves -= 1f
+            spawns++
         }
 
         // User-visible gaps remaining: track independently of grid.gapCount
@@ -468,7 +470,10 @@ class DefragmenterViewModel(
                 .coerceAtLeast(1L))
         } else 0L
 
-        val targetHighlights = collectTargets(mergedInFlight)
+        // Only publish what changed: most frames just advance sprites, which the canvas draws
+        // from the frame clock without a new state.
+        val inFlightChanged = commits > 0 || spawns > 0
+        val targetHighlights = if (inFlightChanged) collectTargets(mergedInFlight) else state.targetHighlights
 
         val noWorkLeft = displayedGapsRemaining <= 0 || spawnExhausted
         val reachedEnd = noWorkLeft && mergedInFlight.isEmpty()
@@ -492,13 +497,15 @@ class DefragmenterViewModel(
                 phase = phase,
                 grid = grid,
                 gridVersion = if (commits > 0 || reachedEnd) it.gridVersion + 1 else it.gridVersion,
-                inFlight = mergedInFlight,
+                inFlight = if (inFlightChanged) mergedInFlight else it.inFlight,
                 targetHighlights = targetHighlights,
                 gapsRemaining = max(0, displayedGapsRemaining),
                 movesCompleted = totalMoves,
                 progressFraction = if (reachedEnd) 1f else progressFraction,
-                elapsedMs = newElapsed,
-                estRemainingMs = if (reachedEnd) 0L else etaMs,
+                elapsedMs = if (newElapsed / 1000 == it.elapsedMs / 1000) it.elapsedMs else newElapsed,
+                estRemainingMs = (if (reachedEnd) 0L else etaMs).let { eta ->
+                    if (eta / 1000 == it.estRemainingMs / 1000) it.estRemainingMs else eta
+                },
             )
         }
 
