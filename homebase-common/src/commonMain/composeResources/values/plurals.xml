@@ -28,4 +28,12 @@
         <item quantity="one">%1$d image</item>
         <item quantity="other">%1$d images</item>
     </plurals>
+    <plurals name="conversations_selected">
+        <item quantity="one">%1$d conversation selected</item>
+        <item quantity="other">%1$d conversations selected</item>
+    </plurals>
+    <plurals name="sending_to_conversations">
+        <item quantity="one">Sending to %1$d conversation…</item>
+        <item quantity="other">Sending to %1$d conversations…</item>
+    </plurals>
 </resources>

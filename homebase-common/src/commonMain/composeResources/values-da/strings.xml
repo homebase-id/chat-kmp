@@ -117,9 +117,7 @@
     <string name="update_checking">Søger efter opdatering...</string>
     <string name="vlc_required">VLC er påkrævet til videoafspilning.\nInstallér det fra videolan.org og genstart appen.</string>
     <string name="number_of_members">%1$s medlemmer</string>
-    <string name="conversations_selected">%1$s samtale(r) valgt</string>
     <string name="share_to">Del til...</string>
-    <string name="sending_to_conversations">Sender til %1$s samtale(r)...</string>
     <string name="timeout_in_seconds">Timeout om %1$ss</string>
     <string name="number_of_records">%1$s poster</string>
     <string name="emoji_all">Alle・</string>
