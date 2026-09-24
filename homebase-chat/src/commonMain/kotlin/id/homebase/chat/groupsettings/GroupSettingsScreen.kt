@@ -539,6 +539,7 @@ fun GroupSettingsUi(
                     items(connectedContacts, key = { it.odinId.domainName }) { contact ->
                         val preflight = uiState.introductionPreflight?.get(contact.odinId)
                         GroupParticipantRow(
+                            modifier = Modifier.animateItem(),
                             name = contact.name,
                             subTitle = contact.odinId.domainName,
                             annotation = if (conversation.isCurrentUserAdmin(contact.odinId)) stringResource(
@@ -564,9 +565,9 @@ fun GroupSettingsUi(
                     }
 
                     if (notConnectedContacts.isNotEmpty()) {
-                        item {
+                        item(key = NOT_CONNECTED_HEADER_KEY) {
                             Text(
-                                modifier = Modifier.padding(horizontal = 24.dp).padding(top = 24.dp, bottom = 8.dp),
+                                modifier = Modifier.animateItem().padding(horizontal = 24.dp).padding(top = 24.dp, bottom = 8.dp),
                                 text = stringResource(MR.string.not_connected),
                                 style = MaterialTheme.typography.titleLarge
                             )
@@ -574,6 +575,7 @@ fun GroupSettingsUi(
                         items(notConnectedContacts, key = { it.odinId.domainName }) { contact ->
                             val preflight = uiState.introductionPreflight?.get(contact.odinId)
                             GroupParticipantRow(
+                                modifier = Modifier.animateItem(),
                                 name = contact.name,
                                 subTitle = contact.odinId.domainName,
                                 annotation = stringResource(MR.string.connect),
@@ -1075,9 +1077,10 @@ private fun GroupParticipantRow(
      *  Independent of the summary icon — preflight problems are not file-sync
      *  problems and the cloud icon must not turn red for them. */
     errorText: String? = null,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
@@ -1475,3 +1478,5 @@ private fun HealGroupButton(
         )
     }
 }
+
+private const val NOT_CONNECTED_HEADER_KEY = "not-connected-header"

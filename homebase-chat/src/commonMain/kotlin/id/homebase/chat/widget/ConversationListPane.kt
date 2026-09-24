@@ -1,11 +1,14 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -73,6 +76,9 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -151,6 +157,13 @@ fun ConversationListPane(
     val topBarState = rememberTopAppBarState()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(topBarState)
     val listState = rememberLazyListState()
+    // Its own state, so opening Archived neither lands mid-list nor costs the main list its place.
+    val archivedListState = rememberLazyListState()
+    val enterFade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    val exitFade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+    val resize = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
+    val slide = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val focusRequesterNone = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
     var showMenu by remember { mutableStateOf(false) }
@@ -233,8 +246,8 @@ fun ConversationListPane(
                                 ) {
                                     AnimatedVisibility(
                                         visible = !uiState.isSearchActive,
-                                        enter = fadeIn(animationSpec = tween(300, delayMillis = 200)),
-                                        exit = fadeOut(animationSpec = tween(150))
+                                        enter = fadeIn(enterFade),
+                                        exit = fadeOut(exitFade)
                                     ) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically
@@ -280,11 +293,11 @@ fun ConversationListPane(
                                     modifier = Modifier.align(Alignment.CenterEnd).fillMaxWidth()
                                         .padding(end = 16.dp),
                                     visible = uiState.isSearchActive,
-                                    enter = fadeIn(animationSpec = tween(200)) + expandHorizontally(
-                                        animationSpec = tween(300), expandFrom = Alignment.End
+                                    enter = fadeIn(enterFade) + expandHorizontally(
+                                        animationSpec = resize, expandFrom = Alignment.End
                                     ),
-                                    exit = fadeOut(animationSpec = tween(150)) + shrinkHorizontally(
-                                        animationSpec = tween(250), shrinkTowards = Alignment.End
+                                    exit = fadeOut(exitFade) + shrinkHorizontally(
+                                        animationSpec = resize, shrinkTowards = Alignment.End
                                     )
                                 ) {
                                     MinimalSearchTextField(
@@ -328,62 +341,68 @@ fun ConversationListPane(
                                     )
                                 }
                             }
-                            if (!uiState.isSearchActive) {
-                                // One pin, either direction (#1012): I'm sharing with anyone OR anyone
-                                // is sharing with me. Tapping opens the live map.
-                                LiveShareIndicator(
-                                    untilMs = uiState.liveSharePinAnyUntilMs,
-                                    onClick = {
-                                        onUiAction(ConversationListUiAction.OpenLiveLocationMap)
-                                    },
-                                )
-                                if (!persistentSearch) {
-                                    IconButton(
+                            AnimatedVisibility(
+                                visible = !uiState.isSearchActive,
+                                enter = fadeIn(enterFade),
+                                exit = fadeOut(exitFade),
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    // One pin, either direction (#1012): I'm sharing with anyone OR anyone
+                                    // is sharing with me. Tapping opens the live map.
+                                    LiveShareIndicator(
+                                        untilMs = uiState.liveSharePinAnyUntilMs,
                                         onClick = {
-                                            onUiAction(
-                                                ConversationListUiAction.SearchClicked
-                                            )
+                                            onUiAction(ConversationListUiAction.OpenLiveLocationMap)
                                         },
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Search,
-                                            contentDescription = stringResource(MR.string.search),
-                                        )
+                                    )
+                                    if (!persistentSearch) {
+                                        IconButton(
+                                            onClick = {
+                                                onUiAction(
+                                                    ConversationListUiAction.SearchClicked
+                                                )
+                                            },
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Search,
+                                                contentDescription = stringResource(MR.string.search),
+                                            )
+                                        }
                                     }
-                                }
-                                Box {
-                                    IconButton(onClick = { showMenu = true }) {
-                                        Icon(
-                                            imageVector = Icons.Default.MoreVert,
-                                            contentDescription = stringResource(
-                                                MR.string.chat_options
+                                    Box {
+                                        IconButton(onClick = { showMenu = true }) {
+                                            Icon(
+                                                imageVector = Icons.Default.MoreVert,
+                                                contentDescription = stringResource(
+                                                    MR.string.chat_options
+                                                )
                                             )
-                                        )
+                                        }
+                                        ConversationListMenu(
+                                            showMenu = showMenu,
+                                            dismissMenu = { showMenu = false },
+                                            isFilteringUnread = uiState.filterByUnread,
+                                            onMarkAllAsRead = {
+                                                // TODO
+                                                showMenu = false
+                                            },
+                                            onFilterUnread = {
+                                                onUiAction(
+                                                    ConversationListUiAction.FilterByUnreadClicked
+                                                )
+                                                showMenu = false
+                                            },
+                                            onClearFilterUnread = {
+                                                onUiAction(
+                                                    ConversationListUiAction.ClearFilterByUnreadClicked
+                                                )
+                                                showMenu = false
+                                            },
+                                            onSettings = {
+                                                onProfileClick()
+                                                showMenu = false
+                                            })
                                     }
-                                    ConversationListMenu(
-                                        showMenu = showMenu,
-                                        dismissMenu = { showMenu = false },
-                                        isFilteringUnread = uiState.filterByUnread,
-                                        onMarkAllAsRead = {
-                                            // TODO
-                                            showMenu = false
-                                        },
-                                        onFilterUnread = {
-                                            onUiAction(
-                                                ConversationListUiAction.FilterByUnreadClicked
-                                            )
-                                            showMenu = false
-                                        },
-                                        onClearFilterUnread = {
-                                            onUiAction(
-                                                ConversationListUiAction.ClearFilterByUnreadClicked
-                                            )
-                                            showMenu = false
-                                        },
-                                        onSettings = {
-                                            onProfileClick()
-                                            showMenu = false
-                                        })
                                 }
                             }
                         }, scrollBehavior = scrollBehavior,
@@ -454,197 +473,207 @@ fun ConversationListPane(
             },
             containerColor = paneContainerColor,
         ) { innerPadding ->
-            Box {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(innerPadding)
-                        .consumeWindowInsets(innerPadding),
-                    state = listState,
-                ) {
-                    if (uiState.showArchived) {
-                        archivedConversationItems(
-                            archivedUiState = archivedUiState,
-                            selectedConversationId = uiState.selectedConversationId,
-                            iconOnlyMode = iconOnlyMode,
-                            onUiAction = onUiAction,
-                        )
-                        return@LazyColumn
-                    }
-                    if (uiState.filterByUnread) {
-                        item {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center,
-                            ) {
-                                InputChip(
-                                    onClick = {
-                                        onUiAction(
-                                            ConversationListUiAction.ClearFilterByUnreadClicked
-                                        )
-                                    },
-                                    label = {
+            AnimatedContent(
+                targetState = uiState.showArchived,
+                transitionSpec = {
+                    val sign = (if (targetState) 1 else -1) * (if (rtl) -1 else 1)
+                    (slideInHorizontally(slide) { sign * it / 10 } + fadeIn(enterFade)) togetherWith
+                        (slideOutHorizontally(slide) { -sign * it / 10 } + fadeOut(exitFade))
+                },
+            ) { archived ->
+                Box {
+                    val shownListState = if (archived) archivedListState else listState
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(innerPadding)
+                            .consumeWindowInsets(innerPadding),
+                        state = shownListState,
+                    ) {
+                        if (archived) {
+                            archivedConversationItems(
+                                archivedUiState = archivedUiState,
+                                selectedConversationId = uiState.selectedConversationId,
+                                iconOnlyMode = iconOnlyMode,
+                                onUiAction = onUiAction,
+                            )
+                            return@LazyColumn
+                        }
+                        if (uiState.filterByUnread) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center,
+                                ) {
+                                    InputChip(
+                                        onClick = {
+                                            onUiAction(
+                                                ConversationListUiAction.ClearFilterByUnreadClicked
+                                            )
+                                        },
+                                        label = {
+                                            Text(
+                                                text = stringResource(
+                                                    MR.string.chat_filter_by_unread_description
+                                                )
+                                            )
+                                        },
+                                        selected = true,
+                                        trailingIcon = {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = stringResource(MR.string.remove),
+                                                // Modifier.size(InputChipDefaults.AvatarSize)
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                        when (uiState.conversationsContent) {
+                            is ConversationListContentState.Loading -> {
+                                item {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        CircularProgressIndicator()
+                                        Spacer(modifier = Modifier.height(16.dp))
                                         Text(
                                             text = stringResource(
-                                                MR.string.chat_filter_by_unread_description
+                                                MR.string.loading
+                                            ),
+                                            modifier = Modifier.padding(24.dp),
+                                        )
+                                    }
+                                }
+                            }
+
+                            is ConversationListContentState.Empty -> {
+                                item {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                    ) {
+                                        Text(
+                                            text = stringResource(
+                                                MR.string.chat_search_empty_description
+                                            ),
+                                            modifier = Modifier.padding(24.dp),
+                                        )
+                                    }
+                                }
+                            }
+
+                            is ConversationListContentState.EmptySearch -> {
+                                item {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                    ) {
+                                        Text(
+                                            text = stringResource(
+                                                MR.string.chat_search_result_empty,
+                                                uiState.conversationsContent.query
                                             )
                                         )
-                                    },
-                                    selected = true,
-                                    trailingIcon = {
-                                        Icon(
-                                            Icons.Default.Close,
-                                            contentDescription = stringResource(MR.string.remove),
-                                            // Modifier.size(InputChipDefaults.AvatarSize)
-                                        )
-                                    },
-                                )
+                                    }
+                                }
                             }
-                        }
-                    }
-                    when (uiState.conversationsContent) {
-                        is ConversationListContentState.Loading -> {
-                            item {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                ) {
-                                    CircularProgressIndicator()
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text(
-                                        text = stringResource(
-                                            MR.string.loading
-                                        ),
-                                        modifier = Modifier.padding(24.dp),
-                                    )
+
+                            is ConversationListContentState.Items -> {
+                                items(
+                                    uiState.conversationsContent.list,
+                                    key = { listItem ->
+                                        when (listItem) {
+                                            is ConversationListContentModel.Conversation ->
+                                                listItem.conversation.conversation.id
+
+                                            is ConversationListContentModel.Message ->
+                                                listItem.message.id
+
+                                            is ConversationListContentModel.Header ->
+                                                listItem.resource.key
+                                        }
+                                    },
+                                    // Conversation rows, message-search hits and headers are three
+                                    // different shapes; without a contentType the list tries to reuse
+                                    // one as another and rebuilds the composition instead. See the
+                                    // matching note on the message list in ConversationContent.kt.
+                                    contentType = { listItem ->
+                                        when (listItem) {
+                                            is ConversationListContentModel.Conversation -> "conversation"
+                                            is ConversationListContentModel.Message -> "message"
+                                            is ConversationListContentModel.Header -> "header"
+                                        }
+                                    }
+                                ) { listItem ->
+                                    Box(modifier = Modifier.animateItem()) {
+                                        ConversationLisContentItem(
+                                            listItem = listItem,
+                                            selectedConversationId = uiState.selectedConversationId,
+                                            iconOnlyMode = iconOnlyMode,
+                                            // Search results are a tap target, not a swipe target.
+                                            allowSwipeActions = !searchActive,
+                                            // Live search text drives the highlight in
+                                            // message-search rows; empty when not searching.
+                                            searchQuery = if (searchActive)
+                                                searchTextState.text.toString()
+                                            else "",
+                                            onUiAction = onUiAction,
+                                        )
+                                    }
                                 }
                             }
                         }
 
-                        is ConversationListContentState.Empty -> {
+                        if (uiState.archivedCount > 0 && !searchActive) {
                             item {
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
                                     horizontalArrangement = Arrangement.Center,
                                 ) {
-                                    Text(
-                                        text = stringResource(
-                                            MR.string.chat_search_empty_description
-                                        ),
-                                        modifier = Modifier.padding(24.dp),
-                                    )
+                                    TextButton(
+                                        onClick = {
+                                            onUiAction(ConversationListUiAction.ShowArchivedMessagesClicked)
+                                        },
+                                    ) {
+                                        Text(text = stringResource(MR.string.chat_archived_chats) + " (${uiState.archivedCount})")
+                                    }
                                 }
                             }
                         }
 
-                        is ConversationListContentState.EmptySearch -> {
+                        if (uiState.filterByUnread) {
                             item {
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
                                     horizontalArrangement = Arrangement.Center,
                                 ) {
-                                    Text(
-                                        text = stringResource(
-                                            MR.string.chat_search_result_empty,
-                                            uiState.conversationsContent.query
+                                    ElevatedButton(
+                                        onClick = {
+                                            onUiAction(
+                                                ConversationListUiAction.ClearFilterByUnreadClicked
+                                            )
+                                        },
+                                        colors = ButtonDefaults.elevatedButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                                        ),
+                                    ) {
+                                        Text(
+                                            text = stringResource(
+                                                MR.string.chat_filter_by_unread_clear_button
+                                            )
                                         )
-                                    )
-                                }
-                            }
-                        }
-
-                        is ConversationListContentState.Items -> {
-                            items(
-                                uiState.conversationsContent.list,
-                                key = { listItem ->
-                                    when (listItem) {
-                                        is ConversationListContentModel.Conversation ->
-                                            listItem.conversation.conversation.id
-
-                                        is ConversationListContentModel.Message ->
-                                            listItem.message.id
-
-                                        is ConversationListContentModel.Header ->
-                                            listItem.resource.key
-                                    }
-                                },
-                                // Conversation rows, message-search hits and headers are three
-                                // different shapes; without a contentType the list tries to reuse
-                                // one as another and rebuilds the composition instead. See the
-                                // matching note on the message list in ConversationContent.kt.
-                                contentType = { listItem ->
-                                    when (listItem) {
-                                        is ConversationListContentModel.Conversation -> "conversation"
-                                        is ConversationListContentModel.Message -> "message"
-                                        is ConversationListContentModel.Header -> "header"
                                     }
                                 }
-                            ) { listItem ->
-                                Box(modifier = Modifier.animateItem()) {
-                                    ConversationLisContentItem(
-                                        listItem = listItem,
-                                        selectedConversationId = uiState.selectedConversationId,
-                                        iconOnlyMode = iconOnlyMode,
-                                        // Search results are a tap target, not a swipe target.
-                                        allowSwipeActions = !searchActive,
-                                        // Live search text drives the highlight in
-                                        // message-search rows; empty when not searching.
-                                        searchQuery = if (searchActive)
-                                            searchTextState.text.toString()
-                                        else "",
-                                        onUiAction = onUiAction,
-                                    )
-                                }
                             }
                         }
+                        item { Spacer(modifier = Modifier.height(72.dp)) }
                     }
-
-                    if (uiState.archivedCount > 0 && !searchActive) {
-                        item {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
-                                horizontalArrangement = Arrangement.Center,
-                            ) {
-                                TextButton(
-                                    onClick = {
-                                        onUiAction(ConversationListUiAction.ShowArchivedMessagesClicked)
-                                    },
-                                ) {
-                                    Text(text = stringResource(MR.string.chat_archived_chats) + " (${uiState.archivedCount})")
-                                }
-                            }
-                        }
-                    }
-
-                    if (uiState.filterByUnread) {
-                        item {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
-                                horizontalArrangement = Arrangement.Center,
-                            ) {
-                                ElevatedButton(
-                                    onClick = {
-                                        onUiAction(
-                                            ConversationListUiAction.ClearFilterByUnreadClicked
-                                        )
-                                    },
-                                    colors = ButtonDefaults.elevatedButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                                    ),
-                                ) {
-                                    Text(
-                                        text = stringResource(
-                                            MR.string.chat_filter_by_unread_clear_button
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    item { Spacer(modifier = Modifier.height(72.dp)) }
+                    HomebaseVerticalScrollbar(
+                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                        state = shownListState
+                    )
                 }
-                HomebaseVerticalScrollbar(
-                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-                    state = listState
-                )
             }
         }
     }
