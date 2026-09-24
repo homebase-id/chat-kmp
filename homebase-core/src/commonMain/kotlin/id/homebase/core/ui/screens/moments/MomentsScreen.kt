@@ -43,6 +43,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -208,6 +209,7 @@ fun MomentsScreen(
 
     CompactMomentsLayout(
         moments = uiState.moments,
+        isLoading = uiState.isLoading,
         uploadProgress = uiState.uploadProgress,
         pendingLocalPreviews = uiState.pendingLocalPreviews,
         ownerSession = uiState.ownerSession,
@@ -231,6 +233,7 @@ fun MomentsScreen(
 @Composable
 private fun CompactMomentsLayout(
     moments: List<MomentFeedItem>,
+    isLoading: Boolean,
     uploadProgress: ImmutableMap<Uuid, UploadStatus>,
     pendingLocalPreviews: ImmutableMap<Uuid, Any>,
     ownerSession: OwnerSession?,
@@ -280,7 +283,11 @@ private fun CompactMomentsLayout(
             .consumeWindowInsets(innerPadding)
             .padding(innerPadding)
         if (moments.isEmpty()) {
-            EmptyMomentsState(modifier = contentModifier)
+            if (isLoading) {
+                Box(modifier = contentModifier, contentAlignment = Alignment.Center) { LoadingIndicator() }
+            } else {
+                EmptyMomentsState(modifier = contentModifier)
+            }
         } else when (viewMode) {
             MomentsViewMode.Timeline -> MomentsFeedList(
                 moments = moments,
@@ -455,6 +462,7 @@ private fun MomentsFeedList(
                 isMuted = isMuted,
                 onToggleMute = videoSession::toggleMuted,
                 commentsOpen = commentsSheetOnTap && commentsMomentId == moment.id,
+                modifier = Modifier.animateItem(),
             )
         }
     }
@@ -740,6 +748,7 @@ private fun MomentPostCard(
     // fit-with-letterbox so the whole photo/video is visible (paired with the
     // shrink/scroll that brings the card above the sheet).
     commentsOpen: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     // Local sheet state — only one moment's failed-upload sheet can be open
     // at a time per card, and the sheet's lifetime tracks the card. No need
@@ -771,7 +780,7 @@ private fun MomentPostCard(
     }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             // Single multi-tap detector handles all taps:
             // 1 tap → open detail (dispatch is delayed ≈[MultiTapTimeoutMs]

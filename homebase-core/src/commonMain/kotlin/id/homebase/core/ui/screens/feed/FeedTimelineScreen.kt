@@ -1,7 +1,12 @@
 package id.homebase.core.ui.screens.feed
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -18,6 +23,7 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -167,58 +173,70 @@ fun FeedTimelineScreen(
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding)
 
-            when {
+            val body = when {
                 // Gated on an empty list: a refresh that fails over a populated feed reports on the snackbar.
-                uiState.errorMessage != null && uiState.posts.isEmpty() -> FeedMessageState(
-                    icon = Icons.Outlined.CloudOff,
-                    iconContentDescription = null,
-                    title = stringResource(MR.string.feed_timeline_error_title),
-                    body = stringResource(MR.string.feed_timeline_error_body),
-                    actionLabel = stringResource(MR.string.feed_timeline_error_retry),
-                    onAction = viewModel::refresh,
-                    modifier = contentModifier,
-                )
+                uiState.errorMessage != null && uiState.posts.isEmpty() -> FeedBody.Error
+                uiState.isLoading && uiState.posts.isEmpty() -> FeedBody.Loading
+                uiState.posts.isEmpty() -> FeedBody.Empty
+                else -> FeedBody.Posts
+            }
+            val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+            AnimatedContent(
+                targetState = body,
+                transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
+            ) { shown ->
+                when (shown) {
+                    FeedBody.Error -> FeedMessageState(
+                        icon = Icons.Outlined.CloudOff,
+                        iconContentDescription = null,
+                        title = stringResource(MR.string.feed_timeline_error_title),
+                        body = stringResource(MR.string.feed_timeline_error_body),
+                        actionLabel = stringResource(MR.string.feed_timeline_error_retry),
+                        onAction = viewModel::refresh,
+                        modifier = contentModifier,
+                    )
 
-                uiState.isLoading && uiState.posts.isEmpty() -> FeedTimelineLoading(
-                    modifier = contentModifier,
-                )
+                    FeedBody.Loading -> FeedTimelineLoading(
+                        modifier = contentModifier,
+                    )
 
-                uiState.posts.isEmpty() -> FeedMessageState(
-                    icon = Icons.Outlined.DynamicFeed,
-                    iconContentDescription = null,
-                    title = stringResource(MR.string.feed_timeline_empty_title),
-                    body = stringResource(MR.string.feed_timeline_empty_body),
-                    modifier = contentModifier,
-                )
+                    FeedBody.Empty -> FeedMessageState(
+                        icon = Icons.Outlined.DynamicFeed,
+                        iconContentDescription = null,
+                        title = stringResource(MR.string.feed_timeline_empty_title),
+                        body = stringResource(MR.string.feed_timeline_empty_body),
+                        modifier = contentModifier,
+                    )
 
-                else -> FeedTimelineList(
-                    uiState = uiState,
-                    listState = listState,
-                    onRefresh = viewModel::refresh,
-                    onLoadMore = viewModel::loadMore,
-                    onPostClick = viewModel::onPostClick,
-                    onOpenComments = {
-                        commentsPostId = it
-                        lastCommentsPostId = it
-                    },
-                    onOpenMedia = { post, index, title ->
-                        feedMediaOverlay(post, index, title)?.let { overlay = it }
-                    },
-                    onShowReactors = viewModel::showReactors,
-                    onToggleReaction = viewModel::onToggleReaction,
-                    onAuthorClick = onAuthorClick,
-                    onDeletePost = viewModel::deletePost,
-                    onReportPost = viewModel::reportPost,
-                    onBlockAuthor = { author ->
-                        uiState.selfOdinId?.let { uriHandler.openUrl(it.buildBlockUrl(author)) }
-                    },
-                    selfOdinId = uiState.selfOdinId,
-                    channels = channels,
-                    channelNameFor = viewModel::channelNameFor,
-                    isPublicChannel = viewModel::isPublicChannel,
-                    displayNames = displayNames,
-                    modifier = contentModifier,
-                )
+                    FeedBody.Posts -> FeedTimelineList(
+                        uiState = uiState,
+                        listState = listState,
+                        onRefresh = viewModel::refresh,
+                        onLoadMore = viewModel::loadMore,
+                        onPostClick = viewModel::onPostClick,
+                        onOpenComments = {
+                            commentsPostId = it
+                            lastCommentsPostId = it
+                        },
+                        onOpenMedia = { post, index, title ->
+                            feedMediaOverlay(post, index, title)?.let { overlay = it }
+                        },
+                        onShowReactors = viewModel::showReactors,
+                        onToggleReaction = viewModel::onToggleReaction,
+                        onAuthorClick = onAuthorClick,
+                        onDeletePost = viewModel::deletePost,
+                        onReportPost = viewModel::reportPost,
+                        onBlockAuthor = { author ->
+                            uiState.selfOdinId?.let { uriHandler.openUrl(it.buildBlockUrl(author)) }
+                        },
+                        selfOdinId = uiState.selfOdinId,
+                        channels = channels,
+                        channelNameFor = viewModel::channelNameFor,
+                        isPublicChannel = viewModel::isPublicChannel,
+                        displayNames = displayNames,
+                        modifier = contentModifier,
+                    )
+                }
             }
         }
 
@@ -352,6 +370,7 @@ private fun FeedTimelineList(
                     ?.let { displayNames[it]?.takeIf { n -> n.isNotBlank() } ?: it.domainName }
                     .orEmpty()
                 PostCard(
+                    modifier = Modifier.animateItem(),
                     post = post,
                     displayName = displayName,
                     channelName = channelNameFor(post.channelId),
@@ -378,6 +397,14 @@ private fun FeedTimelineList(
                     onReportPost = { onReportPost(post) },
                     onBlockAuthor = author?.let { { onBlockAuthor(it) } },
                 )
+            }
+            if (uiState.isLoadingMore) {
+                item(key = LOADING_MORE_KEY) {
+                    Box(
+                        modifier = Modifier.animateItem().fillMaxWidth().padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { LoadingIndicator() }
+                }
             }
         }
       }
@@ -407,3 +434,7 @@ private fun FeedTimelineLoading(modifier: Modifier = Modifier) {
         }
     }
 }
+
+private enum class FeedBody { Error, Loading, Empty, Posts }
+
+private const val LOADING_MORE_KEY = "loading-more"
