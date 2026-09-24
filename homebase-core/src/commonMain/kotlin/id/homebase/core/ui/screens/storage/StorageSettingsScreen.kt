@@ -1,5 +1,10 @@
 package id.homebase.core.ui.screens.storage
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +39,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -199,14 +205,21 @@ fun StorageSettingsUi(
                         (uiState.caches.isNotEmpty() || uiState.coilMemoryCache != null),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                if (uiState.isClearing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                } else {
-                    Text(stringResource(MR.string.storage_clear_caches))
+                val fade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+                AnimatedContent(
+                    targetState = uiState.isClearing,
+                    transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
+                    contentAlignment = Alignment.Center,
+                ) { isClearing ->
+                    if (isClearing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    } else {
+                        Text(stringResource(MR.string.storage_clear_caches))
+                    }
                 }
             }
 
@@ -323,23 +336,30 @@ private fun DiskCachesBlock(caches: List<CacheRowState>) {
                 .height(10.dp)
                 .clip(RoundedCornerShape(5.dp)),
         ) {
+            val weightSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
             for (cache in healthy) {
-                val w = if (totalMax > 0L)
-                    (cache.sizeBytes.toFloat() / totalMax.toFloat()).coerceAtLeast(0f)
-                else 0f
-                if (w > 0f) {
-                    Box(
-                        modifier = Modifier
-                            .weight(w)
-                            .fillMaxHeight()
-                            .background(cacheColor(cache.id)),
+                key(cache.id) {
+                    val w by animateFloatAsState(
+                        targetValue = if (totalMax > 0L)
+                            (cache.sizeBytes.toFloat() / totalMax.toFloat()).coerceAtLeast(0f)
+                        else 0f,
+                        animationSpec = weightSpec,
                     )
+                    if (w > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .weight(w)
+                                .fillMaxHeight()
+                                .background(cacheColor(cache.id)),
+                        )
+                    }
                 }
             }
-            if (freeFraction > 0f) {
+            val free by animateFloatAsState(freeFraction, weightSpec)
+            if (free > 0f) {
                 Box(
                     modifier = Modifier
-                        .weight(freeFraction)
+                        .weight(free)
                         .fillMaxHeight()
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 )

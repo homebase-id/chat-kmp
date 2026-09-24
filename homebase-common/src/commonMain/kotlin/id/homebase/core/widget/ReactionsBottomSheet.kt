@@ -1,8 +1,6 @@
 package id.homebase.core.widget
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -231,7 +229,7 @@ private fun EmojiToggleChip(
         } else {
             MaterialTheme.colorScheme.surfaceContainerHighest
         },
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
     )
     val textColor by animateColorAsState(
         targetValue = if (isOwnReaction) {
@@ -239,7 +237,7 @@ private fun EmojiToggleChip(
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
     )
 
     Surface(

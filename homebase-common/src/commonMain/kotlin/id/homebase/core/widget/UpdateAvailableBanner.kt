@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -19,7 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
 import id.homebase.resources.cd_navigate_forward
-import id.homebase.resources.update_available
+import id.homebase.resources.update_available_version
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -39,10 +39,10 @@ fun UpdateAvailableBanner(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            stringResource(MR.string.update_available) + ": $versionName",
+            stringResource(MR.string.update_available_version, versionName),
             color = MaterialTheme.colorScheme.onPrimaryContainer
         )
         Spacer(modifier = Modifier.weight(1f))
-        Icon(Icons.Default.ChevronRight, contentDescription = stringResource(MR.string.cd_navigate_forward), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(MR.string.cd_navigate_forward), tint = MaterialTheme.colorScheme.onPrimaryContainer)
     }
 }
