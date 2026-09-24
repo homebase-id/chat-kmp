@@ -564,6 +564,7 @@ fun ConversationContent(
                     conversationId = conversation.conversation.id,
                     files = listOf(file),
                     isImage = true,
+                    fromCamera = true,
                 )
             )
         }

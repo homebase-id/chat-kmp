@@ -99,6 +99,7 @@ sealed interface ConversationListUiAction {
         val conversationId: Uuid,
         val files: List<PlatformFile>,
         val isImage: Boolean = false,
+        val fromCamera: Boolean = false,
     ) : ConversationListUiAction
 
     data class UnAttachFile(
