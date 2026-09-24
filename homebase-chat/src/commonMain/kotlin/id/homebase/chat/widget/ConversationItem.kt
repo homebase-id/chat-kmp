@@ -1,5 +1,17 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -44,11 +56,13 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,7 +80,6 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.emojiFontFamily
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatTimestamp
-import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.stripComposerLineBreakArtifacts
@@ -163,12 +176,14 @@ fun ConversationItem(
             )
         },
     ) {
+        val selectedBackground by animateColorAsState(
+            targetValue = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = if (isSelected) 1f else 0f),
+            animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .ifTrue(isSelected) {
-                    Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
-                }
+                .drawBehind { drawRect(selectedBackground) }
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = { showMenu = true }
@@ -219,14 +234,22 @@ fun ConversationItem(
 
                     Spacer(modifier = Modifier.width(Dimens.Spacing.item))
 
-                    if (enrichedData.conversation.isPinned) {
-                        Icon(
-                            imageVector = Icons.Default.PushPin,
-                            contentDescription = stringResource(MR.string.chat_search_result_pinned),
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(modifier = Modifier.width(Dimens.Spacing.label))
+                    AnimatedVisibility(
+                        visible = enrichedData.conversation.isPinned,
+                        enter = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()) +
+                            expandHorizontally(MaterialTheme.motionScheme.fastSpatialSpec()),
+                        exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
+                            shrinkHorizontally(MaterialTheme.motionScheme.fastSpatialSpec()),
+                    ) {
+                        Row {
+                            Icon(
+                                imageVector = Icons.Default.PushPin,
+                                contentDescription = stringResource(MR.string.chat_search_result_pinned),
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(modifier = Modifier.width(Dimens.Spacing.label))
+                        }
                     }
 
                     Text(
@@ -326,21 +349,8 @@ fun ConversationItem(
                         modifier = Modifier.weight(1f)
                     )
 
-                    if (enrichedData.conversation.unreadCount > 0) {
-                        Spacer(modifier = Modifier.width(Dimens.Spacing.item))
-
-                        Badge(
-                            containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                            contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                        ) {
-                            Text(
-                                modifier = Modifier.padding(4.dp),
-                                text = enrichedData.conversation.unreadCount.toString(),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    } else if (draftPreview == null && enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
+                    UnreadBadge(enrichedData.conversation.unreadCount)
+                    if (enrichedData.conversation.unreadCount == 0 && draftPreview == null && enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
                         Spacer(modifier = Modifier.width(Dimens.Spacing.label))
                         DeliveryStatus(
                             isPendingSend = enrichedData.conversation.lastMessageIsPendingSend,
@@ -430,6 +440,43 @@ fun ConversationItem(
                         onMarkAsRead = onMarkAsReadClick,
                         onTogglePin = onTogglePinClick,
                         onArchive = onArchiveClick,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UnreadBadge(count: Int) {
+    val transition = updateTransition(count)
+    val spatial = MaterialTheme.motionScheme.fastSpatialSpec<IntOffset>()
+    val effects = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+    transition.AnimatedVisibility(
+        visible = { it > 0 },
+        enter = scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(effects),
+        exit = scaleOut(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(effects),
+    ) {
+        Row {
+            Spacer(modifier = Modifier.width(Dimens.Spacing.item))
+            Badge(
+                containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+            ) {
+                // While the badge leaves, keep the last count instead of showing 0.
+                AnimatedContent(
+                    targetState = if (transition.targetState > 0) transition.targetState else transition.currentState,
+                    transitionSpec = {
+                        val up = if (targetState > initialState) 1 else -1
+                        (slideInVertically(spatial) { up * it } + fadeIn(effects)) togetherWith
+                            (slideOutVertically(spatial) { -up * it } + fadeOut(effects))
+                    },
+                ) { shown ->
+                    val countText = shown.toString()
+                    Text(
+                        text = countText,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
