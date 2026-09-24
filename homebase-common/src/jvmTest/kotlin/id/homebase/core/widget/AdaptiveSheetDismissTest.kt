@@ -33,7 +33,7 @@ class AdaptiveSheetDismissTest {
     private fun SkikoComposeUiTest.showSheet(
         dismissible: Boolean = true,
         onDismiss: () -> Unit,
-        closeWith: AdaptiveSheetScope.() -> Unit = { dismiss() },
+        closeWith: AdaptiveSheetScope.(hide: () -> Unit) -> Unit = { dismiss() },
     ) {
         var shown by mutableStateOf(true)
         setContent {
@@ -44,7 +44,7 @@ class AdaptiveSheetDismissTest {
                         dismissible = dismissible,
                     ) {
                         Box(Modifier.testTag(body).fillMaxWidth().height(300.dp))
-                        TextButton(onClick = { closeWith() }) { Text(close) }
+                        TextButton(onClick = { closeWith { shown = false } }) { Text(close) }
                     }
                 }
             }
@@ -78,17 +78,7 @@ class AdaptiveSheetDismissTest {
         runSkikoComposeUiTest(size = compactPhone) {
             var dismissals = 0
             var sent = 0
-            var shown by mutableStateOf(true)
-            setContent {
-                MaterialTheme {
-                    if (shown) {
-                        AdaptiveSheet(onDismiss = { dismissals++ }) {
-                            TextButton(onClick = { dismiss { sent++; shown = false } }) { Text(close) }
-                        }
-                    }
-                }
-            }
-            waitForIdle()
+            showSheet(onDismiss = { dismissals++ }, closeWith = { hide -> dismiss { sent++; hide() } })
 
             onNodeWithText(close).performClick()
             waitForIdle()

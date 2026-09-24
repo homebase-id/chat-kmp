@@ -146,7 +146,6 @@ fun GroodleComposerSheet(
     GuardedComposerSheet(onDismiss = onDismiss) { requestClose, reportUnsaved ->
         GroodleComposerContent(
             conversationId = conversationId,
-            onDismiss = onDismiss,
             onSent = { dismiss(onSent) },
             onRequestClose = requestClose,
             onUnsavedContentChange = reportUnsaved,
@@ -158,10 +157,9 @@ fun GroodleComposerSheet(
 @Composable
 private fun GroodleComposerContent(
     conversationId: Uuid,
-    onDismiss: () -> Unit,
     onSent: () -> Unit,
-    onRequestClose: () -> Unit = onDismiss,
-    onUnsavedContentChange: (Boolean) -> Unit = {},
+    onRequestClose: () -> Unit,
+    onUnsavedContentChange: (Boolean) -> Unit,
 ) {
     val sender: ChatMessageSenderService = koinInject()
     val scope = rememberCoroutineScope()

@@ -146,7 +146,6 @@ fun EventComposerSheet(
     GuardedComposerSheet(onDismiss = onDismiss) { requestClose, reportUnsaved ->
         EventComposerContent(
             conversationId = conversationId,
-            onDismiss = onDismiss,
             onSent = { dismiss(onSent) },
             onRequestClose = requestClose,
             onUnsavedContentChange = reportUnsaved,
@@ -158,10 +157,9 @@ fun EventComposerSheet(
 @Composable
 private fun EventComposerContent(
     conversationId: Uuid,
-    onDismiss: () -> Unit,
     onSent: () -> Unit,
-    onRequestClose: () -> Unit = onDismiss,
-    onUnsavedContentChange: (Boolean) -> Unit = {},
+    onRequestClose: () -> Unit,
+    onUnsavedContentChange: (Boolean) -> Unit,
 ) {
     val sender: ChatMessageSenderService = koinInject()
     val scope = rememberCoroutineScope()
