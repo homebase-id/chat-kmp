@@ -7,6 +7,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.roundToInt
 
 // Buckets and dead bands derived from Signal-Android DeviceRotation.kt (AGPL-3.0, see NOTICE).
 object DeviceRotation {
@@ -25,6 +28,16 @@ object DeviceRotation {
             in 240..300 -> QuarterTurn.R270
             else -> current
         }
+    }
+
+    /**
+     * Clockwise rotation (0..359) from a gravity reading in device axes (x right, y toward the top edge, z out of
+     * the screen), or null when the phone lies too flat for it to mean anything.
+     */
+    fun degreesForGravity(x: Double, y: Double, z: Double): Int? {
+        if ((x * x + y * y) * 4 < z * z) return null
+        val degrees = (atan2(x, -y) * 180 / PI).roundToInt()
+        return ((degrees % 360) + 360) % 360
     }
 }
 

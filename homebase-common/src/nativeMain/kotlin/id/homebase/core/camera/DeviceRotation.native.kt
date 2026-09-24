@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalForeignApi::class)
+
 package id.homebase.core.camera
 
 import androidx.compose.runtime.Composable
@@ -6,6 +8,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.useContents
+import platform.CoreMotion.CMMotionManager
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.UIKit.UIDevice
@@ -14,22 +19,36 @@ import platform.UIKit.UIDeviceOrientationDidChangeNotification
 
 @Composable
 internal actual fun rememberRawDeviceRotation(): QuarterTurn? {
-    var turn by remember { mutableStateOf(UIDevice.currentDevice.orientation.quarterTurn()) }
+    var turn by remember { mutableStateOf<QuarterTurn?>(null) }
     DisposableEffect(Unit) {
-        val device = UIDevice.currentDevice
-        device.beginGeneratingDeviceOrientationNotifications()
-        val observer = NSNotificationCenter.defaultCenter.addObserverForName(
-            name = UIDeviceOrientationDidChangeNotification,
-            `object` = device,
-            queue = NSOperationQueue.mainQueue,
-        ) { _ -> device.orientation.quarterTurn()?.let { turn = it } }
-        onDispose {
-            NSNotificationCenter.defaultCenter.removeObserver(observer)
-            device.endGeneratingDeviceOrientationNotifications()
+        val motion = CMMotionManager()
+        // UIDevice orientation stops changing under the system portrait lock; gravity doesn't.
+        if (motion.isAccelerometerAvailable()) {
+            motion.accelerometerUpdateInterval = ACCELEROMETER_INTERVAL_S
+            motion.startAccelerometerUpdatesToQueue(NSOperationQueue.mainQueue) { data, _ ->
+                val degrees = data?.acceleration?.useContents { DeviceRotation.degreesForGravity(x, y, z) }
+                if (degrees != null) DeviceRotation.quarterTurnFor(degrees, turn)?.let { turn = it }
+            }
+            onDispose { motion.stopAccelerometerUpdates() }
+        } else {
+            val device = UIDevice.currentDevice
+            turn = device.orientation.quarterTurn()
+            device.beginGeneratingDeviceOrientationNotifications()
+            val observer = NSNotificationCenter.defaultCenter.addObserverForName(
+                name = UIDeviceOrientationDidChangeNotification,
+                `object` = device,
+                queue = NSOperationQueue.mainQueue,
+            ) { _ -> device.orientation.quarterTurn()?.let { turn = it } }
+            onDispose {
+                NSNotificationCenter.defaultCenter.removeObserver(observer)
+                device.endGeneratingDeviceOrientationNotifications()
+            }
         }
     }
     return turn
 }
+
+private const val ACCELEROMETER_INTERVAL_S = 0.1
 
 /** Face up/down and unknown carry no rotation, so the last one sticks. */
 private fun UIDeviceOrientation.quarterTurn(): QuarterTurn? = when (this) {

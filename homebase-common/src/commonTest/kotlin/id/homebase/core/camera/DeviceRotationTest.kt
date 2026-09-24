@@ -60,4 +60,24 @@ class DeviceRotationTest {
         assertEquals(-90f, QuarterTurn.R90.uprightIconDegrees)
         assertEquals(0f, QuarterTurn.R0.uprightIconDegrees)
     }
+
+    @Test
+    fun gravityMapsToTheSameTurnsAsUiDeviceOrientation() {
+        fun gravityTurn(x: Double, y: Double) = DeviceRotation.degreesForGravity(x, y, 0.0)?.let { turn(it) }
+        assertEquals(QuarterTurn.R0, gravityTurn(0.0, -1.0))
+        // Top edge to the right: UIDeviceOrientationLandscapeRight.
+        assertEquals(QuarterTurn.R90, gravityTurn(1.0, 0.0))
+        assertEquals(QuarterTurn.R180, gravityTurn(0.0, 1.0))
+        assertEquals(QuarterTurn.R270, gravityTurn(-1.0, 0.0))
+    }
+
+    @Test
+    fun aTiltedLandscapeHoldStillReadsLandscape() {
+        assertEquals(QuarterTurn.R90, DeviceRotation.degreesForGravity(0.7, -0.2, -0.6)?.let { turn(it) })
+    }
+
+    @Test
+    fun aPhoneLyingFlatHasNoReading() {
+        assertNull(DeviceRotation.degreesForGravity(0.1, -0.1, -0.99))
+    }
 }
