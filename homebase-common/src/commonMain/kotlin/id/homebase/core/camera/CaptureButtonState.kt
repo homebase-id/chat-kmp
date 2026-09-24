@@ -20,9 +20,6 @@ enum class CaptureButtonState {
     fun longPressAction(holdToRecordAllowed: Boolean): CaptureAction? =
         if (!isRecording && holdToRecordAllowed) CaptureAction.StartHeldRecording else null
 
-    val releaseAction: CaptureAction?
-        get() = if (this == RecordingHeld) CaptureAction.StopRecording else null
-
     companion object {
         fun of(mode: CaptureMode, isRecording: Boolean, isRecordingLocked: Boolean): CaptureButtonState = when {
             isRecording && isRecordingLocked -> RecordingLocked
@@ -31,9 +28,11 @@ enum class CaptureButtonState {
             else -> Photo
         }
 
-        /** Holding from photo mode needs a video use case already bound next to the photo one. */
-        fun holdToRecordAllowed(modes: CameraModes, supportsSimultaneousVideo: Boolean): Boolean =
-            modes.allows(CaptureMode.Video) && supportsSimultaneousVideo
+        fun holdToRecordAllowed(modes: CameraModes): Boolean = modes.allows(CaptureMode.Video)
+
+        /** Without a video use case bound next to the photo one, a hold from Photo rebinds to Video first. */
+        fun holdSwitchesToVideo(mode: CaptureMode, supportsSimultaneousVideo: Boolean): Boolean =
+            mode == CaptureMode.Photo && !supportsSimultaneousVideo
     }
 }
 
