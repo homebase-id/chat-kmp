@@ -2,6 +2,7 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -76,6 +77,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -643,13 +645,24 @@ fun MessageTextFieldCompact(
         } else {
             40.dp
         },
-        animationSpec = tween(durationMillis = if (showActionButtons) 1000 else 300),
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
         label = "micButtonSize"
     )
     val micButtonColor by animateColorAsState(
-        targetValue = if (isMicrophonePressed) Color.Red else MaterialTheme.colorScheme.surfaceContainerHighest,
-        animationSpec = tween(durationMillis = if (showActionButtons) 1000 else 300),
+        targetValue = when {
+            isMicrophonePressed -> MaterialTheme.colorScheme.error
+            showActionButtons -> MaterialTheme.colorScheme.surfaceContainerHighest
+            // Same hue at zero alpha, so the press fill doesn't pass through translucent black.
+            else -> MaterialTheme.colorScheme.error.copy(alpha = 0f)
+        },
+        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
         label = "micButtonColor"
+    )
+    val micIconTint by animateColorAsState(
+        targetValue = if (isMicrophonePressed) MaterialTheme.colorScheme.onError
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+        label = "micIconTint"
     )
 
     // Counts up while recording is active.
@@ -797,55 +810,60 @@ fun MessageTextFieldCompact(
                                     },
                                     trailingIcon = if (editExistingMode) null else {
                                         {
-                                            if (state.annotatedString.isNotBlank()) {
-                                                AttachmentPopoverButton(
-                                                    actions = attachmentActions,
-                                                    alignToEnd = true,
-                                                    onClick = onAddAttachmentClick,
-                                                    onPopoverDismissed = { focusRequester.requestFocus() },
-                                                    modifier = Modifier.testTag("inline_attach_button"),
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Add,
-                                                        contentDescription = stringResource(MR.string.chat_message_attachment_options)
-                                                    )
-                                                }
-                                            } else if (isMobile()) {
-                                                var showCameraMenu by remember { mutableStateOf(false) }
-                                                Box {
-                                                    IconButton(
-                                                        onClick = { showCameraMenu = true },
-                                                        modifier = Modifier.testTag("camera_button"),
+                                            Crossfade(
+                                                targetState = state.annotatedString.isNotBlank(),
+                                                animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                                            ) { hasText ->
+                                                if (hasText) {
+                                                    AttachmentPopoverButton(
+                                                        actions = attachmentActions,
+                                                        alignToEnd = true,
+                                                        onClick = onAddAttachmentClick,
+                                                        onPopoverDismissed = { focusRequester.requestFocus() },
+                                                        modifier = Modifier.testTag("inline_attach_button"),
                                                     ) {
                                                         Icon(
-                                                            imageVector = Icons.Default.PhotoCamera,
-                                                            contentDescription = stringResource(MR.string.chat_message_camera)
+                                                            imageVector = Icons.Default.Add,
+                                                            contentDescription = stringResource(MR.string.chat_message_attachment_options)
                                                         )
                                                     }
-                                                    DropdownMenu(
-                                                        expanded = showCameraMenu,
-                                                        onDismissRequest = { showCameraMenu = false }
-                                                    ) {
-                                                        DropdownMenuItem(
-                                                            text = { Text(stringResource(MR.string.chat_message_take_photo)) },
-                                                            onClick = {
-                                                                showCameraMenu = false
-                                                                onCameraClick()
-                                                            },
-                                                            leadingIcon = {
-                                                                Icon(Icons.Default.PhotoCamera, contentDescription = null)
-                                                            }
-                                                        )
-                                                        DropdownMenuItem(
-                                                            text = { Text(stringResource(MR.string.chat_message_record_video)) },
-                                                            onClick = {
-                                                                showCameraMenu = false
-                                                                onVideoRecordClick()
-                                                            },
-                                                            leadingIcon = {
-                                                                Icon(Icons.Default.Videocam, contentDescription = null)
-                                                            }
-                                                        )
+                                                } else if (isMobile()) {
+                                                    var showCameraMenu by remember { mutableStateOf(false) }
+                                                    Box {
+                                                        IconButton(
+                                                            onClick = { showCameraMenu = true },
+                                                            modifier = Modifier.testTag("camera_button"),
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.PhotoCamera,
+                                                                contentDescription = stringResource(MR.string.chat_message_camera)
+                                                            )
+                                                        }
+                                                        DropdownMenu(
+                                                            expanded = showCameraMenu,
+                                                            onDismissRequest = { showCameraMenu = false }
+                                                        ) {
+                                                            DropdownMenuItem(
+                                                                text = { Text(stringResource(MR.string.chat_message_take_photo)) },
+                                                                onClick = {
+                                                                    showCameraMenu = false
+                                                                    onCameraClick()
+                                                                },
+                                                                leadingIcon = {
+                                                                    Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                                                                }
+                                                            )
+                                                            DropdownMenuItem(
+                                                                text = { Text(stringResource(MR.string.chat_message_record_video)) },
+                                                                onClick = {
+                                                                    showCameraMenu = false
+                                                                    onVideoRecordClick()
+                                                                },
+                                                                leadingIcon = {
+                                                                    Icon(Icons.Default.Videocam, contentDescription = null)
+                                                                }
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
@@ -903,7 +921,7 @@ fun MessageTextFieldCompact(
                                             topEnd = 12.dp
                                         )
                                     )
-                                    .background(if (!showActionButtons) Color.Transparent else micButtonColor)
+                                    .drawBehind { drawRect(micButtonColor) }
                                     .pointerInput(Unit) {
                                         awaitEachGesture {
                                             val down = awaitFirstDown()
@@ -966,7 +984,7 @@ fun MessageTextFieldCompact(
                                 Icon(
                                     imageVector = Icons.Default.Mic,
                                     contentDescription = stringResource(MR.string.chat_message_microphone),
-                                    tint = if (isMicrophonePressed) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = micIconTint,
                                 )
                             }
                         }
@@ -1105,7 +1123,7 @@ private fun BoxScope.RecordingInProgress(
                 .graphicsLayer { alpha = dotAlpha.value },
             imageVector = Icons.Default.Mic,
             contentDescription = stringResource(MR.string.chat_message_microphone),
-            tint = Color.Red,
+            tint = MaterialTheme.colorScheme.error,
         )
         Spacer(modifier = Modifier.width(8.dp))
 
@@ -1361,40 +1379,42 @@ fun MessageTextFieldForAttachment(
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
-            if (!isKeyboardVisible) {
-                SendChordTooltip(
-                    enabled = true,
-                    enterSendsMessage = enterSendsMessage,
-                ) {
+            Crossfade(isKeyboardVisible, animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) { keyboardUp ->
+                if (!keyboardUp) {
+                    SendChordTooltip(
+                        enabled = true,
+                        enterSendsMessage = enterSendsMessage,
+                    ) {
+                        IconButton(
+                            onClick = { hasSent = true; onSendMessage() },
+                            enabled = !hasSent,
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                                contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                contentDescription = stringResource(
+                                    MR.string.chat_send_message_button
+                                ),
+                            )
+                        }
+                    }
+                } else {
                     IconButton(
-                        onClick = { hasSent = true; onSendMessage() },
-                        enabled = !hasSent,
+                        onClick = { keyboardController?.hide() },
                         colors = IconButtonDefaults.iconButtonColors(
                             containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
                             contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                         )
                     ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Send,
-                            contentDescription = stringResource(
-                                MR.string.chat_send_message_button
-                            ),
+                            imageVector = Icons.Default.Check, contentDescription = stringResource(
+                                MR.string.chat_message_hide_keyboard
+                            )
                         )
                     }
-                }
-            } else {
-                IconButton(
-                    onClick = { keyboardController?.hide() },
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check, contentDescription = stringResource(
-                            MR.string.chat_message_hide_keyboard
-                        )
-                    )
                 }
             }
         }
