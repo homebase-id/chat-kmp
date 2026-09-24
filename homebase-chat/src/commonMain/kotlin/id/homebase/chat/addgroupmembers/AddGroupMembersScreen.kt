@@ -1,7 +1,6 @@
 package id.homebase.chat.addgroupmembers
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -170,9 +169,7 @@ fun AddGroupMembersUi(
                     items(uiState.selectedContacts) { contact ->
                         InputChip(
                             modifier = Modifier.widthIn(max = 200.dp).padding(end = 8.dp),
-                            onClick = {
-                                // onUiAction(NewConversationUiAction.ContactClicked(contact))
-                            },
+                            onClick = { onUiAction(AddGroupMembersUiAction.ContactClicked(contact)) },
                             label = {
                                 Text(
                                     text = contact.name,
@@ -196,9 +193,6 @@ fun AddGroupMembersUi(
                             },
                             trailingIcon = {
                                 Icon(
-                                    modifier = Modifier.clickable {
-                                        onUiAction(AddGroupMembersUiAction.ContactClicked(contact))
-                                    },
                                     imageVector = Icons.Default.Close,
                                     contentDescription = stringResource(MR.string.remove),
                                 )
