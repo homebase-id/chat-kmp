@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.ImageBitmap
 
 @Composable
 actual fun rememberCameraEngine(recordsVideo: Boolean, warm: CameraEngine?): CameraEngine = remember { UnavailableCameraEngine() }
@@ -29,3 +30,6 @@ internal actual fun rememberReduceMotion(): Boolean = false
 
 @Composable
 internal actual fun HardwareShutterEffect(onDown: () -> Unit, onUp: () -> Unit) = Unit
+
+@Composable
+internal actual fun rememberLatestGalleryThumbnail(sizePx: Int): ImageBitmap? = null

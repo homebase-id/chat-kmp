@@ -2422,6 +2422,7 @@
     <string name="camera_state_on">On</string>
     <string name="camera_state_off">Off</string>
     <string name="camera_switch_lens">Switch camera</string>
+    <string name="camera_open_gallery">Open gallery</string>
     <string name="camera_lens_front">Front camera</string>
     <string name="camera_lens_back">Back camera</string>
     <string name="camera_mode_photo">Photo</string>

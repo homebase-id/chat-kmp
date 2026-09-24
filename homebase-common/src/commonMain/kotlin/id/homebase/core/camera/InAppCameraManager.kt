@@ -23,22 +23,31 @@ class InAppCameraLauncher internal constructor() : PlatformCameraManager {
 
 /**
  * Emits the camera dialog while open, so call it unconditionally (not inside an `if`).
- * [onResult] gets the captured file, or null when the camera is closed without one.
+ * [onResult] gets the captured file, or null when the camera is closed without one. [onOpenGallery], when given,
+ * shows a gallery button that closes the camera and hands over to the caller's picker.
  */
 @Composable
 fun rememberInAppCameraManager(
     allowedModes: CameraModes,
     mirrorFront: Boolean = true,
+    onOpenGallery: (() -> Unit)? = null,
     onResult: (PlatformFile?) -> Unit,
 ): InAppCameraLauncher {
     val launcher = remember { InAppCameraLauncher() }
     val currentOnResult by rememberUpdatedState(onResult)
+    val currentOnOpenGallery by rememberUpdatedState(onOpenGallery)
     val mode = launcher.openMode
     if (mode != null) {
         CameraCaptureDialog(
             allowedModes = allowedModes,
             initialMode = mode,
             mirrorFront = mirrorFront,
+            onOpenGallery = if (onOpenGallery == null) null else {
+                {
+                    launcher.openMode = null
+                    currentOnOpenGallery?.invoke()
+                }
+            },
             onResult = { file ->
                 launcher.openMode = null
                 currentOnResult(file)

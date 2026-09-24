@@ -27,6 +27,9 @@ import androidx.compose.ui.test.assertContentDescriptionContains
 import androidx.compose.ui.input.key.Key
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.DpSize
@@ -62,6 +65,7 @@ class CameraCaptureScreenTest {
         size: DpSize = PhoneSize,
         deviceRotation: QuarterTurn = QuarterTurn.R0,
         onResult: (PlatformFile) -> Unit = {},
+        onOpenGallery: (() -> Unit)? = null,
         preview: @Composable (Modifier) -> Unit = { Box(it) },
     ) {
         setContent {
@@ -79,6 +83,7 @@ class CameraCaptureScreenTest {
                             deviceRotation = deviceRotation,
                             onResult = onResult,
                             onDismiss = {},
+                            onOpenGallery = onOpenGallery,
                             preview = preview,
                         )
                     }
@@ -883,6 +888,44 @@ class CameraCaptureScreenTest {
         waitForIdle()
         val bounds = onNodeWithText("Couldn't start the camera").assertExists().fetchSemanticsNode().boundsInRoot
         assertTrue(bounds.width > bounds.height, "upright snackbar should lie flat: $bounds")
+    }
+
+    @Test
+    fun theGalleryButtonShowsOnlyWithAHandlerAndHidesWhileRecording() = runComposeUiTest {
+        val engine = FakeCameraEngine()
+        var opened = 0
+        var handler by mutableStateOf<(() -> Unit)?>(null)
+        setContent {
+            Themed {
+                Box(Modifier.size(PhoneSize)) {
+                    CameraCaptureContent(
+                        engine = engine,
+                        allowedModes = CameraModes.PhotoAndVideo,
+                        initialMode = CaptureMode.Photo,
+                        mirrorFront = true,
+                        mic = MicPermission(granted = true),
+                        onRequestMic = {},
+                        haptics = RecordingHaptics(),
+                        deviceRotation = QuarterTurn.R0,
+                        onResult = {},
+                        onDismiss = {},
+                        onOpenGallery = handler,
+                        preview = { Box(it) },
+                    )
+                }
+            }
+        }
+        onNodeWithTag(GALLERY_TAG).assertDoesNotExist()
+
+        handler = { opened++ }
+        waitForIdle()
+        onNodeWithTag(GALLERY_TAG).performClick()
+        waitForIdle()
+        assertEquals(1, opened)
+
+        engine.uiState.update { it.copy(isRecording = true, recordingStartedAtMs = 0L) }
+        waitForIdle()
+        onNodeWithTag(GALLERY_TAG).assertDoesNotExist()
     }
 }
 

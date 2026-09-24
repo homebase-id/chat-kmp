@@ -1874,6 +1874,7 @@
     <string name="camera_state_on">Til</string>
     <string name="camera_state_off">Fra</string>
     <string name="camera_switch_lens">Skift kamera</string>
+    <string name="camera_open_gallery">Åbn galleri</string>
     <string name="camera_lens_front">Frontkamera</string>
     <string name="camera_lens_back">Bagkamera</string>
     <string name="camera_mode_photo">Foto</string>
