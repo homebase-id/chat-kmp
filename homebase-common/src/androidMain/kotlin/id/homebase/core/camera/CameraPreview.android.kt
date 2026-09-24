@@ -34,7 +34,9 @@ actual fun CameraPreview(engine: CameraEngine, modifier: Modifier, onTapFocus: (
     val transformer = remember { MutableCoordinateTransformer() }
     CameraXViewfinder(
         surfaceRequest = surfaceRequest,
-        implementationMode = ImplementationMode.EXTERNAL,
+        // A SurfaceView's layer is torn down apart from the dialog window, so a close showed black under the HUD
+        // until the window left; a TextureView keeps the preview in the window's own last frame.
+        implementationMode = ImplementationMode.EMBEDDED,
         coordinateTransformer = transformer,
         contentScale = ContentScale.Crop,
         modifier = modifier
