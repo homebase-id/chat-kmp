@@ -39,10 +39,10 @@ import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ShortNavigationBar
+import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -786,11 +786,11 @@ fun AppNavHost(
         ),
         bottomBar = {
             if (showBottomNavigationBar) {
-                NavigationBar {
+                ShortNavigationBar {
                     topLevelRoutes.forEach { topLevelRoute ->
                         val isSelected =
                             chromeDestination?.hasRoute(topLevelRoute.route::class) == true
-                        NavigationBarItem(
+                        ShortNavigationBarItem(
                             icon = {
                                 TopLevelNavIcon(
                                     topLevelRoute = topLevelRoute,
