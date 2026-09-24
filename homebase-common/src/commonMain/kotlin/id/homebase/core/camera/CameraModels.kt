@@ -33,3 +33,16 @@ sealed interface CameraError {
     data class PhotoFailed(val message: String?) : CameraError
     data class RecordingFailed(val message: String?) : CameraError
 }
+
+/** When a recording's first sample was written, from the recorder's running duration; null until one has been. */
+internal fun recordingStartedAtMs(nowMs: Long, recordedDurationNanos: Long): Long? =
+    if (recordedDurationNanos <= 0L) null else nowMs - recordedDurationNanos / 1_000_000
+
+// A chat photo gains nothing past 12 MP, and 24/48 MP stills take visibly longer to capture and send.
+private const val MAX_PHOTO_PIXELS = 4032L * 3024L
+
+/** The largest still size up to 12 MP, or the smallest one when every size is larger. */
+internal fun choosePhotoSize(sizes: List<Pair<Int, Int>>): Pair<Int, Int>? {
+    fun pixels(size: Pair<Int, Int>) = size.first.toLong() * size.second
+    return sizes.filter { pixels(it) <= MAX_PHOTO_PIXELS }.maxByOrNull(::pixels) ?: sizes.minByOrNull(::pixels)
+}

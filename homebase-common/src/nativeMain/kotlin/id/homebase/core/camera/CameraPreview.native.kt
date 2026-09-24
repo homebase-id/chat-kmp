@@ -6,8 +6,10 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
@@ -29,6 +31,11 @@ actual fun CameraPreview(engine: CameraEngine, modifier: Modifier, onTapFocus: (
     if (iosEngine == null) {
         Box(modifier)
         return
+    }
+    LaunchedEffect(iosEngine) {
+        // isPreviewing has no callback reachable from Kotlin (KVO is an NSObject category), so read it per frame.
+        while (!iosEngine.previewLayer.previewing) withFrameNanos { }
+        iosEngine.onPreviewShowing()
     }
     val density = LocalDensity.current.density
     val currentOnTapFocus by rememberUpdatedState(onTapFocus)

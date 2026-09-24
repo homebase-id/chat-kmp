@@ -188,6 +188,7 @@ internal class AndroidCameraEngine(
             }
             _uiState.update {
                 it.copy(
+                    awaitingFirstFrame = true,
                     hasBackLens = hasBack,
                     hasFrontLens = hasFront,
                     lens = when {
@@ -552,8 +553,14 @@ internal class AndroidCameraEngine(
 
     private fun onRecordEvent(event: VideoRecordEvent, file: File, result: CompletableDeferred<PlatformFile?>) {
         when (event) {
-            is VideoRecordEvent.Start -> _uiState.update {
-                it.copy(isRecording = true, recordingStartedAtMs = Clock.System.now().toEpochMilliseconds())
+            is VideoRecordEvent.Start -> _uiState.update { it.copy(isRecording = true) }
+
+            // Start can precede the first recorded frame, so the timer counts from the recorded duration.
+            is VideoRecordEvent.Status -> if (_uiState.value.recordingStartedAtMs == null) {
+                val now = Clock.System.now().toEpochMilliseconds()
+                recordingStartedAtMs(now, event.recordingStats.recordedDurationNanos)?.let { startedAt ->
+                    _uiState.update { it.copy(recordingStartedAtMs = startedAt) }
+                }
             }
 
             is VideoRecordEvent.Finalize -> {
