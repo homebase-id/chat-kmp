@@ -153,7 +153,7 @@ internal fun ShutterButton(
                 contentDescription = label
                 stateLabel?.let { stateDescription = it }
                 onClick { if (currentEnabled) currentOnTap(); currentEnabled }
-                if (holdEnabled) {
+                if (state.longPressAction(holdEnabled) != null) {
                     onLongClick {
                         val started = currentEnabled && currentOnHoldStart()
                         if (started) currentOnLock()
@@ -175,7 +175,7 @@ internal fun ShutterButton(
                     if (!currentEnabled) return@awaitEachGesture
                     pressed = true
                     try {
-                        val canHold = currentHoldEnabled && !currentState.isRecording
+                        val canHold = currentState.longPressAction(currentHoldEnabled) != null
                         var timedOut = false
                         val lifted = if (canHold) {
                             try {

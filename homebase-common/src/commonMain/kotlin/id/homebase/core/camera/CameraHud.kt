@@ -169,7 +169,7 @@ internal fun CameraCaptureContent(
     }
     val currentPresets by rememberUpdatedState(presets)
     val recordingStartedText = stringResource(MR.string.camera_recording_started)
-    val holdEnabled = allowedModes.allows(CaptureMode.Video)
+    val holdEnabled = CaptureButtonState.holdToRecordAllowed(allowedModes)
 
     LaunchedEffect(engine) {
         val mode = if (allowedModes.allows(initialMode)) initialMode else CaptureMode.Photo
@@ -236,9 +236,8 @@ internal fun CameraCaptureContent(
             onRequestMic()
             return false
         }
-        // Without a video use case bound next to the photo one, a hold rebinds to video first (the rebind is
-        // synchronous on Android) and goes back to photo once the clip is saved.
-        if (held && currentUi.mode == CaptureMode.Photo && !currentUi.supportsSimultaneousVideo) {
+        // The rebind is synchronous on Android; the stop below switches back to Photo once the clip is saved.
+        if (held && CaptureButtonState.holdSwitchesToVideo(currentUi.mode, currentUi.supportsSimultaneousVideo)) {
             returnToPhotoAfterHold = true
             engine.setMode(CaptureMode.Video)
         }
@@ -270,9 +269,10 @@ internal fun CameraCaptureContent(
         }
     }
 
+    fun currentButtonState() = CaptureButtonState.of(currentUi.mode, currentUi.isRecording, isRecordingLocked = !heldRecording)
+
     fun shutterTap() {
-        val state = CaptureButtonState.of(currentUi.mode, currentUi.isRecording, isRecordingLocked = !heldRecording)
-        when (state.tapAction) {
+        when (currentButtonState().tapAction) {
             CaptureAction.TakePhoto -> takePhoto()
             CaptureAction.StartLockedRecording -> startRecording(held = false)
             CaptureAction.StopRecording -> stopRecording()
@@ -336,7 +336,7 @@ internal fun CameraCaptureContent(
         if (keyDown) return
         keyDown = true
         keyHoldStarted = false
-        if (!holdEnabled || currentUi.isRecording || !currentUi.isBound) return
+        if (currentButtonState().longPressAction(holdEnabled) == null || !currentUi.isBound) return
         keyHoldJob = scope.launch {
             delay(viewConfiguration.longPressTimeoutMillis)
             holdZoomBase = currentUi.zoomRatio
