@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -77,6 +78,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
+import id.homebase.chat.services.collectContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -130,6 +132,7 @@ fun FullScreenMediaViewer(
             state = pagerState,
         ) { page ->
             val payload = data.payloads[page]
+            val isSettled = page == pagerState.settledPage
             val payloadIv = remember(payload.iv) {
                 payload.iv?.let {
                     try {
@@ -142,10 +145,7 @@ fun FullScreenMediaViewer(
 
             // Prefer a locally-available original (an image sent this session)
             // over a remote fetch + decrypt — same as VaultZoomableImage.
-            val localContext by localAttachmentStore.observe(data.messageId, payload.key)
-                .collectAsStateWithLifecycle(
-                    initialValue = localAttachmentStore.get(data.messageId, payload.key),
-                )
+            val localContext by localAttachmentStore.collectContext(data.messageId, payload.key)
 
             when (
                 val resolved = resolveMediaPageSource(
@@ -163,8 +163,8 @@ fun FullScreenMediaViewer(
                         source = source,
                         contentDescription = stringResource(MR.string.chat_message_image_attachment),
                         onTap = { showUI = !showUI },
-                        sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
-                        animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
+                        sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
+                        animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
                         sharedContentStateKey = "image-${data.fileId}-${payload.key}",
                     )
                 }
@@ -191,8 +191,8 @@ fun FullScreenMediaViewer(
                         source = source,
                         contentDescription = stringResource(MR.string.chat_message_image_attachment),
                         onTap = { showUI = !showUI },
-                        sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
-                        animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
+                        sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
+                        animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
                         sharedContentStateKey = "image-${data.fileId}-${payload.key}",
                     )
                 }
@@ -326,6 +326,7 @@ fun FullScreenMediaViewer(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
+                    .navigationBarsPadding()
                     .padding(16.dp)
             ) {
                 if (data.content.isNotBlank()) {

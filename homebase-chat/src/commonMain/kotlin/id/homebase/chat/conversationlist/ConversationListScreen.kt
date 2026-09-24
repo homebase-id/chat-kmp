@@ -38,6 +38,7 @@ import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.layout.AnimatedPane
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
+import androidx.compose.material3.adaptive.layout.MutableThreePaneScaffoldState
 import androidx.compose.material3.adaptive.layout.PaneAdaptedValue
 import androidx.compose.material3.adaptive.layout.PaneExpansionAnchor
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
@@ -56,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.backhandler.PredictiveBackHandler
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -144,7 +146,10 @@ import id.homebase.resources.error_unknown
 import id.homebase.resources.file_save_failed
 import id.homebase.resources.file_saved_to
 import id.homebase.resources.file_share_failed
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
@@ -867,12 +872,24 @@ fun ConversationListUi(
         }
     }
 
+    // What the value overload of ListDetailPaneScaffold does internally, held here so the back
+    // gesture can seek the list/detail transition.
+    val scaffoldState = remember { MutableThreePaneScaffoldState(scaffoldValue) }
+    LaunchedEffect(scaffoldValue) { scaffoldState.animateTo(scaffoldValue) }
+
     val hasOverlay = messagesUiState.fullScreenOverlay != null
-    @Suppress("DEPRECATION") BackHandler(detail is ChatDetail.Open && (hasOverlay || !isExpanded)) {
-        if (hasOverlay) {
-            onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
-        } else {
+    @Suppress("DEPRECATION") BackHandler(detail is ChatDetail.Open && hasOverlay) {
+        onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
+    }
+    @Suppress("DEPRECATION") PredictiveBackHandler(detail is ChatDetail.Open && !hasOverlay && !isExpanded) { progress ->
+        val listValue = chatScaffoldValue(isExpanded = false, detail = ChatDetail.None)
+        try {
+            progress.collect { scaffoldState.seekTo(it.progress, listValue) }
             onUiAction(ConversationListUiAction.ClearSelection)
+        } catch (e: CancellationException) {
+            // A cancelled gesture leaves the value unchanged, so nothing else animates it back.
+            withContext(NonCancellable) { scaffoldState.animateTo(scaffoldState.currentState) }
+            throw e
         }
     }
 
@@ -896,7 +913,7 @@ fun ConversationListUi(
                     }
                 },
                 directive = scaffoldDirective,
-                value = scaffoldValue,
+                scaffoldState = scaffoldState,
                 listPane = {
                     AnimatedPane(modifier = Modifier) {
                         val pane = newConversationPane

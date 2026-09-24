@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -22,6 +21,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -40,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
@@ -208,37 +209,42 @@ fun CreateConversationGroupUi(
                 shape = CircleShape
 
             ) {
-                Text(stringResource(MR.string.create))
+                // The label keeps its width under the spinner so the button doesn't resize.
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = stringResource(MR.string.create),
+                        modifier = Modifier.alpha(if (uiState.isCreatingGroup) 0f else 1f),
+                    )
+                    if (uiState.isCreatingGroup) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = LocalContentColor.current,
+                        )
+                    }
+                }
             }
         },
     ) { paddingValues ->
         Column(
             modifier = Modifier.padding(paddingValues)
         ) {
-            if (uiState.isCreatingGroup) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
-            } else {
-                Row(
-                    modifier = Modifier.padding(end = 24.dp).fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    GroupImage(
-                        url = uiState.groupImage?.toString(),
-                        onClickAdd = { onUiAction(CreateConversationGroupUiAction.AddGroupImage) },
-                        onClickRemove = { onUiAction(CreateConversationGroupUiAction.RemoveGroupImage) },
-                    )
-                    MinimalTextField(
-                        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
-                            .focusRequester(focusRequester),
-                        state = groupNameTextState,
-                        inputTransformation = InputTransformation.maxLength(100),
-                        placeHolderText = stringResource(MR.string.chat_group_name_placeholder),
-                    )
-                }
+            Row(
+                modifier = Modifier.padding(end = 24.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                GroupImage(
+                    url = uiState.groupImage?.toString(),
+                    onClickAdd = { onUiAction(CreateConversationGroupUiAction.AddGroupImage) },
+                    onClickRemove = { onUiAction(CreateConversationGroupUiAction.RemoveGroupImage) },
+                )
+                MinimalTextField(
+                    modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    state = groupNameTextState,
+                    inputTransformation = InputTransformation.maxLength(100),
+                    placeHolderText = stringResource(MR.string.chat_group_name_placeholder),
+                )
             }
             HorizontalDivider()
             Text(
