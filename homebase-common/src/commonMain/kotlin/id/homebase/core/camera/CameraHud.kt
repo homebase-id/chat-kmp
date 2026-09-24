@@ -384,7 +384,7 @@ internal fun CameraCaptureContent(
 
             if (allowedModes == CameraModes.PhotoAndVideo) {
                 ModeCarousel(
-                    mode = ui.mode,
+                    mode = if (ui.isRecording) CaptureMode.Video else ui.mode,
                     enabled = !ui.isRecording && !busy,
                     onSelect = ::selectMode,
                     onSwipe = { leftward -> stepMode(towardVideo = leftward != isRtl) },
