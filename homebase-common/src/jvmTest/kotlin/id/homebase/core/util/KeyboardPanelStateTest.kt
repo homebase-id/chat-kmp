@@ -3,6 +3,7 @@ package id.homebase.core.util
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Density
@@ -30,13 +31,18 @@ class KeyboardPanelStateTest {
 
     private val slide = listOf(40, 300, 650, 800)
 
-    @Test
-    fun keyboardAndPanelSwapAtTheSameHeight() = runComposeUiTest {
+    private fun ComposeUiTest.panelUnderTest(): KeyboardPanelState {
         mainClock.autoAdvance = false
         lateinit var panel: KeyboardPanelState
         setContent {
             MaterialTheme { panel = rememberKeyboardPanelState(fakeIme, hasSoftKeyboard = true) }
         }
+        return panel
+    }
+
+    @Test
+    fun keyboardAndPanelSwapAtTheSameHeight() = runComposeUiTest {
+        val panel = panelUnderTest()
         fun frame(px: Int) {
             keyboardPx.intValue = px
             mainClock.advanceTimeByFrame()
@@ -67,11 +73,7 @@ class KeyboardPanelStateTest {
 
     @Test
     fun firstFrameOfTheKeyboardIsNotItsHeight() = runComposeUiTest {
-        mainClock.autoAdvance = false
-        lateinit var panel: KeyboardPanelState
-        setContent {
-            MaterialTheme { panel = rememberKeyboardPanelState(fakeIme, hasSoftKeyboard = true) }
-        }
+        val panel = panelUnderTest()
         slide.plus(800).plus(slide.reversed()).plus(0).forEach {
             keyboardPx.intValue = it
             mainClock.advanceTimeByFrame()
@@ -82,11 +84,7 @@ class KeyboardPanelStateTest {
 
     @Test
     fun panelOpenedWithoutKeyboardSlidesUp() = runComposeUiTest {
-        mainClock.autoAdvance = false
-        lateinit var panel: KeyboardPanelState
-        setContent {
-            MaterialTheme { panel = rememberKeyboardPanelState(fakeIme, hasSoftKeyboard = true) }
-        }
+        val panel = panelUnderTest()
         runOnIdle { panel.open() }
         mainClock.advanceTimeByFrame()
         mainClock.advanceTimeByFrame()

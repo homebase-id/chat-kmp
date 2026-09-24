@@ -281,10 +281,6 @@ fun ConversationContent(
     val focusManager = LocalFocusManager.current
     val bottomPanel = rememberKeyboardPanelState()
     var panelContent by remember { mutableStateOf(ComposerPanel.Emoji) }
-    fun openPanel(content: ComposerPanel) {
-        panelContent = content
-        bottomPanel.open()
-    }
     var showEventComposer by remember { mutableStateOf(false) }
     var showGroodleComposer by remember { mutableStateOf(false) }
     var showDiceRollComposer by remember { mutableStateOf(false) }
@@ -1659,7 +1655,8 @@ fun ConversationContent(
                                 } else {
                                     wasKeyboardVisible = false
                                 }
-                                openPanel(content)
+                                panelContent = content
+                                bottomPanel.open()
                             }
                         }
                         val toggleAttachmentSheet = { togglePanel(ComposerPanel.Attachments) }

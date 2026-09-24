@@ -64,9 +64,7 @@ class KeyboardPanelState internal constructor(
 
     /** Height the content above must give up. Read it in layout or draw only. */
     val contentInsetPx: Int
-        get() {
-            return if (keyboardUnderPanel) keyboardPx + reveal.value else maxOf(keyboardPx, reveal.value)
-        }
+        get() = if (keyboardUnderPanel) keyboardPx + reveal.value else maxOf(keyboardPx, reveal.value)
 
     internal val panelTopPx: Int
         get() = contentInsetPx - reveal.value - if (keyboardUnderPanel) keyboardPx else 0
