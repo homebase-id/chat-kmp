@@ -15,7 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
@@ -42,7 +42,7 @@ fun SwipeableMessageWrapper(
         commitThreshold = SwipeDistance.Fixed(56.dp),
         maxOffset = SwipeDistance.Fixed(96.dp),
         reveal = { state ->
-            val revealingReply = state.offsetPx > 0f
+            val revealingReply = state.movesRight
             if (if (revealingReply) onSwipeRight != null else onSwipeLeft != null) {
                 Box(
                     modifier = Modifier
@@ -50,7 +50,11 @@ fun SwipeableMessageWrapper(
                         else AbsoluteAlignment.CenterRight)
                         .padding(horizontal = 12.dp)
                         .size(32.dp)
-                        .scale(0.5f + 0.5f * state.progress)
+                        .graphicsLayer {
+                            val scale = 0.5f + 0.5f * state.progress
+                            scaleX = scale
+                            scaleY = scale
+                        }
                         .background(
                             MaterialTheme.colorScheme.surfaceContainerHighest,
                             CircleShape,
