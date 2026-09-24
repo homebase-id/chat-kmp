@@ -1,5 +1,9 @@
 package id.homebase.core.ui.screens.email
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -78,51 +82,67 @@ fun EmailScreen(
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding),
         ) {
-            when {
-                uiState.isResolving || uiState.driveActivated == null -> EmailBusy()
+            val body = when {
+                uiState.isResolving || uiState.driveActivated == null -> EmailBody.Busy
+                uiState.statusError != null -> EmailBody.StatusUnavailable
+                uiState.serverHasNoEmail -> EmailBody.NoServer
+                uiState.driveActivated == false -> EmailBody.Onboarding
+                setupStep == EmailSetupStep.Complete -> EmailBody.Home
+                else -> EmailBody.Setup
+            }
+            val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+            AnimatedContent(
+                targetState = body,
+                transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
+            ) { shown ->
+                when (shown) {
+                    EmailBody.Busy -> EmailBusy()
 
-                uiState.statusError != null -> EmailStatusUnavailable(
-                    onRetry = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
-                )
+                    EmailBody.StatusUnavailable -> EmailStatusUnavailable(
+                        onRetry = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
+                    )
 
-                uiState.serverHasNoEmail -> EmailNoServerContent(
-                    onRetry = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
-                    onClose = onNavigateBack,
-                )
+                    EmailBody.NoServer -> EmailNoServerContent(
+                        onRetry = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
+                        onClose = onNavigateBack,
+                    )
 
-                uiState.driveActivated == false -> EmailOnboardingContent(
-                    onAction = viewModel::onAction,
-                )
+                    EmailBody.Onboarding -> EmailOnboardingContent(
+                        onAction = viewModel::onAction,
+                    )
 
-                setupStep == EmailSetupStep.Complete -> EmailHomeContent(
-                    status = uiState.serverStatus,
-                    mailbox = uiState.mailboxStatus,
-                    onOpenSecrets = onNavigateToSecrets,
-                    onOpenThunderbirdSetup = onNavigateToThunderbirdSetup,
-                    onRefresh = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
-                    onOpenMailClient = { viewModel.onAction(EmailUiAction.OpenMailClientClicked) },
-                    isRefreshing = uiState.isCheckingServer,
-                    health = uiState.health,
-                    isCheckingHealth = uiState.isCheckingHealth,
-                    healthUnavailable = uiState.healthError != null,
-                    onCheckHealth = { viewModel.onAction(EmailUiAction.CheckHealthClicked) },
-                )
+                    EmailBody.Home -> EmailHomeContent(
+                        status = uiState.serverStatus,
+                        mailbox = uiState.mailboxStatus,
+                        onOpenSecrets = onNavigateToSecrets,
+                        onOpenThunderbirdSetup = onNavigateToThunderbirdSetup,
+                        onRefresh = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
+                        onOpenMailClient = { viewModel.onAction(EmailUiAction.OpenMailClientClicked) },
+                        isRefreshing = uiState.isCheckingServer,
+                        health = uiState.health,
+                        isCheckingHealth = uiState.isCheckingHealth,
+                        healthUnavailable = uiState.healthError != null,
+                        onCheckHealth = { viewModel.onAction(EmailUiAction.CheckHealthClicked) },
+                    )
 
-                else -> EmailSetupContent(
-                    currentStep = setupStep,
-                    uiState = setupState,
-                    onAction = setupViewModel::onAction,
-                    onRun = {
-                        setupViewModel.runSetup(
-                            currentStep = { viewModel.setupStep.value },
-                            refresh = { viewModel.refreshStatusNow() },
-                        )
-                    },
-                )
+                    EmailBody.Setup -> EmailSetupContent(
+                        currentStep = setupStep,
+                        uiState = setupState,
+                        onAction = setupViewModel::onAction,
+                        onRun = {
+                            setupViewModel.runSetup(
+                                currentStep = { viewModel.setupStep.value },
+                                refresh = { viewModel.refreshStatusNow() },
+                            )
+                        },
+                    )
+                }
             }
         }
     }
 }
+
+private enum class EmailBody { Busy, StatusUnavailable, NoServer, Onboarding, Home, Setup }
 
 @Composable
 private fun EmailBusy() {

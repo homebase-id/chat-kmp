@@ -1,5 +1,11 @@
 package id.homebase.core.ui.screens.location
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -30,12 +36,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
@@ -130,56 +138,74 @@ fun LocationLiveSharingScreen(
                     }
                 }
 
-                if (uiState.outgoingShares.isNotEmpty()) {
-                    var confirmStopAll by remember { mutableStateOf(false) }
-                    SettingsSectionHeader(
-                        title = stringResource(MR.string.location_dashboard_sharing_with),
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    )
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column {
-                            uiState.outgoingShares.forEachIndexed { index, row ->
-                                if (index > 0) HorizontalDivider()
-                                OutgoingShareRowItem(
-                                    row = row,
-                                    onStop = { viewModel.onAction(LocationUiAction.StopSharingWith(row.odinId)) },
-                                )
+                val spatial = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
+                val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+                AnimatedVisibility(
+                    visible = uiState.outgoingShares.isNotEmpty(),
+                    enter = expandVertically(spatial) + fadeIn(effects),
+                    exit = shrinkVertically(spatial) + fadeOut(effects),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        var confirmStopAll by remember { mutableStateOf(false) }
+                        SettingsSectionHeader(
+                            title = stringResource(MR.string.location_dashboard_sharing_with),
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                        Card(modifier = Modifier.fillMaxWidth().animateContentSize(spatial)) {
+                            Column {
+                                uiState.outgoingShares.forEachIndexed { index, row ->
+                                    key(row.odinId) {
+                                        if (index > 0) HorizontalDivider()
+                                        OutgoingShareRowItem(
+                                            row = row,
+                                            onStop = { viewModel.onAction(LocationUiAction.StopSharingWith(row.odinId)) },
+                                        )
+                                    }
+                                }
                             }
                         }
-                    }
-                    TextButton(onClick = { confirmStopAll = true }) {
-                        Text(text = stringResource(MR.string.location_dashboard_stop_everyone))
-                    }
-                    if (confirmStopAll) {
-                        AlertDialog(
-                            onDismissRequest = { confirmStopAll = false },
-                            title = { Text(stringResource(MR.string.location_dashboard_stop_confirm_title)) },
-                            text = { Text(stringResource(MR.string.location_dashboard_stop_confirm_body)) },
-                            confirmButton = {
-                                TextButton(onClick = {
-                                    confirmStopAll = false
-                                    viewModel.onAction(LocationUiAction.StopSharingWithEveryone)
-                                }) { Text(stringResource(MR.string.stop_sharing)) }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { confirmStopAll = false }) {
-                                    Text(stringResource(MR.string.cancel))
-                                }
-                            },
-                        )
+                        TextButton(onClick = { confirmStopAll = true }) {
+                            Text(text = stringResource(MR.string.location_dashboard_stop_everyone))
+                        }
+                        if (confirmStopAll) {
+                            AlertDialog(
+                                onDismissRequest = { confirmStopAll = false },
+                                title = { Text(stringResource(MR.string.location_dashboard_stop_confirm_title)) },
+                                text = { Text(stringResource(MR.string.location_dashboard_stop_confirm_body)) },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        confirmStopAll = false
+                                        viewModel.onAction(LocationUiAction.StopSharingWithEveryone)
+                                    }) { Text(stringResource(MR.string.stop_sharing)) }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { confirmStopAll = false }) {
+                                        Text(stringResource(MR.string.cancel))
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
 
-                if (uiState.incomingShares.isNotEmpty()) {
-                    SettingsSectionHeader(
-                        title = stringResource(MR.string.location_dashboard_sharing_with_you),
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    )
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column {
-                            uiState.incomingShares.forEachIndexed { index, row ->
-                                if (index > 0) HorizontalDivider()
-                                IncomingShareRowItem(row = row)
+                AnimatedVisibility(
+                    visible = uiState.incomingShares.isNotEmpty(),
+                    enter = expandVertically(spatial) + fadeIn(effects),
+                    exit = shrinkVertically(spatial) + fadeOut(effects),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SettingsSectionHeader(
+                            title = stringResource(MR.string.location_dashboard_sharing_with_you),
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                        Card(modifier = Modifier.fillMaxWidth().animateContentSize(spatial)) {
+                            Column {
+                                uiState.incomingShares.forEachIndexed { index, row ->
+                                    key(row.odinId) {
+                                        if (index > 0) HorizontalDivider()
+                                        IncomingShareRowItem(row = row)
+                                    }
+                                }
                             }
                         }
                     }
