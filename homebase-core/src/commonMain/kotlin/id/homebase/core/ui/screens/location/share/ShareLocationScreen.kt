@@ -40,6 +40,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,6 +84,7 @@ import kotlin.time.Clock
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import kotlinx.coroutines.flow.filterNotNull
 
 /**
  * Full-screen share-location screen (#966): pan the map under a fixed center pin (the address
@@ -216,13 +218,11 @@ fun ShareLocationScreen(
                     cameraState = camera,
                 )
 
-                // Pin follows the viewport center; the VM debounces the geocode, so per-gesture
-                // restarts of this effect are cheap.
-                val center = camera.centerUnit
-                LaunchedEffect(center) {
-                    center?.let { (x, y) ->
-                        viewModel.onMapCenterChanged(x, y, camera.isUserPositioned)
-                    }
+                // Pin follows the viewport center; the VM debounces the geocode.
+                LaunchedEffect(camera) {
+                    snapshotFlow { camera.centerUnit }
+                        .filterNotNull()
+                        .collect { (x, y) -> viewModel.onMapCenterChanged(x, y, camera.isUserPositioned) }
                 }
                 // One-shot GPS re-center handed back from the VM.
                 LaunchedEffect(uiState.recenterTarget) {
@@ -365,7 +365,7 @@ fun ShareLocationScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         FilledIconButton(
                             onClick = { viewModel.sendStaticPin() },
-                            enabled = uiState.pinLat != null && !uiState.isSending,
+                            enabled = uiState.hasPin && !uiState.isSending,
                         ) {
                             if (uiState.isSending) {
                                 CircularProgressIndicator(
