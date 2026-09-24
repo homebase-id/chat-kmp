@@ -140,10 +140,12 @@ fun LocationLiveSharingScreen(
 
                 val spatial = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
                 val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+                val sectionEnter = expandVertically(spatial) + fadeIn(effects)
+                val sectionExit = shrinkVertically(spatial) + fadeOut(effects)
                 AnimatedVisibility(
                     visible = uiState.outgoingShares.isNotEmpty(),
-                    enter = expandVertically(spatial) + fadeIn(effects),
-                    exit = shrinkVertically(spatial) + fadeOut(effects),
+                    enter = sectionEnter,
+                    exit = sectionExit,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         var confirmStopAll by remember { mutableStateOf(false) }
@@ -190,8 +192,8 @@ fun LocationLiveSharingScreen(
 
                 AnimatedVisibility(
                     visible = uiState.incomingShares.isNotEmpty(),
-                    enter = expandVertically(spatial) + fadeIn(effects),
-                    exit = shrinkVertically(spatial) + fadeOut(effects),
+                    enter = sectionEnter,
+                    exit = sectionExit,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         SettingsSectionHeader(

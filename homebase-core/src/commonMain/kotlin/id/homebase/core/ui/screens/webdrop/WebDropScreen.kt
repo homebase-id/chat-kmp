@@ -116,18 +116,18 @@ fun WebDropScreen(
         val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
         AnimatedContent(
             targetState = body,
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
             transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
         ) { shown ->
             when (shown) {
                 WebDropBody.Loading -> Box(
-                    modifier = Modifier.fillMaxSize().padding(innerPadding),
+                    modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator() }
 
                 WebDropBody.Empty -> Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(innerPadding)
                         .padding(horizontal = 32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
@@ -152,7 +152,7 @@ fun WebDropScreen(
                 }
 
                 WebDropBody.Drops -> LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(innerPadding),
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
