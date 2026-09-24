@@ -6,17 +6,12 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -101,21 +96,6 @@ fun PublicAvatar(
         val state by painter.state.collectAsStateWithLifecycle()
 
         when (state) {
-            is AsyncImagePainter.State.Loading,
-            is AsyncImagePainter.State.Empty -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        strokeWidth = 2.dp,
-                        color = options.contentColor.takeOrElse {
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                        },
-                    )
-                }
-            }
-
             is AsyncImagePainter.State.Success -> {
                 SubcomposeAsyncImageContent(
                     modifier = if (imageClick != null) {
@@ -126,6 +106,9 @@ fun PublicAvatar(
                 )
             }
 
+            // Initials, not a spinner, while loading: a list of rows would otherwise run one spinner per avatar.
+            is AsyncImagePainter.State.Loading,
+            is AsyncImagePainter.State.Empty,
             is AsyncImagePainter.State.Error -> {
                 FallbackAvatar(
                     initials = initials,

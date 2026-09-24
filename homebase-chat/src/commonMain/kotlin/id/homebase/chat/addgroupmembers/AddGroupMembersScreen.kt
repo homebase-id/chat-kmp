@@ -1,7 +1,6 @@
 package id.homebase.chat.addgroupmembers
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,21 +11,17 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -42,13 +37,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.createconversation.ContactItem
-import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
+import id.homebase.chat.selectmembers.SelectedMemberChipRow
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.chat_group_selected_members
@@ -58,7 +50,6 @@ import id.homebase.resources.chat_search_result_empty
 import id.homebase.resources.contacts
 import id.homebase.resources.done
 import id.homebase.resources.menu_back
-import id.homebase.resources.remove
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
@@ -163,49 +154,10 @@ fun AddGroupMembersUi(
                     showSearchIcon = false,
                     placeHolderText = stringResource(MR.string.chat_new_conversation_search_placeholder),
                 )
-                LazyRow(
-                    contentPadding = PaddingValues(vertical = 8.dp, horizontal = 16.dp),
-
-                    ) {
-                    items(uiState.selectedContacts) { contact ->
-                        InputChip(
-                            modifier = Modifier.widthIn(max = 200.dp).padding(end = 8.dp),
-                            onClick = {
-                                // onUiAction(NewConversationUiAction.ContactClicked(contact))
-                            },
-                            label = {
-                                Text(
-                                    text = contact.name,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            },
-                            selected = true,
-                            leadingIcon = {
-                                ContactAvatar(
-                                    odinId = contact.odinId,
-                                    profileImageData = null,
-                                    initials = contact.avatarInitials,
-                                    options = AvatarOptions(
-                                        size = 28.dp,
-                                        fontSize = 12.sp,
-                                    ),
-                                    sharedTransitionScope = null,
-                                    animatedVisibilityScope = null
-                                )
-                            },
-                            trailingIcon = {
-                                Icon(
-                                    modifier = Modifier.clickable {
-                                        onUiAction(AddGroupMembersUiAction.ContactClicked(contact))
-                                    },
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = stringResource(MR.string.remove),
-                                )
-                            }
-                        )
-                    }
-                }
+                SelectedMemberChipRow(
+                    contacts = uiState.selectedContacts,
+                    onRemove = { onUiAction(AddGroupMembersUiAction.ContactClicked(it)) },
+                )
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(16.dp),

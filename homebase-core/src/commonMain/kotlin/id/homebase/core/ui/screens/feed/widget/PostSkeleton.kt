@@ -17,12 +17,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.State
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -81,7 +84,7 @@ fun PostSkeleton(modifier: Modifier = Modifier) {
 
 @Composable
 private fun ShimmerBar(
-    brush: Brush,
+    brush: ShimmerBrush,
     widthFraction: Float,
     height: Dp,
     modifier: Modifier = Modifier,
@@ -97,24 +100,32 @@ private fun ShimmerBar(
 
 @Composable
 private fun ShimmerBlock(
-    brush: Brush,
+    brush: ShimmerBrush,
     shape: Shape,
     modifier: Modifier = Modifier,
 ) {
     Spacer(
         modifier = modifier
             .clip(shape)
-            .background(brush),
+            .drawBehind {
+                val translate = brush.translate.value
+                translate(left = translate) {
+                    drawRect(brush.gradient, topLeft = Offset(-translate, 0f), size = size)
+                }
+            },
     )
 }
 
+private class ShimmerBrush(val gradient: Brush, val translate: State<Float>)
+
+// The sweep is read only in the draw phase, so a frame of it redraws the blocks without recomposing them.
 @Composable
-private fun rememberShimmerBrush(): Brush {
+private fun rememberShimmerBrush(): ShimmerBrush {
     val base = MaterialTheme.colorScheme.surfaceVariant
     val highlight = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f)
 
     val transition = rememberInfiniteTransition(label = "feed-skeleton-shimmer")
-    val translate by transition.animateFloat(
+    val translate = transition.animateFloat(
         initialValue = 0f,
         targetValue = 1000f,
         animationSpec = infiniteRepeatable(
@@ -124,9 +135,14 @@ private fun rememberShimmerBrush(): Brush {
         label = "feed-skeleton-translate",
     )
 
-    return Brush.linearGradient(
-        colors = listOf(base, highlight, base),
-        start = Offset(translate - 500f, 0f),
-        end = Offset(translate, 0f),
-    )
+    return remember(base, highlight, translate) {
+        ShimmerBrush(
+            gradient = Brush.linearGradient(
+                colors = listOf(base, highlight, base),
+                start = Offset(-500f, 0f),
+                end = Offset.Zero,
+            ),
+            translate = translate,
+        )
+    }
 }

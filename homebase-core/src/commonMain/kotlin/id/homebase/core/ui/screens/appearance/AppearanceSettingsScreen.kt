@@ -1,6 +1,10 @@
 package id.homebase.core.ui.screens.appearance
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -17,6 +21,7 @@ import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Vibration
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -110,6 +115,10 @@ fun AppearanceSettingsUi(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
+            val motion = MaterialTheme.motionScheme
+            val optionsEnter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec())
+            val optionsExit = shrinkVertically(motion.defaultSpatialSpec()) + fadeOut(motion.defaultEffectsSpec())
+
             SettingsRow(
                 modifier = Modifier.testTag("languageRow"),
                 icon = Icons.Outlined.Language,
@@ -120,7 +129,7 @@ fun AppearanceSettingsUi(
                     onExpandedChange = { languageExpanded = it },
                 ),
             )
-            AnimatedVisibility(visible = languageExpanded) {
+            AnimatedVisibility(visible = languageExpanded, enter = optionsEnter, exit = optionsExit) {
                 Column(modifier = Modifier.selectableGroup()) {
                     uiState.availableLanguages.forEach { language ->
                         SettingsOptionRow(
@@ -145,7 +154,7 @@ fun AppearanceSettingsUi(
                     onExpandedChange = { themeExpanded = it },
                 ),
             )
-            AnimatedVisibility(visible = themeExpanded) {
+            AnimatedVisibility(visible = themeExpanded, enter = optionsEnter, exit = optionsExit) {
                 Column(modifier = Modifier.selectableGroup()) {
                     ThemeState.entries.forEach { theme ->
                         SettingsOptionRow(

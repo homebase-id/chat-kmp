@@ -180,7 +180,7 @@ fun EmergencyLocateSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Box(modifier = Modifier.weight(1f))
-                TextButton(onClick = onDismiss, enabled = !submitting) {
+                TextButton(onClick = { dismiss() }, enabled = !submitting) {
                     Text(stringResource(MR.string.cancel))
                 }
                 Button(

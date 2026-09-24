@@ -75,12 +75,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -981,7 +981,7 @@ fun MessageTextFieldCompact(
                 if (isRecordingActive) {
                     RecordingInProgress(
                         recordingSeconds,
-                        dragOffset,
+                        { dragOffset },
                         cancelThresholdPx,
                         recordingData?.isProcessing ?: false
                     )
@@ -1074,12 +1074,12 @@ fun MessageTextFieldCompact(
 @Composable
 private fun BoxScope.RecordingInProgress(
     recordingSeconds: Int,
-    dragOffset: Float,
+    dragOffset: () -> Float,
     cancelThresholdPx: Float,
     isProcessing: Boolean,
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "recording")
-    val dotAlpha by infiniteTransition.animateFloat(
+    val dotAlpha = infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = 0.3f,
         animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
@@ -1102,7 +1102,7 @@ private fun BoxScope.RecordingInProgress(
         Icon(
             modifier = Modifier
                 .size(24.dp)
-                .alpha(dotAlpha),
+                .graphicsLayer { alpha = dotAlpha.value },
             imageVector = Icons.Default.Mic,
             contentDescription = stringResource(MR.string.chat_message_microphone),
             tint = Color.Red,
@@ -1123,13 +1123,13 @@ private fun BoxScope.RecordingInProgress(
         } else {
             Text(
                 text = stringResource(MR.string.slide_to_cancel),
-                modifier = Modifier.offset {
-                    IntOffset((dragOffset / 2).roundToInt(), 0)
-                },
+                modifier = Modifier
+                    .offset { IntOffset((dragOffset() / 2).roundToInt(), 0) }
+                    .graphicsLayer {
+                        alpha = (1f + dragOffset() / cancelThresholdPx).coerceIn(0f, 1f)
+                    },
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                    alpha = (1f + dragOffset / cancelThresholdPx).coerceIn(0f, 1f)
-                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

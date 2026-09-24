@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -9,6 +10,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +46,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -208,6 +212,7 @@ fun MomentsScreen(
 
     CompactMomentsLayout(
         moments = uiState.moments,
+        isLoading = uiState.isLoading,
         uploadProgress = uiState.uploadProgress,
         pendingLocalPreviews = uiState.pendingLocalPreviews,
         ownerSession = uiState.ownerSession,
@@ -231,6 +236,7 @@ fun MomentsScreen(
 @Composable
 private fun CompactMomentsLayout(
     moments: List<MomentFeedItem>,
+    isLoading: Boolean,
     uploadProgress: ImmutableMap<Uuid, UploadStatus>,
     pendingLocalPreviews: ImmutableMap<Uuid, Any>,
     ownerSession: OwnerSession?,
@@ -280,37 +286,53 @@ private fun CompactMomentsLayout(
             .consumeWindowInsets(innerPadding)
             .padding(innerPadding)
         if (moments.isEmpty()) {
-            EmptyMomentsState(modifier = contentModifier)
-        } else when (viewMode) {
-            MomentsViewMode.Timeline -> MomentsFeedList(
-                moments = moments,
-                uploadProgress = uploadProgress,
-                pendingLocalPreviews = pendingLocalPreviews,
-                selfOdinId = ownerSession?.odinId,
-                onOpenMoment = onOpenMoment,
-                onAddReaction = onAddReaction,
-                openLabel = openLabel,
-                selectedMomentId = null,
-                // Compact timeline: a tap raises a modal comments + description
-                // sheet for the moment (Instagram-style) rather than navigating
-                // away to the full-screen detail view.
-                commentsSheetOnTap = true,
-                onDeleteFailedMoment = onDeleteFailedMoment,
-                onDismissUpload = onDismissUpload,
+            if (isLoading) {
+                Box(modifier = contentModifier, contentAlignment = Alignment.Center) { LoadingIndicator() }
+            } else {
+                EmptyMomentsState(modifier = contentModifier)
+            }
+        } else {
+            val motion = MaterialTheme.motionScheme
+            AnimatedContent(
+                targetState = viewMode,
                 modifier = contentModifier,
-            )
-            MomentsViewMode.Album -> MomentsAlbumGrid(
-                moments = moments,
-                zoom = albumZoom,
-                onZoomChange = onAlbumZoomChange,
-                onOpenMoment = onOpenMoment,
-                pendingLocalPreviews = pendingLocalPreviews,
-                modifier = contentModifier,
-            )
-            MomentsViewMode.Reels -> MomentsReelsView(
-                moments = moments,
-                modifier = contentModifier,
-            )
+                transitionSpec = {
+                    (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.92f))
+                        .togetherWith(fadeOut(motion.fastEffectsSpec()))
+                },
+            ) { mode ->
+                when (mode) {
+                    MomentsViewMode.Timeline -> MomentsFeedList(
+                        moments = moments,
+                        uploadProgress = uploadProgress,
+                        pendingLocalPreviews = pendingLocalPreviews,
+                        selfOdinId = ownerSession?.odinId,
+                        onOpenMoment = onOpenMoment,
+                        onAddReaction = onAddReaction,
+                        openLabel = openLabel,
+                        selectedMomentId = null,
+                        // Compact timeline: a tap raises a modal comments + description
+                        // sheet for the moment (Instagram-style) rather than navigating
+                        // away to the full-screen detail view.
+                        commentsSheetOnTap = true,
+                        onDeleteFailedMoment = onDeleteFailedMoment,
+                        onDismissUpload = onDismissUpload,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    MomentsViewMode.Album -> MomentsAlbumGrid(
+                        moments = moments,
+                        zoom = albumZoom,
+                        onZoomChange = onAlbumZoomChange,
+                        onOpenMoment = onOpenMoment,
+                        pendingLocalPreviews = pendingLocalPreviews,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    MomentsViewMode.Reels -> MomentsReelsView(
+                        moments = moments,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
         }
     }
 }
@@ -454,7 +476,7 @@ private fun MomentsFeedList(
                 autoplayActive = isActive,
                 isMuted = isMuted,
                 onToggleMute = videoSession::toggleMuted,
-                commentsOpen = commentsSheetOnTap && commentsMomentId == moment.id,
+                modifier = Modifier.animateItem(),
             )
         }
     }
@@ -736,10 +758,7 @@ private fun MomentPostCard(
     autoplayActive: Boolean = false,
     isMuted: Boolean = true,
     onToggleMute: () -> Unit = {},
-    // True while this card's comments sheet is open. Switches the media to
-    // fit-with-letterbox so the whole photo/video is visible (paired with the
-    // shrink/scroll that brings the card above the sheet).
-    commentsOpen: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     // Local sheet state — only one moment's failed-upload sheet can be open
     // at a time per card, and the sheet's lifetime tracks the card. No need
@@ -771,7 +790,7 @@ private fun MomentPostCard(
     }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             // Single multi-tap detector handles all taps:
             // 1 tap → open detail (dispatch is delayed ≈[MultiTapTimeoutMs]
@@ -916,7 +935,6 @@ private fun MomentPostCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(aspect),
-                        fitToContent = commentsOpen,
                     )
                 } else {
                     MomentMediaGallery(
@@ -949,7 +967,6 @@ private fun MomentPostCard(
                         onDoubleTap = { onAddReaction(HeartEmoji) },
                         autoplayActive = autoplayActive,
                         onVisiblePayloadChanged = { visiblePayloadKey = it },
-                        fitToContent = commentsOpen,
                     )
                 }
 
