@@ -225,9 +225,10 @@ fun ShareLocationScreen(
                         .collect { (x, y) -> viewModel.onMapCenterChanged(x, y, camera.isUserPositioned) }
                 }
                 // One-shot GPS re-center handed back from the VM.
+                val recenterSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
                 LaunchedEffect(uiState.recenterTarget) {
                     uiState.recenterTarget?.let { target ->
-                        camera.centerOn(target.unitX, target.unitY)
+                        camera.animateCenterTo(target.unitX, target.unitY, recenterSpec)
                         viewModel.recenterConsumed()
                     }
                 }

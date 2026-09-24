@@ -1,9 +1,16 @@
 package id.homebase.core.ui.screens.location.map
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateCentroidSize
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -13,20 +20,27 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.center
+import androidx.compose.ui.unit.toOffset
 import androidx.compose.ui.unit.LayoutDirection
 import id.homebase.api.client.location.WebMercator
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.decodeToImageBitmap
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -67,14 +81,23 @@ fun TiledMapView(
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     val camera = cameraState ?: remember { MapCameraState() }
-    // Drop the user pan/zoom override (re-fit to bbox) whenever the reset key changes — same
-    // semantics the pre-camera `remember(resetViewportOn) { mutableStateOf(null) }` had.
-    remember(resetViewportOn, camera) { camera.viewport = null }
+    // A reset key change drops the user's pan/zoom; hold the old view so the re-fit below glides from it.
+    val refitFrom = remember(resetViewportOn, camera) {
+        camera.isUserPositioned = false
+        camera.effective.also { camera.viewport = it }
+    }
 
     // The live viewport is read only in derived state, draw and placement, so a gesture frame
     // redraws the map without recomposing it or the caller's markers.
     val fit = fitViewport(bbox, canvasSize)
     SideEffect { camera.fit = fit }
+
+    val refitSpec = MaterialTheme.motionScheme.slowSpatialSpec<Float>()
+    LaunchedEffect(resetViewportOn, camera) {
+        if (refitFrom == null) return@LaunchedEffect
+        val target = camera.fit
+        if (target == null || camera.animateTo(target, refitSpec)) camera.viewport = null
+    }
 
     // ── Tile layer state ──
     val tileBitmaps = remember { mutableStateMapOf<MapTileKey, ImageBitmap>() }
@@ -102,23 +125,48 @@ fun TiledMapView(
     }
 
     val gestureModifier = if (!interactive) Modifier else {
-        Modifier.pointerInput(resetViewportOn, camera) {
-            detectTransformGestures { centroid, pan, zoom, _ ->
-                val current = camera.effective ?: return@detectTransformGestures
-                val newUnitsPerPx = (current.unitsPerPx / zoom)
-                    .coerceIn(MIN_UNITS_PER_PX, MAX_UNITS_PER_PX)
-                // Keep the gesture centroid anchored while zooming, then pan.
-                val cx = centroid.x - size.width / 2f
-                val cy = centroid.y - size.height / 2f
-                val anchoredX = current.centerX + cx * (current.unitsPerPx - newUnitsPerPx)
-                val anchoredY = current.centerY + cy * (current.unitsPerPx - newUnitsPerPx)
-                camera.viewport = MapViewport(
-                    centerX = anchoredX - pan.x * newUnitsPerPx,
-                    centerY = anchoredY - pan.y * newUnitsPerPx,
-                    unitsPerPx = newUnitsPerPx,
-                )
+        val scope = rememberCoroutineScope()
+        val zoomSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+        Modifier
+            .pointerInput(camera, zoomSpec) {
+                detectTapGestures(onDoubleTap = { tap ->
+                    scope.launch { camera.zoomAround(tap - size.center.toOffset(), 2f, zoomSpec) }
+                })
             }
-        }
+            .pointerInput(camera) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    camera.stopMotion()
+                    val velocity = VelocityTracker()
+                    var pastSlop = false
+                    var multiTouch = false
+                    var slopPan = Offset.Zero
+                    var slopZoom = 1f
+                    do {
+                        val event = awaitPointerEvent()
+                        if (event.changes.size > 1) multiTouch = true
+                        val zoom = event.calculateZoom()
+                        val pan = event.calculatePan()
+                        if (!pastSlop) {
+                            slopZoom *= zoom
+                            slopPan += pan
+                            val span = event.calculateCentroidSize(useCurrent = false)
+                            pastSlop = abs(1 - slopZoom) * span > viewConfiguration.touchSlop ||
+                                slopPan.getDistance() > viewConfiguration.touchSlop
+                        }
+                        if (pastSlop) {
+                            val centroid = event.calculateCentroid(useCurrent = false)
+                            camera.applyGesture(centroid - size.center.toOffset(), pan, zoom)
+                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+                        event.changes.firstOrNull { it.id == down.id }?.let(velocity::addPointerInputChange)
+                    } while (event.changes.any { it.pressed })
+                    if (pastSlop && !multiTouch) {
+                        val v = velocity.calculateVelocity()
+                        scope.launch { camera.fling(v) }
+                    }
+                }
+            }
     }
 
     Box(modifier = modifier.fillMaxSize().onSizeChanged { canvasSize = it }.then(gestureModifier)) {
