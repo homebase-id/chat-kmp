@@ -1,6 +1,13 @@
 package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.Transition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -102,6 +109,7 @@ import id.homebase.resources.settings
 import id.homebase.resources.share
 import kotlinx.collections.immutable.ImmutableList
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.pow
 
 @Composable
 fun ConversationMenu(
@@ -316,13 +324,15 @@ fun ReceivedMessagePopup(
         }
     }
 
-    val reactionBar: @Composable () -> Unit = {
+    val reactionBar: @Composable (Modifier, (Int) -> Modifier) -> Unit = { background, emoji ->
         ReactionMenu(
             modifier = Modifier.padding(horizontal = 16.dp),
             userDefaultReactions = userDefaultReactions,
             ownReactions = message.ownReactions,
             onSelect = onSelectEmoji,
             onShowAllEmojis = onShowAllEmojis,
+            backgroundModifier = background,
+            emojiModifier = emoji,
         )
     }
     when (transition.shownMode) {
@@ -334,7 +344,7 @@ fun ReceivedMessagePopup(
                 Popup(
                     onDismissRequest = dismissMenu
                 ) {
-                    transition.PopupContent(content = reactionBar)
+                    transition.PopupContent { reactionBar(Modifier) { Modifier } }
                 }
             }
         }
@@ -471,13 +481,15 @@ fun SentMessagePopup(
         }
     }
 
-    val reactionBar: @Composable () -> Unit = {
+    val reactionBar: @Composable (Modifier, (Int) -> Modifier) -> Unit = { background, emoji ->
         ReactionMenu(
             modifier = Modifier.padding(horizontal = 16.dp),
             userDefaultReactions = userDefaultReactions,
             ownReactions = message.ownReactions,
             onSelect = onSelectEmoji,
             onShowAllEmojis = onShowAllEmojis,
+            backgroundModifier = background,
+            emojiModifier = emoji,
         )
     }
     when (transition.shownMode) {
@@ -487,7 +499,7 @@ fun SentMessagePopup(
                 Popup(
                     onDismissRequest = dismissMenu
                 ) {
-                    transition.PopupContent(content = reactionBar)
+                    transition.PopupContent { reactionBar(Modifier) { Modifier } }
                 }
             }
         }
@@ -547,17 +559,61 @@ private fun Transition<MessagePopupMode>.PopupContent(
     ) { content() }
 }
 
+// Matches Signal's ChatReactionOverlay.kt (strip, staggered emoji) and delay_fade_in / shrink_fade_out (menu).
+private fun decelerate(power: Float) = Easing { 1f - (1f - it).pow(power) }
+
+private fun <T> signalReveal(delayMillis: Int) = tween<T>(200, delayMillis, decelerate(2f))
+
+private fun <T> signalHide() = tween<T>(150, easing = decelerate(2f))
+
 // The bubble sits directly above the action menu; the reaction bar sits above both with a gap
 // of up to 140dp that the bubble fills. Placed in one pass so the first frame is already final.
 @Composable
-private fun MessageLongPressLayout(
+private fun AnimatedVisibilityScope.MessageLongPressLayout(
     alignEnd: Boolean,
-    reactionMenu: (@Composable () -> Unit)?,
+    reactionMenu: (@Composable (background: Modifier, emoji: (Int) -> Modifier) -> Unit)?,
     bubble: @Composable () -> Unit,
     actionMenu: @Composable () -> Unit,
 ) {
+    val motion = MaterialTheme.motionScheme
     Layout(
-        contents = listOf(reactionMenu ?: {}, bubble, actionMenu),
+        contents = listOf(
+            {
+                reactionMenu?.invoke(
+                    Modifier.animateEnterExit(
+                        enter = fadeIn(signalReveal(100)),
+                        exit = fadeOut(signalHide()),
+                    ),
+                ) { index ->
+                    Modifier.animateEnterExit(
+                        enter = fadeIn(signalReveal(100 + 10 * index)) +
+                            slideInVertically(signalReveal(100 + 10 * index)) { it / 2 },
+                        exit = fadeOut(signalHide()) +
+                            slideOutVertically(signalHide()) { it / 2 },
+                    )
+                }
+            },
+            {
+                Box(
+                    Modifier.animateEnterExit(
+                        enter = scaleIn(motion.defaultSpatialSpec(), initialScale = 0.9f),
+                        exit = scaleOut(motion.fastSpatialSpec(), targetScale = 0.9f),
+                    ),
+                ) { bubble() }
+            },
+            {
+                Box(
+                    Modifier.animateEnterExit(
+                        enter = fadeIn(signalReveal(150)),
+                        exit = scaleOut(
+                            tween(220, easing = decelerate(5f)),
+                            targetScale = 0.9f,
+                            transformOrigin = TransformOrigin(0.5f, 0f),
+                        ) + fadeOut(tween(150, easing = decelerate(3f))),
+                    ),
+                ) { actionMenu() }
+            },
+        ),
         modifier = Modifier.fillMaxSize(),
     ) { (reactionMeasurables, bubbleMeasurables, actionMeasurables), constraints ->
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
@@ -806,16 +862,17 @@ fun ConversationItemMenuPopup(
 private fun PopupWithScrim(
     transition: Transition<MessagePopupMode>,
     onDismissRequest: () -> Unit,
-    content: @Composable () -> Unit
+    content: @Composable AnimatedVisibilityScope.() -> Unit
 ) {
     val motion = MaterialTheme.motionScheme
     Popup(
         onDismissRequest = onDismissRequest
     ) {
+        // Each child animates itself, so the scrim fade doesn't multiply into the menus' alpha.
         transition.AnimatedVisibility(
             visible = { it != MessagePopupMode.None },
-            enter = fadeIn(motion.defaultEffectsSpec()),
-            exit = fadeOut(motion.fastEffectsSpec()),
+            enter = EnterTransition.None,
+            exit = ExitTransition.None,
         ) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -823,6 +880,10 @@ private fun PopupWithScrim(
             ) {
                 Box(
                     modifier = Modifier
+                        .animateEnterExit(
+                            enter = fadeIn(motion.defaultEffectsSpec()),
+                            exit = fadeOut(motion.fastEffectsSpec()),
+                        )
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.8f))
                         .clickable(
@@ -831,14 +892,7 @@ private fun PopupWithScrim(
                             interactionSource = remember { MutableInteractionSource() }
                         )
                 )
-                Box(
-                    modifier = Modifier.animateEnterExit(
-                        enter = scaleIn(motion.defaultSpatialSpec(), initialScale = 0.9f),
-                        exit = scaleOut(motion.fastSpatialSpec(), targetScale = 0.9f),
-                    ),
-                ) {
-                    content()
-                }
+                content()
             }
         }
     }
