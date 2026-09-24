@@ -15,8 +15,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -252,7 +252,6 @@ internal fun ModeCarousel(
                 .graphicsLayer { alpha = state.fade.value },
         ) {
             modes.forEachIndexed { index, mode ->
-                val distance = abs(state.position - index).coerceIn(0f, 1f)
                 Box(
                     modifier = Modifier
                         .width(metrics.slot)
@@ -270,10 +269,11 @@ internal fun ModeCarousel(
                         .testTag(mode.tag),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
+                    // A color producer reads the sliding position at draw time, so a swipe doesn't recompose the carousel.
+                    BasicText(
                         text = labels[index],
                         style = MaterialTheme.typography.labelLarge,
-                        color = lerp(colors.onPrimary, colors.onSurface, distance),
+                        color = { lerp(colors.onPrimary, colors.onSurface, abs(state.position - index).coerceIn(0f, 1f)) },
                         maxLines = 1,
                     )
                 }

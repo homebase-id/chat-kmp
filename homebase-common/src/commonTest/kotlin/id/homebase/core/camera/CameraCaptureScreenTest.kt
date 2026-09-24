@@ -779,4 +779,4 @@ class CameraCaptureScreenTest {
     }
 }
 
-private val PhoneSize = DpSize(400.dp, 800.dp)
+internal val PhoneSize = DpSize(400.dp, 800.dp)

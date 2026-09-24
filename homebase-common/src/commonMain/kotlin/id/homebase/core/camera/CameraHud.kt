@@ -33,6 +33,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -130,7 +132,9 @@ internal fun CameraCaptureContent(
         CameraPreview(engine, it, onLongPressFocus = { haptics.perform(HapticEvent.Confirm) })
     },
 ) {
-    val ui by engine.uiState.collectAsStateWithLifecycle()
+    val liveUi = engine.uiState.collectAsStateWithLifecycle()
+    // Zoom and exposure change on every frame of a drag; only the controls that show them read them, via liveUi.
+    val ui by remember(liveUi) { derivedStateOf { liveUi.value.copy(zoomRatio = 1f, exposureBias = 0f) } }
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val reduceMotion = LocalReduceMotion.current
@@ -152,7 +156,7 @@ internal fun CameraCaptureContent(
     var keyDown by remember { mutableStateOf(false) }
     var keyHoldStarted by remember { mutableStateOf(false) }
     var keyHoldJob by remember { mutableStateOf<Job?>(null) }
-    val currentUi by rememberUpdatedState(ui)
+    val currentUi by liveUi
     val currentMic by rememberUpdatedState(mic)
     val currentOnResult by rememberUpdatedState(onResult)
     val currentReduceMotion by rememberUpdatedState(reduceMotion)
@@ -388,7 +392,8 @@ internal fun CameraCaptureContent(
 
     val buttonState = CaptureButtonState.of(ui.mode, ui.isRecording, isRecordingLocked = !heldRecording)
     val uprightDegrees = deviceRotation.uprightIconDegrees(displayRotation)
-    val iconRotation = animatedUprightRotation(uprightDegrees)
+    val iconRotationState = animatedUprightRotation(uprightDegrees)
+    val iconRotation = { iconRotationState.value }
     val sideways = abs(uprightDegrees) % 180f == 90f
     val colors = MaterialTheme.colorScheme
     val motion = MaterialTheme.motionScheme
@@ -445,7 +450,7 @@ internal fun CameraCaptureContent(
         FocusRing(
             point = ui.focusPoint.takeUnless { focusGate || it == ignoredFocus },
             locked = ui.focusLocked,
-            exposureBias = ui.exposureBias,
+            exposureBias = { liveUi.value.exposureBias },
             showExposure = ui.exposureSupported,
         )
 
@@ -503,7 +508,7 @@ internal fun CameraCaptureContent(
         val zoomControls = @Composable {
             ZoomControls(
                 presets = presets,
-                zoomRatio = ui.zoomRatio,
+                zoomRatio = { liveUi.value.zoomRatio },
                 iconRotation = iconRotation,
                 showReadout = zoomGesture,
                 dimmed = ui.isRecording && heldRecording,
@@ -564,7 +569,7 @@ internal fun CameraCaptureContent(
         val lockTarget = @Composable {
             LockTarget(
                 visible = lockVisible,
-                progress = lockProgress,
+                progress = { lockProgress },
                 iconRotation = iconRotation,
             )
         }
@@ -572,7 +577,7 @@ internal fun CameraCaptureContent(
             LockHint(
                 visible = lockVisible,
                 direction = lockOffset,
-                progress = lockProgress,
+                progress = { lockProgress },
                 modifier = Modifier.absoluteOffset { IntOffset((lockOffset.x / 2).roundToInt(), (lockOffset.y / 2).roundToInt()) },
             )
         }
@@ -693,7 +698,7 @@ internal fun CameraCaptureContent(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .requiredWidth(minOf(maxHeight - SidewaysSnackbarClearance, SidewaysSnackbarMaxWidth))
-                    .graphicsLayer { rotationZ = iconRotation },
+                    .graphicsLayer { rotationZ = iconRotation() },
             )
         }
     }
@@ -704,8 +709,8 @@ private fun List<ZoomPreset>.presetStep(ratio: Float): Int = count { it.ratio <=
 @Composable
 private fun ZoomControls(
     presets: List<ZoomPreset>,
-    zoomRatio: Float,
-    iconRotation: Float,
+    zoomRatio: () -> Float,
+    iconRotation: () -> Float,
     showReadout: Boolean,
     dimmed: Boolean,
     onSelect: (ZoomPreset) -> Unit,
@@ -742,7 +747,7 @@ private fun ZoomControls(
 }
 
 @Composable
-private fun ZoomReadout(visible: Boolean, zoomRatio: Float) {
+private fun ZoomReadout(visible: Boolean, zoomRatio: () -> Float) {
     val motion = MaterialTheme.motionScheme
     Box(Modifier.height(ZoomReadoutHeight), contentAlignment = Alignment.Center) {
         AnimatedVisibility(
@@ -751,7 +756,7 @@ private fun ZoomReadout(visible: Boolean, zoomRatio: Float) {
             exit = fadeOut(motion.defaultEffectsSpec()),
         ) {
             Text(
-                text = stringResource(MR.string.camera_zoom_level, ZoomPresets.label(zoomRatio)),
+                text = stringResource(MR.string.camera_zoom_level, ZoomPresets.label(zoomRatio())),
                 style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier
@@ -778,15 +783,14 @@ private val CameraError.messageRes: StringResource?
 
 /** Follows [targetDegrees] the short way round, so 270° → 0° turns 90° rather than 270° back. */
 @Composable
-internal fun animatedUprightRotation(targetDegrees: Float): Float {
+internal fun animatedUprightRotation(targetDegrees: Float): State<Float> {
     val last = remember { floatArrayOf(targetDegrees) }
     val resolved = remember(targetDegrees) {
         val delta = ((targetDegrees - last[0]) % 360f + 540f) % 360f - 180f
         (last[0] + delta).also { last[0] = it }
     }
-    val rotation by animateFloatAsState(
+    return animateFloatAsState(
         resolved,
         if (LocalReduceMotion.current) snap() else MaterialTheme.motionScheme.defaultSpatialSpec(),
     )
-    return rotation
 }

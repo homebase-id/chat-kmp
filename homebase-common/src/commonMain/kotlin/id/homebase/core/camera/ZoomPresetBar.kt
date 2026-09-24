@@ -20,8 +20,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -38,8 +38,8 @@ internal const val ZOOM_BAR_TAG = "camera_zoom_bar"
 @Composable
 internal fun ZoomPresetBar(
     presets: List<ZoomPreset>,
-    zoomRatio: Float,
-    iconRotation: Float,
+    zoomRatio: () -> Float,
+    iconRotation: () -> Float,
     onSelect: (ZoomPreset) -> Unit,
     onDragStart: () -> Unit,
     onDrag: (deltaPx: Float) -> Unit,
@@ -47,6 +47,7 @@ internal fun ZoomPresetBar(
     modifier: Modifier = Modifier,
 ) {
     if (presets.size < 2) return
+    val zoomRatio = zoomRatio()
     val atRatio = ZoomPresets.selected(zoomRatio, presets)
     // The pill under the finger follows a pinch between presets.
     val active = atRatio ?: presets.lastOrNull { it.ratio <= zoomRatio } ?: presets.firstOrNull()
@@ -102,7 +103,7 @@ internal fun ZoomPresetBar(
                         text = if (checked) text else number,
                         style = if (checked) MaterialTheme.typography.labelLarge else MaterialTheme.typography.labelMedium,
                         maxLines = 1,
-                        modifier = Modifier.rotate(iconRotation),
+                        modifier = Modifier.graphicsLayer { rotationZ = iconRotation() },
                     )
                 }
             }
