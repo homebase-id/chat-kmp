@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.contactbook.components
 
+import id.homebase.api.client.connections.ConnectionStatus
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,7 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.contactbook_detail_blocked
 import id.homebase.resources.circle_drive_unknown
 import id.homebase.resources.circle_drives_section_title
 import id.homebase.resources.circle_member_pending
@@ -65,6 +67,8 @@ fun CircleMembersSheet(
     onMemberClick: (ContactBookEntry) -> Unit,
     onAddMemberClick: () -> Unit,
     onRemoveMemberClick: (ContactBookEntry) -> Unit,
+    /** By lowercased domain; members missing from it are not connections. */
+    connectionStatuses: Map<String, ConnectionStatus>,
 ) {
     var confirmRemove by remember { mutableStateOf<ContactBookEntry?>(null) }
 
@@ -153,16 +157,21 @@ fun CircleMembersSheet(
                     }
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
                         items(allMembers, key = { it.uniqueId.toString() }) { entry ->
+                            val status = entry.odinId?.lowercase()?.let { connectionStatuses[it] }
+                            val blocked = status == ConnectionStatus.Blocked
                             ContactBookRow(
                                 entry = entry,
-                                connected = true,
+                                connected = status == ConnectionStatus.Connected,
                                 onClick = { onMemberClick(entry) },
-                                trailing = if (state.manageable) {
+                                trailing = if (state.manageable || blocked) {
                                     {
                                         CircleMemberTrailing(
                                             pending = pendingIds.contains(entry.uniqueId),
+                                            blocked = blocked,
                                             removing = state.removingMemberIds.contains(entry.uniqueId),
-                                            onRemoveClick = { confirmRemove = entry },
+                                            onRemoveClick = if (state.manageable) {
+                                                { confirmRemove = entry }
+                                            } else null,
                                         )
                                     }
                                 } else null,
@@ -199,11 +208,22 @@ fun CircleMembersSheet(
     }
 }
 
-/** Trailing content for a circle-member row: an optional "Pending" label (a sealed deposit
- *  that hasn't converted into a real grant yet) plus a remove button. */
+/** Pending means a sealed deposit that hasn't converted into a real grant yet. */
 @Composable
-private fun CircleMemberTrailing(pending: Boolean, removing: Boolean, onRemoveClick: () -> Unit) {
+private fun CircleMemberTrailing(
+    pending: Boolean,
+    blocked: Boolean,
+    removing: Boolean,
+    onRemoveClick: (() -> Unit)?,
+) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (blocked && !removing) {
+            Text(
+                text = stringResource(MR.string.contactbook_detail_blocked),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
         if (pending && !removing) {
             Text(
                 text = stringResource(MR.string.circle_member_pending),
@@ -216,7 +236,7 @@ private fun CircleMemberTrailing(pending: Boolean, removing: Boolean, onRemoveCl
                 modifier = Modifier.size(24.dp).padding(4.dp),
                 strokeWidth = 2.dp,
             )
-        } else {
+        } else if (onRemoveClick != null) {
             IconButton(onClick = onRemoveClick) {
                 Icon(
                     imageVector = Icons.Default.Close,
