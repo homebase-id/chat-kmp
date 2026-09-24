@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -194,6 +195,100 @@ fun ShareLocationScreen(
                 },
             )
         },
+        bottomBar = {
+            // A bottomBar, not an overlay: the snackbar stacks above it and the map sizes to the visible area.
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp,
+            ) {
+                Column(modifier = Modifier.navigationBarsPadding().imePadding()) {
+                    // Hidden while my live share already covers this conversation — no invitation
+                    // to start what's already running (#966 follow-up; app-wide indicator = #816).
+                    val ownShareActive = uiState.ownLiveShareUntilMs
+                        ?.let { Clock.System.now().toEpochMilliseconds() < it } == true
+                    if (!ownShareActive) {
+                        var durationMenuExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = !uiState.isSending) { durationMenuExpanded = true }
+                                    .padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = stringResource(MR.string.share_location_live_banner),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = durationMenuExpanded,
+                                onDismissRequest = { durationMenuExpanded = false },
+                            ) {
+                                Text(
+                                    text = stringResource(MR.string.live_share_duration_prompt),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                )
+                                HorizontalDivider()
+                                LIVE_SHARE_DURATION_OPTIONS.forEach { (labelRes, durationMs) ->
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(labelRes)) },
+                                        onClick = {
+                                            durationMenuExpanded = false
+                                            viewModel.startLiveShare(durationMs)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, top = 8.dp, end = 12.dp, bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedTextField(
+                            value = uiState.comment,
+                            onValueChange = { viewModel.onCommentChanged(it) },
+                            placeholder = { Text(stringResource(MR.string.share_location_comment_hint)) },
+                            modifier = Modifier.weight(1f),
+                            maxLines = 3,
+                            shape = MaterialTheme.shapes.large,
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        FilledIconButton(
+                            onClick = { viewModel.sendStaticPin() },
+                            enabled = uiState.hasPin && !uiState.isSending,
+                        ) {
+                            if (uiState.isSending) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = stringResource(MR.string.share_location_send_cd),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         Box(
@@ -285,100 +380,6 @@ fun ShareLocationScreen(
                             imageVector = Icons.Default.MyLocation,
                             contentDescription = stringResource(MR.string.share_location_recenter_cd),
                         )
-                    }
-                }
-            }
-
-            // Bottom controls: live-share banner + the always-present comment/send row.
-            // imePadding lifts the bar above the keyboard while typing a comment.
-            Surface(
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().imePadding(),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 3.dp,
-            ) {
-                Column {
-                    // Hidden while my live share already covers this conversation — no invitation
-                    // to start what's already running (#966 follow-up; app-wide indicator = #816).
-                    val ownShareActive = uiState.ownLiveShareUntilMs
-                        ?.let { Clock.System.now().toEpochMilliseconds() < it } == true
-                    if (!ownShareActive) {
-                        var durationMenuExpanded by remember { mutableStateOf(false) }
-                        Box {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable(enabled = !uiState.isSending) { durationMenuExpanded = true }
-                                    .padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.LocationOn,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = stringResource(MR.string.share_location_live_banner),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = durationMenuExpanded,
-                                onDismissRequest = { durationMenuExpanded = false },
-                            ) {
-                                Text(
-                                    text = stringResource(MR.string.live_share_duration_prompt),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                )
-                                HorizontalDivider()
-                                LIVE_SHARE_DURATION_OPTIONS.forEach { (labelRes, durationMs) ->
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(labelRes)) },
-                                        onClick = {
-                                            durationMenuExpanded = false
-                                            viewModel.startLiveShare(durationMs)
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                        HorizontalDivider()
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, top = 8.dp, end = 12.dp, bottom = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        OutlinedTextField(
-                            value = uiState.comment,
-                            onValueChange = { viewModel.onCommentChanged(it) },
-                            placeholder = { Text(stringResource(MR.string.share_location_comment_hint)) },
-                            modifier = Modifier.weight(1f),
-                            maxLines = 3,
-                            shape = MaterialTheme.shapes.large,
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        FilledIconButton(
-                            onClick = { viewModel.sendStaticPin() },
-                            enabled = uiState.hasPin && !uiState.isSending,
-                        ) {
-                            if (uiState.isSending) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Send,
-                                    contentDescription = stringResource(MR.string.share_location_send_cd),
-                                )
-                            }
-                        }
                     }
                 }
             }
