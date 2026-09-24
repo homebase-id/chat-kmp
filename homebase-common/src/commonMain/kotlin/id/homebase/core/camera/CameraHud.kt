@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.absoluteOffset
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -62,6 +64,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -117,6 +120,7 @@ private val RailGap = 24.dp
 private val SidewaysSnackbarMaxWidth = 480.dp
 private val SidewaysSnackbarClearance = 192.dp
 private val CarouselHideDrop = 8.dp
+private val TopBarHeight = 64.dp
 private const val FROZEN_FRAME_DIM = 0.6f
 
 /**
@@ -132,6 +136,10 @@ internal fun previewScrimAlpha(isBound: Boolean, awaitingFirstFrame: Boolean, pr
     previewShown -> FROZEN_FRAME_DIM
     else -> 1f
 }
+
+/** Pins a letterboxed preview under the top bar, as the iOS Camera app does, rising only as far as a short screen needs. */
+internal fun letterboxTop(screenHeight: Dp, frameHeight: Dp, topClearance: Dp): Dp =
+    minOf(topClearance, screenHeight - frameHeight).coerceAtLeast(0.dp)
 
 // A normal lens flip rebinds in about half a second; only a slower start earns a spinner.
 private const val STARTING_SPINNER_DELAY_MS = 700L
@@ -465,6 +473,16 @@ internal fun CameraCaptureContent(
             .focusTarget(),
     ) {
         val rail = maxWidth > maxHeight
+        val frameAspect = ui.previewAspectRatio?.takeUnless { rail }
+        val safeTop = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
+        val frame = if (frameAspect == null) {
+            Modifier.fillMaxSize()
+        } else {
+            Modifier
+                .padding(top = letterboxTop(maxHeight, maxWidth / frameAspect, safeTop + TopBarHeight))
+                .fillMaxWidth()
+                .aspectRatio(frameAspect)
+        }
         // Gestures sit on the preview's parent, not the HUD's, so a quick double tap on the shutter isn't a flip.
         Box(
             Modifier
@@ -473,7 +491,7 @@ internal fun CameraCaptureContent(
                 .pointerInput(previewGestures) { detectPreviewGestures(previewGestures) }
                 .pointerInput(engine) { detectDoubleTapObserving { flipLens() } },
         ) {
-            preview(Modifier.fillMaxSize())
+            preview(frame)
         }
 
         LaunchedEffect(ui.isBound, ui.awaitingFirstFrame) { previewShown = previewHasShown(previewShown, ui) }
@@ -499,14 +517,16 @@ internal fun CameraCaptureContent(
         )
         StartingIndicator(visible = !ui.isBound, modifier = Modifier.align(Alignment.Center), delayMs = STARTING_SPINNER_DELAY_MS)
 
-        FocusRing(
-            point = ui.focusPoint.takeUnless { focusGate || it == ignoredFocus },
-            locked = ui.focusLocked,
-            exposureBias = { liveUi.value.exposureBias },
-            exposureEv = { liveUi.value.exposureEv },
-            showExposure = ui.exposureSupported,
-            labelRotation = iconRotation,
-        )
+        Box(frame) {
+            FocusRing(
+                point = ui.focusPoint.takeUnless { focusGate || it == ignoredFocus },
+                locked = ui.focusLocked,
+                exposureBias = { liveUi.value.exposureBias },
+                exposureEv = { liveUi.value.exposureEv },
+                showExposure = ui.exposureSupported,
+                labelRotation = iconRotation,
+            )
+        }
 
         val scrim = colors.scrim
         val topFade = remember(scrim) { Brush.verticalGradient(listOf(scrim.copy(alpha = 0.55f), scrim.copy(alpha = 0f))) }
@@ -515,20 +535,23 @@ internal fun CameraCaptureContent(
             val stops = listOf(scrim.copy(alpha = 0f), scrim.copy(alpha = 0.7f))
             Brush.horizontalGradient(if (isRtl) stops.reversed() else stops)
         }
-        Box(
-            Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .height(160.dp)
-                .background(topFade),
-        )
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(if (rail) 200.dp else 360.dp)
-                .background(bottomFade),
-        )
+        // A letterboxed preview leaves the bars on black, where a fade would only muddy the frame's edges.
+        if (frameAspect == null) {
+            Box(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .background(topFade),
+            )
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(if (rail) 200.dp else 360.dp)
+                    .background(bottomFade),
+            )
+        }
         if (rail) {
             Box(
                 Modifier
