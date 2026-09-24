@@ -516,6 +516,7 @@ internal fun FocusRing(
     exposureBias: () -> Float,
     exposureEv: () -> Float,
     showExposure: Boolean,
+    labelRotation: () -> Float,
 ) {
     val reduceMotion = LocalReduceMotion.current
     val scale = remember { Animatable(1f) }
@@ -596,7 +597,10 @@ internal fun FocusRing(
                 ev = exposureEv,
                 modifier = Modifier
                     .offset { IntOffset(x.roundToInt(), (at.y - sliderHeightPx / 2 - EvReadoutRise.toPx()).roundToInt()) }
-                    .graphicsLayer { this.alpha = alpha.value },
+                    .graphicsLayer {
+                        this.alpha = alpha.value
+                        rotationZ = labelRotation()
+                    },
             )
         }
     }
