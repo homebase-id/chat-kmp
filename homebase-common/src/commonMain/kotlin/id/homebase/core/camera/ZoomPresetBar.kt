@@ -35,13 +35,6 @@ import org.jetbrains.compose.resources.stringResource
 internal const val ZOOM_PRESET_TAG = "camera_zoom_preset_"
 internal const val ZOOM_BAR_TAG = "camera_zoom_bar"
 
-/** The preset the live ratio has reached, so the pill under the finger follows a pinch. */
-internal fun activeZoomPreset(zoomRatio: Float, presets: List<ZoomPreset>): ZoomPreset? =
-    ZoomPresets.selected(zoomRatio, presets)
-        ?: presets.lastOrNull { it.ratio <= zoomRatio }
-        ?: presets.firstOrNull()
-
-/** Tapping a preset jumps to it; dragging sideways anywhere on the bar zooms continuously. */
 @Composable
 internal fun ZoomPresetBar(
     presets: List<ZoomPreset>,
@@ -54,7 +47,9 @@ internal fun ZoomPresetBar(
     modifier: Modifier = Modifier,
 ) {
     if (presets.size < 2) return
-    val active = activeZoomPreset(zoomRatio, presets)
+    val atRatio = ZoomPresets.selected(zoomRatio, presets)
+    // The pill under the finger follows a pinch between presets.
+    val active = atRatio ?: presets.lastOrNull { it.ratio <= zoomRatio } ?: presets.firstOrNull()
     val colors = MaterialTheme.colorScheme
     val currentOnDragStart by rememberUpdatedState(onDragStart)
     val currentOnDrag by rememberUpdatedState(onDrag)
@@ -74,12 +69,11 @@ internal fun ZoomPresetBar(
                 }
             }
             .selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         presets.forEach { preset ->
             val checked = preset == active
-            val atPreset = ZoomPresets.selected(zoomRatio, presets) == preset
+            val atPreset = atRatio == preset
             val number = if (checked && !atPreset) ZoomPresets.label(zoomRatio) else preset.label
             val text = stringResource(MR.string.camera_zoom_level, number)
             val description = stringResource(MR.string.camera_zoom_preset_a11y, preset.label)

@@ -139,7 +139,6 @@ internal fun CameraCaptureContent(
     var stopping by remember { mutableStateOf(false) }
     var stopRequested by remember { mutableStateOf(false) }
     var heldRecording by remember { mutableStateOf(false) }
-    var holdByKey by remember { mutableStateOf(false) }
     var holdZoomBase by remember { mutableFloatStateOf(1f) }
     var lockProgress by remember { mutableFloatStateOf(0f) }
     var returnToPhotoAfterHold by remember { mutableStateOf(false) }
@@ -312,7 +311,7 @@ internal fun CameraCaptureContent(
 
     fun zoomTo(ratio: Float) {
         val state = currentUi
-        val target = ratio.coerceIn(state.minZoom, maxOf(state.minZoom, state.maxZoom))
+        val target = state.clampZoom(ratio)
         val steps = currentPresets
         if (steps.presetStep(state.zoomRatio) != steps.presetStep(target)) haptics.perform(HapticEvent.Selection)
         engine.setZoomRatio(target)
@@ -342,7 +341,6 @@ internal fun CameraCaptureContent(
             delay(viewConfiguration.longPressTimeoutMillis)
             holdZoomBase = currentUi.zoomRatio
             keyHoldStarted = startRecording(held = true)
-            holdByKey = keyHoldStarted
         }
     }
 
@@ -353,7 +351,6 @@ internal fun CameraCaptureContent(
         keyHoldJob = null
         if (keyHoldStarted) {
             keyHoldStarted = false
-            holdByKey = false
             if (heldRecording) stopRecording()
         } else if (currentUi.isBound || currentUi.isRecording) {
             shutterTap()
@@ -452,19 +449,26 @@ internal fun CameraCaptureContent(
             showExposure = ui.exposureSupported,
         )
 
+        val scrim = colors.scrim
+        val topFade = remember(scrim) { Brush.verticalGradient(listOf(scrim.copy(alpha = 0.55f), scrim.copy(alpha = 0f))) }
+        val bottomFade = remember(scrim) { Brush.verticalGradient(listOf(scrim.copy(alpha = 0f), scrim.copy(alpha = 0.7f))) }
+        val railFade = remember(scrim, isRtl) {
+            val stops = listOf(scrim.copy(alpha = 0f), scrim.copy(alpha = 0.7f))
+            Brush.horizontalGradient(if (isRtl) stops.reversed() else stops)
+        }
         Box(
             Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .height(160.dp)
-                .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0.55f), colors.scrim.copy(alpha = 0f)))),
+                .background(topFade),
         )
         Box(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .height(if (rail) 200.dp else 360.dp)
-                .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0f), colors.scrim.copy(alpha = 0.7f)))),
+                .background(bottomFade),
         )
         if (rail) {
             Box(
@@ -472,12 +476,7 @@ internal fun CameraCaptureContent(
                     .align(Alignment.CenterEnd)
                     .fillMaxHeight()
                     .width(200.dp)
-                    .background(
-                        Brush.horizontalGradient(
-                            if (isRtl) listOf(colors.scrim.copy(alpha = 0.7f), colors.scrim.copy(alpha = 0f))
-                            else listOf(colors.scrim.copy(alpha = 0f), colors.scrim.copy(alpha = 0.7f))
-                        )
-                    ),
+                    .background(railFade),
             )
         }
 
@@ -561,16 +560,17 @@ internal fun CameraCaptureContent(
                 Offset((shutterRowWidthPx / 2 - SideSlotSize.toPx() / 2) * if (isRtl) 1f else -1f, 0f)
             }
         }
+        val lockVisible = ui.isRecording && heldRecording && !keyHoldStarted
         val lockTarget = @Composable {
             LockTarget(
-                visible = ui.isRecording && heldRecording && !holdByKey,
+                visible = lockVisible,
                 progress = lockProgress,
                 iconRotation = iconRotation,
             )
         }
         val lockHint = @Composable {
             LockHint(
-                visible = ui.isRecording && heldRecording && !holdByKey,
+                visible = lockVisible,
                 direction = lockOffset,
                 progress = lockProgress,
                 modifier = Modifier.absoluteOffset { IntOffset((lockOffset.x / 2).roundToInt(), (lockOffset.y / 2).roundToInt()) },

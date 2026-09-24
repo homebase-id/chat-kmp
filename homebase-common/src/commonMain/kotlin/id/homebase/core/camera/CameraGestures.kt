@@ -31,7 +31,6 @@ internal suspend fun PointerInputScope.detectPreviewGestures(handler: PreviewGes
     val slop = viewConfiguration.touchSlop
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-        // A full sideways swipe across ~40% of the preview moves one mode, like a slot of the carousel.
         val slotPx = size.width * PREVIEW_SLOT_FRACTION
         val tracker = VelocityTracker()
         tracker.addPosition(down.uptimeMillis, down.position)

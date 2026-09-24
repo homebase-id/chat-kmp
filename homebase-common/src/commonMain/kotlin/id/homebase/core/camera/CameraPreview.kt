@@ -8,6 +8,5 @@ import androidx.compose.ui.geometry.Offset
 expect fun CameraPreview(
     engine: CameraEngine,
     modifier: Modifier = Modifier,
-    onTapFocus: (Offset) -> Unit = {},
     onLongPressFocus: (Offset) -> Unit = {},
 )

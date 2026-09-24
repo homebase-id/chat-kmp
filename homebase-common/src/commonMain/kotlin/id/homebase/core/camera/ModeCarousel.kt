@@ -184,7 +184,6 @@ internal fun modeLabel(mode: CaptureMode): String = stringResource(
     }
 )
 
-/** The selected mode sits under a fixed pill and the labels slide beneath it, following the finger. */
 @Composable
 internal fun ModeCarousel(
     state: ModeCarouselState,

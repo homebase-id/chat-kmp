@@ -241,13 +241,13 @@ private fun RecordingTimer(startedAtMs: Long?, modifier: Modifier = Modifier) {
         modifier = modifier,
     ) {
         val start = startedAtMs ?: 0L
-        val elapsed by produceState(0L, start) {
+        val elapsedSeconds by produceState(0L, start) {
             while (true) {
-                value = (Clock.System.now().toEpochMilliseconds() - start).coerceAtLeast(0L)
+                value = (Clock.System.now().toEpochMilliseconds() - start).coerceAtLeast(0L) / 1000
                 delay(250)
             }
         }
-        val text = formatHms(elapsed)
+        val text = formatHms(elapsedSeconds * 1000)
         val a11y = stringResource(MR.string.camera_recording_a11y, text)
         val record = HomebaseTheme.extendedColors.cameraRecord
         val onRecord = HomebaseTheme.extendedColors.onCameraRecord
@@ -368,7 +368,6 @@ internal fun LockTarget(visible: Boolean, progress: Float, iconRotation: Float) 
     }
 }
 
-/** Chevrons from the shutter toward the lock, shown once a hold has started. */
 @Composable
 internal fun LockHint(visible: Boolean, direction: Offset, progress: Float, modifier: Modifier = Modifier) {
     val degrees = (atan2(direction.y, direction.x) * 180f / PI.toFloat())
@@ -481,12 +480,12 @@ internal fun FlipLensButton(
 }
 
 @Composable
-internal fun StartingIndicator(visible: Boolean, modifier: Modifier = Modifier) {
-    // Held back briefly so a lens flip's quick rebind doesn't flash a spinner.
+internal fun StartingIndicator(visible: Boolean, modifier: Modifier = Modifier, delayMs: Long = 400) {
+    // Held back briefly so a lens flip's quick rebind or an instant grant check doesn't flash a spinner.
     val show by produceState(false, visible) {
         value = false
         if (visible) {
-            delay(400)
+            delay(delayMs)
             value = true
         }
     }
@@ -499,7 +498,6 @@ internal fun StartingIndicator(visible: Boolean, modifier: Modifier = Modifier) 
     }
 }
 
-/** Tap-focus ring with a centre dot; the exposure sun rides beside it while exposure can be dragged. */
 @Composable
 internal fun FocusRing(point: Offset?, locked: Boolean, exposureBias: Float, showExposure: Boolean) {
     val reduceMotion = LocalReduceMotion.current

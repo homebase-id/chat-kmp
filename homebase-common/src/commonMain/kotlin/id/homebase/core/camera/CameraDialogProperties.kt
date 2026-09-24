@@ -5,7 +5,6 @@ import androidx.compose.ui.window.DialogProperties
 
 internal expect fun cameraDialogProperties(): DialogProperties
 
-/** Dark system bars, full-bleed window and a portrait-locked HUD for the camera window. */
 @Composable
 internal expect fun CameraWindowEffect()
 

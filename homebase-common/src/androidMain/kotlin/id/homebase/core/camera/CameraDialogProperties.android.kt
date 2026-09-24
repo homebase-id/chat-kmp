@@ -1,10 +1,8 @@
 package id.homebase.core.camera
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.view.WindowManager
+import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
@@ -41,15 +39,14 @@ internal actual fun CameraWindowEffect() {
     }
 
     // The HUD stays portrait and counter-rotates its icons, like the system camera.
-    DisposableEffect(view) {
-        val activity = view.context.findActivity()
+    val activity = LocalActivity.current
+    DisposableEffect(activity) {
         val previous = activity?.requestedOrientation
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         onDispose {
             if (activity != null && previous != null) activity.requestedOrientation = previous
         }
     }
-
 }
 
 @Composable
@@ -59,11 +56,5 @@ internal actual fun KeepScreenOnEffect(enabled: Boolean) {
         view.keepScreenOn = enabled
         onDispose { view.keepScreenOn = false }
     }
-}
-
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
 }
 

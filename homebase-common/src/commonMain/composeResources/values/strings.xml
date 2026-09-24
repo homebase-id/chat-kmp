@@ -2440,7 +2440,6 @@
     <string name="camera_no_mic_a11y">Recording without sound. Allow microphone access</string>
     <string name="camera_permission_title">Take photos and videos</string>
     <string name="camera_permission_body">Allow camera access to take photos and videos right here and send them.</string>
-    <string name="camera_permission_allow">Allow camera access</string>
     <string name="camera_permission_denied_title">Camera access is off</string>
     <string name="camera_permission_denied_body">Homebase uses the camera only while this screen is open.</string>
     <string name="camera_permission_retry">Try again</string>
@@ -2463,7 +2462,6 @@
     <string name="dev_menu_camera_result_size">Size: %1$s bytes</string>
     <string name="dev_menu_camera_result_type">Type: %1$s</string>
     <string name="dev_menu_camera_cancelled">Camera closed without a capture</string>
-    <string name="camera_lock_recording">Lock recording</string>
     <string name="camera_recording_started">Recording started</string>
     <string name="camera_recording_stopped">Recording stopped, %1$s</string>
     <string name="camera_ae_af_lock">AE/AF lock</string>

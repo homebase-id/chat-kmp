@@ -156,7 +156,7 @@ val LocalHomebaseExtendedColors = staticCompositionLocalOf { LightExtendedColors
  * @param darkTheme Whether to use dark theme. Defaults to system setting.
  * @param followsSystemTheme Whether [darkTheme] merely mirrors the OS setting (the
  * user picked "System") rather than forcing a variant — see [UpdateEdgeToEdge].
- * @param updatesSystemChrome False for a themed island (e.g. the forced-dark camera) that must not
+ * @param updatesSystemChrome False for a themed island that must not
  * restyle the host activity's or window's bars.
  * @param content The content to display with this theme.
  */

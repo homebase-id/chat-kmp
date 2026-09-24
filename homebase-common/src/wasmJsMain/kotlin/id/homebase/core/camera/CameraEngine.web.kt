@@ -15,7 +15,6 @@ actual fun rememberCameraWarmer(): CameraWarmer = remember { CameraWarmer { null
 actual fun CameraPreview(
     engine: CameraEngine,
     modifier: Modifier,
-    onTapFocus: (Offset) -> Unit,
     onLongPressFocus: (Offset) -> Unit,
 ) = Unit
 

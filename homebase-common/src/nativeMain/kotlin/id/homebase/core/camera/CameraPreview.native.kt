@@ -30,7 +30,6 @@ import platform.UIKit.UIView
 actual fun CameraPreview(
     engine: CameraEngine,
     modifier: Modifier,
-    onTapFocus: (Offset) -> Unit,
     onLongPressFocus: (Offset) -> Unit,
 ) {
     val iosEngine = engine as? IosCameraEngine
@@ -47,7 +46,6 @@ actual fun CameraPreview(
         iosEngine.onPreviewShowing()
     }
     val density = LocalDensity.current.density
-    val currentOnTapFocus by rememberUpdatedState(onTapFocus)
     val currentOnLongPressFocus by rememberUpdatedState(onLongPressFocus)
     Box(
         modifier = modifier
@@ -60,10 +58,7 @@ actual fun CameraPreview(
                         focus(offset, lock = true)
                         currentOnLongPressFocus(offset)
                     },
-                    onTap = { offset ->
-                        focus(offset, lock = false)
-                        currentOnTapFocus(offset)
-                    },
+                    onTap = { offset -> focus(offset, lock = false) },
                 )
             },
     ) {
