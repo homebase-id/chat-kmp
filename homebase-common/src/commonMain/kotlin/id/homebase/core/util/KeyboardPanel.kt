@@ -147,15 +147,13 @@ fun Modifier.keyboardPanelSlot(state: KeyboardPanelState, keyboardHandledByHost:
         layout(placeable.width, height) { placeable.place(0, state.panelTopPx) }
     }
 
-/** True where a zero-inset `ModalBottomSheet` lifts its own surface above the keyboard and reports no IME inside. */
-val sheetLiftsForKeyboard: Boolean get() = isNativeMobile()
-
-// For a composer at the foot of a zero-inset ModalBottomSheet; [state] must be remembered outside the sheet.
+// For a composer at the foot of a zero-inset ModalBottomSheet, whose content M3 wraps in imePadding() on every
+// platform; pair with keyboardPanelSlot(keyboardHandledByHost = true). [state] must be remembered outside the sheet.
 fun Modifier.sheetComposerInset(state: KeyboardPanelState): Modifier = layout { measurable, constraints ->
     val ime = state.ime.value
     val nav = ime.navBarInsets.getBottom(ime.density)
     // Once the lifted sheet sits on the keyboard, the nav bar is under the keyboard too.
-    val bottom = if (sheetLiftsForKeyboard) (nav - ime.imeBottomPx).coerceAtLeast(0) else nav
+    val bottom = (nav - ime.imeBottomPx).coerceAtLeast(0)
     val placeable = measurable.measure(constraints.offset(vertical = -bottom))
     layout(placeable.width, placeable.height + bottom) { placeable.place(0, 0) }
 }

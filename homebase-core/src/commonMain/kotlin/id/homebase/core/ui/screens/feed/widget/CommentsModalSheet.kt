@@ -40,7 +40,6 @@ import id.homebase.core.util.buildBlockUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.rememberKeyboardPanelState
 import id.homebase.core.util.sheetComposerInset
-import id.homebase.core.util.sheetLiftsForKeyboard
 import id.homebase.core.ui.screens.feed.PostDetailEvent
 import id.homebase.core.ui.screens.feed.PostDetailViewModel
 import id.homebase.resources.MR
@@ -86,8 +85,7 @@ fun CommentsModalSheet(
         post.reactAccess == ReactAccess.CommentOnly
     val canComment = postAllowsComment && uiState.canReact?.allowsComment != false
 
-    // Read the IME *outside* the sheet: on iOS the sheet lifts its whole surface by the keyboard height and
-    // then reports WindowInsets.ime as 0 to its own content.
+    // Read the IME *outside* the sheet: the sheet imePadding()s its own content, which then reads WindowInsets.ime as 0.
     val composerPanel = rememberKeyboardPanelState()
 
     ModalBottomSheet(
@@ -190,7 +188,7 @@ fun CommentsModalSheet(
                             ?.let { displayNameFor(it.originalAuthor ?: it.senderOdinId) },
                         onCancelReply = viewModel::cancelReply,
                         bottomPanel = composerPanel,
-                        keyboardHandledByHost = sheetLiftsForKeyboard,
+                        keyboardHandledByHost = true,
                     )
                 }
             }
