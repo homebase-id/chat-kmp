@@ -3,6 +3,7 @@
 package id.homebase.core.ui.screens.contactbook.detail
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.outlined.PersonRemove
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.WavingHand
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -495,80 +497,89 @@ private fun ContactDetailContent(
                                         if (contactDetailTabs.size > 1) 12.dp else 20.dp
                                     )
                                 )
-                                when (currentTab) {
-                                    ContactDetailTab.DETAILS -> {
-                                        if (uiState.isAccessRevoked) AccessRevokedBanner()
-                                        if (uiState.needsReview && uiState.reviewEnabled) {
-                                            NeedsReviewBanner(
-                                                onReview = {
-                                                    onAction(ContactDetailAction.ReviewClicked)
-                                                },
-                                            )
-                                        }
-                                        uiState.introducedByName?.let { IntroducedBySection(it) }
-                                        ContactFieldsSection(
-                                            entry = entry,
-                                            expanded = detailsExpanded,
-                                            onToggleMore = onToggleDetails,
-                                        )
-                                        // Circles + groups-in-common only apply to Homebase identities.
-                                        if (uiState.hasOdinId) {
-                                            GroupsInCommonSection(
-                                                groups = uiState.groupsInCommon,
-                                                isConnected = uiState.isConnected,
-                                                onOpenGroup = {
-                                                    onAction(ContactDetailAction.OpenGroup(it))
-                                                },
-                                            )
-                                            CirclesSection(
-                                                circles = uiState.circles,
-                                                isConnected = uiState.isConnected,
-                                                reviewEnabled = uiState.reviewEnabled,
-                                                onCircleClicked = {
-                                                    onAction(ContactDetailAction.CircleClicked(it))
-                                                },
-                                            )
-                                        }
-                                    }
-
-                                    ContactDetailTab.ABOUT -> {
-                                        if (uiState.hasAboutContent) {
-                                            // Bio, then social handles, then experience. All text here
-                                            // is selectable/copyable (one selection scope for the whole
-                                            // tab — it reads like a profile page).
-                                            SelectionContainer {
-                                                Column {
-                                                    BioSection(entry.shortBio)
-                                                    SocialSection(entry.socialHandles)
-                                                    ExperienceSection(
-                                                        uiState.experience,
-                                                        uiState.experienceImage,
+                                val tabFade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+                                AnimatedContent(
+                                    targetState = currentTab,
+                                    transitionSpec = { fadeIn(tabFade) togetherWith fadeOut(tabFade) },
+                                    label = "contactDetailTab",
+                                ) { tab ->
+                                    Column {
+                                        when (tab) {
+                                            ContactDetailTab.DETAILS -> {
+                                                if (uiState.isAccessRevoked) AccessRevokedBanner()
+                                                if (uiState.needsReview && uiState.reviewEnabled) {
+                                                    NeedsReviewBanner(
+                                                        onReview = {
+                                                            onAction(ContactDetailAction.ReviewClicked)
+                                                        },
+                                                    )
+                                                }
+                                                uiState.introducedByName?.let { IntroducedBySection(it) }
+                                                ContactFieldsSection(
+                                                    entry = entry,
+                                                    expanded = detailsExpanded,
+                                                    onToggleMore = onToggleDetails,
+                                                )
+                                                // Circles + groups-in-common only apply to Homebase identities.
+                                                if (uiState.hasOdinId) {
+                                                    GroupsInCommonSection(
+                                                        groups = uiState.groupsInCommon,
+                                                        isConnected = uiState.isConnected,
+                                                        onOpenGroup = {
+                                                            onAction(ContactDetailAction.OpenGroup(it))
+                                                        },
+                                                    )
+                                                    CirclesSection(
+                                                        circles = uiState.circles,
+                                                        isConnected = uiState.isConnected,
+                                                        reviewEnabled = uiState.reviewEnabled,
+                                                        onCircleClicked = {
+                                                            onAction(ContactDetailAction.CircleClicked(it))
+                                                        },
                                                     )
                                                 }
                                             }
-                                        } else {
-                                            TabEmptyMessage(
-                                                stringResource(MR.string.contactbook_detail_about_empty),
-                                            )
-                                        }
-                                    }
 
-                                    ContactDetailTab.ACTIVITY -> {
-                                        if (uiState.hasActivityContent) {
-                                            RecentMediaSection(
-                                                overview = uiState.overview,
-                                                hero = hero,
-                                                onMediaClick = {
-                                                    onAction(ContactDetailAction.OpenMedia(it))
-                                                },
-                                                onSeeAll = {
-                                                    onAction(ContactDetailAction.SeeAllMediaClicked)
-                                                },
-                                            )
-                                        } else {
-                                            TabEmptyMessage(
-                                                stringResource(MR.string.contactbook_detail_activity_empty),
-                                            )
+                                            ContactDetailTab.ABOUT -> {
+                                                if (uiState.hasAboutContent) {
+                                                    // Bio, then social handles, then experience. All text here
+                                                    // is selectable/copyable (one selection scope for the whole
+                                                    // tab — it reads like a profile page).
+                                                    SelectionContainer {
+                                                        Column {
+                                                            BioSection(entry.shortBio)
+                                                            SocialSection(entry.socialHandles)
+                                                            ExperienceSection(
+                                                                uiState.experience,
+                                                                uiState.experienceImage,
+                                                            )
+                                                        }
+                                                    }
+                                                } else {
+                                                    TabEmptyMessage(
+                                                        stringResource(MR.string.contactbook_detail_about_empty),
+                                                    )
+                                                }
+                                            }
+
+                                            ContactDetailTab.ACTIVITY -> {
+                                                if (uiState.hasActivityContent) {
+                                                    RecentMediaSection(
+                                                        overview = uiState.overview,
+                                                        hero = hero,
+                                                        onMediaClick = {
+                                                            onAction(ContactDetailAction.OpenMedia(it))
+                                                        },
+                                                        onSeeAll = {
+                                                            onAction(ContactDetailAction.SeeAllMediaClicked)
+                                                        },
+                                                    )
+                                                } else {
+                                                    TabEmptyMessage(
+                                                        stringResource(MR.string.contactbook_detail_activity_empty),
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -578,7 +589,11 @@ private fun ContactDetailContent(
                     }
                 }
 
-                if (uiState.actionInProgress) {
+                AnimatedVisibility(
+                    visible = uiState.actionInProgress,
+                    enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    exit = fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                ) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -593,7 +608,7 @@ private fun ContactDetailContent(
                             },
                         contentAlignment = Alignment.Center,
                     ) {
-                        CircularProgressIndicator()
+                        ContainedLoadingIndicator()
                     }
                 }
             }

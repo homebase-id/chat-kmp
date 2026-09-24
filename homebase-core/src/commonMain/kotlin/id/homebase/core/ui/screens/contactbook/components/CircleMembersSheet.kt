@@ -111,9 +111,11 @@ fun CircleMembersSheet(
             // pendingMembers mutually exclusive at update time. This just makes the keyed
             // LazyColumn below immune to any future regression of that invariant: a duplicate
             // key here is a hard crash (unlike a plain Column, which would just double-render).
-            val allMembers = (state.members + state.pendingMembers)
-                .distinctBy { it.uniqueId }
-                .filterNot { it.uniqueId == state.viewerContactId }
+            val allMembers = remember(state.members, state.pendingMembers, state.viewerContactId) {
+                (state.members + state.pendingMembers)
+                    .distinctBy { it.uniqueId }
+                    .filterNot { it.uniqueId == state.viewerContactId }
+            }
             val pendingIds = remember(state.pendingMembers) { state.pendingMembers.map { it.uniqueId }.toSet() }
             // Counts must match what's actually rendered below (allMembers excludes the viewer's
             // own row when this sheet is opened from a contact's page) — otherwise the header

@@ -23,6 +23,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
@@ -41,7 +42,7 @@ private const val KeyboardArrivalTimeoutMs = 600L
  */
 @Stable
 class KeyboardPanelState internal constructor(
-    private val ime: State<ImeOffsetState>,
+    internal val ime: State<ImeOffsetState>,
     private val windowSize: State<IntSize>,
     private val fallbackPx: Int,
     private val hasSoftKeyboard: Boolean,
@@ -137,12 +138,25 @@ fun rememberKeyboardPanelState(
 }
 
 /** The space under the composer shared by the keyboard and the panel, revealing the panel from its bottom edge. */
-fun Modifier.keyboardPanelSlot(state: KeyboardPanelState): Modifier =
+// keyboardHandledByHost: the host already rose by the keyboard, so only the panel's excess is reserved.
+fun Modifier.keyboardPanelSlot(state: KeyboardPanelState, keyboardHandledByHost: Boolean = false): Modifier =
     clipToBounds().onFocusChanged { state.panelFocused = it.hasFocus }.layout { measurable, constraints ->
         val panelHeight = state.heightPx
         val placeable = measurable.measure(constraints.copy(minHeight = panelHeight, maxHeight = panelHeight))
-        layout(placeable.width, state.contentInsetPx) { placeable.place(0, state.panelTopPx) }
+        val height = state.contentInsetPx - if (keyboardHandledByHost) state.keyboardPx else 0
+        layout(placeable.width, height) { placeable.place(0, state.panelTopPx) }
     }
+
+// For a composer at the foot of a zero-inset ModalBottomSheet, whose content M3 wraps in imePadding() on every
+// platform; pair with keyboardPanelSlot(keyboardHandledByHost = true). [state] must be remembered outside the sheet.
+fun Modifier.sheetComposerInset(state: KeyboardPanelState): Modifier = layout { measurable, constraints ->
+    val ime = state.ime.value
+    val nav = ime.navBarInsets.getBottom(ime.density)
+    // Once the lifted sheet sits on the keyboard, the nav bar is under the keyboard too.
+    val bottom = (nav - ime.imeBottomPx).coerceAtLeast(0)
+    val placeable = measurable.measure(constraints.offset(vertical = -bottom))
+    layout(placeable.width, placeable.height + bottom) { placeable.place(0, 0) }
+}
 
 /**
  * For a top-anchored list above a [keyboardPanelSlot]: keeps measuring the list at its

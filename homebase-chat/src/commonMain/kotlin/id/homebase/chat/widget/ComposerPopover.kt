@@ -3,7 +3,9 @@ package id.homebase.chat.widget
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.safeDrawing
@@ -46,6 +48,7 @@ internal fun Modifier.popoverAnchor(anchor: PopoverAnchor): Modifier = onPlaced 
 // Compose it inside the anchor: a Popup anchors to its parent layout.
 @Composable
 internal fun ComposerPopover(
+    expanded: Boolean,
     anchor: PopoverAnchor,
     alignToEnd: Boolean,
     onDismissRequest: () -> Unit,
@@ -67,20 +70,29 @@ internal fun ComposerPopover(
     val reservedAbove = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() +
         POPOVER_ANCHOR_GAP + POPOVER_WINDOW_MARGIN
     val growsFromRight = alignToEnd == (LocalLayoutDirection.current == LayoutDirection.Ltr)
-    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
+    val visibleState = remember { MutableTransitionState(false) }
+    visibleState.targetState = expanded
+    if (!visibleState.currentState && !visibleState.targetState) return
+    val origin = TransformOrigin(if (growsFromRight) 1f else 0f, 1f)
 
     Popup(
         popupPositionProvider = positionProvider,
         onDismissRequest = onDismissRequest,
-        properties = PopupProperties(focusable = true),
+        // Not focusable while exiting, so the caller's refocus lands and taps pass through.
+        properties = PopupProperties(focusable = expanded),
     ) {
         AnimatedVisibility(
             visibleState = visibleState,
             enter = scaleIn(
                 animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                 initialScale = 0.7f,
-                transformOrigin = TransformOrigin(if (growsFromRight) 1f else 0f, 1f),
+                transformOrigin = origin,
             ) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            exit = scaleOut(
+                animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                targetScale = 0.7f,
+                transformOrigin = origin,
+            ) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
         ) {
             Surface(
                 modifier = Modifier
