@@ -1,9 +1,11 @@
 package id.homebase.core.widget
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,18 +41,21 @@ fun InAppNotificationBanner(
     onTap: (RichNotificationData) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    AnimatedVisibility(
-        visible = visible && event != null,
-        enter = slideInVertically(initialOffsetY = { -it }),
-        exit = slideOutVertically(targetOffsetY = { -it }),
+    val transition = updateTransition(event.takeIf { visible }, label = "inAppNotificationBanner")
+    val motion = MaterialTheme.motionScheme
+    transition.AnimatedVisibility(
+        visible = { it != null },
+        enter = slideInVertically(motion.defaultSpatialSpec()) { -it } + fadeIn(motion.defaultEffectsSpec()),
+        exit = slideOutVertically(motion.defaultSpatialSpec()) { -it } + fadeOut(motion.defaultEffectsSpec()),
         modifier = modifier.statusBarsPadding(),
     ) {
-        event?.let { notification ->
+        // Exiting, the target is already null; slide out the notification that was showing.
+        (transition.targetState ?: transition.currentState)?.let { notification ->
             Surface(
+                onClick = { onTap(notification) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .clickable { onTap(notification) },
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 shadowElevation = 8.dp,
