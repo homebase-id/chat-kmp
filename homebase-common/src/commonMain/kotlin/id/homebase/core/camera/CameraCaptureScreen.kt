@@ -116,7 +116,13 @@ internal fun CameraPermissionPane(
     onAction: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).testTag(PERMISSION_PANE_TAG)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.scrim)
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .testTag(PERMISSION_PANE_TAG),
+    ) {
         CameraCloseButton(onClick = onDismiss, iconRotation = 0f, modifier = Modifier.padding(8.dp))
         if (state == CameraPermissionState.Checking) return@Box
         val (title, body) = when (state) {
@@ -151,7 +157,13 @@ internal fun CameraPermissionPane(
 
 @Composable
 internal fun CameraUnavailablePane(onDismiss: () -> Unit) {
-    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).testTag(UNAVAILABLE_TAG)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.scrim)
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .testTag(UNAVAILABLE_TAG),
+    ) {
         CameraMessage(
             icon = Icons.Outlined.NoPhotography,
             title = stringResource(MR.string.camera_unavailable_title),
