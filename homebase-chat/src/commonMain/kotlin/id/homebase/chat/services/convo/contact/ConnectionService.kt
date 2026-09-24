@@ -56,6 +56,13 @@ data class ConnectionState(
         map.filter { (odinId, reg) ->
             reg.status == ConnectionStatus.Connected && odinId.domainName !in lowercaseSavedDomains
         }.keys
+
+    fun statusByDomain(): Map<String, ConnectionStatus> =
+        map.entries.associate { (odinId, reg) -> odinId.domainName.lowercase() to reg.status }
+
+    fun blockedDomains(): Set<String> =
+        map.filterValues { it.status == ConnectionStatus.Blocked }
+            .keys.mapTo(mutableSetOf()) { it.domainName.lowercase() }
 }
 
 /**
