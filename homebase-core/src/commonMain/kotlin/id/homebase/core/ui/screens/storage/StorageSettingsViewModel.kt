@@ -63,8 +63,6 @@ class StorageSettingsViewModel(
 
     private fun load() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-
             val profileStats = runCatching { contactInfo.getCacheStats() }
                 .getOrElse {
                     Logger.w(tag = "StorageSettings", throwable = it) { "profile cache stats failed" }
