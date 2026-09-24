@@ -36,9 +36,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,10 +45,13 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.widget.MediaAttachmentEditor
+import id.homebase.chat.widget.secondaryChromeEnter
+import id.homebase.chat.widget.secondaryChromeExit
 import id.homebase.core.ui.screens.moments.widget.MomentDateChip
 import id.homebase.core.ui.screens.moments.widget.MomentDescriptionField
 import id.homebase.core.ui.screens.moments.widget.MomentImageInfoChip
 import id.homebase.core.util.contentType
+import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_add_gallery_image
@@ -151,9 +151,8 @@ fun MomentComposeScreen(
         }
     }
 
-    // Hoisted from the editor: collapses attachment-strip and tool-row when the
-    // description field has focus so the keyboard doesn't push the field off-screen.
-    var descriptionFocused by remember { mutableStateOf(false) }
+    // Keyed on the keyboard, not focus: dismissing the IME leaves the field focused.
+    val keyboardVisible by keyboardAsState()
 
     Scaffold(
         // Lift the whole compose screen (topBar + content + Continue bar) above
@@ -201,6 +200,7 @@ fun MomentComposeScreen(
             if (uiState.attachments.isEmpty()) {
                 EmptyComposeState(
                     textFieldState = textFieldState,
+                    collapseSecondaryChrome = keyboardVisible,
                     onAddImage = { galleryLauncher.launch() },
                     onCameraClick = { cameraLauncher.launch() },
                 )
@@ -259,14 +259,13 @@ fun MomentComposeScreen(
                                     )
                                 }
                             },
-                            collapseSecondaryChrome = descriptionFocused,
+                            collapseSecondaryChrome = keyboardVisible,
                             bottomBar = {
                                 MomentDescriptionField(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(16.dp),
                                     state = textFieldState,
-                                    onFocusChanged = { descriptionFocused = it },
                                 )
                             },
                         )
@@ -280,6 +279,7 @@ fun MomentComposeScreen(
 @Composable
 private fun EmptyComposeState(
     textFieldState: RichTextState,
+    collapseSecondaryChrome: Boolean,
     onAddImage: () -> Unit,
     onCameraClick: () -> Unit,
 ) {
@@ -289,10 +289,6 @@ private fun EmptyComposeState(
     // user can pre-write a description before picking media — its state
     // survives the empty → populated transition because it lives in the
     // screen, not in either branch.
-    // Mirrors MediaAttachmentEditor: collapse the secondary chrome (add
-    // strip + the reserved edit-tools spacer) while the description field is
-    // focused so the keyboard doesn't push the field off-screen.
-    var descriptionFocused by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -330,8 +326,7 @@ private fun EmptyComposeState(
 
         // Strip row: camera + add. Same look as the populated editor's
         // trailing controls so the layout doesn't shift on first attach.
-        // Collapsed while the description is focused (see [descriptionFocused]).
-        AnimatedVisibility(visible = !descriptionFocused) {
+        AnimatedVisibility(visible = !collapseSecondaryChrome, enter = secondaryChromeEnter(), exit = secondaryChromeExit()) {
             Row(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -367,7 +362,7 @@ private fun EmptyComposeState(
         // populated editor so the composer doesn't jump up when the first
         // attachment lands. Empty visually, but keeps layout stable. Collapsed
         // with the strip while typing.
-        AnimatedVisibility(visible = !descriptionFocused) {
+        AnimatedVisibility(visible = !collapseSecondaryChrome, enter = secondaryChromeEnter(), exit = secondaryChromeExit()) {
             Spacer(modifier = Modifier.height(48.dp))
         }
 
@@ -376,7 +371,6 @@ private fun EmptyComposeState(
                 .fillMaxWidth()
                 .padding(16.dp),
             state = textFieldState,
-            onFocusChanged = { descriptionFocused = it },
         )
     }
 }

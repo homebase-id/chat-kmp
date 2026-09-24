@@ -1,5 +1,12 @@
 package id.homebase.core.ui.screens.vault.auth
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -112,12 +119,26 @@ fun VaultBiometricGate(
 
     ExtendPermissionDialog(viewModel = vaultExtendPermissionViewModel)
 
-    if (!authorized) {
-        VaultLockedContent(
-            onUnlock = { unlockAttempt++ },
-        )
-    } else {
-        content()
+    val unlockFade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    val unlockScale = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+    AnimatedContent(
+        targetState = authorized,
+        transitionSpec = {
+            // Locking must cover the content on its first frame, so only unlocking animates.
+            if (targetState) {
+                fadeIn(unlockFade) + scaleIn(unlockScale, initialScale = 0.96f) togetherWith fadeOut(unlockFade)
+            } else {
+                EnterTransition.None togetherWith ExitTransition.None
+            }
+        },
+    ) { isAuthorized ->
+        if (!isAuthorized) {
+            VaultLockedContent(
+                onUnlock = { unlockAttempt++ },
+            )
+        } else {
+            content()
+        }
     }
 
     if (isPrivacyOverlayVisible && biometricsEnabled) {
