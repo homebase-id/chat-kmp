@@ -15,6 +15,7 @@ data class FeedTimelineUiState(
     val isRefreshing: Boolean = false,
     val errorMessage: String? = null,
     val endReached: Boolean = false,
+    val isLoadingMore: Boolean = false,
     val reactorsSheet: List<ReactionDisplayItem>? = null,
     val isReactorsLoading: Boolean = false,
     /** The roster only lists our own identity's rows on someone else's post, so chips are labelled from here. */

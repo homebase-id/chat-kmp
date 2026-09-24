@@ -10,10 +10,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.chat.services.collectContext
 import id.homebase.core.media.MediaPendingOverlay
 import id.homebase.core.media.MediaUnavailablePlaceholder
 import id.homebase.core.media.subsample.SubSamplingImageSource
@@ -34,10 +34,7 @@ fun VaultZoomableImage(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
-    val localImage by localAttachmentStore.observe(file.uniqueId, descriptor.key)
-        .collectAsStateWithLifecycle(
-            initialValue = localAttachmentStore.get(file.uniqueId, descriptor.key),
-        )
+    val localImage by localAttachmentStore.collectContext(file.uniqueId, descriptor.key)
     val localFilePath = (localImage as? LocalAttachmentContext.Image)?.localFilePath
 
     val previewThumbnail = remember(descriptor.previewThumbnail, file.previewThumbnail) {
