@@ -7,8 +7,13 @@ import kotlin.test.assertEquals
 class HapticEventMappingTest {
 
     @Test
-    fun selectionMapsToTextHandleMove() {
-        assertEquals(HapticFeedbackType.TextHandleMove, HapticEvent.Selection.toComposeType())
+    fun selectionMapsToSegmentFrequentTick() {
+        assertEquals(HapticFeedbackType.SegmentFrequentTick, HapticEvent.Selection.toComposeType())
+    }
+
+    @Test
+    fun tickMapsToSegmentTick() {
+        assertEquals(HapticFeedbackType.SegmentTick, HapticEvent.Tick.toComposeType())
     }
 
     @Test
