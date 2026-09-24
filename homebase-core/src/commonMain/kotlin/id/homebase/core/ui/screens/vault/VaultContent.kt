@@ -77,6 +77,7 @@ fun VaultContent(
                     // lazily the first time a section is composed.
                     val rowState = sectionRowStates.getOrPut(section.sectionId) { LazyListState() }
                     VaultSectionCard(
+                        modifier = Modifier.animateItem(),
                         section = section,
                         localAttachmentStore = localAttachmentStore,
                         rowState = rowState,

@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.SharedTransitionScope
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.ui.screens.vault.model.VaultEntry
@@ -77,7 +78,9 @@ fun VaultSectionCard(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // Header row: title + add button + 3-dot menu
@@ -111,6 +114,7 @@ fun VaultSectionCard(
                 ) {
                     items(section.entries, key = { it.uniqueId }) { entry ->
                         VaultEntryCard(
+                            modifier = Modifier.animateItem(),
                             file = entry,
                             sectionTitle = section.title,
                             localAttachmentStore = localAttachmentStore,
