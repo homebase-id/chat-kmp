@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import id.homebase.core.widget.AdaptiveSheet
+import id.homebase.core.widget.AdaptiveSheetScope
 import id.homebase.resources.MR
 import id.homebase.resources.composer_discard_confirm
 import id.homebase.resources.composer_discard_keep
@@ -31,7 +32,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 internal fun GuardedComposerSheet(
     onDismiss: () -> Unit,
-    content: @Composable (
+    content: @Composable AdaptiveSheetScope.(
         requestClose: () -> Unit,
         reportUnsaved: (Boolean) -> Unit,
     ) -> Unit,
@@ -39,12 +40,8 @@ internal fun GuardedComposerSheet(
     var hasUnsaved by remember { mutableStateOf(false) }
     var showDiscardConfirm by remember { mutableStateOf(false) }
 
-    val requestClose: () -> Unit = {
-        if (hasUnsaved) showDiscardConfirm = true else onDismiss()
-    }
-
     AdaptiveSheet(
-        onDismiss = requestClose,
+        onDismiss = onDismiss,
         dismissible = !hasUnsaved,
         expandFully = true,
         // The composer sizes itself off the sheet's own height; the default insets pad
@@ -52,26 +49,26 @@ internal fun GuardedComposerSheet(
         // oscillate on fling.
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
     ) {
-        content(requestClose) { hasUnsaved = it }
-    }
+        content({ if (hasUnsaved) showDiscardConfirm = true else dismiss() }) { hasUnsaved = it }
 
-    if (showDiscardConfirm) {
-        val keepEditing: () -> Unit = { showDiscardConfirm = false }
-        AlertDialog(
-            onDismissRequest = keepEditing,
-            title = { Text(stringResource(MR.string.composer_discard_title)) },
-            text = { Text(stringResource(MR.string.composer_discard_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDiscardConfirm = false
-                    onDismiss()
-                }) { Text(stringResource(MR.string.composer_discard_confirm)) }
-            },
-            dismissButton = {
-                TextButton(onClick = keepEditing) {
-                    Text(stringResource(MR.string.composer_discard_keep))
-                }
-            },
-        )
+        if (showDiscardConfirm) {
+            val keepEditing: () -> Unit = { showDiscardConfirm = false }
+            AlertDialog(
+                onDismissRequest = keepEditing,
+                title = { Text(stringResource(MR.string.composer_discard_title)) },
+                text = { Text(stringResource(MR.string.composer_discard_message)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showDiscardConfirm = false
+                        dismiss()
+                    }) { Text(stringResource(MR.string.composer_discard_confirm)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = keepEditing) {
+                        Text(stringResource(MR.string.composer_discard_keep))
+                    }
+                },
+            )
+        }
     }
 }

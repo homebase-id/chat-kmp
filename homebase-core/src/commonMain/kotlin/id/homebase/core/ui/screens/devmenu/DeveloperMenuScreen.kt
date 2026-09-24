@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.devmenu
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -364,50 +365,55 @@ private fun NetworkStatusSection(
         action = SettingsRowAction.Invoke(onRun),
     )
 
-    if (isRunning) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            CircularProgressIndicator(modifier = Modifier.size(24.dp))
-        }
-    }
-
-    diagnostics?.let { d ->
-        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-            Column(
+    Column(
+        modifier = Modifier.fillMaxWidth()
+            .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec()),
+    ) {
+        if (isRunning) {
+            Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.Center,
             ) {
-                val serverLine = "Server: ${d.hostname}"
-                Text(
-                    text = serverLine,
-                    style = MaterialTheme.typography.titleSmall,
-                )
+                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+            }
+        }
 
-                d.rungs.forEach { rung -> NetworkRungBlock(rung) }
-
-                if (d.captivePortalSuspected) {
-                    Text(
-                        text = stringResource(MR.string.dev_menu_network_captive_portal),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
+        diagnostics?.let { d ->
+            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    TextButton(onClick = { onCopy(buildNetworkSnapshot(d)) }) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = stringResource(MR.string.dev_menu_network_copy),
-                            modifier = Modifier.size(18.dp),
+                    val serverLine = "Server: ${d.hostname}"
+                    Text(
+                        text = serverLine,
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+
+                    d.rungs.forEach { rung -> NetworkRungBlock(rung) }
+
+                    if (d.captivePortalSuspected) {
+                        Text(
+                            text = stringResource(MR.string.dev_menu_network_captive_portal),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = stringResource(MR.string.dev_menu_network_copy))
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = { onCopy(buildNetworkSnapshot(d)) }) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = stringResource(MR.string.dev_menu_network_copy),
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = stringResource(MR.string.dev_menu_network_copy))
+                        }
                     }
                 }
             }

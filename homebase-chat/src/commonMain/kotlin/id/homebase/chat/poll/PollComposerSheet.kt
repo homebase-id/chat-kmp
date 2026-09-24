@@ -84,8 +84,7 @@ fun PollComposerSheet(
     GuardedComposerSheet(onDismiss = onDismiss) { requestClose, reportUnsaved ->
         PollComposerContent(
             conversationId = conversationId,
-            onDismiss = onDismiss,
-            onSent = onSent,
+            onSent = { dismiss(onSent) },
             onRequestClose = requestClose,
             onUnsavedContentChange = reportUnsaved,
         )
@@ -99,10 +98,9 @@ private data class OptionDraft(val id: Long, val text: String)
 @Composable
 private fun PollComposerContent(
     conversationId: Uuid,
-    onDismiss: () -> Unit,
     onSent: () -> Unit,
-    onRequestClose: () -> Unit = onDismiss,
-    onUnsavedContentChange: (Boolean) -> Unit = {},
+    onRequestClose: () -> Unit,
+    onUnsavedContentChange: (Boolean) -> Unit,
 ) {
     val sender: ChatMessageSenderService = koinInject()
     val scope = rememberCoroutineScope()

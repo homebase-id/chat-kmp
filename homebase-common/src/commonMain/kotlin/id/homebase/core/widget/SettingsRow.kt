@@ -1,5 +1,6 @@
 package id.homebase.core.widget
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -9,7 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
@@ -104,14 +105,17 @@ fun SettingsRow(
                     )
 
                     // Announced as the row's click label, like External.
-                    is SettingsRowAction.Expand -> Icon(
-                        imageVector = if (action.expanded) {
-                            Icons.Filled.KeyboardArrowUp
-                        } else {
-                            Icons.Filled.KeyboardArrowDown
-                        },
-                        contentDescription = null,
-                    )
+                    is SettingsRowAction.Expand -> {
+                        val rotation = animateFloatAsState(
+                            targetValue = if (action.expanded) 180f else 0f,
+                            animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                        )
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = null,
+                            modifier = Modifier.graphicsLayer { rotationZ = rotation.value },
+                        )
+                    }
 
                     is SettingsRowAction.Invoke -> Unit
                 }

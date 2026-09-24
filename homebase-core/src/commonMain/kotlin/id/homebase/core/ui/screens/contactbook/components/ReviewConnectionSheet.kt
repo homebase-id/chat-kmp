@@ -105,7 +105,7 @@ fun ReviewConnectionSheet(
                 .padding(top = 20.dp, bottom = 24.dp),
             secondaryAction = {
                 TextButton(
-                    onClick = onDismiss,
+                    onClick = { dismiss() },
                     enabled = !isSubmitting,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
