@@ -97,10 +97,6 @@ class CameraPermissions internal constructor() {
         manager.askPermission(PermissionType.RECORD_AUDIO)
     }
 
-    fun openSettings() {
-        manager?.launchSettings()
-    }
-
     internal suspend fun refresh() {
         val manager = manager ?: return
         onEvent(CameraPermissionEvent.Checked(manager.isPermissionGranted(PermissionType.CAMERA)))

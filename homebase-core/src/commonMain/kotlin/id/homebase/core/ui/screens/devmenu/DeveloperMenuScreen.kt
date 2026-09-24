@@ -568,6 +568,7 @@ private fun buildNetworkSnapshot(d: NetworkDiagnostics): String = buildString {
     if (d.captivePortalSuspected) appendLine("Captive portal suspected")
     if (!d.supported) appendLine("(Network diagnostics unsupported on this platform)")
 }
+
 private data class CameraCaptureResult(val name: String?, val sizeBytes: Long, val contentType: String?) {
     companion object {
         suspend fun of(file: PlatformFile?): CameraCaptureResult = withContext(Dispatchers.Default) {

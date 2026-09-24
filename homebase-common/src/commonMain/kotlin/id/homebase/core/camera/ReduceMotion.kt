@@ -5,7 +5,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 
 internal val LocalReduceMotion = staticCompositionLocalOf { false }
 
-/** The OS "remove animations" / "reduce motion" setting, re-read when the app resumes. */
 @Composable
 internal expect fun rememberReduceMotion(): Boolean
 

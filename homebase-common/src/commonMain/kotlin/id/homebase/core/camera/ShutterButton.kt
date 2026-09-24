@@ -56,12 +56,7 @@ import kotlin.math.abs
 
 internal const val SHUTTER_TAG = "camera_shutter"
 
-/**
- * Tap: [CaptureButtonState.tapAction]. Hold: [onHoldStart] once the long-press timeout passes (false = the hold
- * didn't start a recording). While held the inner shape follows the finger along [lockOffset]; crossing
- * [LOCK_SNAP_FRACTION] of the way calls [onLock] at once, and travel upward reports [onHoldZoom] (0..1). Lifting
- * before the lock calls [onHoldEnd].
- */
+// Crossing LOCK_SNAP_FRACTION of the way to lockOffset locks at once, not on release.
 @Composable
 internal fun ShutterButton(
     state: CaptureButtonState,

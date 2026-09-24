@@ -1885,7 +1885,6 @@
     <string name="camera_no_mic_a11y">Optager uden lyd. Giv adgang til mikrofonen</string>
     <string name="camera_permission_title">Tag billeder og videoer</string>
     <string name="camera_permission_body">Giv adgang til kameraet for at tage billeder og videoer direkte her og sende dem.</string>
-    <string name="camera_permission_allow">Giv adgang til kameraet</string>
     <string name="camera_permission_denied_title">Kameraadgang er slået fra</string>
     <string name="camera_permission_denied_body">Homebase bruger kun kameraet, mens denne skærm er åben.</string>
     <string name="camera_permission_retry">Prøv igen</string>
@@ -1908,7 +1907,6 @@
     <string name="dev_menu_camera_result_size">Størrelse: %1$s bytes</string>
     <string name="dev_menu_camera_result_type">Type: %1$s</string>
     <string name="dev_menu_camera_cancelled">Kameraet blev lukket uden en optagelse</string>
-    <string name="camera_lock_recording">Lås optagelsen</string>
     <string name="camera_recording_started">Optagelsen er startet</string>
     <string name="camera_recording_stopped">Optagelsen er stoppet, %1$s</string>
     <string name="camera_ae_af_lock">AE/AF-lås</string>

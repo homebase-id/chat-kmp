@@ -21,7 +21,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 actual fun CameraPreview(
     engine: CameraEngine,
     modifier: Modifier,
-    onTapFocus: (Offset) -> Unit,
     onLongPressFocus: (Offset) -> Unit,
 ) {
     val androidEngine = engine as? AndroidCameraEngine
@@ -30,7 +29,6 @@ actual fun CameraPreview(
         return
     }
     val request by androidEngine.surfaceRequest.collectAsStateWithLifecycle()
-    val currentOnTapFocus by rememberUpdatedState(onTapFocus)
     val currentOnLongPressFocus by rememberUpdatedState(onLongPressFocus)
     val surfaceRequest = request
     if (surfaceRequest == null) {
@@ -61,10 +59,7 @@ actual fun CameraPreview(
                         focus(offset, lock = true)
                         currentOnLongPressFocus(offset)
                     },
-                    onTap = { offset ->
-                        focus(offset, lock = false)
-                        currentOnTapFocus(offset)
-                    },
+                    onTap = { offset -> focus(offset, lock = false) },
                 )
             },
     )
