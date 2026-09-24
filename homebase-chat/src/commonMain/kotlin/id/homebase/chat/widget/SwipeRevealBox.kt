@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -54,17 +56,24 @@ private fun SwipeDistance.toPx(widthPx: Int, density: Density): Float = when (th
     is SwipeDistance.Fraction -> widthPx * fraction
 }
 
-@Immutable
-data class SwipeRevealState(
-    /** Physical: positive means the row moved right on screen, under RTL too. */
-    val offsetPx: Float,
-    val thresholdPx: Float,
+/** Read [offsetPx] and [progress] only in layout or draw lambdas: they change on every drag frame. */
+@Stable
+class SwipeRevealState internal constructor(
+    private val offset: () -> Float,
+    private val threshold: () -> Float,
 ) {
-    val progress: Float
-        get() = if (thresholdPx <= 0f) 0f else (offsetPx.absoluteValue / thresholdPx).coerceIn(0f, 1f)
+    /** Physical: positive means the row moved right on screen, under RTL too. */
+    val offsetPx: Float
+        get() = offset()
 
-    val isPastThreshold: Boolean
-        get() = thresholdPx > 0f && offsetPx.absoluteValue >= thresholdPx
+    val progress: Float
+        get() = threshold().let { if (it <= 0f) 0f else (offsetPx.absoluteValue / it).coerceIn(0f, 1f) }
+
+    val movesRight: Boolean by derivedStateOf { offsetPx > 0f }
+
+    val isPastThreshold: Boolean by derivedStateOf {
+        threshold() > 0f && offsetPx.absoluteValue >= threshold()
+    }
 }
 
 /**
@@ -139,9 +148,12 @@ fun SwipeRevealBox(
         }
     }
 
+    val revealState = remember { SwipeRevealState({ offsetPx }, { currentThresholdPx }) }
+    val revealing by remember { derivedStateOf { offsetPx != 0f } }
+
     Box(modifier = modifier.onSizeChanged { widthPx = it.width }) {
-        if (offsetPx != 0f) {
-            reveal(SwipeRevealState(offsetPx = offsetPx, thresholdPx = thresholdPx))
+        if (revealing) {
+            reveal(revealState)
         }
 
         Box(

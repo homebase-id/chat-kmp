@@ -31,6 +31,24 @@ class StorageSettingsUiTest {
     )
 
     @Test
+    fun `shows no empty rows while the first load is running`() = runComposeUiTest {
+        setTestLocale("en-US")
+        setContent {
+            MaterialTheme {
+                StorageSettingsUi(
+                    uiState = StorageSettingsUiState(),
+                    onAction = {},
+                    onBackClick = {},
+                    onNavigateToDefragmenter = {},
+                    snackbarHostState = remember { SnackbarHostState() },
+                )
+            }
+        }
+        onNodeWithText("No caches").assertDoesNotExist()
+        onNodeWithText("No drives").assertDoesNotExist()
+    }
+
+    @Test
     fun `shows red banner and Unavailable row when a cache is unavailable`() = runComposeUiTest {
         setTestLocale("en-US")
         setContent {

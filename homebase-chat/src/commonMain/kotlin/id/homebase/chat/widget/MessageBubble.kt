@@ -1,7 +1,11 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -977,16 +981,24 @@ fun DeliveryStatus(
     pendingSince: Instant? = null,
 ) {
     val warning = deliveryFailureTint()
-    if (isPendingSend) {
-        val stale = pendingSince != null && rememberPendingStale(pendingSince)
-        Icon(
-            Icons.Default.Alarm,
-            contentDescription = stringResource(MR.string.message_sending),
-            modifier = Modifier.size(16.dp),
-            tint = if (stale) warning else contentColor,
-        )
-    } else {
-        when (deliveryStatus) {
+    val fade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+    AnimatedContent(
+        targetState = if (isPendingSend) PENDING_STATUS else deliveryStatus,
+        modifier = Modifier.height(PENDING_ICON_SIZE),
+        contentAlignment = Alignment.Center,
+        transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
+    ) { status ->
+        when (status) {
+            PENDING_STATUS -> {
+                val stale = pendingSince != null && rememberPendingStale(pendingSince)
+                Icon(
+                    Icons.Default.Alarm,
+                    contentDescription = stringResource(MR.string.message_sending),
+                    modifier = Modifier.size(PENDING_ICON_SIZE),
+                    tint = if (stale) warning else contentColor,
+                )
+            }
+
             ChatDeliveryStatus.Failed.value -> {
                 Icon(
                     Icons.Default.ErrorOutline,
@@ -1010,7 +1022,8 @@ fun DeliveryStatus(
                     HomebaseIcons.MessageSentAndDelivered,
                     contentDescription = stringResource(MR.string.message_delivered),
                     modifier = Modifier.height(DELIVERY_ICON_SIZE),
-                    tint = contentColor,)
+                    tint = contentColor,
+                )
             }
 
             ChatDeliveryStatus.Sent.value -> {
@@ -1024,6 +1037,9 @@ fun DeliveryStatus(
         }
     }
 }
+
+private const val PENDING_STATUS = Int.MIN_VALUE
+private val PENDING_ICON_SIZE = 16.dp
 
 /**
  * True once the message has been pending (un-sent) for at least [threshold]. Computes the

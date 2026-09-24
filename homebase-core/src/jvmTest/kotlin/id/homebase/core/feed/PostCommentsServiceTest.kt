@@ -28,7 +28,14 @@ import id.homebase.core.feed.services.PostCommentsService
 import id.homebase.core.feed.services.PostContent
 import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.ReactAccess
+import id.homebase.core.feed.services.PostCommentItem
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -260,10 +267,27 @@ class PostCommentsServiceTest {
         advanceUntilIdle()
 
         assertEquals(
-            emptyList(), comments.value,
+            emptyList(), awaitLoaded(comments),
             "a post with no comments must not surface another post's comments (cross-post leak)",
         )
     }
+
+    @Test
+    fun commentsFor_readsAsLoadingUntilTheColdLoadFinishes() = runFeedTest {
+        val postId = Uuid.random()
+        seedPost(postId)
+        advanceUntilIdle()
+
+        val comments = service().commentsFor(ownPost(postId))
+        assertNull(comments.value, "an unloaded thread must not read as an empty one")
+
+        advanceUntilIdle()
+        assertEquals(emptyList(), awaitLoaded(comments))
+    }
+
+    // The cold load's DB read completes off the test clock, so advanceUntilIdle alone can observe it unfinished.
+    private suspend fun awaitLoaded(comments: StateFlow<List<PostCommentItem>?>): List<PostCommentItem> =
+        withContext(Dispatchers.Default) { withTimeout(10_000) { comments.filterNotNull().first() } }
 
     @Test
     fun postComment_onUnencryptedPost_isUnencryptedAnonymous_onEncryptedPost_isEncrypted() =
