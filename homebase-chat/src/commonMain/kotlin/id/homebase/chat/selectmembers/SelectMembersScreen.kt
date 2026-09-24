@@ -1,7 +1,6 @@
 package id.homebase.chat.selectmembers
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -194,9 +193,7 @@ fun SelectMembersUi(
                 items(uiState.selectedContacts) { contact ->
                     InputChip(
                         modifier = Modifier.widthIn(max = 200.dp).padding(end = 8.dp),
-                        onClick = {
-                            // onUiAction(NewConversationUiAction.ContactClicked(contact))
-                        },
+                        onClick = { onUiAction(SelectMembersUiAction.ContactClicked(contact)) },
                         label = {
                             Text(
                                 text = contact.name,
@@ -220,9 +217,6 @@ fun SelectMembersUi(
                         },
                         trailingIcon = {
                             Icon(
-                                modifier = Modifier.clickable {
-                                    onUiAction(SelectMembersUiAction.ContactClicked(contact))
-                                },
                                 imageVector = Icons.Default.Close,
                                 contentDescription = stringResource(MR.string.remove),
                             )
