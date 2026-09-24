@@ -1,5 +1,9 @@
 package id.homebase.core.ui.screens.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -206,7 +210,11 @@ fun SettingsScreen(
             actions = actions,
         )
 
-        if (uiState.isLoggingOut) {
+        AnimatedVisibility(
+            visible = uiState.isLoggingOut,
+            enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            exit = fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+        ) {
             LogoutOverlay()
         }
     }
@@ -594,25 +602,27 @@ private fun HubSectionHeader(title: String) {
 // Decorative: the row's supporting text already states the status in words.
 @Composable
 private fun NotificationStatusIndicator(status: NotificationVerificationStatus) {
-    when (status) {
-        NotificationVerificationStatus.CHECKING -> CircularProgressIndicator(
-            modifier = Modifier.size(16.dp),
-            strokeWidth = 2.dp,
-        )
+    Crossfade(status, animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) { shown ->
+        when (shown) {
+            NotificationVerificationStatus.CHECKING -> CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+            )
 
-        NotificationVerificationStatus.OK -> Icon(
-            imageVector = Icons.Outlined.CheckCircle,
-            contentDescription = null,
-            tint = ExtendedColors.Success,
-            modifier = Modifier.size(20.dp),
-        )
+            NotificationVerificationStatus.OK -> Icon(
+                imageVector = Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = ExtendedColors.Success,
+                modifier = Modifier.size(20.dp),
+            )
 
-        NotificationVerificationStatus.ERROR -> Icon(
-            imageVector = Icons.Outlined.Error,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.error,
-            modifier = Modifier.size(20.dp),
-        )
+            NotificationVerificationStatus.ERROR -> Icon(
+                imageVector = Icons.Outlined.Error,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 
