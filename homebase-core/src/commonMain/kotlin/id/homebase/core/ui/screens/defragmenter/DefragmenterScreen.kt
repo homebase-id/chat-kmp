@@ -149,8 +149,8 @@ fun DefragmenterScreen(
             DefragmenterContent(
                 state = state,
                 driveLabel = driveLabel,
-                frameTimeNanos = frameTimeNanos,
-                celebratoryProgress = celebratoryProgress,
+                frameTimeNanos = { frameTimeNanos },
+                celebratoryProgress = { celebratoryProgress },
                 onAction = viewModel::onAction,
             )
         }
@@ -161,8 +161,8 @@ fun DefragmenterScreen(
 private fun DefragmenterContent(
     state: DefragmenterUiState,
     driveLabel: String,
-    frameTimeNanos: Long,
-    celebratoryProgress: Float,
+    frameTimeNanos: () -> Long,
+    celebratoryProgress: () -> Float,
     onAction: (DefragmenterUiAction) -> Unit,
 ) {
     Column(

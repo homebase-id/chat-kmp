@@ -24,11 +24,12 @@ class MapCameraState {
     /** User/programmatic viewport override; null = the map fits its `bbox`. */
     internal var viewport by mutableStateOf<MapViewport?>(null)
 
-    /**
-     * The viewport the map actually rendered last composition — the override when one is set,
-     * else the bbox fit (null until the canvas is measured). Written by [TiledMapView].
-     */
-    internal var effective by mutableStateOf<MapViewport?>(null)
+    /** The bbox fit for the measured canvas (null until measured). Written by [TiledMapView]. */
+    internal var fit by mutableStateOf<MapViewport?>(null)
+
+    /** The viewport the map renders: the override when one is set, else the bbox fit. */
+    internal val effective: MapViewport?
+        get() = viewport ?: fit
 
     /** Current view center in unit space, or null until the map has measured. */
     val centerUnit: Pair<Double, Double>?
