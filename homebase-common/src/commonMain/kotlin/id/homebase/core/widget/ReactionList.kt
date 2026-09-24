@@ -1,8 +1,6 @@
 package id.homebase.core.widget
 
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,8 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,12 +77,9 @@ fun ReactionList(
 
     var animatePop by remember { mutableStateOf(false) }
     val prevCount = remember { mutableIntStateOf(totalCount) }
-    val scaleValue by animateFloatAsState(
+    val scale = animateFloatAsState(
         targetValue = if (animatePop) 1.15f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
         finishedListener = { animatePop = false },
     )
     LaunchedEffect(totalCount) {
@@ -108,7 +103,10 @@ fun ReactionList(
     ) {
         Surface(
             modifier = Modifier
-                .scale(scaleValue)
+                .graphicsLayer {
+                    scaleX = scale.value
+                    scaleY = scale.value
+                }
                 .clip(RoundedCornerShape(16.dp))
                 .clickable(onClick = onReactionClick),
             shape = RoundedCornerShape(16.dp),
