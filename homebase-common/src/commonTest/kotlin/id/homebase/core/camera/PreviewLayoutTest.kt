@@ -1,5 +1,6 @@
 package id.homebase.core.camera
 
+import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.test.Test
@@ -40,5 +41,12 @@ class PreviewLayoutTest {
                 assertTrue(abs(side - pillDp * density) <= 1f, "density=$density pill=$pillDp")
             }
         }
+    }
+
+    @Test
+    fun aLetterboxPinsUnderTheTopBarAndRisesOnlyOnAShortScreen() {
+        assertEquals(123.dp, letterboxTop(screenHeight = 852.dp, frameHeight = 524.dp, topClearance = 123.dp))
+        assertEquals(100.dp, letterboxTop(screenHeight = 600.dp, frameHeight = 500.dp, topClearance = 123.dp))
+        assertEquals(0.dp, letterboxTop(screenHeight = 480.dp, frameHeight = 500.dp, topClearance = 123.dp))
     }
 }

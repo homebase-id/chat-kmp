@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -926,6 +927,22 @@ class CameraCaptureScreenTest {
         engine.uiState.update { it.copy(isRecording = true, recordingStartedAtMs = 0L) }
         waitForIdle()
         onNodeWithTag(GALLERY_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun aLetterboxedPreviewSitsUnderTheTopBarAtItsAspect() = runComposeUiTest {
+        val engine = FakeCameraEngine(CameraUiState(isBound = true, previewAspectRatio = 3f / 4f))
+        showCamera(engine, preview = { Box(it.testTag("frame")) })
+        waitForIdle()
+        val root = onRoot().fetchSemanticsNode().boundsInRoot
+        val frame = onNodeWithTag("frame").fetchSemanticsNode().boundsInRoot
+        assertEquals(root.width, frame.width, 1f)
+        assertEquals(frame.width * 4f / 3f, frame.height, 1f)
+        assertTrue(frame.top > 0f && frame.bottom < root.bottom, "frame $frame in $root")
+
+        engine.uiState.update { it.copy(previewAspectRatio = null) }
+        waitForIdle()
+        assertEquals(root, onNodeWithTag("frame").fetchSemanticsNode().boundsInRoot)
     }
 }
 
