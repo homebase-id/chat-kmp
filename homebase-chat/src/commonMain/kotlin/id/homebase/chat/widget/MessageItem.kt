@@ -77,24 +77,23 @@ fun MessageItem(
         )
     }
 
-    // Memoize all callbacks with message.id as key. Disabled actions get
-    // null callbacks; the bubble subcomposables already gate on non-null.
+    // Callbacks that carry the model are keyed on it: the row keeps its slot across edits and version bumps.
     val onMessageInfo =
-        remember(message.id) { { onUiAction(ConversationListUiAction.ShowMessageInfo(message)) } }
+        remember(message) { { onUiAction(ConversationListUiAction.ShowMessageInfo(message)) } }
     val onReply =
-        if (policy.allowReply) remember(message.id) { { onUiAction(ConversationListUiAction.ReplyToMessage(message)) } } else null
+        if (policy.allowReply) remember(message) { { onUiAction(ConversationListUiAction.ReplyToMessage(message)) } } else null
     // Battle is dice-roll-specific. Show only when the message is a valid dice
     // roll AND the chain has room AND the current user isn't already in it.
     val battleDescriptor = (message.messageContent as? MessageContent.DiceRoll)?.descriptor
     val onBattle = if (battleDescriptor != null && battleDescriptor.isValid() &&
         canBattle(battleDescriptor, odinId, allDiceDescriptors)
     ) {
-        remember(message.id) { { onUiAction(ConversationListUiAction.BattleDiceRoll(message)) } }
+        remember(message) { { onUiAction(ConversationListUiAction.BattleDiceRoll(message)) } }
     } else null
     val onForward =
-        if (policy.allowForward) remember(message.id) { { onUiAction(ConversationListUiAction.ForwardMessage(message)) } } else null
+        if (policy.allowForward) remember(message) { { onUiAction(ConversationListUiAction.ForwardMessage(message)) } } else null
     val onShare =
-        if (policy.allowShare) remember(message.id) { { onUiAction(ConversationListUiAction.ShareMessage(message)) } } else null
+        if (policy.allowShare) remember(message) { { onUiAction(ConversationListUiAction.ShareMessage(message)) } } else null
     val onDelete =
         remember(message.id) { { onUiAction(ConversationListUiAction.DeleteMessage(message.id)) } }
     val onTogglePin =
@@ -109,7 +108,7 @@ fun MessageItem(
     // through to ScrollToMessageId.
     val onClickMessageId =
         remember(message.id) { { messageId: Uuid -> onUiAction(ConversationListUiAction.OpenReplyTarget(messageId)) } }
-    val onMediaClick = remember(message.id) {
+    val onMediaClick = remember(message) {
         { payload: PayloadDescriptor ->
             onUiAction(
                 ConversationListUiAction.MediaClicked(
@@ -157,7 +156,7 @@ fun MessageItem(
     }
     if (message.isAuthoredBy(odinId)) {
         val onEdit = if (message.isEditableBy(odinId)) {
-            remember(message.id) {
+            remember(message) {
                 {
                     onUiAction(
                         ConversationListUiAction.EditMessage(

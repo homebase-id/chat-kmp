@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,6 +41,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,6 +85,7 @@ import kotlin.time.Clock
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import kotlinx.coroutines.flow.filterNotNull
 
 /**
  * Full-screen share-location screen (#966): pan the map under a fixed center pin (the address
@@ -192,111 +195,14 @@ fun ShareLocationScreen(
                 },
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(innerPadding),
-        ) {
-            if (!uiState.showMapTiles) {
-                MapsOffState(
-                    onOpenSetup = onOpenSetup,
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            } else {
-                val camera = rememberMapCameraState()
-
-                TiledMapView(
-                    bbox = uiState.initialBbox?.toDoubleArray(),
-                    showMapTiles = true,
-                    fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
-                    resetViewportOn = uiState.initialBboxKey,
-                    cameraState = camera,
-                )
-
-                // Pin follows the viewport center; the VM debounces the geocode, so per-gesture
-                // restarts of this effect are cheap.
-                val center = camera.centerUnit
-                LaunchedEffect(center) {
-                    center?.let { (x, y) ->
-                        viewModel.onMapCenterChanged(x, y, camera.isUserPositioned)
-                    }
-                }
-                // One-shot GPS re-center handed back from the VM.
-                LaunchedEffect(uiState.recenterTarget) {
-                    uiState.recenterTarget?.let { target ->
-                        camera.centerOn(target.unitX, target.unitY)
-                        viewModel.recenterConsumed()
-                    }
-                }
-
-                // Fixed center pin. Offset up half its size so the pin TIP marks the center.
-                Icon(
-                    imageVector = Icons.Default.LocationOn,
-                    contentDescription = stringResource(MR.string.cd_location_pin),
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(40.dp)
-                        .offset(y = (-20).dp),
-                )
-
-                // Address chip — resolves as the user pans.
-                val addressText = when {
-                    uiState.isResolvingAddress -> stringResource(MR.string.share_location_resolving)
-                    else -> uiState.address
-                }
-                if (addressText.isNotEmpty()) {
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(start = 16.dp, top = 12.dp, end = 72.dp),
-                        shape = MaterialTheme.shapes.medium,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        tonalElevation = 2.dp,
-                    ) {
-                        Text(
-                            text = addressText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
-                    }
-                }
-
-                // GPS re-center — upper-right corner.
-                FilledTonalIconButton(
-                    onClick = { viewModel.onRecenter() },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 12.dp, end = 12.dp),
-                ) {
-                    if (uiState.isAcquiringFix) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.MyLocation,
-                            contentDescription = stringResource(MR.string.share_location_recenter_cd),
-                        )
-                    }
-                }
-            }
-
-            // Bottom controls: live-share banner + the always-present comment/send row.
-            // imePadding lifts the bar above the keyboard while typing a comment.
+        bottomBar = {
+            // A bottomBar, not an overlay: the snackbar stacks above it and the map sizes to the visible area.
             Surface(
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().imePadding(),
+                modifier = Modifier.fillMaxWidth(),
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 3.dp,
             ) {
-                Column {
+                Column(modifier = Modifier.navigationBarsPadding().imePadding()) {
                     // Hidden while my live share already covers this conversation — no invitation
                     // to start what's already running (#966 follow-up; app-wide indicator = #816).
                     val ownShareActive = uiState.ownLiveShareUntilMs
@@ -365,7 +271,7 @@ fun ShareLocationScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         FilledIconButton(
                             onClick = { viewModel.sendStaticPin() },
-                            enabled = uiState.pinLat != null && !uiState.isSending,
+                            enabled = uiState.hasPin && !uiState.isSending,
                         ) {
                             if (uiState.isSending) {
                                 CircularProgressIndicator(
@@ -379,6 +285,101 @@ fun ShareLocationScreen(
                                 )
                             }
                         }
+                    }
+                }
+            }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .consumeWindowInsets(innerPadding)
+                .padding(innerPadding),
+        ) {
+            if (!uiState.showMapTiles) {
+                MapsOffState(
+                    onOpenSetup = onOpenSetup,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            } else {
+                val camera = rememberMapCameraState()
+
+                TiledMapView(
+                    bbox = uiState.initialBbox?.toDoubleArray(),
+                    showMapTiles = true,
+                    fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
+                    resetViewportOn = uiState.initialBboxKey,
+                    cameraState = camera,
+                )
+
+                // Pin follows the viewport center; the VM debounces the geocode.
+                LaunchedEffect(camera) {
+                    snapshotFlow { camera.centerUnit }
+                        .filterNotNull()
+                        .collect { (x, y) -> viewModel.onMapCenterChanged(x, y, camera.isUserPositioned) }
+                }
+                // One-shot GPS re-center handed back from the VM.
+                LaunchedEffect(uiState.recenterTarget) {
+                    uiState.recenterTarget?.let { target ->
+                        camera.centerOn(target.unitX, target.unitY)
+                        viewModel.recenterConsumed()
+                    }
+                }
+
+                // Fixed center pin. Offset up half its size so the pin TIP marks the center.
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = stringResource(MR.string.cd_location_pin),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(40.dp)
+                        .offset(y = (-20).dp),
+                )
+
+                // Address chip — resolves as the user pans.
+                val addressText = when {
+                    uiState.isResolvingAddress -> stringResource(MR.string.share_location_resolving)
+                    else -> uiState.address
+                }
+                if (addressText.isNotEmpty()) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(start = 16.dp, top = 12.dp, end = 72.dp),
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        tonalElevation = 2.dp,
+                    ) {
+                        Text(
+                            text = addressText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+
+                // GPS re-center — upper-right corner.
+                FilledTonalIconButton(
+                    onClick = { viewModel.onRecenter() },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 12.dp, end = 12.dp),
+                ) {
+                    if (uiState.isAcquiringFix) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.MyLocation,
+                            contentDescription = stringResource(MR.string.share_location_recenter_cd),
+                        )
                     }
                 }
             }

@@ -79,6 +79,7 @@ data class ProfileCardUiState(
     val cardUnsupported: Boolean = false,
     val isExporting: Boolean = false,
     val edges: Map<String, CardEvent.Edges> = emptyMap(),
+    val isSwitchingDesign: Boolean = false,
 ) {
     val design: String get() = previewDesign ?: savedDesign
     val cardTopArgb: Int? get() = edges[design]?.topArgb
@@ -226,6 +227,11 @@ class ProfileCardViewModel(
     private val _cover = MutableStateFlow<CardCover?>(null)
     val cover: StateFlow<CardCover?> = _cover.asStateFlow()
 
+    // The editor re-renders the card in place; a still of the outgoing design covers it until the new one paints.
+    private val _designCover = MutableStateFlow<ImageBitmap?>(null)
+    val designCover: StateFlow<ImageBitmap?> = _designCover.asStateFlow()
+    private var designSwitchJob: Job? = null
+
     private val _events = MutableSharedFlow<ProfileCardEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<ProfileCardEvent> = _events.asSharedFlow()
 
@@ -272,7 +278,18 @@ class ProfileCardViewModel(
     fun onDesignSelected(design: String) {
         if (design == _uiState.value.design) return
         _uiState.update { it.copy(previewDesign = design) }
-        render()
+        designSwitchJob?.cancel()
+        designSwitchJob = viewModelScope.launch {
+            coverOutgoingDesign()
+            render()
+        }
+    }
+
+    private suspend fun coverOutgoingDesign() {
+        val host = _host.value ?: return
+        if (!_uiState.value.isCardReady) return
+        _designCover.value = attempt("capturing the outgoing design") { host.snapshot() } ?: return
+        _uiState.update { it.copy(isSwitchingDesign = true) }
     }
 
     fun onPreviewDiscarded() {
@@ -380,7 +397,8 @@ class ProfileCardViewModel(
         viewModelScope.launch {
             host.isLoaded.collect { loaded ->
                 if (!loaded) {
-                    _uiState.update { it.copy(isCardReady = false) }
+                    _designCover.value = null
+                    _uiState.update { it.copy(isCardReady = false, isSwitchingDesign = false) }
                     readyCount.value = 0
                 }
             }
@@ -403,6 +421,7 @@ class ProfileCardViewModel(
             if (painted == null) Logger.w(tag = TAG) { "no paint reply after $PAINT_TIMEOUT" }
             host.probeEdges()
             coverStale = true
+            _uiState.update { it.copy(isSwitchingDesign = false) }
             onPainted()
         }
     }
@@ -422,6 +441,7 @@ class ProfileCardViewModel(
     }
 
     private fun onCardError(error: CardEvent.Error) {
+        _uiState.update { it.copy(isSwitchingDesign = false) }
         val state = _uiState.value
         Logger.w(tag = TAG) { "card error design=${state.design}: ${error.message}" }
         if (error.unsupported) {

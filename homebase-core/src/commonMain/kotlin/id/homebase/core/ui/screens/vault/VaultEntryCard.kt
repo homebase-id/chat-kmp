@@ -28,10 +28,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.decodeBitmap
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -48,6 +54,7 @@ import id.homebase.core.image.ImageSize
 import id.homebase.core.image.rememberFullScreenImagePrefetch
 import id.homebase.resources.MR
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.chat.services.collectContext
 
 private val CARD_WIDTH = 100.dp
 private val CARD_HEIGHT = 120.dp
@@ -129,10 +136,7 @@ fun VaultEntryCard(
             ) {
                 val localStore = localAttachmentStore
                 val firstPayloadKey = file.payloadDescriptors.firstOrNull()?.key ?: VaultEntry.DEFAULT_PAYLOAD_KEY
-                val localCtx = localStore.observe(file.uniqueId, firstPayloadKey)
-                    .collectAsStateWithLifecycle(
-                        initialValue = localStore.get(file.uniqueId, firstPayloadKey),
-                    ).value
+                val localCtx = localStore.collectContext(file.uniqueId, firstPayloadKey).value
                 val localImage = localCtx as? LocalAttachmentContext.Image
 
                 VaultCardThumbnail(
@@ -144,40 +148,59 @@ fun VaultEntryCard(
                     animatedVisibilityScope = animatedVisibilityScope,
                 )
 
-                // Upload status overlay
-                when (val status = file.uploadStatus) {
-                    is VaultUploadStatus.Preparing,
-                    is VaultUploadStatus.Uploading -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.38f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = MaterialTheme.colorScheme.inversePrimary,
-                            )
+                val overlayFade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+                AnimatedContent(
+                    targetState = file.uploadStatus,
+                    modifier = Modifier.fillMaxSize(),
+                    contentKey = { it?.let { status -> status::class } },
+                    transitionSpec = { fadeIn(overlayFade) togetherWith fadeOut(overlayFade) },
+                ) { status ->
+                    when (status) {
+                        is VaultUploadStatus.Preparing,
+                        is VaultUploadStatus.Uploading -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.38f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (status is VaultUploadStatus.Uploading) {
+                                    val progress by animateFloatAsState(
+                                        status.progress,
+                                        MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                    )
+                                    CircularProgressIndicator(
+                                        progress = { progress },
+                                        modifier = Modifier.size(24.dp),
+                                        color = MaterialTheme.colorScheme.inversePrimary,
+                                    )
+                                } else {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = MaterialTheme.colorScheme.inversePrimary,
+                                    )
+                                }
+                            }
                         }
-                    }
 
-                    is VaultUploadStatus.Failed -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.ErrorOutline,
-                                contentDescription = stringResource(MR.string.vault_upload_failed),
-                                tint = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.size(24.dp),
-                            )
+                        is VaultUploadStatus.Failed -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.ErrorOutline,
+                                    contentDescription = stringResource(MR.string.vault_upload_failed),
+                                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
                         }
-                    }
 
-                    else -> Unit
+                        else -> Unit
+                    }
                 }
 
                 // PDF type badge

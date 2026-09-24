@@ -28,15 +28,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -81,7 +78,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -103,12 +99,10 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -144,6 +138,7 @@ import id.homebase.chat.conversationlist.RecipientModel
 import id.homebase.chat.conversationlist.RecipientType
 import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.chat.conversationlist.lastEditableMessage
+import id.homebase.chat.conversationlist.messageListKey
 import id.homebase.chat.conversationlist.resolveOwnSendFollowTarget
 import id.homebase.chat.createconversation.ContactItem
 import id.homebase.chat.createconversation.GroupOrConversationItem
@@ -164,7 +159,9 @@ import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
-import id.homebase.core.util.rememberImeOffsetState
+import id.homebase.core.util.keyboardPanelAnchoredList
+import id.homebase.core.util.keyboardPanelSlot
+import id.homebase.core.util.rememberKeyboardPanelState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.core.util.rememberCameraManager
@@ -250,6 +247,8 @@ import kotlin.uuid.Uuid
  *  follow token is consumed unscrolled (the send failed or was gated out). */
 private const val OWN_SEND_FOLLOW_TIMEOUT_MS = 5_000L
 
+private enum class ComposerPanel { Emoji, Attachments }
+
 private const val SCROLL_TO_NEWEST_ATTEMPTS = 4
 
 // Mirrors the states in which the composer below is replaced by a banner — keep the two in sync,
@@ -281,12 +280,12 @@ fun ConversationContent(
     val focusRequesterSearch = remember { FocusRequester() }
     val enterSendsMessage = rememberEnterSendsMessage()
     val focusManager = LocalFocusManager.current
-    var showAttachmentSheet by remember { mutableStateOf(false) }
+    val bottomPanel = rememberKeyboardPanelState()
+    var panelContent by remember { mutableStateOf(ComposerPanel.Emoji) }
     var showEventComposer by remember { mutableStateOf(false) }
     var showGroodleComposer by remember { mutableStateOf(false) }
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showPollComposer by remember { mutableStateOf(false) }
-    var showEmojiSheet by remember { mutableStateOf(false) }
     val composerPopovers = isDesktopOrWeb() && isExpandedLayout()
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
@@ -465,26 +464,6 @@ fun ConversationContent(
         onUiAction(ConversationListUiAction.ConsumeScrollToLatestRequest)
     }
 
-    // Add this state to track keyboard height
-    var keyboardHeight by remember { mutableStateOf(0.dp) }
-    val density = LocalDensity.current
-    val imeInsets = WindowInsets.ime
-    val imeState = rememberImeOffsetState()
-
-    val imeVisible by remember { derivedStateOf { imeInsets.getBottom(density) > 0 } }
-
-    // Add a LaunchedEffect to listen for keyboard changes
-    LaunchedEffect(imeVisible) {
-        if (imeVisible) {
-            // Keyboard is shown
-            keyboardHeight = with(density) { imeInsets.getBottom(density).toDp() }
-            // Add any other logic you need when keyboard appears
-        } else {
-            // Keyboard is hidden
-            // Add any logic you need when keyboard disappears
-        }
-    }
-
     // On iOS, UITextView can auto-become first responder during initial
     // composition, briefly flashing the keyboard and shifting the layout.
     // Block focus until the first frame has been laid out.  On Android/Desktop
@@ -559,14 +538,13 @@ fun ConversationContent(
         onUiAction(ConversationListUiAction.FlushDraft)
     }
 
-    @Suppress("DEPRECATION") BackHandler(uiState.isSearchActive || showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
+    @Suppress("DEPRECATION") BackHandler(uiState.isSearchActive || bottomPanel.isOpen || isKeyboardVisible || uiState.isEditingMessageId != null) {
         if (uiState.isSearchActive) {
             onUiAction(ConversationListUiAction.SearchMessagesBackClicked)
             searchTextState.clearText()
             return@BackHandler
         }
-        showEmojiSheet = false
-        showAttachmentSheet = false
+        bottomPanel.close()
         keyboardController?.hide()
         // Only a back that's actually cancelling an in-progress edit should reset
         // the composer — CancelEditMessage clears it. A back that's merely
@@ -790,7 +768,6 @@ fun ConversationContent(
                 }
             },
         ),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -986,18 +963,6 @@ fun ConversationContent(
         ) {
             Column(
                 modifier = Modifier.fillMaxSize()
-                    .offset {
-                        val imeHeight = imeInsets.getBottom(this)
-                        val pureImeHeight = imeState.pureImeBottomPx
-                        val sheetHeight = keyboardHeight.coerceAtLeast(300.dp).roundToPx()
-                        val sheetOffset = when {
-                            showEmojiSheet && imeHeight > 0 -> pureImeHeight + sheetHeight
-                            imeHeight > 0 -> pureImeHeight
-                            showEmojiSheet || showAttachmentSheet -> sheetHeight
-                            else -> 0
-                        }
-                        IntOffset(0, -sheetOffset)
-                    }
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             ) {
                 PinnedMessagesBar(
@@ -1093,10 +1058,8 @@ fun ConversationContent(
                     ) return@SideEffect
                     val indexByKey = HashMap<String, Int>(mergedItems.size)
                     mergedItems.forEachIndexed { i, item ->
-                        when (item) {
-                            is MessageListContentModel.Message -> indexByKey[item.id] = i
-                            is PendingOutgoingMessage -> indexByKey["pending-${item.id}"] = i
-                            else -> {}
+                        if (item is MessageListContentModel.Message || item is PendingOutgoingMessage) {
+                            indexByKey[messageListKey(item)] = i
                         }
                     }
                     val anchor = visible.firstOrNull {
@@ -1171,7 +1134,8 @@ fun ConversationContent(
                     if (!uiState.isLoadingMessages) {
                         CompositionLocalProvider(LocalExpandedMessages provides expandedMessages) {
                         LazyColumn(
-                            modifier = Modifier.fillMaxSize().dismissKeyboardOnTap(),
+                            modifier = Modifier.keyboardPanelAnchoredList(bottomPanel, listState)
+                                .fillMaxSize().dismissKeyboardOnTap(),
                             state = listState,
                             contentPadding = PaddingValues(
                                 top = 24.dp,
@@ -1180,13 +1144,7 @@ fun ConversationContent(
                         ) {
                             items(
                                 mergedItems,
-                                key = { item ->
-                                    when (item) {
-                                        is MessageListContentModel -> item.id
-                                        is PendingOutgoingMessage -> "pending-${item.id}"
-                                        else -> item.hashCode().toString()
-                                    }
-                                },
+                                key = ::messageListKey,
                                 // One contentType per row shape, so scrolling reuses a recycled
                                 // item's composition instead of discarding and rebuilding it.
                                 // A 45 s device profile of an image-heavy thread (iPhone 15,
@@ -1272,8 +1230,8 @@ fun ConversationContent(
                                         Box(
                                             modifier = if (animationsEnabled) {
                                                 Modifier.animateItem(
-                                                    fadeInSpec = tween(300),
-                                                    fadeOutSpec = tween(400),
+                                                    fadeInSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                                    fadeOutSpec = MaterialTheme.motionScheme.slowEffectsSpec(),
                                                 )
                                             } else {
                                                 Modifier
@@ -1293,8 +1251,8 @@ fun ConversationContent(
                                         val isHighlighted = uiState.highlightedMessageId == item.message.id
                                         val highlightAlpha by animateFloatAsState(
                                             targetValue = if (isHighlighted) 0.15f else 0f,
-                                            animationSpec = if (isHighlighted) tween(durationMillis = 300)
-                                            else tween(durationMillis = 600),
+                                            animationSpec = if (isHighlighted) MaterialTheme.motionScheme.defaultEffectsSpec()
+                                            else MaterialTheme.motionScheme.slowEffectsSpec(),
                                         )
                                         LaunchedEffect(isHighlighted) {
                                             if (!isHighlighted) return@LaunchedEffect
@@ -1470,6 +1428,7 @@ fun ConversationContent(
                     } else {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     }
+                    SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
                 }
 
                 AnimatedVisibility(
@@ -1672,34 +1631,15 @@ fun ConversationContent(
                             }
                         }
 
-                        val toggleAttachmentSheet = {
-                            showEmojiSheet = false
-                            if (showAttachmentSheet && !isKeyboardVisible) {
-                                showAttachmentSheet = false
-                                if (wasKeyboardVisible) {
-                                    focusRequester.requestFocus()
-                                    keyboardController?.show()
-                                }
-                            } else {
-                                if (isKeyboardVisible) {
-                                    wasKeyboardVisible = true
-                                    focusManager.clearFocus()
-                                    keyboardController?.hide()
-                                } else {
-                                    wasKeyboardVisible = false
-                                }
-                                showAttachmentSheet = true
-                            }
+                        val showKeyboard: () -> Unit = {
+                            bottomPanel.closeForKeyboard()
+                            focusRequester.requestFocus()
+                            keyboardController?.show()
                         }
 
-                        val toggleEmojiSheet = {
-                            showAttachmentSheet = false
-                            if (showEmojiSheet && !isKeyboardVisible) {
-                                showEmojiSheet = false
-                                if (wasKeyboardVisible) {
-                                    focusRequester.requestFocus()
-                                    keyboardController?.show()
-                                }
+                        val togglePanel = { content: ComposerPanel ->
+                            if (bottomPanel.isOpen && panelContent == content && !isKeyboardVisible) {
+                                if (wasKeyboardVisible) showKeyboard() else bottomPanel.close()
                             } else {
                                 if (isKeyboardVisible) {
                                     wasKeyboardVisible = true
@@ -1708,9 +1648,12 @@ fun ConversationContent(
                                 } else {
                                     wasKeyboardVisible = false
                                 }
-                                showEmojiSheet = true
+                                panelContent = content
+                                bottomPanel.open()
                             }
                         }
+                        val toggleAttachmentSheet = { togglePanel(ComposerPanel.Attachments) }
+                        val toggleEmojiSheet = { togglePanel(ComposerPanel.Emoji) }
 
                         UnifiedInputBubble(
                             replyToMessage = uiState.replyToMessage,
@@ -1738,7 +1681,7 @@ fun ConversationContent(
                                 recordingData = recordingData,
                                 focusRequester = focusRequester,
                                 editExistingMode = uiState.isEditingMessageId != null,
-                                showingEmojiSheet = showEmojiSheet,
+                                showingEmojiSheet = bottomPanel.isOpen && panelContent == ComposerPanel.Emoji,
                                 isSendingMessage = uiState.isSendingMessage,
                                 showActionButtons = false,
                                 onSendStateChanged = { showSendButton = it },
@@ -1752,20 +1695,12 @@ fun ConversationContent(
                                     emptyList()
                                 },
                                 onEmojiClick = if (composerPopovers) {
-                                    { showAttachmentSheet = false }
+                                    { bottomPanel.close() }
                                 } else {
                                     toggleEmojiSheet
                                 },
-                                onKeyboardClick = {
-                                    showEmojiSheet = false
-                                    showAttachmentSheet = false
-                                    focusRequester.requestFocus()
-                                    keyboardController?.show()
-                                },
-                                onFocused = {
-                                    showEmojiSheet = false
-                                    showAttachmentSheet = false
-                                },
+                                onKeyboardClick = { showKeyboard() },
+                                onFocused = { bottomPanel.closeForKeyboard() },
                                 onAddAttachmentClick = { toggleAttachmentSheet() },
                                 onCameraClick = { pendingCameraLaunch = true },
                                 onVideoRecordClick = { videoRecorderLauncher.launch() },
@@ -1818,55 +1753,44 @@ fun ConversationContent(
                         }
                     } // else (not Left)
                 }
-            }
 
-            // Sheets live outside the offset Column so they sit flush at the screen
-            // bottom without double-counting the offset.
-            // Each sheet applies its modifier to its inner Column, not to the root
-            // AnimatedVisibility, so we wrap in a Box to anchor them at the bottom.
-            // Offset the emoji sheet upward by the IME height so that when the
-            // emoji search keyboard is open, the sheet sits above the keyboard.
-            Box(
-                modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                    .offset { IntOffset(0, -imeInsets.getBottom(this)) }) {
-                ExpressionSheet(
-                    visible = showEmojiSheet,
-                    conversationId = conversation.conversation.id,
-                    onUiAction = onUiAction,
-                    onBackSpace = { textFieldState.programmaticBackspace() },
-                    onEmojiSelected = { textFieldState.addTextAfterSelection(it) },
+                Box(
                     modifier = Modifier.fillMaxWidth()
-                        .height(keyboardHeight.coerceAtLeast(300.dp)),
-                )
-            }
-
-            Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
-                AttachmentOptionsDisplay(
-                    modifier = Modifier.fillMaxWidth()
-                        .height(keyboardHeight.coerceAtLeast(300.dp)),
-                    visible = showAttachmentSheet && !isKeyboardVisible,
+                        .background(MaterialTheme.colorScheme.surface)
+                        .keyboardPanelSlot(bottomPanel)
                 ) {
-                    // The gallery thumb strip reads the OS photo library via GalleryCache,
-                    // which only exists on Android/iOS. On desktop/web the row would be
-                    // empty, so we skip it entirely and let the icon row sit at the top of
-                    // the sheet. The 300 dp height floor on AttachmentOptionsDisplay still
-                    // applies — desktop can host a virtual keyboard, so the floor stays.
-                    if (isMobile()) {
-                        AttachmentGallery(
-                            onImagesSelected = { images ->
-                                showAttachmentSheet = false
-                                onUiAction(
-                                    ConversationListUiAction.AttachGalleryItem(
-                                        conversationId = conversation.conversation.id,
-                                        files = images
+                    if (bottomPanel.isPanelComposed) {
+                        when (panelContent) {
+                            ComposerPanel.Emoji -> ExpressionPanel(
+                                conversationId = conversation.conversation.id,
+                                onUiAction = onUiAction,
+                                onBackSpace = { textFieldState.programmaticBackspace() },
+                                onEmojiSelected = { textFieldState.addTextAfterSelection(it) },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            ComposerPanel.Attachments -> Column(
+                                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                            ) {
+                                // GalleryCache only exists on Android/iOS; elsewhere the strip would be empty.
+                                if (isMobile()) {
+                                    AttachmentGallery(
+                                        onImagesSelected = { images ->
+                                            bottomPanel.close()
+                                            onUiAction(
+                                                ConversationListUiAction.AttachGalleryItem(
+                                                    conversationId = conversation.conversation.id,
+                                                    files = images
+                                                )
+                                            )
+                                        },
                                     )
-                                )
-                            },
-                        )
+                                }
+                                AttachmentOptions(attachmentActions, onPicked = { bottomPanel.close() })
+                            }
+                        }
                     }
-                    AttachmentOptions(attachmentActions, onPicked = { showAttachmentSheet = false })
                 }
-            } // AttachmentOptionsDisplay wrapper Box
+            }
 
             FileDropOverlay(
                 preview = dropPreview,

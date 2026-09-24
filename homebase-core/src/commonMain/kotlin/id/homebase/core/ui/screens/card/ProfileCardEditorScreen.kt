@@ -2,6 +2,8 @@
 
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,7 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -112,6 +114,7 @@ fun ProfileCardEditorScreen(
                 // No bands here: there is no chrome over the preview to keep clear, and the page clips what doesn't fit its height.
                 Box(modifier = Modifier.weight(1f).fillMaxWidth().clip(MaterialTheme.shapes.extraLargeIncreased)) {
                     val backdrop by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
+                    val designCover by viewModel.designCover.collectAsStateWithLifecycle()
                     CardSurface(
                         uiState = uiState,
                         host = host,
@@ -119,6 +122,8 @@ fun ProfileCardEditorScreen(
                         onRetry = viewModel::onRetry,
                         paintWhileAttached = viewModel::paintWhileAttached,
                         modifier = Modifier.fillMaxSize(),
+                        cover = designCover,
+                        coverHeld = uiState.isSwitchingDesign,
                     )
                     SnackbarHost(
                         hostState = snackbarHostState,
@@ -180,10 +185,17 @@ private fun EditorPanel(
                 }
                 Spacer(Modifier.weight(1f))
                 Button(onClick = onSave, enabled = canSave) {
+                    val fade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+                    val labelAlpha = animateFloatAsState(if (isSaving) 0f else 1f, fade)
                     Box(contentAlignment = Alignment.Center) {
                         // Keeps the button's width while the indicator shows.
-                        Text(text = stringResource(MR.string.save), modifier = Modifier.alpha(if (isSaving) 0f else 1f))
-                        if (isSaving) LoadingIndicator(modifier = Modifier.size(24.dp), color = LocalContentColor.current)
+                        Text(
+                            text = stringResource(MR.string.save),
+                            modifier = Modifier.graphicsLayer { alpha = labelAlpha.value },
+                        )
+                        Crossfade(isSaving, animationSpec = fade) { saving ->
+                            if (saving) LoadingIndicator(modifier = Modifier.size(24.dp), color = LocalContentColor.current)
+                        }
                     }
                 }
             }

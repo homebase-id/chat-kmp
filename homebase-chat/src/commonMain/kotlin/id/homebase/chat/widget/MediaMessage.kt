@@ -1,12 +1,18 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -21,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -264,11 +271,15 @@ fun MediaMessage(
             }
         }
 
-        if (uploadStatus != null && uploadStatus.showsMediaOverlay(LocalUploadConnected.current) && !isLinkPreview) {
-            UploadProgressOverlay(
-                status = uploadStatus,
-                modifier = Modifier.matchParentSize(),
-            )
+        val overlayStatus = uploadStatus?.takeIf { !isLinkPreview && it.showsMediaOverlay(LocalUploadConnected.current) }
+        val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+        AnimatedContent(
+            targetState = overlayStatus,
+            modifier = Modifier.matchParentSize(),
+            contentKey = { it?.overlayPhase() },
+            transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
+        ) { status ->
+            if (status != null) UploadProgressOverlay(status = status, modifier = Modifier.fillMaxSize())
         }
 
         // Solo photos only: a gallery cell is too small to carry it, and the fullscreen
@@ -296,10 +307,13 @@ internal fun UploadStatus.showsMediaOverlay(isConnected: Boolean): Boolean = whe
     UploadStatus.Completed -> true
 }
 
+private fun UploadStatus.overlayPhase(): Any =
+    if (this is UploadStatus.Uploading && progress >= 1f) "finalizing" else this::class
+
 @Composable
 internal fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier.background(Color.Black.copy(alpha = 0.35f)),
+        modifier = modifier.background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.35f)),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -336,9 +350,10 @@ internal fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mo
                 is UploadStatus.Processing -> {
                     if (status.progress > 0f) {
                         val progressText = "${(status.progress * 100).toInt()}%"
+                        val progress by animateFloatAsState(status.progress, MaterialTheme.motionScheme.defaultEffectsSpec())
                         Box(contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(
-                                progress = { status.progress },
+                                progress = { progress },
                                 modifier = Modifier.size(40.dp),
                                 color = Color.White,
                                 trackColor = Color.White.copy(alpha = 0.2f),
@@ -383,9 +398,10 @@ internal fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mo
                         )
                     } else {
                         val progressText = "${(status.progress * 100).toInt()}%"
+                        val progress by animateFloatAsState(status.progress, MaterialTheme.motionScheme.defaultEffectsSpec())
                         Box(contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(
-                                progress = { status.progress },
+                                progress = { progress },
                                 modifier = Modifier.size(40.dp),
                                 color = Color.White,
                                 trackColor = Color.White.copy(alpha = 0.2f),

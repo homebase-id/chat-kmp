@@ -208,6 +208,12 @@ data class PendingOutgoingMessage(
     val replyPreview: ReplyPreview? = null,
 )
 
+internal fun messageListKey(item: Any): String = when (item) {
+    is MessageListContentModel -> item.id
+    is PendingOutgoingMessage -> item.id.toString()
+    else -> item.hashCode().toString()
+}
+
 sealed interface MessageListUiSheet {
     data class ConnectIdentities(
         val identities: List<OdinId>,
@@ -275,14 +281,9 @@ sealed class MessageListContentModel(val id: String) {
     data class Message(
         val message: MessageUiModel,
         val clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
-    // NOTE: do NOT add message.hasMore to this key. When "Read more" downloads a
-    // spilled body, hasMore flips true->false; if it were in the key the LazyColumn
-    // item would be recreated mid-tap, resetting the bubble's bodyExpanded state and
-    // re-showing "Read more" on the now-full body (a double "Read more"). The body
-    // already refreshes on download because textState is remember(message.content)
-    // (MessageBubbleRaw) — the historical hasMore-in-key reset (commit 297c4830) was
-    // only needed back when RichTextState was keyless.
-    ) : MessageListContentModel(message.id.toString() + message.versionTag.toString())
+    // Only the id: the pending placeholder, the outbox row and every server version of one message
+    // must share a LazyColumn key, or each hand-off re-creates the row and replays animateItem.
+    ) : MessageListContentModel(message.id.toString())
 
     data object UnreadSeparator : MessageListContentModel("unread-separator")
 

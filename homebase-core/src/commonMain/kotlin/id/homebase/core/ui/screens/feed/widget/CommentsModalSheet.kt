@@ -6,14 +6,12 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SnackbarHost
@@ -24,14 +22,12 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextAlign
@@ -42,6 +38,8 @@ import id.homebase.core.feed.services.ReactAccess
 import id.homebase.core.feed.services.isAuthoredBy
 import id.homebase.core.util.buildBlockUrl
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.rememberKeyboardPanelState
+import id.homebase.core.util.sheetComposerInset
 import id.homebase.core.ui.screens.feed.PostDetailEvent
 import id.homebase.core.ui.screens.feed.PostDetailViewModel
 import id.homebase.resources.MR
@@ -87,14 +85,8 @@ fun CommentsModalSheet(
         post.reactAccess == ReactAccess.CommentOnly
     val canComment = postAllowsComment && uiState.canReact?.allowsComment != false
 
-    // Read the IME *outside* the sheet: on iOS the sheet lifts its whole surface by the keyboard height and
-    // then reports WindowInsets.ime as 0 to its own content; Android keeps a live inset inside instead — hence
-    // the branch below. derivedStateOf, not a bare read: getBottom() changes every frame the IME animates.
-    val imeInsets = WindowInsets.ime
-    val density = LocalDensity.current
-    val keyboardVisible by remember(imeInsets, density) {
-        derivedStateOf { imeInsets.getBottom(density) > 0 }
-    }
+    // Read the IME *outside* the sheet: the sheet imePadding()s its own content, which then reads WindowInsets.ime as 0.
+    val composerPanel = rememberKeyboardPanelState()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -138,6 +130,8 @@ fun CommentsModalSheet(
 
             Box(modifier = Modifier.weight(1f)) {
                 when {
+                    uiState.isLoadingComments -> LoadingIndicator(modifier = Modifier.align(Alignment.Center))
+
                     // Reading comments is never gated — only writing is.
                     uiState.comments.isEmpty() -> CenteredHint(
                         text = stringResource(
@@ -186,19 +180,15 @@ fun CommentsModalSheet(
                     tonalElevation = 2.dp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        // Keyboard up: pad by ime alone — on iOS that reads 0 because the sheet already lifted
-                        // itself, on Android it is the live inset. The nav bar must NOT be added here: the
-                        // keyboard covers it, and adding it parked the composer a home-indicator-height too high.
-                        // Keyboard down: the nav bar is the only inset that applies.
-                        .windowInsetsPadding(
-                            if (keyboardVisible) WindowInsets.ime else WindowInsets.navigationBars
-                        ),
+                        .sheetComposerInset(composerPanel),
                 ) {
                     CommentComposer(
                         onSend = { text, attachment -> viewModel.postComment(text, attachment) },
                         replyingToName = uiState.replyingTo
                             ?.let { displayNameFor(it.originalAuthor ?: it.senderOdinId) },
                         onCancelReply = viewModel::cancelReply,
+                        bottomPanel = composerPanel,
+                        keyboardHandledByHost = true,
                     )
                 }
             }

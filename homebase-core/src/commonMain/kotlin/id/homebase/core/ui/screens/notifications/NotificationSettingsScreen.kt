@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.notifications
 
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -259,7 +260,13 @@ fun NotificationSettingsUi(
                     },
                 ),
             )
-            if (uiState.showContentLevelPicker) {
+            AnimatedVisibility(
+                visible = uiState.showContentLevelPicker,
+                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            ) {
                 Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
                     NotificationContentLevel.entries.forEach { level ->
                         SettingsOptionRow(
@@ -302,10 +309,10 @@ fun NotificationSettingsUi(
             // Kept as a Card, not a SettingsRow: it must go inert while a re-registration is in
             // flight, and SettingsRow has no disabled state by design.
             Card(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                    .clickable(enabled = !uiState.isReRegistering) {
-                        onAction(NotificationSettingsUiAction.ReRegisterPushNotifications)
-                    }) {
+                onClick = { onAction(NotificationSettingsUiAction.ReRegisterPushNotifications) },
+                enabled = !uiState.isReRegistering,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            ) {
                 Row(
                     modifier = Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -327,11 +334,20 @@ fun NotificationSettingsUi(
                     delay(5000)
                     onAction(NotificationSettingsUiAction.DismissReRegisterResult)
                 }
-
+            }
+            val resultTransition = updateTransition(uiState.reRegisterResult, label = "reRegisterResult")
+            resultTransition.AnimatedVisibility(
+                visible = { it != null },
+                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            ) {
+                // Exiting, the target is already null; keep showing the result that was on screen.
+                val result = resultTransition.targetState ?: resultTransition.currentState ?: return@AnimatedVisibility
                 val isSuccess = result is ReRegisterResult.Success
-                Spacer(modifier = Modifier.height(8.dp))
                 Surface(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 16.dp),
                     shape = RoundedCornerShape(12.dp),
                     color = if (isSuccess) ExtendedColors.Success.copy(alpha = 0.12f)
                     else MaterialTheme.colorScheme.errorContainer,
