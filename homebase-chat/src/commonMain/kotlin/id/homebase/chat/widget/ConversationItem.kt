@@ -1,10 +1,7 @@
 package id.homebase.chat.widget
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -40,16 +37,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.LayoutDirection
@@ -93,6 +90,7 @@ import id.homebase.resources.chat_unarchive
 import id.homebase.resources.you
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.absoluteValue
+import kotlin.math.roundToInt
 
 // Deliberately hard to reach: an accidental archive costs the user more than a missed swipe.
 private const val COMMIT_FRACTION_OF_ROW = 0.4f
@@ -146,10 +144,10 @@ fun ConversationItem(
         slideOutOnSwipeRight = !isRtl,
         slideOutOnSwipeLeft = isRtl,
         reveal = { state ->
-            val revealingArchive = (state.offsetPx > 0f) != isRtl
+            val revealingArchive = state.movesRight != isRtl
             ConversationSwipeReveal(
                 state = state,
-                atLeftEdge = state.offsetPx > 0f,
+                atLeftEdge = state.movesRight,
                 icon = when {
                     !revealingArchive -> Icons.Default.MarkChatRead
                     isArchived -> Icons.Default.Unarchive
@@ -455,24 +453,30 @@ private fun BoxScope.ConversationSwipeReveal(
     val committed = state.isPastThreshold
     val background by animateColorAsState(
         targetValue = if (committed) container else MaterialTheme.colorScheme.surfaceContainerHighest,
-        animationSpec = tween(durationMillis = 150),
+        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
     )
     val tint by animateColorAsState(
         targetValue = if (committed) onContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(durationMillis = 150),
+        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
     )
-    val pop by animateFloatAsState(
+    val pop = animateFloatAsState(
         targetValue = if (committed) 1.15f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
     )
-    val revealWidth = with(LocalDensity.current) { state.offsetPx.absoluteValue.toDp() }
 
     Box(modifier = Modifier.matchParentSize()) {
         Box(
             modifier = Modifier
                 .align(if (atLeftEdge) AbsoluteAlignment.CenterLeft else AbsoluteAlignment.CenterRight)
                 .fillMaxHeight()
-                .width(revealWidth)
+                .layout { measurable, constraints ->
+                    val width = state.offsetPx.absoluteValue.roundToInt()
+                        .coerceIn(constraints.minWidth, constraints.maxWidth)
+                    val placeable = measurable.measure(
+                        constraints.copy(minWidth = width, maxWidth = width)
+                    )
+                    layout(width, placeable.height) { placeable.place(0, 0) }
+                }
                 .background(background),
             contentAlignment = if (atLeftEdge) AbsoluteAlignment.CenterLeft
             else AbsoluteAlignment.CenterRight,
@@ -486,7 +490,11 @@ private fun BoxScope.ConversationSwipeReveal(
                         left = if (atLeftEdge) 20.dp else 0.dp,
                         right = if (atLeftEdge) 0.dp else 20.dp,
                     )
-                    .scale((0.6f + 0.4f * state.progress) * pop)
+                    .graphicsLayer {
+                        val scale = (0.6f + 0.4f * state.progress) * pop.value
+                        scaleX = scale
+                        scaleY = scale
+                    }
                     .size(24.dp),
             )
         }

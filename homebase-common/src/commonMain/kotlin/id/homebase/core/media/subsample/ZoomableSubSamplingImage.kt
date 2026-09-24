@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,7 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -114,12 +116,14 @@ fun ZoomableSubSamplingImage(
     // a blur-up isn't available on older devices; a cross-fade is.) Only remote
     // images have a placeholder to fade over; a local original loads fast with
     // nothing beneath it, so it is shown at full opacity (no fade, no blank).
-    val sharpAlpha by animateFloatAsState(
+    // Read in the draw phase and through derivedStateOf, so the fade doesn't recompose the viewer per frame.
+    val sharpAlpha = animateFloatAsState(
         targetValue = if (imageLoaded) 1f else 0f,
-        animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         label = "sharpFade",
     )
-    val contentAlpha = if (source is SubSamplingImageSource.Remote) sharpAlpha else 1f
+    val isRemote = source is SubSamplingImageSource.Remote
+    val showPlaceholder by remember(isRemote) { derivedStateOf { isRemote && sharpAlpha.value < 1f } }
 
     val heroAspect = heroContentAspect?.takeIf { it.isFinite() && it > 0f }
     val hasTransition = sharedContentStateKey != null &&
@@ -141,7 +145,7 @@ fun ZoomableSubSamplingImage(
         // So the bridge is the sharp tile, not the ~20px embedded blur, and there
         // is no low-res-to-sharp jump. A local file is already the original on
         // disk, so the image below loads it directly with no intermediate fetch.
-        if (sharpAlpha < 1f && source is SubSamplingImageSource.Remote) {
+        if (showPlaceholder && source is SubSamplingImageSource.Remote) {
             val imageData = source.imageData
             val thumbnailData = remember(imageData) {
                 imageData.copy(loadFullPayload = false)
@@ -157,7 +161,7 @@ fun ZoomableSubSamplingImage(
             model = model,
             contentDescription = contentDescription,
             imageLoader = coilImageLoader,
-            modifier = Modifier.fillMaxSize().alpha(contentAlpha),
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = if (isRemote) sharpAlpha.value else 1f },
             contentScale = contentScale,
             zoomState = zoomState,
             scrollBar = null,
