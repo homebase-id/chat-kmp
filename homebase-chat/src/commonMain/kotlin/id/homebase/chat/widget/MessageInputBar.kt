@@ -2,6 +2,7 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -1214,13 +1215,14 @@ private fun EmojiToggleButton(
     onEmojiClick: () -> Unit,
     onKeyboardClick: () -> Unit,
 ) {
-    if (showingEmojiSheet) {
-        IconButton(onClick = onKeyboardClick) {
-            Icon(imageVector = Icons.Default.Keyboard, contentDescription = contentDescription)
-        }
-    } else if (popoverContent == null) {
-        IconButton(onClick = onEmojiClick) {
-            Icon(imageVector = Icons.Default.EmojiEmotions, contentDescription = contentDescription)
+    if (showingEmojiSheet || popoverContent == null) {
+        IconButton(onClick = if (showingEmojiSheet) onKeyboardClick else onEmojiClick) {
+            Crossfade(showingEmojiSheet, animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) { sheet ->
+                Icon(
+                    imageVector = if (sheet) Icons.Default.Keyboard else Icons.Default.EmojiEmotions,
+                    contentDescription = contentDescription,
+                )
+            }
         }
     } else {
         var popoverOpen by remember { mutableStateOf(false) }
@@ -1233,19 +1235,18 @@ private fun EmojiToggleButton(
             modifier = Modifier.popoverAnchor(anchor),
         ) {
             Icon(imageVector = Icons.Default.EmojiEmotions, contentDescription = contentDescription)
-            if (popoverOpen) {
-                ComposerPopover(
-                    anchor = anchor,
-                    // Start-aligned so the card grows over the conversation, not the conversation list.
-                    alignToEnd = false,
-                    width = EMOJI_POPOVER_WIDTH,
-                    onDismissRequest = {
-                        popoverOpen = false
-                        focusRequester.requestFocus()
-                    },
-                    content = popoverContent,
-                )
-            }
+            ComposerPopover(
+                expanded = popoverOpen,
+                anchor = anchor,
+                // Start-aligned so the card grows over the conversation, not the conversation list.
+                alignToEnd = false,
+                width = EMOJI_POPOVER_WIDTH,
+                onDismissRequest = {
+                    popoverOpen = false
+                    focusRequester.requestFocus()
+                },
+                content = popoverContent,
+            )
         }
     }
 }

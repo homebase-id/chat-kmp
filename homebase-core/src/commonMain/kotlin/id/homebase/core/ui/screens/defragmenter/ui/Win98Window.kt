@@ -178,6 +178,8 @@ fun Win98Button(
         Text(
             text = text,
             style = Win98TextStyle.copy(color = textColor),
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }
