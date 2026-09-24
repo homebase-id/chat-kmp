@@ -101,6 +101,8 @@ fun TiledMapView(
 
     // ── Tile layer state ──
     val tileBitmaps = remember { mutableStateMapOf<MapTileKey, ImageBitmap>() }
+    val pendingTiles = remember { mutableSetOf<MapTileKey>() }
+    val scope = rememberCoroutineScope()
     val visibleTiles by remember(camera, showMapTiles) {
         derivedStateOf {
             val viewport = camera.effective
@@ -111,21 +113,23 @@ fun TiledMapView(
     }
     LaunchedEffect(visibleTiles, showMapTiles) {
         if (!showMapTiles) return@LaunchedEffect
-        // Concurrent fetches: the provider single-flights and runs downloads on
-        // its own scope, so restarts of this effect (pan/zoom) neither cancel
-        // nor duplicate them. Failures are simply retried on the next restart.
+        // Fetches outlive this effect: a camera glide restarts it every frame, which would drop each
+        // tile before it lands. Failures are retried on the next restart.
         for (key in visibleTiles) {
-            if (tileBitmaps.containsKey(key)) continue
-            launch {
-                val bytes = fetchTile(key.zoom, key.x, key.y)
-                val bitmap = bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() }
-                if (bitmap != null) tileBitmaps[key] = bitmap
+            if (tileBitmaps.containsKey(key) || !pendingTiles.add(key)) continue
+            scope.launch {
+                try {
+                    val bytes = fetchTile(key.zoom, key.x, key.y)
+                    val bitmap = bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() }
+                    if (bitmap != null) tileBitmaps[key] = bitmap
+                } finally {
+                    pendingTiles.remove(key)
+                }
             }
         }
     }
 
     val gestureModifier = if (!interactive) Modifier else {
-        val scope = rememberCoroutineScope()
         val zoomSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
         Modifier
             .pointerInput(camera, zoomSpec) {
@@ -156,7 +160,8 @@ fun TiledMapView(
                             pastSlop = abs(1 - slopZoom) * span > viewConfiguration.touchSlop ||
                                 slopPan.getDistance() > viewConfiguration.touchSlop
                         }
-                        if (pastSlop) {
+                        // The lift event has no pointer pressed across it, so its centroid is Unspecified (NaN).
+                        if (pastSlop && (zoom != 1f || pan != Offset.Zero)) {
                             val centroid = event.calculateCentroid(useCurrent = false)
                             camera.applyGesture(centroid - size.center.toOffset(), pan, zoom)
                             event.changes.forEach { if (it.positionChanged()) it.consume() }
