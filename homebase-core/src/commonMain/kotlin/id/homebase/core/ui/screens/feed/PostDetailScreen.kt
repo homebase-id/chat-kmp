@@ -130,7 +130,7 @@ fun PostDetailScreen(
             ?: odinId?.domainName.orEmpty()
     }
 
-    FeedMediaFullScreenHost(overlay = overlay, onDismiss = { overlay = null }) {
+    FeedMediaFullScreenHost(overlay = overlay, onDismiss = { overlay = null }) { sharedScope, visibilityScope ->
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
@@ -274,6 +274,8 @@ fun PostDetailScreen(
                                     onOpenComments = {},
                                     onShowReactors = viewModel::showReactors,
                                     permission = uiState.canReact,
+                                    sharedTransitionScope = sharedScope,
+                                    animatedVisibilityScope = visibilityScope,
                                     // Unvalidated wire data — OdinId() throws on a non-domain.
                                     embeddedAuthorName = post.embeddedPost?.authorOdinId
                                         ?.takeIf { OdinId.isValid(it) }
