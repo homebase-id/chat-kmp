@@ -1,6 +1,12 @@
 package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -435,7 +441,11 @@ fun MediaAttachmentEditor(
         // Attachment-strip row: thumbnails for every queued attachment with a
         // trailing "+" to add another. This row is just about managing the
         // collection of attachments — actions on the current one live below.
-        AnimatedVisibility(visible = !collapseSecondaryChrome) {
+        AnimatedVisibility(
+            visible = !collapseSecondaryChrome,
+            enter = secondaryChromeEnter(),
+            exit = secondaryChromeExit(),
+        ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -596,7 +606,11 @@ fun MediaAttachmentEditor(
             canSave = onSaveFile != null,
             canSetQuality = onToggleMediaQuality != null,
         )
-        AnimatedVisibility(visible = !collapseSecondaryChrome) {
+        AnimatedVisibility(
+            visible = !collapseSecondaryChrome,
+            enter = secondaryChromeEnter(),
+            exit = secondaryChromeExit(),
+        ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -660,6 +674,14 @@ fun MediaAttachmentEditor(
         }
     }
 }
+
+@Composable
+fun secondaryChromeEnter(): EnterTransition =
+    expandVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.fastEffectsSpec())
+
+@Composable
+fun secondaryChromeExit(): ExitTransition =
+    shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec())
 
 /**
  * First-page preview for a PDF attachment in the composer: renders page 1 to a
