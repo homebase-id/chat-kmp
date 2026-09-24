@@ -616,6 +616,9 @@ internal class AndroidCameraEngine(
                 val playable = error == VideoRecordEvent.Finalize.ERROR_NONE || error in PLAYABLE_FINALIZE_ERRORS
                 if (error != VideoRecordEvent.Finalize.ERROR_NONE) {
                     Logger.w(tag = TAG, throwable = event.cause) { "Recording finalized with error=$error playable=$playable" }
+                }
+                // A playable stop (backgrounding stops the source) is delivered, not reported; storage still warns.
+                if (!playable || error == VideoRecordEvent.Finalize.ERROR_INSUFFICIENT_STORAGE) {
                     _errors.tryEmit(
                         if (error == VideoRecordEvent.Finalize.ERROR_INSUFFICIENT_STORAGE) CameraError.InsufficientStorage
                         else CameraError.RecordingFailed(event.cause?.message)

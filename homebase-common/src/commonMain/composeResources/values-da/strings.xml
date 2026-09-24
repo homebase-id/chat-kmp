@@ -1908,4 +1908,5 @@
     <string name="dev_menu_camera_result_size">Størrelse: %1$s bytes</string>
     <string name="dev_menu_camera_result_type">Type: %1$s</string>
     <string name="dev_menu_camera_cancelled">Kameraet blev lukket uden en optagelse</string>
+    <string name="camera_lock_recording">Lås optagelsen</string>
 </resources>

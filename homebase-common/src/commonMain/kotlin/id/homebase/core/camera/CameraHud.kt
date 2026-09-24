@@ -1,6 +1,23 @@
 package id.homebase.core.camera
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.LayoutDirection
+import kotlin.math.abs
+import id.homebase.resources.camera_lock_recording
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -17,11 +34,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -45,7 +60,6 @@ import androidx.compose.material.icons.filled.FlashlightOff
 import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material.icons.outlined.Cameraswitch
 import androidx.compose.material.icons.outlined.MicOff
-import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -55,7 +69,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
-import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -85,7 +98,6 @@ import androidx.compose.ui.unit.dp
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.Haptics
 import id.homebase.core.util.formatHms
-import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
 import id.homebase.resources.camera_close
 import id.homebase.resources.camera_error_bind
@@ -134,6 +146,8 @@ internal const val MODE_VIDEO_TAG = "camera_mode_video"
 internal const val TIMER_TAG = "camera_timer"
 internal const val NO_MIC_TAG = "camera_no_mic"
 internal const val FOCUS_RING_TAG = "camera_focus_ring"
+internal const val LOCK_TAG = "camera_lock"
+internal const val PREVIEW_TAG = "camera_preview"
 
 private const val HOLD_ZOOM_CEILING = 10f
 
@@ -159,6 +173,8 @@ internal fun CameraCaptureContent(
     var stopping by remember { mutableStateOf(false) }
     var heldRecording by remember { mutableStateOf(false) }
     var holdZoomBase by remember { mutableFloatStateOf(1f) }
+    var lockProgress by remember { mutableFloatStateOf(0f) }
+    var returnToPhotoAfterHold by remember { mutableStateOf(false) }
     var lensTurns by remember { mutableFloatStateOf(0f) }
     val currentUi by rememberUpdatedState(ui)
     val currentOnResult by rememberUpdatedState(onResult)
@@ -193,6 +209,10 @@ internal fun CameraCaptureContent(
             val file = engine.stopRecording()
             busy = false
             stopping = false
+            if (returnToPhotoAfterHold) {
+                returnToPhotoAfterHold = false
+                engine.setMode(CaptureMode.Photo)
+            }
             deliver(file)
         }
     }
@@ -211,6 +231,12 @@ internal fun CameraCaptureContent(
         if (mic.needsAsking) {
             onRequestMic()
             return false
+        }
+        // Without a video use case bound next to the photo one, a hold rebinds to video first (the rebind is
+        // synchronous on Android) and goes back to photo once the clip is saved.
+        if (held && currentUi.mode == CaptureMode.Photo && !currentUi.supportsSimultaneousVideo) {
+            returnToPhotoAfterHold = true
+            engine.setMode(CaptureMode.Video)
         }
         heldRecording = held
         haptics.perform(HapticEvent.LongPress)
@@ -242,10 +268,12 @@ internal fun CameraCaptureContent(
     }
 
     fun selectMode(mode: CaptureMode) {
-        if (currentUi.isRecording || busy || mode == currentUi.mode) return
+        if (currentUi.isRecording || busy || mode == currentUi.mode || !allowedModes.allows(mode)) return
         haptics.perform(HapticEvent.Selection)
         engine.setMode(mode)
     }
+
+    fun stepMode(towardVideo: Boolean) = selectMode(if (towardVideo) CaptureMode.Video else CaptureMode.Photo)
 
     KeepScreenOnEffect(ui.isRecording)
 
@@ -255,8 +283,8 @@ internal fun CameraCaptureContent(
     }
 
     val buttonState = CaptureButtonState.of(ui.mode, ui.isRecording, isRecordingLocked = !heldRecording)
-    val holdEnabled = allowedModes.allows(CaptureMode.Video) &&
-        (ui.supportsSimultaneousVideo || ui.mode == CaptureMode.Video)
+    val holdEnabled = allowedModes.allows(CaptureMode.Video)
+    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val iconRotation = animatedUprightRotation(deviceRotation.uprightIconDegrees)
     val presets = remember(ui.minZoom, ui.maxZoom, ui.lensSwitchRatios) {
         ZoomPresets.available(ui.minZoom, ui.maxZoom, ui.lensSwitchRatios)
@@ -268,10 +296,12 @@ internal fun CameraCaptureContent(
         Box(
             Modifier
                 .fillMaxSize()
-                .pointerInput(engine) {
-                    detectTransformGestures { _, _, zoom, _ ->
-                        if (zoom != 1f) engine.setZoomRatio(currentUi.zoomRatio * zoom)
-                    }
+                .testTag(PREVIEW_TAG)
+                .pointerInput(engine, isRtl) {
+                    detectPinchOrModeSwipe(
+                        onZoom = { zoom -> engine.setZoomRatio(currentUi.zoomRatio * zoom) },
+                        onSwipe = { leftward -> stepMode(towardVideo = leftward != isRtl) },
+                    )
                 }
                 .pointerInput(engine) { detectDoubleTapObserving { flipLens() } },
         ) {
@@ -282,7 +312,15 @@ internal fun CameraCaptureContent(
             targetValue = if (ui.isBound) 0f else 1f,
             animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         )
-        Box(Modifier.fillMaxSize().alpha(blackout).background(colors.scrim))
+        val modeDip = remember { Animatable(0f) }
+        var lastMode by remember { mutableStateOf(ui.mode) }
+        LaunchedEffect(ui.mode) {
+            if (ui.mode == lastMode) return@LaunchedEffect
+            lastMode = ui.mode
+            modeDip.snapTo(0.45f)
+            modeDip.animateTo(0f, tween(durationMillis = 280))
+        }
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = maxOf(blackout, modeDip.value) }.background(colors.scrim))
         StartingIndicator(visible = !ui.isBound, modifier = Modifier.align(Alignment.Center))
 
         Box(
@@ -345,20 +383,32 @@ internal fun CameraCaptureContent(
             Spacer(Modifier.height(16.dp))
 
             if (allowedModes == CameraModes.PhotoAndVideo) {
-                ModeSwitch(
+                ModeCarousel(
                     mode = ui.mode,
                     enabled = !ui.isRecording && !busy,
                     onSelect = ::selectMode,
+                    onSwipe = { leftward -> stepMode(towardVideo = leftward != isRtl) },
                 )
                 Spacer(Modifier.height(20.dp))
             }
 
+            var rowWidthPx by remember { mutableFloatStateOf(0f) }
+            val slotCenterPx = with(LocalDensity.current) { (ShutterRowPadding + SideSlotSize / 2).toPx() }
+            val lockOffsetX = (rowWidthPx / 2 - slotCenterPx) * if (isRtl) 1f else -1f
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp).padding(bottom = 24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged { rowWidthPx = it.width.toFloat() }
+                    .padding(horizontal = ShutterRowPadding)
+                    .padding(bottom = 24.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Spacer(Modifier.size(56.dp))
+                LockTarget(
+                    visible = ui.isRecording && heldRecording,
+                    progress = lockProgress,
+                    iconRotation = iconRotation,
+                )
                 ShutterButton(
                     state = buttonState,
                     holdEnabled = holdEnabled,
@@ -388,6 +438,14 @@ internal fun CameraCaptureContent(
                     onHoldStart = {
                         holdZoomBase = currentUi.zoomRatio
                         startRecording(held = true)
+                    },
+                    lockOffsetX = lockOffsetX,
+                    onLockProgress = { lockProgress = it },
+                    onLock = {
+                        if (heldRecording) {
+                            heldRecording = false
+                            haptics.perform(HapticEvent.LongPress)
+                        }
                     },
                     onHoldZoom = { fraction ->
                         if (currentUi.isRecording) {
@@ -422,7 +480,7 @@ private val CameraError.messageRes: StringResource?
     }
 
 /** Observes without consuming, so the preview's own single-tap focus still runs underneath. */
-private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectDoubleTapObserving(onDoubleTap: () -> Unit) {
+private suspend fun PointerInputScope.detectDoubleTapObserving(onDoubleTap: () -> Unit) {
     var lastUpMs = 0L
     var lastUp = Offset.Zero
     awaitEachGesture {
@@ -531,7 +589,7 @@ internal fun CameraCloseButton(onClick: () -> Unit, iconRotation: Float, modifie
 private fun FlashButton(ui: CameraUiState, iconRotation: Float, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val control = FlashPolicy.control(ui.mode, ui.hasFlashUnit)
     AnimatedVisibility(
-        visible = control != FlashControl.Hidden,
+        visible = control == FlashControl.Torch || (control == FlashControl.Flash && !ui.isRecording),
         enter = fadeIn() + scaleIn(),
         exit = fadeOut() + scaleOut(),
         modifier = modifier,
@@ -638,43 +696,175 @@ private fun NoMicChip(onClick: () -> Unit) {
     }
 }
 
+private val ModeSlotWidth = 92.dp
+private val ModeCarouselHeight = 40.dp
+internal val ShutterRowPadding = 32.dp
+internal val SideSlotSize = 56.dp
+
+/** The selected mode sits under a fixed pill; the labels slide beneath it, like the system cameras. */
 @Composable
-private fun ModeSwitch(mode: CaptureMode, enabled: Boolean, onSelect: (CaptureMode) -> Unit) {
+private fun ModeCarousel(
+    mode: CaptureMode,
+    enabled: Boolean,
+    onSelect: (CaptureMode) -> Unit,
+    onSwipe: (leftward: Boolean) -> Unit,
+) {
     val entries = listOf(
         Triple(CaptureMode.Photo, MR.string.camera_mode_photo, MODE_PHOTO_TAG),
         Triple(CaptureMode.Video, MR.string.camera_mode_video, MODE_VIDEO_TAG),
     )
-    val alpha by animateFloatAsState(if (enabled) 1f else 0.38f)
-    Row(
+    val colors = MaterialTheme.colorScheme
+    val motion = MaterialTheme.motionScheme
+    val selectedIndex = entries.indexOfFirst { it.first == mode }.coerceAtLeast(0)
+    val slide by animateDpAsState(ModeSlotWidth * -selectedIndex, motion.defaultSpatialSpec())
+    val alpha by animateFloatAsState(if (enabled) 1f else 0.5f, motion.defaultEffectsSpec())
+    val currentEnabled by rememberUpdatedState(enabled)
+    Box(
         modifier = Modifier
             .alpha(alpha)
-            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f), CircleShape)
-            .padding(4.dp)
+            .width(ModeSlotWidth * 3)
+            .height(ModeCarouselHeight)
+            .clipToBounds()
+            .pointerInput(Unit) {
+                val threshold = SwipeThreshold.toPx()
+                var travel = 0f
+                var fired = false
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        travel = 0f
+                        fired = false
+                    },
+                ) { change, dragAmount ->
+                    change.consume()
+                    travel += dragAmount
+                    if (!fired && currentEnabled && abs(travel) > threshold) {
+                        fired = true
+                        onSwipe(travel < 0f)
+                    }
+                }
+            }
             .selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+        contentAlignment = Alignment.Center,
     ) {
-        entries.forEachIndexed { index, (value, label, tag) ->
-            ToggleButton(
-                checked = value == mode,
-                onCheckedChange = { onSelect(value) },
-                enabled = enabled,
-                shapes = connectedButtonShapes(index, entries.size),
-                colors = ToggleButtonDefaults.toggleButtonColors(
-                    containerColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0f),
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    checkedContainerColor = MaterialTheme.colorScheme.primary,
-                    checkedContentColor = MaterialTheme.colorScheme.onPrimary,
-                    disabledContainerColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0f),
-                    disabledContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-                contentPadding = PaddingValues(horizontal = 20.dp),
-                modifier = Modifier.height(40.dp).testTag(tag),
-            ) {
-                Text(stringResource(label), style = MaterialTheme.typography.labelLarge)
+        Box(
+            Modifier
+                .width(ModeSlotWidth)
+                .fillMaxHeight()
+                .background(colors.primary, CircleShape),
+        )
+        Row(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .offset(x = ModeSlotWidth + slide),
+        ) {
+            entries.forEachIndexed { index, (value, label, tag) ->
+                val selected = index == selectedIndex
+                val textColor by animateColorAsState(
+                    if (selected) colors.onPrimary else colors.onSurface,
+                    motion.defaultEffectsSpec(),
+                )
+                Box(
+                    modifier = Modifier
+                        .width(ModeSlotWidth)
+                        .fillMaxHeight()
+                        .clip(CircleShape)
+                        .selectable(
+                            selected = selected,
+                            enabled = enabled,
+                            role = Role.Tab,
+                            onClick = { onSelect(value) },
+                        )
+                        .testTag(tag),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(stringResource(label), style = MaterialTheme.typography.labelLarge, color = textColor)
+                }
             }
         }
     }
 }
+
+@Composable
+private fun LockTarget(visible: Boolean, progress: Float, iconRotation: Float) {
+    val colors = MaterialTheme.colorScheme
+    val motion = MaterialTheme.motionScheme
+    val engaged = progress >= 0.85f
+    val scale by animateFloatAsState(if (engaged) 1.15f else 1f + progress * 0.1f, motion.fastSpatialSpec())
+    val container by animateColorAsState(
+        if (engaged) colors.onSurface else colors.scrim.copy(alpha = 0.32f + progress * 0.3f),
+        motion.fastEffectsSpec(),
+    )
+    val content by animateColorAsState(if (engaged) colors.scrim else colors.onSurface, motion.fastEffectsSpec())
+    val label = stringResource(MR.string.camera_lock_recording)
+    Box(Modifier.size(SideSlotSize), contentAlignment = Alignment.Center) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.6f),
+            exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec(), targetScale = 0.6f),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(SideSlotSize)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    }
+                    .background(container, CircleShape)
+                    .testTag(LOCK_TAG)
+                    .semantics { contentDescription = label },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (engaged) Icons.Filled.Lock else Icons.Outlined.LockOpen,
+                    contentDescription = null,
+                    tint = content,
+                    modifier = Modifier.size(24.dp).rotate(iconRotation),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Two pointers pinch-zoom; one pointer travelling mostly sideways past [SwipeThreshold] is a mode swipe. Runs on
+ * the Initial pass and consumes only once it has decided, so the preview's tap-to-focus still sees plain taps.
+ */
+private suspend fun PointerInputScope.detectPinchOrModeSwipe(
+    onZoom: (Float) -> Unit,
+    onSwipe: (leftward: Boolean) -> Unit,
+) {
+    val threshold = SwipeThreshold.toPx()
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        var swiped = false
+        var pinching = false
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val pressed = event.changes.filter { it.pressed }
+            if (pressed.isEmpty()) break
+            if (pressed.size >= 2) {
+                pinching = true
+                val zoom = event.calculateZoom()
+                if (zoom != 1f) onZoom(zoom)
+                event.changes.forEach { it.consume() }
+                continue
+            }
+            if (pinching || swiped) {
+                event.changes.forEach { it.consume() }
+                continue
+            }
+            val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+            val drag = change.position - down.position
+            if (abs(drag.x) > threshold && abs(drag.x) > abs(drag.y) * 2f) {
+                swiped = true
+                onSwipe(drag.x < 0f)
+                event.changes.forEach { it.consume() }
+            }
+        }
+    }
+}
+
+private val SwipeThreshold = 48.dp
 
 @Composable
 private fun FlipLensButton(
