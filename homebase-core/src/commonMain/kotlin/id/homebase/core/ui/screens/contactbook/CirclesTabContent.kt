@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -42,6 +44,7 @@ fun CirclesTabContent(
     candidateCount: Int = 0,
     /** Dark launch: off keeps main's "Unvetted" label and no emoji. */
     reviewEnabled: Boolean = false,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     when {
         loading && circles.isEmpty() -> Box(
@@ -67,6 +70,7 @@ fun CirclesTabContent(
                 if (reviewEnabled) MR.string.contactbook_circle_new else MR.string.contactbook_circle_unvetted
             )
             LazyColumn(
+                state = listState,
                 modifier = modifier.fillMaxSize(),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {

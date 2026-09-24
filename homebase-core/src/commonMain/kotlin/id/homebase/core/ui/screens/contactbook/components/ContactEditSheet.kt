@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.contactbook.components
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -175,6 +176,7 @@ fun ContactEditSheet(
                 modifier = Modifier
                     .weight(1f, fill = false)
                     .fillMaxWidth()
+                    .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())
                     .verticalScroll(scroll)
                     .padding(horizontal = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,

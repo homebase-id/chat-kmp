@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
@@ -48,6 +50,7 @@ fun ContactBookContent(
     modifier: Modifier = Modifier,
     /** New tab: unreviewed connections and incoming requests, the set awaiting a decision. */
     showNew: Boolean = false,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         if (!showNew) FilterRow(uiState.filter, uiState.reviewEnabled, onAction)
@@ -107,6 +110,7 @@ fun ContactBookContent(
                 val grouped = list.groupBy { it.sectionKey }
                 val sections = grouped.keys.sorted()
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 88.dp),
                 ) {
@@ -117,6 +121,7 @@ fun ContactBookContent(
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier
+                                    .animateItem()
                                     .fillMaxWidth()
                                     .background(MaterialTheme.colorScheme.surface)
                                     .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -126,6 +131,7 @@ fun ContactBookContent(
                             ContactBookRow(
                                 entry = request.entry,
                                 onClick = { onAction(ContactBookUiAction.ContactClicked(request.entry)) },
+                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -137,6 +143,7 @@ fun ContactBookContent(
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier
+                                    .animateItem()
                                     .fillMaxWidth()
                                     .background(MaterialTheme.colorScheme.surface)
                                     .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -149,6 +156,7 @@ fun ContactBookContent(
                             ContactBookRow(
                                 entry = entry,
                                 onClick = { onAction(ContactBookUiAction.ContactClicked(entry)) },
+                                modifier = Modifier.animateItem(),
                                 // Check shows whenever the identity is connected, in every
                                 // filter (a New contact is still a connection).
                                 connected = entry.odinId?.lowercase() in uiState.connectedOdinIds,
