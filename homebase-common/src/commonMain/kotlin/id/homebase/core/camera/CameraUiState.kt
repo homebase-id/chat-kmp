@@ -20,6 +20,8 @@ data class CameraUiState(
     val mode: CaptureMode = CaptureMode.Photo,
     val mirrorFront: Boolean = true,
     val supportsSimultaneousVideo: Boolean = false,
+    /** Portrait width/height of a letterboxed preview; null when the preview fills the screen. */
+    val previewAspectRatio: Float? = null,
     val isRecording: Boolean = false,
     val recordingStartedAtMs: Long? = null,
     val focusPoint: Offset? = null,
