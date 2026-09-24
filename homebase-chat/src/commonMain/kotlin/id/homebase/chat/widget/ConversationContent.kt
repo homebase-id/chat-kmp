@@ -556,19 +556,6 @@ fun ConversationContent(
         }
     }
 
-    val cameraLauncher = rememberCameraManager(CameraModes.PhotoAndVideo) { file ->
-        file?.let {
-            onUiAction(
-                ConversationListUiAction.AttachPlatformFile(
-                    conversationId = conversation.conversation.id,
-                    files = listOf(file),
-                    isImage = true,
-                    fromCamera = true,
-                )
-            )
-        }
-    }
-
     val fileLauncher = rememberFilePickerLauncher { file ->
         file?.let {
             onUiAction(
@@ -589,6 +576,21 @@ fun ConversationContent(
                     conversationId = conversation.conversation.id,
                     files = it,
                     isImage = true,
+                )
+            )
+        }
+    }
+    val cameraLauncher = rememberCameraManager(
+        modes = CameraModes.PhotoAndVideo,
+        onOpenGallery = { galleryLauncher.launch() },
+    ) { file ->
+        file?.let {
+            onUiAction(
+                ConversationListUiAction.AttachPlatformFile(
+                    conversationId = conversation.conversation.id,
+                    files = listOf(file),
+                    isImage = true,
+                    fromCamera = true,
                 )
             )
         }

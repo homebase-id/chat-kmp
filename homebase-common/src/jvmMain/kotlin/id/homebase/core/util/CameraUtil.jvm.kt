@@ -7,6 +7,7 @@ import io.github.vinceglb.filekit.PlatformFile
 @Composable
 actual fun rememberCameraManager(
     modes: CameraModes,
+    onOpenGallery: (() -> Unit)?,
     onResult: (PlatformFile?) -> Unit,
 ): PlatformCameraManager = NoCameraManager
 

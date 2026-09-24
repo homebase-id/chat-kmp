@@ -8,6 +8,7 @@ import io.github.vinceglb.filekit.PlatformFile
 @Composable
 expect fun rememberCameraManager(
     modes: CameraModes = CameraModes.Photo,
+    onOpenGallery: (() -> Unit)? = null,
     onResult: (PlatformFile?) -> Unit,
 ): PlatformCameraManager
 

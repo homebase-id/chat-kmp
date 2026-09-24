@@ -107,7 +107,10 @@ fun ConversationMessagesPane(
             )
         }
     }
-    val cameraLauncher = rememberCameraManager(CameraModes.PhotoAndVideo) { file ->
+    val cameraLauncher = rememberCameraManager(
+        modes = CameraModes.PhotoAndVideo,
+        onOpenGallery = { galleryLauncher.launch() },
+    ) { file ->
         file?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
