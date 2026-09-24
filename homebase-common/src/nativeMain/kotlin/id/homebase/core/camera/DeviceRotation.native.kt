@@ -16,6 +16,11 @@ import platform.Foundation.NSOperationQueue
 import platform.UIKit.UIDevice
 import platform.UIKit.UIDeviceOrientation
 import platform.UIKit.UIDeviceOrientationDidChangeNotification
+import platform.UIKit.UIInterfaceOrientationLandscapeLeft
+import platform.UIKit.UIInterfaceOrientationLandscapeRight
+import platform.UIKit.UIInterfaceOrientationPortraitUpsideDown
+import platform.UIKit.UIApplication
+import androidx.compose.ui.platform.LocalWindowInfo
 
 @Composable
 internal actual fun rememberRawDeviceRotation(): QuarterTurn? {
@@ -49,6 +54,20 @@ internal actual fun rememberRawDeviceRotation(): QuarterTurn? {
 }
 
 private const val ACCELEROMETER_INTERVAL_S = 0.1
+
+@Composable
+actual fun rememberDisplayRotation(): QuarterTurn {
+    // The interface rotating always resizes the Compose container, so the size is the change signal.
+    val size = LocalWindowInfo.current.containerSize
+    return remember(size) {
+        when (UIApplication.sharedApplication.keyWindow?.windowScene?.interfaceOrientation) {
+            UIInterfaceOrientationLandscapeLeft -> QuarterTurn.R90
+            UIInterfaceOrientationLandscapeRight -> QuarterTurn.R270
+            UIInterfaceOrientationPortraitUpsideDown -> QuarterTurn.R180
+            else -> QuarterTurn.R0
+        }
+    }
+}
 
 /** Face up/down and unknown carry no rotation, so the last one sticks. */
 private fun UIDeviceOrientation.quarterTurn(): QuarterTurn? = when (this) {

@@ -20,8 +20,8 @@ enum class QuarterTurn(val degrees: Int) {
     R180(180),
     R270(270);
 
-    /** Rotation that keeps an on-screen icon upright while the UI itself stays portrait. */
-    val uprightIconDegrees: Float get() = (-degrees).toFloat()
+    /** Rotation that keeps an on-screen icon upright while the UI itself is laid out at [display]. */
+    fun uprightIconDegrees(display: QuarterTurn = R0): Float = (display.degrees - degrees).toFloat()
 }
 
 sealed interface CameraError {

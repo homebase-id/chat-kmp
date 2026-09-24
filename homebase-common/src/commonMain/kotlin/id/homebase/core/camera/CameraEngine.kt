@@ -23,6 +23,9 @@ interface CameraEngine {
 
     fun setCaptureRotation(rotation: QuarterTurn)
 
+    /** -1..1 of the lens's exposure compensation range; a new focus point resets it to 0. */
+    fun setExposureBias(bias: Float)
+
     suspend fun takePhoto(): PlatformFile?
 
     fun startRecording(withAudio: Boolean)

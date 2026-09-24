@@ -1868,11 +1868,11 @@
     <string name="camera_shutter_video">Start optagelse</string>
     <string name="camera_shutter_stop">Stop optagelse</string>
     <string name="camera_shutter_hold_hint">Hold for at optage video</string>
-    <string name="camera_flash_off">Blitz fra</string>
-    <string name="camera_flash_auto">Automatisk blitz</string>
-    <string name="camera_flash_on">Blitz til</string>
-    <string name="camera_torch_off">Lygte fra</string>
-    <string name="camera_torch_on">Lygte til</string>
+    <string name="camera_flash">Blitz</string>
+    <string name="camera_torch">Lygte</string>
+    <string name="camera_state_auto">Automatisk</string>
+    <string name="camera_state_on">Til</string>
+    <string name="camera_state_off">Fra</string>
     <string name="camera_switch_lens">Skift kamera</string>
     <string name="camera_lens_front">Frontkamera</string>
     <string name="camera_lens_back">Bagkamera</string>
@@ -1909,4 +1909,7 @@
     <string name="dev_menu_camera_result_type">Type: %1$s</string>
     <string name="dev_menu_camera_cancelled">Kameraet blev lukket uden en optagelse</string>
     <string name="camera_lock_recording">Lås optagelsen</string>
+    <string name="camera_recording_started">Optagelsen er startet</string>
+    <string name="camera_recording_stopped">Optagelsen er stoppet, %1$s</string>
+    <string name="camera_ae_af_lock">AE/AF-lås</string>
 </resources>

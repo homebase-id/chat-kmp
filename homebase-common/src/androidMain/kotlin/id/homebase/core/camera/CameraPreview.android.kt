@@ -18,7 +18,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
-actual fun CameraPreview(engine: CameraEngine, modifier: Modifier, onTapFocus: (Offset) -> Unit) {
+actual fun CameraPreview(
+    engine: CameraEngine,
+    modifier: Modifier,
+    onTapFocus: (Offset) -> Unit,
+    onLongPressFocus: (Offset) -> Unit,
+) {
     val androidEngine = engine as? AndroidCameraEngine
     if (androidEngine == null) {
         Box(modifier)
@@ -26,6 +31,7 @@ actual fun CameraPreview(engine: CameraEngine, modifier: Modifier, onTapFocus: (
     }
     val request by androidEngine.surfaceRequest.collectAsStateWithLifecycle()
     val currentOnTapFocus by rememberUpdatedState(onTapFocus)
+    val currentOnLongPressFocus by rememberUpdatedState(onLongPressFocus)
     val surfaceRequest = request
     if (surfaceRequest == null) {
         Box(modifier)
@@ -42,15 +48,24 @@ actual fun CameraPreview(engine: CameraEngine, modifier: Modifier, onTapFocus: (
         modifier = modifier
             .fillMaxSize()
             .pointerInput(surfaceRequest) {
-                detectTapGestures { offset ->
+                val factory = SurfaceOrientedMeteringPointFactory(
+                    surfaceRequest.resolution.width.toFloat(),
+                    surfaceRequest.resolution.height.toFloat(),
+                )
+                fun focus(offset: Offset, lock: Boolean) {
                     val surfacePoint = with(transformer) { offset.transform() }
-                    val factory = SurfaceOrientedMeteringPointFactory(
-                        surfaceRequest.resolution.width.toFloat(),
-                        surfaceRequest.resolution.height.toFloat(),
-                    )
-                    androidEngine.focusAt(factory.createPoint(surfacePoint.x, surfacePoint.y), offset)
-                    currentOnTapFocus(offset)
+                    androidEngine.focusAt(factory.createPoint(surfacePoint.x, surfacePoint.y), offset, lock)
                 }
+                detectTapGestures(
+                    onLongPress = { offset ->
+                        focus(offset, lock = true)
+                        currentOnLongPressFocus(offset)
+                    },
+                    onTap = { offset ->
+                        focus(offset, lock = false)
+                        currentOnTapFocus(offset)
+                    },
+                )
             },
     )
 }

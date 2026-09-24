@@ -23,7 +23,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.toShape
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,28 +90,31 @@ fun CameraCaptureScreen(
 ) {
     HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
         val permissions = rememberCameraPermissions()
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim)) {
-            if (permissions.camera == CameraPermissionState.Granted) {
-                // Created only once granted: binding without the permission fails instead of waiting.
-                val engine = rememberCameraEngine()
-                CameraCaptureContent(
-                    engine = engine,
-                    allowedModes = allowedModes,
-                    initialMode = initialMode,
-                    mirrorFront = mirrorFront,
-                    mic = permissions.mic,
-                    onRequestMic = permissions::requestMic,
-                    haptics = rememberHaptics(),
-                    deviceRotation = rememberDeviceRotation(),
-                    onResult = onResult,
-                    onDismiss = onDismiss,
-                )
-            } else {
-                CameraPermissionPane(
-                    state = permissions.camera,
-                    onAction = permissions::retryCamera,
-                    onDismiss = onDismiss,
-                )
+        CompositionLocalProvider(LocalReduceMotion provides rememberReduceMotion()) {
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim)) {
+                if (permissions.camera == CameraPermissionState.Granted) {
+                    // Created only once granted: binding without the permission fails instead of waiting.
+                    val engine = rememberCameraEngine()
+                    CameraCaptureContent(
+                        engine = engine,
+                        allowedModes = allowedModes,
+                        initialMode = initialMode,
+                        mirrorFront = mirrorFront,
+                        mic = permissions.mic,
+                        onRequestMic = permissions::requestMic,
+                        haptics = rememberHaptics(),
+                        deviceRotation = rememberDeviceRotation(),
+                        displayRotation = rememberDisplayRotation(),
+                        onResult = onResult,
+                        onDismiss = onDismiss,
+                    )
+                } else {
+                    CameraPermissionPane(
+                        state = permissions.camera,
+                        onAction = permissions::retryCamera,
+                        onDismiss = onDismiss,
+                    )
+                }
             }
         }
     }
@@ -124,7 +134,10 @@ internal fun CameraPermissionPane(
             .testTag(PERMISSION_PANE_TAG),
     ) {
         CameraCloseButton(onClick = onDismiss, iconRotation = 0f, modifier = Modifier.padding(8.dp))
-        if (state == CameraPermissionState.Checking) return@Box
+        if (state == CameraPermissionState.Checking) {
+            CheckingIndicator(Modifier.align(Alignment.Center))
+            return@Box
+        }
         val (title, body) = when (state) {
             CameraPermissionState.Denied ->
                 stringResource(MR.string.camera_permission_denied_title) to
@@ -219,5 +232,17 @@ private fun CameraMessage(
         )
         Spacer(Modifier.height(28.dp))
         action()
+    }
+}
+
+@Composable
+private fun CheckingIndicator(modifier: Modifier = Modifier) {
+    // Delayed so the usual instant grant check never flashes a spinner.
+    val show by produceState(false) {
+        delay(300)
+        value = true
+    }
+    AnimatedVisibility(visible = show, enter = fadeIn(), modifier = modifier) {
+        LoadingIndicator(color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(56.dp))
     }
 }

@@ -5,6 +5,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.window.DialogProperties
 import platform.UIKit.UIApplication
+import platform.UIKit.UIDevice
+import platform.UIKit.setNeedsUpdateOfSupportedInterfaceOrientations
+import platform.UIKit.UIInterfaceOrientationMaskPortrait
+import platform.UIKit.UIUserInterfaceIdiomPhone
+import platform.UIKit.UIWindowSceneGeometryPreferencesIOS
 
 internal actual fun cameraDialogProperties(): DialogProperties = DialogProperties(
     dismissOnClickOutside = false,
@@ -13,8 +18,40 @@ internal actual fun cameraDialogProperties(): DialogProperties = DialogPropertie
     scrimColor = Color.Transparent,
 )
 
+/** Read by the app delegate's supportedInterfaceOrientationsFor, the only place iOS takes a per-screen lock from. */
+object CameraOrientationLock {
+    var portraitOnly: Boolean = false
+        internal set
+}
+
 @Composable
-internal actual fun CameraWindowEffect() = Unit
+internal actual fun CameraWindowEffect() {
+    DisposableEffect(Unit) {
+        // iPad keeps rotating like the system camera; the HUD switches to its side rail there.
+        val lock = UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone
+        if (lock) {
+            CameraOrientationLock.portraitOnly = true
+            applyOrientationLock()
+        }
+        onDispose {
+            if (lock) {
+                CameraOrientationLock.portraitOnly = false
+                applyOrientationLock()
+            }
+        }
+    }
+}
+
+private fun applyOrientationLock() {
+    val window = UIApplication.sharedApplication.keyWindow ?: return
+    window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+    if (CameraOrientationLock.portraitOnly) {
+        window.windowScene?.requestGeometryUpdateWithPreferences(
+            UIWindowSceneGeometryPreferencesIOS(UIInterfaceOrientationMaskPortrait),
+            errorHandler = null,
+        )
+    }
+}
 
 @Composable
 internal actual fun KeepScreenOnEffect(enabled: Boolean) {

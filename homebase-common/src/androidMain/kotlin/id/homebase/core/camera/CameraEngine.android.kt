@@ -41,7 +41,9 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
@@ -77,6 +79,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.math.exp
 import kotlin.math.ln
+import kotlin.math.roundToInt
 import kotlin.time.Clock
 
 @Composable
@@ -310,6 +313,9 @@ internal class AndroidCameraEngine(
                 minZoom = zoom?.minZoomRatio ?: 1f,
                 maxZoom = zoom?.maxZoomRatio ?: 1f,
                 focusPoint = null,
+                focusLocked = false,
+                exposureSupported = info.exposureState.isExposureCompensationSupported,
+                exposureBias = 0f,
             )
         }
         // A fresh ImageCapture defaults to FLASH_MODE_OFF, so every rebind re-seeds flash from state.
@@ -421,7 +427,7 @@ internal class AndroidCameraEngine(
     override fun setLens(lens: CameraLens) {
         val state = _uiState.value
         if (state.lens == lens || recording != null || !state.hasLens(lens)) return
-        _uiState.update { it.copy(lens = lens, focusPoint = null, awaitingFirstFrame = true) }
+        _uiState.update { it.copy(lens = lens, focusPoint = null, focusLocked = false, awaitingFirstFrame = true) }
         rebindOrReport()
     }
 
@@ -484,17 +490,17 @@ internal class AndroidCameraEngine(
             applyZoom(cam, target)
             return
         }
-        zoomAnimation = scope.launch {
+        // AndroidUiDispatcher carries the Choreographer frame clock, so each step lands on a vsync.
+        zoomAnimation = scope.launch(AndroidUiDispatcher.Main) {
             val fromLog = ln(from)
             val toLog = ln(target)
-            var elapsed = 0L
-            while (elapsed < ZOOM_ANIMATION_MS) {
-                delay(ZOOM_FRAME_MS)
-                elapsed += ZOOM_FRAME_MS
-                val t = FastOutSlowInEasing.transform((elapsed.toFloat() / ZOOM_ANIMATION_MS).coerceAtMost(1f))
-                applyZoom(cam, exp(fromLog + (toLog - fromLog) * t))
+            val startNanos = withFrameNanos { it }
+            while (true) {
+                val elapsedMs = (withFrameNanos { it } - startNanos) / 1_000_000f
+                val fraction = (elapsedMs / ZOOM_ANIMATION_MS).coerceAtMost(1f)
+                applyZoom(cam, exp(fromLog + (toLog - fromLog) * FastOutSlowInEasing.transform(fraction)))
+                if (fraction >= 1f) break
             }
-            applyZoom(cam, target)
         }
     }
 
@@ -503,18 +509,41 @@ internal class AndroidCameraEngine(
         _uiState.update { it.copy(zoomRatio = ratio) }
     }
 
-    fun focusAt(point: MeteringPoint, viewOffset: Offset) {
+    /** [lock] holds focus and exposure (AE/AF lock) until the next tap instead of releasing them after a few seconds. */
+    fun focusAt(point: MeteringPoint, viewOffset: Offset, lock: Boolean = false) {
         val cam = camera ?: return
         val action = FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE)
-            .setAutoCancelDuration(FOCUS_AUTO_CANCEL_S, TimeUnit.SECONDS)
+            .apply { if (lock) disableAutoCancel() else setAutoCancelDuration(FOCUS_AUTO_CANCEL_S, TimeUnit.SECONDS) }
             .build()
         cam.cameraControl.startFocusAndMetering(action)
-        _uiState.update { it.copy(focusPoint = viewOffset) }
+        applyExposureBias(cam, 0f)
+        _uiState.update { it.copy(focusPoint = viewOffset, focusLocked = lock, exposureBias = 0f) }
+        scheduleFocusClear()
+    }
+
+    private fun scheduleFocusClear() {
         focusClear?.cancel()
+        if (_uiState.value.focusLocked) return
         focusClear = scope.launch {
             delay(TimeUnit.SECONDS.toMillis(FOCUS_AUTO_CANCEL_S))
             _uiState.update { it.copy(focusPoint = null) }
         }
+    }
+
+    override fun setExposureBias(bias: Float) {
+        val cam = camera ?: return
+        val clamped = bias.coerceIn(-1f, 1f)
+        applyExposureBias(cam, clamped)
+        _uiState.update { it.copy(exposureBias = clamped) }
+        if (_uiState.value.focusPoint != null) scheduleFocusClear()
+    }
+
+    private fun applyExposureBias(cam: Camera, bias: Float) {
+        val exposure = cam.cameraInfo.exposureState
+        if (!exposure.isExposureCompensationSupported) return
+        val range = exposure.exposureCompensationRange
+        val index = if (bias >= 0f) (bias * range.upper).roundToInt() else (-bias * range.lower).roundToInt()
+        if (index != exposure.exposureCompensationIndex) cam.cameraControl.setExposureCompensationIndex(index)
     }
 
     override suspend fun takePhoto(): PlatformFile? {
@@ -662,7 +691,6 @@ internal class AndroidCameraEngine(
         const val BIND_MAX_ATTEMPTS = 4
         const val BIND_RETRY_DELAY_MS = 500L
         const val ZOOM_ANIMATION_MS = 250L
-        const val ZOOM_FRAME_MS = 16L
         const val FOCUS_AUTO_CANCEL_S = 3L
 
         val RESOLUTION_16_9: ResolutionSelector = ResolutionSelector.Builder()
