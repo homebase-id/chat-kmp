@@ -70,12 +70,13 @@ class MapCameraState {
     suspend fun animateCenterTo(unitX: Double, unitY: Double, spec: AnimationSpec<Float>) {
         val target = effective?.copy(centerX = unitX, centerY = unitY) ?: return
         isUserPositioned = true
-        animateTo(target, spec)
+        animateTo(spec) { target }
     }
 
-    internal suspend fun animateTo(target: MapViewport, spec: AnimationSpec<Float>) = motion {
+    // target is re-read every frame so a moving destination (a re-fit whose bbox changes) never ends in a snap.
+    internal suspend fun animateTo(spec: AnimationSpec<Float>, target: () -> MapViewport?) = motion {
         val from = effective ?: return@motion
-        animate(0f, 1f, animationSpec = spec) { t, _ -> viewport = from.lerpTo(target, t) }
+        animate(0f, 1f, animationSpec = spec) { t, _ -> target()?.let { viewport = from.lerpTo(it, t) } }
     }
 
     internal suspend fun zoomAround(anchor: Offset, factor: Float, spec: AnimationSpec<Float>) = motion {

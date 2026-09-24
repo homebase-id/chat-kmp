@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.center
 import androidx.compose.ui.unit.toOffset
 import androidx.compose.ui.unit.LayoutDirection
 import id.homebase.api.client.location.WebMercator
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import kotlin.math.abs
@@ -95,8 +96,7 @@ fun TiledMapView(
     val refitSpec = MaterialTheme.motionScheme.slowSpatialSpec<Float>()
     LaunchedEffect(resetViewportOn, camera) {
         if (refitFrom == null) return@LaunchedEffect
-        val target = camera.fit
-        if (target == null || camera.animateTo(target, refitSpec)) camera.viewport = null
+        if (camera.fit == null || camera.animateTo(refitSpec) { camera.fit }) camera.viewport = null
     }
 
     // ── Tile layer state ──
@@ -130,7 +130,9 @@ fun TiledMapView(
         Modifier
             .pointerInput(camera, zoomSpec) {
                 detectTapGestures(onDoubleTap = { tap ->
-                    scope.launch { camera.zoomAround(tap - size.center.toOffset(), 2f, zoomSpec) }
+                    scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        camera.zoomAround(tap - size.center.toOffset(), 2f, zoomSpec)
+                    }
                 })
             }
             .pointerInput(camera) {
@@ -163,7 +165,7 @@ fun TiledMapView(
                     } while (event.changes.any { it.pressed })
                     if (pastSlop && !multiTouch) {
                         val v = velocity.calculateVelocity()
-                        scope.launch { camera.fling(v) }
+                        scope.launch(start = CoroutineStart.UNDISPATCHED) { camera.fling(v) }
                     }
                 }
             }
