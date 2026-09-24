@@ -4,7 +4,9 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import kotlin.math.abs
@@ -95,6 +97,34 @@ internal suspend fun PointerInputScope.detectPreviewGestures(handler: PreviewGes
 
 private const val DOMINANCE = 2f
 private const val PREVIEW_SLOT_FRACTION = 0.4f
+
+/**
+ * The preview's tap and long-press focus. Unlike detectTapGestures, moving past touch slop cancels both, so a slow
+ * drag that [detectPreviewGestures] didn't claim (no focus point, Photo-only, recording) can't lock AE/AF.
+ */
+internal suspend fun PointerInputScope.detectPreviewTaps(onTap: (Offset) -> Unit, onLongPress: (Offset) -> Unit) {
+    awaitEachGesture {
+        val down = awaitFirstDown()
+        var tapAt: Offset? = null
+        val ended = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+            tapAt = awaitUpWithinSlop(down)
+            true
+        }
+        if (ended == null) onLongPress(down.position) else tapAt?.let(onTap)
+    }
+}
+
+/** The release position, or null once the gesture moves past slop, adds a pointer, or is claimed by another detector. */
+private suspend fun AwaitPointerEventScope.awaitUpWithinSlop(down: PointerInputChange): Offset? {
+    val slop = viewConfiguration.touchSlop
+    while (true) {
+        val event = awaitPointerEvent()
+        if (event.changes.size > 1 || event.changes.any { it.isConsumed }) return null
+        val change = event.changes.firstOrNull { it.id == down.id } ?: return null
+        if (!change.pressed) return change.position
+        if ((change.position - down.position).getDistance() > slop) return null
+    }
+}
 
 /** Observes without consuming, so the preview's own single-tap focus still runs underneath. */
 internal suspend fun PointerInputScope.detectDoubleTapObserving(onDoubleTap: () -> Unit) {

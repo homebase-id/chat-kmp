@@ -2,7 +2,6 @@
 
 package id.homebase.core.camera
 
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -49,7 +48,7 @@ actual fun CameraPreview(
             .pointerInput(iosEngine, density) {
                 fun focus(offset: Offset, lock: Boolean) =
                     iosEngine.focusAt(CGPointMake(offset.x / density.toDouble(), offset.y / density.toDouble()), offset, lock)
-                detectTapGestures(
+                detectPreviewTaps(
                     onLongPress = { offset ->
                         focus(offset, lock = true)
                         currentOnLongPressFocus(offset)
