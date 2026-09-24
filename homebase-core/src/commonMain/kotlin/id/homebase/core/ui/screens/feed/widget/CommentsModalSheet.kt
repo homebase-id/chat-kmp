@@ -38,6 +38,9 @@ import id.homebase.core.feed.services.ReactAccess
 import id.homebase.core.feed.services.isAuthoredBy
 import id.homebase.core.util.buildBlockUrl
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.rememberKeyboardPanelState
+import id.homebase.core.util.sheetComposerInset
+import id.homebase.core.util.sheetLiftsForKeyboard
 import id.homebase.core.ui.screens.feed.PostDetailEvent
 import id.homebase.core.ui.screens.feed.PostDetailViewModel
 import id.homebase.resources.MR
@@ -50,9 +53,6 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 import kotlin.uuid.Uuid
-import id.homebase.core.util.rememberKeyboardPanelState
-import id.homebase.core.util.sheetComposerInset
-import id.homebase.core.util.sheetLiftsForKeyboard
 
 // Reuses [PostDetailViewModel] keyed by [postId]; the post itself isn't re-rendered here — it's already
 // visible in the feed behind the sheet.

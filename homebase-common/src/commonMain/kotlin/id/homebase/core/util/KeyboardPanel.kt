@@ -137,11 +137,8 @@ fun rememberKeyboardPanelState(
     return state
 }
 
-/**
- * The space under the composer shared by the keyboard and the panel, revealing the panel from its
- * bottom edge. [keyboardHandledByHost]: the host already lifted itself by the keyboard (see
- * [sheetComposerInset]), so only the panel's excess over the keyboard is left to reserve.
- */
+/** The space under the composer shared by the keyboard and the panel, revealing the panel from its bottom edge. */
+// keyboardHandledByHost: the host already rose by the keyboard, so only the panel's excess is reserved.
 fun Modifier.keyboardPanelSlot(state: KeyboardPanelState, keyboardHandledByHost: Boolean = false): Modifier =
     clipToBounds().onFocusChanged { state.panelFocused = it.hasFocus }.layout { measurable, constraints ->
         val panelHeight = state.heightPx
@@ -153,10 +150,7 @@ fun Modifier.keyboardPanelSlot(state: KeyboardPanelState, keyboardHandledByHost:
 /** True where a zero-inset `ModalBottomSheet` lifts its own surface above the keyboard and reports no IME inside. */
 val sheetLiftsForKeyboard: Boolean get() = isNativeMobile()
 
-/**
- * Bottom inset for a composer pinned at the foot of a `ModalBottomSheet` with zero content insets,
- * with a [keyboardPanelSlot] above it. [state] must be remembered outside the sheet.
- */
+// For a composer at the foot of a zero-inset ModalBottomSheet; [state] must be remembered outside the sheet.
 fun Modifier.sheetComposerInset(state: KeyboardPanelState): Modifier = layout { measurable, constraints ->
     val ime = state.ime.value
     val nav = ime.navBarInsets.getBottom(ime.density)

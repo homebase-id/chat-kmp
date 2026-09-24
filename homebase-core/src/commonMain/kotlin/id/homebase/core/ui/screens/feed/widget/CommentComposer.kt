@@ -54,6 +54,9 @@ import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.StickerFilled
 import id.homebase.core.ui.assets.StickerOutlined
+import id.homebase.core.util.KeyboardPanelState
+import id.homebase.core.util.keyboardPanelSlot
+import id.homebase.core.util.rememberKeyboardPanelState
 import id.homebase.core.widget.EmojiSelection
 import id.homebase.resources.MR
 import id.homebase.resources.feed_comment_attach_image
@@ -72,9 +75,6 @@ import io.github.vinceglb.filekit.name
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
-import id.homebase.core.util.rememberKeyboardPanelState
-import id.homebase.core.util.keyboardPanelSlot
-import id.homebase.core.util.KeyboardPanelState
 
 // The picked PlatformFile is resolved to an AttachmentInput at send time via the shared
 // [toImageAttachmentInput], so this widget stays free of any feed service/ViewModel.
