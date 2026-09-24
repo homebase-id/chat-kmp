@@ -9,4 +9,5 @@ expect fun CameraPreview(
     engine: CameraEngine,
     modifier: Modifier = Modifier,
     onTapFocus: (Offset) -> Unit = {},
+    onLongPressFocus: (Offset) -> Unit = {},
 )

@@ -91,6 +91,9 @@ data class HomebaseExtendedColors(
         val warning: androidx.compose.ui.graphics.Color,
         /** Live-location sharing indicator (#816) — Homebase purple, same value both themes. */
         val liveSharing: androidx.compose.ui.graphics.Color,
+        /** Camera record red — the light error role in both themes; the dark one reads pink over a preview. */
+        val cameraRecord: androidx.compose.ui.graphics.Color,
+        val onCameraRecord: androidx.compose.ui.graphics.Color,
 )
 
 private val LightExtendedColors =
@@ -115,6 +118,8 @@ private val LightExtendedColors =
                 bubbleSentOnSurface = LightColors.OnPrimary,
                 warning = ExtendedColors.Warning,
                 liveSharing = ExtendedColors.LiveSharing,
+                cameraRecord = LightColors.Error,
+                onCameraRecord = LightColors.OnError,
         )
 
 private val DarkExtendedColors =
@@ -139,6 +144,8 @@ private val DarkExtendedColors =
                 bubbleSentOnSurface = LightColors.OnPrimary,
                 warning = ExtendedColors.Warning,
                 liveSharing = ExtendedColors.LiveSharing,
+                cameraRecord = LightColors.Error,
+                onCameraRecord = LightColors.OnError,
         )
 
 val LocalHomebaseExtendedColors = staticCompositionLocalOf { LightExtendedColors }

@@ -27,7 +27,12 @@ import platform.UIKit.UIColor
 import platform.UIKit.UIView
 
 @Composable
-actual fun CameraPreview(engine: CameraEngine, modifier: Modifier, onTapFocus: (Offset) -> Unit) {
+actual fun CameraPreview(
+    engine: CameraEngine,
+    modifier: Modifier,
+    onTapFocus: (Offset) -> Unit,
+    onLongPressFocus: (Offset) -> Unit,
+) {
     val iosEngine = engine as? IosCameraEngine
     if (iosEngine == null) {
         Box(modifier)
@@ -43,14 +48,23 @@ actual fun CameraPreview(engine: CameraEngine, modifier: Modifier, onTapFocus: (
     }
     val density = LocalDensity.current.density
     val currentOnTapFocus by rememberUpdatedState(onTapFocus)
+    val currentOnLongPressFocus by rememberUpdatedState(onLongPressFocus)
     Box(
         modifier = modifier
             .fillMaxSize()
             .pointerInput(iosEngine, density) {
-                detectTapGestures { offset ->
-                    iosEngine.focusAt(CGPointMake(offset.x / density.toDouble(), offset.y / density.toDouble()), offset)
-                    currentOnTapFocus(offset)
-                }
+                fun focus(offset: Offset, lock: Boolean) =
+                    iosEngine.focusAt(CGPointMake(offset.x / density.toDouble(), offset.y / density.toDouble()), offset, lock)
+                detectTapGestures(
+                    onLongPress = { offset ->
+                        focus(offset, lock = true)
+                        currentOnLongPressFocus(offset)
+                    },
+                    onTap = { offset ->
+                        focus(offset, lock = false)
+                        currentOnTapFocus(offset)
+                    },
+                )
             },
     ) {
         UIKitView(

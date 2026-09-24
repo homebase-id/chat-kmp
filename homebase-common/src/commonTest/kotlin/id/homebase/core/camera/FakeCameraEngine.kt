@@ -16,7 +16,7 @@ internal class FakeCameraEngine(initial: CameraUiState = CameraUiState(isBound =
 
     override fun setLens(lens: CameraLens) {
         calls += "lens:$lens"
-        uiState.update { it.copy(lens = lens, hasFlashUnit = lens == CameraLens.Back) }
+        uiState.update { it.copy(lens = lens, hasFlashUnit = lens == CameraLens.Back, focusPoint = null, focusLocked = false) }
     }
 
     override fun setZoomRatio(ratio: Float, animate: Boolean) {
@@ -46,6 +46,11 @@ internal class FakeCameraEngine(initial: CameraUiState = CameraUiState(isBound =
 
     override fun setCaptureRotation(rotation: QuarterTurn) {
         calls += "rotation:$rotation"
+    }
+
+    override fun setExposureBias(bias: Float) {
+        calls += "exposure:$bias"
+        uiState.update { it.copy(exposureBias = bias.coerceIn(-1f, 1f)) }
     }
 
     override suspend fun takePhoto(): PlatformFile? {

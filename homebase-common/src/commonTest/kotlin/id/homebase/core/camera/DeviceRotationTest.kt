@@ -57,8 +57,15 @@ class DeviceRotationTest {
 
     @Test
     fun iconsCounterRotate() {
-        assertEquals(-90f, QuarterTurn.R90.uprightIconDegrees)
-        assertEquals(0f, QuarterTurn.R0.uprightIconDegrees)
+        assertEquals(-90f, QuarterTurn.R90.uprightIconDegrees())
+        assertEquals(0f, QuarterTurn.R0.uprightIconDegrees())
+    }
+
+    @Test
+    fun iconsStayPutWhenTheUiRotatesWithTheDevice() {
+        assertEquals(0f, QuarterTurn.R90.uprightIconDegrees(display = QuarterTurn.R90))
+        assertEquals(0f, QuarterTurn.R270.uprightIconDegrees(display = QuarterTurn.R270))
+        assertEquals(-90f, QuarterTurn.R180.uprightIconDegrees(display = QuarterTurn.R90))
     }
 
     @Test

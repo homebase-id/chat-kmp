@@ -18,6 +18,7 @@ internal class UnavailableCameraEngine : CameraEngine {
     override fun setMode(mode: CaptureMode) = Unit
     override fun setMirrorFront(enabled: Boolean) = Unit
     override fun setCaptureRotation(rotation: QuarterTurn) = Unit
+    override fun setExposureBias(bias: Float) = Unit
     override suspend fun takePhoto(): PlatformFile? = null
     override fun startRecording(withAudio: Boolean) = Unit
     override suspend fun stopRecording(): PlatformFile? = null

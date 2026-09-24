@@ -2423,11 +2423,11 @@
     <string name="camera_shutter_video">Start recording</string>
     <string name="camera_shutter_stop">Stop recording</string>
     <string name="camera_shutter_hold_hint">Hold to record a video</string>
-    <string name="camera_flash_off">Flash off</string>
-    <string name="camera_flash_auto">Flash auto</string>
-    <string name="camera_flash_on">Flash on</string>
-    <string name="camera_torch_off">Torch off</string>
-    <string name="camera_torch_on">Torch on</string>
+    <string name="camera_flash">Flash</string>
+    <string name="camera_torch">Torch</string>
+    <string name="camera_state_auto">Auto</string>
+    <string name="camera_state_on">On</string>
+    <string name="camera_state_off">Off</string>
     <string name="camera_switch_lens">Switch camera</string>
     <string name="camera_lens_front">Front camera</string>
     <string name="camera_lens_back">Back camera</string>
@@ -2464,4 +2464,7 @@
     <string name="dev_menu_camera_result_type">Type: %1$s</string>
     <string name="dev_menu_camera_cancelled">Camera closed without a capture</string>
     <string name="camera_lock_recording">Lock recording</string>
+    <string name="camera_recording_started">Recording started</string>
+    <string name="camera_recording_stopped">Recording stopped, %1$s</string>
+    <string name="camera_ae_af_lock">AE/AF lock</string>
 </resources>
