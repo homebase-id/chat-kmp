@@ -61,6 +61,21 @@ class NotificationSettingsUiTest {
     }
 
     @Test
+    fun hidesPermissionCard_untilPermissionIsKnown() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                NotificationSettingsUi(
+                    uiState = NotificationSettingsUiState(),
+                    onAction = {},
+                    onBackClick = {},
+                    onOpenSystemSettings = {},
+                )
+            }
+        }
+        onNodeWithTag("pushNotificationsDisabled").assertDoesNotExist()
+    }
+
+    @Test
     fun showsSoundSettings() = runComposeUiTest {
         setContent {
             MaterialTheme {
