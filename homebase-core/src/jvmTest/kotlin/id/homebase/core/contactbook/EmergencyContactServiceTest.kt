@@ -47,6 +47,7 @@ class EmergencyContactServiceTest {
         val contactsFlow = MutableStateFlow(contacts)
         val service = EmergencyContactService(
             contacts = contactsFlow,
+            contactsLoaded = MutableStateFlow(true),
             verify = { peer ->
                 calls += peer.domainName
                 replies[peer.domainName]?.invoke() ?: error("no reply for ${peer.domainName}")

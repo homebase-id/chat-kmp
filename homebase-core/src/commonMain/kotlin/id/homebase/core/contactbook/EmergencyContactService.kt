@@ -94,6 +94,7 @@ data class LocatableContact(
  */
 class EmergencyContactService internal constructor(
     private val contacts: StateFlow<List<Contact>>,
+    private val contactsLoaded: StateFlow<Boolean>,
     private val verify: suspend (OdinId) -> TemporalAccessStatus,
     private val isOnline: StateFlow<Boolean>,
     /** The logged-in identity's domain (lowercase) — you are never your own emergency contact. */
@@ -109,6 +110,7 @@ class EmergencyContactService internal constructor(
         scope: CoroutineScope,
     ) : this(
         contacts = contactRepository.contacts,
+        contactsLoaded = contactRepository.isLoaded,
         verify = { peer -> temporalRead.verifyTemporalAccess(peer, locationLabeledDrive.drive.alias) },
         isOnline = authConnectionCoordinator.isOnline,
         selfDomain = {
@@ -159,6 +161,15 @@ class EmergencyContactService internal constructor(
                         runCatching { refreshAll() }
                     }
                 }
+        }
+    }
+
+    /** Re-verifies the contacts already flagged; never probes the rest of the book. */
+    fun sweepAfterLogin() {
+        scope.launch {
+            contactsLoaded.first { it }
+            withTimeoutOrNull(LOCATE_VERIFY_ONLINE_WAIT_MS) { isOnline.first { it } }
+            runCatching { refreshAll() }.onFailure { Logger.w(it, TAG) { "login sweep failed" } }
         }
     }
 

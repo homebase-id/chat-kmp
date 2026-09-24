@@ -25,8 +25,8 @@ import kotlin.uuid.ExperimentalUuidApi
  *
  * Consume = soft-delete on our OWN identity only (local + server, recipients = null), mirroring
  * [id.homebase.chat.services.convo.GroupHealService]. The ConversationStream dispatcher short-circuits
- * on `content == null`, so a consumed message re-dispatches as a no-op. The flag is the cheap cache;
- * the authoritative backstop is a temporal-access preflight (reconcile, step 8).
+ * on `content == null`, so a consumed message re-dispatches as a no-op. Messages that arrive during
+ * a cold sync are dispatched from the local DB once the sync lands.
  */
 class EmergencyContactReceiveService(
     private val contactRepository: ContactRepository,
