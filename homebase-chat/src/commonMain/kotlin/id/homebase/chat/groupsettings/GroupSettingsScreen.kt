@@ -65,6 +65,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -179,6 +180,7 @@ import id.homebase.resources.ok
 import id.homebase.resources.remove
 import id.homebase.resources.you
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.getPluralString
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -198,76 +200,79 @@ fun GroupSettingsScreen(
     val uriHandler = LocalUriHandler.current
     val healAlreadyInSyncMessage = stringResource(MR.string.chat_group_heal_already_in_sync)
 
-    when (val event = uiState.uiEvent) {
-        is GroupSettingsUiEvent.Back -> {
-            viewModel.eventConsumed()
-            onNavigateBack()
-        }
-
-        is GroupSettingsUiEvent.Error -> {
-            viewModel.eventConsumed()
-            scope.launch { snackbarHostState.showSnackbar(message = event.errorMessage) }
-        }
-
-        is GroupSettingsUiEvent.ShowContactInfo -> {
-            viewModel.eventConsumed()
-            onShowContactInfo(event.odinId)
-        }
-
-        is GroupSettingsUiEvent.ShowAddMembers -> {
-            viewModel.eventConsumed()
-            onAddMembers(event.conversationId)
-        }
-
-        is GroupSettingsUiEvent.ShowEditGroup -> {
-            viewModel.eventConsumed()
-            onEditGroup(event.conversationId)
-        }
-
-        is GroupSettingsUiEvent.OpenUrl -> {
-            viewModel.eventConsumed()
-            uriHandler.openUri(event.url)
-        }
-
-        is GroupSettingsUiEvent.HealCompleted -> {
-            viewModel.eventConsumed()
-            val parts = buildList {
-                if (event.mainRecipientCount > 0) {
-                    add(
-                        pluralStringResource(
-                            MR.plurals.chat_group_heal_main_resent,
-                            event.mainRecipientCount,
-                            event.mainRecipientCount,
-                        )
-                    )
-                }
-                if (event.adminRecipientCount > 0) {
-                    add(
-                        pluralStringResource(
-                            MR.plurals.chat_group_heal_admin_resent,
-                            event.adminRecipientCount,
-                            event.adminRecipientCount,
-                        )
-                    )
-                }
-                if (event.healMessageRecipientCount > 0) {
-                    add(
-                        pluralStringResource(
-                            MR.plurals.chat_group_heal_request_sent,
-                            event.healMessageRecipientCount,
-                            event.healMessageRecipientCount,
-                        )
-                    )
-                }
+    LaunchedEffect(uiState.uiEvent) {
+        when (val event = uiState.uiEvent) {
+            is GroupSettingsUiEvent.Back -> {
+                viewModel.eventConsumed()
+                onNavigateBack()
             }
-            // Counts all zero ⇒ either every peer was already PresentAuthoredByMe
-            // or there were no peers to begin with; canHeal would have blocked
-            // the not-author case before the click reached us.
-            val message = if (parts.isNotEmpty()) parts.joinToString(" · ") else healAlreadyInSyncMessage
-            scope.launch { snackbarHostState.showSnackbar(message = message) }
-        }
 
-        null -> {}
+            is GroupSettingsUiEvent.Error -> {
+                viewModel.eventConsumed()
+                scope.launch { snackbarHostState.showSnackbar(message = event.errorMessage) }
+            }
+
+            is GroupSettingsUiEvent.ShowContactInfo -> {
+                viewModel.eventConsumed()
+                onShowContactInfo(event.odinId)
+            }
+
+            is GroupSettingsUiEvent.ShowAddMembers -> {
+                viewModel.eventConsumed()
+                onAddMembers(event.conversationId)
+            }
+
+            is GroupSettingsUiEvent.ShowEditGroup -> {
+                viewModel.eventConsumed()
+                onEditGroup(event.conversationId)
+            }
+
+            is GroupSettingsUiEvent.OpenUrl -> {
+                viewModel.eventConsumed()
+                uriHandler.openUri(event.url)
+            }
+
+            is GroupSettingsUiEvent.HealCompleted -> {
+                // Consumed only after the suspending lookups: consuming cancels this effect.
+                val parts = buildList {
+                    if (event.mainRecipientCount > 0) {
+                        add(
+                            getPluralString(
+                                MR.plurals.chat_group_heal_main_resent,
+                                event.mainRecipientCount,
+                                event.mainRecipientCount,
+                            )
+                        )
+                    }
+                    if (event.adminRecipientCount > 0) {
+                        add(
+                            getPluralString(
+                                MR.plurals.chat_group_heal_admin_resent,
+                                event.adminRecipientCount,
+                                event.adminRecipientCount,
+                            )
+                        )
+                    }
+                    if (event.healMessageRecipientCount > 0) {
+                        add(
+                            getPluralString(
+                                MR.plurals.chat_group_heal_request_sent,
+                                event.healMessageRecipientCount,
+                                event.healMessageRecipientCount,
+                            )
+                        )
+                    }
+                }
+                // Counts all zero ⇒ either every peer was already PresentAuthoredByMe
+                // or there were no peers to begin with; canHeal would have blocked
+                // the not-author case before the click reached us.
+                val message = if (parts.isNotEmpty()) parts.joinToString(" · ") else healAlreadyInSyncMessage
+                viewModel.eventConsumed()
+                scope.launch { snackbarHostState.showSnackbar(message = message) }
+            }
+
+            null -> {}
+        }
     }
 
     GroupSettingsDialogs(

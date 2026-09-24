@@ -24,10 +24,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.IconButtonDefaults
@@ -457,19 +457,17 @@ fun VaultScreen(
             // nav destination) so it survives navigating out to the crop/draw screen
             // and back. The Scaffold body places all content at the origin, so this
             // opaque, fillMaxSize editor draws on top of the grid/gallery beneath it.
-            uiState.pendingEditor?.let { editor ->
-                // Springs up from the bottom when the editor opens.
-                var editorVisible by remember { mutableStateOf(false) }
-                LaunchedEffect(Unit) { editorVisible = true }
-                AnimatedVisibility(
-                    visible = editorVisible,
-                    enter = slideInVertically(
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioLowBouncy,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
-                    ) { it } + fadeIn(),
-                ) {
+            // Seeded with the current editor, so returning from crop/draw (which recreates this
+            // screen) doesn't replay the slide-up.
+            val editorTransition = updateTransition(uiState.pendingEditor, label = "vaultAddEditor")
+            val motion = MaterialTheme.motionScheme
+            editorTransition.AnimatedVisibility(
+                visible = { it != null },
+                enter = slideInVertically(motion.defaultSpatialSpec()) { it } + fadeIn(motion.defaultEffectsSpec()),
+                exit = slideOutVertically(motion.defaultSpatialSpec()) { it } + fadeOut(motion.defaultEffectsSpec()),
+            ) {
+                // Exiting, the target is already null; slide out the editor that was showing.
+                val editor = editorTransition.targetState ?: editorTransition.currentState ?: return@AnimatedVisibility
                 MediaAttachmentEditor(
                     attachments = editor.attachments,
                     currentPage = editor.currentPage,
@@ -554,7 +552,6 @@ fun VaultScreen(
                         }
                     },
                 )
-                }
             }
         }
     }
