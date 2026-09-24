@@ -75,6 +75,14 @@ class EmergencyContactTest {
     }
 
     @Test
+    fun filterLocatable_odinIdCaseDiffers_keepsOnlyOne() {
+        val lower = contactWith(Uuid.parse("11111111-1111-1111-1111-111111111111"), odinId = "sam.dotyou.cloud")
+        val mixed = contactWith(Uuid.parse("22222222-2222-2222-2222-222222222222"), odinId = "Sam.DotYou.cloud")
+
+        assertEquals(listOf(lower), listOf(lower, mixed).filterLocatable())
+    }
+
+    @Test
     fun filterLocatable_keepsNewestRowPerOdinId() {
         val stale = contactWith(Uuid.parse("11111111-1111-1111-1111-111111111111"), odinId = "sam.dotyou.cloud")
         val fresh = contactWith(Uuid.parse("22222222-2222-2222-2222-222222222222"), odinId = "sam.dotyou.cloud")
