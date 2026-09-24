@@ -42,7 +42,8 @@ data class NotificationSettingsUiState(
     val includeMutedChatsInBadge: Boolean = false,
     val isReRegistering: Boolean = false,
     val showContentLevelPicker: Boolean = false,
-    val isPermissionGranted: Boolean = false,
+    /** Null until the platform answers, so a granted permission never flashes the enable card. */
+    val isPermissionGranted: Boolean? = null,
     val isPermissionPermanentlyDenied: Boolean = false,
     /** iOS Safari fires web push only for a Home Screen install, so Enable would be a dead button. */
     val needsHomeScreenInstall: Boolean = false,

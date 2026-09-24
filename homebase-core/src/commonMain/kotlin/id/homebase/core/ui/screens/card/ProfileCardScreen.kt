@@ -104,6 +104,7 @@ import id.homebase.resources.profile_card_share
 import id.homebase.resources.profile_card_share_failed
 import id.homebase.resources.profile_card_unsupported
 import kotlin.math.exp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
@@ -232,11 +233,14 @@ fun ProfileCardScreen(
     val scope = rememberCoroutineScope()
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { scope.launch { viewModel.captureCover() } }
     val dragState = rememberDraggableState { delta -> rawPull = (rawPull + delta).coerceAtLeast(0f) }
+    var dragCapture by remember { mutableStateOf<Job?>(null) }
     val dismissDrag = Modifier.draggable(
         state = dragState,
         orientation = Orientation.Vertical,
-        onDragStarted = { holdCover() },
+        onDragStarted = { dragCapture = scope.launch { holdCover() } },
         onDragStopped = { velocity ->
+            // Start and stop run as separate coroutines: a capture landing after the release would re-cover the live card.
+            dragCapture?.join()
             if (rawPull > dismissDistance || velocity > DISMISS_FLING_VELOCITY) {
                 onBack()
             } else {
