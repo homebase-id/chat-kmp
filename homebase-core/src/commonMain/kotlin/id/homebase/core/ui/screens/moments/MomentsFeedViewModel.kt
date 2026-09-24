@@ -14,6 +14,7 @@ import id.homebase.core.moments.MomentsAlbumZoom
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentActionService
+import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.moments.services.MomentsPostSenderService
 import kotlinx.collections.immutable.toPersistentMap
@@ -47,7 +48,14 @@ class MomentsFeedViewModel(
     private val momentsPreferences: MomentsPreferences,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(MomentsFeedUiState())
+    // Seeded from the service's snapshot so a re-entry never shows a first frame with no moments.
+    private val _uiState = MutableStateFlow(
+        MomentsFeedUiState(
+            moments = sortedFor(feedService.feed.value, momentsPreferences.viewMode.value),
+            viewMode = momentsPreferences.viewMode.value,
+            isLoading = !feedService.isLoaded.value,
+        )
+    )
     val uiState: StateFlow<MomentsFeedUiState> = _uiState.asStateFlow()
 
     private val drive = momentsLabeledDrive.drive.alias
@@ -159,16 +167,11 @@ class MomentsFeedViewModel(
         viewModelScope.launch {
             var lastSize = -1
             var lastNewestId: String? = null
-            combine(feedService.feed, momentsPreferences.viewMode) { list, mode ->
-                list to mode
-            }.collect { (list, mode) ->
-                val sorted = when (mode) {
-                    // Reels mirrors Timeline ordering — newest posted first.
-                    MomentsViewMode.Timeline,
-                    MomentsViewMode.Reels -> list.sortedByDescending { it.createdMs }
-                    MomentsViewMode.Album -> list.sortedByDescending { it.userDateMs }
-                }
-                _uiState.update { it.copy(moments = sorted, viewMode = mode) }
+            combine(feedService.feed, momentsPreferences.viewMode, feedService.isLoaded) { list, mode, loaded ->
+                Triple(list, mode, loaded)
+            }.collect { (list, mode, loaded) ->
+                val sorted = sortedFor(list, mode)
+                _uiState.update { it.copy(moments = sorted, viewMode = mode, isLoading = !loaded) }
                 // Diagnostic: log every size/head change so we can confirm the
                 // feed VM is propagating service updates into uiState. Pairs
                 // with MomentsFeedService.processIncrementalBatch logs to
@@ -360,5 +363,12 @@ class MomentsFeedViewModel(
                     }
                 }
         }
+    }
+
+    private fun sortedFor(list: List<MomentFeedItem>, mode: MomentsViewMode): List<MomentFeedItem> = when (mode) {
+        // Reels mirrors Timeline ordering — newest posted first.
+        MomentsViewMode.Timeline,
+        MomentsViewMode.Reels -> list.sortedByDescending { it.createdMs }
+        MomentsViewMode.Album -> list.sortedByDescending { it.userDateMs }
     }
 }

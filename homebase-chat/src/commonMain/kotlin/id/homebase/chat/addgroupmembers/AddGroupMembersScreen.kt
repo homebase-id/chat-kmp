@@ -1,7 +1,6 @@
 package id.homebase.chat.addgroupmembers
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -104,9 +103,6 @@ fun AddGroupMembersUi(
     onUiAction: (AddGroupMembersUiAction) -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
 
     Scaffold(
         modifier = Modifier.imePadding(),
@@ -157,6 +153,8 @@ fun AddGroupMembersUi(
                     CircularProgressIndicator()
                 }
             } else {
+                // The field only exists once loading ends; requesting focus any earlier is a no-op.
+                LaunchedEffect(Unit) { focusRequester.requestFocus() }
                 StyledSearchTextField(
                     modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
                         .focusRequester(focusRequester),
@@ -171,9 +169,7 @@ fun AddGroupMembersUi(
                     items(uiState.selectedContacts) { contact ->
                         InputChip(
                             modifier = Modifier.widthIn(max = 200.dp).padding(end = 8.dp),
-                            onClick = {
-                                // onUiAction(NewConversationUiAction.ContactClicked(contact))
-                            },
+                            onClick = { onUiAction(AddGroupMembersUiAction.ContactClicked(contact)) },
                             label = {
                                 Text(
                                     text = contact.name,
@@ -197,9 +193,6 @@ fun AddGroupMembersUi(
                             },
                             trailingIcon = {
                                 Icon(
-                                    modifier = Modifier.clickable {
-                                        onUiAction(AddGroupMembersUiAction.ContactClicked(contact))
-                                    },
                                     imageVector = Icons.Default.Close,
                                     contentDescription = stringResource(MR.string.remove),
                                 )
