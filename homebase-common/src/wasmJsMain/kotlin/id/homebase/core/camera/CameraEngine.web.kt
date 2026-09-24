@@ -12,4 +12,4 @@ actual fun rememberCameraEngine(): CameraEngine = remember { UnavailableCameraEn
 actual fun CameraPreview(engine: CameraEngine, modifier: Modifier, onTapFocus: (Offset) -> Unit) = Unit
 
 @Composable
-actual fun rememberDeviceRotation(): QuarterTurn = QuarterTurn.R0
+internal actual fun rememberRawDeviceRotation(): QuarterTurn? = null

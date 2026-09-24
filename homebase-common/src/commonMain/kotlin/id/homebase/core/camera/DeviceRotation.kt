@@ -1,6 +1,12 @@
 package id.homebase.core.camera
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 
 // Buckets and dead bands derived from Signal-Android DeviceRotation.kt (AGPL-3.0, see NOTICE).
 object DeviceRotation {
@@ -23,4 +29,20 @@ object DeviceRotation {
 }
 
 @Composable
-expect fun rememberDeviceRotation(): QuarterTurn
+fun rememberDeviceRotation(): QuarterTurn = settledRotation(rememberRawDeviceRotation())
+
+/** The latest physical reading, or null before the first one. */
+@Composable
+internal expect fun rememberRawDeviceRotation(): QuarterTurn?
+
+/** The first reading lands at once; later ones only after holding still for [DeviceRotation.SETTLE_MS]. */
+@Composable
+internal fun settledRotation(raw: QuarterTurn?): QuarterTurn {
+    var committed by remember { mutableStateOf<QuarterTurn?>(null) }
+    LaunchedEffect(raw) {
+        val next = raw ?: return@LaunchedEffect
+        if (committed != null) delay(DeviceRotation.SETTLE_MS)
+        committed = next
+    }
+    return committed ?: QuarterTurn.R0
+}

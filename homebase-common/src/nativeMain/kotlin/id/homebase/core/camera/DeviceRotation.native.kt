@@ -13,8 +13,8 @@ import platform.UIKit.UIDeviceOrientation
 import platform.UIKit.UIDeviceOrientationDidChangeNotification
 
 @Composable
-actual fun rememberDeviceRotation(): QuarterTurn {
-    var turn by remember { mutableStateOf(UIDevice.currentDevice.orientation.quarterTurn() ?: QuarterTurn.R0) }
+internal actual fun rememberRawDeviceRotation(): QuarterTurn? {
+    var turn by remember { mutableStateOf(UIDevice.currentDevice.orientation.quarterTurn()) }
     DisposableEffect(Unit) {
         val device = UIDevice.currentDevice
         device.beginGeneratingDeviceOrientationNotifications()
