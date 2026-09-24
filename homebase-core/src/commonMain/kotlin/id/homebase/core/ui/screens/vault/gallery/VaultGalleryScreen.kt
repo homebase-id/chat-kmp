@@ -204,13 +204,17 @@ fun VaultGalleryScreen(
                     }
 
                     if (isImage) {
+                        // The grid tile is keyed on the first payload. Any other page has no partner,
+                        // and an off-screen first page would fly in from outside the viewport.
+                        val isHero = descriptor.key == file.payloadDescriptors.firstOrNull()?.key &&
+                            pagerState.settledPage == page
                         VaultZoomableImage(
                             file = file,
                             descriptor = descriptor,
                             localAttachmentStore = localAttachmentStore,
                             onToggleUI = onTapImage,
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
+                            sharedTransitionScope = sharedTransitionScope.takeIf { isHero },
+                            animatedVisibilityScope = animatedVisibilityScope.takeIf { isHero },
                         )
                     } else if (file.isPdf) {
                         PdfViewerPage(
