@@ -83,7 +83,8 @@ class PostCommentsService(
 
     private class PerPostState {
         val byId = mutableMapOf<Uuid, PostCommentItem>()
-        val flow = MutableStateFlow<List<PostCommentItem>>(emptyList())
+        // Null until the cold load finishes, so "no comments yet" is never shown for a thread still loading.
+        val flow = MutableStateFlow<List<PostCommentItem>?>(null)
     }
 
     private val lock = SynchronizedObject()
@@ -95,7 +96,7 @@ class PostCommentsService(
     private var subscriptionStarted = false
 
     // Takes the whole post, not just its id: routing a peer cold-load needs its globalTransitId and channel.
-    fun commentsFor(post: FeedPostItem): StateFlow<List<PostCommentItem>> {
+    fun commentsFor(post: FeedPostItem): StateFlow<List<PostCommentItem>?> {
         val (state, isFirstObserver) = stateFor(post.id)
         if (isFirstObserver) {
             scope.launch { coldLoad(post, state) }
@@ -191,9 +192,10 @@ class PostCommentsService(
             }
             // A followed post's thread lives on the AUTHOR's drive, so the local passes above find nothing.
             loadPeerComments(post, state)
-            emitSorted(state)
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Cold-load failed for post=$postId: ${e.message}" }
+        } finally {
+            emitSorted(state)
         }
     }
 

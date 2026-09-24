@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -232,7 +233,7 @@ fun ProfileEditScreen(
                 uiState = uiState,
                 modifier = Modifier.fillMaxSize().padding(padding),
             )
-            else -> Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            else -> Column(modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
                 if (uiState.savingAttributes.isNotEmpty()) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
@@ -313,8 +314,8 @@ private fun ProfileForm(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .imePadding(),
+                .imePadding()
+                .verticalScroll(rememberScrollState()),
         ) {
             Spacer(Modifier.height(8.dp))
             ProfileFieldsSection(
