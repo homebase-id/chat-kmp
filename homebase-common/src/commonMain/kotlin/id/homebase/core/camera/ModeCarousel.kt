@@ -51,8 +51,8 @@ import kotlin.math.roundToInt
 import kotlin.math.sign
 
 /**
- * Where the mode labels sit, in slots (0 = first mode centred under the pill). Fractional while a finger drags them,
- * so both the carousel and a sideways swipe on the preview move the same labels.
+ * Where the selection pill sits, in slots (0 = over the first mode). Fractional while a finger drags it, so both the
+ * track and a sideways swipe on the preview move the same pill.
  */
 @Stable
 internal class ModeCarouselState(
@@ -209,7 +209,7 @@ internal fun ModeCarousel(
         modifier = modifier
             .background(colors.scrim.copy(alpha = TRACK_ALPHA), CircleShape)
             .padding(ModeTrackInset)
-            .width(metrics.slot * 3)
+            .width(metrics.slot * modes.size)
             .height(metrics.height)
             .clip(CircleShape)
             .pointerInput(Unit) {
@@ -222,7 +222,7 @@ internal fun ModeCarousel(
                         if (active) currentOnDragStart()
                     },
                     onDragEnd = {
-                        if (active) currentOnDragEnd(tracker.calculateVelocity().x, currentSlotPx)
+                        if (active) currentOnDragEnd(-tracker.calculateVelocity().x, currentSlotPx)
                         active = false
                     },
                     onDragCancel = {
@@ -233,24 +233,22 @@ internal fun ModeCarousel(
                     if (!active) return@detectHorizontalDragGestures
                     change.consume()
                     tracker.addPosition(change.uptimeMillis, change.position)
-                    currentOnDrag(dragAmount, currentSlotPx)
+                    // The pill follows the finger, the opposite sense to a preview swipe that pushes the page along.
+                    currentOnDrag(-dragAmount, currentSlotPx)
                 }
             }
             .selectableGroup(),
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.CenterStart,
     ) {
         Box(
             Modifier
+                .offset { IntOffset((state.position * slotPx).roundToInt(), 0) }
+                .graphicsLayer { alpha = state.fade.value }
                 .width(metrics.slot)
                 .fillMaxHeight()
                 .background(colors.primary, CircleShape),
         )
-        Row(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .offset { IntOffset(((1f - state.position) * slotPx).roundToInt(), 0) }
-                .graphicsLayer { alpha = state.fade.value },
-        ) {
+        Row {
             modes.forEachIndexed { index, mode ->
                 Box(
                     modifier = Modifier

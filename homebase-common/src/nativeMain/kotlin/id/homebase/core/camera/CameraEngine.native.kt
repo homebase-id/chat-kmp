@@ -338,6 +338,8 @@ internal class IosCameraEngine(private val outputDir: String, private val record
                 focusLocked = false,
                 exposureSupported = true,
                 exposureBias = 0f,
+                exposureMinEv = device.minExposureTargetBias,
+                exposureMaxEv = device.maxExposureTargetBias,
             )
         }
         applyTorchOnQueue(device)

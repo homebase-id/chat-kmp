@@ -97,6 +97,7 @@ import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.roundToInt
+import kotlin.math.sign
 import kotlin.time.Clock
 import kotlin.time.TimeSource
 
@@ -114,6 +115,10 @@ private val ShutterRowMaxWidth = 480.dp
 private val RailGap = 24.dp
 private val SidewaysSnackbarMaxWidth = 480.dp
 private val SidewaysSnackbarClearance = 192.dp
+private val CarouselHideDrop = 8.dp
+private const val FROZEN_FRAME_DIM = 0.6f
+// A normal lens flip rebinds in about half a second; only a slower start earns a spinner.
+private const val STARTING_SPINNER_DELAY_MS = 700L
 
 @Composable
 internal fun CameraCaptureContent(
@@ -143,6 +148,10 @@ internal fun CameraCaptureContent(
     var stopping by remember { mutableStateOf(false) }
     var stopRequested by remember { mutableStateOf(false) }
     var heldRecording by remember { mutableStateOf(false) }
+    // Leads the engine: set on the frame a recording is asked for and cleared on the frame it's stopped, so every
+    // control switches look together instead of waiting for the engine's start/stop callbacks.
+    var recordingIntent by remember { mutableStateOf(false) }
+    var previewShown by remember { mutableStateOf(false) }
     var holdZoomBase by remember { mutableFloatStateOf(1f) }
     var lockProgress by remember { mutableFloatStateOf(0f) }
     var returnToPhotoAfterHold by remember { mutableStateOf(false) }
@@ -186,12 +195,22 @@ internal fun CameraCaptureContent(
     LaunchedEffect(engine, deviceRotation) { engine.setCaptureRotation(deviceRotation) }
     LaunchedEffect(engine) {
         engine.errors.collect { error ->
+            if (error is CameraError.RecordingFailed && recordingIntent && !currentUi.isRecording) {
+                recordingIntent = false
+                heldRecording = false
+                if (returnToPhotoAfterHold) {
+                    returnToPhotoAfterHold = false
+                    engine.setMode(CaptureMode.Photo)
+                }
+            }
             val message = error.messageRes ?: return@collect
             snackbar.currentSnackbarData?.dismiss()
             snackbar.showSnackbar(getString(message))
         }
     }
-    val selectedIndex = modes.indexOf(ui.mode).coerceAtLeast(0)
+    // A hold from Photo that rebinds to Video still reads as Photo, so nothing flickers to Video and back.
+    val displayMode = if (returnToPhotoAfterHold) CaptureMode.Photo else ui.mode
+    val selectedIndex = modes.indexOf(displayMode).coerceAtLeast(0)
     LaunchedEffect(selectedIndex) { carousel.settleTo(selectedIndex, currentReduceMotion) }
     LaunchedEffect(ui.focusPoint) {
         if (focusGate && ui.focusPoint != null) ignoredFocus = ui.focusPoint
@@ -206,6 +225,8 @@ internal fun CameraCaptureContent(
         stopping = true
         // The watcher below sees isRecording drop after this stop returns; it must not take it for a second end.
         stopRequested = requested
+        recordingIntent = false
+        heldRecording = false
         busy = true
         haptics.perform(HapticEvent.Confirm)
         val startedAt = currentUi.recordingStartedAtMs
@@ -215,11 +236,12 @@ internal fun CameraCaptureContent(
             val file = engine.stopRecording()
             busy = false
             stopping = false
+            deliver(file)
+            // A delivered clip closes the camera; rebinding to Photo under the closing window only paints black frames.
             if (returnToPhotoAfterHold) {
                 returnToPhotoAfterHold = false
-                engine.setMode(CaptureMode.Photo)
+                if (file == null) engine.setMode(CaptureMode.Photo)
             }
-            deliver(file)
         }
     }
 
@@ -235,7 +257,7 @@ internal fun CameraCaptureContent(
     }
 
     fun startRecording(held: Boolean): Boolean {
-        if (busy || currentUi.isRecording) return false
+        if (busy || recordingIntent || currentUi.isRecording) return false
         if (currentMic.needsAsking) {
             onRequestMic()
             return false
@@ -246,6 +268,7 @@ internal fun CameraCaptureContent(
             engine.setMode(CaptureMode.Video)
         }
         heldRecording = held
+        recordingIntent = true
         stopRequested = false
         lockProgress = 0f
         haptics.perform(HapticEvent.LongPress)
@@ -273,7 +296,9 @@ internal fun CameraCaptureContent(
         }
     }
 
-    fun currentButtonState() = CaptureButtonState.of(currentUi.mode, currentUi.isRecording, isRecordingLocked = !heldRecording)
+    fun isRecordingNow() = recordingIntent || (currentUi.isRecording && !stopping)
+
+    fun currentButtonState() = CaptureButtonState.of(currentUi.mode, isRecordingNow(), isRecordingLocked = !heldRecording)
 
     fun shutterTap() {
         when (currentButtonState().tapAction) {
@@ -292,9 +317,9 @@ internal fun CameraCaptureContent(
 
     fun flipLens() {
         val state = currentUi
-        if (state.isRecording || busy || !state.hasFrontLens || !state.hasBackLens) return
+        if (state.isRecording || recordingIntent || busy || !state.hasFrontLens || !state.hasBackLens) return
         lensTurns += 180f
-        haptics.perform(HapticEvent.Selection)
+        haptics.perform(HapticEvent.Tick)
         // The taps of a double-tap flip also reach the preview's tap-to-focus; neither should leave a ring.
         focusGate = true
         ignoredFocus = state.focusPoint
@@ -306,7 +331,7 @@ internal fun CameraCaptureContent(
     }
 
     fun selectMode(mode: CaptureMode, haptic: Boolean = true): Boolean {
-        if (currentUi.isRecording || busy || !allowedModes.allows(mode)) return false
+        if (currentUi.isRecording || recordingIntent || busy || !allowedModes.allows(mode)) return false
         if (mode == currentUi.mode) return true
         if (haptic) haptics.perform(HapticEvent.Selection)
         engine.setMode(mode)
@@ -370,14 +395,17 @@ internal fun CameraCaptureContent(
             override fun onPinchEnd() {
                 zoomGesture = false
             }
-            override fun canDragMode() = modes.size > 1 && !currentUi.isRecording && !busy
+            override fun canDragMode() = modes.size > 1 && !currentUi.isRecording && !recordingIntent && !busy
             override fun onModeDragStart() = modeDragStart()
             override fun onModeDrag(deltaX: Float, slotPx: Float) = modeDrag(deltaX, slotPx)
             override fun onModeDragEnd(velocityX: Float, slotPx: Float) = modeDragEnd(velocityX, slotPx)
             override fun canDragExposure() = currentUi.exposureSupported && currentUi.focusPoint != null
             override fun onExposureDrag(deltaY: Float) {
                 val travel = with(density) { ExposureTravel.toPx() }
-                engine.setExposureBias(currentUi.exposureBias - deltaY / travel)
+                val from = currentUi.exposureBias
+                val to = (from - deltaY / travel).coerceIn(-1f, 1f)
+                if (from != 0f && (to == 0f || sign(to) != sign(from))) haptics.perform(HapticEvent.Tick)
+                engine.setExposureBias(to)
             }
         }
     }
@@ -390,7 +418,10 @@ internal fun CameraCaptureContent(
         return
     }
 
-    val buttonState = CaptureButtonState.of(ui.mode, ui.isRecording, isRecordingLocked = !heldRecording)
+    val looksRecording = recordingIntent || (ui.isRecording && !stopping)
+    val buttonState = CaptureButtonState.of(displayMode, looksRecording, isRecordingLocked = !heldRecording)
+    val videoIndex = modes.indexOf(CaptureMode.Video)
+    val videoAmount = { if (videoIndex < 0) 0f else 1f - abs(carousel.position - videoIndex).coerceIn(0f, 1f) }
     val uprightDegrees = deviceRotation.uprightIconDegrees(displayRotation)
     val iconRotationState = animatedUprightRotation(uprightDegrees)
     val iconRotation = { iconRotationState.value }
@@ -427,8 +458,15 @@ internal fun CameraCaptureContent(
             preview(Modifier.fillMaxSize())
         }
 
+        LaunchedEffect(ui.isBound) { if (ui.isBound) previewShown = true }
+        // Once the preview has streamed, a rebind (flip, mode switch) dims the frame the surface still holds
+        // instead of blacking it out; a first start has no frame to keep.
         val blackout by animateFloatAsState(
-            targetValue = if (ui.isBound) 0f else 1f,
+            targetValue = when {
+                ui.isBound -> 0f
+                previewShown -> FROZEN_FRAME_DIM
+                else -> 1f
+            },
             animationSpec = motion.defaultEffectsSpec(),
         )
         val modeDip = remember { Animatable(0f) }
@@ -436,6 +474,8 @@ internal fun CameraCaptureContent(
         LaunchedEffect(ui.mode) {
             if (ui.mode == lastMode) return@LaunchedEffect
             lastMode = ui.mode
+            // With photo and video bound together the switch is instant; a dip would read as a glitch.
+            if (currentUi.supportsSimultaneousVideo) return@LaunchedEffect
             modeDip.snapTo(0.45f)
             modeDip.animateTo(0f, tween(durationMillis = 280))
         }
@@ -445,12 +485,13 @@ internal fun CameraCaptureContent(
                 .graphicsLayer { alpha = maxOf(blackout, modeDip.value, captureBlink.value) }
                 .background(colors.scrim),
         )
-        StartingIndicator(visible = !ui.isBound, modifier = Modifier.align(Alignment.Center))
+        StartingIndicator(visible = !ui.isBound, modifier = Modifier.align(Alignment.Center), delayMs = STARTING_SPINNER_DELAY_MS)
 
         FocusRing(
             point = ui.focusPoint.takeUnless { focusGate || it == ignoredFocus },
             locked = ui.focusLocked,
             exposureBias = { liveUi.value.exposureBias },
+            exposureEv = { liveUi.value.exposureEv },
             showExposure = ui.exposureSupported,
         )
 
@@ -490,11 +531,12 @@ internal fun CameraCaptureContent(
         val topBar = @Composable {
             TopBar(
                 ui = ui,
+                recording = looksRecording,
                 mic = mic,
                 iconRotation = iconRotation,
                 onClose = onDismiss,
                 onFlash = {
-                    haptics.perform(HapticEvent.Selection)
+                    haptics.perform(HapticEvent.Tick)
                     when (FlashPolicy.control(ui.mode, ui.hasFlashUnit)) {
                         FlashControl.Flash -> engine.setFlash(FlashPolicy.next(ui.flashMode))
                         FlashControl.Torch -> engine.setTorch(!ui.torchOn)
@@ -511,7 +553,7 @@ internal fun CameraCaptureContent(
                 zoomRatio = { liveUi.value.zoomRatio },
                 iconRotation = iconRotation,
                 showReadout = zoomGesture,
-                dimmed = ui.isRecording && heldRecording,
+                dimmed = looksRecording && heldRecording,
                 onSelect = { preset ->
                     haptics.perform(HapticEvent.Selection)
                     engine.setZoomRatio(preset.ratio, animate = true)
@@ -532,9 +574,10 @@ internal fun CameraCaptureContent(
         }
 
         val carouselHide by animateFloatAsState(
-            targetValue = if (ui.isRecording) 1f else 0f,
-            animationSpec = if (reduceMotion) snap() else motion.fastEffectsSpec(),
+            targetValue = if (looksRecording) 1f else 0f,
+            animationSpec = if (reduceMotion) snap() else motion.defaultEffectsSpec(),
         )
+        val carouselDrop = with(density) { CarouselHideDrop.toPx() }
         val modeCarousel = @Composable {
             if (modes.size > 1) {
                 val labels = modes.map { modeLabel(it) }
@@ -544,14 +587,14 @@ internal fun CameraCaptureContent(
                     labels = labels,
                     metrics = rememberModeSlotMetrics(labels),
                     selectedIndex = selectedIndex,
-                    enabled = !ui.isRecording && !busy,
+                    enabled = !looksRecording && !busy,
                     onSelect = { selectMode(it) },
                     onDragStart = ::modeDragStart,
                     onDrag = ::modeDrag,
                     onDragEnd = ::modeDragEnd,
                     modifier = Modifier.graphicsLayer {
                         alpha = 1f - carouselHide
-                        translationY = carouselHide * size.height / 2
+                        translationY = carouselHide * carouselDrop
                     },
                 )
             }
@@ -565,7 +608,7 @@ internal fun CameraCaptureContent(
                 Offset((shutterRowWidthPx / 2 - SideSlotSize.toPx() / 2) * if (isRtl) 1f else -1f, 0f)
             }
         }
-        val lockVisible = ui.isRecording && heldRecording && !keyHoldStarted
+        val lockVisible = looksRecording && heldRecording && !keyHoldStarted
         val lockTarget = @Composable {
             LockTarget(
                 visible = lockVisible,
@@ -587,6 +630,7 @@ internal fun CameraCaptureContent(
                 holdEnabled = holdEnabled,
                 busy = busy,
                 enabled = ui.isBound || ui.isRecording,
+                videoAmount = videoAmount,
                 label = stringResource(
                     when (buttonState) {
                         CaptureButtonState.Photo -> MR.string.camera_shutter_photo
@@ -607,6 +651,7 @@ internal fun CameraCaptureContent(
                 },
                 lockOffset = lockOffset,
                 onLockProgress = { lockProgress = it },
+                onLockArmed = { haptics.perform(HapticEvent.Tick) },
                 onLock = ::lockRecording,
                 onHoldZoom = { fraction ->
                     if (currentUi.isRecording) {
@@ -620,8 +665,8 @@ internal fun CameraCaptureContent(
         val flip = @Composable {
             FlipLensButton(
                 visible = ui.hasFrontLens && ui.hasBackLens,
-                enabled = !ui.isRecording && !busy,
-                hidden = ui.isRecording,
+                enabled = !looksRecording && !busy,
+                hidden = looksRecording,
                 lens = ui.lens,
                 turns = lensTurns,
                 iconRotation = iconRotation,
