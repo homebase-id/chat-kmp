@@ -1,6 +1,7 @@
 package id.homebase.core.camera
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -13,6 +14,7 @@ import io.github.vinceglb.filekit.PlatformFile
 @Stable
 class InAppCameraLauncher internal constructor() : PlatformCameraManager {
     internal var openMode by mutableStateOf<CaptureMode?>(null)
+    internal var galleryRequested by mutableStateOf(false)
 
     override fun launch() = launch(CaptureMode.Photo)
 
@@ -45,7 +47,7 @@ fun rememberInAppCameraManager(
             onOpenGallery = if (onOpenGallery == null) null else {
                 {
                     launcher.openMode = null
-                    currentOnOpenGallery?.invoke()
+                    launcher.galleryRequested = true
                 }
             },
             onResult = { file ->
@@ -57,6 +59,12 @@ fun rememberInAppCameraManager(
                 currentOnResult(null)
             },
         )
+    } else if (launcher.galleryRequested) {
+        // iOS presents the picker on the key window, which stays the camera dialog's until it leaves composition.
+        LaunchedEffect(Unit) {
+            launcher.galleryRequested = false
+            currentOnOpenGallery?.invoke()
+        }
     }
     return launcher
 }
