@@ -1379,6 +1379,10 @@ fun MessageTextFieldForAttachment(
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
+            val sendButtonColors = IconButtonDefaults.iconButtonColors(
+                containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+            )
             Crossfade(isKeyboardVisible, animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) { keyboardUp ->
                 if (!keyboardUp) {
                     SendChordTooltip(
@@ -1388,10 +1392,7 @@ fun MessageTextFieldForAttachment(
                         IconButton(
                             onClick = { hasSent = true; onSendMessage() },
                             enabled = !hasSent,
-                            colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                                contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                            )
+                            colors = sendButtonColors,
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Send,
@@ -1404,10 +1405,7 @@ fun MessageTextFieldForAttachment(
                 } else {
                     IconButton(
                         onClick = { keyboardController?.hide() },
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                            contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                        )
+                        colors = sendButtonColors,
                     ) {
                         Icon(
                             imageVector = Icons.Default.Check, contentDescription = stringResource(
