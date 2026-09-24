@@ -219,12 +219,13 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
     /** Session queue, after any commit that changed the device, format or preset. */
     private fun configureOutputsForDevice() {
         val format = currentDevice()?.activeFormat ?: return
-        val gravity = format.dimensions().let { (w, h) -> if (w * 3 == h * 4) AVLayerVideoGravityResizeAspect else AVLayerVideoGravityResizeAspectFill }
+        val fourByThree = format.dimensions().let { (w, h) -> w * 3 == h * 4 }
         dispatch_async(dispatch_get_main_queue()) {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
-            previewLayer.videoGravity = gravity
+            previewLayer.videoGravity = if (fourByThree) AVLayerVideoGravityResizeAspect else AVLayerVideoGravityResizeAspectFill
             CATransaction.commit()
+            _uiState.update { it.copy(previewAspectRatio = if (fourByThree) 3f / 4f else null) }
         }
         choosePhotoSize(format.photoSizes())?.let { (width, height) ->
             photoOutput.maxPhotoDimensions = cValue<CMVideoDimensions> {
