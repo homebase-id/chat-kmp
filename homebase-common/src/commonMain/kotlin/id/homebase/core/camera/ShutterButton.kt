@@ -21,7 +21,9 @@ import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -37,6 +39,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.pointerInput
@@ -51,12 +54,13 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.Morph
 import id.homebase.core.ui.theme.HomebaseTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 internal const val SHUTTER_TAG = "camera_shutter"
 
-// Crossing LOCK_SNAP_FRACTION of the way to lockOffset locks at once, not on release.
+// Crossing LOCK_SNAP_FRACTION arms the lock; it takes on lift or after LOCK_DWELL_MS armed, and pulling back disarms.
 @Composable
 internal fun ShutterButton(
     state: CaptureButtonState,
@@ -65,12 +69,14 @@ internal fun ShutterButton(
     enabled: Boolean,
     label: String,
     stateLabel: String?,
+    videoAmount: () -> Float,
     onTap: () -> Unit,
     onHoldStart: () -> Boolean,
     onHoldZoom: (Float) -> Unit,
     onHoldEnd: () -> Unit,
     lockOffset: Offset,
     onLockProgress: (Float) -> Unit,
+    onLockArmed: () -> Unit,
     onLock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -85,6 +91,9 @@ internal fun ShutterButton(
     val currentLockOffset by rememberUpdatedState(lockOffset)
     val currentOnLockProgress by rememberUpdatedState(onLockProgress)
     val currentOnLock by rememberUpdatedState(onLock)
+    val currentOnLockArmed by rememberUpdatedState(onLockArmed)
+    val currentVideoAmount by rememberUpdatedState(videoAmount)
+    var lockPull by remember { mutableFloatStateOf(0f) }
 
     val colors = MaterialTheme.colorScheme
     val record = HomebaseTheme.extendedColors.cameraRecord
@@ -92,7 +101,6 @@ internal fun ShutterButton(
     val motion = MaterialTheme.motionScheme
     val reduceMotion = LocalReduceMotion.current
     val recording = state.isRecording
-    val videoLook = state != CaptureButtonState.Photo
 
     val pressMorph by animateFloatAsState(
         targetValue = if (pressed && !recording) 1f else 0f,
@@ -118,10 +126,22 @@ internal fun ShutterButton(
         targetValue = if (pressed && !recording && !reduceMotion) 40f else 0f,
         animationSpec = motion.slowSpatialSpec(),
     )
-    val innerColor by animateColorAsState(
-        targetValue = if (videoLook) record else colors.onSurface,
-        animationSpec = motion.defaultEffectsSpec(),
+    val recordingRed by animateFloatAsState(
+        targetValue = if (recording) 1f else 0f,
+        animationSpec = if (reduceMotion) snap() else motion.fastSpatialSpec(),
     )
+    val arcAlpha by animateFloatAsState(
+        targetValue = if (recording) 1f else 0f,
+        animationSpec = tween(durationMillis = 150),
+    )
+    val showSpinner by produceState(false, busy) {
+        value = false
+        if (busy) {
+            delay(SAVING_SPINNER_DELAY_MS)
+            value = true
+        }
+    }
+    val white = colors.onSurface
     val ringColor by animateColorAsState(
         targetValue = if (recording) colors.onSurface.copy(alpha = 0.5f) else colors.onSurface,
         animationSpec = motion.defaultEffectsSpec(),
@@ -198,9 +218,31 @@ internal fun ShutterButton(
                         followOffset = Offset.Zero
                         following = true
                         var locked = false
+                        var armedAt = -1L
+                        val releaseMarginPx = LockReleaseMargin.toPx()
+                        fun commitLock() {
+                            locked = true
+                            armedAt = -1L
+                            lockPull = 0f
+                            currentOnLock()
+                            releaseFollow()
+                        }
                         while (true) {
-                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
-                            if (!change.pressed) break
+                            val armed = armedAt >= 0L
+                            val event = if (armed) {
+                                withTimeoutOrNull(LOCK_DWELL_MS) { awaitPointerEvent() }
+                            } else {
+                                awaitPointerEvent()
+                            }
+                            if (event == null) {
+                                commitLock()
+                                continue
+                            }
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                if (!locked && armed) commitLock()
+                                break
+                            }
                             change.consume()
                             if (locked) continue
                             val drag = change.position - down.position
@@ -215,18 +257,26 @@ internal fun ShutterButton(
                             val across = abs(drag.x * unit.y - drag.y * unit.x)
                             val progress = (along / length).coerceIn(0f, 1f)
                             val towardLock = along > across && progress > LOCK_INTENT_FRACTION
-                            followOffset = unit * along.coerceIn(0f, length)
-                            currentOnLockProgress(if (towardLock) progress else 0f)
-                            if (progress >= LOCK_SNAP_FRACTION) {
-                                locked = true
-                                currentOnLock()
-                                releaseFollow()
-                            } else if (!towardLock) {
+                            if (!armed && progress >= LOCK_SNAP_FRACTION) {
+                                armedAt = change.uptimeMillis
+                                currentOnLockArmed()
+                            } else if (armed && progress < LOCK_SNAP_FRACTION - releaseMarginPx / length) {
+                                armedAt = -1L
+                            } else if (armed && change.uptimeMillis - armedAt >= LOCK_DWELL_MS) {
+                                commitLock()
+                                continue
+                            }
+                            val pull = if (armedAt >= 0L) 1f else if (towardLock) progress else 0f
+                            followOffset = unit * (if (armedAt >= 0L) length else along.coerceIn(0f, length))
+                            lockPull = pull
+                            currentOnLockProgress(pull)
+                            if (!towardLock && armedAt < 0L) {
                                 val above = (-drag.y).coerceAtLeast(0f)
                                 currentOnHoldZoom((above / zoomTravel).coerceIn(0f, 1f))
                             }
                         }
                         if (!locked) {
+                            lockPull = 0f
                             currentOnLockProgress(0f)
                             releaseFollow()
                             currentOnHoldEnd()
@@ -249,25 +299,38 @@ internal fun ShutterButton(
                     scaleY = innerScale
                 }
                 .drawBehind {
-                    val morph = if (recordMorph > 0f) recordShape else pressShape
-                    val progress = if (recordMorph > 0f) recordMorph else pressMorph
+                    val squaring = maxOf(recordMorph, lockPull)
+                    val morph = if (squaring > 0f) recordShape else pressShape
+                    val progress = if (squaring > 0f) squaring else pressMorph
+                    // A red disc grows inside the white one, so Photo↔Video never passes through a blended pink.
+                    val red = maxOf(recordingRed, currentVideoAmount()).coerceIn(0f, 1f)
                     // At rest both morphs are a circle; a circle draws far cheaper than an anti-aliased cubic path.
-                    if (progress == 0f) {
-                        drawCircle(innerColor)
-                        return@drawBehind
+                    if (progress != 0f) morph.toComposePath(progress, size, path)
+                    fun fill(color: Color) {
+                        if (progress == 0f) {
+                            drawCircle(color)
+                        } else {
+                            rotate(if (squaring > 0f) 0f else cookieSpin) { drawPath(path, color) }
+                        }
                     }
-                    morph.toComposePath(progress, size, path)
-                    rotate(if (recordMorph > 0f) 0f else cookieSpin) {
-                        drawPath(path, innerColor)
-                    }
+                    if (red < 1f) fill(white)
+                    if (red > 0f) scale(red) { fill(record) }
                 },
         )
-        // Composed only while recording: an infinite transition on an idle shutter would redraw every frame.
-        if (recording) RecordingArc(color = record, ringScale = { ringScale }, still = reduceMotion, modifier = Modifier.matchParentSize())
-        if (busy) {
+        // Composed only while shown: an infinite transition on an idle shutter would redraw every frame.
+        if (recording || arcAlpha > 0f) {
+            RecordingArc(
+                color = record,
+                ringScale = { ringScale },
+                alpha = { arcAlpha },
+                still = reduceMotion,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
+        if (showSpinner) {
             LoadingIndicator(
                 modifier = Modifier.size(InnerSize),
-                color = if (videoLook) onRecord else colors.surface,
+                color = if (state == CaptureButtonState.Photo) colors.surface else onRecord,
             )
         }
     }
@@ -280,6 +343,11 @@ private const val HELD_RING_SCALE = 1.2f
 private const val HOLD_ZOOM_TRAVEL_MULTIPLIER = 4f
 private const val LOCK_INTENT_FRACTION = 0.1f
 internal const val LOCK_SNAP_FRACTION = 0.85f
+internal const val LOCK_DWELL_MS = 150L
+private val LockReleaseMargin = 12.dp
+private const val SAVING_SPINNER_DELAY_MS = 300L
+// One sweep per minute: a determinate elapsed ring, not a spinner that reads as loading.
+private const val ARC_REVOLUTION_MS = 60_000
 private val FOLLOW_SPRING = spring(dampingRatio = 0.7f, stiffness = 500f, visibilityThreshold = Offset(0.5f, 0.5f))
 
 private val unitToPath = Matrix()
@@ -305,14 +373,14 @@ private fun Morph.toComposePath(progress: Float, size: Size, path: Path) {
 }
 
 @Composable
-private fun RecordingArc(color: Color, ringScale: () -> Float, still: Boolean, modifier: Modifier) {
-    val angle = if (still) {
+private fun RecordingArc(color: Color, ringScale: () -> Float, alpha: () -> Float, still: Boolean, modifier: Modifier) {
+    val sweep = if (still) {
         null
     } else {
         rememberInfiniteTransition().animateFloat(
             initialValue = 0f,
             targetValue = 360f,
-            animationSpec = infiniteRepeatable(tween(durationMillis = 1600, easing = LinearEasing)),
+            animationSpec = infiniteRepeatable(tween(durationMillis = ARC_REVOLUTION_MS, easing = LinearEasing)),
         )
     }
     Box(
@@ -321,15 +389,14 @@ private fun RecordingArc(color: Color, ringScale: () -> Float, still: Boolean, m
             val diameter = (size.minDimension - stroke) * ringScale()
             drawArc(
                 color = color,
-                startAngle = (angle?.value ?: 0f) - 90f,
-                sweepAngle = ARC_SWEEP,
+                startAngle = -90f,
+                sweepAngle = sweep?.value ?: 360f,
                 useCenter = false,
                 topLeft = Offset((size.width - diameter) / 2, (size.height - diameter) / 2),
                 size = Size(diameter, diameter),
+                alpha = alpha(),
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
         },
     )
 }
-
-private const val ARC_SWEEP = 110f

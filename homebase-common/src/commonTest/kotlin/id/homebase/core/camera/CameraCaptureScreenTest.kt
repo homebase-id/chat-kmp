@@ -28,6 +28,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import io.github.vinceglb.filekit.PlatformFile
@@ -61,6 +62,7 @@ class CameraCaptureScreenTest {
         size: DpSize = PhoneSize,
         deviceRotation: QuarterTurn = QuarterTurn.R0,
         onResult: (PlatformFile) -> Unit = {},
+        preview: @Composable (Modifier) -> Unit = { Box(it) },
     ) {
         setContent {
             Themed {
@@ -77,7 +79,7 @@ class CameraCaptureScreenTest {
                             deviceRotation = deviceRotation,
                             onResult = onResult,
                             onDismiss = {},
-                            preview = { Box(it) },
+                            preview = preview,
                         )
                     }
                 }
@@ -307,7 +309,7 @@ class CameraCaptureScreenTest {
     fun swipingTheModeCarouselChangesMode() = runComposeUiTest {
         val engine = FakeCameraEngine()
         showCamera(engine)
-        onNodeWithTag(MODE_PHOTO_TAG).performTouchInput { swipeLeft(startX = right, endX = left - 200f) }
+        onNodeWithTag(MODE_PHOTO_TAG).performTouchInput { swipeRight(startX = left, endX = right + 200f) }
         waitForIdle()
         assertEquals(CaptureMode.Video, engine.uiState.value.mode)
     }
@@ -341,6 +343,63 @@ class CameraCaptureScreenTest {
         waitForIdle()
         assertEquals(CaptureMode.Photo, engine.uiState.value.mode)
         assertTrue(engine.uiState.value.zoomRatio > 1f, "pinch should zoom in")
+    }
+
+    private class PreviewTaps {
+        var taps = 0
+        var longPresses = 0
+        val preview: @Composable (Modifier) -> Unit = { modifier ->
+            Box(modifier.pointerInput(Unit) { detectPreviewTaps(onTap = { taps++ }, onLongPress = { longPresses++ }) })
+        }
+    }
+
+    private fun ComposeUiTest.slowDragOnPreview(step: Offset) {
+        onNodeWithTag(PREVIEW_TAG).performTouchInput {
+            down(center)
+            repeat(12) { moveBy(step, delayMillis = 50) }
+            up()
+        }
+        waitForIdle()
+    }
+
+    @Test
+    fun previewTapAndHoldStillFocusAndLock() = runComposeUiTest {
+        val taps = PreviewTaps()
+        showCamera(FakeCameraEngine(), preview = taps.preview)
+        onNodeWithTag(PREVIEW_TAG).performTouchInput { click(center) }
+        onNodeWithTag(PREVIEW_TAG).performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            move()
+            up()
+        }
+        waitForIdle()
+        assertEquals(1, taps.taps)
+        assertEquals(1, taps.longPresses)
+    }
+
+    @Test
+    fun slowVerticalDragWithoutAFocusPointDoesNotLockFocus() = runComposeUiTest {
+        val taps = PreviewTaps()
+        val engine = FakeCameraEngine()
+        showCamera(engine, preview = taps.preview)
+        slowDragOnPreview(Offset(0f, 6f))
+        assertEquals(0, taps.longPresses)
+        assertEquals(0, taps.taps)
+    }
+
+    @Test
+    fun slowSidewaysDragInPhotoOnlyOrWhileRecordingDoesNotLockFocus() = runComposeUiTest {
+        val taps = PreviewTaps()
+        val engine = FakeCameraEngine()
+        showCamera(engine, modes = CameraModes.Photo, preview = taps.preview)
+        slowDragOnPreview(Offset(-6f, 0f))
+
+        engine.uiState.update { it.copy(isRecording = true, recordingStartedAtMs = 0L) }
+        waitForIdle()
+        slowDragOnPreview(Offset(6f, 0f))
+        assertEquals(0, taps.longPresses)
+        assertEquals(0, taps.taps)
     }
 
     @Test
@@ -432,7 +491,7 @@ class CameraCaptureScreenTest {
         showCamera(engine)
         onNodeWithTag(MODE_PHOTO_TAG).performTouchInput {
             down(center)
-            repeat(6) { moveBy(Offset(-8f, 0f), delayMillis = 60) }
+            repeat(6) { moveBy(Offset(8f, 0f), delayMillis = 60) }
             up()
         }
         waitForIdle()
@@ -446,7 +505,7 @@ class CameraCaptureScreenTest {
         showCamera(engine)
         onNodeWithTag(MODE_PHOTO_TAG).performTouchInput {
             down(center)
-            repeat(4) { moveBy(Offset(-10f, 0f), delayMillis = 8) }
+            repeat(4) { moveBy(Offset(10f, 0f), delayMillis = 8) }
             up()
         }
         waitForIdle()
@@ -459,7 +518,7 @@ class CameraCaptureScreenTest {
         showCamera(engine)
         onNodeWithTag(MODE_PHOTO_TAG).performTouchInput {
             down(center)
-            repeat(10) { moveBy(Offset(-8f, 0f), delayMillis = 80) }
+            repeat(10) { moveBy(Offset(8f, 0f), delayMillis = 80) }
             advanceEventTime(300)
             up()
         }
@@ -487,7 +546,7 @@ class CameraCaptureScreenTest {
         showCamera(engine, haptics = haptics)
         onNodeWithTag(MODE_PHOTO_TAG).performTouchInput {
             down(center)
-            repeat(10) { moveBy(Offset(-8f, 0f), delayMillis = 80) }
+            repeat(10) { moveBy(Offset(8f, 0f), delayMillis = 80) }
             advanceEventTime(300)
             up()
         }
@@ -503,7 +562,13 @@ class CameraCaptureScreenTest {
         holdShutter()
         haptics.events.clear()
         slideTowardLock(0.95f)
-        assertTrue(HapticEvent.Confirm in haptics.events, "lock confirms while the finger is still down: ${haptics.events}")
+        assertTrue(HapticEvent.Tick in haptics.events, "reaching the lock arms it: ${haptics.events}")
+        onNodeWithTag(SHUTTER_TAG).performTouchInput {
+            advanceEventTime(LOCK_DWELL_MS + 50)
+            moveBy(Offset(1f, 0f))
+        }
+        waitForIdle()
+        assertTrue(HapticEvent.Confirm in haptics.events, "an armed lock takes while the finger is still down: ${haptics.events}")
 
         onNodeWithTag(SHUTTER_TAG).performTouchInput { up() }
         waitForIdle()
@@ -524,6 +589,48 @@ class CameraCaptureScreenTest {
         onNodeWithTag(SHUTTER_TAG).performTouchInput { up() }
         waitForIdle()
         assertTrue("stop" in engine.calls)
+    }
+
+    @Test
+    fun pullingBackFromAnArmedLockDisarmsIt() = runComposeUiTest {
+        val engine = FakeCameraEngine()
+        showCamera(engine)
+        holdShutter()
+        val lock = onNodeWithTag(LOCK_TAG).fetchSemanticsNode().boundsInRoot.center
+        val shutter = onNodeWithTag(SHUTTER_TAG).fetchSemanticsNode().boundsInRoot.center
+        // Out to the lock and straight back within the dwell, in one gesture so no idle frame can let it take.
+        onNodeWithTag(SHUTTER_TAG).performTouchInput {
+            moveTo(center + (lock - shutter) * 0.95f, delayMillis = 16)
+            moveTo(center, delayMillis = 16)
+            up()
+        }
+        waitForIdle()
+        assertTrue("stop" in engine.calls, "released off the lock stops: ${engine.calls}")
+    }
+
+    @Test
+    fun holdStartSwitchesTheControlsBeforeTheEngineReportsIt() = runComposeUiTest {
+        val engine = FakeCameraEngine().apply { reportsRecordingStart = false }
+        showCamera(engine)
+        onNodeWithTag(TIMER_TAG).assertDoesNotExist()
+        holdShutter()
+        assertFalse(engine.uiState.value.isRecording)
+        onNodeWithTag(TIMER_TAG).assertExists()
+        onNodeWithTag(LOCK_TAG).assertExists()
+        onNodeWithTag(MODE_VIDEO_TAG).assertIsNotEnabled()
+    }
+
+    @Test
+    fun aDeliveredHoldFromPhotoDoesNotRebindToPhoto() = runComposeUiTest {
+        val engine = FakeCameraEngine().apply { recordingResult = PlatformFile("clip.mp4") }
+        var delivered: PlatformFile? = null
+        showCamera(engine, onResult = { delivered = it })
+        holdShutter()
+        onNodeWithTag(SHUTTER_TAG).performTouchInput { up() }
+        waitForIdle()
+        assertEquals("clip.mp4", delivered?.toString()?.substringAfterLast('/'))
+        val stop = engine.calls.indexOf("stop")
+        assertTrue(engine.calls.drop(stop).none { it == "mode:Photo" }, "${engine.calls}")
     }
 
     @Test

@@ -12,6 +12,7 @@ internal class FakeCameraEngine(initial: CameraUiState = CameraUiState(isBound =
 
     var photoResult: PlatformFile? = null
     var recordingResult: PlatformFile? = null
+    var reportsRecordingStart = true
     val calls = mutableListOf<String>()
 
     override fun setLens(lens: CameraLens) {
@@ -60,7 +61,7 @@ internal class FakeCameraEngine(initial: CameraUiState = CameraUiState(isBound =
 
     override fun startRecording(withAudio: Boolean) {
         calls += "record:audio=$withAudio"
-        uiState.update { it.copy(isRecording = true, recordingStartedAtMs = 0L) }
+        if (reportsRecordingStart) uiState.update { it.copy(isRecording = true, recordingStartedAtMs = 0L) }
     }
 
     override suspend fun stopRecording(): PlatformFile? {

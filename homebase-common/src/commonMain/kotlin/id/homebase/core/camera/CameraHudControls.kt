@@ -97,6 +97,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.roundToInt
 import kotlin.time.Clock
@@ -121,6 +122,7 @@ internal val SideSlotSize = 56.dp
 @Composable
 internal fun TopBar(
     ui: CameraUiState,
+    recording: Boolean,
     mic: MicPermission,
     iconRotation: () -> Float,
     onClose: () -> Unit,
@@ -131,11 +133,13 @@ internal fun TopBar(
         Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)) {
             CameraCloseButton(onClick = onClose, iconRotation = iconRotation, modifier = Modifier.align(Alignment.CenterStart))
             RecordingTimer(
+                visible = recording,
                 startedAtMs = ui.recordingStartedAtMs.takeIf { ui.isRecording },
                 modifier = Modifier.align(Alignment.Center),
             )
             FlashButton(
                 ui = ui,
+                recording = recording,
                 iconRotation = iconRotation,
                 onClick = onFlash,
                 modifier = Modifier.align(Alignment.CenterEnd),
@@ -190,10 +194,16 @@ internal fun CameraCloseButton(onClick: () -> Unit, iconRotation: () -> Float, m
 }
 
 @Composable
-private fun FlashButton(ui: CameraUiState, iconRotation: () -> Float, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun FlashButton(
+    ui: CameraUiState,
+    recording: Boolean,
+    iconRotation: () -> Float,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val control = FlashPolicy.control(ui.mode, ui.hasFlashUnit)
     AnimatedVisibility(
-        visible = control == FlashControl.Torch || (control == FlashControl.Flash && !ui.isRecording),
+        visible = control == FlashControl.Torch || (control == FlashControl.Flash && !recording),
         enter = fadeIn() + scaleIn(),
         exit = fadeOut() + scaleOut(),
         modifier = modifier,
@@ -234,15 +244,17 @@ private fun FlashButton(ui: CameraUiState, iconRotation: () -> Float, onClick: (
 }
 
 @Composable
-private fun RecordingTimer(startedAtMs: Long?, modifier: Modifier = Modifier) {
+private fun RecordingTimer(visible: Boolean, startedAtMs: Long?, modifier: Modifier = Modifier) {
+    val motion = MaterialTheme.motionScheme
     AnimatedVisibility(
-        visible = startedAtMs != null,
-        enter = fadeIn() + scaleIn(initialScale = 0.8f),
-        exit = fadeOut() + scaleOut(targetScale = 0.8f),
+        visible = visible,
+        enter = fadeIn(motion.fastEffectsSpec()) + scaleIn(motion.fastSpatialSpec(), initialScale = 0.8f),
+        exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(targetScale = 0.8f),
         modifier = modifier,
     ) {
-        val start = startedAtMs ?: 0L
-        val elapsedSeconds by produceState(0L, start) {
+        // Reads 0:00 until the engine reports the start, and freezes on the last value while fading out after a stop.
+        val elapsedSeconds by produceState(0L, startedAtMs) {
+            val start = startedAtMs ?: return@produceState
             while (true) {
                 value = (Clock.System.now().toEpochMilliseconds() - start).coerceAtLeast(0L) / 1000
                 delay(250)
@@ -498,7 +510,13 @@ internal fun StartingIndicator(visible: Boolean, modifier: Modifier = Modifier, 
 }
 
 @Composable
-internal fun FocusRing(point: Offset?, locked: Boolean, exposureBias: () -> Float, showExposure: Boolean) {
+internal fun FocusRing(
+    point: Offset?,
+    locked: Boolean,
+    exposureBias: () -> Float,
+    exposureEv: () -> Float,
+    showExposure: Boolean,
+) {
     val reduceMotion = LocalReduceMotion.current
     val scale = remember { Animatable(1f) }
     val alpha = remember { Animatable(0f) }
@@ -563,6 +581,7 @@ internal fun FocusRing(point: Offset?, locked: Boolean, exposureBias: () -> Floa
                 contentAlignment = Alignment.Center,
             ) {
                 Box(Modifier.size(2.dp, SliderHeight).background(colors.onSurface.copy(alpha = 0.6f), CircleShape))
+                Box(Modifier.size(SliderWidth, 2.dp).background(colors.onSurface.copy(alpha = 0.6f), CircleShape))
                 Icon(
                     imageVector = Icons.Outlined.WbSunny,
                     contentDescription = null,
@@ -573,12 +592,45 @@ internal fun FocusRing(point: Offset?, locked: Boolean, exposureBias: () -> Floa
                         .background(colors.scrim.copy(alpha = 0.4f), CircleShape),
                 )
             }
+            EvReadout(
+                ev = exposureEv,
+                modifier = Modifier
+                    .offset { IntOffset(x.roundToInt(), (at.y - sliderHeightPx / 2 - EvReadoutRise.toPx()).roundToInt()) }
+                    .graphicsLayer { this.alpha = alpha.value },
+            )
         }
     }
 }
 
+@Composable
+private fun EvReadout(ev: () -> Float, modifier: Modifier = Modifier) {
+    val text = formatEv(ev())
+    if (text == null) return
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+        color = MaterialTheme.colorScheme.onSurface,
+        maxLines = 1,
+        modifier = modifier
+            .testTag(EV_READOUT_TAG)
+            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f), CircleShape)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+/** "+0.7" / "−1.3"; null at 0 EV, where the readout hides. */
+internal fun formatEv(ev: Float): String? {
+    val tenths = (ev * 10f).roundToInt()
+    if (tenths == 0) return null
+    val magnitude = abs(tenths)
+    return "${if (tenths > 0) "+" else "\u2212"}${magnitude / 10}.${magnitude % 10}"
+}
+
+internal const val EV_READOUT_TAG = "camera_ev_readout"
+
 private val RingSize = 72.dp
 private val SliderWidth = 24.dp
+private val EvReadoutRise = 24.dp
 private val SliderHeight = 112.dp
 private const val RING_POP_SCALE = 1.4f
 private const val RING_HOLD_MS = 1_500L

@@ -332,6 +332,8 @@ internal class AndroidCameraEngine(
                 focusPoint = null,
                 focusLocked = false,
                 exposureSupported = info.exposureState.isExposureCompensationSupported,
+                exposureMinEv = info.exposureState.run { exposureCompensationRange.lower * exposureCompensationStep.toFloat() },
+                exposureMaxEv = info.exposureState.run { exposureCompensationRange.upper * exposureCompensationStep.toFloat() },
                 exposureBias = 0f,
             )
         }
