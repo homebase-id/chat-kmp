@@ -3119,7 +3119,8 @@ private fun AddCommentRow(
                     onSend = { if (canSend) onSend() },
                 ),
             singleLine = true,
-            enabled = !isPosting,
+            // Disabling would drop focus and take the keyboard down after every send.
+            readOnly = isPosting,
         )
         IconButton(onClick = onSend, enabled = canSend) {
             if (isPosting) {
