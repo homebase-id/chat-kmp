@@ -3,8 +3,6 @@ package id.homebase.chat.widget
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -413,13 +411,7 @@ fun MessageBubbleRaw(
     val isAnimatingLongPress = remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
-    // Use a spring for smoother, natural motion and avoid tiny abrupt tweens
-    val springSpec = remember {
-        spring<Float>(
-            dampingRatio = Spring.DampingRatioNoBouncy, // less bounce on emulator
-            stiffness = Spring.StiffnessLow
-        )
-    }
+    val springSpec = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
 
     // Keep quick press feedback when not running the long-press animation
     LaunchedEffect(isPressed) {
@@ -436,8 +428,8 @@ fun MessageBubbleRaw(
         isAnimatingLongPress.value = true
         coroutineScope.launch {
             try {
-                scaleAnim.animateTo(0.94f, animationSpec = springSpec)
                 onLongClick()
+                scaleAnim.animateTo(0.94f, animationSpec = springSpec)
                 scaleAnim.animateTo(1f, animationSpec = springSpec)
             } finally {
                 isAnimatingLongPress.value = false

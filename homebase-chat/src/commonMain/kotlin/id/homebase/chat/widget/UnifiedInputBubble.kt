@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
@@ -117,20 +118,22 @@ fun UnifiedInputBubble(
         ) {
             Column {
                 // Reply preview — height reveal matching Signal's ValueAnimator
-                AnimatedVisibility(
-                    visible = replyToMessage != null,
+                val replyTransition = updateTransition(replyToMessage, label = "replyPreview")
+                replyTransition.AnimatedVisibility(
+                    visible = { it != null },
                     enter = expandVertically(tween(SIGNAL_TRANSITION_MS)),
                     exit = shrinkVertically(tween(SIGNAL_TRANSITION_MS)),
                 ) {
-                    if (replyToMessage != null) {
+                    // Exiting, the target is already null; shrink the reply that was showing.
+                    (replyTransition.targetState ?: replyTransition.currentState)?.let { reply ->
                         val odinColor = getOdinIdColor(
-                            replyToMessage.originalAuthor?.domainName ?: "",
+                            reply.originalAuthor?.domainName ?: "",
                         )
                         val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                         val resolvedAccent =
                             if (isDark) odinColor.darkTheme else odinColor.lightTheme
                         ReplyPreviewBar(
-                            message = replyToMessage,
+                            message = reply,
                             onDismiss = onDismissReply,
                             modifier = Modifier.padding(6.dp),
                             accentColor = resolvedAccent,

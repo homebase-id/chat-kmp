@@ -22,6 +22,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -399,11 +400,14 @@ fun ConversationContent(
     LaunchedEffect(listState, conversation.conversation.id) {
         var previousTotal = 0
         var wasAtBottom = false
+        var wasAtEnd = false
+        var previousLastSize = 0
         var previousBottomKey: Uuid? = null
         snapshotFlow {
             val info = listState.layoutInfo
-            info.totalItemsCount to (info.visibleItemsInfo.lastOrNull()?.index ?: -1)
-        }.collect { (total, lastVisibleIndex) ->
+            val last = info.visibleItemsInfo.lastOrNull()
+            ListFollowSample(info.totalItemsCount, last?.index ?: -1, last?.size ?: 0, !listState.canScrollForward)
+        }.collect { (total, lastVisibleIndex, lastSize, atEnd) ->
             val (bottomKey, bottomMine) = bottomItem.value
             val grew = total > previousTotal && previousTotal > 0
             // Own-send: the bottom item is the user's AND it just changed (a new
@@ -426,6 +430,16 @@ fun ConversationContent(
             // the new item lands, lastVisibleIndex still points at the old last
             // item, which is why we read it from the prior emission here).
             wasAtBottom = total > 0 && lastVisibleIndex >= total - 1
+            // The newest row grew in place (reaction pill, preview, media) while the list sat at its
+            // end: keep that end in view instead of letting the growth slide under the composer.
+            val lastGrew = total == previousTotal && lastVisibleIndex == total - 1 && lastSize > previousLastSize
+            wasAtEnd = if (lastGrew && wasAtEnd && !listState.isScrollInProgress) {
+                listState.scrollBy((lastSize - previousLastSize).toFloat())
+                !listState.canScrollForward
+            } else {
+                atEnd
+            }
+            previousLastSize = lastSize
             previousTotal = total
         }
     }
@@ -1008,7 +1022,13 @@ fun ConversationContent(
 
                 JumpTargetWaitingBar(isWaiting = uiState.awaitingJumpMessageId != null)
 
-                if (conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty()) {
+                AnimatedVisibility(
+                    visible = conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty(),
+                    enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                        fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                        fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
@@ -2376,6 +2396,8 @@ internal fun dateSectionLabel(
         }
     }
 }
+
+private data class ListFollowSample(val total: Int, val lastVisibleIndex: Int, val lastSize: Int, val atEnd: Boolean)
 
 /**
  * A single `animateScrollToItem(totalItemsCount - 1)` goes stale mid-flight: a
