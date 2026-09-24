@@ -121,7 +121,7 @@ fun DayPlaybackMap(
                     showMapTiles = showMapTiles,
                     fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
                     traceColors = mapTraceColors,
-                    playbackClockMs = if (playback != null) clockMs else null,
+                    playbackClockMs = if (playback != null) ({ clockMs }) else null,
                     dwellStops = playback?.stops ?: emptyList(),
                 )
                 if (isLoading) {
@@ -193,21 +193,14 @@ fun DayPlaybackMap(
 
         // ── 24h scrubber (the only playback control) ──
         if (playback != null) {
-            Text(
-                text = formatTime(Instant.fromEpochMilliseconds(clockMs)),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                textAlign = TextAlign.Center,
-            )
-            Slider(
-                value = ((clockMs - dayStartMs).toFloat() / DAY_MS).coerceIn(0f, 1f),
-                onValueChange = { v ->
+            PlaybackScrubber(
+                clockMs = { clockMs },
+                dayStartMs = dayStartMs,
+                onScrub = { v ->
                     isScrubbing = true
                     clockMs = dayStartMs + (v * DAY_MS).toLong()
                 },
-                onValueChangeFinished = {
+                onScrubFinished = {
                     isScrubbing = false
                     // Released at the far left → rewind and replay the sweep.
                     val frac = (clockMs - dayStartMs).toFloat() / DAY_MS
@@ -216,12 +209,36 @@ fun DayPlaybackMap(
                         replayToken++
                     }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }
     }
+}
+
+// Reads the sweep clock in its own scope, so a playback frame recomposes only the scrubber.
+@Composable
+private fun PlaybackScrubber(
+    clockMs: () -> Long,
+    dayStartMs: Long,
+    onScrub: (Float) -> Unit,
+    onScrubFinished: () -> Unit,
+) {
+    val clock = clockMs()
+    Text(
+        text = formatTime(Instant.fromEpochMilliseconds(clock)),
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        textAlign = TextAlign.Center,
+    )
+    Slider(
+        value = ((clock - dayStartMs).toFloat() / DAY_MS).coerceIn(0f, 1f),
+        onValueChange = onScrub,
+        onValueChangeFinished = onScrubFinished,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+    )
 }
 
 /**

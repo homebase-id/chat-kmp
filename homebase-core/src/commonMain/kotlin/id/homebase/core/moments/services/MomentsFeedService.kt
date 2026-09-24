@@ -67,6 +67,9 @@ class MomentsFeedService(
     private val _feed = MutableStateFlow<List<MomentFeedItem>>(emptyList())
     val feed: StateFlow<List<MomentFeedItem>> = _feed.asStateFlow()
 
+    private val _isLoaded = MutableStateFlow(false)
+    val isLoaded: StateFlow<Boolean> = _isLoaded.asStateFlow()
+
     /**
      * Count of moments received from other identities that are newer than the
      * user's last-viewed watermark — the unseen-moments nav badge. Derived from
@@ -192,6 +195,8 @@ class MomentsFeedService(
             Logger.e(throwable = e, tag = TAG) {
                 "Cold-load failed: ${e.message}"
             }
+        } finally {
+            _isLoaded.value = true
         }
     }
 
