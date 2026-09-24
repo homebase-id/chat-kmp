@@ -16,6 +16,8 @@ import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
+import kotlinx.cinterop.cValue
+import kotlinx.cinterop.useContents
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
@@ -66,7 +68,6 @@ import platform.AVFoundation.AVCaptureSessionInterruptionEndedNotification
 import platform.AVFoundation.AVCaptureSessionInterruptionReasonKey
 import platform.AVFoundation.AVCaptureSessionInterruptionReasonVideoDeviceInUseByAnotherClient
 import platform.AVFoundation.AVCaptureSessionPresetHigh
-import platform.AVFoundation.AVCaptureSessionPresetPhoto
 import platform.AVFoundation.AVCaptureSessionRuntimeErrorNotification
 import platform.AVFoundation.AVCaptureSessionWasInterruptedNotification
 import platform.AVFoundation.AVCaptureTorchModeOff
@@ -96,6 +97,9 @@ import platform.AVFoundation.isTorchModeSupported
 import platform.AVFoundation.maxAvailableVideoZoomFactor
 import platform.AVFoundation.minAvailableVideoZoomFactor
 import platform.AVFoundation.rampToVideoZoomFactor
+import platform.AVFoundation.CMVideoDimensionsValue
+import platform.CoreMedia.CMVideoDimensions
+import platform.Foundation.NSValue
 import platform.AVFoundation.subjectAreaChangeMonitoringEnabled
 import platform.AVFoundation.torchMode
 import platform.AVFoundation.videoZoomFactor
@@ -169,6 +173,7 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
 
     fun start() {
         observeSession()
+        _uiState.update { it.copy(awaitingFirstFrame = true) }
         onSessionQueue {
             backDevice = firstDevice(BACK_DEVICE_TYPES, AVCaptureDevicePositionBack)
             frontDevice = firstDevice(FRONT_DEVICE_TYPES, AVCaptureDevicePositionFront)
@@ -184,7 +189,7 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
             _uiState.update { it.copy(hasBackLens = hasBack, hasFrontLens = hasFront, lens = lens) }
 
             session.beginConfiguration()
-            session.applyPreset(_uiState.value.mode)
+            if (session.canSetSessionPreset(AVCaptureSessionPresetHigh)) session.sessionPreset = AVCaptureSessionPresetHigh
             val attached = attachVideoInput(lens)
             if (session.canAddOutput(photoOutput)) session.addOutput(photoOutput)
             if (session.canAddOutput(movieOutput)) session.addOutput(movieOutput)
@@ -193,6 +198,7 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
                 _errors.tryEmit(CameraError.BindFailed)
                 return@onSessionQueue
             }
+            configureOutputsForDevice()
             session.startRunning()
             _uiState.update { it.copy(isBound = session.running, supportsSimultaneousVideo = true) }
         }
@@ -200,6 +206,28 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
 
     private fun firstDevice(types: List<String?>, position: AVCaptureDevicePosition): AVCaptureDevice? =
         types.firstNotNullOfOrNull { AVCaptureDevice.defaultDeviceWithDeviceType(it, AVMediaTypeVideo, position) }
+
+    /**
+     * Session queue, after a commit that changed the device. One 16:9 preset serves both modes (as on Android), so
+     * neither a mode switch nor a hold from Photo reconfigures; stills must be allowed past the video size.
+     */
+    private fun configureOutputsForDevice() {
+        val format = currentDevice()?.activeFormat ?: return
+        val sizes = format.supportedMaxPhotoDimensions.mapNotNull { value ->
+            (value as? NSValue)?.CMVideoDimensionsValue?.useContents { width to height }
+        }
+        choosePhotoSize(sizes)?.let { (width, height) ->
+            photoOutput.maxPhotoDimensions = cValue<CMVideoDimensions> {
+                this.width = width
+                this.height = height
+            }
+        }
+        val connection = movieOutput.connectionWithMediaType(AVMediaTypeVideo) ?: return
+        // Match the old system picker and Android receivers rather than HEVC.
+        if (movieOutput.availableVideoCodecTypes.contains(AVVideoCodecTypeH264)) {
+            movieOutput.setOutputSettings(mapOf<Any?, Any?>(AVVideoCodecKey to AVVideoCodecTypeH264), forConnection = connection)
+        }
+    }
 
     /** Session queue, inside begin/commitConfiguration. */
     private fun attachVideoInput(lens: CameraLens): Boolean {
@@ -259,6 +287,11 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
         ) { _: NSNotification? -> resetFocusToContinuous(device) }
     }
 
+    /** Main thread, once [previewLayer] reports it is showing frames: startRunning returns before it does. */
+    fun onPreviewShowing() {
+        _uiState.update { it.copy(awaitingFirstFrame = false) }
+    }
+
     /** Main thread; also called from the preview view's layoutSubviews when the interface rotates. */
     fun applyPreviewRotation() {
         val angle = rotationCoordinator?.videoRotationAngleForHorizonLevelPreview ?: return
@@ -299,19 +332,14 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
             session.beginConfiguration()
             val ok = attachVideoInput(lens)
             session.commitConfiguration()
-            if (!ok) _errors.tryEmit(CameraError.BindFailed)
+            if (ok) configureOutputsForDevice() else _errors.tryEmit(CameraError.BindFailed)
         }
     }
 
     override fun setMode(mode: CaptureMode) {
         if (_uiState.value.mode == mode || recordingDelegate != null) return
         _uiState.update { it.copy(mode = mode) }
-        onSessionQueue {
-            session.beginConfiguration()
-            session.applyPreset(mode)
-            session.commitConfiguration()
-            currentDevice()?.let { applyTorchOnQueue(it) }
-        }
+        onSessionQueue { currentDevice()?.let { applyTorchOnQueue(it) } }
     }
 
     override fun setMirrorFront(enabled: Boolean) {
@@ -423,6 +451,7 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
             onSessionQueue {
                 photoOutput.connectionWithMediaType(AVMediaTypeVideo)?.configure(mirror, angle)
                 val settings = AVCapturePhotoSettings.photoSettingsWithFormat(mapOf<Any?, Any?>(AVVideoCodecKey to AVVideoCodecTypeJPEG))
+                settings.maxPhotoDimensions = photoOutput.maxPhotoDimensions
                 if (photoOutput.supportedFlashModes.any { (it as? NSNumber)?.longValue == flash }) settings.flashMode = flash
                 photoOutput.capturePhotoWithSettings(settings, delegate)
             }
@@ -448,18 +477,12 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
         )
         recordingDelegate = delegate
         onSessionQueue {
-            session.beginConfiguration()
-            session.applyPreset(CaptureMode.Video)
-            if (audio) attachAudioInput()
-            session.commitConfiguration()
-            val connection = movieOutput.connectionWithMediaType(AVMediaTypeVideo)
-            if (connection != null) {
-                connection.configure(mirror, angle)
-                // Match the old system picker and Android receivers rather than HEVC.
-                if (movieOutput.availableVideoCodecTypes.contains(AVVideoCodecTypeH264)) {
-                    movieOutput.setOutputSettings(mapOf<Any?, Any?>(AVVideoCodecKey to AVVideoCodecTypeH264), forConnection = connection)
-                }
+            if (audio) {
+                session.beginConfiguration()
+                attachAudioInput()
+                session.commitConfiguration()
             }
+            movieOutput.connectionWithMediaType(AVMediaTypeVideo)?.configure(mirror, angle)
             movieOutput.startRecordingToOutputFileURL(url, recordingDelegate = delegate)
         }
     }
@@ -476,13 +499,13 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
 
     private fun onRecordingFinished(url: NSURL, usable: Boolean, error: NSError?, result: CompletableDeferred<PlatformFile?>) {
         onSessionQueue {
-            val hadAudio = audioInput != null
-            session.beginConfiguration()
-            audioInput?.let { session.removeInput(it) }
-            audioInput = null
-            session.applyPreset(_uiState.value.mode)
-            session.commitConfiguration()
-            if (hadAudio) AudioSession.releaseAfterRecording()
+            audioInput?.let {
+                session.beginConfiguration()
+                session.removeInput(it)
+                session.commitConfiguration()
+                audioInput = null
+                AudioSession.releaseAfterRecording()
+            }
             dispatch_async(dispatch_get_main_queue()) {
                 recordingDelegate = null
                 _uiState.update { it.copy(isRecording = false, recordingStartedAtMs = null) }
@@ -558,12 +581,6 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
             AVCaptureDeviceTypeBuiltInWideAngleCamera,
         )
     }
-}
-
-/** Photo preset gives full-resolution stills; movie recording needs High. */
-private fun AVCaptureSession.applyPreset(mode: CaptureMode) {
-    val preset = if (mode == CaptureMode.Photo) AVCaptureSessionPresetPhoto else AVCaptureSessionPresetHigh
-    if (sessionPreset != preset && canSetSessionPreset(preset)) sessionPreset = preset
 }
 
 private fun AVCaptureConnection.configure(mirror: Boolean, rotationAngle: Double?) {
