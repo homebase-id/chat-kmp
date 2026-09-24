@@ -135,6 +135,8 @@ suspend fun mapToMessageData(
     val isManuallyPinned = localTags?.contains(ChatProtocol.ManualPinnedTag) ?: false
 
     val localReadTimestamp = metadata.localAppData?.readTime
+    // Neither the server nor the optimistic writer nulls the summary when the last reaction goes.
+    val reactionPreview = metadata.reactionPreview?.takeIf { it.reactions.isNotEmpty() }
     // localReactions on the wire are JSON-encoded ReactionContent objects
     // (`{"emoji":"X"}`). Decode to bare emoji here so the rest of the UI
     // can compare against reactionPreview entries by simple string match.
@@ -184,7 +186,7 @@ suspend fun mapToMessageData(
                 isEdited = false,
                 content = "Deleted File",
                 messageAppData = MessageAppData(),
-                reactionPreview = metadata.reactionPreview,
+                reactionPreview = reactionPreview,
                 previewThumbnail = metadata.appData.previewThumbnail,
                 payloads = metadata.payloads?.toPersistentList(),
                 keyHeader = header.keyHeader,
@@ -333,7 +335,7 @@ suspend fun mapToMessageData(
             localReadTimestamp = localReadTimestamp,
             ownReactions = ownReactions,
             messageAppData = messageAppData,
-            reactionPreview = metadata.reactionPreview,
+            reactionPreview = reactionPreview,
             previewThumbnail = metadata.appData.previewThumbnail,
             payloads = metadata.payloads?.toPersistentList(),
             keyHeader = header.keyHeader,
@@ -375,7 +377,7 @@ suspend fun mapToMessageData(
                 messageAppData = MessageAppData(),
                 localReadTimestamp = localReadTimestamp,
                 ownReactions = ownReactions,
-                reactionPreview = metadata.reactionPreview,
+                reactionPreview = reactionPreview,
                 previewThumbnail = metadata.appData.previewThumbnail,
                 payloads = metadata.payloads?.toPersistentList(),
                 keyHeader = header.keyHeader,

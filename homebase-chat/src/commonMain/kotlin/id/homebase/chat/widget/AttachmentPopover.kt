@@ -68,8 +68,9 @@ internal fun AttachmentPopoverButton(
         colors = colors,
     ) {
         content()
-        if (open && actions != null) {
+        if (actions != null) {
             ComposerPopover(
+                expanded = open,
                 anchor = anchor,
                 alignToEnd = alignToEnd,
                 onDismissRequest = {
