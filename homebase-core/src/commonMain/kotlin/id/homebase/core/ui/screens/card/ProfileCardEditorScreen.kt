@@ -112,6 +112,7 @@ fun ProfileCardEditorScreen(
                 // No bands here: there is no chrome over the preview to keep clear, and the page clips what doesn't fit its height.
                 Box(modifier = Modifier.weight(1f).fillMaxWidth().clip(MaterialTheme.shapes.extraLargeIncreased)) {
                     val backdrop by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
+                    val designCover by viewModel.designCover.collectAsStateWithLifecycle()
                     CardSurface(
                         uiState = uiState,
                         host = host,
@@ -119,6 +120,8 @@ fun ProfileCardEditorScreen(
                         onRetry = viewModel::onRetry,
                         paintWhileAttached = viewModel::paintWhileAttached,
                         modifier = Modifier.fillMaxSize(),
+                        cover = designCover,
+                        coverHeld = uiState.isSwitchingDesign,
                     )
                     SnackbarHost(
                         hostState = snackbarHostState,

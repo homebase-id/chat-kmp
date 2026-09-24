@@ -13,7 +13,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -39,9 +38,6 @@ fun MomentDescriptionField(
     modifier: Modifier = Modifier,
     state: RichTextState,
     onSmileyClick: () -> Unit = {},
-    // Fired when the editor gains/loses focus so the caller can reclaim
-    // vertical space (collapse secondary chrome) while the keyboard is up.
-    onFocusChanged: (Boolean) -> Unit = {},
 ) {
     Column(modifier = modifier) {
         RichTextEditorButtons(
@@ -51,9 +47,7 @@ fun MomentDescriptionField(
         )
         RichTextEditor(
             state = state,
-            modifier = Modifier
-                .fillMaxWidth()
-                .onFocusChanged { onFocusChanged(it.isFocused) },
+            modifier = Modifier.fillMaxWidth(),
             placeholder = {
                 Text(stringResource(MR.string.moments_compose_description_hint))
             },

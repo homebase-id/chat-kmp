@@ -477,6 +477,7 @@ private fun MomentsFeedList(
                 isMuted = isMuted,
                 onToggleMute = videoSession::toggleMuted,
                 commentsOpen = commentsSheetOnTap && commentsMomentId == moment.id,
+                modifier = Modifier.animateItem(),
             )
         }
     }
@@ -762,6 +763,7 @@ private fun MomentPostCard(
     // fit-with-letterbox so the whole photo/video is visible (paired with the
     // shrink/scroll that brings the card above the sheet).
     commentsOpen: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     // Local sheet state — only one moment's failed-upload sheet can be open
     // at a time per card, and the sheet's lifetime tracks the card. No need
@@ -793,7 +795,7 @@ private fun MomentPostCard(
     }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             // Single multi-tap detector handles all taps:
             // 1 tap → open detail (dispatch is delayed ≈[MultiTapTimeoutMs]
