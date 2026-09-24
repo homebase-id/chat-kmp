@@ -13,15 +13,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -168,16 +172,15 @@ fun HomebaseImage(
             (state is AsyncImagePainter.State.Loading &&
                 (state as AsyncImagePainter.State.Loading).painter != null)
 
-        val blurRadius by
-        animateFloatAsState(
+        val blurRadius = animateFloatAsState(
             targetValue = if (hasSharpImage) 0f else 10f,
-            animationSpec = tween(durationMillis = 300),
+            animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
             label = "blur"
         )
 
         // Applied to every branch so the animation transitions smoothly
         // across state changes (e.g. blurred preview → sharp full image).
-        val blurMod = if (blurRadius >= 0.5f) Modifier.blur(blurRadius.dp) else Modifier
+        val blurMod = Modifier.animatedBlur(blurRadius)
 
         when (state) {
             is AsyncImagePainter.State.Loading -> {
@@ -258,5 +261,18 @@ fun HomebaseImage(
                 }
             }
         }
+    }
+}
+
+// Same effect as Modifier.blur, but the radius is read in the draw phase so the fade doesn't recompose the image.
+private fun Modifier.animatedBlur(radiusDp: State<Float>): Modifier = graphicsLayer {
+    val radius = radiusDp.value
+    if (radius >= 0.5f) {
+        val px = radius.dp.toPx()
+        renderEffect = BlurEffect(px, px, TileMode.Clamp)
+        clip = true
+    } else {
+        renderEffect = null
+        clip = false
     }
 }
