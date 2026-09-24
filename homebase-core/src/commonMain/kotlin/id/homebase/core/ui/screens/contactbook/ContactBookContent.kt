@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
@@ -50,7 +49,7 @@ fun ContactBookContent(
     modifier: Modifier = Modifier,
     /** New tab: unreviewed connections and incoming requests, the set awaiting a decision. */
     showNew: Boolean = false,
-    listState: LazyListState = rememberLazyListState(),
+    listState: LazyListState,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         if (!showNew) FilterRow(uiState.filter, uiState.reviewEnabled, onAction)
