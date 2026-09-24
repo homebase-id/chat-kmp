@@ -1,6 +1,8 @@
 package id.homebase.core.ui.screens.moments
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
@@ -70,6 +72,7 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -1883,6 +1886,12 @@ private fun DetailActionColumn(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+internal fun AnimatedContentTransitionScope<Int>.rollCount(motion: MotionScheme): ContentTransform {
+    val up = targetState > initialState
+    return (slideInVertically(motion.fastSpatialSpec()) { if (up) it else -it } + fadeIn(motion.fastEffectsSpec()))
+        .togetherWith(slideOutVertically(motion.fastSpatialSpec()) { if (up) -it else it } + fadeOut(motion.fastEffectsSpec()))
+}
+
 @Composable
 internal fun EmojiReactionButton(
     emoji: String,
@@ -1924,13 +1933,7 @@ internal fun EmojiReactionButton(
         // The count line is always laid out (empty at 0) so the first reaction doesn't shift the column.
         AnimatedContent(
             targetState = count,
-            transitionSpec = {
-                val up = targetState > initialState
-                (slideInVertically(motion.fastSpatialSpec()) { if (up) it else -it } + fadeIn(motion.fastEffectsSpec()))
-                    .togetherWith(
-                        slideOutVertically(motion.fastSpatialSpec()) { if (up) -it else it } + fadeOut(motion.fastEffectsSpec()),
-                    )
-            },
+            transitionSpec = { rollCount(motion) },
             label = "reactionCount",
         ) { shown ->
             val countLabel = if (shown > 0) shown.toString() else ""

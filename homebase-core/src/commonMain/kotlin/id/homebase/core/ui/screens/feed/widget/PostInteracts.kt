@@ -10,8 +10,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
@@ -65,6 +63,7 @@ import id.homebase.resources.feed_post_repost
 import id.homebase.resources.feed_post_show_reactors
 import kotlinx.collections.immutable.toImmutableList
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.core.ui.screens.moments.rollCount
 
 // Write affordances follow BOTH the author's [reactAccess] and the viewer's [permission]. A null [permission]
 // means "not resolved yet": the affordance stays visible, and the write is still authorised server-side.
@@ -317,13 +316,7 @@ private fun PostReactionSummary(
             Spacer(modifier = Modifier.width(6.dp))
             AnimatedContent(
                 targetState = shown.total,
-                transitionSpec = {
-                    val up = targetState > initialState
-                    (slideInVertically(motion.fastSpatialSpec()) { if (up) it else -it } + fadeIn(motion.fastEffectsSpec()))
-                        .togetherWith(
-                            slideOutVertically(motion.fastSpatialSpec()) { if (up) -it else it } + fadeOut(motion.fastEffectsSpec()),
-                        )
-                },
+                transitionSpec = { rollCount(motion) },
                 label = "reaction-total",
             ) { total ->
                 Text(
