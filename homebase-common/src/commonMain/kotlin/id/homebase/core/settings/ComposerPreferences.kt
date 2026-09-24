@@ -13,7 +13,10 @@ fun rememberEnterSendsMessage(): Boolean = rememberPreference { it.enterSendsMes
 fun rememberArrowUpEditsLastMessage(): Boolean = rememberPreference { it.arrowUpEditsLastMessage }
 
 @Composable
-internal fun <T> rememberPreference(select: (PreferenceState) -> T): T {
+fun rememberMirrorFrontCamera(): Boolean = rememberPreference { it.mirrorFrontCamera }
+
+@Composable
+private fun <T> rememberPreference(select: (PreferenceState) -> T): T {
     val userPreferences: UserPreferences = koinInject()
     // Derived, not `by`: reading the whole PreferenceState would invalidate the caller's restart
     // scope whenever any unrelated preference changes.

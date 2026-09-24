@@ -248,8 +248,6 @@ fun VaultScreen(
 
     var fileForAppend by remember { mutableStateOf<VaultEntry?>(null) }
 
-    // Single photo. Initial capture opens the editor; while the editor is open the
-    // same launcher adds another image to the batch.
     val cameraLauncher = rememberCameraManager { file ->
         file?.let {
             if (uiState.pendingEditor != null) {

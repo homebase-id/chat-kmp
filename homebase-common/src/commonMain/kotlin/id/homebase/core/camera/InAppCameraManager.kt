@@ -46,12 +46,7 @@ class InAppCameraLauncher internal constructor() : PlatformCameraManager {
     }
 }
 
-/**
- * Emits the camera dialog while open, so call it unconditionally (not inside an `if`).
- * [onResult] gets the captured file, or null when the camera is closed without one. [onOpenGallery], when given,
- * shows a gallery button that closes the camera and hands over to the caller's picker. With [awaitResultShown] the
- * camera stays up after a capture until the receiver calls [CaptureHandoff.contentShown], then fades out.
- */
+// With awaitResultShown a capture keeps the camera up until CaptureHandoff.contentShown, then it fades out.
 @Composable
 fun rememberInAppCameraManager(
     allowedModes: CameraModes,

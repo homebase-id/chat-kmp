@@ -118,7 +118,6 @@ class UserPreferences(private val settings: Settings) {
             _preferenceState.value = _preferenceState.value.copy(arrowUpEditsLastMessage = value)
         }
 
-    /** Save front-camera captures as the preview shows them (mirrored). */
     var mirrorFrontCamera: Boolean
         get() = settings.getBoolean("camera_mirror_front", true)
         set(value) {
