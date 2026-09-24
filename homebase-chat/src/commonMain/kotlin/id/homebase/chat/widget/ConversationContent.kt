@@ -22,7 +22,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -400,14 +399,11 @@ fun ConversationContent(
     LaunchedEffect(listState, conversation.conversation.id) {
         var previousTotal = 0
         var wasAtBottom = false
-        var wasAtEnd = false
-        var previousLastSize = 0
         var previousBottomKey: Uuid? = null
         snapshotFlow {
             val info = listState.layoutInfo
-            val last = info.visibleItemsInfo.lastOrNull()
-            ListFollowSample(info.totalItemsCount, last?.index ?: -1, last?.size ?: 0, !listState.canScrollForward)
-        }.collect { (total, lastVisibleIndex, lastSize, atEnd) ->
+            info.totalItemsCount to (info.visibleItemsInfo.lastOrNull()?.index ?: -1)
+        }.collect { (total, lastVisibleIndex) ->
             val (bottomKey, bottomMine) = bottomItem.value
             val grew = total > previousTotal && previousTotal > 0
             // Own-send: the bottom item is the user's AND it just changed (a new
@@ -430,19 +426,10 @@ fun ConversationContent(
             // the new item lands, lastVisibleIndex still points at the old last
             // item, which is why we read it from the prior emission here).
             wasAtBottom = total > 0 && lastVisibleIndex >= total - 1
-            // The newest row grew in place (reaction pill, preview, media) while the list sat at its
-            // end: keep that end in view instead of letting the growth slide under the composer.
-            val lastGrew = total == previousTotal && lastVisibleIndex == total - 1 && lastSize > previousLastSize
-            wasAtEnd = if (lastGrew && wasAtEnd && !listState.isScrollInProgress) {
-                listState.scrollBy((lastSize - previousLastSize).toFloat())
-                !listState.canScrollForward
-            } else {
-                atEnd
-            }
-            previousLastSize = lastSize
             previousTotal = total
         }
     }
+    KeepListEndInView(listState, conversation.conversation.id)
 
     // One-time own-send follow: every send arm sets scrollToLatestRequest so the
     // user's own message always lands visible, even when scrolled up into history
@@ -2397,7 +2384,58 @@ internal fun dateSectionLabel(
     }
 }
 
-private data class ListFollowSample(val total: Int, val lastVisibleIndex: Int, val lastSize: Int, val atEnd: Boolean)
+private data class ListEndSample(
+    val total: Int,
+    val lastVisibleIndex: Int,
+    val lastSize: Int,
+    val viewportHeight: Int,
+    val atEnd: Boolean,
+)
+
+// A list that sat at its end stays there when the newest row grows in place (reaction pill, preview,
+// media) or the viewport shrinks from above (pinned bar, banners): LazyColumn keeps its first item
+// anchored, so either would otherwise slide the newest row under the composer.
+@Composable
+internal fun KeepListEndInView(listState: LazyListState, key: Any?) {
+    LaunchedEffect(listState, key) {
+        var previous: ListEndSample? = null
+        var wasAtEnd = false
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()
+            ListEndSample(
+                info.totalItemsCount,
+                last?.index ?: -1,
+                last?.size ?: 0,
+                info.viewportSize.height,
+                !listState.canScrollForward,
+            )
+        }.collect { sample ->
+            val prev = previous
+            previous = sample
+            val pushed = if (prev == null || prev.total != sample.total) 0 else {
+                val shrink = (prev.viewportHeight - sample.viewportHeight).coerceAtLeast(0)
+                val lastGrowth = if (sample.lastVisibleIndex == sample.total - 1 &&
+                    sample.lastVisibleIndex == prev.lastVisibleIndex
+                ) {
+                    (sample.lastSize - prev.lastSize).coerceAtLeast(0)
+                } else {
+                    0
+                }
+                shrink + lastGrowth
+            }
+            if (pushed > 0 && wasAtEnd && !listState.isScrollInProgress) {
+                // Not scrollBy: that force-remeasures synchronously, and on skiko this collector can resume inside layout.
+                listState.requestScrollToItem(
+                    listState.firstVisibleItemIndex,
+                    listState.firstVisibleItemScrollOffset + pushed,
+                )
+            } else {
+                wasAtEnd = sample.atEnd
+            }
+        }
+    }
+}
 
 /**
  * A single `animateScrollToItem(totalItemsCount - 1)` goes stale mid-flight: a
