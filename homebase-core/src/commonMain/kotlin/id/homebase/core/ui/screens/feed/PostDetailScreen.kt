@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -220,8 +219,6 @@ fun PostDetailScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    // Scaffold's innerPadding already ate the navigation bar; consuming it here makes the
-                    // composer's imePadding resolve to the pure keyboard height instead of keyboard + nav bar.
                     .consumeWindowInsets(innerPadding),
             ) {
                 Box(modifier = Modifier.weight(1f)) {
@@ -317,9 +314,7 @@ fun PostDetailScreen(
                 if (canComment) {
                     Surface(
                         tonalElevation = 2.dp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .imePadding(),
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
                         CommentComposer(
                             onSend = { text, attachment ->

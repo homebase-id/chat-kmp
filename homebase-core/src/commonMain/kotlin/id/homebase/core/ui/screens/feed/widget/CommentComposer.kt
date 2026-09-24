@@ -1,12 +1,11 @@
 package id.homebase.core.ui.screens.feed.widget
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -73,6 +72,9 @@ import io.github.vinceglb.filekit.name
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import id.homebase.core.util.rememberKeyboardPanelState
+import id.homebase.core.util.keyboardPanelSlot
+import id.homebase.core.util.KeyboardPanelState
 
 // The picked PlatformFile is resolved to an AttachmentInput at send time via the shared
 // [toImageAttachmentInput], so this widget stays free of any feed service/ViewModel.
@@ -83,6 +85,8 @@ fun CommentComposer(
     modifier: Modifier = Modifier,
     replyingToName: String? = null,
     onCancelReply: () -> Unit = {},
+    bottomPanel: KeyboardPanelState = rememberKeyboardPanelState(),
+    keyboardHandledByHost: Boolean = false,
 ) {
     val fileOps: FileOperationsProvider = koinInject()
     val stickerStream: StickerStream = koinInject()
@@ -91,8 +95,6 @@ fun CommentComposer(
 
     var text by remember { mutableStateOf("") }
     var pickedImage by remember { mutableStateOf<PlatformFile?>(null) }
-    // Rendered inline in the keyboard area so the input row stays visible while picking.
-    var showExpressionSheet by remember { mutableStateOf(false) }
     var expressionTab by remember { mutableStateOf(ExpressionTab.Emoji) }
     // Send is async and text/pickedImage only clear once it finishes, so without this an impatient second tap
     // posts a duplicate — each postComment mints its own uniqueId.
@@ -229,18 +231,18 @@ fun CommentComposer(
                 modifier = Modifier
                     .weight(1f)
                     .focusRequester(fieldFocusRequester)
-                    .onFocusChanged { if (it.isFocused) showExpressionSheet = false },
+                    .onFocusChanged { if (it.isFocused) bottomPanel.closeForKeyboard() },
                 shape = RoundedCornerShape(24.dp),
                 maxLines = 4,
                 leadingIcon = {
                     // Opening the panel drops field focus and hides the keyboard so the panel takes its place.
                     IconButton(onClick = {
-                        if (showExpressionSheet) {
-                            showExpressionSheet = false
+                        if (bottomPanel.isOpen) {
+                            bottomPanel.close()
                         } else {
                             keyboard?.hide()
                             focusManager.clearFocus()
-                            showExpressionSheet = true
+                            bottomPanel.open()
                         }
                     }) {
                         Icon(
@@ -296,8 +298,8 @@ fun CommentComposer(
             }
         }
 
-        AnimatedVisibility(visible = showExpressionSheet) {
-            Column(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+        Box(modifier = Modifier.fillMaxWidth().keyboardPanelSlot(bottomPanel, keyboardHandledByHost)) {
+            if (bottomPanel.isPanelComposed) Column(modifier = Modifier.fillMaxSize()) {
                 ExpressionTabRow(selected = expressionTab, onSelect = { expressionTab = it })
                 when (expressionTab) {
                     ExpressionTab.Emoji -> EmojiSelection(
@@ -312,7 +314,7 @@ fun CommentComposer(
                         stickers = stickers,
                         isLoaded = stickersLoaded,
                         onStickerSelected = { sticker ->
-                            showExpressionSheet = false
+                            bottomPanel.close()
                             sendSticker(sticker)
                         },
                         onStickerLongPress = {},

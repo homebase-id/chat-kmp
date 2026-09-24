@@ -23,6 +23,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
@@ -41,7 +42,7 @@ private const val KeyboardArrivalTimeoutMs = 600L
  */
 @Stable
 class KeyboardPanelState internal constructor(
-    private val ime: State<ImeOffsetState>,
+    internal val ime: State<ImeOffsetState>,
     private val windowSize: State<IntSize>,
     private val fallbackPx: Int,
     private val hasSoftKeyboard: Boolean,
@@ -136,13 +137,34 @@ fun rememberKeyboardPanelState(
     return state
 }
 
-/** The space under the composer shared by the keyboard and the panel, revealing the panel from its bottom edge. */
-fun Modifier.keyboardPanelSlot(state: KeyboardPanelState): Modifier =
+/**
+ * The space under the composer shared by the keyboard and the panel, revealing the panel from its
+ * bottom edge. [keyboardHandledByHost]: the host already lifted itself by the keyboard (see
+ * [sheetComposerInset]), so only the panel's excess over the keyboard is left to reserve.
+ */
+fun Modifier.keyboardPanelSlot(state: KeyboardPanelState, keyboardHandledByHost: Boolean = false): Modifier =
     clipToBounds().onFocusChanged { state.panelFocused = it.hasFocus }.layout { measurable, constraints ->
         val panelHeight = state.heightPx
         val placeable = measurable.measure(constraints.copy(minHeight = panelHeight, maxHeight = panelHeight))
-        layout(placeable.width, state.contentInsetPx) { placeable.place(0, state.panelTopPx) }
+        val height = state.contentInsetPx - if (keyboardHandledByHost) state.keyboardPx else 0
+        layout(placeable.width, height) { placeable.place(0, state.panelTopPx) }
     }
+
+/** True where a zero-inset `ModalBottomSheet` lifts its own surface above the keyboard and reports no IME inside. */
+val sheetLiftsForKeyboard: Boolean get() = isNativeMobile()
+
+/**
+ * Bottom inset for a composer pinned at the foot of a `ModalBottomSheet` with zero content insets,
+ * with a [keyboardPanelSlot] above it. [state] must be remembered outside the sheet.
+ */
+fun Modifier.sheetComposerInset(state: KeyboardPanelState): Modifier = layout { measurable, constraints ->
+    val ime = state.ime.value
+    val nav = ime.navBarInsets.getBottom(ime.density)
+    // Once the lifted sheet sits on the keyboard, the nav bar is under the keyboard too.
+    val bottom = if (sheetLiftsForKeyboard) (nav - ime.imeBottomPx).coerceAtLeast(0) else nav
+    val placeable = measurable.measure(constraints.offset(vertical = -bottom))
+    layout(placeable.width, placeable.height + bottom) { placeable.place(0, 0) }
+}
 
 /**
  * For a top-anchored list above a [keyboardPanelSlot]: keeps measuring the list at its
