@@ -259,8 +259,11 @@ internal fun ModeCarousel(
                         .width(metrics.slot)
                         .fillMaxHeight()
                         .clip(CircleShape)
+                        // No ripple: a drag that starts on a label left a ghost pill; the sliding label is the feedback.
                         .selectable(
                             selected = index == selectedIndex,
+                            interactionSource = null,
+                            indication = null,
                             enabled = enabled,
                             role = Role.Tab,
                             onClick = { onSelect(mode) },

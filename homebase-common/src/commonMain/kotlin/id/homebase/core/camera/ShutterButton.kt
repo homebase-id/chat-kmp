@@ -256,6 +256,11 @@ internal fun ShutterButton(
                 .drawBehind {
                     val morph = if (recordMorph > 0f) recordShape else pressShape
                     val progress = if (recordMorph > 0f) recordMorph else pressMorph
+                    // At rest both morphs are a circle; a circle draws far cheaper than an anti-aliased cubic path.
+                    if (progress == 0f) {
+                        drawCircle(innerColor)
+                        return@drawBehind
+                    }
                     morph.toComposePath(progress, size, path)
                     rotate(if (recordMorph > 0f) 0f else cookieSpin) {
                         drawPath(path, innerColor)
