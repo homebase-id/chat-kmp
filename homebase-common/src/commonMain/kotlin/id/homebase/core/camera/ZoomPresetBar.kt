@@ -86,7 +86,8 @@ internal fun ZoomPresetBar(
                 ToggleButton(
                     checked = checked,
                     onCheckedChange = { onSelect(preset) },
-                    shapes = ToggleButtonDefaults.shapes(),
+                    // Circles in every state nest inside the track's round ends; the default checked square pokes out.
+                    shapes = ToggleButtonDefaults.shapes(shape = CircleShape, pressedShape = CircleShape, checkedShape = CircleShape),
                     colors = ToggleButtonDefaults.toggleButtonColors(
                         containerColor = Color.Transparent,
                         contentColor = colors.onSurface,
