@@ -50,16 +50,15 @@ class CaptureButtonStateTest {
     }
 
     @Test
-    fun releaseStopsOnlyAHeldRecording() {
-        assertEquals(CaptureAction.StopRecording, CaptureButtonState.RecordingHeld.releaseAction)
-        assertNull(CaptureButtonState.RecordingLocked.releaseAction)
-        assertNull(CaptureButtonState.Photo.releaseAction)
+    fun holdRecordsWheneverVideoIsAllowed() {
+        assertTrue(CaptureButtonState.holdToRecordAllowed(CameraModes.PhotoAndVideo))
+        assertFalse(CaptureButtonState.holdToRecordAllowed(CameraModes.Photo))
     }
 
     @Test
-    fun holdNeedsVideoModeAndSimultaneousBinding() {
-        assertTrue(CaptureButtonState.holdToRecordAllowed(CameraModes.PhotoAndVideo, true))
-        assertFalse(CaptureButtonState.holdToRecordAllowed(CameraModes.PhotoAndVideo, false))
-        assertFalse(CaptureButtonState.holdToRecordAllowed(CameraModes.Photo, true))
+    fun holdFromPhotoSwitchesToVideoOnlyWithoutSimultaneousBinding() {
+        assertTrue(CaptureButtonState.holdSwitchesToVideo(CaptureMode.Photo, supportsSimultaneousVideo = false))
+        assertFalse(CaptureButtonState.holdSwitchesToVideo(CaptureMode.Photo, supportsSimultaneousVideo = true))
+        assertFalse(CaptureButtonState.holdSwitchesToVideo(CaptureMode.Video, supportsSimultaneousVideo = false))
     }
 }
