@@ -26,10 +26,6 @@ fun ContactAvatar(
     animatedVisibilityScope: AnimatedVisibilityScope?= null,
 ) {
     if (profileImageData != null) {
-        if (animatedVisibilityScope == null) {
-            throw IllegalArgumentException("animatedVisibilityScope cannot be null when profile image specified")
-        }
-
         HomebaseImage(
             imageData = profileImageData,
             modifier = modifier
