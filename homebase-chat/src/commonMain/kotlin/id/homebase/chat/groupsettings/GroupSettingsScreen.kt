@@ -55,7 +55,6 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -88,6 +87,7 @@ import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.chat.widget.AvatarFullScreenViewer
 import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ChatMediaFullScreenHost
+import id.homebase.chat.widget.SharedMediaHero
 import id.homebase.chat.widget.ErrorInfoItem
 import id.homebase.chat.widget.LoadingListItem
 import id.homebase.core.HomebaseConstants
@@ -308,29 +308,28 @@ fun GroupSettingsScreen(
             label = "groupAvatarViewer",
         ) { avatar ->
             if (avatar == null) {
-                Box(modifier = Modifier.fillMaxSize()) {
+                ChatMediaFullScreenHost(
+                    item = fullScreenItem,
+                    driveId = chatTargetDrive.alias,
+                    title = uiState.conversation?.name.orEmpty(),
+                    snackbarHostState = snackbarHostState,
+                    onDismiss = { fullScreenItem = null },
+                ) { hero ->
                     GroupSettingsUi(
                         snackbarHostState = snackbarHostState,
                         uiState = uiState,
                         conversationId = viewModel.route.conversationId,
+                        mediaHero = hero,
                         onUiAction = viewModel::onUiAction,
                         onAvatarClick = { fullScreenAvatar = it },
                         onMediaClick = { fullScreenItem = it },
                         onSeeAllMedia = onSeeAllMedia,
-                        isMediaViewerOpen = fullScreenItem != null,
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@AnimatedContent,
                     )
                     if (uiState.isLeaving) {
                         LeavingGroupOverlay()
                     }
-                    ChatMediaFullScreenHost(
-                        item = fullScreenItem,
-                        driveId = chatTargetDrive.alias,
-                        title = uiState.conversation?.name.orEmpty(),
-                        snackbarHostState = snackbarHostState,
-                        onDismiss = { fullScreenItem = null },
-                    )
                 }
             } else {
                 AvatarFullScreenViewer(
@@ -393,43 +392,37 @@ fun GroupSettingsUi(
     snackbarHostState: SnackbarHostState,
     uiState: GroupSettingsUiState,
     conversationId: String,
+    mediaHero: SharedMediaHero,
     onUiAction: (GroupSettingsUiAction) -> Unit,
     onAvatarClick: (HomebaseImageData) -> Unit = {},
     onMediaClick: (SharedMediaItem) -> Unit = {},
     onSeeAllMedia: (conversationId: String) -> Unit = {},
-    /** True while a shared-media tile is open full-screen; suppresses this screen's
-     *  app bar so the viewer's own top bar doesn't stack under it (same reason as
-     *  ConversationSettingsScreen). */
-    isMediaViewerOpen: Boolean = false,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            if (!isMediaViewerOpen) {
-                TopAppBar(
-                    title = {},
-                    navigationIcon = {
-                        IconButton(onClick = { onUiAction(GroupSettingsUiAction.BackClicked) }) {
+            TopAppBar(
+                title = {},
+                navigationIcon = {
+                    IconButton(onClick = { onUiAction(GroupSettingsUiAction.BackClicked) }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(MR.string.menu_back)
+                        )
+                    }
+                },
+                actions = {
+                    if (uiState.isCurrentUserGroupAdmin && !uiState.isLegacyGroup) {
+                        IconButton(onClick = { onUiAction(GroupSettingsUiAction.EditGroupClicked) }) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(MR.string.menu_back)
+                                Icons.Outlined.Edit,
+                                contentDescription = stringResource(MR.string.chat_message_edit)
                             )
                         }
-                    },
-                    actions = {
-                        if (uiState.isCurrentUserGroupAdmin && !uiState.isLegacyGroup) {
-                            IconButton(onClick = { onUiAction(GroupSettingsUiAction.EditGroupClicked) }) {
-                                Icon(
-                                    Icons.Outlined.Edit,
-                                    contentDescription = stringResource(MR.string.chat_message_edit)
-                                )
-                            }
-                        }
-                    },
-                )
-            }
+                    }
+                },
+            )
         },
     ) { padding ->
         Column(
@@ -473,6 +466,7 @@ fun GroupSettingsUi(
                         item {
                             ConversationOverviewSection(
                                 overview = overview,
+                                hero = mediaHero,
                                 onMediaClick = onMediaClick,
                                 onSeeAll = { onSeeAllMedia(conversationId) },
                             )
@@ -911,7 +905,7 @@ fun GroupSettingsSheets(
                 HealProgressSheetContent(
                     items = sheet.items,
                     finished = sheet.finished,
-                    onClose = { onSheetClosed() },
+                    onClose = { dismiss() },
                 )
             }
         }

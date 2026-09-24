@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -341,9 +342,10 @@ private fun StatsPanel(state: DefragmenterUiState, modifier: Modifier = Modifier
 
 @Composable
 private fun ActionButtons(state: DefragmenterUiState, onAction: (DefragmenterUiAction) -> Unit) {
-    Row(
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         val phase = state.phase
         val isTerminalUi = phase is DefragmenterPhase.Complete ||

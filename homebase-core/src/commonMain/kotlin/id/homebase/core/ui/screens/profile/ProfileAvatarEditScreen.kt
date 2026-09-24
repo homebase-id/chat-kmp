@@ -2,6 +2,14 @@
 
 package id.homebase.core.ui.screens.profile
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -43,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import coil3.compose.AsyncImage
+import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.image.HomebaseImage
@@ -200,6 +208,7 @@ internal fun PhotoTierSection(
     onPhotoTap: (() -> Unit)? = null,
     existingPhotoContent: @Composable () -> Unit,
 ) {
+    val motion = MaterialTheme.motionScheme
     Column(modifier = Modifier.fillMaxWidth()) {
         if (title != null) {
             Text(text = title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
@@ -224,16 +233,17 @@ internal fun PhotoTierSection(
                         onClick = if (controlsVisible) onPick else (onPhotoTap ?: onPick)
                     ),
                 ) {
-                    val cropped = tier.pendingCroppedAvatar
-                    when {
-                        cropped != null -> AsyncImage(
-                            model = cropped.file,
-                            contentDescription = stringResource(MR.string.cd_profile_avatar_change_photo),
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                        tier.pendingRemoval -> EmptyAvatarPlaceholder()
-                        tier.existing != null -> existingPhotoContent()
-                        else -> EmptyAvatarPlaceholder()
+                    val shown: Any? = tier.pendingCroppedAvatar ?: tier.existing.takeIf { !tier.pendingRemoval }
+                    Crossfade(shown, animationSpec = motion.defaultEffectsSpec()) { avatar ->
+                        when (avatar) {
+                            is AttachmentPendingFile.FileImage -> AsyncImage(
+                                model = avatar.file,
+                                contentDescription = stringResource(MR.string.cd_profile_avatar_change_photo),
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            null -> EmptyAvatarPlaceholder()
+                            else -> existingPhotoContent()
+                        }
                     }
                 }
                 if (controlsVisible) {
@@ -246,20 +256,30 @@ internal fun PhotoTierSection(
                     }
                 }
             }
-            if (controlsVisible && tier.pendingCroppedAvatar == null && tier.existing != null && !tier.pendingRemoval) {
-                Spacer(Modifier.width(16.dp))
-                TextButton(onClick = onRemove, enabled = !tier.isDeleting) {
+            AnimatedVisibility(
+                visible = controlsVisible && tier.pendingCroppedAvatar == null && tier.existing != null && !tier.pendingRemoval,
+                enter = expandHorizontally(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                exit = shrinkHorizontally(motion.defaultSpatialSpec()) + fadeOut(motion.defaultEffectsSpec()),
+            ) {
+                TextButton(
+                    onClick = onRemove,
+                    enabled = !tier.isDeleting,
+                    modifier = Modifier.padding(start = 16.dp),
+                ) {
                     Text(stringResource(MR.string.profile_avatar_edit_remove))
                 }
             }
         }
 
-        if (tier.pendingCroppedAvatar != null || tier.pendingRemoval) {
-            Spacer(Modifier.height(12.dp))
+        AnimatedVisibility(
+            visible = tier.pendingCroppedAvatar != null || tier.pendingRemoval,
+            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+            exit = shrinkVertically(motion.defaultSpatialSpec()) + fadeOut(motion.defaultEffectsSpec()),
+        ) {
             Button(
                 onClick = onSaveClicked,
                 enabled = tier.canSave,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
             ) {
                 if (tier.isUploading || tier.isDeleting) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)

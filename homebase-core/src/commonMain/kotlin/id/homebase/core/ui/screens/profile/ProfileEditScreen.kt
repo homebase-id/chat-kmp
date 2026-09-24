@@ -3,6 +3,8 @@
 package id.homebase.core.ui.screens.profile
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -233,10 +235,7 @@ fun ProfileEditScreen(
                 uiState = uiState,
                 modifier = Modifier.fillMaxSize().padding(padding),
             )
-            else -> Column(modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
-                if (uiState.savingAttributes.isNotEmpty()) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
+            else -> Box(modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
                 CompositionLocalProvider(LocalReviewEnabled provides uiState.reviewEnabled) {
                     ProfileForm(
                         uiState = uiState,
@@ -247,6 +246,14 @@ fun ProfileEditScreen(
                         onPickConnectedPhoto = { connectedPhotoPicker.launch() },
                         modifier = Modifier.fillMaxSize(),
                     )
+                }
+                AnimatedVisibility(
+                    visible = uiState.savingAttributes.isNotEmpty(),
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    exit = fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                ) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
             }
         }
@@ -865,7 +872,7 @@ private fun AddAttributeSheet(
                 modifier = Modifier.padding(vertical = 8.dp),
             )
             missing.forEach { spec ->
-                AddAttributeRow(spec) { onPick(spec) }
+                AddAttributeRow(spec) { dismiss { onPick(spec) } }
             }
         }
     }
