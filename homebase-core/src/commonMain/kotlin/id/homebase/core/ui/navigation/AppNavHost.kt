@@ -20,6 +20,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -308,8 +309,6 @@ fun AppNavHost(
         navBackStackEntry
     }
     val chromeDestination = chromeEntry?.destination
-    // Walked back from the top so the tab stays lit while its bar slides away under a pushed screen.
-    val selectedTab = backStack.lastOrNull { it.destination.isTopLevelRoute() }?.destination
     val momentsPreferences = koinInject<MomentsPreferences>()
     val momentsIconVisible by momentsPreferences.iconVisible.collectAsStateWithLifecycle()
     val momentsFeedService = koinInject<MomentsFeedService>()
@@ -356,42 +355,15 @@ fun AppNavHost(
             add(TopLevelRoute.Home)
         }
     }
-    val openEmail: () -> Unit = {
-        navController.navigate(Route.Email) {
-            popUpTo(Route.ChatList) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
-        }
-    }
-    val openContactBook: () -> Unit = {
-        navController.navigate(Route.ContactBook) {
-            popUpTo(Route.ChatList) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
-        }
-    }
-    val openMoments: () -> Unit = {
-        if (momentsViewModel.isActivated.value) {
-            navController.navigate(Route.Moments) {
-                popUpTo(Route.ChatList) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
-            }
-        } else {
-            navController.navigate(Route.MomentsOnboarding)
-        }
-    }
-    val openLocation: () -> Unit = {
-        if (locationViewModel.isActivated.value) {
-            navController.navigate(Route.Location) {
-                popUpTo(Route.ChatList) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
-            }
-        } else {
-            navController.navigate(Route.LocationOnboarding)
-        }
-    }
+    // Read at call time: the event collectors below capture these lambdas once.
+    val tabRoutes by rememberUpdatedState(topLevelRoutes.map { it.route })
+    // The nearest tab root with a bar item: it stays lit under a pushed screen or a hidden add-on.
+    val selectedTab = backStack.currentTabRoot(tabRoutes)?.destination
+    val openEmail: () -> Unit = { navController.openApp(Route.Email, tabRoutes) }
+    val openContactBook: () -> Unit = { navController.openApp(Route.ContactBook, tabRoutes) }
+    val openMoments: () -> Unit = { navController.openApp(Route.Moments, tabRoutes) }
+    val openLocation: () -> Unit = { navController.openApp(Route.Location, tabRoutes) }
+    val openChats: () -> Unit = { navController.switchTab(Route.ChatList, tabRoutes) }
     val uriHandler = getUriHandler()
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarMessage = stringResource(MR.string.pending_upgrade_snackbar_message)
@@ -589,7 +561,7 @@ fun AppNavHost(
             when (event) {
                 is ContactBookUiEvent.OpenConversation -> {
                     navController.selectConversationOnChatList(event.conversationId)
-                    navController.popBackStack(Route.ChatList, inclusive = false)
+                    openChats()
                 }
                 is ContactBookUiEvent.OpenDetail ->
                     navController.navigate(Route.ContactBookDetail(event.uniqueId, event.odinId))
@@ -600,8 +572,7 @@ fun AppNavHost(
 
                 ContactBookUiEvent.OpenEnrollmentCandidates ->
                     navController.navigate(Route.EnrollmentCandidates)
-                ContactBookUiEvent.CloseOnboarding ->
-                    navController.popBackStack(Route.ChatList, inclusive = false)
+                ContactBookUiEvent.CloseOnboarding -> navController.popBackStack()
                 else -> { /* Error handled by ContactBookScreen */ }
             }
         }
@@ -609,20 +580,8 @@ fun AppNavHost(
 
     val isVaultActivated by vaultViewModel.isActivated.collectAsStateWithLifecycle()
 
-    val openVault: () -> Unit = {
-        navController.navigate(Route.Vault) {
-            popUpTo(Route.ChatList) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
-        }
-    }
-
-    // Deliberately not a top-level route: WebDrop has no bar icon, so the bottom bar hides here.
-    val openWebDrop: () -> Unit = {
-        navController.navigate(Route.WebDrop) {
-            launchSingleTop = true
-        }
-    }
+    val openVault: () -> Unit = { navController.openApp(Route.Vault, tabRoutes) }
+    val openWebDrop: () -> Unit = { navController.openApp(Route.WebDrop, tabRoutes) }
 
     // Handle notification tap navigation (needs navController, stays in composable)
     LaunchedEffect(Unit) {
@@ -647,8 +606,7 @@ fun AppNavHost(
                     Logger.i(tag = "AppNavHost") {
                         "ChatList present in stack (size=${stack.size}), popping to it"
                     }
-                    val popped = navController.popBackStack(Route.ChatList, inclusive = false)
-                    Logger.i(tag = "AppNavHost") { "popBackStack(ChatList)=$popped" }
+                    openChats()
                     // Share intents carry no messageId, so PendingNotificationTap
                     // cannot resolve them. Drop the conversation id directly into
                     // ChatList's savedStateHandle — the LaunchedEffect on the
@@ -714,11 +672,7 @@ fun AppNavHost(
                         // on the feed, then open the detail pager on the tapped moment.
                         // The pager resolves the moment from MomentsFeedService's live
                         // feed, which is already syncing post-auth (and waits for it).
-                        navController.navigate(Route.Moments) {
-                            popUpTo(Route.ChatList) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
+                        openMoments()
                         navController.navigate(
                             Route.MomentDetail(
                                 momentId = momentId.toString(),
@@ -742,11 +696,7 @@ fun AppNavHost(
                         navController.currentBackStack.firstContaining {
                             it.destination.hasRoute(Route.ChatList::class)
                         }
-                        navController.navigate(Route.Moments) {
-                            popUpTo(Route.ChatList) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
+                        openMoments()
                         navController.navigate(Route.MomentCompose)
                     }
                 }
@@ -768,13 +718,8 @@ fun AppNavHost(
     LaunchedEffect(Unit) {
         momentsViewModel.events.collect { event ->
             when (event) {
-                MomentsUiEvent.Activated -> {
-                    navController.popBackStack(Route.MomentsOnboarding, inclusive = true)
-                    navController.navigate(Route.Moments) {
-                        popUpTo(Route.ChatList) { saveState = true }
-                        launchSingleTop = true
-                    }
-                }
+                // Onboarding is the tab root's own content, which swaps to the feed on activation.
+                MomentsUiEvent.Activated -> Unit
                 MomentsUiEvent.CloseOnboarding -> navController.popBackStack()
             }
         }
@@ -786,13 +731,7 @@ fun AppNavHost(
     LaunchedEffect(Unit) {
         locationViewModel.events.collect { event ->
             when (event) {
-                LocationUiEvent.Activated -> {
-                    navController.popBackStack(Route.LocationOnboarding, inclusive = true)
-                    navController.navigate(Route.Location) {
-                        popUpTo(Route.ChatList) { saveState = true }
-                        launchSingleTop = true
-                    }
-                }
+                LocationUiEvent.Activated -> Unit
                 LocationUiEvent.CloseOnboarding -> navController.popBackStack()
 
                 is LocationUiEvent.OpenPeerHistory -> navController.navigate(
@@ -860,21 +799,13 @@ fun AppNavHost(
                             },
                             selected = isSelected,
                             onClick = {
-                                when {
-                                    // Re-tapping the active tab scrolls to the top instead of re-navigating.
-                                    isSelected -> navController.currentBackStackEntry
+                                // Re-tapping the tab on screen scrolls to the top; a lit tab under a
+                                // hidden add-on is switched back to.
+                                if (isSelected && chromeDestination?.hasRoute(topLevelRoute.route::class) == true) {
+                                    navController.currentBackStackEntry
                                         ?.savedStateHandle?.set(SCROLL_TO_TOP_KEY, true)
-
-                                    topLevelRoute is TopLevelRoute.Moments -> openMoments()
-                                    topLevelRoute is TopLevelRoute.Vault -> openVault()
-                                    topLevelRoute is TopLevelRoute.Email -> openEmail()
-                                    topLevelRoute is TopLevelRoute.Location -> openLocation()
-                                    topLevelRoute is TopLevelRoute.ContactBook -> openContactBook()
-                                    else -> navController.navigate(topLevelRoute.route) {
-                                        popUpTo(Route.ChatList) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
+                                } else {
+                                    navController.switchTab(topLevelRoute.route, tabRoutes)
                                 }
                             },
                         )
@@ -907,19 +838,11 @@ fun AppNavHost(
                                     showMomentsBadge = momentsUnseenCount > 0,
                                     showLocationBadge = locationAttention,
                                     onClick = {
-                                        when {
-                                            isSelected -> navController.currentBackStackEntry
+                                        if (isSelected && chromeDestination?.hasRoute(topLevelRoute.route::class) == true) {
+                                            navController.currentBackStackEntry
                                                 ?.savedStateHandle?.set(SCROLL_TO_TOP_KEY, true)
-
-                                            topLevelRoute is TopLevelRoute.Moments -> openMoments()
-                                            topLevelRoute is TopLevelRoute.Vault -> openVault()
-                                        topLevelRoute is TopLevelRoute.Email -> openEmail()
-                                            topLevelRoute is TopLevelRoute.Location -> openLocation()
-                                            else -> navController.navigate(topLevelRoute.route) {
-                                                popUpTo(Route.ChatList) { saveState = true }
-                                                launchSingleTop = true
-                                                restoreState = true
-                                            }
+                                        } else {
+                                            navController.switchTab(topLevelRoute.route, tabRoutes)
                                         }
                                     })
                             }
@@ -930,11 +853,7 @@ fun AppNavHost(
                                     icon = Icons.Default.Archive,
                                     contentDescription = stringResource(MR.string.chat_archived_chats),
                                     onClick = {
-                                        navController.navigate(Route.ChatList) {
-                                            popUpTo(Route.ChatList) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
+                                        openChats()
                                         runCatching { navController.getBackStackEntry<Route.ChatList>() }
                                             .getOrNull()
                                             ?.savedStateHandle?.set(SHOW_ARCHIVED_KEY, true)
@@ -1116,7 +1035,7 @@ fun AppNavHost(
                                         },
                                         onOpenConversation = { conversationId ->
                                             navController.selectConversationOnChatList(conversationId)
-                                            navController.popBackStack(Route.ChatList, inclusive = false)
+                                            openChats()
                                         },
                                     )
                                 }
@@ -1173,7 +1092,7 @@ fun AppNavHost(
                                     onBack = { navController.popBackStack() },
                                     onOpenConversation = { conversationId ->
                                         navController.selectConversationOnChatList(conversationId)
-                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                        openChats()
                                     },
                                 )
                             }
@@ -1196,7 +1115,7 @@ fun AppNavHost(
                                     },
                                     onOpenConversation = { conversationId ->
                                         navController.selectConversationOnChatList(conversationId)
-                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                        openChats()
                                     },
                                     onSeeAllMedia = { conversationId ->
                                         navController.navigate(Route.ConversationMedia(conversationId))
@@ -1526,7 +1445,7 @@ fun AppNavHost(
                                     },
                                     onOpenConversation = { conversationId ->
                                         navController.selectConversationOnChatList(conversationId)
-                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                        openChats()
                                     },
                                     onNavigateToLiveLocationMap = {
                                         navController.navigate(Route.LocationLive)
@@ -1756,17 +1675,14 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.MomentsOnboarding> {
-                            if (isAuthenticated) {
+                        tab<Route.Moments>(tabRoot) {
+                            val momentsActivated by momentsViewModel.isActivated.collectAsStateWithLifecycle()
+                            if (isAuthenticated && !momentsActivated) {
                                 MomentsOnboardingScreen(
                                     viewModel = momentsViewModel,
                                     onNavigateBack = { navController.popBackStack() },
                                 )
-                            }
-                        }
-
-                        tab<Route.Moments>(tabRoot) {
-                            if (isAuthenticated) {
+                            } else if (isAuthenticated) {
                                 MomentsScreen(
                                     viewModel = koinViewModel(),
                                     extendPermissionViewModel = momentsViewModel.momentsExtendPermissionViewModel,
@@ -1865,17 +1781,14 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.LocationOnboarding> {
-                            if (isAuthenticated) {
+                        tab<Route.Location>(tabRoot) {
+                            val locationActivated by locationViewModel.isActivated.collectAsStateWithLifecycle()
+                            if (isAuthenticated && !locationActivated) {
                                 LocationOnboardingScreen(
                                     viewModel = locationViewModel,
                                     onNavigateBack = { navController.popBackStack() },
                                 )
-                            }
-                        }
-
-                        tab<Route.Location>(tabRoot) {
-                            if (isAuthenticated) {
+                            } else if (isAuthenticated) {
                                 LocationScreen(
                                     viewModel = locationViewModel,
                                     onOpenEmergency = { navController.navigate(Route.LocationEmergency) },
@@ -2093,12 +2006,7 @@ fun AppNavHost(
                                             vaultExtendPermissionViewModel = vaultViewModel.vaultExtendPermissionViewModel,
                                             viewModel = vaultViewModel,
                                             onNavigateToSettings = { navController.navigate(Route.VaultSettings) },
-                                            onNavigateToChats = {
-                                                navController.popBackStack(
-                                                    Route.ChatList,
-                                                    inclusive = false
-                                                )
-                                            },
+                                            onNavigateToChats = openChats,
                                             onNavigateToNoteEditor = { sectionId, entryId ->
                                                 navController.navigate(Route.VaultNoteEditor(sectionId, entryId))
                                             },
