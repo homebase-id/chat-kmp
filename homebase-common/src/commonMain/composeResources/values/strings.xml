@@ -2456,4 +2456,5 @@
     <string name="dev_menu_camera_result_size">Size: %1$s bytes</string>
     <string name="dev_menu_camera_result_type">Type: %1$s</string>
     <string name="dev_menu_camera_cancelled">Camera closed without a capture</string>
+    <string name="camera_lock_recording">Lock recording</string>
 </resources>
