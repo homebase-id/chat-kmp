@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments
 
+import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.core.moments.services.MomentsRecipient
 import id.homebase.core.moments.services.MomentsRecipientId
 import id.homebase.core.moments.services.MomentsRecipientsSnapshot
@@ -15,6 +16,8 @@ data class MomentAudienceUiState(
     val selfOnly: Boolean = false,
     /** Non-null while the "who's in this circle" roster sheet is open (view-only). */
     val circleDetail: CircleMembersUi? = null,
+    /** By lowercased domain, for the circle roster. */
+    val connectionStatuses: Map<String, ConnectionStatus> = emptyMap(),
 ) {
     val canPost: Boolean
         get() = draftReady && !isPosting && (selfOnly || selected.isNotEmpty())
