@@ -10,6 +10,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.config.AppConfig
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -42,17 +43,29 @@ class EmergencyContactServiceTest {
         val replies: MutableMap<String, () -> TemporalAccessStatus>,
         scope: kotlinx.coroutines.CoroutineScope,
         nowMs: Long,
+        online: Boolean = true,
+        private val beforeReply: suspend () -> Unit = {},
     ) {
         val calls = mutableListOf<String>()
+        var inFlight = 0
+        var maxInFlight = 0
+        val onlineFlow = MutableStateFlow(online)
         val contactsFlow = MutableStateFlow(contacts)
         val service = EmergencyContactService(
             contacts = contactsFlow,
             contactsLoaded = MutableStateFlow(true),
             verify = { peer ->
                 calls += peer.domainName
-                replies[peer.domainName]?.invoke() ?: error("no reply for ${peer.domainName}")
+                inFlight++
+                maxInFlight = maxOf(maxInFlight, inFlight)
+                try {
+                    beforeReply()
+                    replies[peer.domainName]?.invoke() ?: error("no reply for ${peer.domainName}")
+                } finally {
+                    inFlight--
+                }
             },
-            isOnline = MutableStateFlow(true),
+            isOnline = onlineFlow,
             selfDomain = { "me.example" },
             scope = scope,
             now = { nowMs },
@@ -80,6 +93,40 @@ class EmergencyContactServiceTest {
         assertIs<LocateVerifyStatus.Broken>(h.service.refresh(OdinId("broken.example")))
         assertIs<LocateVerifyStatus.Unreachable>(h.service.refresh(OdinId("down.example")))
         assertEquals(4, h.service.status.value.size)
+    }
+
+    @Test
+    fun fullSweepVerifiesAtMostFourAtATime() = runTest {
+        val domains = (1..10).map { "p$it.example" }
+        val h = Harness(
+            contacts = domains.map { contact(it) },
+            replies = domains.associateWith { { TemporalAccessStatus(hasAccess = false) } }.toMutableMap(),
+            scope = backgroundScope,
+            nowMs = now,
+            beforeReply = { delay(100) },
+        )
+        h.service.refreshAll()
+        assertEquals(10, h.calls.size)
+        assertEquals(4, h.maxInFlight)
+    }
+
+    @Test
+    fun loginSweepIsNotRepeatedByTheFirstReconnect() = runTest {
+        val domains = listOf("a.example", "b.example", "c.example")
+        val h = Harness(
+            contacts = domains.map { contact(it) },
+            // Broken is never cached, so a second sweep would verify every one again.
+            replies = domains.associateWith { { TemporalAccessStatus(hasAccess = false) } }.toMutableMap(),
+            scope = backgroundScope,
+            nowMs = now,
+            online = false,
+        )
+        h.service.start()
+        h.service.sweepAfterLogin()
+        runCurrent()
+        h.onlineFlow.value = true
+        runCurrent()
+        assertEquals(domains.sorted(), h.calls.sorted())
     }
 
     @Test

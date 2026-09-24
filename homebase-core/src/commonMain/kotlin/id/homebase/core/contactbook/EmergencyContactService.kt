@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Clock
@@ -68,6 +70,9 @@ const val LOCATE_STALE_WARN_MS = 2L * 24 * 60 * 60_000L
 const val RECONNECT_RESWEEP_MIN_INTERVAL_MS = 4L * 60 * 60_000L
 
 private const val STALE_TICK_MS = 5L * 60_000L
+
+/** A full sweep verifies this many peers at a time, so a large flagged set isn't one burst. */
+private const val MAX_CONCURRENT_VERIFIES = 4
 
 fun LocateVerifyStatus?.needsReverify(nowMs: Long): Boolean = when (this) {
     LocateVerifyStatus.Loading -> false
@@ -148,6 +153,7 @@ class EmergencyContactService internal constructor(
     private var started = false
     private var lastFullSweepMs = 0L
     private val sweepMutex = Mutex()
+    private val verifyPermits = Semaphore(MAX_CONCURRENT_VERIFIES)
 
     fun start() {
         if (started) return
@@ -166,6 +172,8 @@ class EmergencyContactService internal constructor(
 
     /** Re-verifies the contacts already flagged; never probes the rest of the book. */
     fun sweepAfterLogin() {
+        // Claims the sweep before waiting, so the reconnect collector's 4h gate skips the same wake-up.
+        lastFullSweepMs = now()
         scope.launch {
             contactsLoaded.first { it }
             withTimeoutOrNull(LOCATE_VERIFY_ONLINE_WAIT_MS) { isOnline.first { it } }
@@ -245,7 +253,7 @@ class EmergencyContactService internal constructor(
             Logger.i(TAG) { "refreshAll: targets=${targets.size} only=${only?.size} spinner=$showSpinner" }
             if (targets.isEmpty()) return
             coroutineScope {
-                targets.forEach { peer -> launch { refresh(peer, showSpinner) } }
+                targets.forEach { peer -> launch { verifyPermits.withPermit { refresh(peer, showSpinner) } } }
             }
         }
     }
