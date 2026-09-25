@@ -66,7 +66,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import co.touchlab.kermit.Logger
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.Haptics
 import id.homebase.core.util.formatHms
@@ -393,10 +392,6 @@ internal fun CameraCaptureContent(
         carousel.drag(-deltaPx * carouselDirection() / slotPx) { haptics.perform(HapticEvent.Selection) }
     fun modeDragEnd(velocityPx: Float, slotPx: Float) {
         val flung = abs(velocityPx) > with(density) { FLING_DP_PER_SECOND.dp.toPx() }
-        Logger.i(tag = SWIPE_LOG_TAG) {
-            "drag end velocityPx=$velocityPx slotPx=$slotPx flung=$flung mode=${currentUi.mode} " +
-                "recording=${currentUi.isRecording} intent=$recordingIntent busy=$busy"
-        }
         carousel.release(
             velocitySlotsPerSecond = -velocityPx * carouselDirection() / slotPx,
             flung = flung,

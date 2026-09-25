@@ -1,6 +1,5 @@
 package id.homebase.core.camera
 
-import co.touchlab.kermit.Logger
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -119,10 +118,6 @@ internal class ModeCarouselState(
         var landing = (startIndex + step).coerceIn(0, slotCount - 1)
         val refused = landing != startIndex && !commit(landing)
         if (refused) landing = startIndex
-        Logger.i(tag = SWIPE_LOG_TAG) {
-            "release start=$startIndex travel=$travel velocity=$velocitySlotsPerSecond slots/s flung=$flung " +
-                "step=$step landing=$landing refused=$refused"
-        }
         if (landing != tickedIndex) onSlotChange()
         tickedIndex = landing
         target = landing
@@ -291,5 +286,3 @@ private val ModeSlotMinWidth = 92.dp
 private val ModeSlotMinHeight = 40.dp
 private val ModeLabelPadding = 16.dp
 internal val ModeTrackInset = 4.dp
-
-internal const val SWIPE_LOG_TAG = "CameraModeSwipe"
