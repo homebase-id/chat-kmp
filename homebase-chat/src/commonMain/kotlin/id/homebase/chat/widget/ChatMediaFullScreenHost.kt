@@ -21,7 +21,9 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.file.FileOperationsProvider
@@ -60,7 +62,7 @@ fun ChatMediaFullScreenHost(
     content: @Composable (SharedMediaHero) -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
-        SharedMediaOverlay(item, Modifier.fillMaxSize(), content) { shown, sharedTransitionScope, animatedVisibilityScope ->
+        SharedMediaOverlay(item, onDismiss, Modifier.fillMaxSize(), content) { shown, sharedTransitionScope, animatedVisibilityScope ->
             SharedMediaViewer(
                 item = shown,
                 driveId = driveId,
@@ -80,10 +82,11 @@ fun ChatMediaFullScreenHost(
     }
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalSharedTransitionApi::class, ExperimentalComposeUiApi::class)
 @Composable
 internal fun SharedMediaOverlay(
     item: SharedMediaItem?,
+    onDismiss: () -> Unit,
     modifier: Modifier,
     content: @Composable (SharedMediaHero) -> Unit,
     viewer: @Composable (SharedMediaItem, SharedTransitionScope, AnimatedVisibilityScope) -> Unit,
@@ -92,6 +95,9 @@ internal fun SharedMediaOverlay(
     SharedTransitionLayout(modifier = modifier) {
         val hero = remember(transition) { SharedMediaHero(this, transition) }
         content(hero)
+        // After [content] so it outranks the screen's own handlers while the viewer is open.
+        @Suppress("DEPRECATION")
+        BackHandler(enabled = item != null, onBack = onDismiss)
         transition.AnimatedVisibility(
             visible = { it != null },
             enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),

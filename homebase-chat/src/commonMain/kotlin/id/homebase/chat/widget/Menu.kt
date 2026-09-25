@@ -1,5 +1,18 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.Transition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -10,7 +23,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -41,17 +53,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.movableContentOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -99,6 +111,9 @@ import id.homebase.resources.settings
 import id.homebase.resources.share
 import kotlinx.collections.immutable.ImmutableList
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.pow
 
 @Composable
 fun ConversationMenu(
@@ -214,7 +229,7 @@ fun ConversationMenu(
 
 @Composable
 fun ReceivedMessagePopup(
-    mode: MessagePopupMode,
+    transition: Transition<MessagePopupMode>,
     message: MessageUiModel,
     userDefaultReactions: ImmutableList<String>,
     dismissMenu: () -> Unit,
@@ -313,7 +328,18 @@ fun ReceivedMessagePopup(
         }
     }
 
-    when (mode) {
+    val reactionBar: @Composable (Modifier, (Int) -> Modifier) -> Unit = { background, emoji ->
+        ReactionMenu(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            userDefaultReactions = userDefaultReactions,
+            ownReactions = message.ownReactions,
+            onSelect = onSelectEmoji,
+            onShowAllEmojis = onShowAllEmojis,
+            backgroundModifier = background,
+            emojiModifier = emoji,
+        )
+    }
+    when (transition.shownMode) {
         MessagePopupMode.Reaction -> {
             // This unanchored Popup positions against its parent — the hover-icons Row,
             // which only has icons (and therefore a size) on desktop. Mobile renders the
@@ -322,13 +348,7 @@ fun ReceivedMessagePopup(
                 Popup(
                     onDismissRequest = dismissMenu
                 ) {
-                    ReactionMenu(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        userDefaultReactions = userDefaultReactions,
-                        ownReactions = message.ownReactions,
-                        onSelect = onSelectEmoji,
-                        onShowAllEmojis = onShowAllEmojis,
-                    )
+                    transition.PopupContent { reactionBar(Modifier) { Modifier } }
                 }
             }
         }
@@ -336,88 +356,35 @@ fun ReceivedMessagePopup(
             Popup(
                 onDismissRequest = dismissMenu
             ) {
-                actionMenu(Unit)
+                transition.PopupContent { actionMenu(Unit) }
             }
         }
         MessagePopupMode.All -> {
             PopupWithScrim(
+                transition = transition,
                 onDismissRequest = dismissMenu
             ) {
-                val localDensity = LocalDensity.current
-                var messageBubbleHeight by remember { mutableStateOf(0.dp) }
-                var actionMenuY by remember { mutableStateOf(0f) }
-                var boxY by remember { mutableStateOf(0f) }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .onGloballyPositioned { coordinates ->
-                            boxY = coordinates.positionInRoot().y
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Layer 1: Message bubble - positioned absolutely, doesn't affect layout
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(horizontal = 16.dp)
-                            .offset(
-                                y = with(localDensity) {
-                                    // Calculate offset relative to Box
-                                    (actionMenuY - boxY).toDp() - messageBubbleHeight
-                                }
-                            )
-                            .onGloballyPositioned { coordinates ->
-                                messageBubbleHeight = with(localDensity) {
-                                    coordinates.size.height.toDp()
-                                }
-                            }
-                    ) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        ReceivedMessageBubbleDisplayOnly(message = message)
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-
-                    // Layer 2: ReactionMenu (when allowed) + ActionMenu — always centered,
-                    // independent of bubble height
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.Center),
-                        horizontalAlignment = Alignment.Start
-                    ) {
-                        if (policy.allowInlineReactions) {
-                            ReactionMenu(
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                                userDefaultReactions = userDefaultReactions,
-                                ownReactions = message.ownReactions,
-                                onSelect = onSelectEmoji,
-                                onShowAllEmojis = onShowAllEmojis,
-                            )
-
-                            Spacer(modifier = Modifier.height(minOf(messageBubbleHeight, 140.dp)))
+                MessageLongPressLayout(
+                    alignEnd = false,
+                    reactionMenu = reactionBar.takeIf { policy.allowInlineReactions },
+                    bubble = {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            ReceivedMessageBubbleDisplayOnly(message = message)
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
-
-                        Box(
-                            modifier = Modifier.onGloballyPositioned { coordinates ->
-                                // Get the Y position of the top of the actionMenu in the Box coordinate space
-                                actionMenuY = coordinates.positionInRoot().y
-                            }
-                        ) {
-                            actionMenu(Unit)
-                        }
-                    }
-                }
+                    },
+                    actionMenu = { actionMenu(Unit) },
+                )
             }
         }
-
         else -> {}
     }
 }
 
 @Composable
 fun SentMessagePopup(
-    mode: MessagePopupMode,
+    transition: Transition<MessagePopupMode>,
     message: MessageUiModel,
     userDefaultReactions: ImmutableList<String>,
     dismissMenu: () -> Unit,
@@ -518,104 +485,54 @@ fun SentMessagePopup(
         }
     }
 
-    when (mode) {
+    val reactionBar: @Composable (Modifier, (Int) -> Modifier) -> Unit = { background, emoji ->
+        ReactionMenu(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            userDefaultReactions = userDefaultReactions,
+            ownReactions = message.ownReactions,
+            onSelect = onSelectEmoji,
+            onShowAllEmojis = onShowAllEmojis,
+            backgroundModifier = background,
+            emojiModifier = emoji,
+        )
+    }
+    when (transition.shownMode) {
         MessagePopupMode.Reaction -> {
             // Desktop-only anchor — see ReceivedMessagePopup.
             if (policy.allowInlineReactions && !isMobile()) {
                 Popup(
                     onDismissRequest = dismissMenu
                 ) {
-                    ReactionMenu(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        userDefaultReactions = userDefaultReactions,
-                        ownReactions = message.ownReactions,
-                        onSelect = onSelectEmoji,
-                        onShowAllEmojis = onShowAllEmojis,
-                    )
+                    transition.PopupContent { reactionBar(Modifier) { Modifier } }
                 }
             }
         }
-
         MessagePopupMode.Menu -> {
             Popup(
                 onDismissRequest = dismissMenu
             ) {
-                actionMenu(Unit)
+                transition.PopupContent { actionMenu(Unit) }
             }
         }
-
         MessagePopupMode.All -> {
             PopupWithScrim(
+                transition = transition,
                 onDismissRequest = dismissMenu
             ) {
-                val localDensity = LocalDensity.current
-                var messageBubbleHeight by remember { mutableStateOf(0.dp) }
-                var actionMenuY by remember { mutableStateOf(0f) }
-                var boxY by remember { mutableStateOf(0f) }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .onGloballyPositioned { coordinates ->
-                            boxY = coordinates.positionInRoot().y
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Layer 1: Message bubble - positioned absolutely, doesn't affect layout
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(horizontal = 16.dp)
-                            .offset(
-                                y = with(localDensity) {
-                                    // Calculate offset relative to Box
-                                    (actionMenuY - boxY).toDp() - messageBubbleHeight
-                                }
-                            )
-                            .onGloballyPositioned { coordinates ->
-                                messageBubbleHeight = with(localDensity) {
-                                    coordinates.size.height.toDp()
-                                }
-                            }
-                    ) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        SentMessageBubbleDisplayOnly(message = message)
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-
-                    // Layer 2: ReactionMenu (when allowed) + ActionMenu — always centered,
-                    // independent of bubble height
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.Center),
-                        horizontalAlignment = Alignment.End
-                    ) {
-                        if (policy.allowInlineReactions) {
-                            ReactionMenu(
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                                userDefaultReactions = userDefaultReactions,
-                                ownReactions = message.ownReactions,
-                                onSelect = onSelectEmoji,
-                                onShowAllEmojis = onShowAllEmojis,
-                            )
-
-                            Spacer(modifier = Modifier.height(minOf(messageBubbleHeight, 140.dp)))
+                MessageLongPressLayout(
+                    alignEnd = true,
+                    reactionMenu = reactionBar.takeIf { policy.allowInlineReactions },
+                    bubble = {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            SentMessageBubbleDisplayOnly(message = message)
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
-
-                        Box(
-                            modifier = Modifier.onGloballyPositioned { coordinates ->
-                                // Get the Y position of the top of the actionMenu in the Box coordinate space
-                                actionMenuY = coordinates.positionInRoot().y
-                            }
-                        ) {
-                            actionMenu(Unit)
-                        }
-                    }
-                }
+                    },
+                    actionMenu = { actionMenu(Unit) },
+                )
             }
         }
-
         else -> {}
     }
 }
@@ -627,6 +544,101 @@ enum class MessagePopupMode {
     Menu,
 }
 
+// While the popup animates out the target is already None; keep drawing the one that was open.
+internal val Transition<MessagePopupMode>.shownMode: MessagePopupMode
+    get() = if (targetState != MessagePopupMode.None) targetState else currentState
+
+@Composable
+private fun Transition<MessagePopupMode>.PopupContent(
+    transformOrigin: TransformOrigin = TransformOrigin.Center,
+    content: @Composable () -> Unit,
+) {
+    val motion = MaterialTheme.motionScheme
+    AnimatedVisibility(
+        visible = { it != MessagePopupMode.None },
+        enter = scaleIn(motion.defaultSpatialSpec(), initialScale = 0.8f, transformOrigin = transformOrigin) +
+            fadeIn(motion.defaultEffectsSpec()),
+        exit = scaleOut(motion.fastSpatialSpec(), targetScale = 0.8f, transformOrigin = transformOrigin) +
+            fadeOut(motion.fastEffectsSpec()),
+    ) { content() }
+}
+
+// Matches Signal's ChatReactionOverlay.kt (strip, staggered emoji) and delay_fade_in / shrink_fade_out (menu).
+private fun decelerate(power: Float) = Easing { 1f - (1f - it).pow(power) }
+
+private fun <T> signalReveal(delayMillis: Int) = tween<T>(200, delayMillis, decelerate(2f))
+
+private fun <T> signalHide() = tween<T>(150, easing = decelerate(2f))
+
+private val AccelerateDecelerate = Easing { cos((it + 1f) * PI).toFloat() / 2f + 0.5f }
+
+// The bubble sits directly above the action menu; the reaction bar sits above both with a gap
+// of up to 140dp that the bubble fills. Placed in one pass so the first frame is already final.
+@Composable
+internal fun AnimatedVisibilityScope.MessageLongPressLayout(
+    alignEnd: Boolean,
+    reactionMenu: (@Composable (background: Modifier, emoji: (Int) -> Modifier) -> Unit)?,
+    bubble: @Composable () -> Unit,
+    actionMenu: @Composable () -> Unit,
+) {
+    Layout(
+        contents = listOf(
+            {
+                reactionMenu?.invoke(
+                    Modifier.animateEnterExit(
+                        enter = fadeIn(signalReveal(100)),
+                        exit = fadeOut(signalHide()),
+                    ),
+                ) { index ->
+                    Modifier.animateEnterExit(
+                        enter = fadeIn(signalReveal(100 + 10 * index)) +
+                            slideInVertically(signalReveal(100 + 10 * index)) { it / 2 },
+                        exit = fadeOut(signalHide()) +
+                            slideOutVertically(signalHide()) { it / 2 },
+                    )
+                }
+            },
+            {
+                Box(
+                    Modifier.animateEnterExit(
+                        enter = scaleIn(tween(200, easing = AccelerateDecelerate), initialScale = 0.95f),
+                        // Signal hides the row under its snapshot; our row stays visible, so fade instead.
+                        exit = fadeOut(signalHide()),
+                    ),
+                ) { bubble() }
+            },
+            {
+                Box(
+                    Modifier.animateEnterExit(
+                        enter = fadeIn(signalReveal(150)),
+                        exit = scaleOut(
+                            tween(220, easing = decelerate(5f)),
+                            targetScale = 0.9f,
+                            transformOrigin = TransformOrigin(0.5f, 0f),
+                        ) + fadeOut(tween(150, easing = decelerate(3f))),
+                    ),
+                ) { actionMenu() }
+            },
+        ),
+        modifier = Modifier.fillMaxSize(),
+    ) { (reactionMeasurables, bubbleMeasurables, actionMeasurables), constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val reaction = reactionMeasurables.firstOrNull()?.measure(loose)
+        val bubblePlaceable = bubbleMeasurables.first().measure(loose)
+        val action = actionMeasurables.first().measure(loose)
+        val gap = if (reaction != null) minOf(bubblePlaceable.height, 140.dp.roundToPx()) else 0
+        val columnHeight = (reaction?.height ?: 0) + gap + action.height
+        val top = (constraints.maxHeight - columnHeight) / 2
+        val actionTop = top + (reaction?.height ?: 0) + gap
+        fun Placeable.x() = if (alignEnd) constraints.maxWidth - width else 0
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            bubblePlaceable.placeRelative(bubblePlaceable.x(), actionTop - bubblePlaceable.height)
+            reaction?.placeRelative(reaction.x(), top)
+            action.placeRelative(action.x(), actionTop)
+        }
+    }
+}
+
 /**
  * The compact reaction bar, anchored just above the bubble it belongs to. Declare it as a
  * child of the layout that wraps the bubble — [PopupPositionProvider.calculatePosition]
@@ -634,6 +646,7 @@ enum class MessagePopupMode {
  */
 @Composable
 fun BubbleReactionPopup(
+    transition: Transition<MessagePopupMode>,
     message: MessageUiModel,
     userDefaultReactions: ImmutableList<String>,
     alignToBubbleEnd: Boolean,
@@ -643,17 +656,20 @@ fun BubbleReactionPopup(
 ) {
     val policy = message.messageContent?.actions ?: ActionPolicy.Standard
     if (!policy.allowInlineReactions) return
+    val growsFromRight = alignToBubbleEnd == (LocalLayoutDirection.current == LayoutDirection.Ltr)
     Popup(
         popupPositionProvider = rememberAboveBubblePositionProvider(alignToBubbleEnd),
         onDismissRequest = dismissMenu,
     ) {
-        ReactionMenu(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            userDefaultReactions = userDefaultReactions,
-            ownReactions = message.ownReactions,
-            onSelect = onSelectEmoji,
-            onShowAllEmojis = onShowAllEmojis,
-        )
+        transition.PopupContent(TransformOrigin(if (growsFromRight) 1f else 0f, 1f)) {
+            ReactionMenu(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                userDefaultReactions = userDefaultReactions,
+                ownReactions = message.ownReactions,
+                onSelect = onSelectEmoji,
+                onShowAllEmojis = onShowAllEmojis,
+            )
+        }
     }
 }
 
@@ -848,30 +864,45 @@ fun ConversationItemMenuPopup(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun PopupWithScrim(
+internal fun PopupWithScrim(
+    transition: Transition<MessagePopupMode>,
     onDismissRequest: () -> Unit,
-    content: @Composable () -> Unit
+    content: @Composable AnimatedVisibilityScope.() -> Unit
 ) {
+    val motion = MaterialTheme.motionScheme
+    // The Popup isn't focusable, so without this Back reaches the screen's handler and leaves the chat.
+    @Suppress("DEPRECATION") BackHandler(enabled = transition.targetState != MessagePopupMode.None, onBack = onDismissRequest)
     Popup(
         onDismissRequest = onDismissRequest
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
+        // Each child animates itself, so the scrim fade doesn't multiply into the menus' alpha.
+        transition.AnimatedVisibility(
+            visible = { it != MessagePopupMode.None },
+            enter = EnterTransition.None,
+            exit = ExitTransition.None,
         ) {
-            // Scrim/Dimmed background
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.8f))
-                    .clickable(
-                        onClick = onDismissRequest,
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    )
-            )
-            content()
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .animateEnterExit(
+                            enter = fadeIn(motion.defaultEffectsSpec()),
+                            exit = fadeOut(signalHide()),
+                        )
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.8f))
+                        .clickable(
+                            onClick = onDismissRequest,
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        )
+                )
+                content()
+            }
         }
     }
 }

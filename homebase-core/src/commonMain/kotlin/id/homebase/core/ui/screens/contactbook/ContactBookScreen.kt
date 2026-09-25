@@ -63,6 +63,9 @@ import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_action_add
 import id.homebase.resources.contactbook_error_circle_action
+import id.homebase.resources.contactbook_error_circle_toggle_forbidden
+import id.homebase.resources.contactbook_error_circle_toggle_not_found
+import id.homebase.resources.contactbook_error_circle_toggle_system
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_forbidden
 import id.homebase.resources.chat_contact_card_partial_additions
@@ -104,6 +107,9 @@ fun ContactBookScreen(
     val errAdditionsFailed = stringResource(MR.string.chat_contact_card_partial_additions)
     val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
     val errCircleAction = stringResource(MR.string.contactbook_error_circle_action)
+    val errCircleToggleForbidden = stringResource(MR.string.contactbook_error_circle_toggle_forbidden)
+    val errCircleToggleSystem = stringResource(MR.string.contactbook_error_circle_toggle_system)
+    val errCircleToggleNotFound = stringResource(MR.string.contactbook_error_circle_toggle_not_found)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -123,6 +129,9 @@ fun ContactBookScreen(
                         ContactBookError.ClearUnsupported -> errClearUnsupported
                         ContactBookError.AdditionsFailed -> errAdditionsFailed
                         ContactBookError.CircleActionFailed -> errCircleAction
+                        ContactBookError.CircleToggleForbidden -> errCircleToggleForbidden
+                        ContactBookError.CircleToggleSystemCircle -> errCircleToggleSystem
+                        ContactBookError.CircleToggleNotFound -> errCircleToggleNotFound
                     }
                     snackbarHostState.showSnackbar(msg)
                 }
@@ -371,6 +380,9 @@ fun ContactBookScreen(
             },
             onRemoveMemberClick = {
                 viewModel.onAction(ContactBookUiAction.CircleRemoveMemberClicked(members.circleId, it))
+            },
+            onEnabledChange = {
+                viewModel.onAction(ContactBookUiAction.CircleEnabledChanged(members.circleId, it))
             },
         )
     }

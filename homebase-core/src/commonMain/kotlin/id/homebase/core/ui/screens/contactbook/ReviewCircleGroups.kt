@@ -41,7 +41,7 @@ data class ReviewCircleGroups(
      * What the sheet opens with: the app defaults, checked. The owning app nominated them and the
      * review button applies "the checked per-app defaults".
      */
-    fun initialSelection(): Set<String> = idsIn(appDefaults)
+    fun initialSelection(): Set<String> = idsIn(appDefaults.filterNot { it.disabled })
 
     /**
      * Toggle [id], then hold the invariant that "Chat only" grants nothing: clearing the last
@@ -65,6 +65,7 @@ private fun CircleWithMembers.toUi() = ContactCircleUi(
     emoji = circle.emoji,
     description = circle.description,
     memberCount = members.size,
+    disabled = circle.disabled,
 )
 
 /**
@@ -78,7 +79,7 @@ private fun CircleWithMembers.toUi() = ContactCircleUi(
  * circle odin-core left without an appId, so the sheet would be offering the second to grant the
  * first.
  */
-private fun RedactedCircleDefinition.isOwnedByContactsApp(): Boolean =
+internal fun RedactedCircleDefinition.isOwnedByContactsApp(): Boolean =
     appId != null && appId.toString().equals(CONTACTS_APP_ID, ignoreCase = true)
 
 /** Emergency Location Access is user-assigned like any personal circle, but grants location. */
@@ -89,7 +90,7 @@ fun CircleMembershipState.reviewCircleGroups(): ReviewCircleGroups {
     // Kept as CircleWithMembers rather than reduced to definitions: the row shows how many people
     // are already in a circle, which is the cheapest answer to "what is this one for".
     val personal = circles
-        .filter { it.circle.isPersonalCircle() && it.circle.name.isNotBlank() }
+        .filter { it.circle.isPersonalKind() && it.circle.name.isNotBlank() }
         .distinctBy { it.circle.id.lowercase() }
         .sortedBy { it.circle.name.lowercase() }
 

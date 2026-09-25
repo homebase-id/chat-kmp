@@ -5,10 +5,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.InternalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.LocalCompatNavigationEventDispatcherOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SkikoComposeUiTest
@@ -16,6 +19,7 @@ import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.unit.dp
+import androidx.navigationevent.NavigationEventInput
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.conversationsettings.SharedMediaItem
@@ -24,7 +28,7 @@ import kotlin.test.assertEquals
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
-@OptIn(ExperimentalTestApi::class)
+@OptIn(ExperimentalTestApi::class, InternalComposeUiApi::class)
 class SharedMediaOverlayTest {
 
     private val item = SharedMediaItem(
@@ -39,11 +43,22 @@ class SharedMediaOverlayTest {
 
     private var open by mutableStateOf<SharedMediaItem?>(null)
 
+    private val back = object : NavigationEventInput() {
+        fun press() = dispatchOnBackCompleted()
+    }
+
     private fun SkikoComposeUiTest.showGrid() {
         setContent {
+            @Suppress("DEPRECATION")
+            val dispatcher = LocalCompatNavigationEventDispatcherOwner.current!!.navigationEventDispatcher
+            DisposableEffect(dispatcher) {
+                dispatcher.addInput(back)
+                onDispose { dispatcher.removeInput(back) }
+            }
             MaterialTheme {
                 SharedMediaOverlay(
                     item = open,
+                    onDismiss = { open = null },
                     modifier = Modifier.fillMaxSize(),
                     content = { hero ->
                         Row {
@@ -98,6 +113,20 @@ class SharedMediaOverlayTest {
         onNodeWithTag(TILE).assertExists()
 
         settle()
+        onNodeWithTag(VIEWER).assertDoesNotExist()
+        onNodeWithTag(TILE).assertExists()
+    }
+
+    @Test
+    fun `back closes the viewer and keeps the media screen`() = runSkikoComposeUiTest {
+        showGrid()
+        open = item
+        waitForIdle()
+
+        runOnIdle { back.press() }
+        waitForIdle()
+
+        assertEquals(null, open)
         onNodeWithTag(VIEWER).assertDoesNotExist()
         onNodeWithTag(TILE).assertExists()
     }
