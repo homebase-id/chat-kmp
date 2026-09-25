@@ -140,6 +140,7 @@ androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle
 # which lets us hook app foreground transitions on Android. Used by MainApplication's
 # share-outbound foreground sweep.
 androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version = "2.10.0" }
+androidx-navigationevent = { module = "androidx.navigationevent:navigationevent", version = "1.0.2" }
 androidx-media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "androidx-media3" }
 androidx-media3-exoplayer-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "androidx-media3" }
 androidx-media3-ui = { module = "androidx.media3:media3-ui", version.ref = "androidx-media3" }
