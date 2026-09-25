@@ -158,8 +158,7 @@ class LocationViewModel(
         }
 
         // "Who you can locate" = the contacts carrying our `iCanLocate` app-data flag (set when they
-        // designated us via their emergency circle). The flag is a reactive cache; step 8 reconciles
-        // it against a temporal-access preflight. Reactive so a new designation appears live.
+        // designated us via their emergency circle). Reactive so a new designation appears live.
         viewModelScope.launch {
             emergencyContacts.locatable.collect { list ->
                 val members = list.orEmpty()
