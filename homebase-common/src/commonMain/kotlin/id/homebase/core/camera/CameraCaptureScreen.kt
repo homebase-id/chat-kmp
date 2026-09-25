@@ -69,7 +69,6 @@ internal val LocalCameraFade = staticCompositionLocalOf<() -> Float> { { 1f } }
 @Composable
 fun CameraCaptureDialog(
     allowedModes: CameraModes,
-    initialMode: CaptureMode = CaptureMode.Photo,
     mirrorFront: Boolean = true,
     warmEngine: CameraEngine? = null,
     handingOff: Boolean = false,
@@ -87,7 +86,6 @@ fun CameraCaptureDialog(
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = fade() }) {
                 CameraCaptureScreen(
                     allowedModes = allowedModes,
-                    initialMode = initialMode,
                     mirrorFront = mirrorFront,
                     warmEngine = warmEngine,
                     acceptsInput = !handingOff,
@@ -114,9 +112,8 @@ fun CameraCaptureDialog(
 }
 
 @Composable
-fun CameraCaptureScreen(
+internal fun CameraCaptureScreen(
     allowedModes: CameraModes,
-    initialMode: CaptureMode = CaptureMode.Photo,
     mirrorFront: Boolean = true,
     warmEngine: CameraEngine? = null,
     acceptsInput: Boolean = true,
@@ -135,7 +132,6 @@ fun CameraCaptureScreen(
                     CameraCaptureContent(
                         engine = engine,
                         allowedModes = allowedModes,
-                        initialMode = initialMode,
                         mirrorFront = mirrorFront,
                         mic = permissions.mic,
                         onRequestMic = permissions::requestMic,

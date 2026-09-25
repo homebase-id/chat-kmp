@@ -145,7 +145,6 @@ private const val STARTING_SPINNER_DELAY_MS = 700L
 internal fun CameraCaptureContent(
     engine: CameraEngine,
     allowedModes: CameraModes,
-    initialMode: CaptureMode,
     mirrorFront: Boolean,
     mic: MicPermission,
     onRequestMic: () -> Unit,
@@ -215,10 +214,6 @@ internal fun CameraCaptureContent(
     val recordingStartedText = stringResource(MR.string.camera_recording_started)
     val holdEnabled = CaptureButtonState.holdToRecordAllowed(allowedModes)
 
-    LaunchedEffect(engine) {
-        val mode = if (allowedModes.allows(initialMode)) initialMode else CaptureMode.Photo
-        engine.setMode(mode)
-    }
     LaunchedEffect(ui.mode, mic.needsAsking) {
         if (ui.mode == CaptureMode.Video && mic.needsAsking) onRequestMic()
     }
