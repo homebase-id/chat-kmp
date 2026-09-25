@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.CircleDriveUi
 import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
+import id.homebase.core.ui.screens.contactbook.messageRes
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.widget.AdaptiveSheet
@@ -116,19 +117,30 @@ fun CircleMembersSheet(
                 )
             }
             if (state.offersEnableToggle) {
+                val toggleError = state.toggleError
                 ListItem(
-                    modifier = Modifier.toggleable(
-                        value = !state.disabled,
-                        enabled = !state.togglingEnabled,
-                        onValueChange = onEnabledChange,
-                        role = Role.Switch,
-                    ),
+                    modifier = Modifier
+                        .padding(bottom = if (toggleError == null) 12.dp else 4.dp)
+                        .toggleable(
+                            value = !state.disabled,
+                            enabled = !state.togglingEnabled,
+                            onValueChange = onEnabledChange,
+                            role = Role.Switch,
+                        ),
                     headlineContent = { Text(stringResource(MR.string.contactbook_circle_enabled)) },
                     supportingContent = { Text(stringResource(MR.string.contactbook_circle_enabled_hint)) },
                     trailingContent = {
                         Switch(checked = !state.disabled, onCheckedChange = null, enabled = !state.togglingEnabled)
                     },
                 )
+                if (toggleError != null) {
+                    Text(
+                        text = stringResource(toggleError.messageRes()),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                    )
+                }
             } else if (state.disabled) {
                 Text(
                     text = stringResource(MR.string.contactbook_circle_disabled),
@@ -186,6 +198,14 @@ fun CircleMembersSheet(
                                 strokeWidth = 2.dp,
                             )
                         }
+                    }
+                    state.removeError?.let { error ->
+                        Text(
+                            text = stringResource(error.messageRes()),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(vertical = 4.dp),
+                        )
                     }
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
                         items(allMembers, key = { it.uniqueId.toString() }) { entry ->

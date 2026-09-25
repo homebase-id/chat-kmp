@@ -6,8 +6,21 @@ import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
+import id.homebase.resources.MR
+import id.homebase.resources.chat_contact_card_partial_additions
+import id.homebase.resources.contactbook_error_circle_action
+import id.homebase.resources.contactbook_error_circle_toggle_forbidden
+import id.homebase.resources.contactbook_error_circle_toggle_not_found
+import id.homebase.resources.contactbook_error_circle_toggle_system
+import id.homebase.resources.contactbook_error_clear_unsupported
+import id.homebase.resources.contactbook_error_delete
+import id.homebase.resources.contactbook_error_forbidden
+import id.homebase.resources.contactbook_error_message
+import id.homebase.resources.contactbook_error_photo
+import id.homebase.resources.contactbook_error_save
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
+import org.jetbrains.compose.resources.StringResource
 
 /** The two sections of the unified Contacts screen. */
 enum class ContactTab {
@@ -59,6 +72,9 @@ data class CircleMembersUi(
     val disabled: Boolean = false,
     val offersEnableToggle: Boolean = false,
     val togglingEnabled: Boolean = false,
+    /** Shown in the sheet, like [removeError]: the screen's snackbar sits underneath it. */
+    val toggleError: ContactBookError? = null,
+    val removeError: ContactBookError? = null,
     val members: List<ContactBookEntry> = emptyList(),
     val isLoading: Boolean = true,
     /**
@@ -285,4 +301,18 @@ enum class ContactBookError {
     CircleToggleForbidden,
     CircleToggleSystemCircle,
     CircleToggleNotFound,
+}
+
+fun ContactBookError.messageRes(): StringResource = when (this) {
+    ContactBookError.SaveFailed -> MR.string.contactbook_error_save
+    ContactBookError.SaveForbidden -> MR.string.contactbook_error_forbidden
+    ContactBookError.DeleteFailed -> MR.string.contactbook_error_delete
+    ContactBookError.PhotoFailed -> MR.string.contactbook_error_photo
+    ContactBookError.MessageFailed -> MR.string.contactbook_error_message
+    ContactBookError.ClearUnsupported -> MR.string.contactbook_error_clear_unsupported
+    ContactBookError.AdditionsFailed -> MR.string.chat_contact_card_partial_additions
+    ContactBookError.CircleActionFailed -> MR.string.contactbook_error_circle_action
+    ContactBookError.CircleToggleForbidden -> MR.string.contactbook_error_circle_toggle_forbidden
+    ContactBookError.CircleToggleSystemCircle -> MR.string.contactbook_error_circle_toggle_system
+    ContactBookError.CircleToggleNotFound -> MR.string.contactbook_error_circle_toggle_not_found
 }
