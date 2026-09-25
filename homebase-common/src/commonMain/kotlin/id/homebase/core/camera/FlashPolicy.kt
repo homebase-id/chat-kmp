@@ -10,15 +10,16 @@ object FlashPolicy {
         FlashMode.On -> FlashMode.Off
     }
 
-    fun control(mode: CaptureMode, hasFlashUnit: Boolean): FlashControl = when {
-        !hasFlashUnit -> FlashControl.Hidden
-        mode == CaptureMode.Video -> FlashControl.Torch
-        else -> FlashControl.Flash
+    // A lens can flash a still without having a torch (iOS front Retina Flash), so each mode checks its own light.
+    fun control(mode: CaptureMode, hasPhotoFlash: Boolean, hasTorch: Boolean): FlashControl = when {
+        mode == CaptureMode.Video -> if (hasTorch) FlashControl.Torch else FlashControl.Hidden
+        hasPhotoFlash -> FlashControl.Flash
+        else -> FlashControl.Hidden
     }
 
-    fun effectivePhotoFlash(requested: FlashMode, hasFlashUnit: Boolean): FlashMode =
-        if (hasFlashUnit) requested else FlashMode.Off
+    fun effectivePhotoFlash(requested: FlashMode, hasPhotoFlash: Boolean): FlashMode =
+        if (hasPhotoFlash) requested else FlashMode.Off
 
-    fun effectiveTorch(requested: Boolean, mode: CaptureMode, hasFlashUnit: Boolean): Boolean =
-        requested && hasFlashUnit && mode == CaptureMode.Video
+    fun effectiveTorch(requested: Boolean, mode: CaptureMode, hasTorch: Boolean): Boolean =
+        requested && hasTorch && mode == CaptureMode.Video
 }

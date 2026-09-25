@@ -80,18 +80,38 @@ import kotlin.math.ln
 import kotlin.time.Clock
 
 @Composable
-actual fun rememberCameraEngine(): CameraEngine {
+actual fun rememberCameraEngine(warm: CameraEngine?): CameraEngine {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val fileOps = koinInject<FileOperationsProvider>()
-    val engine = remember(context, lifecycleOwner) {
-        AndroidCameraEngine(context, lifecycleOwner, File(fileOps.uploadTempDirectory()))
+    val engine = remember(context, lifecycleOwner, warm) {
+        warm as? AndroidCameraEngine ?: AndroidCameraEngine(context, lifecycleOwner, File(fileOps.uploadTempDirectory()))
     }
     DisposableEffect(engine) {
         engine.start()
         onDispose { engine.release() }
     }
     return engine
+}
+
+@Composable
+actual fun rememberCameraWarmer(): CameraWarmer {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val fileOps = koinInject<FileOperationsProvider>()
+    return remember(context, lifecycleOwner, fileOps) {
+        CameraWarmer {
+            val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
+            if (granted) {
+                AndroidCameraEngine(context, lifecycleOwner, File(fileOps.uploadTempDirectory())).also { it.start() }
+            } else {
+                // Still worth starting: the provider's first init is most of a cold open, and it outlives the prompt.
+                ProcessCameraProvider.getInstance(context)
+                null
+            }
+        }
+    }
 }
 
 /** Main-thread only: CameraX binding, LiveData observers and the capture callbacks all run on main. */
@@ -128,6 +148,7 @@ internal class AndroidCameraEngine(
     private var displayRotation = 0
     private var zoomAnimation: Job? = null
     private var focusClear: Job? = null
+    private var started = false
     private var released = false
     private var previewGeneration = 0
 
@@ -164,6 +185,8 @@ internal class AndroidCameraEngine(
     }
 
     fun start() {
+        if (started) return
+        started = true
         displayRotation = currentDisplayRotation()
         displayManager.registerDisplayListener(displayListener, null)
         scope.launch {
@@ -280,7 +303,8 @@ internal class AndroidCameraEngine(
         val zoom = info.zoomState.value
         _uiState.update {
             it.copy(
-                hasFlashUnit = hasFlash,
+                hasPhotoFlash = hasFlash,
+                hasTorch = hasFlash,
                 supportsSimultaneousVideo = useCases.size == 3,
                 zoomRatio = zoom?.zoomRatio ?: 1f,
                 minZoom = zoom?.minZoomRatio ?: 1f,
@@ -428,7 +452,7 @@ internal class AndroidCameraEngine(
 
     override fun setFlash(mode: FlashMode) {
         _uiState.update { it.copy(flashMode = mode) }
-        imageCapture?.flashMode = FlashPolicy.effectivePhotoFlash(mode, _uiState.value.hasFlashUnit).cameraXMode
+        imageCapture?.flashMode = FlashPolicy.effectivePhotoFlash(mode, _uiState.value.hasPhotoFlash).cameraXMode
     }
 
     override fun setTorch(on: Boolean) {
@@ -439,8 +463,8 @@ internal class AndroidCameraEngine(
     private fun applyTorch() {
         val state = _uiState.value
         val cam = camera ?: return
-        if (!state.hasFlashUnit) return
-        cam.cameraControl.enableTorch(FlashPolicy.effectiveTorch(state.torchOn, state.mode, state.hasFlashUnit))
+        if (!state.hasTorch) return
+        cam.cameraControl.enableTorch(FlashPolicy.effectiveTorch(state.torchOn, state.mode, state.hasTorch))
     }
 
     override fun setCaptureRotation(rotation: QuarterTurn) {

@@ -36,6 +36,17 @@ interface CameraEngine {
     fun release()
 }
 
-/** Create only after camera permission is granted: binding without it fails rather than waiting. */
+/**
+ * Create only after camera permission is granted: binding without it fails rather than waiting.
+ * A [warm] engine from [CameraWarmer] is adopted instead of opening a second camera, and released with the call.
+ */
 @Composable
-expect fun rememberCameraEngine(): CameraEngine
+expect fun rememberCameraEngine(warm: CameraEngine? = null): CameraEngine
+
+/** Opens the camera before its UI composes; null when permission isn't granted yet. The caller owns what it returns. */
+fun interface CameraWarmer {
+    fun warm(): CameraEngine?
+}
+
+@Composable
+expect fun rememberCameraWarmer(): CameraWarmer

@@ -6,7 +6,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 
 @Composable
-actual fun rememberCameraEngine(): CameraEngine = remember { UnavailableCameraEngine() }
+actual fun rememberCameraEngine(warm: CameraEngine?): CameraEngine = remember { UnavailableCameraEngine() }
+
+@Composable
+actual fun rememberCameraWarmer(): CameraWarmer = remember { CameraWarmer { null } }
 
 @Composable
 actual fun CameraPreview(engine: CameraEngine, modifier: Modifier, onTapFocus: (Offset) -> Unit) = Unit
