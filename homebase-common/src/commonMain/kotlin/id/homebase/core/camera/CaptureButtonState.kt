@@ -28,8 +28,6 @@ enum class CaptureButtonState {
             else -> Photo
         }
 
-        fun holdToRecordAllowed(modes: CameraModes): Boolean = modes.allows(CaptureMode.Video)
-
         /** Without a video use case bound next to the photo one, a hold from Photo rebinds to Video first. */
         fun holdSwitchesToVideo(mode: CaptureMode, supportsSimultaneousVideo: Boolean): Boolean =
             mode == CaptureMode.Photo && !supportsSimultaneousVideo

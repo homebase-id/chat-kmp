@@ -13,6 +13,8 @@ enum class CameraModes(val allowed: Set<CaptureMode>) {
     fun allows(mode: CaptureMode): Boolean = mode in allowed
 }
 
+val CameraModes.recordsVideo: Boolean get() = allows(CaptureMode.Video)
+
 /** Physical device rotation, clockwise from the natural (portrait) posture. */
 enum class QuarterTurn(val degrees: Int) {
     R0(0),
