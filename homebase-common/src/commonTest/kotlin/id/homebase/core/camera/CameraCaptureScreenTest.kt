@@ -707,6 +707,21 @@ class CameraCaptureScreenTest {
     }
 
     @Test
+    fun theLockHintSitsBetweenTheHeldRingAndTheLock() {
+        for (width in listOf(360.dp, 393.dp, 480.dp)) runComposeUiTest {
+            showCamera(FakeCameraEngine(), size = DpSize(width, 800.dp))
+            holdShutter()
+            mainClock.advanceTimeBy(1_000)
+            val hint = onNodeWithTag(LOCK_HINT_TAG).fetchSemanticsNode().boundsInRoot
+            val shutter = onNodeWithTag(SHUTTER_TAG).fetchSemanticsNode().boundsInRoot.center
+            val lock = onNodeWithTag(LOCK_TAG).fetchSemanticsNode().boundsInRoot
+            val ring = with(density) { HeldRingOuterRadius.toPx() }
+            assertTrue(shutter.x - hint.right >= ring, "at $width the hint $hint overlaps the ring (r=$ring) around $shutter")
+            assertTrue(hint.left >= lock.right, "at $width the hint $hint overlaps the lock $lock")
+        }
+    }
+
+    @Test
     fun hapticsDistinguishCaptureStartAndStop() = runComposeUiTest {
         val haptics = RecordingHaptics()
         val engine = FakeCameraEngine()

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -64,7 +63,6 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -102,7 +100,6 @@ import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.pow
-import kotlin.math.roundToInt
 import kotlin.math.sign
 import kotlin.time.Clock
 import kotlin.time.TimeSource
@@ -680,7 +677,6 @@ internal fun CameraCaptureContent(
                 visible = lockVisible,
                 direction = lockOffset,
                 progress = { lockProgress },
-                modifier = Modifier.absoluteOffset { IntOffset((lockOffset.x / 2).roundToInt(), (lockOffset.y / 2).roundToInt()) },
             )
         }
         val shutter = @Composable {
