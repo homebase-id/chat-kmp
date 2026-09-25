@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.resources.MR
+import id.homebase.resources.contactbook_circle_name_disabled
 import id.homebase.resources.contactbook_detail_add_to_circles
 import org.jetbrains.compose.resources.stringResource
 
@@ -66,9 +67,18 @@ fun CirclePickerChips(
                 val selected = circle.id in selectedIds
                 FilterChip(
                     selected = selected,
-                    enabled = enabled,
+                    enabled = enabled && !circle.disabled,
                     onClick = { onToggle(circle.id) },
-                    label = { CircleLabel(emoji = circle.emoji, name = circle.name) },
+                    label = {
+                        CircleLabel(
+                            emoji = circle.emoji,
+                            name = if (circle.disabled) {
+                                stringResource(MR.string.contactbook_circle_name_disabled, circle.name)
+                            } else {
+                                circle.name
+                            },
+                        )
+                    },
                     leadingIcon = if (selected) {
                         {
                             Icon(

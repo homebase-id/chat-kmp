@@ -47,6 +47,7 @@ data class ContactCircleUi(
     val awaitingAppName: String? = null,
     /** True when the awaiting circle has no owning app, so the owner is the one who must act. */
     val awaitsOwner: Boolean = false,
+    val disabled: Boolean = false,
 )
 
 @Immutable

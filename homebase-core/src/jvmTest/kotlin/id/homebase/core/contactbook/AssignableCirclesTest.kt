@@ -85,12 +85,22 @@ class AssignableCirclesTest {
     }
 
     @Test
-    fun disabledAndUnnamedCirclesAreExcluded() {
-        val off = circle("dd", "Retired", disabled = true)
+    fun unnamedCirclesAreExcluded() {
         val blank = circle("ee", "  ")
         val keep = circle("ff", "Buddies")
 
-        assertEquals(listOf("Buddies"), state(off, blank, keep).assignableCircles(reviewEnabled = true).map { it.name })
+        assertEquals(listOf("Buddies"), state(blank, keep).assignableCircles(reviewEnabled = true).map { it.name })
+    }
+
+    @Test
+    fun aDisabledCircleIsListedAndFlagged() {
+        val circles = state(circle("dd", "Retired", disabled = true), circle("ff", "Buddies"))
+
+        for (reviewEnabled in listOf(true, false)) {
+            val ui = circles.assignableCircles(reviewEnabled).associateBy { it.name }
+            assertTrue(ui.getValue("Retired").disabled)
+            assertFalse(ui.getValue("Buddies").disabled)
+        }
     }
 
     /**
@@ -111,9 +121,9 @@ class AssignableCirclesTest {
         assertNull(state(circle("hh", "Buddies")).assignableCircles(reviewEnabled = true).single().emoji)
     }
 
-    /** Dark launch: with the review off, main's rule — only disabled and the two legacy system circles are withheld. */
+    /** Dark launch: with the review off, main's rule — only the two legacy system circles are withheld. */
     @Test
-    fun withTheReviewOffEveryEnabledNonSystemCircleIsAssignable() {
+    fun withTheReviewOffEveryNonSystemCircleIsAssignable() {
         val circles = state(
             circle("aa", "Chat", grantOn = CircleGrantOn.Connect),
             circle("bb", "Subscribers", designation = CircleDesignation.Audience),
@@ -124,7 +134,7 @@ class AssignableCirclesTest {
         )
 
         assertEquals(
-            listOf("Chat", "Family", "Subscribers"),
+            listOf("Chat", "Family", "Retired", "Subscribers"),
             circles.assignableCircles(reviewEnabled = false).map { it.name },
         )
     }
@@ -141,12 +151,14 @@ class ReviewCircleGroupsTest {
         grantOn: CircleGrantOn = CircleGrantOn.None,
         designation: CircleDesignation = CircleDesignation.Personal,
         appId: Uuid? = contactsApp,
+        disabled: Boolean = false,
     ) = RedactedCircleDefinition(
         id = id,
         name = name,
         grantOn = grantOn,
         designation = designation,
         appId = appId,
+        disabled = disabled,
     )
 
     private fun state(vararg defs: RedactedCircleDefinition) =
@@ -177,6 +189,18 @@ class ReviewCircleGroupsTest {
         ).reviewCircleGroups()
 
         assertTrue(groups.isEmpty)
+    }
+
+    @Test
+    fun aDisabledCircleIsOfferedFlaggedAndNeverPreselected() {
+        val groups = state(
+            circle("aa", "Friends", disabled = true),
+            circle("cc", "Moments", grantOn = CircleGrantOn.Review, appId = Uuid.random(), disabled = true),
+        ).reviewCircleGroups()
+
+        assertTrue(groups.yours.single().disabled)
+        assertTrue(groups.appDefaults.single().disabled)
+        assertEquals(emptySet(), groups.initialSelection())
     }
 
     @Test

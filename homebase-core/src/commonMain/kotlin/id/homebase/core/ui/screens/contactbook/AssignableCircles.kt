@@ -22,15 +22,16 @@ fun isLegacySystemCircleId(id: String): Boolean =
     id.equals(CONFIRMED_CONNECTIONS_CIRCLE_ID, ignoreCase = true) ||
         id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true)
 
-/** Whether a circle is shown as a user circle. Dark launch: flag off keeps main's rule — every enabled circle except the two legacy system ones. */
+/** Whether a circle is shown as a user circle, enabled or not. Dark launch: flag off keeps main's rule — every circle except the two legacy system ones. */
 fun RedactedCircleDefinition.isUserCircle(reviewEnabled: Boolean): Boolean =
-    if (reviewEnabled) isPersonalCircle() else !disabled && !isLegacySystemCircleId(id)
+    if (reviewEnabled) isPersonalKind() else !isLegacySystemCircleId(id)
 
 /**
  * Every circle the signed-in user could add a contact to — independent of any contact's
- * membership. Unnamed circles are excluded; the result is deduped by id and sorted A–Z.
+ * membership. Unnamed circles are excluded; disabled ones are kept and flagged so the picker can
+ * show them unselectable. The result is deduped by id and sorted A–Z.
  *
- * This is [isPersonalCircle], not the narrower "no enrolment of its own": a review circle is
+ * This is [isPersonalKind], not the narrower "no enrolment of its own": a review circle is
  * chosen by the owner, and accepting an incoming request *is* a review, so it belongs in the
  * picker on that surface. Only ambient circles are withheld — hand-managing one means nothing
  * when the app re-enrols the member anyway.
@@ -44,6 +45,8 @@ fun CircleMembershipState.assignableCircles(reviewEnabled: Boolean): List<Contac
         .map { it.circle }
         .filter { it.isUserCircle(reviewEnabled) }
         .filter { it.name.isNotBlank() }
-        .map { ContactCircleUi(it.id, it.name, pending = false, emoji = it.emoji.takeIf { reviewEnabled }) }
+        .map {
+            ContactCircleUi(it.id, it.name, pending = false, emoji = it.emoji.takeIf { reviewEnabled }, disabled = it.disabled)
+        }
         .distinctBy { it.id.lowercase() }
         .sortedBy { it.name.lowercase() }

@@ -1895,6 +1895,10 @@
     <string name="contactbook_circle_unvetted">Unvetted</string>
     <string name="contactbook_circle_new">New</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
+    <string name="contactbook_circle_disabled">Disabled</string>
+    <string name="contactbook_circle_name_disabled">%1$s (disabled)</string>
+    <string name="contactbook_circle_enabled">Circle enabled</string>
+    <string name="contactbook_circle_enabled_hint">Disabling keeps the members but stops their access.</string>
     <string name="contactbook_circle_members_count">%1$d members</string>
     <string name="contactbook_circle_members_count_with_pending">%1$d members, %2$d pending</string>
     <string name="contactbook_circle_add_member">Add member</string>
@@ -2088,6 +2092,9 @@
     <string name="contactbook_error_message">Couldn't open the chat.</string>
     <string name="contactbook_error_clear_unsupported">Clearing a contact field isn't supported yet, so that field was kept.</string>
     <string name="contactbook_error_circle_action">Something went wrong. Please try again.</string>
+    <string name="contactbook_error_circle_toggle_forbidden">This app can't enable or disable this circle.</string>
+    <string name="contactbook_error_circle_toggle_system">System circles can't be disabled.</string>
+    <string name="contactbook_error_circle_toggle_not_found">This circle no longer exists.</string>
 
     <string name="contactbook_action_blocked">Contact blocked.</string>
     <string name="contactbook_action_unblocked">Contact unblocked.</string>
