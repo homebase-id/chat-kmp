@@ -9,7 +9,6 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.publicImageUrl
 import id.homebase.api.common.time.UnixTimeUtc
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.data.ConversationState
@@ -57,6 +56,11 @@ import kotlin.uuid.Uuid
 private val ORPHAN_SWEEP_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000b0101")
 private const val ORPHAN_AT_REST_SWEEP_VERSION = 1
 private const val ORPHAN_SWEEP_BOOT_DELAY_MS = 10_000L
+
+// Where the next synced-status scan starts. Held back a day so a message that syncs late still falls
+// inside the next window.
+private val STATUS_SCAN_WATERMARK_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000b0102")
+private const val STATUS_SCAN_OVERLAP_MS = 24L * 60 * 60 * 1000
 
 // Debounce for coalesced unread-count enrichment: a sync burst of triggers collapses into a
 // single run after this quiet window. Unread counts aren't latency-critical, so a generous
@@ -147,7 +151,7 @@ class ConversationStream(
     var onIncomingHealRequest: (suspend (status: StatusMessageData, sender: OdinId, messageFile: HomebaseFile) -> Unit)? = null
 
     /**
-     * Hook invoked when the live receive stream observes an incoming
+     * Hook invoked for a received or synced
      * [StatusMessage.EmergencyContactDesignated] status — i.e. the [sender] designated us as one of
      * their emergency contacts. Wired in AppModule to mark the [sender] as an emergency contact on
      * our own contact drive. Side effect only — does not affect message-list dispatch.
@@ -155,7 +159,7 @@ class ConversationStream(
     var onEmergencyContactDesignated: (suspend (sender: OdinId, messageFile: HomebaseFile) -> Unit)? = null
 
     /**
-     * Hook invoked when the live receive stream observes an incoming
+     * Hook invoked for a received or synced
      * [StatusMessage.EmergencyContactRevoked] status — i.e. the [sender] removed us from their
      * emergency circle. Wired in AppModule to clear our can-locate flag for the [sender]. Side effect
      * only — does not affect message-list dispatch.
@@ -179,6 +183,10 @@ class ConversationStream(
     // (the Stopped handler), so a plain var is safe — no atomic needed. Runs once
     // per process, on the first clean chat-drive sync completion.
     private var orphanedAtRestScanDone = false
+
+    // Per session: the first chat-drive Stopped also scans status messages that predate this launch.
+    private var statusScanDone = false
+    private var statusScanJob: Job? = null
     // endregion
 
     // region Auto-unarchive: incoming message for archived conversation
@@ -352,6 +360,13 @@ class ConversationStream(
                             orphanedAtRestScanDone = true
                             sweepOrphanedAtRestOnce()
                         }
+
+                        // Cold sync lands status messages without a BatchReceived.
+                        if (event.totalCount > 0 || !statusScanDone) {
+                            val firstOfSession = !statusScanDone
+                            statusScanDone = true
+                            dispatchSyncedStatusMessages(afterBootDelay = firstOfSession)
+                        }
                     }
 
                     is BackendEvent.DataEvent.BatchReceived -> {
@@ -417,76 +432,15 @@ class ConversationStream(
         return contactService.resolveByOdinId(author).name
     }
 
-    private suspend fun dispatchGroupHealRequests(messageFiles: List<HomebaseFile>) {
-        val handler = onIncomingHealRequest ?: return
-        for (file in messageFiles) {
-            val appData = file.fileMetadata.appData
-            if (appData.dataType != ChatProtocol.ChatStatusMessageDataType) continue
-            val sender = file.fileMetadata.originalAuthor ?: file.fileMetadata.senderOdinId ?: continue
-            val content = appData.content ?: continue
-            val status = runCatching {
-                OdinSystemSerializer.deserialize<StatusMessageData>(content)
-            }.getOrNull() ?: continue
-            if (status.statusMessage != StatusMessage.GroupHealRequested) continue
-            try {
-                handler(status, sender, file)
-            } catch (e: Exception) {
-                Logger.e(e) { "ConversationStream: heal-request handler threw for sender=${sender.domainName}: ${e.message}" }
-            }
-        }
-    }
-
-    private suspend fun dispatchEmergencyDesignations(messageFiles: List<HomebaseFile>) {
-        val handler = onEmergencyContactDesignated ?: return
-        for (file in messageFiles) {
-            val appData = file.fileMetadata.appData
-            if (appData.dataType != ChatProtocol.ChatStatusMessageDataType) continue
-            // originalAuthor is null on our own synced copy, so this only fires on the receiver side.
-            val sender = file.fileMetadata.originalAuthor ?: file.fileMetadata.senderOdinId ?: continue
-            val content = appData.content ?: continue
-            val status = runCatching {
-                OdinSystemSerializer.deserialize<StatusMessageData>(content)
-            }.getOrNull() ?: continue
-            if (status.statusMessage != StatusMessage.EmergencyContactDesignated) continue
-            try {
-                handler(sender, file)
-            } catch (e: Exception) {
-                Logger.e(e) { "ConversationStream: emergency-designation handler threw for sender=${sender.domainName}: ${e.message}" }
-            }
-        }
-    }
-
-    private suspend fun dispatchEmergencyRevocations(messageFiles: List<HomebaseFile>) {
-        val handler = onEmergencyContactRevoked ?: return
-        for (file in messageFiles) {
-            val appData = file.fileMetadata.appData
-            if (appData.dataType != ChatProtocol.ChatStatusMessageDataType) continue
-            // originalAuthor is null on our own synced copy, so this only fires on the receiver side.
-            val sender = file.fileMetadata.originalAuthor ?: file.fileMetadata.senderOdinId ?: continue
-            val content = appData.content ?: continue
-            val status = runCatching {
-                OdinSystemSerializer.deserialize<StatusMessageData>(content)
-            }.getOrNull() ?: continue
-            if (status.statusMessage != StatusMessage.EmergencyContactRevoked) continue
-            try {
-                handler(sender, file)
-            } catch (e: Exception) {
-                Logger.e(e) { "ConversationStream: emergency-revocation handler threw for sender=${sender.domainName}: ${e.message}" }
-            }
-        }
-    }
-
     private suspend fun processMessageBatchIncrementally(messageFiles: List<HomebaseFile>) {
         if (messageFiles.isEmpty()) throw IllegalArgumentException("It can't be empty")
 
-        // Pre-pass: dispatch GroupHealRequested status messages to the heal
-        // handler. Done here (live BatchReceived only — never on cold reads or
-        // searches) so the side effects fire exactly once per arrival.
-        dispatchGroupHealRequests(messageFiles)
-        // Same live-only contract: mark the sender as an emergency contact when they designate us,
-        // and clear that mark when they revoke us.
-        dispatchEmergencyDesignations(messageFiles)
-        dispatchEmergencyRevocations(messageFiles)
+        dispatchStatusMessages(
+            messageFiles,
+            onIncomingHealRequest,
+            onEmergencyContactDesignated,
+            onEmergencyContactRevoked,
+        )
 
         // For each file in the batch, map to model (fetch last message from DB if needed).
         // Keep the original HomebaseFile alongside the mapped MessageUiModel so we can
@@ -1026,6 +980,33 @@ class ConversationStream(
         }
     }
 
+    /** Heal requests aren't replayed from sync: that would re-run old heals after an upgrade. */
+    private fun dispatchSyncedStatusMessages(afterBootDelay: Boolean) {
+        val onDesignated = onEmergencyContactDesignated
+        val onRevoked = onEmergencyContactRevoked
+        if (onDesignated == null && onRevoked == null) return
+        if (statusScanJob?.isActive == true) return
+        statusScanJob = scope.launch {
+            try {
+                if (afterBootDelay) delay(ORPHAN_SWEEP_BOOT_DELAY_MS)
+                val scanStartMs = UnixTimeUtc.now().milliseconds
+                val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+                val files = activeStatusMessageFiles(dbm, identityId, chatDrive, readStatusScanWatermark())
+                dispatchStatusMessages(files, onHealRequested = null, onDesignated, onRevoked)
+                dbm.keyValue.upsertValue(
+                    STATUS_SCAN_WATERMARK_KEY,
+                    (scanStartMs - STATUS_SCAN_OVERLAP_MS).toString().encodeToByteArray(),
+                )
+            } catch (e: Exception) {
+                Logger.e(e) { "ConversationStream: synced status scan FAILED: ${e.message}" }
+            }
+        }
+    }
+
+    private suspend fun readStatusScanWatermark(): UnixTimeUtc? =
+        runCatching { dbm.keyValue.selectByKey(STATUS_SCAN_WATERMARK_KEY)?.data_ }.getOrNull()
+            ?.decodeToString()?.toLongOrNull()?.let(::UnixTimeUtc)
+
     /**
      * Once-ever gate for the orphaned-at-rest recovery. Runs the sweep a single
      * time per DB lifetime: deferred past the contended boot window, gated on a
@@ -1420,6 +1401,7 @@ class ConversationStream(
         _conversations.value = ConversationsData(dataReady = false)
         _shareableConversations.value = emptyList()
         deletedIds.clear()
+        statusScanDone = false
     }
 
     fun start() {
