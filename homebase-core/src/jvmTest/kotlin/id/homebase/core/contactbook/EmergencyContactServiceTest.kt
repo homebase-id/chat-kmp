@@ -45,15 +45,19 @@ class EmergencyContactServiceTest {
         nowMs: Long,
         online: Boolean = true,
         private val beforeReply: suspend () -> Unit = {},
+        loaded: Boolean = true,
     ) {
         val calls = mutableListOf<String>()
         var inFlight = 0
         var maxInFlight = 0
         val onlineFlow = MutableStateFlow(online)
+        val writes = mutableListOf<Uuid>()
         val contactsFlow = MutableStateFlow(contacts)
+        val loadedFlow = MutableStateFlow(loaded)
         val service = EmergencyContactService(
             contacts = contactsFlow,
-            contactsLoaded = MutableStateFlow(true),
+            contactsLoaded = loadedFlow,
+            writeICanLocate = { uniqueId, _ -> writes += uniqueId },
             verify = { peer ->
                 calls += peer.domainName
                 inFlight++
@@ -66,7 +70,7 @@ class EmergencyContactServiceTest {
                 }
             },
             isOnline = onlineFlow,
-            selfDomain = { "me.example" },
+            selfId = { OdinId("me.example") },
             scope = scope,
             now = { nowMs },
         )
@@ -160,7 +164,46 @@ class EmergencyContactServiceTest {
         h.service.refreshAll()
         runCurrent()
         assertEquals(listOf("a.example"), h.calls)
-        assertEquals(listOf("a.example"), h.service.locatable.value.map { it.odinId.domainName })
+        assertEquals(listOf("a.example"), h.service.locatable.value?.map { it.odinId.domainName })
+    }
+
+    @Test
+    fun setICanLocateRefusesSelf() = runTest {
+        val h = Harness(contacts = emptyList(), replies = mutableMapOf(), scope = backgroundScope, nowMs = now)
+        val id = Uuid.random()
+        h.service.setICanLocate(OdinId("me.example"), Uuid.random(), Uuid.random())
+        h.service.setICanLocate(OdinId("a.example"), id, Uuid.random())
+        assertEquals(listOf(id), h.writes)
+    }
+
+    @Test
+    fun locatableIsNullUntilContactsLoad() = runTest {
+        val h = Harness(
+            contacts = emptyList(),
+            replies = mutableMapOf(),
+            scope = backgroundScope,
+            nowMs = now,
+            loaded = false,
+        )
+        runCurrent()
+        assertNull(h.service.locatable.value)
+
+        h.contactsFlow.value = listOf(contact("a.example"))
+        h.loadedFlow.value = true
+        runCurrent()
+        assertEquals(listOf("a.example"), h.service.locatable.value?.map { it.odinId.domainName })
+    }
+
+    @Test
+    fun loadedWithNobodyFlaggedIsEmptyNotNull() = runTest {
+        val h = Harness(
+            contacts = listOf(contact("a.example", locatable = false)),
+            replies = mutableMapOf(),
+            scope = backgroundScope,
+            nowMs = now,
+        )
+        runCurrent()
+        assertEquals(emptyList(), h.service.locatable.value)
     }
 
     @Test

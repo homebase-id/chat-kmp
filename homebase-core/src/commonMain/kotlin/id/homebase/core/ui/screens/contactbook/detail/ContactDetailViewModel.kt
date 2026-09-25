@@ -37,7 +37,6 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactService
 import id.homebase.core.contactbook.LocateVerifyStatus
-import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
 import id.homebase.core.ui.screens.contactbook.ConnectionRequestFailure
@@ -712,7 +711,7 @@ class ContactDetailViewModel(
                 val entry = _uiState.value.entry
                 val versionTag = entry?.versionTag
                 if (entry != null && versionTag != null && !entry.iCanLocate) {
-                    runCatching { contactRepository.setICanLocate(entry.uniqueId, versionTag) }
+                    runCatching { emergencyContacts.setICanLocate(peer, entry.uniqueId, versionTag) }
                         .onFailure { Logger.w(it, TAG) { "setICanLocate failed for ${peer.domainName}" } }
                 }
             }
