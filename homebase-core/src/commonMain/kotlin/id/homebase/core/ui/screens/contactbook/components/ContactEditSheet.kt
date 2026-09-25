@@ -425,7 +425,7 @@ fun ContactEditSheet(
                         strokeWidth = 2.dp,
                     )
                 }
-                TextButton(onClick = onDismiss, enabled = !saving) {
+                TextButton(onClick = { dismiss() }, enabled = !saving) {
                     Text(stringResource(MR.string.contactbook_edit_cancel))
                 }
                 // Save requires at least one meaningful field AND every phone/email — primary and

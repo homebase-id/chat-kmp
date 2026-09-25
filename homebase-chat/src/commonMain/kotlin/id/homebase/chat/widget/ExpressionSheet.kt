@@ -2,12 +2,11 @@
 
 package id.homebase.chat.widget
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -57,35 +56,6 @@ import org.koin.compose.koinInject
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-/**
- * The composer's keyboard-area expression panel. Replaces the old [EmojiSelectorSheet]
- * call in the chat composer: a centered icon tab row over the existing emoji picker and
- * the saved-stickers tray. GIFs slot in later via [expressionTabs].
- */
-@Composable
-fun ExpressionSheet(
-    visible: Boolean,
-    conversationId: Uuid,
-    onUiAction: (ConversationListUiAction) -> Unit,
-    onBackSpace: () -> Unit,
-    onEmojiSelected: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = slideInVertically(initialOffsetY = { it }),
-        exit = slideOutVertically(targetOffsetY = { it }),
-    ) {
-        ExpressionPanel(
-            conversationId = conversationId,
-            onUiAction = onUiAction,
-            onBackSpace = onBackSpace,
-            onEmojiSelected = onEmojiSelected,
-            modifier = modifier,
-        )
-    }
-}
-
 @Composable
 internal fun ExpressionPanel(
     conversationId: Uuid,
@@ -102,20 +72,26 @@ internal fun ExpressionPanel(
 
     Column(modifier = modifier) {
         ExpressionTabRow(tabs = tabs, selected = selected, onSelect = { selected = it })
-        when (selected) {
-            // weight(1f), not a fixed height: the container sets the panel height and the emoji grid scrolls.
-            ExpressionTab.Emoji -> EmojiSelection(
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp),
-                messageInputMode = true,
-                searchFirst = searchFirst,
-                onBackSpace = onBackSpace,
-                onEmojiSelected = onEmojiSelected,
-            )
-            ExpressionTab.Stickers -> StickersTabContent(
-                conversationId = conversationId,
-                onUiAction = onUiAction,
-            )
-            ExpressionTab.Gifs -> Unit // reserved
+        // weight(1f), not a fixed height: the container sets the panel height and the emoji grid scrolls.
+        Crossfade(
+            targetState = selected,
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        ) { tab ->
+            when (tab) {
+                ExpressionTab.Emoji -> EmojiSelection(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    messageInputMode = true,
+                    searchFirst = searchFirst,
+                    onBackSpace = onBackSpace,
+                    onEmojiSelected = onEmojiSelected,
+                )
+                ExpressionTab.Stickers -> StickersTabContent(
+                    conversationId = conversationId,
+                    onUiAction = onUiAction,
+                )
+                ExpressionTab.Gifs -> Unit // reserved
+            }
         }
     }
 }

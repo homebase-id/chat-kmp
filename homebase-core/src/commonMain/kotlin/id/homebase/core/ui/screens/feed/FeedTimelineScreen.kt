@@ -1,6 +1,8 @@
 package id.homebase.core.ui.screens.feed
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -154,7 +156,7 @@ fun FeedTimelineScreen(
 
     ExtendPermissionDialog(viewModel = viewModel.extendPermissionViewModel)
 
-    FeedMediaFullScreenHost(overlay = overlay, onDismiss = { overlay = null }) {
+    FeedMediaFullScreenHost(overlay = overlay, onDismiss = { overlay = null }) { sharedScope, visibilityScope ->
         Scaffold(
             modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             topBar = {
@@ -233,6 +235,8 @@ fun FeedTimelineScreen(
                         channels = channels,
                         channelNameFor = viewModel::channelNameFor,
                         isPublicChannel = viewModel::isPublicChannel,
+                        sharedTransitionScope = sharedScope,
+                        animatedVisibilityScope = visibilityScope,
                         displayNames = displayNames,
                         modifier = contentModifier,
                     )
@@ -331,6 +335,8 @@ private fun FeedTimelineList(
     channelNameFor: (String) -> String?,
     isPublicChannel: (String) -> Boolean,
     displayNames: Map<OdinId, String>,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
     modifier: Modifier = Modifier,
 ) {
     val pullState = rememberPullToRefreshState()
@@ -396,6 +402,8 @@ private fun FeedTimelineList(
                     onDeletePost = { onDeletePost(post) },
                     onReportPost = { onReportPost(post) },
                     onBlockAuthor = author?.let { { onBlockAuthor(it) } },
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
             }
             if (uiState.isLoadingMore) {
