@@ -64,6 +64,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -78,6 +79,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
 import id.homebase.core.camera.CaptureHandoff
 import id.homebase.api.video.IndexedFrame
 import id.homebase.api.video.VideoThumbnailService
@@ -219,8 +221,14 @@ fun MediaAttachmentEditor(
     val activeVideo = activeAttachment as? AttachmentPendingFile.FileVideo
 
     // Pages whose media has drawn: a camera held over the editor leaves once the page on screen is one of them.
-    val drawnAttachments = remember { mutableStateMapOf<Uuid, Boolean>() }
-    val activeDrawn = activeAttachment != null && drawnAttachments[activeAttachment.attachmentId] == true
+    val drawnAttachments = remember { mutableStateSetOf<Uuid>() }
+    val markDrawn = { id: Uuid -> drawnAttachments += id }
+    val markDrawnOnceLoaded = { id: Uuid ->
+        { state: AsyncImagePainter.State ->
+            if (state is AsyncImagePainter.State.Success || state is AsyncImagePainter.State.Error) markDrawn(id)
+        }
+    }
+    val activeDrawn = activeAttachment != null && activeAttachment.attachmentId in drawnAttachments
     LaunchedEffect(activeDrawn, revealed, attachments.size) {
         if (activeDrawn && revealed) CaptureHandoff.contentShown()
     }
@@ -263,7 +271,7 @@ fun MediaAttachmentEditor(
                         val isPdf = remember(attachment.file) {
                             resolveContentType(fileName = attachment.file.name) == "application/pdf"
                         }
-                        LaunchedEffect(attachment.attachmentId) { drawnAttachments[attachment.attachmentId] = true }
+                        LaunchedEffect(attachment.attachmentId) { markDrawn(attachment.attachmentId) }
                         if (isPdf) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 PdfAttachmentPreview(
@@ -298,8 +306,7 @@ fun MediaAttachmentEditor(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(16.dp)),
                                 contentScale = ContentScale.Fit,
-                                onSuccess = { drawnAttachments[attachment.attachmentId] = true },
-                                onError = { drawnAttachments[attachment.attachmentId] = true },
+                                onState = markDrawnOnceLoaded(attachment.attachmentId),
                             )
                             imageOverlay(attachment)
                         }
@@ -321,7 +328,7 @@ fun MediaAttachmentEditor(
                                 .background(Color.Black),
                             contentAlignment = Alignment.Center,
                         ) {
-                            val firstFrameShown = drawnAttachments[attId] == true
+                            val firstFrameShown = attId in drawnAttachments
                             if (durationMs != null && durationMs > 0L) {
                                 TrimmableVideoPlayerSurface(
                                     filePath = attachment.playablePath ?: attachment.file.toString(),
@@ -338,7 +345,7 @@ fun MediaAttachmentEditor(
                                         }
                                     },
                                     modifier = Modifier.fillMaxSize(),
-                                    onFirstFrameRendered = { drawnAttachments[attId] = true },
+                                    onFirstFrameRendered = { markDrawn(attId) },
                                 )
                                 // The surface is black (or see-through on Android) until its first decoded frame.
                                 val poster = attachment.thumbnailBytes
@@ -395,13 +402,12 @@ fun MediaAttachmentEditor(
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp)),
                             contentScale = ContentScale.Fit,
-                            onSuccess = { drawnAttachments[attachment.attachmentId] = true },
-                            onError = { drawnAttachments[attachment.attachmentId] = true },
+                            onState = markDrawnOnceLoaded(attachment.attachmentId),
                         )
                     }
                     is AttachmentPendingFile.Audio -> {
                         // not currently supported
-                        LaunchedEffect(attachment.attachmentId) { drawnAttachments[attachment.attachmentId] = true }
+                        LaunchedEffect(attachment.attachmentId) { markDrawn(attachment.attachmentId) }
                     }
                 }
             }
