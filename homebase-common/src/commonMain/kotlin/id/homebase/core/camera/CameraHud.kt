@@ -207,8 +207,9 @@ internal fun CameraCaptureContent(
     val density = LocalDensity.current
     val viewConfiguration = LocalViewConfiguration.current
     val modes = remember(allowedModes) { CaptureMode.entries.filter { allowedModes.allows(it) } }
+    fun modeIndex(mode: CaptureMode) = modes.indexOf(mode).coerceAtLeast(0)
     val carousel = remember(modes) {
-        ModeCarouselState(modes.indexOf(engine.uiState.value.mode).coerceAtLeast(0), modes.size, scope)
+        ModeCarouselState(modeIndex(engine.uiState.value.mode), modes.size, scope)
     }
     val presets = remember(ui.minZoom, ui.maxZoom, ui.lensSwitchRatios) {
         ZoomPresets.available(ui.minZoom, ui.maxZoom, ui.lensSwitchRatios)
@@ -243,7 +244,7 @@ internal fun CameraCaptureContent(
     }
     // A hold from Photo that rebinds to Video still reads as Photo, so nothing flickers to Video and back.
     val displayMode = if (returnToPhotoAfterHold) CaptureMode.Photo else ui.mode
-    val selectedIndex = modes.indexOf(displayMode).coerceAtLeast(0)
+    val selectedIndex = modeIndex(displayMode)
     LaunchedEffect(selectedIndex) { carousel.settleTo(selectedIndex, currentReduceMotion) }
     LaunchedEffect(presetTarget) {
         val target = presetTarget ?: return@LaunchedEffect
@@ -335,9 +336,11 @@ internal fun CameraCaptureContent(
         }
     }
 
-    fun isRecordingNow() = recordingIntent || (currentUi.isRecording && !stopping)
+    // Composition passes the zoom-free ui: reading currentUi there would recompose on every zoom frame.
+    fun isRecordingNow(s: CameraUiState = currentUi) = recordingIntent || (s.isRecording && !stopping)
 
-    fun currentButtonState() = CaptureButtonState.of(currentUi.mode, isRecordingNow(), isRecordingLocked = !heldRecording)
+    fun currentButtonState(s: CameraUiState = currentUi, mode: CaptureMode = s.mode) =
+        CaptureButtonState.of(mode, isRecordingNow(s), isRecordingLocked = !heldRecording)
 
     fun shutterTap() {
         when (currentButtonState().tapAction) {
@@ -387,7 +390,7 @@ internal fun CameraCaptureContent(
     }
 
     val carouselDirection = { if (currentIsRtl) -1f else 1f }
-    fun modeDragStart() = carousel.dragStart(modes.indexOf(currentUi.mode).coerceAtLeast(0))
+    fun modeDragStart() = carousel.dragStart(modeIndex(currentUi.mode))
     fun modeDrag(deltaPx: Float, slotPx: Float) =
         carousel.drag(-deltaPx * carouselDirection() / slotPx) { haptics.perform(HapticEvent.Selection) }
     fun modeDragEnd(velocityPx: Float, slotPx: Float) {
@@ -459,8 +462,8 @@ internal fun CameraCaptureContent(
         return
     }
 
-    val looksRecording = recordingIntent || (ui.isRecording && !stopping)
-    val buttonState = CaptureButtonState.of(displayMode, looksRecording, isRecordingLocked = !heldRecording)
+    val looksRecording = isRecordingNow(ui)
+    val buttonState = currentButtonState(ui, displayMode)
     val videoIndex = modes.indexOf(CaptureMode.Video)
     val videoAmount = { if (videoIndex < 0) 0f else 1f - abs(carousel.position - videoIndex).coerceIn(0f, 1f) }
     val uprightDegrees = deviceRotation.uprightIconDegrees(displayRotation)
