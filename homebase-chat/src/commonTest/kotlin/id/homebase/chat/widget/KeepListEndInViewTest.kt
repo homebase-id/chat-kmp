@@ -25,17 +25,27 @@ class KeepListEndInViewTest {
         val state = LazyListState(firstVisibleItemIndex = 49)
         var barShown by mutableStateOf(false)
         var lastRowHeight by mutableStateOf(50)
+        var rowAboveHeight by mutableStateOf(50)
         setContent {
             Column(Modifier.size(300.dp, 400.dp)) {
                 if (barShown) Box(Modifier.fillMaxWidth().height(80.dp))
                 LazyColumn(Modifier.weight(1f), state = state) {
-                    items(50) { Box(Modifier.fillMaxWidth().height(if (it == 49) lastRowHeight.dp else 50.dp)) }
+                    items(50) {
+                        val height = when (it) {
+                            49 -> lastRowHeight
+                            48 -> rowAboveHeight
+                            else -> 50
+                        }
+                        Box(Modifier.fillMaxWidth().height(height.dp))
+                    }
                 }
             }
             if (keepEnd) KeepListEndInView(state, Unit)
         }
         waitForIdle()
         assertFalse(state.canScrollForward)
+        rowAboveHeight = 76
+        waitForIdle()
         barShown = true
         waitForIdle()
         lastRowHeight = 90
@@ -48,6 +58,6 @@ class KeepListEndInViewTest {
         barAboveListAtEnd(keepEnd = false) { assertTrue(it.canScrollForward) }
 
     @Test
-    fun keepsTheNewestRowInViewWhenTheBarExpandsAndTheRowGrows() =
+    fun keepsTheNewestRowInViewWhenRowsGrowAndTheBarExpands() =
         barAboveListAtEnd(keepEnd = true) { assertFalse(it.canScrollForward) }
 }

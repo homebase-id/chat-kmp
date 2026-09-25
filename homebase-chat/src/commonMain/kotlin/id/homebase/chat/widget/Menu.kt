@@ -56,7 +56,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
@@ -862,13 +864,16 @@ fun ConversationItemMenuPopup(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun PopupWithScrim(
+internal fun PopupWithScrim(
     transition: Transition<MessagePopupMode>,
     onDismissRequest: () -> Unit,
     content: @Composable AnimatedVisibilityScope.() -> Unit
 ) {
     val motion = MaterialTheme.motionScheme
+    // The Popup isn't focusable, so without this Back reaches the screen's handler and leaves the chat.
+    @Suppress("DEPRECATION") BackHandler(enabled = transition.targetState != MessagePopupMode.None, onBack = onDismissRequest)
     Popup(
         onDismissRequest = onDismissRequest
     ) {
