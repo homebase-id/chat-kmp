@@ -617,11 +617,7 @@ class ContactDetailViewModel(
             ContactDetailAction.DisconnectClicked ->
                 _uiState.update { it.copy(confirm = ContactDetailConfirm.DISCONNECT) }
             is ContactDetailAction.AcceptRequestClicked -> {
-                // Circle ids arrive as 32-char N-format strings; the accept API takes Uuids. Drop
-                // any that fail to parse rather than aborting the accept.
-                val circleUuids = action.circleIds.mapNotNull {
-                    runCatching { Uuid.parseHex(it) }.getOrNull()
-                }
+                val circleUuids = action.circleIds.toCircleUuids()
                 handleRequestAction(event = ContactDetailEvent.RequestAccepted) {
                     connectionRequestService.acceptIncomingRequest(it, circleUuids)
                 }

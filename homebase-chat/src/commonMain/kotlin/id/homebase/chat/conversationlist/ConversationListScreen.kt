@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.common.OdinId
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
@@ -86,9 +87,6 @@ import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.chat.widget.StickerCreatorSheet
 import id.homebase.core.HomebaseConstants
-import id.homebase.core.connections.ConnectRequestAction
-import id.homebase.core.connections.ConnectRequestBottomSheet
-import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
@@ -177,7 +175,9 @@ fun ConversationListScreen(
     viewModel: ConversationListViewModel,
     archivedConversationsViewModel: ArchivedConversationsViewModel,
     extendPermissionViewModel: ExtendPermissionViewModel,
-    connectRequestViewModel: ConnectRequestViewModel,
+    onOpenConnectRequest: (OdinId) -> Unit,
+    /** Supplied by homebase-core, which owns the Connect sheet and the review it embeds. */
+    connectRequestSheet: @Composable (SnackbarHostState) -> Unit,
     onNavigateBack: () -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
     onNavigateToNewConversation: () -> Unit,
@@ -338,9 +338,7 @@ fun ConversationListScreen(
                 is ConversationListUiEvent.OpenUrl -> fileSystemHandler.openUrl(event.url)
 
                 is ConversationListUiEvent.OpenSendConnectionRequestDialog ->
-                    connectRequestViewModel.onAction(
-                        ConnectRequestAction.OpenDialogWithRecipient(event.odinId)
-                    )
+                    onOpenConnectRequest(event.odinId)
 
                 is ConversationListUiEvent.NavigateToCropper -> onNavigateToCropper(event.requestId)
 
@@ -352,10 +350,7 @@ fun ConversationListScreen(
         }
     }
 
-    ConnectRequestBottomSheet(
-        viewModel = connectRequestViewModel,
-        snackbarHostState = snackbarHostState,
-    )
+    connectRequestSheet(snackbarHostState)
 
     when (val dialog = conversationsUiState.uiDialog) {
         null -> {}

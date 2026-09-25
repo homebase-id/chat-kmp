@@ -215,10 +215,7 @@ internal fun messageListKey(item: Any): String = when (item) {
 }
 
 sealed interface MessageListUiSheet {
-    data class ConnectIdentities(
-        val identities: List<OdinId>,
-        val autoConnectStates: Map<OdinId, AutoConnectRowState> = emptyMap(),
-    ) : MessageListUiSheet
+    data class ConnectIdentities(val identities: List<OdinId>) : MessageListUiSheet
     data class ForwardMessage(
         val message: MessageUiModel,
         val recipients: ImmutableList<RecipientGroupModel>,
@@ -228,12 +225,6 @@ sealed interface MessageListUiSheet {
 
     /** Full list of pinned messages for the open conversation (the "see all" panel). */
     data object PinnedMessages : MessageListUiSheet
-}
-
-sealed interface AutoConnectRowState {
-    data object Connecting : AutoConnectRowState
-    data object Succeeded : AutoConnectRowState
-    data class Failed(val res: StringResource, val args: List<Any> = emptyList()) : AutoConnectRowState
 }
 
 sealed interface UploadStatus {

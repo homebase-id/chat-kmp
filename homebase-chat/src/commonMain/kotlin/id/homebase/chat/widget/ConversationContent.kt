@@ -50,7 +50,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
@@ -92,7 +91,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clipToBounds
@@ -114,7 +112,6 @@ import id.homebase.chat.data.MessageUiModel
 import kotlinx.collections.immutable.ImmutableList
 import id.homebase.api.common.OdinId
 import id.homebase.chat.contactcard.LocalSavedContactIdentities
-import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import co.touchlab.kermit.Logger
 import id.homebase.chat.dice.BattleRollSheet
@@ -171,7 +168,6 @@ import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
-import id.homebase.resources.chat_auto_connect_connected
 import id.homebase.resources.chat_drop_files_none_usable
 import id.homebase.resources.chat_group_not_connected_disclaimer
 import id.homebase.resources.chat_group_rejoin_accept
@@ -208,7 +204,6 @@ import id.homebase.resources.connect
 import id.homebase.resources.contacts
 import id.homebase.resources.groups
 import id.homebase.resources.menu_back
-import id.homebase.resources.cd_connection_succeeded
 import id.homebase.resources.recents
 import id.homebase.resources.search
 import id.homebase.resources.time_today
@@ -1819,9 +1814,10 @@ fun ConversationContentSheets(
         is MessageListUiSheet.ConnectIdentities -> {
             ConnectIdentitiesSheet(
                 identities = sheet.identities,
-                autoConnectStates = sheet.autoConnectStates,
                 onDismiss = { onUiAction(ConversationListUiAction.DismissSheet) },
-                onAutoConnect = { onUiAction(ConversationListUiAction.AutoConnect(it)) },
+                onConnect = {
+                    onUiAction(ConversationListUiAction.OpenSendConnectionRequestDialog(it))
+                },
             )
         }
 
@@ -2032,9 +2028,8 @@ private fun PinnedMessagesSheet(
 @Composable
 fun ConnectIdentitiesSheet(
     identities: List<OdinId>,
-    autoConnectStates: Map<OdinId, AutoConnectRowState>,
     onDismiss: () -> Unit,
-    onAutoConnect: (OdinId) -> Unit,
+    onConnect: (OdinId) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
     val scrollState = rememberScrollState()
@@ -2049,8 +2044,7 @@ fun ConnectIdentitiesSheet(
             identities.forEach { odinId ->
                 ConnectIdentityRow(
                     odinId = odinId,
-                    rowState = autoConnectStates[odinId],
-                    onAutoConnect = { onAutoConnect(odinId) },
+                    onConnect = { onConnect(odinId) },
                 )
             }
         }
@@ -2060,8 +2054,7 @@ fun ConnectIdentitiesSheet(
 @Composable
 private fun ConnectIdentityRow(
     odinId: OdinId,
-    rowState: AutoConnectRowState?,
-    onAutoConnect: () -> Unit,
+    onConnect: () -> Unit,
 ) {
     val contactInfo = koinInject<ContactInfoGateway>()
     var resolvedName by remember(odinId) { mutableStateOf(odinId.domainName) }
@@ -2088,60 +2081,18 @@ private fun ConnectIdentityRow(
             animatedVisibilityScope = null,
         )
         Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            ContactName(
-                odinId = odinId,
-                knownName = resolvedName,
-                style = MaterialTheme.typography.titleMedium,
-            )
-            if (rowState is AutoConnectRowState.Failed) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = stringResource(rowState.res, *rowState.args.toTypedArray()),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-        }
+        ContactName(
+            odinId = odinId,
+            knownName = resolvedName,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.weight(1f),
+        )
         Spacer(modifier = Modifier.width(8.dp))
-        when (rowState) {
-            AutoConnectRowState.Succeeded -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = stringResource(MR.string.cd_connection_succeeded),
-                        tint = SuccessGreen,
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(MR.string.chat_auto_connect_connected),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = SuccessGreen,
-                    )
-                }
-            }
-            AutoConnectRowState.Connecting -> {
-                ElevatedButton(
-                    onClick = {},
-                    enabled = false,
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                    )
-                }
-            }
-            is AutoConnectRowState.Failed,
-            null -> {
-                ElevatedButton(onClick = onAutoConnect) {
-                    Text(stringResource(MR.string.connect))
-                }
-            }
+        ElevatedButton(onClick = onConnect) {
+            Text(stringResource(MR.string.connect))
         }
     }
 }
-
-private val SuccessGreen = Color(0xFF2E7D32)
 
 @Composable
 fun RecipientsSelectorList(

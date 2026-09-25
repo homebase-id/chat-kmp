@@ -152,6 +152,9 @@ import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.ui.screens.location.EmergencyContactPickerScreen
+import id.homebase.core.connections.ConnectRequestAction
+import id.homebase.core.connections.ConnectRequestBottomSheet
+import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.contactbook.EmergencyContactService
 import id.homebase.core.ui.screens.location.LocationEmergencyScreen
 import id.homebase.core.ui.screens.location.LocationHistoryOverviewScreen
@@ -1231,11 +1234,19 @@ fun AppNavHost(
                                     },
                                     onSaved = { name, uniqueId -> savedContact = name to uniqueId },
                                 )
+                                val connectRequestViewModel: ConnectRequestViewModel = koinViewModel()
                                 ConversationListScreen(
                                     viewModel = conversationListViewModel,
                                     archivedConversationsViewModel = koinViewModel(),
                                     extendPermissionViewModel = koinViewModel(),
-                                    connectRequestViewModel = koinViewModel(),
+                                    onOpenConnectRequest = {
+                                        connectRequestViewModel.onAction(
+                                            ConnectRequestAction.OpenDialogWithRecipient(it)
+                                        )
+                                    },
+                                    connectRequestSheet = { snackbar ->
+                                        ConnectRequestBottomSheet(connectRequestViewModel, snackbar)
+                                    },
                                     onNavigateBack = { navController.popBackStack() },
                                     onNavigateToSettingsScreen = {
                                         navController.navigate(Route.Settings)

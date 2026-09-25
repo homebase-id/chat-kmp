@@ -72,11 +72,7 @@
     <string name="error_too_many_attempts">For mange forsøg</string>
     <string name="error_delivery_failed">Levering mislykkedes</string>
     <string name="connect">Forbind</string>
-    <string name="chat_auto_connect_connected">Forbundet</string>
-    <string name="auto_connect_pending_manual_approval">Anmodning sendt. %1$s skal godkende.</string>
     <string name="auto_connect_blocked">Kan ikke forbinde med %1$s.</string>
-    <string name="auto_connect_outgoing_request_exists">Du har allerede sendt en anmodning til %1$s.</string>
-    <string name="auto_connect_duplicate_introductory_request">En anmodning til %1$s er allerede i gang.</string>
     <string name="auto_connect_recipient_unreachable">Kunne ikke nå %1$s. Prøv igen senere.</string>
     <string name="auto_connect_recipient_rejected">%1$s tager ikke imod forbindelser lige nu.</string>
     <string name="auto_connect_recipient_not_configured">%1$s har ikke færdiggjort opsætningen af sin identitet endnu.</string>
@@ -209,6 +205,8 @@
     <string name="connections_message_label">Besked (valgfri)</string>
     <string name="connections_checking_identity">Kontrollerer identitet\u2026</string>
     <string name="connections_invalid_identity">Dette er ikke en gyldig Homebase-identitet</string>
+    <string name="connections_circle_not_grantable">En af de kredse kan ikke tildeles fra denne app. Intet blev sendt.</string>
+    <string name="connections_circle_not_found">En af de kredse findes ikke længere. Intet blev sendt.</string>
     <string name="connections_request_sent">Forbindelsesanmodning sendt</string>
     <string name="connections_tab_incoming">Indgående (%1$s)</string>
     <string name="connections_tab_outgoing">Udgående (%1$s)</string>
@@ -216,7 +214,6 @@
     <string name="connections_empty_incoming_subtitle">Når nogen sender dig en forbindelsesanmodning, vises den her.</string>
     <string name="connections_empty_outgoing_title">Ingen udgående anmodninger</string>
     <string name="connections_empty_outgoing_subtitle">Tryk på + knappen for at sende en forbindelsesanmodning.</string>
-    <string name="connections_send_request">Send anmodning</string>
     <string name="settings_notifications">Notifikationer</string>
     <string name="settings_security_setup">Sikkerhedsopsætning</string>
     <string name="settings_help">Hjælp</string>
@@ -1199,7 +1196,6 @@
     <string name="cd_not_selected">Ikke valgt</string>
     <string name="cd_open_externally">Åbn eksternt</string>
     <string name="cd_navigate_forward">Navigér frem</string>
-    <string name="cd_connection_succeeded">Forbindelse oprettet</string>
     <string name="cd_video_scrubber_frame">Videoskrubberbillede</string>
     <string name="video_web_large_playback_unsupported">Store videoer kan endnu ikke afspilles i browseren</string>
 
@@ -1540,6 +1536,9 @@
     <string name="contact_review_submit_chat_only">Kun chat</string>
     <string name="contact_review_chat_only_hint">De vil kun se din offentlige profil. Du kan altid føje dem til kredse senere.</string>
     <string name="contact_review_keep_new">Behold som ny</string>
+    <string name="contact_review_just_chat">Bare chat</string>
+    <string name="contact_review_more_access">Giv mere adgang</string>
+    <string name="contact_review_more_access_desc">Føj til kredse, del din placering eller tillad apps.</string>
     <string name="contact_review_already_added">Allerede tilføjet</string>
     <string name="contact_review_group_yours">Føj til en kreds</string>
     <string name="contact_review_group_yours_caption">Alle, du tilføjer, kan se mere af din profil.</string>

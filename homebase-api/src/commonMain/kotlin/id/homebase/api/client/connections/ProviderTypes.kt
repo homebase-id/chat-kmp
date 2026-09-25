@@ -64,6 +64,19 @@ data class ReviewConnectionRequest(
 )
 
 /**
+ * Body for `POST /connections/requests/send-reviewed`: sends the request and stamps the sender's
+ * review of [recipient] in one call. No `connectionRequestOrigin` — the server derives it from the
+ * caller.
+ */
+@Serializable
+data class SendReviewedConnectionRequest(
+    val recipient: OdinId,
+    val message: String? = null,
+    val contactData: ContactData? = null,
+    val circleIds: List<Uuid> = emptyList()
+)
+
+/**
  * Connections that qualify for one of an app's circles but are not in it yet.
  *
  * The backlog exists because assigning a circle to an app does not reach back over contacts the
