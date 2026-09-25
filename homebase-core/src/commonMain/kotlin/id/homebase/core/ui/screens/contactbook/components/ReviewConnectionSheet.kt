@@ -165,11 +165,9 @@ fun ReviewConnectionContent(
     // App defaults arrive checked: the owning app nominated them, and the review button applies
     // "the checked per-app defaults". They stay visible so any can be turned off deliberately.
     var selected by rememberSaveable(displayName) { mutableStateOf(groups.initialSelection()) }
-    // Someone who already holds circles skips the short step: "Just chat" can't take them away,
-    // since the review only ever grants.
-    var showAllOptions by rememberSaveable(displayName) {
-        mutableStateOf(alreadyHeldCircleIds.isNotEmpty())
-    }
+    // "Just chat" can't take held circles away — the review only ever grants — so skip that step.
+    val offersShortStep = !groups.holdsAnyOffered(alreadyHeldCircleIds)
+    var showAllOptions by rememberSaveable(displayName) { mutableStateOf(!offersShortStep) }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -292,7 +290,7 @@ fun ReviewConnectionContent(
             return@Column
         }
 
-        if (alreadyHeldCircleIds.isEmpty()) {
+        if (offersShortStep) {
             TextButton(
                 onClick = { showAllOptions = false },
                 enabled = !isSubmitting,

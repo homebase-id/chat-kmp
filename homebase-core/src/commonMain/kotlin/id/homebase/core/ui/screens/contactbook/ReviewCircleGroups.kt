@@ -37,6 +37,10 @@ data class ReviewCircleGroups(
 
     fun idsIn(group: List<ContactCircleUi>): Set<String> = group.map { it.id }.toSet()
 
+    /** Only circles this review offers count: every connection also sits in ambient ones. */
+    fun holdsAnyOffered(heldCircleIds: Set<String>): Boolean =
+        (yours + special + appDefaults).any { it.id in heldCircleIds }
+
     /**
      * What the sheet opens with: the app defaults, checked. The owning app nominated them and the
      * review button applies "the checked per-app defaults".

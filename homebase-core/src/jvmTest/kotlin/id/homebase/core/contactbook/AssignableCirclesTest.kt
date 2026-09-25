@@ -225,6 +225,14 @@ class ReviewCircleGroupsTest {
     }
 
     @Test
+    fun onlyAnOfferedCircleCountsAsHeld() {
+        val groups = state(circle("aa", "Friends")).reviewCircleGroups()
+
+        assertFalse(groups.holdsAnyOffered(setOf(AUTO_CONNECTIONS_CIRCLE_ID, "chat")))
+        assertTrue(groups.holdsAnyOffered(setOf("aa")))
+    }
+
+    @Test
     fun ambientAudienceAndVendorCirclesAreOfferedInNoGroup() {
         val groups = state(
             circle("aa", "Chat", grantOn = CircleGrantOn.Connect),
