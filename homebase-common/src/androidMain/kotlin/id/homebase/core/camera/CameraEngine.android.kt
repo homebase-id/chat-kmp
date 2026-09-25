@@ -81,6 +81,7 @@ import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.roundToInt
 import kotlin.time.Clock
+import kotlin.time.TimeSource
 
 @Composable
 actual fun rememberCameraEngine(recordsVideo: Boolean, warm: CameraEngine?): CameraEngine {
@@ -154,6 +155,13 @@ internal class AndroidCameraEngine(
     private var started = false
     private var released = false
     private var previewGeneration = 0
+    // Open-latency breadcrumbs, from start() to the first preview frame.
+    private var openedAt: TimeSource.Monotonic.ValueTimeMark? = null
+
+    private fun logOpenStep(step: String) {
+        val mark = openedAt ?: return
+        Logger.d(tag = TAG) { "open: $step at ${mark.elapsedNow().inWholeMilliseconds} ms" }
+    }
 
     private var observedZoom: LiveData<ZoomState>? = null
     private val zoomObserver = Observer<ZoomState> { zoom ->
@@ -190,6 +198,7 @@ internal class AndroidCameraEngine(
     fun start() {
         if (started) return
         started = true
+        openedAt = TimeSource.Monotonic.markNow()
         displayRotation = currentDisplayRotation()
         displayManager.registerDisplayListener(displayListener, null)
         scope.launch {
@@ -203,6 +212,7 @@ internal class AndroidCameraEngine(
                 return@launch
             }
             if (released) return@launch
+            logOpenStep("provider ready")
             provider = cameraProvider
             anyCameraIsLegacy = withContext(Dispatchers.IO) { CameraCapability.anyCameraIsLegacy(context) }
             val hasBack = cameraProvider.hasCameraSafe(CameraSelector.DEFAULT_BACK_CAMERA)
@@ -265,6 +275,7 @@ internal class AndroidCameraEngine(
                 boundUseCases = emptyList()
                 val bound = cameraProvider.bindToLifecycle(lifecycleOwner, selector, *useCases.toTypedArray())
                 boundUseCases = useCases
+                logOpenStep("bound")
                 onBound(bound, useCases, newPreview, newImage, newVideo)
                 return true
             } catch (e: Exception) {
@@ -361,11 +372,16 @@ internal class AndroidCameraEngine(
                 }
             },
         )
-        return builder.build().also { it.setSurfaceProvider { request -> _surfaceRequest.value = request } }
+        return builder.build().also { it.setSurfaceProvider { request ->
+                logOpenStep("surface requested")
+                _surfaceRequest.value = request
+            } }
     }
 
     private fun onFirstFrame(generation: Int) {
         if (released || generation != previewGeneration) return
+        logOpenStep("first frame")
+        openedAt = null
         _uiState.update { it.copy(awaitingFirstFrame = false) }
     }
 

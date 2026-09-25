@@ -16,6 +16,7 @@ import id.homebase.core.util.PlatformCameraManager
 import io.github.vinceglb.filekit.PlatformFile
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.TimeSource
 
 // A receiver that never reports its content drawn can't hold the camera over the app for longer than this.
 internal const val HANDOFF_CEILING_MS = 1_500L
@@ -65,7 +66,12 @@ fun rememberInAppCameraManager(
         if (handoff != null) {
             val exitSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
             LaunchedEffect(handoff) {
-                if (!awaitHandoff(handoff)) Logger.w(tag = "InAppCamera") { "Capture receiver never reported it drawn; closing at the ceiling" }
+                val waiting = TimeSource.Monotonic.markNow()
+                if (awaitHandoff(handoff)) {
+                    Logger.d(tag = "InAppCamera") { "Capture receiver drew it after ${waiting.elapsedNow().inWholeMilliseconds} ms" }
+                } else {
+                    Logger.w(tag = "InAppCamera") { "Capture receiver never reported it drawn; closing at the ceiling" }
+                }
                 fade.animateTo(0f, exitSpec)
                 launcher.close()
             }
