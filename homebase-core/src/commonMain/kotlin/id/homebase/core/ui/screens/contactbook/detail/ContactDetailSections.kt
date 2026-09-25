@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
@@ -517,7 +518,9 @@ fun ContactFieldsSection(
     }
 
     val visible = if (expanded) fields else fields.take(2)
-    visible.forEach { DetailField(it.icon, it.label, it.value, it.synced) }
+    Column(modifier = Modifier.animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())) {
+        visible.forEach { DetailField(it.icon, it.label, it.value, it.synced) }
+    }
 
     if (fields.size > 2) {
         TextButton(

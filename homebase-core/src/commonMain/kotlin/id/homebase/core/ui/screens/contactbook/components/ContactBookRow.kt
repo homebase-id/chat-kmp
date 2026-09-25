@@ -35,10 +35,11 @@ fun ContactBookRow(
     disabledReason: String? = null,
     /** Optional trailing content (e.g. a pending-request marker). Replaces the connected check. */
     trailing: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     val disabled = disabledReason != null
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(enabled = !disabled, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),

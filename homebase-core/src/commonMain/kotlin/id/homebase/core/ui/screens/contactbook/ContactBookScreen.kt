@@ -1,9 +1,13 @@
 package id.homebase.core.ui.screens.contactbook
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +27,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -47,6 +52,9 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -162,94 +170,106 @@ fun ContactBookScreen(
     }
     @Suppress("DEPRECATION") BackHandler(enabled = searchActive) { collapseSearch() }
 
+    val enterFade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    val exitFade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+    // Hoisted so each tab keeps its scroll position while another tab is shown.
+    val knownListState = rememberLazyListState()
+    val newListState = rememberLazyListState()
+    val circlesListState = rememberLazyListState()
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            if (searchActive) {
-                TopAppBar(
-                    navigationIcon = {
-                        IconButton(onClick = collapseSearch) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(MR.string.menu_back),
+            AnimatedContent(
+                targetState = searchActive,
+                transitionSpec = { fadeIn(enterFade) togetherWith fadeOut(exitFade) },
+            ) { searching ->
+                if (searching) {
+                    TopAppBar(
+                        navigationIcon = {
+                            IconButton(onClick = collapseSearch) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(MR.string.menu_back),
+                                )
+                            }
+                        },
+                        title = {
+                            TextField(
+                                value = uiState.searchQuery,
+                                onValueChange = { viewModel.onAction(ContactBookUiAction.SearchChanged(it)) },
+                                placeholder = { Text(stringResource(MR.string.contactbook_search_hint)) },
+                                singleLine = true,
+                                trailingIcon = {
+                                    if (uiState.searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = {
+                                            viewModel.onAction(ContactBookUiAction.SearchChanged(""))
+                                        }) {
+                                            Icon(
+                                                Icons.Filled.Close,
+                                                contentDescription = stringResource(MR.string.clear_input),
+                                            )
+                                        }
+                                    }
+                                },
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent,
+                                    focusedIndicatorColor = Color.Transparent,
+                                    unfocusedIndicatorColor = Color.Transparent,
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(searchFocusRequester),
                             )
-                        }
-                    },
-                    title = {
-                        TextField(
-                            value = uiState.searchQuery,
-                            onValueChange = { viewModel.onAction(ContactBookUiAction.SearchChanged(it)) },
-                            placeholder = { Text(stringResource(MR.string.contactbook_search_hint)) },
-                            singleLine = true,
-                            trailingIcon = {
-                                if (uiState.searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = {
-                                        viewModel.onAction(ContactBookUiAction.SearchChanged(""))
-                                    }) {
-                                        Icon(
-                                            Icons.Filled.Close,
-                                            contentDescription = stringResource(MR.string.clear_input),
+                        },
+                    )
+                } else {
+                    TopAppBar(
+                        // Owner avatar on the left links to settings — mirrors the Moments header.
+                        title = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                AnimatedVisibility(
+                                    visible = uiState.ownerSession != null,
+                                    enter = fadeIn(enterFade),
+                                    exit = fadeOut(exitFade),
+                                ) {
+                                    uiState.ownerSession?.let { session ->
+                                        OwnerAvatar(
+                                            odinId = session.odinId,
+                                            profileImageData = null,
+                                            initials = session.initials(),
+                                            connectionStatus = uiState.connectionStatus,
+                                            driveIsSyncing = uiState.driveIsSyncing,
+                                            hasDriveError = uiState.hasDriveError,
+                                            options = AvatarOptions(
+                                                size = 32.dp,
+                                                fontSize = 12.sp,
+                                                onClick = onProfileClick,
+                                            ),
+                                            animatedVisibilityScope = this@AnimatedVisibility,
+                                            sharedTransitionScope = null,
                                         )
                                     }
                                 }
-                            },
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(searchFocusRequester),
-                        )
-                    },
-                )
-            } else {
-                TopAppBar(
-                    // Owner avatar on the left links to settings — mirrors the Moments header.
-                    title = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            AnimatedVisibility(
-                                visible = uiState.ownerSession != null,
-                                enter = fadeIn(animationSpec = tween(300, delayMillis = 200)),
-                                exit = fadeOut(animationSpec = tween(150)),
-                            ) {
-                                uiState.ownerSession?.let { session ->
-                                    OwnerAvatar(
-                                        odinId = session.odinId,
-                                        profileImageData = null,
-                                        initials = session.initials(),
-                                        connectionStatus = uiState.connectionStatus,
-                                        driveIsSyncing = uiState.driveIsSyncing,
-                                        hasDriveError = uiState.hasDriveError,
-                                        options = AvatarOptions(
-                                            size = 32.dp,
-                                            fontSize = 12.sp,
-                                            onClick = onProfileClick,
-                                        ),
-                                        animatedVisibilityScope = this@AnimatedVisibility,
-                                        sharedTransitionScope = null,
-                                    )
-                                }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Text(stringResource(MR.string.contactbook_label))
                             }
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Text(stringResource(MR.string.contactbook_label))
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = { searchActive = true }) {
-                            Icon(
-                                Icons.Filled.Search,
-                                contentDescription = stringResource(MR.string.search),
-                            )
-                        }
-                    },
-                )
+                        },
+                        actions = {
+                            IconButton(onClick = { searchActive = true }) {
+                                Icon(
+                                    Icons.Filled.Search,
+                                    contentDescription = stringResource(MR.string.search),
+                                )
+                            }
+                        },
+                    )
+                }
             }
         },
         floatingActionButton = {
@@ -305,26 +325,38 @@ fun ContactBookScreen(
                 }
             }
 
-            when (uiState.selectedTab) {
-                ContactTab.KNOWN -> ContactBookContent(
-                    uiState = uiState,
-                    onAction = viewModel::onAction,
-                    modifier = Modifier.weight(1f),
-                )
-                ContactTab.NEW -> ContactBookContent(
-                    uiState = uiState,
-                    onAction = viewModel::onAction,
-                    modifier = Modifier.weight(1f),
-                    showNew = true,
-                )
-                ContactTab.CIRCLES -> CirclesTabContent(
-                    circles = uiState.circles,
-                    loading = uiState.circlesLoading,
-                    onAction = viewModel::onAction,
-                    modifier = Modifier.weight(1f),
-                    candidateCount = uiState.enrollmentCandidateCount,
-                    reviewEnabled = uiState.reviewEnabled,
-                )
+            val slide = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
+            val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+            AnimatedContent(
+                targetState = uiState.selectedTab,
+                modifier = Modifier.weight(1f),
+                transitionSpec = {
+                    val sign = (if (targetState.ordinal > initialState.ordinal) 1 else -1) * (if (rtl) -1 else 1)
+                    (slideInHorizontally(slide) { sign * it / 10 } + fadeIn(enterFade)) togetherWith
+                        (slideOutHorizontally(slide) { -sign * it / 10 } + fadeOut(exitFade))
+                },
+            ) { tab ->
+                when (tab) {
+                    ContactTab.KNOWN -> ContactBookContent(
+                        uiState = uiState,
+                        onAction = viewModel::onAction,
+                        listState = knownListState,
+                    )
+                    ContactTab.NEW -> ContactBookContent(
+                        uiState = uiState,
+                        onAction = viewModel::onAction,
+                        showNew = true,
+                        listState = newListState,
+                    )
+                    ContactTab.CIRCLES -> CirclesTabContent(
+                        circles = uiState.circles,
+                        loading = uiState.circlesLoading,
+                        onAction = viewModel::onAction,
+                        candidateCount = uiState.enrollmentCandidateCount,
+                        reviewEnabled = uiState.reviewEnabled,
+                        listState = circlesListState,
+                    )
+                }
             }
         }
     }
