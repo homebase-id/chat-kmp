@@ -8,14 +8,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitViewController
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.delay
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
+import platform.AVFoundation.AVPlayerItemStatusFailed
 import platform.AVFoundation.AVURLAsset
 import platform.AVFoundation.addPeriodicTimeObserverForInterval
 import platform.AVFoundation.currentItem
@@ -36,7 +37,7 @@ import platform.Foundation.NSURL
 actual fun LocalVideoPlayerSurface(
     filePath: String,
     modifier: Modifier,
-    onFirstFrameRendered: () -> Unit,
+    onFirstFrameRendered: (() -> Unit)?,
 ) {
     val player = remember(filePath) {
         AudioSession.ensurePlaybackCapable()
@@ -49,7 +50,7 @@ actual fun LocalVideoPlayerSurface(
     }
 
     val controller = remember { mutableStateOf<AVPlayerViewController?>(null) }
-    AwaitReadyForDisplay(controller.value, filePath, onFirstFrameRendered)
+    if (onFirstFrameRendered != null) AwaitReadyForDisplay(controller.value, filePath, onFirstFrameRendered)
 
     // Keep the screen awake while this local clip plays (#1025). It plays from
     // mount until it reaches the end (then seeks-to-0 + pauses), so the wake is
@@ -97,7 +98,7 @@ actual fun TrimmableVideoPlayerSurface(
     seekRequestMs: Long?,
     onPositionMs: (Long) -> Unit,
     modifier: Modifier,
-    onFirstFrameRendered: () -> Unit,
+    onFirstFrameRendered: (() -> Unit)?,
 ) {
     val onPositionMsState = rememberUpdatedState(onPositionMs)
 
@@ -114,7 +115,7 @@ actual fun TrimmableVideoPlayerSurface(
     }
 
     val controller = remember { mutableStateOf<AVPlayerViewController?>(null) }
-    AwaitReadyForDisplay(controller.value, filePath, onFirstFrameRendered)
+    if (onFirstFrameRendered != null) AwaitReadyForDisplay(controller.value, filePath, onFirstFrameRendered)
 
     // Keep the screen awake only while this clip is actively playing (#1025),
     // driven off the external isPlaying flag.
@@ -176,13 +177,16 @@ actual fun TrimmableVideoPlayerSurface(
     )
 }
 
-// readyForDisplay has no callback reachable from Kotlin (KVO is an NSObject category), so read it per frame.
+// readyForDisplay has no callback reachable from Kotlin (KVO is an NSObject category), so poll it.
 @Composable
 private fun AwaitReadyForDisplay(controller: AVPlayerViewController?, filePath: String, onReady: () -> Unit) {
     val currentOnReady by rememberUpdatedState(onReady)
     LaunchedEffect(controller, filePath) {
         val c = controller ?: return@LaunchedEffect
-        while (!c.readyForDisplay) withFrameNanos { }
+        while (!c.readyForDisplay) {
+            if (c.player?.currentItem?.status == AVPlayerItemStatusFailed) return@LaunchedEffect
+            delay(16)
+        }
         currentOnReady()
     }
 }

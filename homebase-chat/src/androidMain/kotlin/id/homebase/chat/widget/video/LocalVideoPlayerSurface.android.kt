@@ -29,7 +29,7 @@ import id.homebase.core.util.KeepScreenOn
 actual fun LocalVideoPlayerSurface(
     filePath: String,
     modifier: Modifier,
-    onFirstFrameRendered: () -> Unit,
+    onFirstFrameRendered: (() -> Unit)?,
 ) {
     val context = LocalContext.current
     val player = remember(filePath) {
@@ -47,7 +47,7 @@ actual fun LocalVideoPlayerSurface(
     DisposableEffect(filePath) {
         val listener = object : Player.Listener {
             override fun onRenderedFirstFrame() {
-                onFirstFrameRendered()
+                onFirstFrameRendered?.invoke()
             }
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
@@ -87,7 +87,7 @@ actual fun TrimmableVideoPlayerSurface(
     seekRequestMs: Long?,
     onPositionMs: (Long) -> Unit,
     modifier: Modifier,
-    onFirstFrameRendered: () -> Unit,
+    onFirstFrameRendered: (() -> Unit)?,
 ) {
     val context = LocalContext.current
     val onPositionMsState = rememberUpdatedState(onPositionMs)
@@ -119,7 +119,7 @@ actual fun TrimmableVideoPlayerSurface(
 
         val listener = object : Player.Listener {
             override fun onRenderedFirstFrame() {
-                onFirstFrameRendered()
+                onFirstFrameRendered?.invoke()
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {

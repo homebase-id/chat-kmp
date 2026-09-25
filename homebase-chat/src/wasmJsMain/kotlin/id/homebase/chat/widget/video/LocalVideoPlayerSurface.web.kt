@@ -63,7 +63,7 @@ private fun resolvePlayerSrc(filePath: String): PlayerSrc? {
 actual fun LocalVideoPlayerSurface(
     filePath: String,
     modifier: Modifier,
-    onFirstFrameRendered: () -> Unit,
+    onFirstFrameRendered: (() -> Unit)?,
 ) {
     val density = LocalDensity.current.density
     var element by remember(filePath) { mutableStateOf<JsAny?>(null) }
@@ -92,7 +92,7 @@ actual fun LocalVideoPlayerSurface(
         if (!started && widthCss > 0.0 && heightCss > 0.0) {
             started = true
             playVideoOverlay(el)
-            onFirstFrameRendered()
+            onFirstFrameRendered?.invoke()
         }
     }
 
@@ -115,7 +115,7 @@ actual fun TrimmableVideoPlayerSurface(
     seekRequestMs: Long?,
     onPositionMs: (Long) -> Unit,
     modifier: Modifier,
-    onFirstFrameRendered: () -> Unit,
+    onFirstFrameRendered: (() -> Unit)?,
 ) {
     val density = LocalDensity.current.density
     var element by remember(filePath) { mutableStateOf<JsAny?>(null) }
@@ -167,7 +167,7 @@ actual fun TrimmableVideoPlayerSurface(
         showHtmlOverlay(el, (b.left / density).toDouble(), (b.top / density).toDouble(), widthCss, heightCss)
         if (!firstFrameSent && widthCss > 0.0 && heightCss > 0.0) {
             firstFrameSent = true
-            onFirstFrameRendered()
+            onFirstFrameRendered?.invoke()
         }
     }
 
