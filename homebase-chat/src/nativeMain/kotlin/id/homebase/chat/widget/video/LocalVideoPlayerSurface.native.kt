@@ -8,6 +8,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitViewController
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -46,7 +48,8 @@ actual fun LocalVideoPlayerSurface(
         AVPlayer(uRL = url)
     }
 
-    LaunchedEffect(filePath) { onFirstFrameRendered() }
+    val controller = remember { mutableStateOf<AVPlayerViewController?>(null) }
+    AwaitReadyForDisplay(controller.value, filePath, onFirstFrameRendered)
 
     // Keep the screen awake while this local clip plays (#1025). It plays from
     // mount until it reaches the end (then seeks-to-0 + pauses), so the wake is
@@ -83,7 +86,7 @@ actual fun LocalVideoPlayerSurface(
             AVPlayerViewController().apply {
                 this.player = player
                 player.play()
-            }
+            }.also { controller.value = it }
         },
         modifier = modifier,
     )
@@ -114,7 +117,8 @@ actual fun TrimmableVideoPlayerSurface(
         AVPlayer(playerItem = item)
     }
 
-    LaunchedEffect(filePath) { onFirstFrameRendered() }
+    val controller = remember { mutableStateOf<AVPlayerViewController?>(null) }
+    AwaitReadyForDisplay(controller.value, filePath, onFirstFrameRendered)
 
     // Keep the screen awake only while this clip is actively playing (#1025),
     // driven off the external isPlaying flag. idleTimerDisabled is app-global,
@@ -174,8 +178,19 @@ actual fun TrimmableVideoPlayerSurface(
             AVPlayerViewController().apply {
                 this.player = player
                 this.showsPlaybackControls = false
-            }
+            }.also { controller.value = it }
         },
         modifier = modifier,
     )
+}
+
+// readyForDisplay has no callback reachable from Kotlin (KVO is an NSObject category), so read it per frame.
+@Composable
+private fun AwaitReadyForDisplay(controller: AVPlayerViewController?, filePath: String, onReady: () -> Unit) {
+    val currentOnReady by rememberUpdatedState(onReady)
+    LaunchedEffect(controller, filePath) {
+        val c = controller ?: return@LaunchedEffect
+        while (!c.readyForDisplay) withFrameNanos { }
+        currentOnReady()
+    }
 }
