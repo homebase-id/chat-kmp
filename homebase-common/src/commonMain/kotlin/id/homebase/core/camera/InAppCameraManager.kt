@@ -31,12 +31,13 @@ class InAppCameraLauncher internal constructor() : PlatformCameraManager {
     internal var handoffEpoch by mutableStateOf<Int?>(null)
     internal var warmer: CameraWarmer? = null
     internal var warmEngine: CameraEngine? = null
+    internal var recordsVideo = false
 
     override fun launch() = launch(CaptureMode.Photo)
 
     fun launch(initialMode: CaptureMode) {
         if (openMode != null) return
-        warmEngine = warmer?.warm()
+        warmEngine = warmer?.warm(recordsVideo)
         openMode = initialMode
     }
 
@@ -62,6 +63,7 @@ fun rememberInAppCameraManager(
 ): InAppCameraLauncher {
     val launcher = remember { InAppCameraLauncher() }
     launcher.warmer = rememberCameraWarmer()
+    launcher.recordsVideo = allowedModes.allows(CaptureMode.Video)
     val currentOnResult by rememberUpdatedState(onResult)
     val currentOnOpenGallery by rememberUpdatedState(onOpenGallery)
     val mode = launcher.openMode
