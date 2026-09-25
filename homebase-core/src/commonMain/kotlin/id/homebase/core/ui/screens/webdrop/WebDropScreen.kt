@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.webdrop
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -104,51 +105,62 @@ fun WebDropScreen(
             }
         },
     ) { innerPadding ->
-        when {
-            !uiState.isLoaded -> Box(
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+        val body = when {
+            !uiState.isLoaded -> WebDropBody.Loading
+            uiState.drops.isEmpty() -> WebDropBody.Empty
+            else -> WebDropBody.Drops
+        }
+        Crossfade(
+            targetState = body,
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        ) { shown ->
+            when (shown) {
+                WebDropBody.Loading -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) { CircularProgressIndicator() }
 
-            uiState.drops.isEmpty() -> Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = 32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Redeem,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.width(64.dp).height(64.dp),
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = stringResource(MR.string.webdrop_empty_title),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(MR.string.webdrop_empty_body),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(uiState.drops, key = { it.receiptFileId.toString() }) { row ->
-                    WebDropRowCard(
-                        row = row,
-                        onCopyLink = { viewModel.onAction(WebDropUiAction.CopyLinkClicked(row.receipt.url)) },
-                        onRevoke = { viewModel.onAction(WebDropUiAction.RevokeClicked(row.dropId)) },
-                        onClear = { viewModel.onAction(WebDropUiAction.ClearClicked(row.receiptFileId)) },
+                WebDropBody.Empty -> Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Redeem,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(64.dp).height(64.dp),
                     )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = stringResource(MR.string.webdrop_empty_title),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(MR.string.webdrop_empty_body),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                WebDropBody.Drops -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(uiState.drops, key = { it.receiptFileId.toString() }) { row ->
+                        WebDropRowCard(
+                            row = row,
+                            onCopyLink = { viewModel.onAction(WebDropUiAction.CopyLinkClicked(row.receipt.url)) },
+                            onRevoke = { viewModel.onAction(WebDropUiAction.RevokeClicked(row.dropId)) },
+                            onClear = { viewModel.onAction(WebDropUiAction.ClearClicked(row.receiptFileId)) },
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
                 }
             }
         }
@@ -162,3 +174,5 @@ fun WebDropScreen(
     }
 
 }
+
+private enum class WebDropBody { Loading, Empty, Drops }
