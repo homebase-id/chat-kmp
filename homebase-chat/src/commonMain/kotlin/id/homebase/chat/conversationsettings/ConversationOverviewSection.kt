@@ -83,7 +83,7 @@ fun ConversationOverviewSection(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(strip) { item ->
+            items(strip, key = { "${it.fileId}_${it.payload.key}" }) { item ->
                 hero.Tile(item, Modifier.size(76.dp)) { sharedTransitionScope, animatedVisibilityScope ->
                     MediaItem(
                         payload = item.payload,

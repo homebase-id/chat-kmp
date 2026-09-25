@@ -1,11 +1,7 @@
 package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.EaseOutBack
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -93,7 +89,7 @@ fun FileDropOverlay(preview: FileDropPreview?, modifier: Modifier = Modifier) {
 
     val cardScale by animateFloatAsState(
         targetValue = if (preview != null) 1f else 0.92f,
-        animationSpec = tween(durationMillis = 220, easing = EaseOutBack),
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
         label = "fileDropCardScale",
     )
 
@@ -107,8 +103,8 @@ fun FileDropOverlay(preview: FileDropPreview?, modifier: Modifier = Modifier) {
 
     AnimatedVisibility(
         visible = preview != null,
-        enter = fadeIn(tween(durationMillis = 140, easing = LinearOutSlowInEasing)),
-        exit = fadeOut(tween(durationMillis = 90, easing = FastOutLinearInEasing)),
+        enter = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()),
+        exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
         modifier = modifier,
     ) {
         Box(

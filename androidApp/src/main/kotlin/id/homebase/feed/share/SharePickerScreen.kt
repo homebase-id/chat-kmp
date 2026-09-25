@@ -87,6 +87,7 @@ import id.homebase.resources.share_picker_new_webdrop_subtitle
 import id.homebase.resources.share_picker_next
 import id.homebase.resources.share_picker_send
 import id.homebase.resources.share_to
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -285,7 +286,7 @@ fun SharePickerScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator()
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text(stringResource(MR.string.sending_to_conversations, selectedIds.size.toString()))
+                        Text(pluralStringResource(MR.plurals.sending_to_conversations, selectedIds.size, selectedIds.size))
                     }
                 }
             } else if (!conversationsData.dataReady) {
@@ -410,7 +411,7 @@ private fun ShareSendBar(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = stringResource(MR.string.conversations_selected, count.toString()),
+                text = pluralStringResource(MR.plurals.conversations_selected, count, count),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
