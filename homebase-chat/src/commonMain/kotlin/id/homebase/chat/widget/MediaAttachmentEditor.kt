@@ -1,6 +1,15 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,6 +24,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -43,6 +53,7 @@ import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,6 +74,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
@@ -384,12 +396,22 @@ fun MediaAttachmentEditor(
         // attachment is a video. Trim applies live as the user drags; the
         // FileVideo's trimStartMs/trimEndMs is the source-of-truth, and Send
         // ships whatever range the handles are at. Hidden until durationMs is
-        // resolved (a few hundred ms after the editor opens).
-        if (onTrimChange != null && activeVideo != null && activeVideo.durationMs != null && activeVideo.durationMs > 0L) {
-            val attId = activeVideo.attachmentId
-            val durationMs = activeVideo.durationMs
-            val startMs = activeVideo.trimStartMs ?: 0L
-            val endMs = activeVideo.trimEndMs ?: durationMs
+        // resolved (a few hundred ms after the editor opens). Keyed on presence only, so the bar keeps
+        // its last video while it collapses and swaps content in place between videos.
+        val trimBarFade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+        val trimBarResize = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
+        AnimatedContent(
+            targetState = activeVideo?.takeIf { onTrimChange != null && (it.durationMs ?: 0L) > 0L },
+            contentKey = { it != null },
+            transitionSpec = {
+                fadeIn(trimBarFade) togetherWith fadeOut(trimBarFade) using SizeTransform { _, _ -> trimBarResize }
+            },
+        ) { video ->
+        if (video != null && onTrimChange != null) {
+            val attId = video.attachmentId
+            val durationMs = video.durationMs ?: 0L
+            val startMs = video.trimStartMs ?: 0L
+            val endMs = video.trimEndMs ?: durationMs
             val playheadMs = playheadByAtt[attId] ?: startMs
             val frames = framesByAtt[attId] ?: emptyMap()
             Column(
@@ -431,11 +453,16 @@ fun MediaAttachmentEditor(
                 )
             }
         }
+        } // end AnimatedContent (trim bar)
 
         // Attachment-strip row: thumbnails for every queued attachment with a
         // trailing "+" to add another. This row is just about managing the
         // collection of attachments — actions on the current one live below.
-        AnimatedVisibility(visible = !collapseSecondaryChrome) {
+        AnimatedVisibility(
+            visible = !collapseSecondaryChrome,
+            enter = secondaryChromeEnter(),
+            exit = secondaryChromeExit(),
+        ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -589,39 +616,58 @@ fun MediaAttachmentEditor(
         // attachment — crop (image only), download. Future tools (filters,
         // markup) would join this row.
         val currentAttachment = attachments.getOrNull(pagerState.currentPage)
-        val toolset = editorToolsetFor(
-            current = currentAttachment,
-            canCrop = onCropImage != null,
-            canDraw = onDrawImage != null,
-            canSave = onSaveFile != null,
-            canSetQuality = onToggleMediaQuality != null,
-        )
-        AnimatedVisibility(visible = !collapseSecondaryChrome) {
+        val toolsetFor = { attachment: AttachmentPendingFile? ->
+            editorToolsetFor(
+                current = attachment,
+                canCrop = onCropImage != null,
+                canDraw = onDrawImage != null,
+                canSave = onSaveFile != null,
+                canSetQuality = onToggleMediaQuality != null,
+            )
+        }
+        val toolset = toolsetFor(currentAttachment)
+        val toolbarFade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+        AnimatedVisibility(
+            visible = !collapseSecondaryChrome,
+            enter = secondaryChromeEnter(),
+            exit = secondaryChromeExit(),
+        ) {
+        // Reserve the toolbar's height whenever tools can appear, so paging onto an attachment
+        // without tools fades the toolbar instead of growing the pager.
+        val canShowToolbar = onCropImage != null || onDrawImage != null || onSaveFile != null
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .heightIn(min = if (canShowToolbar) FloatingToolbarDefaults.ContainerSize else 0.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (toolset.showToolbar) {
-                HorizontalFloatingToolbar(
-                    expanded = true,
-                    expandedShadowElevation = 0.dp,
-                ) {
-                    if (toolset.showCrop) {
-                        IconButton(onClick = { onCropImage!!(currentAttachment!!.attachmentId) }) {
-                            Icon(Icons.Default.Crop, contentDescription = stringResource(MR.string.crop))
+            AnimatedContent(
+                targetState = currentAttachment?.takeIf { toolset.showToolbar },
+                contentKey = { it != null },
+                transitionSpec = { fadeIn(toolbarFade) togetherWith fadeOut(toolbarFade) using null },
+            ) { attachment ->
+                if (attachment != null) {
+                    val tools = toolsetFor(attachment)
+                    HorizontalFloatingToolbar(
+                        expanded = true,
+                        expandedShadowElevation = 0.dp,
+                    ) {
+                        if (tools.showCrop) {
+                            IconButton(onClick = { onCropImage!!(attachment.attachmentId) }) {
+                                Icon(Icons.Default.Crop, contentDescription = stringResource(MR.string.crop))
+                            }
                         }
-                    }
-                    if (toolset.showDraw) {
-                        IconButton(onClick = { onDrawImage!!(currentAttachment!!.attachmentId) }) {
-                            Icon(Icons.Default.Draw, contentDescription = stringResource(MR.string.draw))
+                        if (tools.showDraw) {
+                            IconButton(onClick = { onDrawImage!!(attachment.attachmentId) }) {
+                                Icon(Icons.Default.Draw, contentDescription = stringResource(MR.string.draw))
+                            }
                         }
-                    }
-                    if (toolset.showSave) {
-                        IconButton(onClick = { onSaveFile!!(currentAttachment!!) }) {
-                            Icon(Icons.Default.Download, contentDescription = stringResource(MR.string.save))
+                        if (tools.showSave) {
+                            IconButton(onClick = { onSaveFile!!(attachment) }) {
+                                Icon(Icons.Default.Download, contentDescription = stringResource(MR.string.save))
+                            }
                         }
                     }
                 }
@@ -660,6 +706,14 @@ fun MediaAttachmentEditor(
         }
     }
 }
+
+@Composable
+fun secondaryChromeEnter(): EnterTransition =
+    expandVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.fastEffectsSpec())
+
+@Composable
+fun secondaryChromeExit(): ExitTransition =
+    shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec())
 
 /**
  * First-page preview for a PDF attachment in the composer: renders page 1 to a

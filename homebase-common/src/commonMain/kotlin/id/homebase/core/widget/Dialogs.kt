@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
@@ -70,18 +69,17 @@ fun DialogButtons(
             modifier = Modifier
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (onPrimaryClick != null && primaryText != null) {
                 TextButton(onClick = onPrimaryClick) {
                     Text(primaryText)
                 }
-                Spacer(modifier = Modifier.height(4.dp))
             }
             if (onSecondaryClick != null && secondaryText != null) {
                 TextButton(onClick = onSecondaryClick) {
                     Text(secondaryText)
                 }
-                Spacer(modifier = Modifier.height(4.dp))
             }
             if (onTertiaryClick != null && tertiaryText != null) {
                 TextButton(onClick = onTertiaryClick) {
@@ -93,26 +91,23 @@ fun DialogButtons(
         FlowRow(
             modifier = Modifier
                 .fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (onTertiaryClick != null && tertiaryText != null) {
                 TextButton(onClick = onTertiaryClick) {
                     Text(tertiaryText)
                 }
-                Spacer(modifier = Modifier.width(8.dp))
             }
             if (onSecondaryClick != null && secondaryText != null) {
                 TextButton(onClick = onSecondaryClick) {
                     Text(secondaryText)
                 }
-                Spacer(modifier = Modifier.width(8.dp))
             }
             if (onPrimaryClick != null && primaryText != null) {
                 TextButton(onClick = onPrimaryClick) {
                     Text(primaryText)
                 }
-                Spacer(modifier = Modifier.width(8.dp))
             }
         }
     }

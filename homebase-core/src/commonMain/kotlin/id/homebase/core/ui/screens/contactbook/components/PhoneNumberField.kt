@@ -141,7 +141,7 @@ private fun CountryPickerSheet(
                 items(filtered, key = { it.iso }) { c ->
                     val dial = "+${c.dialCode}"
                     ListItem(
-                        modifier = Modifier.clickable { onSelect(c) },
+                        modifier = Modifier.clickable { dismiss { onSelect(c) } },
                         leadingContent = { Text(c.flag) },
                         headlineContent = { Text(c.name) },
                         trailingContent = { Text(dial) },

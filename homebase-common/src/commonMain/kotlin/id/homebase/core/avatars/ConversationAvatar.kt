@@ -44,7 +44,9 @@ fun ConversationAvatar(
                     odinId = it,
                     initials = avatarModel.initials,
                     options = options,
-                    modifier = modifier
+                    modifier = modifier,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
             }
         }

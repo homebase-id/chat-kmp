@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -17,6 +19,7 @@ import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -34,12 +37,15 @@ class GuardedComposerSheetDismissTest {
 
     private val discardTitle = "Discard changes?"
 
+    private val close = "Close"
+
     private fun SkikoComposeUiTest.showSheet(unsaved: Boolean, onDismiss: () -> Unit) {
         setContent {
             MaterialTheme {
-                GuardedComposerSheet(onDismiss = onDismiss) { _, reportUnsaved ->
+                GuardedComposerSheet(onDismiss = onDismiss) { requestClose, reportUnsaved ->
                     LaunchedEffect(unsaved) { reportUnsaved(unsaved) }
                     Box(Modifier.testTag(body).fillMaxWidth().height(300.dp))
+                    TextButton(onClick = requestClose) { Text(close) }
                 }
             }
         }
@@ -74,6 +80,20 @@ class GuardedComposerSheetDismissTest {
             showSheet(unsaved = false) { dismissals++ }
 
             tapAboveTheSheet()
+
+            assertEquals(1, dismissals)
+        }
+
+    @Test
+    fun `discarding a draft closes the pinned sheet once`() =
+        runSkikoComposeUiTest(size = compactPhone) {
+            var dismissals = 0
+            showSheet(unsaved = true) { dismissals++ }
+
+            onNodeWithText(close).performClick()
+            waitForIdle()
+            onNodeWithText("Discard").performClick()
+            waitForIdle()
 
             assertEquals(1, dismissals)
         }

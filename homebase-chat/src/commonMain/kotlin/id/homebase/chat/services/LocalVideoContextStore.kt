@@ -1,5 +1,9 @@
 package id.homebase.chat.services
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import kotlinx.coroutines.CoroutineScope
@@ -149,4 +153,13 @@ class LocalAttachmentContextStore(
             _contexts.update { it + (messageId to valid) }
         }
     }
+}
+
+// Remembered per key: an unremembered observe() is a new flow each recomposition, which restarts
+// the collection and re-runs the file-existence check every frame.
+@Composable
+fun LocalAttachmentContextStore.collectContext(messageId: Uuid, payloadKey: String): State<LocalAttachmentContext?> {
+    val flow = remember(this, messageId, payloadKey) { observe(messageId, payloadKey) }
+    val initial = remember(this, messageId, payloadKey) { get(messageId, payloadKey) }
+    return flow.collectAsStateWithLifecycle(initialValue = initial)
 }

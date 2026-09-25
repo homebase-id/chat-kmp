@@ -55,7 +55,6 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -65,6 +64,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -87,6 +87,7 @@ import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.chat.widget.AvatarFullScreenViewer
 import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ChatMediaFullScreenHost
+import id.homebase.chat.widget.SharedMediaHero
 import id.homebase.chat.widget.ErrorInfoItem
 import id.homebase.chat.widget.LoadingListItem
 import id.homebase.core.HomebaseConstants
@@ -179,6 +180,7 @@ import id.homebase.resources.ok
 import id.homebase.resources.remove
 import id.homebase.resources.you
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.getPluralString
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -198,76 +200,79 @@ fun GroupSettingsScreen(
     val uriHandler = LocalUriHandler.current
     val healAlreadyInSyncMessage = stringResource(MR.string.chat_group_heal_already_in_sync)
 
-    when (val event = uiState.uiEvent) {
-        is GroupSettingsUiEvent.Back -> {
-            viewModel.eventConsumed()
-            onNavigateBack()
-        }
-
-        is GroupSettingsUiEvent.Error -> {
-            viewModel.eventConsumed()
-            scope.launch { snackbarHostState.showSnackbar(message = event.errorMessage) }
-        }
-
-        is GroupSettingsUiEvent.ShowContactInfo -> {
-            viewModel.eventConsumed()
-            onShowContactInfo(event.odinId)
-        }
-
-        is GroupSettingsUiEvent.ShowAddMembers -> {
-            viewModel.eventConsumed()
-            onAddMembers(event.conversationId)
-        }
-
-        is GroupSettingsUiEvent.ShowEditGroup -> {
-            viewModel.eventConsumed()
-            onEditGroup(event.conversationId)
-        }
-
-        is GroupSettingsUiEvent.OpenUrl -> {
-            viewModel.eventConsumed()
-            uriHandler.openUri(event.url)
-        }
-
-        is GroupSettingsUiEvent.HealCompleted -> {
-            viewModel.eventConsumed()
-            val parts = buildList {
-                if (event.mainRecipientCount > 0) {
-                    add(
-                        pluralStringResource(
-                            MR.plurals.chat_group_heal_main_resent,
-                            event.mainRecipientCount,
-                            event.mainRecipientCount,
-                        )
-                    )
-                }
-                if (event.adminRecipientCount > 0) {
-                    add(
-                        pluralStringResource(
-                            MR.plurals.chat_group_heal_admin_resent,
-                            event.adminRecipientCount,
-                            event.adminRecipientCount,
-                        )
-                    )
-                }
-                if (event.healMessageRecipientCount > 0) {
-                    add(
-                        pluralStringResource(
-                            MR.plurals.chat_group_heal_request_sent,
-                            event.healMessageRecipientCount,
-                            event.healMessageRecipientCount,
-                        )
-                    )
-                }
+    LaunchedEffect(uiState.uiEvent) {
+        when (val event = uiState.uiEvent) {
+            is GroupSettingsUiEvent.Back -> {
+                viewModel.eventConsumed()
+                onNavigateBack()
             }
-            // Counts all zero ⇒ either every peer was already PresentAuthoredByMe
-            // or there were no peers to begin with; canHeal would have blocked
-            // the not-author case before the click reached us.
-            val message = if (parts.isNotEmpty()) parts.joinToString(" · ") else healAlreadyInSyncMessage
-            scope.launch { snackbarHostState.showSnackbar(message = message) }
-        }
 
-        null -> {}
+            is GroupSettingsUiEvent.Error -> {
+                viewModel.eventConsumed()
+                scope.launch { snackbarHostState.showSnackbar(message = event.errorMessage) }
+            }
+
+            is GroupSettingsUiEvent.ShowContactInfo -> {
+                viewModel.eventConsumed()
+                onShowContactInfo(event.odinId)
+            }
+
+            is GroupSettingsUiEvent.ShowAddMembers -> {
+                viewModel.eventConsumed()
+                onAddMembers(event.conversationId)
+            }
+
+            is GroupSettingsUiEvent.ShowEditGroup -> {
+                viewModel.eventConsumed()
+                onEditGroup(event.conversationId)
+            }
+
+            is GroupSettingsUiEvent.OpenUrl -> {
+                viewModel.eventConsumed()
+                uriHandler.openUri(event.url)
+            }
+
+            is GroupSettingsUiEvent.HealCompleted -> {
+                // Consumed only after the suspending lookups: consuming cancels this effect.
+                val parts = buildList {
+                    if (event.mainRecipientCount > 0) {
+                        add(
+                            getPluralString(
+                                MR.plurals.chat_group_heal_main_resent,
+                                event.mainRecipientCount,
+                                event.mainRecipientCount,
+                            )
+                        )
+                    }
+                    if (event.adminRecipientCount > 0) {
+                        add(
+                            getPluralString(
+                                MR.plurals.chat_group_heal_admin_resent,
+                                event.adminRecipientCount,
+                                event.adminRecipientCount,
+                            )
+                        )
+                    }
+                    if (event.healMessageRecipientCount > 0) {
+                        add(
+                            getPluralString(
+                                MR.plurals.chat_group_heal_request_sent,
+                                event.healMessageRecipientCount,
+                                event.healMessageRecipientCount,
+                            )
+                        )
+                    }
+                }
+                // Counts all zero ⇒ either every peer was already PresentAuthoredByMe
+                // or there were no peers to begin with; canHeal would have blocked
+                // the not-author case before the click reached us.
+                val message = if (parts.isNotEmpty()) parts.joinToString(" · ") else healAlreadyInSyncMessage
+                viewModel.eventConsumed()
+                scope.launch { snackbarHostState.showSnackbar(message = message) }
+            }
+
+            null -> {}
+        }
     }
 
     GroupSettingsDialogs(
@@ -303,29 +308,28 @@ fun GroupSettingsScreen(
             label = "groupAvatarViewer",
         ) { avatar ->
             if (avatar == null) {
-                Box(modifier = Modifier.fillMaxSize()) {
+                ChatMediaFullScreenHost(
+                    item = fullScreenItem,
+                    driveId = chatTargetDrive.alias,
+                    title = uiState.conversation?.name.orEmpty(),
+                    snackbarHostState = snackbarHostState,
+                    onDismiss = { fullScreenItem = null },
+                ) { hero ->
                     GroupSettingsUi(
                         snackbarHostState = snackbarHostState,
                         uiState = uiState,
                         conversationId = viewModel.route.conversationId,
+                        mediaHero = hero,
                         onUiAction = viewModel::onUiAction,
                         onAvatarClick = { fullScreenAvatar = it },
                         onMediaClick = { fullScreenItem = it },
                         onSeeAllMedia = onSeeAllMedia,
-                        isMediaViewerOpen = fullScreenItem != null,
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@AnimatedContent,
                     )
                     if (uiState.isLeaving) {
                         LeavingGroupOverlay()
                     }
-                    ChatMediaFullScreenHost(
-                        item = fullScreenItem,
-                        driveId = chatTargetDrive.alias,
-                        title = uiState.conversation?.name.orEmpty(),
-                        snackbarHostState = snackbarHostState,
-                        onDismiss = { fullScreenItem = null },
-                    )
                 }
             } else {
                 AvatarFullScreenViewer(
@@ -388,43 +392,37 @@ fun GroupSettingsUi(
     snackbarHostState: SnackbarHostState,
     uiState: GroupSettingsUiState,
     conversationId: String,
+    mediaHero: SharedMediaHero,
     onUiAction: (GroupSettingsUiAction) -> Unit,
     onAvatarClick: (HomebaseImageData) -> Unit = {},
     onMediaClick: (SharedMediaItem) -> Unit = {},
     onSeeAllMedia: (conversationId: String) -> Unit = {},
-    /** True while a shared-media tile is open full-screen; suppresses this screen's
-     *  app bar so the viewer's own top bar doesn't stack under it (same reason as
-     *  ConversationSettingsScreen). */
-    isMediaViewerOpen: Boolean = false,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            if (!isMediaViewerOpen) {
-                TopAppBar(
-                    title = {},
-                    navigationIcon = {
-                        IconButton(onClick = { onUiAction(GroupSettingsUiAction.BackClicked) }) {
+            TopAppBar(
+                title = {},
+                navigationIcon = {
+                    IconButton(onClick = { onUiAction(GroupSettingsUiAction.BackClicked) }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(MR.string.menu_back)
+                        )
+                    }
+                },
+                actions = {
+                    if (uiState.isCurrentUserGroupAdmin && !uiState.isLegacyGroup) {
+                        IconButton(onClick = { onUiAction(GroupSettingsUiAction.EditGroupClicked) }) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(MR.string.menu_back)
+                                Icons.Outlined.Edit,
+                                contentDescription = stringResource(MR.string.chat_message_edit)
                             )
                         }
-                    },
-                    actions = {
-                        if (uiState.isCurrentUserGroupAdmin && !uiState.isLegacyGroup) {
-                            IconButton(onClick = { onUiAction(GroupSettingsUiAction.EditGroupClicked) }) {
-                                Icon(
-                                    Icons.Outlined.Edit,
-                                    contentDescription = stringResource(MR.string.chat_message_edit)
-                                )
-                            }
-                        }
-                    },
-                )
-            }
+                    }
+                },
+            )
         },
     ) { padding ->
         Column(
@@ -468,6 +466,7 @@ fun GroupSettingsUi(
                         item {
                             ConversationOverviewSection(
                                 overview = overview,
+                                hero = mediaHero,
                                 onMediaClick = onMediaClick,
                                 onSeeAll = { onSeeAllMedia(conversationId) },
                             )
@@ -906,7 +905,7 @@ fun GroupSettingsSheets(
                 HealProgressSheetContent(
                     items = sheet.items,
                     finished = sheet.finished,
-                    onClose = { onSheetClosed() },
+                    onClose = { dismiss() },
                 )
             }
         }

@@ -9,12 +9,18 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalBottomSheetProperties
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -22,12 +28,35 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.window.core.layout.WindowSizeClass
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Stable
+class AdaptiveSheetScope internal constructor(
+    private val sheetState: SheetState?,
+    private val scope: CoroutineScope,
+    private val onDismiss: State<() -> Unit>,
+    private val dismissing: MutableState<Boolean>,
+) {
+    fun dismiss(then: () -> Unit = onDismiss.value) {
+        val state = sheetState ?: return then()
+        if (dismissing.value) return
+        dismissing.value = true
+        scope.launch { state.hide() }.invokeOnCompletion {
+            if (state.isVisible) dismissing.value = false else then()
+        }
+    }
+}
 
 /**
  * Presents transient content adaptively: a bottom sheet on compact (phone) widths,
  * a centered constrained dialog on medium+ widths (tablet / desktop), where a
  * full-width bottom sheet looks wrong. Callers supply the same inner content for
  * both — typically a scrollable Column with its own padding.
+ *
+ * Close from [content] with [AdaptiveSheetScope.dismiss]: flipping the caller's flag directly
+ * removes the sheet from composition, so it vanishes instead of sliding out.
  *
  * @param expandFully opens at full height instead of half — for content whose primary action
  *   sits below a form the user would otherwise have to scroll to reach.
@@ -47,8 +76,11 @@ fun AdaptiveSheet(
     expandFully: Boolean = false,
     maxWidth: Dp = 520.dp,
     contentWindowInsets: @Composable () -> WindowInsets = { BottomSheetDefaults.windowInsets },
-    content: @Composable () -> Unit,
+    content: @Composable AdaptiveSheetScope.() -> Unit,
 ) {
+    val currentOnDismiss = rememberUpdatedState(onDismiss)
+    val scope = rememberCoroutineScope()
+    val dismissing = remember { mutableStateOf(false) }
     val wide = currentWindowAdaptiveInfo().windowSizeClass
         .isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
 
@@ -69,17 +101,23 @@ fun AdaptiveSheet(
                     .widthIn(max = maxWidth)
                     .heightIn(max = 680.dp),
             ) {
-                content()
+                remember { AdaptiveSheetScope(null, scope, currentOnDismiss, dismissing) }.content()
             }
         }
     } else {
         // The drag handle's *tap* survives sheetGesturesEnabled = false; confirmValueChange is the
-        // only thing that stops it. Kept identity-stable — the sheet state is keyed on this lambda.
+        // only thing that stops it, and it gates our own hide() too. Kept identity-stable — the
+        // sheet state is keyed on this lambda.
         val canDismiss = rememberUpdatedState(dismissible)
         val sheetState = rememberModalBottomSheetState(
             skipPartiallyExpanded = expandFully,
-            confirmValueChange = remember { { it != SheetValue.Hidden || canDismiss.value } },
+            confirmValueChange = remember {
+                { it != SheetValue.Hidden || canDismiss.value || dismissing.value }
+            },
         )
+        val sheetScope = remember(sheetState) {
+            AdaptiveSheetScope(sheetState, scope, currentOnDismiss, dismissing)
+        }
         ModalBottomSheet(
             onDismissRequest = onDismiss,
             sheetState = sheetState,
@@ -90,7 +128,7 @@ fun AdaptiveSheet(
                 shouldDismissOnClickOutside = dismissible,
             ),
         ) {
-            content()
+            sheetScope.content()
         }
     }
 }

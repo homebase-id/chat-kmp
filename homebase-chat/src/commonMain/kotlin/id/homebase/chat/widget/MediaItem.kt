@@ -36,7 +36,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
@@ -54,6 +53,7 @@ import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
+import id.homebase.chat.services.collectContext
 import id.homebase.chat.widget.video.formatDurationLabel
 import id.homebase.common.widget.VideoInfoOverlay
 import id.homebase.core.HomebaseConstants
@@ -131,9 +131,7 @@ fun MediaItem(
     val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
     val localVideoContextStore = koinInject<LocalAttachmentContextStore>()
     val localContext = if (messageId != null) {
-        val ctx by localVideoContextStore.observe(messageId, payload.key)
-            .collectAsStateWithLifecycle(initialValue = localVideoContextStore.get(messageId, payload.key))
-        ctx
+        localVideoContextStore.collectContext(messageId, payload.key).value
     } else null
 
     // Calculate aspect ratio if available
