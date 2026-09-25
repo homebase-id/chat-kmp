@@ -716,7 +716,7 @@ class ContactDetailViewModel(
                 if (entry != null && versionTag != null &&
                     reconcileAction(hasAccess = true, entry.iCanLocate) == ReconcileAction.Set
                 ) {
-                    runCatching { contactRepository.setICanLocate(entry.uniqueId, versionTag) }
+                    runCatching { emergencyContacts.setICanLocate(peer, entry.uniqueId, versionTag) }
                         .onFailure { Logger.w(it, TAG) { "setICanLocate failed for ${peer.domainName}" } }
                 }
             }

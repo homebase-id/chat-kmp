@@ -44,11 +44,17 @@ class EmergencyContactReceiveService(
             val uniqueId = Md5.toGuidId(sender.domainName)
             val contact = contactRepository.contacts.value.firstOrNull { it.uniqueId == uniqueId }
             val versionTag = contact?.versionTag
-            when (designationAction(contact != null, contact?.iCanLocate() == true, versionTag != null)) {
+            val action = designationAction(
+                isSelf = emergencyContacts.isSelf(sender),
+                contactExists = contact != null,
+                alreadyICanLocate = contact?.iCanLocate() == true,
+                hasVersionTag = versionTag != null,
+            )
+            when (action) {
                 DesignationAction.SyncOnly -> contactInfo.syncContactRecord(sender)
                 DesignationAction.Consume -> consume(messageFile)
                 DesignationAction.SetThenConsume -> {
-                    contactRepository.setICanLocate(uniqueId, versionTag!!)
+                    emergencyContacts.setICanLocate(sender, uniqueId, versionTag!!)
                     consume(messageFile)
                     emergencyContacts.refreshAsync(sender)
                 }
@@ -117,10 +123,13 @@ internal enum class DesignationAction { SyncOnly, Consume, SetThenConsume, Ignor
  * row exists. Once set (or already set) we consume to neutralise re-deliveries.
  */
 internal fun designationAction(
+    isSelf: Boolean,
     contactExists: Boolean,
     alreadyICanLocate: Boolean,
     hasVersionTag: Boolean,
 ): DesignationAction = when {
+    // You are never your own emergency contact; consume so it isn't re-delivered.
+    isSelf -> DesignationAction.Consume
     !contactExists -> DesignationAction.SyncOnly
     alreadyICanLocate -> DesignationAction.Consume
     hasVersionTag -> DesignationAction.SetThenConsume

@@ -17,7 +17,7 @@ class EmergencyContactActionTest {
         // contact doesn't exist yet → sync only; do NOT consume (flag applies on a later delivery).
         assertEquals(
             DesignationAction.SyncOnly,
-            designationAction(contactExists = false, alreadyICanLocate = false, hasVersionTag = false),
+            designationAction(isSelf = false, contactExists = false, alreadyICanLocate = false, hasVersionTag = false),
         )
     }
 
@@ -25,7 +25,7 @@ class EmergencyContactActionTest {
     fun designation_alreadyFlagged_consumesOnly() {
         assertEquals(
             DesignationAction.Consume,
-            designationAction(contactExists = true, alreadyICanLocate = true, hasVersionTag = true),
+            designationAction(isSelf = false, contactExists = true, alreadyICanLocate = true, hasVersionTag = true),
         )
     }
 
@@ -33,7 +33,7 @@ class EmergencyContactActionTest {
     fun designation_knownUnflaggedWithVersion_setsThenConsumes() {
         assertEquals(
             DesignationAction.SetThenConsume,
-            designationAction(contactExists = true, alreadyICanLocate = false, hasVersionTag = true),
+            designationAction(isSelf = false, contactExists = true, alreadyICanLocate = false, hasVersionTag = true),
         )
     }
 
@@ -42,7 +42,15 @@ class EmergencyContactActionTest {
         // Can't write without a versionTag; leave it for a later delivery / reconcile.
         assertEquals(
             DesignationAction.Ignore,
-            designationAction(contactExists = true, alreadyICanLocate = false, hasVersionTag = false),
+            designationAction(isSelf = false, contactExists = true, alreadyICanLocate = false, hasVersionTag = false),
+        )
+    }
+
+    @Test
+    fun designation_fromSelf_consumesWithoutFlagging() {
+        assertEquals(
+            DesignationAction.Consume,
+            designationAction(isSelf = true, contactExists = true, alreadyICanLocate = false, hasVersionTag = true),
         )
     }
 
