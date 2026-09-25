@@ -8,6 +8,3 @@ internal actual fun cameraDialogProperties(): DialogProperties =
 
 @Composable
 internal actual fun CameraWindowEffect() = Unit
-
-@Composable
-internal actual fun KeepScreenOnEffect(enabled: Boolean) = Unit

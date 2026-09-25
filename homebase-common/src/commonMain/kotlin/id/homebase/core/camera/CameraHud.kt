@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.Haptics
+import id.homebase.core.util.KeepScreenOn
 import id.homebase.core.util.formatHms
 import id.homebase.resources.MR
 import id.homebase.resources.camera_error_bind
@@ -446,7 +447,7 @@ internal fun CameraCaptureContent(
         }
     }
 
-    KeepScreenOnEffect(ui.isRecording)
+    KeepScreenOn(ui.isRecording)
     HardwareShutterEffect(onDown = ::shutterKeyDown, onUp = ::shutterKeyUp)
 
     if (!ui.isAvailable) {
