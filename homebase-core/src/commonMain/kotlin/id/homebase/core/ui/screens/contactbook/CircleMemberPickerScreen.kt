@@ -1,26 +1,29 @@
 package id.homebase.core.ui.screens.contactbook
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -135,13 +138,14 @@ private fun CircleMemberPickerUi(
             )
         },
         floatingActionButton = {
-            if (uiState.selected.isNotEmpty()) {
-                Button(
-                    onClick = { onUiAction(CircleMemberPickerUiAction.AddClicked) },
-                    modifier = Modifier.defaultMinSize(minWidth = 56.dp),
-                    enabled = !uiState.submitting,
-                    shape = CircleShape,
-                ) {
+            val motion = MaterialTheme.motionScheme
+            AnimatedVisibility(
+                visible = uiState.selected.isNotEmpty(),
+                enter = scaleIn(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()),
+                exit = scaleOut(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            ) {
+                // Double submits are dropped by the ViewModel, so the FAB needs no disabled state.
+                FloatingActionButton(onClick = { onUiAction(CircleMemberPickerUiAction.AddClicked) }) {
                     if (uiState.submitting) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
@@ -172,7 +176,7 @@ private fun CircleMemberPickerUi(
                 )
                 LazyColumn(
                     modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(vertical = 8.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 88.dp),
                 ) {
                     items(uiState.candidates, key = { it.entry.uniqueId.toString() }) { candidate ->
                         val entry = candidate.entry
