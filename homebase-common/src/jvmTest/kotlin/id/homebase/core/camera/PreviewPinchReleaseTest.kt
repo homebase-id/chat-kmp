@@ -84,7 +84,6 @@ class PreviewPinchReleaseTest {
                     CameraCaptureContent(
                         engine = rig.engine,
                         allowedModes = CameraModes.PhotoAndVideo,
-                        initialMode = CaptureMode.Photo,
                         mirrorFront = true,
                         mic = MicPermission(granted = true),
                         onRequestMic = {},

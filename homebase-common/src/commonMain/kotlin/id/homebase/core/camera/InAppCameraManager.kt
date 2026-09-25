@@ -26,7 +26,7 @@ internal suspend fun awaitHandoff(epoch: Int, ceilingMs: Long = HANDOFF_CEILING_
 
 @Stable
 class InAppCameraLauncher internal constructor() : PlatformCameraManager {
-    internal var openMode by mutableStateOf<CaptureMode?>(null)
+    internal var isOpen by mutableStateOf(false)
     internal var galleryRequested by mutableStateOf(false)
     /** Set while a delivered capture waits for its receiver to draw it, see [CaptureHandoff]. */
     internal var handoffEpoch by mutableStateOf<Int?>(null)
@@ -34,16 +34,14 @@ class InAppCameraLauncher internal constructor() : PlatformCameraManager {
     internal var warmEngine: CameraEngine? = null
     internal var recordsVideo = false
 
-    override fun launch() = launch(CaptureMode.Photo)
-
-    fun launch(initialMode: CaptureMode) {
-        if (openMode != null) return
+    override fun launch() {
+        if (isOpen) return
         warmEngine = warmer?.warm(recordsVideo)
-        openMode = initialMode
+        isOpen = true
     }
 
     internal fun close() {
-        openMode = null
+        isOpen = false
         handoffEpoch = null
     }
 }
@@ -67,8 +65,7 @@ fun rememberInAppCameraManager(
     launcher.recordsVideo = allowedModes.recordsVideo
     val currentOnResult by rememberUpdatedState(onResult)
     val currentOnOpenGallery by rememberUpdatedState(onOpenGallery)
-    val mode = launcher.openMode
-    if (mode != null) {
+    if (launcher.isOpen) {
         val fade = remember { Animatable(1f) }
         val handoff = launcher.handoffEpoch
         if (handoff != null) {
@@ -93,7 +90,6 @@ fun rememberInAppCameraManager(
         }
         CameraCaptureDialog(
             allowedModes = allowedModes,
-            initialMode = mode,
             mirrorFront = mirrorFront,
             warmEngine = launcher.warmEngine,
             handingOff = handoff != null,
