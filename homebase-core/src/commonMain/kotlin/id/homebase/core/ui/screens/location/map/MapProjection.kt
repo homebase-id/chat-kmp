@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.location.map
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import id.homebase.api.client.location.WebMercator
 import kotlin.math.ceil
@@ -117,6 +118,26 @@ internal fun visibleTileKeys(vp: MapViewport, canvasSize: IntSize): List<MapTile
     return emptyList()
 }
 
+internal data class AncestorTile(val key: MapTileKey, val srcOffset: IntOffset, val srcSize: IntSize)
+
+// [loadedSizePx] is a cached tile's bitmap width, null when it isn't loaded.
+internal fun ancestorTile(key: MapTileKey, loadedSizePx: (MapTileKey) -> Int?): AncestorTile? {
+    for (depth in 1..minOf(MAX_ANCESTOR_DEPTH, key.zoom)) {
+        val parent = MapTileKey(key.zoom - depth, key.x shr depth, key.y shr depth)
+        val size = (loadedSizePx(parent) ?: continue) shr depth
+        val mask = (1 shl depth) - 1
+        return AncestorTile(
+            key = parent,
+            srcOffset = IntOffset((key.x and mask) * size, (key.y and mask) * size),
+            srcSize = IntSize(size, size),
+        )
+    }
+    return null
+}
+
+internal fun MapTileKey.children(): List<MapTileKey> =
+    listOf(0 to 0, 1 to 0, 0 to 1, 1 to 1).map { (dx, dy) -> MapTileKey(zoom + 1, x * 2 + dx, y * 2 + dy) }
+
 internal const val MIN_UNITS_PER_PX = 1e-9
 internal const val MAX_UNITS_PER_PX = 1.0 / 256.0
 
@@ -124,6 +145,9 @@ private const val FIT_PADDING = 1.2
 private const val MIN_FIT_SPAN_UNITS = 1e-5 // ~ city block; avoids infinite zoom on 1 point
 private const val MIN_TILE_ZOOM = 3
 private const val MAX_TILE_ZOOM = 19
+
+// Beyond 16x upscale an ancestor is too blurry to be worth drawing.
+private const val MAX_ANCESTOR_DEPTH = 4
 
 // Budget per view. 24 fits a portrait phone one zoom step below 1:1 (×2
 // upscale worst case) while keeping per-view OSM traffic modest.
