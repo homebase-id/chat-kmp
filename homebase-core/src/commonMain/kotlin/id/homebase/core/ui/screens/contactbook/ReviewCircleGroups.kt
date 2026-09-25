@@ -39,7 +39,8 @@ data class ReviewCircleGroups(
 
     /** Only circles this review offers count: every connection also sits in ambient ones. */
     fun holdsAnyOffered(heldCircleIds: Set<String>): Boolean =
-        (yours + special + appDefaults).any { it.id in heldCircleIds }
+        heldCircleIds.isNotEmpty() &&
+            listOf(yours, special, appDefaults).any { group -> group.any { it.id in heldCircleIds } }
 
     /**
      * What the sheet opens with: the app defaults, checked. The owning app nominated them and the

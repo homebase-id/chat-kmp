@@ -1,6 +1,5 @@
 package id.homebase.core.ui.screens.contactbook
 
-import id.homebase.core.connections.ConnectRequestBottomSheet
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -57,6 +56,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.auth.initials
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
+import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet

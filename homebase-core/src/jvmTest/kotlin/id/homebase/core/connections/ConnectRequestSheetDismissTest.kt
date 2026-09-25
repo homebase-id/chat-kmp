@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runSkikoComposeUiTest
+import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -37,6 +38,7 @@ class ConnectRequestSheetDismissTest {
                         recipient = "ada.example.com",
                         isSending = isSending,
                     ),
+                    groups = ReviewCircleGroups(),
                     sheetSnackbarHostState = SnackbarHostState(),
                     onAction = onAction,
                 )

@@ -8,6 +8,20 @@ import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.AutoConnectOutcome
 import id.homebase.api.client.connections.ConnectionRequestResult
+import id.homebase.api.client.identity.PublicIdentity
+import id.homebase.api.client.identity.PublicIdentityRepository
+import id.homebase.api.common.OdinId
+import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.StatusMessage
+import id.homebase.chat.services.StatusMessageData
+import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.contact.ConnectionService
+import id.homebase.chat.services.requests.CirclesRefusedException
+import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.chat.services.requests.RefusedCircles
+import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
+import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
+import id.homebase.core.ui.screens.contactbook.toCircleUuids
 import id.homebase.resources.MR
 import id.homebase.resources.auto_connect_blocked
 import id.homebase.resources.auto_connect_failed_generic
@@ -17,27 +31,19 @@ import id.homebase.resources.auto_connect_recipient_not_configured
 import id.homebase.resources.auto_connect_recipient_rejected
 import id.homebase.resources.auto_connect_recipient_requires_upgrade
 import id.homebase.resources.auto_connect_recipient_unreachable
-import org.jetbrains.compose.resources.StringResource
-import id.homebase.api.client.identity.PublicIdentity
-import id.homebase.api.client.identity.PublicIdentityRepository
-import id.homebase.chat.services.requests.CirclesRefusedException
-import id.homebase.chat.services.requests.ConnectionRequestService
-import id.homebase.chat.services.requests.RefusedCircles
-import id.homebase.chat.services.requests.toCircleUuids
-import id.homebase.api.common.OdinId
-import id.homebase.chat.services.ChatMessageSenderService
-import id.homebase.chat.services.StatusMessage
-import id.homebase.chat.services.StatusMessageData
-import id.homebase.chat.services.convo.ConversationService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.Uuid
+import org.jetbrains.compose.resources.StringResource
 
 class ConnectRequestViewModel(
     private val connectionRequestService: ConnectionRequestService,
@@ -45,10 +51,15 @@ class ConnectRequestViewModel(
     private val ownerSessionRepository: OwnerSessionRepository,
     private val conversationService: ConversationService,
     private val chatMessageSenderService: ChatMessageSenderService,
+    connectionService: ConnectionService,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ConnectRequestState())
     val state: StateFlow<ConnectRequestState> = _state.asStateFlow()
+
+    val reviewCircleGroups: StateFlow<ReviewCircleGroups> = connectionService.circles
+        .map { it.reviewCircleGroups() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReviewCircleGroups())
 
     private var recipientResolveJob: Job? = null
 
@@ -242,7 +253,6 @@ class ConnectRequestViewModel(
     private fun failed(failure: ConnectFailure) {
         _state.update { it.copy(isSending = false, uiEvent = ConnectRequestEvent.SendError(failure)) }
     }
-
 }
 
 data class ConnectRequestState(

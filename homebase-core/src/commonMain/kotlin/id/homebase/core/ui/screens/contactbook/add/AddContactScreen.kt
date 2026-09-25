@@ -2,7 +2,6 @@
 
 package id.homebase.core.ui.screens.contactbook.add
 
-import id.homebase.core.connections.ConnectRequestBottomSheet
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,6 +66,7 @@ import id.homebase.api.util.cleanDomain
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.connections.ConnectRequestAction
+import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.components.CirclePickerChips

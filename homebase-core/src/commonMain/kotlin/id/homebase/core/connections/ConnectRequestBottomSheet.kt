@@ -41,23 +41,21 @@ import id.homebase.api.util.cleanDomain
 import id.homebase.api.client.identity.PublicIdentity
 import id.homebase.api.client.identity.displayNameOrDomain
 import id.homebase.api.client.identity.initials
+import id.homebase.chat.services.requests.RefusedCircles
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
+import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
+import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionContent
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.HomebaseIdField
-import id.homebase.chat.services.convo.contact.ConnectionService
-import id.homebase.chat.services.requests.RefusedCircles
-import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionContent
-import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
-import id.homebase.resources.connections_circle_not_found
-import id.homebase.resources.connections_circle_not_grantable
-import org.koin.compose.koinInject
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.connections_already_sent_text
 import id.homebase.resources.connections_already_sent_title
 import id.homebase.resources.connections_checking_identity
+import id.homebase.resources.connections_circle_not_found
+import id.homebase.resources.connections_circle_not_grantable
 import id.homebase.resources.connections_invalid_identity
 import id.homebase.resources.connections_message_label
 import id.homebase.resources.connections_new_request
@@ -138,8 +136,10 @@ fun ConnectRequestBottomSheet(
     }
 
     if (state.showDialog) {
+        val groups by viewModel.reviewCircleGroups.collectAsStateWithLifecycle()
         ConnectRequestSheet(
             state = state,
+            groups = groups,
             sheetSnackbarHostState = sheetSnackbarHostState,
             onAction = viewModel::onAction,
         )
@@ -149,6 +149,7 @@ fun ConnectRequestBottomSheet(
 @Composable
 internal fun ConnectRequestSheet(
     state: ConnectRequestState,
+    groups: ReviewCircleGroups,
     sheetSnackbarHostState: SnackbarHostState,
     onAction: (ConnectRequestAction) -> Unit,
 ) {
@@ -165,7 +166,9 @@ internal fun ConnectRequestSheet(
                 isSending = state.isSending,
                 onRecipientChange = { onAction(ConnectRequestAction.RecipientChanged(it)) },
                 onMessageChange = { onAction(ConnectRequestAction.MessageChanged(it)) },
-                review = { identity -> SendReview(identity, state, onAction) },
+                review = { identity ->
+                    SendReview(identity, groups, state.isSending, state.circleError, onAction)
+                },
             )
             SnackbarHost(
                 hostState = sheetSnackbarHostState,
@@ -266,21 +269,21 @@ private fun ComposeRequestSheetContent(
 @Composable
 private fun SendReview(
     identity: PublicIdentity,
-    state: ConnectRequestState,
+    groups: ReviewCircleGroups,
+    isSending: Boolean,
+    circleError: RefusedCircles?,
     onAction: (ConnectRequestAction) -> Unit,
 ) {
-    val circles by koinInject<ConnectionService>().circles.collectAsStateWithLifecycle()
-    val groups = remember(circles) { circles.reviewCircleGroups() }
     ReviewConnectionContent(
         displayName = identity.displayNameOrDomain(),
-        odinId = identity.odinId.domainName,
+        odinId = null,
         avatar = null,
         introducedBy = null,
         connectedAtMs = null,
         groups = groups,
         alreadyHeldCircleIds = emptySet(),
-        isSubmitting = state.isSending,
-        errorText = state.circleError?.let {
+        isSubmitting = isSending,
+        errorText = circleError?.let {
             stringResource(
                 when (it) {
                     RefusedCircles.NotGrantable -> MR.string.connections_circle_not_grantable
@@ -293,7 +296,7 @@ private fun SendReview(
         secondaryAction = {
             TextButton(
                 onClick = { onAction(ConnectRequestAction.CloseDialog) },
-                enabled = !state.isSending,
+                enabled = !isSending,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(MR.string.cancel))

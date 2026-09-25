@@ -2,7 +2,6 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
-import id.homebase.core.connections.ConnectRequestBottomSheet
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -87,6 +86,7 @@ import id.homebase.core.HomebaseConstants
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.connections.ConnectRequestAction
 import id.homebase.core.media.subsample.SubSamplingImageSource
+import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.ui.screens.contactbook.RequestDirection
