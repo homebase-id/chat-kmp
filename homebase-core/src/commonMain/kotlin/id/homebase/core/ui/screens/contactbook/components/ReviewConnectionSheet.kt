@@ -12,15 +12,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.MyLocation
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -31,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,6 +55,7 @@ import id.homebase.resources.contact_review_already_added
 import id.homebase.resources.contactbook_circle_disabled
 import id.homebase.resources.contactbook_detail_reject
 import id.homebase.resources.contactbook_circle_members_count
+import id.homebase.resources.menu_back
 import id.homebase.resources.contact_review_chat_only_hint
 import id.homebase.resources.contact_review_connected_since
 import id.homebase.resources.contact_review_emergency_desc
@@ -59,7 +66,11 @@ import id.homebase.resources.contact_review_group_apps_caption
 import id.homebase.resources.contact_review_group_yours
 import id.homebase.resources.contact_review_group_yours_caption
 import id.homebase.resources.contact_review_introduced_by
+import id.homebase.resources.contact_review_just_chat
+import id.homebase.resources.contact_review_just_chat_desc
 import id.homebase.resources.contact_review_keep_new
+import id.homebase.resources.contact_review_more_access
+import id.homebase.resources.contact_review_more_access_desc
 import id.homebase.resources.contact_review_requested_on
 import id.homebase.resources.contact_review_submit_chat_only
 import id.homebase.resources.contact_review_submit_circles
@@ -127,6 +138,9 @@ fun ReviewConnectionSheet(
  * The submit button names the state the tap produces rather than passing judgment — "Add to
  * circles" with a selection, "Chat only" without — so the relabel *is* the feedback that
  * deselecting the last circle changed the outcome.
+ *
+ * It opens on two choices — "Just chat" or "Give more access" — and only the second reveals the
+ * circle list, so the common decision doesn't require reading every switch first.
  */
 @Composable
 fun ReviewConnectionContent(
@@ -151,6 +165,11 @@ fun ReviewConnectionContent(
     // App defaults arrive checked: the owning app nominated them, and the review button applies
     // "the checked per-app defaults". They stay visible so any can be turned off deliberately.
     var selected by rememberSaveable(displayName) { mutableStateOf(groups.initialSelection()) }
+    // Someone who already holds circles skips the short step: "Just chat" can't take them away,
+    // since the review only ever grants.
+    var showAllOptions by rememberSaveable(displayName) {
+        mutableStateOf(alreadyHeldCircleIds.isNotEmpty())
+    }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -234,6 +253,59 @@ fun ReviewConnectionContent(
         }
 
         details?.invoke()
+
+        if (!showAllOptions) {
+            ReviewChoiceCard(
+                icon = Icons.Outlined.ChatBubbleOutline,
+                title = stringResource(MR.string.contact_review_just_chat),
+                description = stringResource(MR.string.contact_review_just_chat_desc),
+                enabled = !isSubmitting,
+                onClick = { onSubmit(emptySet()) },
+                trailing = if (isSubmitting) {
+                    { CircularProgressIndicator(modifier = Modifier.size(18.dp)) }
+                } else null,
+            )
+            if (!groups.isEmpty) {
+                ReviewChoiceCard(
+                    icon = Icons.Outlined.Groups,
+                    title = stringResource(MR.string.contact_review_more_access),
+                    description = stringResource(MR.string.contact_review_more_access_desc),
+                    enabled = !isSubmitting,
+                    onClick = { showAllOptions = true },
+                    trailing = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                        )
+                    },
+                )
+            }
+            if (errorText != null) {
+                Text(
+                    text = errorText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+            }
+            secondaryAction?.invoke()
+            return@Column
+        }
+
+        if (alreadyHeldCircleIds.isEmpty()) {
+            TextButton(
+                onClick = { showAllOptions = false },
+                enabled = !isSubmitting,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(stringResource(MR.string.menu_back))
+            }
+        }
 
         val toggle: (String) -> Unit = { id -> selected = groups.toggleSelection(selected, id) }
 
@@ -380,6 +452,30 @@ fun PendingRequestReview(
             }
         },
     )
+}
+
+@Composable
+private fun ReviewChoiceCard(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    trailing: (@Composable () -> Unit)?,
+) {
+    OutlinedCard(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        ListItem(
+            headlineContent = { Text(title) },
+            supportingContent = { Text(description) },
+            leadingContent = { Icon(imageVector = icon, contentDescription = null) },
+            trailingContent = trailing,
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        )
+    }
 }
 
 /** Settings' section header, plus the line of helper text a section may need under it. */

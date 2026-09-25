@@ -1542,6 +1542,10 @@
     <string name="contact_review_submit_chat_only">Kun chat</string>
     <string name="contact_review_chat_only_hint">De vil kun se din offentlige profil. Du kan altid føje dem til kredse senere.</string>
     <string name="contact_review_keep_new">Behold som ny</string>
+    <string name="contact_review_just_chat">Bare chat</string>
+    <string name="contact_review_just_chat_desc">De ser kun din offentlige profil. Du kan altid give mere adgang senere.</string>
+    <string name="contact_review_more_access">Giv mere adgang</string>
+    <string name="contact_review_more_access_desc">Føj til kredse, del din placering eller tillad apps.</string>
     <string name="contact_review_already_added">Allerede tilføjet</string>
     <string name="contact_review_group_yours">Føj til en kreds</string>
     <string name="contact_review_group_yours_caption">Alle, du tilføjer, kan se mere af din profil.</string>
