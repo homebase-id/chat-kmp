@@ -41,10 +41,11 @@ internal fun recordingStartedAtMs(nowMs: Long, recordedDurationNanos: Long): Lon
 // A chat photo gains nothing past 12 MP, and 24/48 MP stills take visibly longer to capture and send.
 private const val MAX_PHOTO_PIXELS = 4032L * 3024L
 
+private val Pair<Int, Int>.pixels: Long get() = first.toLong() * second
+
 /** The largest still size up to 12 MP, or the smallest one when every size is larger. */
 internal fun choosePhotoSize(sizes: List<Pair<Int, Int>>): Pair<Int, Int>? {
-    fun pixels(size: Pair<Int, Int>) = size.first.toLong() * size.second
-    return sizes.filter { pixels(it) <= MAX_PHOTO_PIXELS }.maxByOrNull(::pixels) ?: sizes.minByOrNull(::pixels)
+    return sizes.filter { it.pixels <= MAX_PHOTO_PIXELS }.maxByOrNull { it.pixels } ?: sizes.minByOrNull { it.pixels }
 }
 
 internal data class VideoFormat(val width: Int, val height: Int, val maxFps: Double, val photoSizes: List<Pair<Int, Int>>)
@@ -54,15 +55,14 @@ internal data class VideoFormat(val width: Int, val height: Int, val maxFps: Dou
  * needs no reconfigure, taking the largest still up to 12 MP and then the largest video.
  */
 internal fun choosePhotoModeFormat(formats: List<VideoFormat>): Int? {
-    fun pixels(size: Pair<Int, Int>) = size.first.toLong() * size.second
     fun stillScore(format: VideoFormat) =
-        choosePhotoSize(format.photoSizes)?.let(::pixels)?.takeIf { it <= MAX_PHOTO_PIXELS } ?: 0L
+        choosePhotoSize(format.photoSizes)?.pixels?.takeIf { it <= MAX_PHOTO_PIXELS } ?: 0L
     return formats.withIndex()
         .filter { (_, f) ->
             val long = maxOf(f.width, f.height)
             val short = minOf(f.width, f.height)
             long * 3 == short * 4 && short in 1080..1440 && f.maxFps >= 30.0 && f.photoSizes.isNotEmpty()
         }
-        .maxWithOrNull(compareBy({ stillScore(it.value) }, { pixels(it.value.width to it.value.height) }))
+        .maxWithOrNull(compareBy({ stillScore(it.value) }, { (it.value.width to it.value.height).pixels }))
         ?.index
 }
