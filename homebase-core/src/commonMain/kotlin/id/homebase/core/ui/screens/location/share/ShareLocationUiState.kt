@@ -16,9 +16,8 @@ data class ShareLocationUiState(
     val initialBbox: List<Double>? = null,
     /** Bumped to re-fit the map to [initialBbox] (e.g. a late first GPS fix refines the seed). */
     val initialBboxKey: Int = 0,
-    /** The panned-to coordinates under the center pin — what a static send will share. */
-    val pinLat: Double? = null,
-    val pinLon: Double? = null,
+    /** Whether the center pin marks a spot a static send can share. */
+    val hasPin: Boolean = false,
     /** Resolved address for the pin ("" until the first resolve). */
     val address: String = "",
     val isResolvingAddress: Boolean = false,

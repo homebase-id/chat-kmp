@@ -1,5 +1,11 @@
 package id.homebase.core.ui.screens.webdrop.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -9,9 +15,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,9 +36,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.webdrop.WebDropUiAction
 import id.homebase.core.ui.screens.webdrop.WebDropUiState
@@ -121,10 +132,14 @@ fun WebDropComposeSheet(
         }
     }
 
-    ModalBottomSheet(onDismissRequest = { onAction(WebDropUiAction.ComposeDismissed) }) {
+    ModalBottomSheet(
+        onDismissRequest = { onAction(WebDropUiAction.ComposeDismissed) },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp),
         ) {
@@ -198,32 +213,49 @@ fun WebDropComposeSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            val motion = MaterialTheme.motionScheme
+            val chevronRotation = animateFloatAsState(
+                targetValue = if (uiState.introExpanded) 180f else 0f,
+                animationSpec = motion.defaultSpatialSpec(),
+                label = "introChevron",
+            )
             TextButton(onClick = { onAction(WebDropUiAction.ToggleIntroSection) }) {
                 Text(stringResource(MR.string.webdrop_for_someone))
+                Icon(
+                    imageVector = Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    modifier = Modifier.graphicsLayer { rotationZ = chevronRotation.value },
+                )
             }
 
-            if (uiState.introExpanded) {
-                OutlinedTextField(
-                    value = uiState.recipientName,
-                    onValueChange = { onAction(WebDropUiAction.RecipientNameChanged(it)) },
-                    label = { Text(stringResource(MR.string.webdrop_recipient_name)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = stringResource(MR.string.webdrop_terms_header),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                ConditionRow(uiState, WebDropProtocol.ConditionRecipientOnly, MR.string.webdrop_condition_recipient_only, onAction)
-                ConditionRow(uiState, WebDropProtocol.ConditionNoRetention, MR.string.webdrop_condition_no_retention, onAction)
-                ConditionRow(uiState, WebDropProtocol.ConditionPersonalData, MR.string.webdrop_condition_personal_data, onAction)
-                Spacer(modifier = Modifier.height(8.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ThemeChip(uiState, WebDropProtocol.ThemeMission, MR.string.webdrop_theme_mission, onAction)
-                    ThemeChip(uiState, WebDropProtocol.ThemeClean, MR.string.webdrop_theme_clean, onAction)
-                    ThemeChip(uiState, WebDropProtocol.ThemeChoplifter, MR.string.webdrop_theme_choplifter, onAction)
+            AnimatedVisibility(
+                visible = uiState.introExpanded,
+                enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                exit = shrinkVertically(motion.defaultSpatialSpec()) + fadeOut(motion.defaultEffectsSpec()),
+            ) {
+                Column {
+                    OutlinedTextField(
+                        value = uiState.recipientName,
+                        onValueChange = { onAction(WebDropUiAction.RecipientNameChanged(it)) },
+                        label = { Text(stringResource(MR.string.webdrop_recipient_name)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(MR.string.webdrop_terms_header),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    ConditionRow(uiState, WebDropProtocol.ConditionRecipientOnly, MR.string.webdrop_condition_recipient_only, onAction)
+                    ConditionRow(uiState, WebDropProtocol.ConditionNoRetention, MR.string.webdrop_condition_no_retention, onAction)
+                    ConditionRow(uiState, WebDropProtocol.ConditionPersonalData, MR.string.webdrop_condition_personal_data, onAction)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ThemeChip(uiState, WebDropProtocol.ThemeMission, MR.string.webdrop_theme_mission, onAction)
+                        ThemeChip(uiState, WebDropProtocol.ThemeClean, MR.string.webdrop_theme_clean, onAction)
+                        ThemeChip(uiState, WebDropProtocol.ThemeChoplifter, MR.string.webdrop_theme_choplifter, onAction)
+                    }
                 }
             }
 
