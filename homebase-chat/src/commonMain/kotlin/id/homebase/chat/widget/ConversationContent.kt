@@ -583,6 +583,7 @@ fun ConversationContent(
     val cameraLauncher = rememberCameraManager(
         modes = CameraModes.PhotoAndVideo,
         onOpenGallery = { galleryLauncher.launch() },
+        awaitResultShown = true,
     ) { file ->
         file?.let {
             onUiAction(

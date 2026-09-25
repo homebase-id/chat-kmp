@@ -8,6 +8,7 @@ import io.github.vinceglb.filekit.PlatformFile
 actual fun rememberCameraManager(
     modes: CameraModes,
     onOpenGallery: (() -> Unit)?,
+    awaitResultShown: Boolean,
     onResult: (PlatformFile?) -> Unit,
 ): PlatformCameraManager = NoCameraManager
 

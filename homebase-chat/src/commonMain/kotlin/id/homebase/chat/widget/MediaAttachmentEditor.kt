@@ -78,6 +78,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
+import id.homebase.core.camera.CaptureHandoff
 import id.homebase.api.video.IndexedFrame
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
@@ -215,6 +216,13 @@ fun MediaAttachmentEditor(
     val activeAttachment = attachments.getOrNull(pagerState.currentPage)
     val activeVideo = activeAttachment as? AttachmentPendingFile.FileVideo
 
+    // Pages whose media has drawn: a camera held over the editor leaves once the page on screen is one of them.
+    val drawnAttachments = remember { mutableStateMapOf<Uuid, Boolean>() }
+    val activeDrawn = activeAttachment != null && drawnAttachments[activeAttachment.attachmentId] == true
+    LaunchedEffect(activeDrawn, attachments.size) {
+        if (activeDrawn) CaptureHandoff.contentShown()
+    }
+
     // Extract the thumbnail strip for the currently-visible video. Persist across
     // swipes by stashing in framesByAtt; cancellation happens automatically when
     // the user swipes to another page (LaunchedEffect re-keys).
@@ -253,6 +261,7 @@ fun MediaAttachmentEditor(
                         val isPdf = remember(attachment.file) {
                             resolveContentType(fileName = attachment.file.name) == "application/pdf"
                         }
+                        LaunchedEffect(attachment.attachmentId) { drawnAttachments[attachment.attachmentId] = true }
                         if (isPdf) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 PdfAttachmentPreview(
@@ -286,7 +295,9 @@ fun MediaAttachmentEditor(
                                     .then(if (centerImageInPage) Modifier.align(Alignment.Center) else Modifier)
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(16.dp)),
-                                contentScale = ContentScale.Fit
+                                contentScale = ContentScale.Fit,
+                                onSuccess = { drawnAttachments[attachment.attachmentId] = true },
+                                onError = { drawnAttachments[attachment.attachmentId] = true },
                             )
                             imageOverlay(attachment)
                         }
@@ -308,6 +319,7 @@ fun MediaAttachmentEditor(
                                 .background(Color.Black),
                             contentAlignment = Alignment.Center,
                         ) {
+                            val firstFrameShown = drawnAttachments[attId] == true
                             if (durationMs != null && durationMs > 0L) {
                                 TrimmableVideoPlayerSurface(
                                     filePath = attachment.playablePath ?: attachment.file.toString(),
@@ -324,7 +336,19 @@ fun MediaAttachmentEditor(
                                         }
                                     },
                                     modifier = Modifier.fillMaxSize(),
+                                    onFirstFrameRendered = { drawnAttachments[attId] = true },
                                 )
+                                // The surface is black (or see-through on Android) until its first decoded frame.
+                                val poster = attachment.thumbnailBytes
+                                if (!firstFrameShown && poster != null) {
+                                    AsyncImage(
+                                        imageLoader = imageLoader,
+                                        model = poster,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Fit,
+                                    )
+                                }
                             } else {
                                 // Duration not known yet — show poster while extractThumbnailAsync
                                 // resolves. Player mounts as soon as durationMs lands.
@@ -368,11 +392,14 @@ fun MediaAttachmentEditor(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp)),
-                            contentScale = ContentScale.Fit
+                            contentScale = ContentScale.Fit,
+                            onSuccess = { drawnAttachments[attachment.attachmentId] = true },
+                            onError = { drawnAttachments[attachment.attachmentId] = true },
                         )
                     }
                     is AttachmentPendingFile.Audio -> {
                         // not currently supported
+                        LaunchedEffect(attachment.attachmentId) { drawnAttachments[attachment.attachmentId] = true }
                     }
                 }
             }

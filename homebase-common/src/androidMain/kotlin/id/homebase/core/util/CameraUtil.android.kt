@@ -9,5 +9,11 @@ import io.github.vinceglb.filekit.PlatformFile
 actual fun rememberCameraManager(
     modes: CameraModes,
     onOpenGallery: (() -> Unit)?,
+    awaitResultShown: Boolean,
     onResult: (PlatformFile?) -> Unit,
-): PlatformCameraManager = rememberInAppCameraManager(allowedModes = modes, onOpenGallery = onOpenGallery, onResult = onResult)
+): PlatformCameraManager = rememberInAppCameraManager(
+    allowedModes = modes,
+    awaitResultShown = awaitResultShown,
+    onOpenGallery = onOpenGallery,
+    onResult = onResult,
+)
