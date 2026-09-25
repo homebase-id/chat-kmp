@@ -1,13 +1,12 @@
 package id.homebase.chat.archivedconversations
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,6 +17,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.conversationlist.showTimedSnackbar
@@ -132,23 +133,31 @@ fun ArchivedConversationsUi(
                 .fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (uiState.isLoading) {
-                Box(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else {
-                if (uiState.conversations.isEmpty()) {
-                    Spacer(modifier = Modifier.height(32.dp))
-                    Text(stringResource(MR.string.chat_archived_chats_empty))
+            Crossfade(
+                targetState = uiState.isLoading,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+            ) { loading ->
+                if (loading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
                 } else {
+                    // Empty is an item in the same list, so the last unarchived row can animate out.
                     Box {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             state = listState,
                         ) {
+                            if (uiState.conversations.isEmpty()) {
+                                item(key = "empty") {
+                                    Text(
+                                        text = stringResource(MR.string.chat_archived_chats_empty),
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.animateItem().fillMaxWidth().padding(top = 32.dp),
+                                    )
+                                }
+                            }
                             items(
                                 uiState.conversations,
                                 key = { it.conversation.id },
