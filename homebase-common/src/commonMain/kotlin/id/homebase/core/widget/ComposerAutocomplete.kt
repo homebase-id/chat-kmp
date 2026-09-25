@@ -1,5 +1,10 @@
 package id.homebase.core.widget
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -18,6 +23,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -101,13 +107,20 @@ fun <T> ComposerAutocomplete(
         suggestions = query?.let { suggestionsFor(it.query) }.orEmpty()
     }
 
-    if (query == null || suggestions.isEmpty()) return
+    val visibleState = remember { MutableTransitionState(false) }
+    visibleState.targetState = query != null && suggestions.isNotEmpty()
+    // Retained so the list keeps its rows through the exit, after the query is gone.
+    var shown by remember { mutableStateOf<Pair<TextRange, List<T>>?>(null) }
+    if (query != null && suggestions.isNotEmpty()) shown = query.range to suggestions
+    val (range, rows) = shown ?: return
+    if (!visibleState.currentState && !visibleState.targetState) return
 
     SuggestionList(
         state = state,
         controller = controller,
-        range = query.range,
-        suggestions = suggestions,
+        visibleState = visibleState,
+        range = range,
+        suggestions = rows,
         replacementFor = replacementFor,
         modifier = modifier,
         itemContent = itemContent,
@@ -119,6 +132,7 @@ fun <T> ComposerAutocomplete(
 private fun <T> SuggestionList(
     state: RichTextState,
     controller: ComposerAutocompleteController,
+    visibleState: MutableTransitionState<Boolean>,
     range: TextRange,
     suggestions: List<T>,
     replacementFor: (T) -> String,
@@ -134,7 +148,9 @@ private fun <T> SuggestionList(
 
     fun commit(item: T) = state.replaceTextRangeSafely(currentRange, currentReplacement(item))
 
-    DisposableEffect(controller) {
+    val active = visibleState.targetState
+    DisposableEffect(controller, active) {
+        if (!active) return@DisposableEffect onDispose {}
         controller.keyHandler = handler@{ event ->
             if (event.type != KeyEventType.KeyDown) return@handler false
             val items = currentSuggestions
@@ -177,29 +193,39 @@ private fun <T> SuggestionList(
         // and forwards the navigation keys through the controller instead.
         properties = PopupProperties(focusable = false),
     ) {
-        Surface(
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            tonalElevation = 3.dp,
-            shadowElevation = 6.dp,
-            modifier = modifier.testTag(ComposerAutocompleteTag).widthIn(min = 200.dp, max = 320.dp),
+        AnimatedVisibility(
+            visibleState = visibleState,
+            enter = scaleIn(
+                animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                initialScale = 0.9f,
+                transformOrigin = TransformOrigin(0f, 1f),
+            ) + fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()),
+            exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                suggestions.forEachIndexed { index, item ->
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                if (index == safeSelected) {
-                                    MaterialTheme.colorScheme.secondaryContainer
-                                } else {
-                                    Color.Transparent
-                                }
-                            )
-                            .clickable { commit(item) },
-                    ) {
-                        itemContent(item, index == safeSelected)
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                tonalElevation = 3.dp,
+                shadowElevation = 6.dp,
+                modifier = modifier.testTag(ComposerAutocompleteTag).widthIn(min = 200.dp, max = 320.dp),
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    suggestions.forEachIndexed { index, item ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (index == safeSelected) {
+                                        MaterialTheme.colorScheme.secondaryContainer
+                                    } else {
+                                        Color.Transparent
+                                    }
+                                )
+                                .clickable(enabled = active) { commit(item) },
+                        ) {
+                            itemContent(item, index == safeSelected)
+                        }
                     }
                 }
             }

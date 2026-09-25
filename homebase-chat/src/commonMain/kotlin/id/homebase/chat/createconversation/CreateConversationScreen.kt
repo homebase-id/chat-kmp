@@ -341,9 +341,10 @@ fun ContactItem(
     odinId: OdinId,
     avatarInitials: String,
     onContactClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = {

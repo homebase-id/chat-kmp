@@ -16,4 +16,12 @@
         <item quantity="one">Bad %1$d modtager om at rydde op i deres kopi</item>
         <item quantity="other">Bad %1$d modtagere om at rydde op i deres kopier</item>
     </plurals>
+    <plurals name="conversations_selected">
+        <item quantity="one">%1$d samtale valgt</item>
+        <item quantity="other">%1$d samtaler valgt</item>
+    </plurals>
+    <plurals name="sending_to_conversations">
+        <item quantity="one">Sender til %1$d samtale…</item>
+        <item quantity="other">Sender til %1$d samtaler…</item>
+    </plurals>
 </resources>
