@@ -25,6 +25,9 @@ interface CameraEngine {
 
     suspend fun takePhoto(): PlatformFile?
 
+    /** Attaches the mic before the first recording: on iOS, adding an input to a running session blanks the preview. */
+    fun prepareAudio() = Unit
+
     fun startRecording(withAudio: Boolean)
 
     /**

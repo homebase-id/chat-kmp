@@ -213,6 +213,8 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
             _uiState.update { it.copy(hasBackLens = hasBack, hasFrontLens = hasFront, lens = lens) }
 
             session.beginConfiguration()
+            // A mic attached while framing must not stop the user's music; iOS Camera keeps it playing too.
+            session.configuresApplicationAudioSessionToMixWithOthers = true
             val attached = attachVideoInput(lens)
             if (session.canAddOutput(photoOutput)) session.addOutput(photoOutput)
             if (session.canAddOutput(movieOutput)) session.addOutput(movieOutput)
@@ -557,45 +559,42 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
         )
         recordingDelegate = delegate
         onSessionQueue {
-            if (audio) {
-                session.beginConfiguration()
-                attachAudioInput()
-                session.commitConfiguration()
-            }
+            // Normally already attached by prepareAudio; attaching here blanks the preview for a frame.
+            if (audio) attachAudioInput()
+            movieOutput.connectionWithMediaType(AVMediaTypeAudio)?.enabled = audio
             movieOutput.connectionWithMediaType(AVMediaTypeVideo)?.configure(mirror, angle)
             movieOutput.startRecordingToOutputFileURL(url, recordingDelegate = delegate)
         }
     }
 
+    override fun prepareAudio() {
+        if (AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeAudio) != AVAuthorizationStatusAuthorized) return
+        onSessionQueue { attachAudioInput() }
+    }
+
+    /** Session queue. */
     private fun attachAudioInput() {
         if (audioInput != null) return
         val mic = AVCaptureDevice.defaultDeviceWithMediaType(AVMediaTypeAudio) ?: return
         val input = AVCaptureDeviceInput.deviceInputWithDevice(mic, null) ?: return
+        session.beginConfiguration()
         if (session.canAddInput(input)) {
             session.addInput(input)
             audioInput = input
         }
+        session.commitConfiguration()
     }
 
     private fun onRecordingFinished(url: NSURL, usable: Boolean, error: NSError?, result: CompletableDeferred<PlatformFile?>) {
-        onSessionQueue {
-            audioInput?.let {
-                session.beginConfiguration()
-                session.removeInput(it)
-                session.commitConfiguration()
-                audioInput = null
-                AudioSession.releaseAfterRecording()
+        dispatch_async(dispatch_get_main_queue()) {
+            recordingDelegate = null
+            _uiState.update { it.copy(isRecording = false, recordingStartedAtMs = null) }
+            if (error != null) {
+                Logger.w(tag = TAG) { "Recording finished with error usable=$usable: ${error.localizedDescription}" }
+                _errors.tryEmit(CameraError.RecordingFailed(error.localizedDescription))
             }
-            dispatch_async(dispatch_get_main_queue()) {
-                recordingDelegate = null
-                _uiState.update { it.copy(isRecording = false, recordingStartedAtMs = null) }
-                if (error != null) {
-                    Logger.w(tag = TAG) { "Recording finished with error usable=$usable: ${error.localizedDescription}" }
-                    _errors.tryEmit(CameraError.RecordingFailed(error.localizedDescription))
-                }
-                if (!usable) NSFileManager.defaultManager.removeItemAtURL(url, null)
-                result.complete(if (usable) PlatformFile(url) else null)
-            }
+            if (!usable) NSFileManager.defaultManager.removeItemAtURL(url, null)
+            result.complete(if (usable) PlatformFile(url) else null)
         }
     }
 
@@ -624,6 +623,7 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
                 if (device.hasTorch && device.torchMode != AVCaptureTorchModeOff) device.withConfigurationLock { torchMode = AVCaptureTorchModeOff }
             }
             if (session.running) session.stopRunning()
+            if (audioInput != null) AudioSession.releaseAfterRecording()
         }
         scope.cancel()
     }
