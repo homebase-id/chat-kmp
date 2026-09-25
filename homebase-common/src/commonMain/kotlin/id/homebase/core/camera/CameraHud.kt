@@ -95,6 +95,7 @@ import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.rememberResourceEnvironment
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
 import kotlin.math.exp
@@ -185,6 +186,8 @@ internal fun CameraCaptureContent(
     var returnToPhotoAfterHold by remember { mutableStateOf(false) }
     var lensTurns by remember { mutableFloatStateOf(0f) }
     var announcement by remember { mutableStateOf("") }
+    // The composition's environment: the no-arg getString reads the system one, which queries AWT on desktop.
+    val resources = rememberResourceEnvironment()
     var zoomGesture by remember { mutableStateOf(false) }
     var barZoomBase by remember { mutableFloatStateOf(1f) }
     var barTravel by remember { mutableFloatStateOf(0f) }
@@ -236,7 +239,7 @@ internal fun CameraCaptureContent(
             }
             val message = error.messageRes ?: return@collect
             snackbar.currentSnackbarData?.dismiss()
-            snackbar.showSnackbar(getString(message))
+            snackbar.showSnackbar(getString(resources, message))
         }
     }
     // A hold from Photo that rebinds to Video still reads as Photo, so nothing flickers to Video and back.
@@ -269,7 +272,7 @@ internal fun CameraCaptureContent(
         val startedAt = currentUi.recordingStartedAtMs
         scope.launch {
             val elapsed = startedAt?.let { Clock.System.now().toEpochMilliseconds() - it } ?: 0L
-            announcement = getString(MR.string.camera_recording_stopped, formatHms(elapsed.coerceAtLeast(0L)))
+            announcement = getString(resources, MR.string.camera_recording_stopped, formatHms(elapsed.coerceAtLeast(0L)))
             val file = engine.stopRecording()
             busy = false
             stopping = false
