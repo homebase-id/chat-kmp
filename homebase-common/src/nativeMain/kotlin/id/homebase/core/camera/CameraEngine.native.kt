@@ -89,6 +89,9 @@ import platform.AVFoundation.cancelVideoZoomRamp
 import platform.AVFoundation.defaultDeviceWithDeviceType
 import platform.AVFoundation.displayVideoZoomFactorMultiplier
 import platform.AVFoundation.exposureMode
+import platform.AVFoundation.maxExposureTargetBias
+import platform.AVFoundation.minExposureTargetBias
+import platform.AVFoundation.setExposureTargetBias
 import platform.AVFoundation.exposurePointOfInterest
 import platform.AVFoundation.exposurePointOfInterestSupported
 import platform.AVFoundation.focusMode
@@ -332,6 +335,11 @@ internal class IosCameraEngine(private val outputDir: String, private val record
                 lensSwitchRatios = switchRatios,
                 hasTorch = hasTorch,
                 focusPoint = null,
+                focusLocked = false,
+                exposureSupported = true,
+                exposureBias = 0f,
+                exposureMinEv = device.minExposureTargetBias,
+                exposureMaxEv = device.maxExposureTargetBias,
             )
         }
         applyTorchOnQueue(device)
@@ -389,7 +397,7 @@ internal class IosCameraEngine(private val outputDir: String, private val record
     override fun setLens(lens: CameraLens) {
         val state = _uiState.value
         if (state.lens == lens || recordingDelegate != null || !state.hasLens(lens)) return
-        _uiState.update { it.copy(lens = lens, focusPoint = null) }
+        _uiState.update { it.copy(lens = lens, focusPoint = null, focusLocked = false) }
         onSessionQueue {
             session.beginConfiguration()
             val ok = attachVideoInput(lens)
@@ -467,16 +475,13 @@ internal class IosCameraEngine(private val outputDir: String, private val record
         }
     }
 
-    fun focusAt(layerPoint: CValue<CGPoint>, viewOffset: Offset) {
+    /** AutoFocus/AutoExpose settle once and then hold; [lock] also stops a subject-area change from releasing them. */
+    fun focusAt(layerPoint: CValue<CGPoint>, viewOffset: Offset, lock: Boolean = false) {
         // A tap on the Photo letterbox maps outside the frame.
         val devicePoint = previewLayer.captureDevicePointOfInterestForPoint(layerPoint)
             .useContents { CGPointMake(x.coerceIn(0.0, 1.0), y.coerceIn(0.0, 1.0)) }
-        _uiState.update { it.copy(focusPoint = viewOffset) }
-        focusClear?.cancel()
-        focusClear = scope.launch {
-            delay(FOCUS_INDICATOR_MS)
-            _uiState.update { it.copy(focusPoint = null) }
-        }
+        _uiState.update { it.copy(focusPoint = viewOffset, focusLocked = lock) }
+        scheduleFocusClear()
         onSessionQueue {
             val device = currentDevice() ?: return@onSessionQueue
             device.withConfigurationLock {
@@ -488,8 +493,28 @@ internal class IosCameraEngine(private val outputDir: String, private val record
                     exposurePointOfInterest = devicePoint
                     exposureMode = AVCaptureExposureModeAutoExpose
                 }
-                subjectAreaChangeMonitoringEnabled = true
+                subjectAreaChangeMonitoringEnabled = !lock
             }
+        }
+    }
+
+    private fun scheduleFocusClear() {
+        focusClear?.cancel()
+        if (_uiState.value.focusLocked) return
+        focusClear = scope.launch {
+            delay(FOCUS_INDICATOR_MS)
+            _uiState.update { it.copy(focusPoint = null) }
+        }
+    }
+
+    override fun setExposureBias(bias: Float) {
+        val clamped = bias.coerceIn(-1f, 1f)
+        _uiState.update { it.copy(exposureBias = clamped) }
+        if (_uiState.value.focusPoint != null) scheduleFocusClear()
+        onSessionQueue {
+            val device = currentDevice() ?: return@onSessionQueue
+            val target = if (clamped >= 0f) clamped * device.maxExposureTargetBias else -clamped * device.minExposureTargetBias
+            device.withConfigurationLock { setExposureTargetBias(target, completionHandler = null) }
         }
     }
 

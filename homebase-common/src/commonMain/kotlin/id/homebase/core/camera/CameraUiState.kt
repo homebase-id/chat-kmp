@@ -27,7 +27,14 @@ data class CameraUiState(
     val isRecording: Boolean = false,
     val recordingStartedAtMs: Long? = null,
     val focusPoint: Offset? = null,
+    val focusLocked: Boolean = false,
+    val exposureSupported: Boolean = false,
+    val exposureBias: Float = 0f,
+    val exposureMinEv: Float = 0f,
+    val exposureMaxEv: Float = 0f,
 ) {
+    val exposureEv: Float get() = if (exposureBias >= 0f) exposureBias * exposureMaxEv else -exposureBias * exposureMinEv
+
     fun hasLens(lens: CameraLens): Boolean = if (lens == CameraLens.Front) hasFrontLens else hasBackLens
 
     fun clampZoom(ratio: Float): Float = ratio.coerceIn(minZoom, maxOf(minZoom, maxZoom))

@@ -59,3 +59,7 @@ internal fun settledRotation(raw: QuarterTurn?): QuarterTurn {
     }
     return committed ?: QuarterTurn.R0
 }
+
+/** The rotation the UI itself is laid out in, which differs from R0 whenever the portrait lock isn't honoured. */
+@Composable
+expect fun rememberDisplayRotation(): QuarterTurn

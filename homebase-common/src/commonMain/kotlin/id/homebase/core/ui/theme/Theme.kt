@@ -91,6 +91,9 @@ data class HomebaseExtendedColors(
         val warning: androidx.compose.ui.graphics.Color,
         /** Live-location sharing indicator (#816) — Homebase purple, same value both themes. */
         val liveSharing: androidx.compose.ui.graphics.Color,
+        /** Camera record red — the light error role in both themes; the dark one reads pink over a preview. */
+        val cameraRecord: androidx.compose.ui.graphics.Color,
+        val onCameraRecord: androidx.compose.ui.graphics.Color,
 )
 
 private val LightExtendedColors =
@@ -115,6 +118,8 @@ private val LightExtendedColors =
                 bubbleSentOnSurface = LightColors.OnPrimary,
                 warning = ExtendedColors.Warning,
                 liveSharing = ExtendedColors.LiveSharing,
+                cameraRecord = LightColors.Error,
+                onCameraRecord = LightColors.OnError,
         )
 
 private val DarkExtendedColors =
@@ -139,6 +144,8 @@ private val DarkExtendedColors =
                 bubbleSentOnSurface = LightColors.OnPrimary,
                 warning = ExtendedColors.Warning,
                 liveSharing = ExtendedColors.LiveSharing,
+                cameraRecord = LightColors.Error,
+                onCameraRecord = LightColors.OnError,
         )
 
 val LocalHomebaseExtendedColors = staticCompositionLocalOf { LightExtendedColors }
@@ -149,18 +156,21 @@ val LocalHomebaseExtendedColors = staticCompositionLocalOf { LightExtendedColors
  * @param darkTheme Whether to use dark theme. Defaults to system setting.
  * @param followsSystemTheme Whether [darkTheme] merely mirrors the OS setting (the
  * user picked "System") rather than forcing a variant — see [UpdateEdgeToEdge].
+ * @param updatesSystemChrome False for a themed island that must not
+ * restyle the host activity's or window's bars.
  * @param content The content to display with this theme.
  */
 @Composable
 fun HomebaseTheme(
         darkTheme: Boolean = isSystemInDarkTheme(),
         followsSystemTheme: Boolean = true,
+        updatesSystemChrome: Boolean = true,
         content: @Composable () -> Unit
 ) {
         val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
         val extendedColors = if (darkTheme) DarkExtendedColors else LightExtendedColors
 
-        UpdateEdgeToEdge(darkTheme, followsSystemTheme)
+        if (updatesSystemChrome) UpdateEdgeToEdge(darkTheme, followsSystemTheme)
 
         CompositionLocalProvider(LocalHomebaseExtendedColors provides extendedColors) {
                 MaterialExpressiveTheme(

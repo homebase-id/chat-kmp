@@ -2,7 +2,6 @@
 
 package id.homebase.core.camera
 
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -27,7 +26,11 @@ import platform.UIKit.UIColor
 import platform.UIKit.UIView
 
 @Composable
-actual fun CameraPreview(engine: CameraEngine, modifier: Modifier, onTapFocus: (Offset) -> Unit) {
+actual fun CameraPreview(
+    engine: CameraEngine,
+    modifier: Modifier,
+    onLongPressFocus: (Offset) -> Unit,
+) {
     val iosEngine = engine as? IosCameraEngine
     if (iosEngine == null) {
         Box(modifier)
@@ -42,20 +45,27 @@ actual fun CameraPreview(engine: CameraEngine, modifier: Modifier, onTapFocus: (
         iosEngine.onPreviewShowing()
     }
     val density = LocalDensity.current.density
-    val currentOnTapFocus by rememberUpdatedState(onTapFocus)
+    val currentOnLongPressFocus by rememberUpdatedState(onLongPressFocus)
+    val fade = LocalCameraFade.current
     Box(
         modifier = modifier
             .fillMaxSize()
             .pointerInput(iosEngine, density) {
-                detectTapGestures { offset ->
-                    iosEngine.focusAt(CGPointMake(offset.x / density.toDouble(), offset.y / density.toDouble()), offset)
-                    currentOnTapFocus(offset)
-                }
+                fun focus(offset: Offset, lock: Boolean) =
+                    iosEngine.focusAt(CGPointMake(offset.x / density.toDouble(), offset.y / density.toDouble()), offset, lock)
+                detectPreviewTaps(
+                    onLongPress = { offset ->
+                        focus(offset, lock = true)
+                        currentOnLongPressFocus(offset)
+                    },
+                    onTap = { offset -> focus(offset, lock = false) },
+                )
             },
     ) {
         UIKitView(
             factory = { CameraPreviewView(iosEngine.previewLayer, iosEngine::applyPreviewRotation) },
             modifier = Modifier.fillMaxSize(),
+            update = { it.alpha = fade().toDouble() },
             // Non-interactive so taps and pinches reach Compose instead of the UIView.
             properties = UIKitInteropProperties(interactionMode = null),
         )
