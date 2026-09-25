@@ -5,6 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -19,6 +21,12 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.click
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
@@ -141,6 +149,17 @@ class CameraCaptureScreenTest {
     }
 
     @Test
+    fun screenFlashLensOffersFlashInPhotoButNoTorchInVideo() = runComposeUiTest {
+        val engine = FakeCameraEngine(CameraUiState(isBound = true, hasPhotoFlash = true, hasTorch = false))
+        showCamera(engine)
+        onNodeWithTag(FLASH_TAG).assertExists()
+
+        engine.setMode(CaptureMode.Video)
+        waitForIdle()
+        onNodeWithTag(FLASH_TAG).assertDoesNotExist()
+    }
+
+    @Test
     fun flashCyclesOffAutoOn() = runComposeUiTest {
         val engine = FakeCameraEngine()
         showCamera(engine)
@@ -239,6 +258,27 @@ class CameraCaptureScreenTest {
         onNodeWithTag(ZOOM_PRESET_TAG + "2").performClick()
         waitForIdle()
         assertEquals(2f, engine.uiState.value.zoomRatio)
+    }
+
+    @Test
+    fun aTappedPresetIsSelectedWhileTheZoomRampsToIt() = runComposeUiTest {
+        val engine = FakeCameraEngine(CameraUiState(isBound = true, minZoom = 1f, maxZoom = 8f))
+        engine.holdAnimatedZoom = true
+        showCamera(engine)
+        onNodeWithTag(ZOOM_PRESET_TAG + "2").performClick()
+        engine.uiState.update { it.copy(zoomRatio = 1.4f) }
+        waitForIdle()
+        onNodeWithTag(ZOOM_PRESET_TAG + "2").assertIsOn()
+        onNodeWithTag(ZOOM_PRESET_TAG + "1").assertIsOff()
+        onNodeWithText("1.4×").assertDoesNotExist()
+
+        engine.uiState.update { it.copy(zoomRatio = 2f) }
+        waitForIdle()
+        // Once it lands, a pinch shows its live ratio on the chip under it again.
+        engine.uiState.update { it.copy(zoomRatio = 1.4f) }
+        waitForIdle()
+        onNodeWithTag(ZOOM_PRESET_TAG + "1").assertIsOn()
+        onNodeWithText("1.4×").assertExists()
     }
 
     @Test
@@ -801,6 +841,20 @@ class CameraCaptureScreenTest {
         waitForIdle()
         assertTrue(engine.uiState.value.exposureBias > 0f, "${engine.calls}")
         assertEquals(CaptureMode.Photo, engine.uiState.value.mode)
+    }
+
+    @Test
+    fun exposureSliderIsAnAdjustableRangeForAccessibility() = runComposeUiTest {
+        val engine = FakeCameraEngine(CameraUiState(isBound = true, exposureSupported = true))
+        showCamera(engine)
+        engine.uiState.update { it.copy(focusPoint = Offset(200f, 400f)) }
+        waitForIdle()
+        val node = onNodeWithTag(EXPOSURE_TAG)
+        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(0f, -1f..1f)))
+        node.performSemanticsAction(SemanticsActions.SetProgress) { it(0.5f) }
+        waitForIdle()
+        assertEquals(0.5f, engine.uiState.value.exposureBias)
+        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(0.5f, -1f..1f)))
     }
 
     @Test

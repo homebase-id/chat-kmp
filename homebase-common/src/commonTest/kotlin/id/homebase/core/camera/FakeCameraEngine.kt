@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 
-internal class FakeCameraEngine(initial: CameraUiState = CameraUiState(isBound = true, hasFrontLens = true, hasFlashUnit = true)) :
+internal class FakeCameraEngine(initial: CameraUiState = CameraUiState(isBound = true, hasFrontLens = true, hasPhotoFlash = true, hasTorch = true)) :
     CameraEngine {
     override val uiState = MutableStateFlow(initial)
     override val errors = MutableSharedFlow<CameraError>(extraBufferCapacity = 4)
@@ -17,11 +17,15 @@ internal class FakeCameraEngine(initial: CameraUiState = CameraUiState(isBound =
 
     override fun setLens(lens: CameraLens) {
         calls += "lens:$lens"
-        uiState.update { it.copy(lens = lens, hasFlashUnit = lens == CameraLens.Back, focusPoint = null, focusLocked = false) }
+        uiState.update { it.copy(lens = lens, hasPhotoFlash = lens == CameraLens.Back, hasTorch = lens == CameraLens.Back, focusPoint = null, focusLocked = false) }
     }
+
+    /** Leaves an animated zoom at its start, so a test can step the ramp itself. */
+    var holdAnimatedZoom = false
 
     override fun setZoomRatio(ratio: Float, animate: Boolean) {
         calls += "zoom:$ratio"
+        if (animate && holdAnimatedZoom) return
         uiState.update { it.copy(zoomRatio = ratio) }
     }
 

@@ -132,7 +132,7 @@ internal fun ShutterButton(
     )
     val arcAlpha by animateFloatAsState(
         targetValue = if (recording) 1f else 0f,
-        animationSpec = tween(durationMillis = 150),
+        animationSpec = motion.defaultEffectsSpec(),
     )
     val showSpinner by produceState(false, busy) {
         value = false
