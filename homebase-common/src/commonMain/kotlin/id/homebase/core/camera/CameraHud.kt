@@ -216,7 +216,7 @@ internal fun CameraCaptureContent(
     }
     val currentPresets by rememberUpdatedState(presets)
     val recordingStartedText = stringResource(MR.string.camera_recording_started)
-    val holdEnabled = CaptureButtonState.holdToRecordAllowed(allowedModes)
+    val holdEnabled = allowedModes.recordsVideo
 
     LaunchedEffect(engine) {
         val mode = if (allowedModes.allows(initialMode)) initialMode else CaptureMode.Photo

@@ -51,8 +51,16 @@ class CaptureButtonStateTest {
 
     @Test
     fun holdRecordsWheneverVideoIsAllowed() {
-        assertTrue(CaptureButtonState.holdToRecordAllowed(CameraModes.PhotoAndVideo))
-        assertFalse(CaptureButtonState.holdToRecordAllowed(CameraModes.Photo))
+        assertTrue(CameraModes.PhotoAndVideo.recordsVideo)
+        assertFalse(CameraModes.Photo.recordsVideo)
+    }
+
+    @Test
+    fun onlyTheFrontLensMirrorsAndOnlyWhenPreferred() {
+        assertTrue(CameraUiState(lens = CameraLens.Front, mirrorFront = true).mirrorsCapture)
+        assertFalse(CameraUiState(lens = CameraLens.Front, mirrorFront = false).mirrorsCapture)
+        assertFalse(CameraUiState(lens = CameraLens.Back, mirrorFront = true).mirrorsCapture)
+        assertFalse(CameraUiState(lens = CameraLens.Back, mirrorFront = false).mirrorsCapture)
     }
 
     @Test

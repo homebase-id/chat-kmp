@@ -8,7 +8,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
@@ -17,6 +16,8 @@ import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.readValue
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import platform.AVFoundation.AVCaptureVideoPreviewLayer
 import platform.CoreGraphics.CGPointMake
 import platform.CoreGraphics.CGRectZero
@@ -36,8 +37,11 @@ actual fun CameraPreview(
         return
     }
     LaunchedEffect(iosEngine) {
-        // isPreviewing has no callback reachable from Kotlin (KVO is an NSObject category), so read it per frame.
-        while (!iosEngine.previewLayer.previewing) withFrameNanos { }
+        // isPreviewing has no callback reachable from Kotlin (KVO is an NSObject category), so poll it while bound.
+        while (!iosEngine.previewLayer.previewing) {
+            if (!iosEngine.uiState.first { it.isBound || !it.isAvailable }.isAvailable) return@LaunchedEffect
+            delay(16)
+        }
         iosEngine.onPreviewShowing()
     }
     val density = LocalDensity.current.density

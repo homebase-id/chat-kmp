@@ -64,7 +64,7 @@ fun rememberInAppCameraManager(
 ): InAppCameraLauncher {
     val launcher = remember { InAppCameraLauncher() }
     launcher.warmer = rememberCameraWarmer()
-    launcher.recordsVideo = allowedModes.allows(CaptureMode.Video)
+    launcher.recordsVideo = allowedModes.recordsVideo
     val currentOnResult by rememberUpdatedState(onResult)
     val currentOnOpenGallery by rememberUpdatedState(onOpenGallery)
     val mode = launcher.openMode
