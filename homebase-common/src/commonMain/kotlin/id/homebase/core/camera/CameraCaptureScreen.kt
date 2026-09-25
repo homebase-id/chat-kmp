@@ -131,7 +131,7 @@ fun CameraCaptureScreen(
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim)) {
                 if (permissions.camera == CameraPermissionState.Granted) {
                     // Created only once granted: binding without the permission fails instead of waiting.
-                    val engine = rememberCameraEngine(warmEngine)
+                    val engine = rememberCameraEngine(recordsVideo = allowedModes.allows(CaptureMode.Video), warm = warmEngine)
                     CameraCaptureContent(
                         engine = engine,
                         allowedModes = allowedModes,
