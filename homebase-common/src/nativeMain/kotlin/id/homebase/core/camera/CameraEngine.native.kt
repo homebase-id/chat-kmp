@@ -132,14 +132,25 @@ import kotlin.coroutines.resume
 import kotlin.time.Clock
 
 @Composable
-actual fun rememberCameraEngine(): CameraEngine {
+actual fun rememberCameraEngine(warm: CameraEngine?): CameraEngine {
     val fileOps = koinInject<FileOperationsProvider>()
-    val engine = remember { IosCameraEngine(fileOps.uploadTempDirectory()) }
+    val engine = remember(warm) { warm as? IosCameraEngine ?: IosCameraEngine(fileOps.uploadTempDirectory()) }
     DisposableEffect(engine) {
         engine.start()
         onDispose { engine.release() }
     }
     return engine
+}
+
+@Composable
+actual fun rememberCameraWarmer(): CameraWarmer {
+    val fileOps = koinInject<FileOperationsProvider>()
+    return remember(fileOps) {
+        CameraWarmer {
+            val granted = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo) == AVAuthorizationStatusAuthorized
+            if (granted) IosCameraEngine(fileOps.uploadTempDirectory()).also { it.start() } else null
+        }
+    }
 }
 
 /**
@@ -179,9 +190,12 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
     private val observers = mutableListOf<NSObjectProtocol>()
     private var subjectAreaObserver: NSObjectProtocol? = null
     private var focusClear: Job? = null
+    private var started = false
     private var released = false
 
     fun start() {
+        if (started) return
+        started = true
         observeSession()
         _uiState.update { it.copy(awaitingFirstFrame = true) }
         onSessionQueue {
@@ -233,6 +247,9 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
                 this.height = height
             }
         }
+        // The front camera flashes stills with the screen (Retina Flash) and has no hasFlash LED to ask about.
+        val photoFlash = photoOutput.supportedFlashModes.any { (it as? NSNumber)?.longValue == AVCaptureFlashModeOn }
+        _uiState.update { it.copy(hasPhotoFlash = photoFlash) }
         val connection = movieOutput.connectionWithMediaType(AVMediaTypeVideo) ?: return
         // Match the old system picker and Android receivers rather than HEVC.
         if (movieOutput.availableVideoCodecTypes.contains(AVVideoCodecTypeH264)) {
@@ -303,14 +320,14 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
         }
         val switchRatios = device.virtualDeviceSwitchOverVideoZoomFactors
             .mapNotNull { (it as? NSNumber)?.doubleValue?.times(zoomMultiplier)?.toFloat() }
-        val hasFlash = device.hasFlash
+        val hasTorch = device.hasTorch
         _uiState.update {
             it.copy(
                 zoomRatio = (startFactor * zoomMultiplier).toFloat(),
                 minZoom = (minFactor * zoomMultiplier).toFloat(),
                 maxZoom = (maxOf(minFactor, maxFactor) * zoomMultiplier).toFloat(),
                 lensSwitchRatios = switchRatios,
-                hasFlashUnit = hasFlash,
+                hasTorch = hasTorch,
                 focusPoint = null,
             )
         }
@@ -419,7 +436,7 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
     private fun applyTorchOnQueue(device: AVCaptureDevice) {
         val state = _uiState.value
         if (!device.hasTorch) return
-        val mode = if (FlashPolicy.effectiveTorch(state.torchOn, state.mode, device.hasFlash)) AVCaptureTorchModeOn else AVCaptureTorchModeOff
+        val mode = if (FlashPolicy.effectiveTorch(state.torchOn, state.mode, device.hasTorch)) AVCaptureTorchModeOn else AVCaptureTorchModeOff
         if (device.torchMode == mode || !device.isTorchModeSupported(mode)) return
         device.withConfigurationLock { torchMode = mode }
     }
@@ -496,7 +513,7 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
         }
         val mirror = MirrorPolicy.shouldMirror(state.lens, state.mirrorFront)
         val angle = rotationCoordinator?.videoRotationAngleForHorizonLevelCapture
-        val flash = FlashPolicy.effectivePhotoFlash(state.flashMode, state.hasFlashUnit).avMode
+        val flash = FlashPolicy.effectivePhotoFlash(state.flashMode, state.hasPhotoFlash).avMode
         val url = newOutputUrl("IMG", "jpg") ?: return null
         return suspendCancellableCoroutine { cont ->
             val delegate = PhotoCaptureDelegate { self, data, error ->

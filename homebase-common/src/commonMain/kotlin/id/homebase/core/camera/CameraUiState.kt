@@ -10,7 +10,9 @@ data class CameraUiState(
     val lens: CameraLens = CameraLens.Back,
     val hasBackLens: Boolean = true,
     val hasFrontLens: Boolean = false,
-    val hasFlashUnit: Boolean = false,
+    /** An LED, or on the iOS front camera the screen (Retina Flash), which has no torch. */
+    val hasPhotoFlash: Boolean = false,
+    val hasTorch: Boolean = false,
     val zoomRatio: Float = 1f,
     val minZoom: Float = 1f,
     val maxZoom: Float = 1f,
