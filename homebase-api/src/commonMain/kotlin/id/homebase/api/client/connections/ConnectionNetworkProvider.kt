@@ -259,6 +259,15 @@ class ConnectionNetworkProvider(
         )
     }
 
+    /** Only the owning app may toggle a circle; the server refuses anything else with a 403. */
+    suspend fun disableCircle(circleId: Uuid) {
+        post("/connections/circles/disable", circleId)
+    }
+
+    suspend fun enableCircle(circleId: Uuid) {
+        post("/connections/circles/enable", circleId)
+    }
+
     private suspend fun postOdinId(endpoint: String, odinId: OdinId) {
         Logger.i(tag = TAG) { "POST $endpoint odinId=$odinId" }
         post(endpoint, OdinIdRequest(odinId))

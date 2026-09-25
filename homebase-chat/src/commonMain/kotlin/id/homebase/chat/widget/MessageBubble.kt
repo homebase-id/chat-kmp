@@ -143,6 +143,17 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.runtime.State
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.offset
 
 private val GroupMessageAvatarOptions = AvatarOptions(size = Dimens.Message.senderAvatarSize)
 
@@ -197,6 +208,7 @@ fun SentMessageBubble(
     onMessageIdentity: ((String) -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
+    val popupTransition = updateTransition(popupMode, label = "messagePopup")
     var showEmojiPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -207,7 +219,6 @@ fun SentMessageBubble(
     // value 0 means "no constraint yet" — pill renders unconstrained for one
     // frame then snaps to bubble width on the next composition.
     var bubbleWidthPx by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
     val haptics = rememberHaptics()
     val policy = message.messageContent?.actions ?: ActionPolicy.Standard
     val openReactionBar: (() -> Unit)? =
@@ -271,9 +282,9 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (popupMode != MessagePopupMode.None && !message.isDeleted) {
+                if (popupTransition.shownMode != MessagePopupMode.None && !message.isDeleted) {
                     SentMessagePopup(
-                        mode = popupMode,
+                        transition = popupTransition,
                         message = message,
                         userDefaultReactions = userDefaultReactions,
                         dismissMenu = { popupMode = MessagePopupMode.None },
@@ -358,7 +369,7 @@ fun SentMessageBubble(
                 ) {
                     MessageBubbleRaw(
                         modifier = Modifier
-                            .padding(bottom = if (message.reactionPreview == null) 0.dp else 26.dp)
+                            .bottomInset(animateReactionPillInset(message.reactionPreview != null))
                             .onSizeChanged { bubbleWidthPx = it.width },
                         message = message,
                         decryptedFiles = decryptedFiles,
@@ -390,24 +401,16 @@ fun SentMessageBubble(
                         onSaveContactCard = onSaveContactCard,
                         onMessageIdentity = onMessageIdentity,
                     )
-                    message.reactionPreview?.let { reactionSummary ->
-                        ReactionList(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 4.dp)
-                                .let {
-                                    if (bubbleWidthPx > 0)
-                                        it.widthIn(max = with(density) { bubbleWidthPx.toDp() })
-                                    else it
-                                },
-                            reactionSummary = reactionSummary,
-                            onReactionClick = { onShowReactions?.invoke() },
-                            onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
-                            ownReactions = message.ownReactions,
-                        )
-                    }
-                    if (isMobile() && popupMode == MessagePopupMode.Reaction && !message.isDeleted) {
+                    AnimatedReactionPill(
+                        message = message,
+                        bubbleWidthPx = bubbleWidthPx,
+                        onReactionClick = { onShowReactions?.invoke() },
+                        onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
+                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
+                    )
+                    if (isMobile() && popupTransition.shownMode == MessagePopupMode.Reaction && !message.isDeleted) {
                         BubbleReactionPopup(
+                            transition = popupTransition,
                             message = message,
                             userDefaultReactions = userDefaultReactions,
                             alignToBubbleEnd = true,
@@ -528,13 +531,13 @@ fun ReceivedMessageBubble(
     onMessageIdentity: ((String) -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
+    val popupTransition = updateTransition(popupMode, label = "messagePopup")
     var showEmojiPicker by remember { mutableStateOf(false) }
     var showBlockConfirm by remember { mutableStateOf(false) }
     var showReportConfirm by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
     var bubbleWidthPx by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
     val filteredPayloads = message.payloads?.filter {
         !listOf(
             ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
@@ -629,10 +632,7 @@ fun ReceivedMessageBubble(
                     Box {
                         MessageBubbleRaw(
                             modifier = Modifier
-                                .padding(
-                                    bottom = if (message.reactionPreview == null) 0.dp
-                                    else 26.dp
-                                )
+                                .bottomInset(animateReactionPillInset(message.reactionPreview != null))
                                 .onSizeChanged { bubbleWidthPx = it.width },
                             message = message,
                             decryptedFiles = decryptedFiles,
@@ -666,26 +666,18 @@ fun ReceivedMessageBubble(
                             onSaveContactCard = onSaveContactCard,
                             onMessageIdentity = onMessageIdentity,
                         )
-                        message.reactionPreview?.let { reactionSummary ->
-                            ReactionList(
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .padding(end = 4.dp)
-                                    .let {
-                                        if (bubbleWidthPx > 0)
-                                            it.widthIn(max = with(density) { bubbleWidthPx.toDp() })
-                                        else it
-                                    },
-                                reactionSummary = reactionSummary,
-                                onReactionClick = { onShowReactions?.invoke() },
-                                onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
-                                ownReactions = message.ownReactions,
-                            )
-                        }
-                        if (isMobile() && popupMode == MessagePopupMode.Reaction &&
+                        AnimatedReactionPill(
+                            message = message,
+                            bubbleWidthPx = bubbleWidthPx,
+                            onReactionClick = { onShowReactions?.invoke() },
+                            onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp),
+                        )
+                        if (isMobile() && popupTransition.shownMode == MessagePopupMode.Reaction &&
                             !message.isDeleted
                         ) {
                             BubbleReactionPopup(
+                                transition = popupTransition,
                                 message = message,
                                 userDefaultReactions = userDefaultReactions,
                                 alignToBubbleEnd = false,
@@ -749,9 +741,9 @@ fun ReceivedMessageBubble(
                     }
                 }
 
-                if (popupMode != MessagePopupMode.None && !message.isDeleted) {
+                if (popupTransition.shownMode != MessagePopupMode.None && !message.isDeleted) {
                     ReceivedMessagePopup(
-                        mode = popupMode,
+                        transition = popupTransition,
                         message = message,
                         userDefaultReactions = userDefaultReactions,
                         dismissMenu = { popupMode = MessagePopupMode.None },
@@ -1357,4 +1349,45 @@ private fun testMessageUiModel(message: String): MessageUiModel {
     )
 }
 
+// Room under the bubble for the reaction pill, read in layout so the bubble doesn't recompose per frame.
+@Composable
+private fun animateReactionPillInset(hasReactions: Boolean): State<Dp> = animateDpAsState(
+    targetValue = if (hasReactions) 26.dp else 0.dp,
+    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+    label = "reactionPillInset",
+)
 
+private fun Modifier.bottomInset(inset: State<Dp>): Modifier = layout { measurable, constraints ->
+    val bottom = inset.value.roundToPx().coerceAtLeast(0)
+    val placeable = measurable.measure(constraints.offset(vertical = -bottom))
+    layout(placeable.width, constraints.constrainHeight(placeable.height + bottom)) { placeable.place(0, 0) }
+}
+
+@Composable
+private fun AnimatedReactionPill(
+    message: MessageUiModel,
+    bubbleWidthPx: Int,
+    onReactionClick: () -> Unit,
+    onAddEmoji: (() -> Unit)?,
+    modifier: Modifier,
+) {
+    val transition = updateTransition(message.reactionPreview, label = "reactionPill")
+    val motion = MaterialTheme.motionScheme
+    val density = LocalDensity.current
+    transition.AnimatedVisibility(
+        visible = { it != null },
+        modifier = modifier,
+        enter = scaleIn(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()),
+        exit = scaleOut(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+    ) {
+        (transition.targetState ?: transition.currentState)?.let { reactionSummary ->
+            ReactionList(
+                modifier = if (bubbleWidthPx > 0) Modifier.widthIn(max = with(density) { bubbleWidthPx.toDp() }) else Modifier,
+                reactionSummary = reactionSummary,
+                onReactionClick = onReactionClick,
+                onAddEmoji = onAddEmoji,
+                ownReactions = message.ownReactions,
+            )
+        }
+    }
+}

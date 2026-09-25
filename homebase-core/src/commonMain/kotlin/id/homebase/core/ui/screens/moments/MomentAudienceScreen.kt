@@ -55,8 +55,10 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.FallbackAvatar
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.moments.services.MomentsRecipient
+import id.homebase.core.moments.services.isDisabledCircle
 import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.resources.MR
+import id.homebase.resources.contactbook_circle_disabled
 import id.homebase.resources.menu_back
 import id.homebase.resources.moments_audience_create_group
 import id.homebase.resources.moments_audience_post
@@ -302,9 +304,10 @@ private fun RecipientRow(
     onClick: () -> Unit,
     onInfoClick: (() -> Unit)? = null,
 ) {
-    // A circle with no members can't be a share target — show it, greyed, but don't let it be
-    // selected (odinIds is the exact fan-out set, and it's empty). Everything else is selectable.
-    val selectable = recipient !is MomentsRecipient.Circle || recipient.odinIds.isNotEmpty()
+    // A circle with no members or a disabled one can't be a share target — show it, greyed, but
+    // don't let it be selected. Everything else is selectable.
+    val selectable = !recipient.isDisabledCircle &&
+        (recipient !is MomentsRecipient.Circle || recipient.odinIds.isNotEmpty())
     val contentAlpha = if (selectable) 1f else 0.38f
     Row(
         modifier = Modifier
@@ -355,7 +358,13 @@ private fun RecipientRow(
                     is MomentsRecipient.Circle -> recipient.memberCount
                     is MomentsRecipient.Individual -> null
                 }
-                if (memberCount != null) {
+                if (recipient.isDisabledCircle) {
+                    Text(
+                        text = stringResource(MR.string.contactbook_circle_disabled),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else if (memberCount != null) {
                     Text(
                         text = stringResource(
                             MR.string.number_of_members,

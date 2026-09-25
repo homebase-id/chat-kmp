@@ -56,6 +56,9 @@ data class CircleMembersUi(
      *  / [id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID]), which are computed by the vetting
      *  flow rather than manually curated. */
     val manageable: Boolean = true,
+    val disabled: Boolean = false,
+    val offersEnableToggle: Boolean = false,
+    val togglingEnabled: Boolean = false,
     val members: List<ContactBookEntry> = emptyList(),
     val isLoading: Boolean = true,
     /**
@@ -216,6 +219,7 @@ sealed interface ContactBookUiAction {
     /** "Add member" tapped in the circle-members sheet — opens the picker for this circle. */
     data class CircleAddMemberClicked(val circleId: String, val circleName: String) : ContactBookUiAction
     data object EnrollmentCandidatesClicked : ContactBookUiAction
+    data class CircleEnabledChanged(val circleId: String, val enabled: Boolean) : ContactBookUiAction
     /** Revoke [member]'s membership (real or still-pending) in the circle [circleId]. */
     data class CircleRemoveMemberClicked(
         val circleId: String,
@@ -278,4 +282,7 @@ enum class ContactBookError {
     ClearUnsupported,
     AdditionsFailed,
     CircleActionFailed,
+    CircleToggleForbidden,
+    CircleToggleSystemCircle,
+    CircleToggleNotFound,
 }

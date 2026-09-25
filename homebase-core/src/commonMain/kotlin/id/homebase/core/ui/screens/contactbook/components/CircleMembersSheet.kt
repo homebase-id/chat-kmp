@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -18,6 +19,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.CircleDriveUi
 import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
@@ -47,6 +51,9 @@ import id.homebase.resources.circle_member_remove_confirm_title
 import id.homebase.resources.circle_member_status_member
 import id.homebase.resources.circle_member_status_pending
 import id.homebase.resources.contactbook_circle_add_member
+import id.homebase.resources.contactbook_circle_disabled
+import id.homebase.resources.contactbook_circle_enabled
+import id.homebase.resources.contactbook_circle_enabled_hint
 import id.homebase.resources.contactbook_circle_members_count
 import id.homebase.resources.contactbook_circle_members_count_with_pending
 import id.homebase.resources.contactbook_circle_members_empty
@@ -69,6 +76,7 @@ fun CircleMembersSheet(
     onRemoveMemberClick: (ContactBookEntry) -> Unit,
     /** By lowercased domain; members missing from it are not connections. */
     connectionStatuses: Map<String, ConnectionStatus>,
+    onEnabledChange: (Boolean) -> Unit = {},
 ) {
     var confirmRemove by remember { mutableStateOf<ContactBookEntry?>(null) }
 
@@ -104,6 +112,28 @@ fun CircleMembersSheet(
                     style = MaterialTheme.typography.labelMedium,
                     color = if (status == CircleMemberStatus.Pending) HomebaseTheme.extendedColors.warning
                         else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+            if (state.offersEnableToggle) {
+                ListItem(
+                    modifier = Modifier.toggleable(
+                        value = !state.disabled,
+                        enabled = !state.togglingEnabled,
+                        onValueChange = onEnabledChange,
+                        role = Role.Switch,
+                    ),
+                    headlineContent = { Text(stringResource(MR.string.contactbook_circle_enabled)) },
+                    supportingContent = { Text(stringResource(MR.string.contactbook_circle_enabled_hint)) },
+                    trailingContent = {
+                        Switch(checked = !state.disabled, onCheckedChange = null, enabled = !state.togglingEnabled)
+                    },
+                )
+            } else if (state.disabled) {
+                Text(
+                    text = stringResource(MR.string.contactbook_circle_disabled),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
