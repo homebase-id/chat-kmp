@@ -5,22 +5,21 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -29,11 +28,13 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.animateFloatingActionButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -93,7 +94,10 @@ fun SelectMembersScreen(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+// A FAB plus its margin, so the last row can scroll out from under it.
+internal val FabClearance = 88.dp
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SelectMembersUi(
     snackbarHostState: SnackbarHostState,
@@ -153,12 +157,10 @@ fun SelectMembersUi(
             )
         },
         floatingActionButton = {
-            Button(
-                onClick = { onUiAction(SelectMembersUiAction.NextClicked) },
-                modifier = Modifier.defaultMinSize(minWidth = 56.dp),
-                enabled = uiState.selectedContacts.size >= 2,
-                shape = CircleShape
-
+            val canProceed = uiState.selectedContacts.size >= 2
+            FloatingActionButton(
+                onClick = { if (canProceed) onUiAction(SelectMembersUiAction.NextClicked) },
+                modifier = Modifier.animateFloatingActionButton(visible = canProceed, alignment = Alignment.BottomEnd),
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowForward,
@@ -183,12 +185,12 @@ fun SelectMembersUi(
             )
             LazyColumn(
                 modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = FabClearance),
             ) {
                 if (uiState.displayItems.isEmpty()) {
-                    item {
+                    item(key = "empty") {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                            modifier = Modifier.animateItem().fillMaxWidth().padding(top = 24.dp),
                             horizontalArrangement = Arrangement.Center,
                         ) {
                             if (searchTextState.text.isNotEmpty()) {
@@ -204,18 +206,19 @@ fun SelectMembersUi(
                         }
                     }
                 } else {
-                    item {
+                    item(key = "title") {
                         Text(
-                            modifier = Modifier.padding(bottom = 16.dp, start = 16.dp),
+                            modifier = Modifier.animateItem().padding(bottom = 16.dp, start = 16.dp),
                             text = stringResource(MR.string.contacts),
                             style = MaterialTheme.typography.titleLarge
                         )
                     }
                 }
                 uiState.displayItems.forEach { item ->
-                    stickyHeader {
+                    stickyHeader(key = "header_${item.initial}") {
                         Row(
                             modifier = Modifier
+                                .animateItem()
                                 .fillMaxWidth()
                                 .background(MaterialTheme.colorScheme.surface)
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -228,6 +231,7 @@ fun SelectMembersUi(
                     }
                     items(item.contacts, key = { it.odinId.domainName }) { contact ->
                         ContactItem(
+                            modifier = Modifier.animateItem(),
                             name = contact.name,
                             subTitle = contact.odinId.domainName,
                             selectionMode = true,
