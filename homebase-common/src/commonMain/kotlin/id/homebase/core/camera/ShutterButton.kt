@@ -20,6 +20,7 @@ import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -130,10 +131,11 @@ internal fun ShutterButton(
         targetValue = if (recording) 1f else 0f,
         animationSpec = if (reduceMotion) snap() else motion.fastSpatialSpec(),
     )
-    val arcAlpha by animateFloatAsState(
+    val arcAlphaState = animateFloatAsState(
         targetValue = if (recording) 1f else 0f,
         animationSpec = motion.defaultEffectsSpec(),
     )
+    val arcShown by remember { derivedStateOf { arcAlphaState.value > 0f } }
     val showSpinner by produceState(false, busy) {
         value = false
         if (busy) {
@@ -318,11 +320,11 @@ internal fun ShutterButton(
                 },
         )
         // Composed only while shown: an infinite transition on an idle shutter would redraw every frame.
-        if (recording || arcAlpha > 0f) {
+        if (recording || arcShown) {
             RecordingArc(
                 color = record,
                 ringScale = { ringScale },
-                alpha = { arcAlpha },
+                alpha = { arcAlphaState.value },
                 still = reduceMotion,
                 modifier = Modifier.matchParentSize(),
             )

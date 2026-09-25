@@ -67,7 +67,6 @@ class CameraCaptureScreenTest {
     private fun ComposeUiTest.showCamera(
         engine: FakeCameraEngine,
         modes: CameraModes = CameraModes.PhotoAndVideo,
-        initialMode: CaptureMode = CaptureMode.Photo,
         mic: MicPermission = MicPermission(granted = true),
         onRequestMic: () -> Unit = {},
         haptics: Haptics = RecordingHaptics(),
@@ -85,7 +84,6 @@ class CameraCaptureScreenTest {
                         CameraCaptureContent(
                             engine = engine,
                             allowedModes = modes,
-                            initialMode = initialMode,
                             mirrorFront = true,
                             mic = mic,
                             onRequestMic = onRequestMic,
@@ -191,14 +189,6 @@ class CameraCaptureScreenTest {
     }
 
     @Test
-    fun photoOnlyNeverStartsInVideo() = runComposeUiTest {
-        val engine = FakeCameraEngine()
-        showCamera(engine, modes = CameraModes.Photo, initialMode = CaptureMode.Video)
-        waitForIdle()
-        assertEquals(CaptureMode.Photo, engine.uiState.value.mode)
-    }
-
-    @Test
     fun shutterTakesAPhotoInPhotoMode() = runComposeUiTest {
         val engine = FakeCameraEngine()
         showCamera(engine)
@@ -209,8 +199,8 @@ class CameraCaptureScreenTest {
 
     @Test
     fun shutterStartsAndStopsARecordingInVideoMode() = runComposeUiTest {
-        val engine = FakeCameraEngine()
-        showCamera(engine, initialMode = CaptureMode.Video)
+        val engine = FakeCameraEngine(CaptureMode.Video)
+        showCamera(engine)
         onNodeWithTag(SHUTTER_TAG).performClick()
         waitForIdle()
         assertTrue("record:audio=true" in engine.calls)
@@ -222,8 +212,8 @@ class CameraCaptureScreenTest {
 
     @Test
     fun deniedMicRecordsSilentlyAndShowsTheChip() = runComposeUiTest {
-        val engine = FakeCameraEngine()
-        showCamera(engine, initialMode = CaptureMode.Video, mic = MicPermission(granted = false, askedThisSession = true))
+        val engine = FakeCameraEngine(CaptureMode.Video)
+        showCamera(engine, mic = MicPermission(granted = false, askedThisSession = true))
         onNodeWithTag(NO_MIC_TAG).assertExists()
         onNodeWithTag(SHUTTER_TAG).performClick()
         waitForIdle()
@@ -754,8 +744,8 @@ class CameraCaptureScreenTest {
 
     @Test
     fun recordingStartAndStopAreAnnounced() = runComposeUiTest {
-        val engine = FakeCameraEngine()
-        showCamera(engine, initialMode = CaptureMode.Video)
+        val engine = FakeCameraEngine(CaptureMode.Video)
+        showCamera(engine)
         onNodeWithTag(SHUTTER_TAG).performClick()
         waitForIdle()
         onNodeWithTag(ANNOUNCER_TAG).assertContentDescriptionContains("Recording started")
@@ -911,8 +901,8 @@ class CameraCaptureScreenTest {
 
     @Test
     fun recordingHidesTheCarouselWithoutMovingTheShutter() = runComposeUiTest {
-        val engine = FakeCameraEngine()
-        showCamera(engine, initialMode = CaptureMode.Video)
+        val engine = FakeCameraEngine(CaptureMode.Video)
+        showCamera(engine)
         waitForIdle()
         val before = onNodeWithTag(SHUTTER_TAG).fetchSemanticsNode().boundsInRoot
         onNodeWithTag(SHUTTER_TAG).performClick()
@@ -989,7 +979,6 @@ class CameraCaptureScreenTest {
                     CameraCaptureContent(
                         engine = engine,
                         allowedModes = CameraModes.PhotoAndVideo,
-                        initialMode = CaptureMode.Photo,
                         mirrorFront = true,
                         mic = MicPermission(granted = true),
                         onRequestMic = {},

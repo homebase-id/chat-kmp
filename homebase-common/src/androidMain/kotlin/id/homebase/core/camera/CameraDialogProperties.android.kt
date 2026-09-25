@@ -48,13 +48,3 @@ internal actual fun CameraWindowEffect() {
         }
     }
 }
-
-@Composable
-internal actual fun KeepScreenOnEffect(enabled: Boolean) {
-    val view = LocalView.current
-    DisposableEffect(view, enabled) {
-        view.keepScreenOn = enabled
-        onDispose { view.keepScreenOn = false }
-    }
-}
-

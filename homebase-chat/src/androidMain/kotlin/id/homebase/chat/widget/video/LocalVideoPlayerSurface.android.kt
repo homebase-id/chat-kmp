@@ -23,6 +23,7 @@ import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import id.homebase.core.util.KeepScreenOn
 
 @Composable
 actual fun LocalVideoPlayerSurface(

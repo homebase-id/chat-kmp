@@ -13,7 +13,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitViewController
 import kotlinx.cinterop.ExperimentalForeignApi
-import platform.UIKit.UIApplication
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
@@ -30,6 +29,7 @@ import platform.CoreMedia.CMTimeGetSeconds
 import platform.CoreMedia.CMTimeMake
 import platform.Foundation.NSNotificationCenter
 import id.homebase.core.audio.AudioSession
+import id.homebase.core.util.KeepScreenOn
 import platform.Foundation.NSURL
 
 @Composable
@@ -53,17 +53,13 @@ actual fun LocalVideoPlayerSurface(
 
     // Keep the screen awake while this local clip plays (#1025). It plays from
     // mount until it reaches the end (then seeks-to-0 + pauses), so the wake is
-    // held from mount and released on end and on dispose. idleTimerDisabled is
-    // app-global, so onDispose ALWAYS clears it.
+    // held from mount and released on end and on dispose.
     // ponytail: pausing via AVPlayerViewController's own controls doesn't notify
     // us, so a mid-clip pause keeps the timer disabled until dismissal — a minor
     // battery cost in the uncommon "pause and leave it" case. KVO on rate if it
     // ever matters.
     val ended = remember(filePath) { mutableStateOf(false) }
-    DisposableEffect(ended.value) {
-        UIApplication.sharedApplication.idleTimerDisabled = !ended.value
-        onDispose { UIApplication.sharedApplication.idleTimerDisabled = false }
-    }
+    KeepScreenOn(!ended.value)
 
     DisposableEffect(filePath) {
         val observer = NSNotificationCenter.defaultCenter.addObserverForName(
@@ -121,12 +117,8 @@ actual fun TrimmableVideoPlayerSurface(
     AwaitReadyForDisplay(controller.value, filePath, onFirstFrameRendered)
 
     // Keep the screen awake only while this clip is actively playing (#1025),
-    // driven off the external isPlaying flag. idleTimerDisabled is app-global,
-    // so onDispose ALWAYS clears it.
-    DisposableEffect(isPlaying) {
-        UIApplication.sharedApplication.idleTimerDisabled = isPlaying
-        onDispose { UIApplication.sharedApplication.idleTimerDisabled = false }
-    }
+    // driven off the external isPlaying flag.
+    KeepScreenOn(isPlaying)
 
     // Apply external play/pause
     LaunchedEffect(isPlaying) {

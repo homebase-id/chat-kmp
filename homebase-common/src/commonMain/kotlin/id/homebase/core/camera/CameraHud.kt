@@ -66,9 +66,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import co.touchlab.kermit.Logger
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.Haptics
+import id.homebase.core.util.KeepScreenOn
 import id.homebase.core.util.formatHms
 import id.homebase.resources.MR
 import id.homebase.resources.camera_error_bind
@@ -124,14 +124,11 @@ private val CarouselHideDrop = 8.dp
 private val TopBarHeight = 64.dp
 private const val FROZEN_FRAME_DIM = 0.6f
 
-/**
- * Once the preview has streamed, a rebind (flip, mode switch) dims the frame the surface still holds instead of
- * blacking it out; a first start has no frame to keep. A flip stays dimmed until the new lens's first frame.
- */
-/** Only a delivered frame counts: the camera reports bound (open, running) before the preview shows anything. */
+// The camera reports bound before the preview shows anything, so only a delivered frame counts.
 internal fun previewHasShown(shownBefore: Boolean, ui: CameraUiState): Boolean =
     shownBefore || (ui.isBound && !ui.awaitingFirstFrame)
 
+// A rebind after the preview has streamed dims the frame the surface still holds; a first start has none to keep.
 internal fun previewScrimAlpha(isBound: Boolean, awaitingFirstFrame: Boolean, previewShown: Boolean): Float = when {
     isBound && !awaitingFirstFrame -> 0f
     previewShown -> FROZEN_FRAME_DIM
@@ -149,7 +146,6 @@ private const val STARTING_SPINNER_DELAY_MS = 700L
 internal fun CameraCaptureContent(
     engine: CameraEngine,
     allowedModes: CameraModes,
-    initialMode: CaptureMode,
     mirrorFront: Boolean,
     mic: MicPermission,
     onRequestMic: () -> Unit,
@@ -208,20 +204,17 @@ internal fun CameraCaptureContent(
     val density = LocalDensity.current
     val viewConfiguration = LocalViewConfiguration.current
     val modes = remember(allowedModes) { CaptureMode.entries.filter { allowedModes.allows(it) } }
+    fun modeIndex(mode: CaptureMode) = modes.indexOf(mode).coerceAtLeast(0)
     val carousel = remember(modes) {
-        ModeCarouselState(modes.indexOf(engine.uiState.value.mode).coerceAtLeast(0), modes.size, scope)
+        ModeCarouselState(modeIndex(engine.uiState.value.mode), modes.size, scope)
     }
     val presets = remember(ui.minZoom, ui.maxZoom, ui.lensSwitchRatios) {
         ZoomPresets.available(ui.minZoom, ui.maxZoom, ui.lensSwitchRatios)
     }
     val currentPresets by rememberUpdatedState(presets)
     val recordingStartedText = stringResource(MR.string.camera_recording_started)
-    val holdEnabled = CaptureButtonState.holdToRecordAllowed(allowedModes)
+    val holdEnabled = allowedModes.recordsVideo
 
-    LaunchedEffect(engine) {
-        val mode = if (allowedModes.allows(initialMode)) initialMode else CaptureMode.Photo
-        engine.setMode(mode)
-    }
     LaunchedEffect(ui.mode, mic.needsAsking) {
         if (ui.mode == CaptureMode.Video && mic.needsAsking) onRequestMic()
     }
@@ -244,7 +237,7 @@ internal fun CameraCaptureContent(
     }
     // A hold from Photo that rebinds to Video still reads as Photo, so nothing flickers to Video and back.
     val displayMode = if (returnToPhotoAfterHold) CaptureMode.Photo else ui.mode
-    val selectedIndex = modes.indexOf(displayMode).coerceAtLeast(0)
+    val selectedIndex = modeIndex(displayMode)
     LaunchedEffect(selectedIndex) { carousel.settleTo(selectedIndex, currentReduceMotion) }
     LaunchedEffect(presetTarget) {
         val target = presetTarget ?: return@LaunchedEffect
@@ -336,9 +329,11 @@ internal fun CameraCaptureContent(
         }
     }
 
-    fun isRecordingNow() = recordingIntent || (currentUi.isRecording && !stopping)
+    // Composition passes the zoom-free ui: reading currentUi there would recompose on every zoom frame.
+    fun isRecordingNow(s: CameraUiState = currentUi) = recordingIntent || (s.isRecording && !stopping)
 
-    fun currentButtonState() = CaptureButtonState.of(currentUi.mode, isRecordingNow(), isRecordingLocked = !heldRecording)
+    fun currentButtonState(s: CameraUiState = currentUi, mode: CaptureMode = s.mode) =
+        CaptureButtonState.of(mode, isRecordingNow(s), isRecordingLocked = !heldRecording)
 
     fun shutterTap() {
         when (currentButtonState().tapAction) {
@@ -388,15 +383,11 @@ internal fun CameraCaptureContent(
     }
 
     val carouselDirection = { if (currentIsRtl) -1f else 1f }
-    fun modeDragStart() = carousel.dragStart(modes.indexOf(currentUi.mode).coerceAtLeast(0))
+    fun modeDragStart() = carousel.dragStart(modeIndex(currentUi.mode))
     fun modeDrag(deltaPx: Float, slotPx: Float) =
         carousel.drag(-deltaPx * carouselDirection() / slotPx) { haptics.perform(HapticEvent.Selection) }
     fun modeDragEnd(velocityPx: Float, slotPx: Float) {
         val flung = abs(velocityPx) > with(density) { FLING_DP_PER_SECOND.dp.toPx() }
-        Logger.i(tag = SWIPE_LOG_TAG) {
-            "drag end velocityPx=$velocityPx slotPx=$slotPx flung=$flung mode=${currentUi.mode} " +
-                "recording=${currentUi.isRecording} intent=$recordingIntent busy=$busy"
-        }
         carousel.release(
             velocitySlotsPerSecond = -velocityPx * carouselDirection() / slotPx,
             flung = flung,
@@ -456,7 +447,7 @@ internal fun CameraCaptureContent(
         }
     }
 
-    KeepScreenOnEffect(ui.isRecording)
+    KeepScreenOn(ui.isRecording)
     HardwareShutterEffect(onDown = ::shutterKeyDown, onUp = ::shutterKeyUp)
 
     if (!ui.isAvailable) {
@@ -464,8 +455,8 @@ internal fun CameraCaptureContent(
         return
     }
 
-    val looksRecording = recordingIntent || (ui.isRecording && !stopping)
-    val buttonState = CaptureButtonState.of(displayMode, looksRecording, isRecordingLocked = !heldRecording)
+    val looksRecording = isRecordingNow(ui)
+    val buttonState = currentButtonState(ui, displayMode)
     val videoIndex = modes.indexOf(CaptureMode.Video)
     val videoAmount = { if (videoIndex < 0) 0f else 1f - abs(carousel.position - videoIndex).coerceIn(0f, 1f) }
     val uprightDegrees = deviceRotation.uprightIconDegrees(displayRotation)

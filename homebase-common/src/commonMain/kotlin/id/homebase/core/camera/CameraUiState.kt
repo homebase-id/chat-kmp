@@ -39,3 +39,5 @@ data class CameraUiState(
 
     fun clampZoom(ratio: Float): Float = ratio.coerceIn(minZoom, maxOf(minZoom, maxZoom))
 }
+
+val CameraUiState.mirrorsCapture: Boolean get() = lens == CameraLens.Front && mirrorFront

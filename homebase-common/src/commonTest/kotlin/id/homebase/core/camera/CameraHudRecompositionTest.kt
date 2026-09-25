@@ -60,16 +60,15 @@ class CameraHudRecompositionTest {
         val counter = ScopeCounter()
     }
 
-    private fun hudTest(initialMode: CaptureMode = CaptureMode.Photo, block: ComposeUiTest.(Harness) -> Unit) =
+    private fun hudTest(mode: CaptureMode = CaptureMode.Photo, block: ComposeUiTest.(Harness) -> Unit) =
         runComposeUiTest {
-            val harness = Harness(FakeCameraEngine())
+            val harness = Harness(FakeCameraEngine(mode))
             setContent {
                 HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
                     Box(Modifier.size(PhoneSize)) {
                         CameraCaptureContent(
                             engine = harness.engine,
                             allowedModes = CameraModes.PhotoAndVideo,
-                            initialMode = initialMode,
                             mirrorFront = true,
                             mic = MicPermission(granted = true),
                             onRequestMic = {},
@@ -119,7 +118,7 @@ class CameraHudRecompositionTest {
     }
 
     @Test
-    fun aRunningRecordingDoesNotRecomposeEveryFrame() = hudTest(initialMode = CaptureMode.Video) { h ->
+    fun aRunningRecordingDoesNotRecomposeEveryFrame() = hudTest(mode = CaptureMode.Video) { h ->
         mainClock.advanceTimeBy(2_000)
         onNodeWithTag(SHUTTER_TAG).performClick()
         mainClock.advanceTimeBy(2_000)

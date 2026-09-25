@@ -5,8 +5,11 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 
-internal class FakeCameraEngine(initial: CameraUiState = CameraUiState(isBound = true, hasFrontLens = true, hasPhotoFlash = true, hasTorch = true)) :
-    CameraEngine {
+private val DefaultFakeState = CameraUiState(isBound = true, hasFrontLens = true, hasPhotoFlash = true, hasTorch = true)
+
+internal class FakeCameraEngine(initial: CameraUiState = DefaultFakeState) : CameraEngine {
+    constructor(mode: CaptureMode) : this(DefaultFakeState.copy(mode = mode))
+
     override val uiState = MutableStateFlow(initial)
     override val errors = MutableSharedFlow<CameraError>(extraBufferCapacity = 4)
 

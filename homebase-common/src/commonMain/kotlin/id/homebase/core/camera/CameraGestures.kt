@@ -1,7 +1,6 @@
 package id.homebase.core.camera
 
 import androidx.compose.foundation.gestures.awaitEachGesture
-import co.touchlab.kermit.Logger
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.ui.geometry.Offset
@@ -59,7 +58,6 @@ internal suspend fun PointerInputScope.detectPreviewGestures(handler: PreviewGes
                 val change = event.changes.firstOrNull { it.id == down.id } ?: continue
                 tracker.addPosition(change.uptimeMillis, change.position)
                 val total = change.position - down.position
-                if (kind == PreviewDrag.Undecided) last = change.position
                 when (kind) {
                     PreviewDrag.Undecided -> when {
                         abs(total.x) > slop && abs(total.x) > abs(total.y) * DOMINANCE && handler.canDragMode() -> {
@@ -91,13 +89,7 @@ internal suspend fun PointerInputScope.detectPreviewGestures(handler: PreviewGes
             when (kind) {
                 PreviewDrag.Mode -> handler.onModeDragEnd(tracker.calculateVelocity().x, slotPx)
                 PreviewDrag.Pinch -> handler.onPinchEnd()
-                PreviewDrag.Undecided -> if (abs(last.x - down.position.x) > slop) {
-                    val travel = last - down.position
-                    Logger.i(tag = SWIPE_LOG_TAG) {
-                        "preview drag unclaimed dx=${travel.x} dy=${travel.y} slop=$slop canDragMode=${handler.canDragMode()}"
-                    }
-                }
-                PreviewDrag.Exposure -> Unit
+                PreviewDrag.Undecided, PreviewDrag.Exposure -> Unit
             }
         }
     }

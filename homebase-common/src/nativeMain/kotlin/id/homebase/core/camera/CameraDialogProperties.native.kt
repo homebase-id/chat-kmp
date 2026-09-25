@@ -65,11 +65,3 @@ private fun landscapeMaskForDevice(): UIInterfaceOrientationMask? = when (UIDevi
     UIDeviceOrientation.UIDeviceOrientationLandscapeRight -> UIInterfaceOrientationMaskLandscapeLeft
     else -> null
 }
-
-@Composable
-internal actual fun KeepScreenOnEffect(enabled: Boolean) {
-    DisposableEffect(enabled) {
-        UIApplication.sharedApplication.idleTimerDisabled = enabled
-        onDispose { UIApplication.sharedApplication.idleTimerDisabled = false }
-    }
-}
