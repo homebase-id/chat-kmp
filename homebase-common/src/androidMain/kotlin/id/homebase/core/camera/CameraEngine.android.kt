@@ -80,7 +80,7 @@ import kotlin.math.ln
 import kotlin.time.Clock
 
 @Composable
-actual fun rememberCameraEngine(warm: CameraEngine?): CameraEngine {
+actual fun rememberCameraEngine(recordsVideo: Boolean, warm: CameraEngine?): CameraEngine {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val fileOps = koinInject<FileOperationsProvider>()
@@ -100,7 +100,7 @@ actual fun rememberCameraWarmer(): CameraWarmer {
     val lifecycleOwner = LocalLifecycleOwner.current
     val fileOps = koinInject<FileOperationsProvider>()
     return remember(context, lifecycleOwner, fileOps) {
-        CameraWarmer {
+        CameraWarmer { _ ->
             val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
                 PackageManager.PERMISSION_GRANTED
             if (granted) {

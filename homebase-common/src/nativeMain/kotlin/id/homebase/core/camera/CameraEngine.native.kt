@@ -132,9 +132,9 @@ import kotlin.coroutines.resume
 import kotlin.time.Clock
 
 @Composable
-actual fun rememberCameraEngine(warm: CameraEngine?): CameraEngine {
+actual fun rememberCameraEngine(recordsVideo: Boolean, warm: CameraEngine?): CameraEngine {
     val fileOps = koinInject<FileOperationsProvider>()
-    val engine = remember(warm) { warm as? IosCameraEngine ?: IosCameraEngine(fileOps.uploadTempDirectory()) }
+    val engine = remember(warm) { warm as? IosCameraEngine ?: IosCameraEngine(fileOps.uploadTempDirectory(), recordsVideo) }
     DisposableEffect(engine) {
         engine.start()
         onDispose { engine.release() }
@@ -146,9 +146,9 @@ actual fun rememberCameraEngine(warm: CameraEngine?): CameraEngine {
 actual fun rememberCameraWarmer(): CameraWarmer {
     val fileOps = koinInject<FileOperationsProvider>()
     return remember(fileOps) {
-        CameraWarmer {
+        CameraWarmer { recordsVideo ->
             val granted = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo) == AVAuthorizationStatusAuthorized
-            if (granted) IosCameraEngine(fileOps.uploadTempDirectory()).also { it.start() } else null
+            if (granted) IosCameraEngine(fileOps.uploadTempDirectory(), recordsVideo).also { it.start() } else null
         }
     }
 }
@@ -157,7 +157,7 @@ actual fun rememberCameraWarmer(): CameraWarmer {
  * Public methods run on main. Everything touching the session, inputs, outputs or device configuration
  * runs on [sessionQueue]: startRunning/commitConfiguration block for hundreds of ms.
  */
-internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
+internal class IosCameraEngine(private val outputDir: String, private val recordsVideo: Boolean) : CameraEngine {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val sessionQueue = dispatch_queue_create("id.homebase.camera.session", null)
 
@@ -218,6 +218,7 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
             val attached = attachVideoInput(lens)
             if (session.canAddOutput(photoOutput)) session.addOutput(photoOutput)
             if (session.canAddOutput(movieOutput)) session.addOutput(movieOutput)
+            attachGrantedMic()
             session.commitConfiguration()
             if (!attached) {
                 _errors.tryEmit(CameraError.BindFailed)
@@ -392,6 +393,7 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
         onSessionQueue {
             session.beginConfiguration()
             val ok = attachVideoInput(lens)
+            attachGrantedMic()
             session.commitConfiguration()
             if (ok) configureOutputsForDevice() else _errors.tryEmit(CameraError.BindFailed)
         }
@@ -415,6 +417,7 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
             val factor = (_uiState.value.zoomRatio / zoomMultiplier)
                 .coerceIn(device.minAvailableVideoZoomFactor, device.maxAvailableVideoZoomFactor)
             device.withConfigurationLock { videoZoomFactor = factor }
+            attachGrantedMic()
         }
         session.commitConfiguration()
         if (!changed) return
@@ -559,30 +562,32 @@ internal class IosCameraEngine(private val outputDir: String) : CameraEngine {
         )
         recordingDelegate = delegate
         onSessionQueue {
-            // Normally already attached by prepareAudio; attaching here blanks the preview for a frame.
-            if (audio) attachAudioInput()
+            // Only reached when the mic was granted after the session came up; this commit blanks the preview for a frame.
+            if (audio && audioInput == null) {
+                session.beginConfiguration()
+                attachMic()
+                session.commitConfiguration()
+            }
             movieOutput.connectionWithMediaType(AVMediaTypeAudio)?.enabled = audio
             movieOutput.connectionWithMediaType(AVMediaTypeVideo)?.configure(mirror, angle)
             movieOutput.startRecordingToOutputFileURL(url, recordingDelegate = delegate)
         }
     }
 
-    override fun prepareAudio() {
-        if (AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeAudio) != AVAuthorizationStatusAuthorized) return
-        onSessionQueue { attachAudioInput() }
+    /** Session queue, inside a commit the session makes anyway, so the mic never costs a reconfiguration of its own. */
+    private fun attachGrantedMic() {
+        if (recordsVideo && AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeAudio) == AVAuthorizationStatusAuthorized) attachMic()
     }
 
-    /** Session queue. */
-    private fun attachAudioInput() {
+    /** Session queue, inside begin/commitConfiguration. */
+    private fun attachMic() {
         if (audioInput != null) return
         val mic = AVCaptureDevice.defaultDeviceWithMediaType(AVMediaTypeAudio) ?: return
         val input = AVCaptureDeviceInput.deviceInputWithDevice(mic, null) ?: return
-        session.beginConfiguration()
         if (session.canAddInput(input)) {
             session.addInput(input)
             audioInput = input
         }
-        session.commitConfiguration()
     }
 
     private fun onRecordingFinished(url: NSURL, usable: Boolean, error: NSError?, result: CompletableDeferred<PlatformFile?>) {

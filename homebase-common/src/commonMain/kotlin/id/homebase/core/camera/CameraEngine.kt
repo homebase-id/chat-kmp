@@ -25,9 +25,6 @@ interface CameraEngine {
 
     suspend fun takePhoto(): PlatformFile?
 
-    /** Attaches the mic before the first recording: on iOS, adding an input to a running session blanks the preview. */
-    fun prepareAudio() = Unit
-
     fun startRecording(withAudio: Boolean)
 
     /**
@@ -42,13 +39,15 @@ interface CameraEngine {
 /**
  * Create only after camera permission is granted: binding without it fails rather than waiting.
  * A [warm] engine from [CameraWarmer] is adopted instead of opening a second camera, and released with the call.
+ * With [recordsVideo] a granted mic is attached while the session is first configured: on iOS, adding it to a
+ * running session blanks the preview.
  */
 @Composable
-expect fun rememberCameraEngine(warm: CameraEngine? = null): CameraEngine
+expect fun rememberCameraEngine(recordsVideo: Boolean, warm: CameraEngine? = null): CameraEngine
 
 /** Opens the camera before its UI composes; null when permission isn't granted yet. The caller owns what it returns. */
 fun interface CameraWarmer {
-    fun warm(): CameraEngine?
+    fun warm(recordsVideo: Boolean): CameraEngine?
 }
 
 @Composable
