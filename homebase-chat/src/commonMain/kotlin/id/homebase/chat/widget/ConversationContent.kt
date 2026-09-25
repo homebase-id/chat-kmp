@@ -428,6 +428,7 @@ fun ConversationContent(
             previousTotal = total
         }
     }
+    KeepListEndInView(listState, conversation.conversation.id)
 
     // One-time own-send follow: every send arm sets scrollToLatestRequest so the
     // user's own message always lands visible, even when scrolled up into history
@@ -973,7 +974,13 @@ fun ConversationContent(
 
                 JumpTargetWaitingBar(isWaiting = uiState.awaitingJumpMessageId != null)
 
-                if (conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty()) {
+                AnimatedVisibility(
+                    visible = conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty(),
+                    enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                        fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                        fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
@@ -2297,6 +2304,45 @@ internal fun dateSectionLabel(
                 }
             }
             messageDate.format(format)
+        }
+    }
+}
+
+private data class ListEndSample(val total: Int, val overflow: Int?, val atEnd: Boolean)
+
+// A list that sat at its end stays there when anything pushes its end down without adding a row: a row
+// growing in place (reaction pill, preview, media) or the viewport shrinking from above (pinned bar,
+// banners). LazyColumn keeps its first item anchored, so either would slide the newest row under the composer.
+@Composable
+internal fun KeepListEndInView(listState: LazyListState, key: Any?) {
+    LaunchedEffect(listState, key) {
+        var previousTotal = -1
+        var wasAtEnd = false
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.takeIf { it.index == info.totalItemsCount - 1 }
+            ListEndSample(
+                info.totalItemsCount,
+                last?.let { it.offset + it.size + info.afterContentPadding - info.viewportEndOffset },
+                !listState.canScrollForward,
+            )
+        }.collect { sample ->
+            val pushed = wasAtEnd && !sample.atEnd && sample.total == previousTotal
+            previousTotal = sample.total
+            if (pushed && !listState.isScrollInProgress) {
+                // Not scrollBy: that force-remeasures synchronously, and on skiko this collector can resume inside layout.
+                val overflow = sample.overflow
+                if (overflow != null) {
+                    listState.requestScrollToItem(
+                        listState.firstVisibleItemIndex,
+                        listState.firstVisibleItemScrollOffset + overflow,
+                    )
+                } else {
+                    listState.requestScrollToItem(sample.total - 1)
+                }
+            } else {
+                wasAtEnd = sample.atEnd
+            }
         }
     }
 }
