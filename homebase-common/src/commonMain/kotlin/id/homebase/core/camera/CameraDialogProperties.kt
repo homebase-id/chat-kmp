@@ -7,6 +7,3 @@ internal expect fun cameraDialogProperties(): DialogProperties
 
 @Composable
 internal expect fun CameraWindowEffect()
-
-@Composable
-internal expect fun KeepScreenOnEffect(enabled: Boolean)
