@@ -1,5 +1,6 @@
 package id.homebase.chat.messageinfo
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -97,6 +98,15 @@ import org.jetbrains.compose.resources.stringResource
  * "shortly" copy when there's no meaningful deadline ([deadlineMs] null — the
  * row is in flight or fresh) or the countdown has elapsed.
  */
+// Its own restart scope, so the once-a-second tick recomposes only this Text, not the screen.
+@Composable
+private fun StillInOutboxText(deadlineMs: Long?) {
+    Text(
+        text = stringResource(MR.string.msg_still_in_outbox, rememberNextAttemptText(deadlineMs)),
+        style = MaterialTheme.typography.bodyMedium,
+    )
+}
+
 @Composable
 private fun rememberNextAttemptText(deadlineMs: Long?): String {
     if (deadlineMs == null) return stringResource(MR.string.msg_next_attempt_shortly)
@@ -191,6 +201,8 @@ fun MessageInfoUi(
                 .consumeWindowInsets(padding)
                 .padding(padding)
                 .verticalScroll(scrollState)
+                // The loading swaps (whole screen, transfer history, reactions) grow in instead of jumping.
+                .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())
         ) {
             if (uiState.isLoading) {
                 Box(
@@ -294,15 +306,16 @@ fun MessageInfoUi(
                                             stringResource(MR.string.msg_status_sending)
                                         uiState.outboxIsOffline ->
                                             stringResource(MR.string.msg_waiting_for_connection)
-                                        else -> stringResource(
-                                            MR.string.msg_still_in_outbox,
-                                            rememberNextAttemptText(uiState.nextAttemptAtMs),
-                                        )
+                                        else -> null
                                     }
-                                    Text(
-                                        text = statusText,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
+                                    if (statusText != null) {
+                                        Text(
+                                            text = statusText,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                        )
+                                    } else {
+                                        StillInOutboxText(uiState.nextAttemptAtMs)
+                                    }
                                 }
                                 // Blocked on an earlier message → surface that
                                 // message's (the blocker's) checked-out/stuck state.
