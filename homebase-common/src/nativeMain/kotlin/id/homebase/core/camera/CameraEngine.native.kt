@@ -516,7 +516,7 @@ internal class IosCameraEngine(private val outputDir: String, private val record
             _errors.tryEmit(CameraError.PhotoFailed("Camera is not running"))
             return null
         }
-        val mirror = MirrorPolicy.shouldMirror(state.lens, state.mirrorFront)
+        val mirror = state.mirrorsCapture
         val angle = rotationCoordinator?.videoRotationAngleForHorizonLevelCapture
         val flash = FlashPolicy.effectivePhotoFlash(state.flashMode, state.hasPhotoFlash).avMode
         val url = newOutputUrl("IMG", "jpg") ?: return null
@@ -546,7 +546,7 @@ internal class IosCameraEngine(private val outputDir: String, private val record
     override fun startRecording(withAudio: Boolean) {
         if (recordingDelegate != null) return
         val state = _uiState.value
-        val mirror = MirrorPolicy.shouldMirror(state.lens, state.mirrorFront)
+        val mirror = state.mirrorsCapture
         val angle = rotationCoordinator?.videoRotationAngleForHorizonLevelCapture
         val url = newOutputUrl("VID", "mov") ?: return
         val result = CompletableDeferred<PlatformFile?>()

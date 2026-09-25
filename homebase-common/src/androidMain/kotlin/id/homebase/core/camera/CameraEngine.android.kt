@@ -548,7 +548,7 @@ internal class AndroidCameraEngine(
         val file = newOutputFile("IMG", "jpg") ?: return null
         val metadata = ImageCapture.Metadata().apply {
             // Set explicitly: CameraController and raw ImageCapture disagree on the front-lens default.
-            isReversedHorizontal = MirrorPolicy.shouldMirror(state.lens, state.mirrorFront)
+            isReversedHorizontal = state.mirrorsCapture
         }
         val options = ImageCapture.OutputFileOptions.Builder(file).setMetadata(metadata).build()
         return suspendCancellableCoroutine { cont ->
