@@ -71,7 +71,6 @@ class ReviewSerializationTest {
         assertTrue(json.contains("sam.dotyou.cloud"), json)
     }
 
-    /** The server derives the origin from the caller; sending one is a contract violation. */
     @Test
     fun aSendReviewedBodyCarriesNoOrigin() {
         val json = OdinSystemSerializer.serialize(

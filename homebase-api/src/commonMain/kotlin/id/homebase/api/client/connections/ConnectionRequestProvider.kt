@@ -122,14 +122,9 @@ class ConnectionRequestProvider(
     }
 
     // ------------------------------------------------------------
-    // SEND REVIEWED
+    // SEND (counts as the sender's review)
     // ------------------------------------------------------------
 
-    /**
-     * The only send: the server runs the recipient's auto-accept synchronously and the call also
-     * counts as the sender's review. A 403 (an owner-console circle named) or 400
-     * `circleNotFound` means nothing was sent.
-     */
     suspend fun sendReviewed(
         request: SendReviewedConnectionRequest
     ): ConnectionRequestResult {

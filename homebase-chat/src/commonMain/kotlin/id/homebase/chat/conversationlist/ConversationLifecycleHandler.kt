@@ -2,7 +2,6 @@ package id.homebase.chat.conversationlist
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToContactInfo
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToConversationSettings
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToGroupSettings

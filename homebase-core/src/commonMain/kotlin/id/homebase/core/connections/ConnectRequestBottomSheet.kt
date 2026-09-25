@@ -46,6 +46,13 @@ import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.HomebaseIdField
+import id.homebase.chat.services.convo.contact.ConnectionService
+import id.homebase.chat.services.requests.RefusedCircles
+import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionContent
+import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
+import id.homebase.resources.connections_circle_not_found
+import id.homebase.resources.connections_circle_not_grantable
+import org.koin.compose.koinInject
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.connections_already_sent_text
@@ -62,25 +69,14 @@ import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
-/**
- * The review choices shown once the recipient resolves. Sending *is* the review, so this is the
- * review sheet's own content; it lives in homebase-core, hence the slot.
- */
-typealias ConnectReviewContent = @Composable (
-    identity: PublicIdentity,
-    state: ConnectRequestState,
-    onAction: (ConnectRequestAction) -> Unit,
-) -> Unit
-
 @Composable
 fun ConnectRequestBottomSheet(
     viewModel: ConnectRequestViewModel,
     snackbarHostState: SnackbarHostState,
-    review: ConnectReviewContent,
-    sendSuccessMessage: String = stringResource(MR.string.connections_request_sent),
     onNavigateToConversation: ((Uuid) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val sendSuccessMessage = stringResource(MR.string.connections_request_sent)
     val uriHandler = getUriHandler()
     // Separate snackbar state for errors shown while the sheet is open
     val sheetSnackbarHostState = remember { SnackbarHostState() }
@@ -146,7 +142,6 @@ fun ConnectRequestBottomSheet(
             state = state,
             sheetSnackbarHostState = sheetSnackbarHostState,
             onAction = viewModel::onAction,
-            review = review,
         )
     }
 }
@@ -156,7 +151,6 @@ internal fun ConnectRequestSheet(
     state: ConnectRequestState,
     sheetSnackbarHostState: SnackbarHostState,
     onAction: (ConnectRequestAction) -> Unit,
-    review: ConnectReviewContent,
 ) {
     AdaptiveSheet(
         onDismiss = { onAction(ConnectRequestAction.CloseDialog) },
@@ -171,7 +165,7 @@ internal fun ConnectRequestSheet(
                 isSending = state.isSending,
                 onRecipientChange = { onAction(ConnectRequestAction.RecipientChanged(it)) },
                 onMessageChange = { onAction(ConnectRequestAction.MessageChanged(it)) },
-                review = { identity -> review(identity, state, onAction) },
+                review = { identity -> SendReview(identity, state, onAction) },
             )
             SnackbarHost(
                 hostState = sheetSnackbarHostState,
@@ -266,6 +260,46 @@ private fun ComposeRequestSheetContent(
 
         if (resolution is RecipientResolution.Resolved) review(resolution.identity)
     }
+}
+
+/** Sending counts as the review, so it asks the review's own question. */
+@Composable
+private fun SendReview(
+    identity: PublicIdentity,
+    state: ConnectRequestState,
+    onAction: (ConnectRequestAction) -> Unit,
+) {
+    val circles by koinInject<ConnectionService>().circles.collectAsStateWithLifecycle()
+    val groups = remember(circles) { circles.reviewCircleGroups() }
+    ReviewConnectionContent(
+        displayName = identity.displayNameOrDomain(),
+        odinId = identity.odinId.domainName,
+        avatar = null,
+        introducedBy = null,
+        connectedAtMs = null,
+        groups = groups,
+        alreadyHeldCircleIds = emptySet(),
+        isSubmitting = state.isSending,
+        errorText = state.circleError?.let {
+            stringResource(
+                when (it) {
+                    RefusedCircles.NotGrantable -> MR.string.connections_circle_not_grantable
+                    RefusedCircles.NotFound -> MR.string.connections_circle_not_found
+                }
+            )
+        },
+        onSubmit = { onAction(ConnectRequestAction.SendClicked(it)) },
+        showIdentity = false,
+        secondaryAction = {
+            TextButton(
+                onClick = { onAction(ConnectRequestAction.CloseDialog) },
+                enabled = !state.isSending,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(MR.string.cancel))
+            }
+        },
+    )
 }
 
 @Composable

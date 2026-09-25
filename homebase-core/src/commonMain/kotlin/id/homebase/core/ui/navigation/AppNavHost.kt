@@ -1,6 +1,6 @@
 package id.homebase.core.ui.navigation
 
-import id.homebase.core.ui.screens.contactbook.components.ConnectionRequestSheet
+import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.ui.screens.email.thunderbird.EmailThunderbirdSetupScreen
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
 import id.homebase.resources.email_label
@@ -1238,7 +1238,7 @@ fun AppNavHost(
                                     extendPermissionViewModel = koinViewModel(),
                                     connectRequestViewModel = koinViewModel(),
                                     connectRequestSheet = { vm, snackbar ->
-                                        ConnectionRequestSheet(vm, snackbar)
+                                        ConnectRequestBottomSheet(vm, snackbar)
                                     },
                                     onNavigateBack = { navController.popBackStack() },
                                     onNavigateToSettingsScreen = {

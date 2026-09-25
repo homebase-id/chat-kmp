@@ -2,7 +2,7 @@
 
 package id.homebase.core.ui.screens.contactbook.add
 
-import id.homebase.core.ui.screens.contactbook.components.ConnectionRequestSheet
+import id.homebase.core.connections.ConnectRequestBottomSheet
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -242,7 +242,7 @@ fun AddContactScreen(
             }
         }
 
-        ConnectionRequestSheet(
+        ConnectRequestBottomSheet(
             viewModel = connectRequestViewModel,
             snackbarHostState = snackbarHostState,
             onNavigateToConversation = onOpenConversation,

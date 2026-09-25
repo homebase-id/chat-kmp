@@ -1,6 +1,6 @@
 package id.homebase.core.ui.screens.contactbook
 
-import id.homebase.core.ui.screens.contactbook.components.ConnectionRequestSheet
+import id.homebase.core.connections.ConnectRequestBottomSheet
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -388,7 +388,7 @@ fun ContactBookScreen(
     }
 
     // Compose-a-new-request sheet, opened by the FAB while the Requests pill is active.
-    ConnectionRequestSheet(
+    ConnectRequestBottomSheet(
         viewModel = connectRequestViewModel,
         snackbarHostState = snackbarHostState,
         onNavigateToConversation = onOpenConversation,

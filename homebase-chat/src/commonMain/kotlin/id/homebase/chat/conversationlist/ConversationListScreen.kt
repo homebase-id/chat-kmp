@@ -177,7 +177,7 @@ fun ConversationListScreen(
     archivedConversationsViewModel: ArchivedConversationsViewModel,
     extendPermissionViewModel: ExtendPermissionViewModel,
     connectRequestViewModel: ConnectRequestViewModel,
-    /** homebase-core's Connect sheet: the review content it embeds lives there. */
+    /** Supplied by homebase-core, which owns the review content the sheet embeds. */
     connectRequestSheet: @Composable (ConnectRequestViewModel, SnackbarHostState) -> Unit,
     onNavigateBack: () -> Unit,
     onNavigateToSettingsScreen: () -> Unit,

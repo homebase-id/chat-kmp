@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
-import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.AutoConnectOutcome
@@ -18,11 +17,12 @@ import id.homebase.resources.auto_connect_recipient_not_configured
 import id.homebase.resources.auto_connect_recipient_rejected
 import id.homebase.resources.auto_connect_recipient_requires_upgrade
 import id.homebase.resources.auto_connect_recipient_unreachable
-import id.homebase.resources.connections_invalid_identity
 import org.jetbrains.compose.resources.StringResource
 import id.homebase.api.client.identity.PublicIdentity
 import id.homebase.api.client.identity.PublicIdentityRepository
+import id.homebase.chat.services.requests.CirclesRefusedException
 import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.chat.services.requests.RefusedCircles
 import id.homebase.chat.services.requests.toCircleUuids
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatMessageSenderService
@@ -71,15 +71,7 @@ class ConnectRequestViewModel(
 
             ConnectRequestAction.CloseDialog -> {
                 recipientResolveJob?.cancel()
-                _state.update {
-                    it.copy(
-                        showDialog = false,
-                        recipient = "",
-                        message = "",
-                        resolution = RecipientResolution.Idle,
-                        circleError = null,
-                    )
-                }
+                _state.update { it.closed() }
             }
 
             is ConnectRequestAction.RecipientChanged -> {
@@ -195,17 +187,8 @@ class ConnectRequestViewModel(
 
     private fun sendRequest(circleIds: Set<String>) {
         val current = _state.value
-        val recipient = current.recipient.trim()
-        if (recipient.isBlank()) {
-            _state.update { it.copy(uiEvent = ConnectRequestEvent.SendError(ConnectFailure(MR.string.auto_connect_invalid_request))) }
-            return
-        }
-        if (!OdinId.isValid(recipient)) {
-            _state.update { it.copy(uiEvent = ConnectRequestEvent.SendError(ConnectFailure(MR.string.connections_invalid_identity))) }
-            return
-        }
-
-        val recipientId = OdinId(recipient)
+        val recipientId = (current.resolution as? RecipientResolution.Resolved)?.identity?.odinId
+            ?: return
         val message = current.message.trim().takeIf { it.isNotEmpty() }
 
         _state.update { it.copy(isSending = true, circleError = null) }
@@ -239,17 +222,12 @@ class ConnectRequestViewModel(
                 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: ForbiddenException) {
-                Logger.w(e) { "Send refused a circle this app may not grant" }
-                _state.update {
-                    it.copy(isSending = false, circleError = ConnectCircleError.NotGrantable)
-                }
+            } catch (e: CirclesRefusedException) {
+                Logger.w(e) { "Send refused circles: ${e.reason}" }
+                _state.update { it.copy(isSending = false, circleError = e.reason) }
             } catch (e: ClientException) {
                 Logger.w(e) { "Connection request rejected by server: ${e.errorCode}" }
                 when (e.errorCode) {
-                    OdinClientErrorCode.CircleNotFound -> _state.update {
-                        it.copy(isSending = false, circleError = ConnectCircleError.NotFound)
-                    }
                     OdinClientErrorCode.ConnectionRequestAlreadySent ->
                         _state.update { it.closed().copy(alreadySentRecipient = recipientId) }
                     else -> failed(e.failureMessage(recipientId))
@@ -274,12 +252,9 @@ data class ConnectRequestState(
     val resolution: RecipientResolution = RecipientResolution.Idle,
     val isSending: Boolean = false,
     val alreadySentRecipient: OdinId? = null,
-    /** Nothing was sent: the chosen circles need changing before trying again. */
-    val circleError: ConnectCircleError? = null,
+    val circleError: RefusedCircles? = null,
     val uiEvent: ConnectRequestEvent? = null,
 )
-
-enum class ConnectCircleError { NotGrantable, NotFound }
 
 data class ConnectFailure(val res: StringResource, val args: List<Any> = emptyList())
 

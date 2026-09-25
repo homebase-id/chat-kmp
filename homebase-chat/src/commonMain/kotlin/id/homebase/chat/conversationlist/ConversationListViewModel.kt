@@ -1530,7 +1530,6 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ConnectToIdentity -> conversationLifecycleHandler.handleConnectToIdentity(action)
 
-
             is ConversationListUiAction.OpenConnectionRequestInOwnerConsole -> conversationLifecycleHandler.handleOpenConnectionRequestInOwnerConsole(action)
 
             is ConversationListUiAction.OpenSendConnectionRequestDialog -> conversationLifecycleHandler.handleOpenSendConnectionRequestDialog(action)

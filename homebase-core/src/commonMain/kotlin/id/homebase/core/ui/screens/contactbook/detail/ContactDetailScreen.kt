@@ -2,7 +2,7 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
-import id.homebase.core.ui.screens.contactbook.components.ConnectionRequestSheet
+import id.homebase.core.connections.ConnectRequestBottomSheet
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -351,7 +351,7 @@ fun ContactDetailScreen(
     }
 
     // Connection-request dialog (sheet), opened by the "Send connection request" button.
-    ConnectionRequestSheet(
+    ConnectRequestBottomSheet(
         viewModel = connectRequestViewModel,
         snackbarHostState = snackbarHostState,
         onNavigateToConversation = onOpenConversation,

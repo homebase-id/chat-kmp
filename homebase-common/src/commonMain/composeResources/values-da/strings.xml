@@ -214,7 +214,6 @@
     <string name="connections_empty_incoming_subtitle">Når nogen sender dig en forbindelsesanmodning, vises den her.</string>
     <string name="connections_empty_outgoing_title">Ingen udgående anmodninger</string>
     <string name="connections_empty_outgoing_subtitle">Tryk på + knappen for at sende en forbindelsesanmodning.</string>
-    <string name="connections_send_request">Send anmodning</string>
     <string name="settings_notifications">Notifikationer</string>
     <string name="settings_security_setup">Sikkerhedsopsætning</string>
     <string name="settings_help">Hjælp</string>
@@ -1540,7 +1539,6 @@
     <string name="contact_review_chat_only_hint">De vil kun se din offentlige profil. Du kan altid føje dem til kredse senere.</string>
     <string name="contact_review_keep_new">Behold som ny</string>
     <string name="contact_review_just_chat">Bare chat</string>
-    <string name="contact_review_just_chat_desc">De ser kun din offentlige profil. Du kan altid give mere adgang senere.</string>
     <string name="contact_review_more_access">Giv mere adgang</string>
     <string name="contact_review_more_access_desc">Føj til kredse, del din placering eller tillad apps.</string>
     <string name="contact_review_already_added">Allerede tilføjet</string>

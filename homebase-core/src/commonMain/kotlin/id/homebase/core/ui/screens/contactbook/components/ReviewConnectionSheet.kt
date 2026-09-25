@@ -67,7 +67,6 @@ import id.homebase.resources.contact_review_group_yours
 import id.homebase.resources.contact_review_group_yours_caption
 import id.homebase.resources.contact_review_introduced_by
 import id.homebase.resources.contact_review_just_chat
-import id.homebase.resources.contact_review_just_chat_desc
 import id.homebase.resources.contact_review_keep_new
 import id.homebase.resources.contact_review_more_access
 import id.homebase.resources.contact_review_more_access_desc
@@ -165,9 +164,10 @@ fun ReviewConnectionContent(
     // App defaults arrive checked: the owning app nominated them, and the review button applies
     // "the checked per-app defaults". They stay visible so any can be turned off deliberately.
     var selected by rememberSaveable(displayName) { mutableStateOf(groups.initialSelection()) }
+    var expanded by rememberSaveable(displayName) { mutableStateOf(false) }
     // "Just chat" can't take held circles away — the review only ever grants — so skip that step.
     val offersShortStep = !groups.holdsAnyOffered(alreadyHeldCircleIds)
-    var showAllOptions by rememberSaveable(displayName) { mutableStateOf(!offersShortStep) }
+    val showAllOptions = expanded || !offersShortStep
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -256,7 +256,7 @@ fun ReviewConnectionContent(
             ReviewChoiceCard(
                 icon = Icons.Outlined.ChatBubbleOutline,
                 title = stringResource(MR.string.contact_review_just_chat),
-                description = stringResource(MR.string.contact_review_just_chat_desc),
+                description = stringResource(MR.string.contact_review_chat_only_hint),
                 enabled = !isSubmitting,
                 onClick = { onSubmit(emptySet()) },
                 trailing = if (isSubmitting) {
@@ -269,7 +269,7 @@ fun ReviewConnectionContent(
                     title = stringResource(MR.string.contact_review_more_access),
                     description = stringResource(MR.string.contact_review_more_access_desc),
                     enabled = !isSubmitting,
-                    onClick = { showAllOptions = true },
+                    onClick = { expanded = true },
                     trailing = {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
@@ -278,92 +278,28 @@ fun ReviewConnectionContent(
                     },
                 )
             }
-            if (errorText != null) {
-                Text(
-                    text = errorText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 4.dp),
-                )
-            }
-            secondaryAction?.invoke()
-            return@Column
-        }
-
-        if (offersShortStep) {
-            TextButton(
-                onClick = { showAllOptions = false },
-                enabled = !isSubmitting,
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(modifier = Modifier.size(8.dp))
-                Text(stringResource(MR.string.menu_back))
-            }
-        }
-
-        val toggle: (String) -> Unit = { id -> selected = groups.toggleSelection(selected, id) }
-
-        if (groups.yours.isNotEmpty()) {
-            Section(
-                title = stringResource(MR.string.contact_review_group_yours),
-                caption = stringResource(MR.string.contact_review_group_yours_caption),
-            )
-            groups.yours.forEach { circle ->
-                CircleToggleRow(
-                    circle = circle,
-                    held = circle.id in alreadyHeldCircleIds,
-                    checked = circle.id in alreadyHeldCircleIds || circle.id in selected,
+        } else {
+            if (offersShortStep) {
+                TextButton(
+                    onClick = { expanded = false },
                     enabled = !isSubmitting,
-                    onToggle = { toggle(circle.id) },
-                )
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text(stringResource(MR.string.menu_back))
+                }
             }
-        }
-
-        // Its own section: one fixed circle granting a capability, not a pick from a set,
-        // and the only choice here that shares something other than profile detail.
-        groups.special.forEach { circle ->
-            val held = circle.id in alreadyHeldCircleIds
-            Section(title = stringResource(MR.string.contact_review_emergency_title))
-            SettingsRow(
-                icon = Icons.Outlined.MyLocation,
-                title = stringResource(MR.string.contact_review_emergency_row),
-                supportingText = stringResource(
-                    MR.string.contact_review_emergency_desc,
-                    displayName,
-                ),
-                action = SettingsRowAction.Toggle(
-                    checked = held || circle.id in selected,
-                    onCheckedChange = { if (!held && !isSubmitting) toggle(circle.id) },
-                ),
-            )
-        }
-
-        if (groups.appDefaults.isNotEmpty()) {
-            Section(
-                title = stringResource(MR.string.contact_review_group_apps),
-                caption = stringResource(MR.string.contact_review_group_apps_caption),
-            )
-            groups.appDefaults.forEach { circle ->
-                CircleToggleRow(
-                    circle = circle,
-                    held = circle.id in alreadyHeldCircleIds,
-                    checked = circle.id in alreadyHeldCircleIds || circle.id in selected,
-                    enabled = !isSubmitting,
-                    onToggle = { toggle(circle.id) },
-                )
-            }
-        }
-
-        if (selected.isEmpty()) {
-            Text(
-                text = stringResource(MR.string.contact_review_chat_only_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp),
+            CircleSections(
+                displayName = displayName,
+                groups = groups,
+                alreadyHeldCircleIds = alreadyHeldCircleIds,
+                selected = selected,
+                isSubmitting = isSubmitting,
+                onToggle = { id -> selected = groups.toggleSelection(selected, id) },
             )
         }
 
@@ -376,21 +312,23 @@ fun ReviewConnectionContent(
             )
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
-        Button(
-            onClick = { onSubmit(selected) },
-            enabled = !isSubmitting,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            if (isSubmitting) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp))
-            } else {
-                Text(
-                    stringResource(
-                        if (selected.isEmpty()) MR.string.contact_review_submit_chat_only
-                        else MR.string.contact_review_submit_circles
+        if (showAllOptions) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Button(
+                onClick = { onSubmit(selected) },
+                enabled = !isSubmitting,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (isSubmitting) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                } else {
+                    Text(
+                        stringResource(
+                            if (selected.isEmpty()) MR.string.contact_review_submit_chat_only
+                            else MR.string.contact_review_submit_circles
+                        )
                     )
-                )
+                }
             }
         }
         secondaryAction?.invoke()
@@ -472,6 +410,76 @@ private fun ReviewChoiceCard(
             leadingContent = { Icon(imageVector = icon, contentDescription = null) },
             trailingContent = trailing,
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        )
+    }
+}
+
+@Composable
+private fun CircleSections(
+    displayName: String,
+    groups: ReviewCircleGroups,
+    alreadyHeldCircleIds: Set<String>,
+    selected: Set<String>,
+    isSubmitting: Boolean,
+    onToggle: (String) -> Unit,
+) {
+    if (groups.yours.isNotEmpty()) {
+        Section(
+            title = stringResource(MR.string.contact_review_group_yours),
+            caption = stringResource(MR.string.contact_review_group_yours_caption),
+        )
+        groups.yours.forEach { circle ->
+            CircleToggleRow(
+                circle = circle,
+                held = circle.id in alreadyHeldCircleIds,
+                checked = circle.id in alreadyHeldCircleIds || circle.id in selected,
+                enabled = !isSubmitting,
+                onToggle = { onToggle(circle.id) },
+            )
+        }
+    }
+
+    // Its own section: one fixed circle granting a capability, not a pick from a set,
+    // and the only choice here that shares something other than profile detail.
+    groups.special.forEach { circle ->
+        val held = circle.id in alreadyHeldCircleIds
+        Section(title = stringResource(MR.string.contact_review_emergency_title))
+        SettingsRow(
+            icon = Icons.Outlined.MyLocation,
+            title = stringResource(MR.string.contact_review_emergency_row),
+            supportingText = stringResource(
+                MR.string.contact_review_emergency_desc,
+                displayName,
+            ),
+            action = SettingsRowAction.Toggle(
+                checked = held || circle.id in selected,
+                onCheckedChange = { if (!held && !isSubmitting) onToggle(circle.id) },
+            ),
+        )
+    }
+
+    if (groups.appDefaults.isNotEmpty()) {
+        Section(
+            title = stringResource(MR.string.contact_review_group_apps),
+            caption = stringResource(MR.string.contact_review_group_apps_caption),
+        )
+        groups.appDefaults.forEach { circle ->
+            CircleToggleRow(
+                circle = circle,
+                held = circle.id in alreadyHeldCircleIds,
+                checked = circle.id in alreadyHeldCircleIds || circle.id in selected,
+                enabled = !isSubmitting,
+                onToggle = { onToggle(circle.id) },
+            )
+        }
+    }
+
+    if (selected.isEmpty()) {
+        Text(
+            text = stringResource(MR.string.contact_review_chat_only_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp),
         )
     }
 }

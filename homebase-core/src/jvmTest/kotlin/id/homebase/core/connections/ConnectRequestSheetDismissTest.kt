@@ -39,7 +39,6 @@ class ConnectRequestSheetDismissTest {
                     ),
                     sheetSnackbarHostState = SnackbarHostState(),
                     onAction = onAction,
-                    review = { _, _, _ -> },
                 )
             }
         }

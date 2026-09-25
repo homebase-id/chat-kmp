@@ -4,6 +4,7 @@ package id.homebase.chat.services.requests
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.connections.AcceptConnectionRequestV2
 import id.homebase.api.client.connections.AutoConnectOutcome
@@ -209,22 +210,28 @@ class ConnectionRequestService(
      *    show the outgoing request optimistically. The review lands when they accept; the
      *    ConnectionRequestAccepted event refreshes it then.
      *  - All other outcomes: no local state change — the caller decides how to surface them.
-     *
-     * Transport/auth failures propagate as exceptions: a 403 (a circle this app may not grant)
-     * or 400 `circleNotFound` means nothing was sent.
      */
     suspend fun sendReviewed(
         recipient: OdinId,
         message: String?,
-        circleIds: List<Uuid> = emptyList(),
+        circleIds: List<Uuid>,
     ): ConnectionRequestResult {
-        val result = connectionRequestProvider.sendReviewed(
-            SendReviewedConnectionRequest(
-                recipient = recipient,
-                message = message,
-                circleIds = circleIds,
+        val result = try {
+            connectionRequestProvider.sendReviewed(
+                SendReviewedConnectionRequest(
+                    recipient = recipient,
+                    message = message,
+                    circleIds = circleIds,
+                )
             )
-        )
+        } catch (e: ForbiddenException) {
+            // With no circles named, a 403 is about the app's own permissions, not a circle.
+            if (circleIds.isEmpty()) throw e
+            throw CirclesRefusedException(RefusedCircles.NotGrantable, e)
+        } catch (e: ClientException) {
+            if (e.errorCode != OdinClientErrorCode.CircleNotFound) throw e
+            throw CirclesRefusedException(RefusedCircles.NotFound, e)
+        }
         when (result.outcome) {
             AutoConnectOutcome.Connected,
             AutoConnectOutcome.AcceptedFromExistingIncoming -> {
@@ -392,3 +399,8 @@ class ConnectionRequestService(
     }
 
 }
+
+enum class RefusedCircles { NotGrantable, NotFound }
+
+/** Nothing was sent; the chosen circles need changing before trying again. */
+class CirclesRefusedException(val reason: RefusedCircles, cause: Throwable) : Exception(cause)

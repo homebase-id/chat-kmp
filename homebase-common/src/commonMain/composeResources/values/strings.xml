@@ -227,7 +227,6 @@
     <string name="connections_empty_incoming_subtitle">When someone sends you a connection request, it will appear here.</string>
     <string name="connections_empty_outgoing_title">No outgoing requests</string>
     <string name="connections_empty_outgoing_subtitle">Tap the + button to send a connection request.</string>
-    <string name="connections_send_request">Send Request</string>
     <string name="settings_notifications">Notifications</string>
     <string name="settings_security_setup">Security setup</string>
     <string name="settings_help">Help</string>
@@ -1941,7 +1940,6 @@
     <string name="contact_review_chat_only_hint">They will see your public profile only. You can add them to circles anytime.</string>
     <string name="contact_review_keep_new">Keep as new</string>
     <string name="contact_review_just_chat">Just chat</string>
-    <string name="contact_review_just_chat_desc">They see your public profile only. You can give more access anytime.</string>
     <string name="contact_review_more_access">Give more access</string>
     <string name="contact_review_more_access_desc">Add to circles, share your location, or allow apps.</string>
     <string name="contact_review_already_added">Already added</string>
