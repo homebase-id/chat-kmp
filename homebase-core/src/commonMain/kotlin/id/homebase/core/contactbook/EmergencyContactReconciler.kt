@@ -66,10 +66,10 @@ class EmergencyContactReconciler(
     }
 
     private suspend fun reconcileContact(contact: Contact) {
-        val odinId = contact.content.odinId?.takeIf { it.isNotBlank() }?.let { OdinId(it) } ?: return
+        val odinId = contact.odinIdOrNull() ?: return
         val versionTag = contact.versionTag ?: return
         // Set-only: an already-flagged contact has nothing to recover — skip the preflight entirely.
-        if (contact.iCanLocate()) return
+        if (contact.iCanLocate() || emergencyContacts.isSelf(odinId)) return
 
         val hasAccess = when (emergencyContacts.refresh(odinId, waitForOnline = false)) {
             is LocateVerifyStatus.Active -> true
@@ -77,7 +77,7 @@ class EmergencyContactReconciler(
             else -> null
         }
         if (reconcileAction(hasAccess, flagged = false) == ReconcileAction.Set) {
-            runCatching { contactRepository.setICanLocate(contact.uniqueId, versionTag) }
+            runCatching { emergencyContacts.setICanLocate(odinId, contact.uniqueId, versionTag) }
                 .onFailure { Logger.w(it) { "reconcile: setICanLocate failed for ${odinId.domainName}" } }
         }
     }

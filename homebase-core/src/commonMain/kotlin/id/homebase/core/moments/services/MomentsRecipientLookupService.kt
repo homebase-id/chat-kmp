@@ -155,10 +155,8 @@ class MomentsRecipientLookupService(
 
         for (cwm in circles) {
             val def = cwm.circle
-            // User-defined circles only: drop the disabled ones and the Confirmed/Auto system
-            // circles (Emergency and any other user circle stay). Mirrors the contact-detail
-            // circle filter (#921/#916).
-            if (def.disabled) continue
+            // User-defined circles only: drop the Confirmed/Auto system circles (Emergency and any
+            // other user circle stay). Disabled ones are kept and rendered unselectable.
             if (def.id.equals(CONFIRMED_CONNECTIONS_CIRCLE_ID, ignoreCase = true) ||
                 def.id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true)
             ) continue
@@ -175,6 +173,7 @@ class MomentsRecipientLookupService(
                 avatarInitials = def.name.initials(),
                 memberCount = others.size,
                 circleId = def.id,
+                disabled = def.disabled,
             )
             circlesRaw += recipient to "circle:${def.id.lowercase()}"
         }
