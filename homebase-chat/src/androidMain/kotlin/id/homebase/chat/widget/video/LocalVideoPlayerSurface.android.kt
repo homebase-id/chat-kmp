@@ -1,6 +1,10 @@
 package id.homebase.chat.widget.video
 
 import android.os.Handler
+import android.view.Gravity
+import android.view.SurfaceView
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.widget.FrameLayout
 import android.os.Looper
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -15,7 +19,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 
 @Composable
@@ -158,11 +164,21 @@ actual fun TrimmableVideoPlayerSurface(
         onDispose { handler.removeCallbacks(runnable) }
     }
 
+    // A bare surface: PlayerView inflates its whole controller even with useController off, ~300 ms on main.
     AndroidView(
         factory = { ctx ->
-            PlayerView(ctx).apply {
-                this.player = player
-                this.useController = false
+            AspectRatioFrameLayout(ctx).apply {
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                val surface = SurfaceView(ctx)
+                addView(surface, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT, Gravity.CENTER))
+                player.setVideoSurfaceView(surface)
+                fun fit(size: VideoSize) {
+                    if (size.width > 0 && size.height > 0) setAspectRatio(size.width * size.pixelWidthHeightRatio / size.height)
+                }
+                fit(player.videoSize)
+                player.addListener(object : Player.Listener {
+                    override fun onVideoSizeChanged(videoSize: VideoSize) = fit(videoSize)
+                })
             }
         },
         modifier = modifier,
