@@ -1,6 +1,7 @@
 package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -319,6 +320,7 @@ fun ConversationMessagesPane(
                     showBackButton = showBackButton,
                     onBackClick = onBackClick,
                     onUiAction = onUiAction,
+                    onCameraClick = { cameraLauncher.launch() },
                     animatedVisibilityScope = this@AnimatedContent,
                     sharedTransitionScope = this@SharedTransitionLayout
                 )
@@ -343,6 +345,7 @@ fun ConversationMessagesPane(
                         MediaAttachmentEditor(
                             attachments = data.attachments,
                             currentPage = currentGalleryPage,
+                            revealed = transition.currentState == EnterExitState.Visible,
                             onPageChanged = { currentGalleryPage = it },
                             onSaveFile = { onUiAction(SaveFile(it)) },
                             mediaQuality = uiState.mediaQuality,

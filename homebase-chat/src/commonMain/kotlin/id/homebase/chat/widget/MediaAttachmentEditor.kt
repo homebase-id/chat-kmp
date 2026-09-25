@@ -181,6 +181,8 @@ fun MediaAttachmentEditor(
     onDismiss: (() -> Unit)? = null,
     collapseSecondaryChrome: Boolean = false,
     centerImageInPage: Boolean = false,
+    // False while the editor's own enter transition runs; a camera held over it waits for both.
+    revealed: Boolean = true,
     imageOverlay: @Composable BoxScope.(AttachmentPendingFile) -> Unit = {},
     pagerTopEndSlot: @Composable BoxScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
@@ -219,8 +221,8 @@ fun MediaAttachmentEditor(
     // Pages whose media has drawn: a camera held over the editor leaves once the page on screen is one of them.
     val drawnAttachments = remember { mutableStateMapOf<Uuid, Boolean>() }
     val activeDrawn = activeAttachment != null && drawnAttachments[activeAttachment.attachmentId] == true
-    LaunchedEffect(activeDrawn, attachments.size) {
-        if (activeDrawn) CaptureHandoff.contentShown()
+    LaunchedEffect(activeDrawn, revealed, attachments.size) {
+        if (activeDrawn && revealed) CaptureHandoff.contentShown()
     }
 
     // Extract the thumbnail strip for the currently-visible video. Persist across

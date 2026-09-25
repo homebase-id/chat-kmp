@@ -164,8 +164,6 @@ import id.homebase.core.util.keyboardPanelSlot
 import id.homebase.core.util.rememberKeyboardPanelState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.toMessageMarkdown
-import id.homebase.core.camera.CameraModes
-import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.ReactionsBottomSheet
 import id.homebase.core.widget.HomebaseVerticalScrollbar
@@ -273,6 +271,8 @@ fun ConversationContent(
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
+    // The camera is hosted by the pane: this content leaves composition once the editor it hands off to opens.
+    onCameraClick: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
@@ -576,22 +576,6 @@ fun ConversationContent(
                     conversationId = conversation.conversation.id,
                     files = it,
                     isImage = true,
-                )
-            )
-        }
-    }
-    val cameraLauncher = rememberCameraManager(
-        modes = CameraModes.PhotoAndVideo,
-        onOpenGallery = { galleryLauncher.launch() },
-        awaitResultShown = true,
-    ) { file ->
-        file?.let {
-            onUiAction(
-                ConversationListUiAction.AttachPlatformFile(
-                    conversationId = conversation.conversation.id,
-                    files = listOf(file),
-                    isImage = true,
-                    fromCamera = true,
                 )
             )
         }
@@ -1683,7 +1667,7 @@ fun ConversationContent(
                                 onKeyboardClick = { showKeyboard() },
                                 onFocused = { bottomPanel.closeForKeyboard() },
                                 onAddAttachmentClick = { toggleAttachmentSheet() },
-                                onCameraClick = { cameraLauncher.launch() },
+                                onCameraClick = onCameraClick,
                                 onRecordingStarted = {
                                     onUiAction(
                                         ConversationListUiAction.StartRecording(
