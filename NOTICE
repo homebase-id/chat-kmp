@@ -48,6 +48,24 @@ implementation written for this project; it consults the ported math
 primitives but is not a translation of Signal's Android-specific View
 or feature/media-send/edit/ImageEditor.kt code.
 
+The in-app camera ports small pieces of logic from Signal-Android's
+Compose camera module (feature/camera), at upstream commit
+0d8f7d7f99 "Bump version to 8.29.0":
+
+    homebase-common/src/commonMain/kotlin/id/homebase/core/camera/
+
+        ZoomPresets.kt           — match tolerance and reachability rule from hud/ZoomBarLevel.kt
+        CaptureButtonState.kt    — state machine from hud/CaptureButtonState.kt
+        DeviceRotation.kt        — orientation buckets from DeviceRotation.kt
+
+    homebase-common/src/androidMain/kotlin/id/homebase/core/camera/
+
+        CameraCapability.android.kt — hardware-level walk from CameraXUtil.kt
+        CameraEngine.android.kt  — per-mode binding fallback, flash re-seeding,
+                                   preview-only rotation rebuild and log-space zoom
+                                   animation from CameraScreenViewModel.kt
+        DeviceRotation.android.kt — settle debounce from DeviceRotation.kt
+
 
 Bundled fonts
 -------------

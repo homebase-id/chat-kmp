@@ -53,6 +53,7 @@ import id.homebase.api.video.VideoPrefetchDriveAccess
 import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.core.util.KeepScreenOn
 import kotlin.time.TimeSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay

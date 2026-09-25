@@ -3,9 +3,9 @@ package id.homebase.core.permissions
 import androidx.compose.runtime.Composable
 import platform.AVFoundation.AVAuthorizationStatus
 import platform.AVFoundation.AVAuthorizationStatusAuthorized
-import platform.AVFoundation.AVAuthorizationStatusDenied
 import platform.AVFoundation.AVAuthorizationStatusNotDetermined
 import platform.AVFoundation.AVCaptureDevice
+import platform.AVFoundation.AVMediaType
 import platform.AVFoundation.AVMediaTypeAudio
 import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.authorizationStatusForMediaType
@@ -128,17 +128,9 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
     PermissionsManager {
     override fun askPermission(permission: PermissionType) {
         when (permission) {
-            PermissionType.CAMERA -> {
-                val status: AVAuthorizationStatus =
-                    AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
-                askCameraPermission(status, permission, onPermissionResult)
-            }
+            PermissionType.CAMERA -> askCaptureDevicePermission(AVMediaTypeVideo, permission, onPermissionResult)
 
-            PermissionType.RECORD_AUDIO -> {
-                val status: AVAuthorizationStatus =
-                    AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeAudio)
-                askAudioPermission(status, permission, onPermissionResult)
-            }
+            PermissionType.RECORD_AUDIO -> askCaptureDevicePermission(AVMediaTypeAudio, permission, onPermissionResult)
 
             PermissionType.GALLERY, PermissionType.GALLERY_LIMITED -> {
                 // Use the new API that properly detects limited access
@@ -251,31 +243,28 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
         }
     }
 
-    private fun askCameraPermission(
-        status: AVAuthorizationStatus,
+    private fun askCaptureDevicePermission(
+        mediaType: AVMediaType,
         permission: PermissionType,
         onPermissionStatus: (PermissionType, PermissionStatus, Boolean) -> Unit
     ) {
-        when (status) {
+        when (AVCaptureDevice.authorizationStatusForMediaType(mediaType)) {
             AVAuthorizationStatusAuthorized -> {
                 onPermissionStatus(permission, PermissionStatus.GRANTED, false)
             }
 
             AVAuthorizationStatusNotDetermined -> {
-                return AVCaptureDevice.requestAccessForMediaType(AVMediaTypeVideo) { isGranted ->
+                AVCaptureDevice.requestAccessForMediaType(mediaType) { isGranted ->
                     if (isGranted) {
                         onPermissionStatus(permission, PermissionStatus.GRANTED, false)
                     } else {
-                        onPermissionStatus(permission, PermissionStatus.DENIED, false)
+                        onPermissionStatus(permission, PermissionStatus.DENIED, true)
                     }
                 }
             }
 
-            AVAuthorizationStatusDenied -> {
-                onPermissionStatus(permission, PermissionStatus.DENIED, false)
-            }
-
-            else -> error("Unknown camera status $status")
+            // iOS never re-prompts after a denial, and Restricted (parental controls/MDM) can't be granted in-app.
+            else -> onPermissionStatus(permission, PermissionStatus.DENIED, true)
         }
     }
 
@@ -340,34 +329,6 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
             else -> {
                 onPermissionStatus(permission, PermissionStatus.DENIED, true)
             }
-        }
-    }
-
-    private fun askAudioPermission(
-        status: AVAuthorizationStatus,
-        permission: PermissionType,
-        onPermissionStatus: (PermissionType, PermissionStatus, Boolean) -> Unit
-    ) {
-        when (status) {
-            AVAuthorizationStatusAuthorized -> {
-                onPermissionStatus(permission, PermissionStatus.GRANTED, false)
-            }
-
-            AVAuthorizationStatusNotDetermined -> {
-                return AVCaptureDevice.requestAccessForMediaType(AVMediaTypeAudio) { isGranted ->
-                    if (isGranted) {
-                        onPermissionStatus(permission, PermissionStatus.GRANTED, false)
-                    } else {
-                        onPermissionStatus(permission, PermissionStatus.DENIED, false)
-                    }
-                }
-            }
-
-            AVAuthorizationStatusDenied -> {
-                onPermissionStatus(permission, PermissionStatus.DENIED, false)
-            }
-
-            else -> error("Unknown audio status $status")
         }
     }
 }
