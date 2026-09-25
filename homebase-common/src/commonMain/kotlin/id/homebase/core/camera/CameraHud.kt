@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -69,6 +68,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import co.touchlab.kermit.Logger
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.Haptics
 import id.homebase.core.util.formatHms
@@ -92,6 +92,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
@@ -112,6 +114,7 @@ private const val FLING_DP_PER_SECOND = 800f
 // The shutter press has to be seen before the window closes on a fast capture.
 private const val CAPTURE_FEEDBACK_MS = 180L
 private const val ZOOM_READOUT_LINGER_MS = 600L
+private const val PRESET_ARRIVAL_TOLERANCE = 0.005f
 private val ZoomBarFullRange = 240.dp
 private val ExposureTravel = 160.dp
 internal val ShutterRowPadding = 32.dp
@@ -157,6 +160,7 @@ internal fun CameraCaptureContent(
     onResult: (PlatformFile) -> Unit,
     onDismiss: () -> Unit,
     displayRotation: QuarterTurn = QuarterTurn.R0,
+    acceptsInput: Boolean = true,
     onOpenGallery: (() -> Unit)? = null,
     galleryThumbnail: ImageBitmap? = null,
     preview: @Composable (Modifier) -> Unit = {
@@ -169,6 +173,7 @@ internal fun CameraCaptureContent(
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val reduceMotion = LocalReduceMotion.current
+    val motionScheme = MaterialTheme.motionScheme
     val captureBlink = remember { Animatable(0f) }
     var busy by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
@@ -186,6 +191,8 @@ internal fun CameraCaptureContent(
     var zoomGesture by remember { mutableStateOf(false) }
     var barZoomBase by remember { mutableFloatStateOf(1f) }
     var barTravel by remember { mutableFloatStateOf(0f) }
+    // A tapped preset shows as selected at once while the zoom ramps up to it underneath.
+    var presetTarget by remember { mutableStateOf<Float?>(null) }
     var focusGate by remember { mutableStateOf(false) }
     var ignoredFocus by remember { mutableStateOf<Offset?>(null) }
     var keyDown by remember { mutableStateOf(false) }
@@ -194,6 +201,7 @@ internal fun CameraCaptureContent(
     val currentUi by liveUi
     val currentMic by rememberUpdatedState(mic)
     val currentOnResult by rememberUpdatedState(onResult)
+    val currentAcceptsInput by rememberUpdatedState(acceptsInput)
     val currentReduceMotion by rememberUpdatedState(reduceMotion)
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val currentIsRtl by rememberUpdatedState(isRtl)
@@ -238,6 +246,12 @@ internal fun CameraCaptureContent(
     val displayMode = if (returnToPhotoAfterHold) CaptureMode.Photo else ui.mode
     val selectedIndex = modes.indexOf(displayMode).coerceAtLeast(0)
     LaunchedEffect(selectedIndex) { carousel.settleTo(selectedIndex, currentReduceMotion) }
+    LaunchedEffect(presetTarget) {
+        val target = presetTarget ?: return@LaunchedEffect
+        snapshotFlow { liveUi.value.zoomRatio }.first { abs(it - target) <= target * PRESET_ARRIVAL_TOLERANCE }
+        presetTarget = null
+    }
+    LaunchedEffect(ui.lens) { presetTarget = null }
     LaunchedEffect(ui.focusPoint) {
         if (focusGate && ui.focusPoint != null) ignoredFocus = ui.focusPoint
     }
@@ -310,8 +324,8 @@ internal fun CameraCaptureContent(
         val pressedAt = TimeSource.Monotonic.markNow()
         scope.launch {
             captureBlink.snapTo(0f)
-            captureBlink.animateTo(0.9f, tween(durationMillis = 60))
-            captureBlink.animateTo(0f, tween(durationMillis = 120))
+            captureBlink.animateTo(0.9f, motionScheme.fastEffectsSpec())
+            captureBlink.animateTo(0f, motionScheme.defaultEffectsSpec())
         }
         scope.launch {
             val file = engine.takePhoto()
@@ -365,6 +379,7 @@ internal fun CameraCaptureContent(
     }
 
     fun zoomTo(ratio: Float) {
+        presetTarget = null
         val state = currentUi
         val target = state.clampZoom(ratio)
         val steps = currentPresets
@@ -378,6 +393,10 @@ internal fun CameraCaptureContent(
         carousel.drag(-deltaPx * carouselDirection() / slotPx) { haptics.perform(HapticEvent.Selection) }
     fun modeDragEnd(velocityPx: Float, slotPx: Float) {
         val flung = abs(velocityPx) > with(density) { FLING_DP_PER_SECOND.dp.toPx() }
+        Logger.i(tag = SWIPE_LOG_TAG) {
+            "drag end velocityPx=$velocityPx slotPx=$slotPx flung=$flung mode=${currentUi.mode} " +
+                "recording=${currentUi.isRecording} intent=$recordingIntent busy=$busy"
+        }
         carousel.release(
             velocitySlotsPerSecond = -velocityPx * carouselDirection() / slotPx,
             flung = flung,
@@ -388,7 +407,7 @@ internal fun CameraCaptureContent(
     }
 
     fun shutterKeyDown() {
-        if (keyDown) return
+        if (keyDown || !currentAcceptsInput) return
         keyDown = true
         keyHoldStarted = false
         if (currentButtonState().longPressAction(holdEnabled) == null || !currentUi.isBound) return
@@ -404,6 +423,7 @@ internal fun CameraCaptureContent(
         keyDown = false
         keyHoldJob?.cancel()
         keyHoldJob = null
+        if (!currentAcceptsInput) return
         if (keyHoldStarted) {
             keyHoldStarted = false
             if (heldRecording) stopRecording()
@@ -507,7 +527,7 @@ internal fun CameraCaptureContent(
             // With photo and video bound together the switch is instant; a dip would read as a glitch.
             if (currentUi.supportsSimultaneousVideo) return@LaunchedEffect
             modeDip.snapTo(0.45f)
-            modeDip.animateTo(0f, tween(durationMillis = 280))
+            modeDip.animateTo(0f, motion.slowEffectsSpec())
         }
         Box(
             Modifier
@@ -525,6 +545,7 @@ internal fun CameraCaptureContent(
                 exposureEv = { liveUi.value.exposureEv },
                 showExposure = ui.exposureSupported,
                 labelRotation = iconRotation,
+                onExposure = engine::setExposureBias,
             )
         }
 
@@ -573,7 +594,7 @@ internal fun CameraCaptureContent(
                 onClose = onDismiss,
                 onFlash = {
                     haptics.perform(HapticEvent.Tick)
-                    when (FlashPolicy.control(ui.mode, ui.hasFlashUnit)) {
+                    when (FlashPolicy.control(ui.mode, ui.hasPhotoFlash, ui.hasTorch)) {
                         FlashControl.Flash -> engine.setFlash(FlashPolicy.next(ui.flashMode))
                         FlashControl.Torch -> engine.setTorch(!ui.torchOn)
                         FlashControl.Hidden -> Unit
@@ -587,11 +608,13 @@ internal fun CameraCaptureContent(
             ZoomControls(
                 presets = presets,
                 zoomRatio = { liveUi.value.zoomRatio },
+                targetRatio = { presetTarget },
                 iconRotation = iconRotation,
                 showReadout = zoomGesture,
                 dimmed = looksRecording && heldRecording,
                 onSelect = { preset ->
                     haptics.perform(HapticEvent.Selection)
+                    presetTarget = currentUi.clampZoom(preset.ratio)
                     engine.setZoomRatio(preset.ratio, animate = true)
                 },
                 onDragStart = {
@@ -808,6 +831,7 @@ private fun List<ZoomPreset>.presetStep(ratio: Float): Int = count { it.ratio <=
 private fun ZoomControls(
     presets: List<ZoomPreset>,
     zoomRatio: () -> Float,
+    targetRatio: () -> Float?,
     iconRotation: () -> Float,
     showReadout: Boolean,
     dimmed: Boolean,
@@ -835,6 +859,7 @@ private fun ZoomControls(
         ZoomPresetBar(
             presets = presets,
             zoomRatio = zoomRatio,
+            targetRatio = targetRatio,
             iconRotation = iconRotation,
             onSelect = onSelect,
             onDragStart = onDragStart,

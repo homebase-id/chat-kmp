@@ -1870,6 +1870,8 @@
     <string name="camera_shutter_hold_hint">Hold for at optage video</string>
     <string name="camera_flash">Blitz</string>
     <string name="camera_torch">Lygte</string>
+    <string name="camera_exposure">Eksponering</string>
+    <string name="camera_exposure_value">%1$s EV</string>
     <string name="camera_state_auto">Automatisk</string>
     <string name="camera_state_on">Til</string>
     <string name="camera_state_off">Fra</string>

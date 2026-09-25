@@ -57,6 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -73,6 +74,9 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -86,6 +90,8 @@ import id.homebase.core.util.formatHms
 import id.homebase.resources.MR
 import id.homebase.resources.camera_ae_af_lock
 import id.homebase.resources.camera_close
+import id.homebase.resources.camera_exposure
+import id.homebase.resources.camera_exposure_value
 import id.homebase.resources.camera_flash
 import id.homebase.resources.camera_lens_back
 import id.homebase.resources.camera_lens_front
@@ -209,7 +215,7 @@ private fun FlashButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val control = FlashPolicy.control(ui.mode, ui.hasFlashUnit)
+    val control = FlashPolicy.control(ui.mode, ui.hasPhotoFlash, ui.hasTorch)
     AnimatedVisibility(
         visible = control == FlashControl.Torch || (control == FlashControl.Flash && !recording),
         enter = fadeIn() + scaleIn(),
@@ -454,7 +460,7 @@ internal fun FlipLensButton(
         lastTurns = turns
         if (reduceMotion) {
             fade.snapTo(0f)
-            fade.animateTo(1f, tween(150))
+            fade.animateTo(1f, motion.defaultEffectsSpec())
         }
     }
     val hide by animateFloatAsState(
@@ -580,8 +586,10 @@ internal fun FocusRing(
     exposureEv: () -> Float,
     showExposure: Boolean,
     labelRotation: () -> Float,
+    onExposure: (Float) -> Unit,
 ) {
     val reduceMotion = LocalReduceMotion.current
+    val motion = MaterialTheme.motionScheme
     val scale = remember { Animatable(1f) }
     val alpha = remember { Animatable(0f) }
     var shown by remember { mutableStateOf<Offset?>(null) }
@@ -598,7 +606,7 @@ internal fun FocusRing(
     }
     LaunchedEffect(point, locked) {
         if (point == null) {
-            alpha.animateTo(0f, tween(150))
+            alpha.animateTo(0f, motion.defaultEffectsSpec())
             return@LaunchedEffect
         }
         // Every exposure nudge restarts the hold, so the ring stays up while it's being dragged.
@@ -606,7 +614,7 @@ internal fun FocusRing(
             alpha.snapTo(1f)
             if (locked) return@collectLatest
             delay(RING_HOLD_MS)
-            alpha.animateTo(0f, tween(300))
+            alpha.animateTo(0f, motion.slowEffectsSpec())
         }
     }
     val colors = MaterialTheme.colorScheme
@@ -635,12 +643,27 @@ internal fun FocusRing(
             val gapPx = with(density) { 8.dp.toPx() }
             val onEnd = at.x + ringPx / 2 + gapPx + sliderWidthPx <= widthPx
             val x = if (onEnd) at.x + ringPx / 2 + gapPx else at.x - ringPx / 2 - gapPx - sliderWidthPx
+            // Stepped to the readout's tenths so a drag recomposes per visible change, not per frame.
+            val biasStep by remember { derivedStateOf { (exposureBias() * EXPOSURE_A11Y_STEPS).roundToInt() } }
+            val evText by remember { derivedStateOf { formatEv(exposureEv()) } }
+            val exposureLabel = stringResource(MR.string.camera_exposure)
+            val exposureState = stringResource(MR.string.camera_exposure_value, evText ?: "0")
+            val interactive = point != null
             Box(
                 Modifier
                     .offset { IntOffset(x.roundToInt(), (at.y - sliderHeightPx / 2).roundToInt()) }
                     .size(SliderWidth, SliderHeight)
                     .testTag(EXPOSURE_TAG)
-                    .clearAndSetSemantics { }
+                    .clearAndSetSemantics {
+                        if (!interactive) return@clearAndSetSemantics
+                        contentDescription = exposureLabel
+                        stateDescription = exposureState
+                        progressBarRangeInfo = ProgressBarRangeInfo(biasStep.toFloat() / EXPOSURE_A11Y_STEPS, -1f..1f)
+                        setProgress { target ->
+                            onExposure(target.coerceIn(-1f, 1f))
+                            true
+                        }
+                    }
                     .graphicsLayer { this.alpha = alpha.value },
                 contentAlignment = Alignment.Center,
             ) {
@@ -701,3 +724,4 @@ private val EvReadoutRise = 24.dp
 private val SliderHeight = 112.dp
 private const val RING_POP_SCALE = 1.4f
 private const val RING_HOLD_MS = 1_500L
+private const val EXPOSURE_A11Y_STEPS = 20f

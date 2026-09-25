@@ -2425,6 +2425,8 @@
     <string name="camera_shutter_hold_hint">Hold to record a video</string>
     <string name="camera_flash">Flash</string>
     <string name="camera_torch">Torch</string>
+    <string name="camera_exposure">Exposure</string>
+    <string name="camera_exposure_value">%1$s EV</string>
     <string name="camera_state_auto">Auto</string>
     <string name="camera_state_on">On</string>
     <string name="camera_state_off">Off</string>

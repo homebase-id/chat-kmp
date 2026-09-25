@@ -16,7 +16,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +55,7 @@ internal fun evenlyInsetSide(slotPx: Int, pillPx: Float): Int {
 internal fun ZoomPresetBar(
     presets: List<ZoomPreset>,
     zoomRatio: () -> Float,
+    targetRatio: () -> Float?,
     iconRotation: () -> Float,
     onSelect: (ZoomPreset) -> Unit,
     onDragStart: () -> Unit,
@@ -61,10 +64,20 @@ internal fun ZoomPresetBar(
     modifier: Modifier = Modifier,
 ) {
     if (presets.size < 2) return
-    val zoomRatio = zoomRatio()
-    val atRatio = ZoomPresets.selected(zoomRatio, presets)
-    // The pill under the finger follows a pinch between presets.
-    val active = atRatio ?: presets.lastOrNull { it.ratio <= zoomRatio } ?: presets.firstOrNull()
+    val currentZoomRatio by rememberUpdatedState(zoomRatio)
+    val currentTargetRatio by rememberUpdatedState(targetRatio)
+    // Derived down to what the chips show, so a pinch recomposes per label step rather than per frame.
+    val selection by remember(presets) {
+        derivedStateOf {
+            // A preset tap selects its chip at once; only pinches and bar drags show the live ratio.
+            val ratio = currentTargetRatio() ?: currentZoomRatio()
+            val atRatio = ZoomPresets.selected(ratio, presets)
+            // The pill under the finger follows a pinch between presets.
+            val active = atRatio ?: presets.lastOrNull { it.ratio <= ratio } ?: presets.firstOrNull()
+            ZoomSelection(active, atRatio, if (atRatio == null) ZoomPresets.label(ratio) else null)
+        }
+    }
+    val (active, atRatio, liveLabel) = selection
     val colors = MaterialTheme.colorScheme
     val currentOnDragStart by rememberUpdatedState(onDragStart)
     val currentOnDrag by rememberUpdatedState(onDrag)
@@ -89,7 +102,7 @@ internal fun ZoomPresetBar(
         presets.forEach { preset ->
             val checked = preset == active
             val atPreset = atRatio == preset
-            val number = if (checked && !atPreset) ZoomPresets.label(zoomRatio) else preset.label
+            val number = if (checked && !atPreset && liveLabel != null) liveLabel else preset.label
             val text = stringResource(MR.string.camera_zoom_level, number)
             val description = stringResource(MR.string.camera_zoom_preset_a11y, preset.label)
             val pillSize by animateDpAsState(
@@ -129,3 +142,5 @@ internal fun ZoomPresetBar(
         }
     }
 }
+
+private data class ZoomSelection(val active: ZoomPreset?, val atRatio: ZoomPreset?, val liveLabel: String?)
