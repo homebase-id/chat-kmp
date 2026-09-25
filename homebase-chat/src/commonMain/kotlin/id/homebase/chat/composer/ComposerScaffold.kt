@@ -1,16 +1,19 @@
 package id.homebase.chat.composer
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -19,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -73,9 +77,19 @@ internal fun ComposerTitleField(
             }
         },
     )
-    HorizontalDivider(
-        thickness = if (focused) 2.dp else 1.dp,
-        color = if (focused) brand else MaterialTheme.colorScheme.outlineVariant,
+    val underline by animateDpAsState(
+        targetValue = if (focused) 2.dp else 1.dp,
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+    )
+    val underlineColor by animateColorAsState(
+        targetValue = if (focused) brand else MaterialTheme.colorScheme.outlineVariant,
+        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+    )
+    // Fixed at the focused thickness so focusing doesn't shift the layout below.
+    Spacer(
+        Modifier.fillMaxWidth().height(2.dp).drawBehind {
+            drawRect(underlineColor, size = size.copy(height = underline.toPx()))
+        }
     )
 }
 
