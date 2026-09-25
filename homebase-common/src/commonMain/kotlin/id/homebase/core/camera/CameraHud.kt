@@ -123,14 +123,11 @@ private val CarouselHideDrop = 8.dp
 private val TopBarHeight = 64.dp
 private const val FROZEN_FRAME_DIM = 0.6f
 
-/**
- * Once the preview has streamed, a rebind (flip, mode switch) dims the frame the surface still holds instead of
- * blacking it out; a first start has no frame to keep. A flip stays dimmed until the new lens's first frame.
- */
-/** Only a delivered frame counts: the camera reports bound (open, running) before the preview shows anything. */
+// The camera reports bound before the preview shows anything, so only a delivered frame counts.
 internal fun previewHasShown(shownBefore: Boolean, ui: CameraUiState): Boolean =
     shownBefore || (ui.isBound && !ui.awaitingFirstFrame)
 
+// A rebind after the preview has streamed dims the frame the surface still holds; a first start has none to keep.
 internal fun previewScrimAlpha(isBound: Boolean, awaitingFirstFrame: Boolean, previewShown: Boolean): Float = when {
     isBound && !awaitingFirstFrame -> 0f
     previewShown -> FROZEN_FRAME_DIM
