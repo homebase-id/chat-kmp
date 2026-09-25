@@ -104,6 +104,8 @@ fun OwnerAvatar(
                 odinId = odinId,
                 initials = initials,
                 options = options,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
             )
         }
         if (connectionStatus != null) {
