@@ -47,7 +47,6 @@ class InAppCameraLauncher internal constructor() : PlatformCameraManager {
     }
 }
 
-// With awaitResultShown a capture keeps the camera up until CaptureHandoff.contentShown, then it fades out.
 @Composable
 fun rememberInAppCameraManager(
     allowedModes: CameraModes,
