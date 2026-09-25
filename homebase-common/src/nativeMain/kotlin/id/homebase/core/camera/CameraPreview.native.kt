@@ -46,6 +46,7 @@ actual fun CameraPreview(
     }
     val density = LocalDensity.current.density
     val currentOnLongPressFocus by rememberUpdatedState(onLongPressFocus)
+    val fade = LocalCameraFade.current
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -64,6 +65,7 @@ actual fun CameraPreview(
         UIKitView(
             factory = { CameraPreviewView(iosEngine.previewLayer, iosEngine::applyPreviewRotation) },
             modifier = Modifier.fillMaxSize(),
+            update = { it.alpha = fade().toDouble() },
             // Non-interactive so taps and pinches reach Compose instead of the UIView.
             properties = UIKitInteropProperties(interactionMode = null),
         )

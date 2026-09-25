@@ -25,9 +25,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -53,27 +57,59 @@ import org.jetbrains.compose.resources.stringResource
 internal const val PERMISSION_PANE_TAG = "camera_permission_pane"
 internal const val PERMISSION_ACTION_TAG = "camera_permission_action"
 internal const val UNAVAILABLE_TAG = "camera_unavailable"
+internal const val HANDOFF_BLOCKER_TAG = "camera_handoff_blocker"
 
-/** A full-screen camera in its own window, so it stacks above sheets and dialogs that launch it. */
+/** The camera window's fade-out; iOS applies it to the preview's UIView, which a Compose layer alpha doesn't reach. */
+internal val LocalCameraFade = staticCompositionLocalOf<() -> Float> { { 1f } }
+
+/**
+ * A full-screen camera in its own window, so it stacks above sheets and dialogs that launch it. While [handingOff]
+ * a delivered capture is on its way to the screen underneath, so the camera takes no input.
+ */
 @Composable
 fun CameraCaptureDialog(
     allowedModes: CameraModes,
     initialMode: CaptureMode = CaptureMode.Photo,
     mirrorFront: Boolean = true,
+    warmEngine: CameraEngine? = null,
+    handingOff: Boolean = false,
+    fade: () -> Float = { 1f },
     onOpenGallery: (() -> Unit)? = null,
     onResult: (PlatformFile) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // Loaded out here, from the launching frame, rather than behind the window and the permission check.
+    val thumbnailPx = with(LocalDensity.current) { SideSlotSize.roundToPx() }
+    val galleryThumbnail = if (onOpenGallery != null) rememberLatestGalleryThumbnail(thumbnailPx) else null
     Dialog(onDismissRequest = onDismiss, properties = cameraDialogProperties()) {
         CameraWindowEffect()
-        CameraCaptureScreen(
-            allowedModes = allowedModes,
-            initialMode = initialMode,
-            mirrorFront = mirrorFront,
-            onOpenGallery = onOpenGallery,
-            onResult = onResult,
-            onDismiss = onDismiss,
-        )
+        CompositionLocalProvider(LocalCameraFade provides fade) {
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = fade() }) {
+                CameraCaptureScreen(
+                    allowedModes = allowedModes,
+                    initialMode = initialMode,
+                    mirrorFront = mirrorFront,
+                    warmEngine = warmEngine,
+                    acceptsInput = !handingOff,
+                    onOpenGallery = onOpenGallery,
+                    galleryThumbnail = galleryThumbnail,
+                    onResult = onResult,
+                    onDismiss = onDismiss,
+                )
+                if (handingOff) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .testTag(HANDOFF_BLOCKER_TAG)
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) awaitPointerEvent().changes.forEach { it.consume() }
+                                }
+                            },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -82,7 +118,10 @@ fun CameraCaptureScreen(
     allowedModes: CameraModes,
     initialMode: CaptureMode = CaptureMode.Photo,
     mirrorFront: Boolean = true,
+    warmEngine: CameraEngine? = null,
+    acceptsInput: Boolean = true,
     onOpenGallery: (() -> Unit)? = null,
+    galleryThumbnail: ImageBitmap? = null,
     onResult: (PlatformFile) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -92,8 +131,7 @@ fun CameraCaptureScreen(
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim)) {
                 if (permissions.camera == CameraPermissionState.Granted) {
                     // Created only once granted: binding without the permission fails instead of waiting.
-                    val engine = rememberCameraEngine()
-                    val thumbnailPx = with(LocalDensity.current) { SideSlotSize.roundToPx() }
+                    val engine = rememberCameraEngine(warmEngine)
                     CameraCaptureContent(
                         engine = engine,
                         allowedModes = allowedModes,
@@ -104,10 +142,11 @@ fun CameraCaptureScreen(
                         haptics = rememberHaptics(),
                         deviceRotation = rememberDeviceRotation(),
                         displayRotation = rememberDisplayRotation(),
+                        acceptsInput = acceptsInput,
                         onResult = onResult,
                         onDismiss = onDismiss,
                         onOpenGallery = onOpenGallery,
-                        galleryThumbnail = onOpenGallery?.let { rememberLatestGalleryThumbnail(thumbnailPx) },
+                        galleryThumbnail = galleryThumbnail,
                     )
                 } else {
                     CameraPermissionPane(
