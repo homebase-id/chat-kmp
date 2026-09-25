@@ -12,6 +12,7 @@ import id.homebase.api.client.connections.ConnectionRequestHeader
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IncomingConnectionRequestResponse
 import id.homebase.api.client.connections.OutgoingConnectionRequestResponse
+import id.homebase.api.client.connections.SendReviewedConnectionRequest
 import kotlin.uuid.Uuid
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.eventbus.BackendEvent
@@ -225,29 +226,55 @@ class ConnectionRequestService(
      */
     suspend fun autoConnect(header: ConnectionRequestHeader): ConnectionRequestResult {
         val result = connectionRequestProvider.autoConnect(header)
-        when (result.outcome) {
+        applyOutcome(header.recipient, result.outcome)
+        return result
+    }
+
+    /**
+     * Owner-intent send: same outcomes and local side effects as [autoConnect], and the server
+     * also records it as our review of [recipient]. On [AutoConnectOutcome.PendingManualApproval]
+     * the review lands when they accept; the ConnectionRequestAccepted event refreshes it then.
+     */
+    suspend fun sendReviewed(
+        recipient: OdinId,
+        message: String?,
+        circleIds: List<Uuid> = emptyList(),
+    ): ConnectionRequestResult {
+        val result = connectionRequestProvider.sendReviewed(
+            SendReviewedConnectionRequest(
+                recipient = recipient,
+                message = message,
+                circleIds = circleIds,
+            )
+        )
+        applyOutcome(recipient, result.outcome)
+        return result
+    }
+
+    private suspend fun applyOutcome(recipient: OdinId, outcome: AutoConnectOutcome) {
+        when (outcome) {
             AutoConnectOutcome.Connected,
             AutoConnectOutcome.AcceptedFromExistingIncoming -> {
-                removeFromOutgoing(header.recipient)
+                removeFromOutgoing(recipient)
                 refresh()
                 connectionService.refresh()
-                contactInfo.resync(header.recipient)
+                contactInfo.resync(recipient)
             }
             AutoConnectOutcome.AlreadyConnected -> {
                 connectionService.refresh()
                 // No transition: their photo is no more suspect than a second ago.
-                contactInfo.syncContactRecord(header.recipient)
+                contactInfo.syncContactRecord(recipient)
             }
             AutoConnectOutcome.PendingManualApproval -> {
-                markOutgoingOptimistically(header.recipient)
+                markOutgoingOptimistically(recipient)
                 refresh()
                 // Save contact so they appear in the contact list immediately — matches
                 // the legacy sendConnectionRequest flow, which saved on HTTP-200.
-                contactInfo.resync(header.recipient)
+                contactInfo.resync(recipient)
             }
             AutoConnectOutcome.OutgoingRequestAlreadyExists,
             AutoConnectOutcome.DuplicateIntroductoryRequest -> {
-                markOutgoingOptimistically(header.recipient)
+                markOutgoingOptimistically(recipient)
                 refresh()
             }
             AutoConnectOutcome.Blocked,
@@ -259,7 +286,6 @@ class ConnectionRequestService(
             AutoConnectOutcome.Failed,
             AutoConnectOutcome.Unknown -> Unit
         }
-        return result
     }
 
     /**

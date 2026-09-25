@@ -70,6 +70,32 @@ class ReviewSerializationTest {
         assertTrue(json.contains("2d781401-3804-4b4b-b03f-4b4d1e4c1a06"), json)
         assertTrue(json.contains("sam.dotyou.cloud"), json)
     }
+
+    /** The server derives the origin from the caller; sending one is a contract violation. */
+    @Test
+    fun aSendReviewedBodyCarriesNoOrigin() {
+        val json = OdinSystemSerializer.serialize(
+            SendReviewedConnectionRequest(OdinId("sam.dotyou.cloud"), message = "hi")
+        )
+
+        assertFalse(json.contains("connectionRequestOrigin"), json)
+        assertTrue(json.contains("\"recipient\":\"sam.dotyou.cloud\""), json)
+        assertTrue(json.contains("\"circleIds\":[]"), json)
+    }
+
+    @Test
+    fun aSendReviewedOutcomeParsesAsStringOrNumber() {
+        assertEquals(
+            AutoConnectOutcome.PendingManualApproval,
+            OdinSystemSerializer
+                .deserialize<ConnectionRequestResult>("""{"outcome":"pendingManualApproval"}""")
+                .outcome,
+        )
+        assertEquals(
+            AutoConnectOutcome.Connected,
+            OdinSystemSerializer.deserialize<ConnectionRequestResult>("""{"outcome":1}""").outcome,
+        )
+    }
 }
 
 /**

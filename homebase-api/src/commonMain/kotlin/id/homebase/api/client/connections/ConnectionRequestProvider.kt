@@ -173,6 +173,34 @@ class ConnectionRequestProvider(
     }
 
     // ------------------------------------------------------------
+    // SEND REVIEWED
+    // ------------------------------------------------------------
+
+    /**
+     * Owner-intent send: the same outcomes as [autoConnect], but the call also counts as the
+     * sender's review. A 403 (an owner-console circle named) or 400 `circleNotFound` means nothing
+     * was sent.
+     */
+    suspend fun sendReviewed(
+        request: SendReviewedConnectionRequest
+    ): ConnectionRequestResult {
+
+        val creds = requireCreds()
+
+        val endpoint = "/connections/requests/send-reviewed"
+
+        val response = encryptedPostJson(
+            url = apiUrl(creds.domain, endpoint),
+            token = creds.accessToken,
+            jsonBody = OdinSystemSerializer.serialize(request),
+            secret = creds.secret
+        )
+
+        throwForFailure(response)
+        return deserialize(response.body)
+    }
+
+    // ------------------------------------------------------------
     // ACCEPT (PUT)
     // ------------------------------------------------------------
 

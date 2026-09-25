@@ -7,7 +7,6 @@ import id.homebase.api.client.ClientException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.AutoConnectOutcome
-import id.homebase.api.client.connections.ConnectionRequestHeader
 import id.homebase.api.client.identity.PublicIdentity
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.chat.services.requests.ConnectionRequestService
@@ -191,25 +190,20 @@ class ConnectRequestViewModel(
             return
         }
 
-        val header = ConnectionRequestHeader(
-            id = Uuid.random(),
-            recipient = OdinId(recipient),
-            message = current.message.trim().takeIf { it.isNotEmpty() },
-            introducerOdinId = null,
-            connectionRequestOrigin = "identityOwnerApp",
-        )
+        val recipientId = OdinId(recipient)
+        val message = current.message.trim().takeIf { it.isNotEmpty() }
 
         _state.update { it.copy(isSending = true) }
         viewModelScope.launch {
             try {
-                val result = connectionRequestService.autoConnect(header)
+                val result = connectionRequestService.sendReviewed(recipientId, message)
 
                 when (result.outcome) {
                     AutoConnectOutcome.Connected,
                     AutoConnectOutcome.AcceptedFromExistingIncoming,
                     AutoConnectOutcome.AlreadyConnected,
                     AutoConnectOutcome.PendingManualApproval -> {
-                        val conversationId = startConversationWithRecipient(header.recipient)
+                        val conversationId = startConversationWithRecipient(recipientId)
                         _state.update {
                             it.copy(
                                 isSending = false,
@@ -233,7 +227,7 @@ class ConnectRequestViewModel(
                                 recipient = "",
                                 message = "",
                                 resolution = RecipientResolution.Idle,
-                                alreadySentRecipient = header.recipient,
+                                alreadySentRecipient = recipientId,
                             )
                         }
                     }
@@ -294,7 +288,7 @@ class ConnectRequestViewModel(
                             recipient = "",
                             message = "",
                             resolution = RecipientResolution.Idle,
-                            alreadySentRecipient = header.recipient,
+                            alreadySentRecipient = recipientId,
                         )
                     } else {
                         it.copy(
