@@ -167,9 +167,9 @@ class ContactBookViewModel(
         viewModelScope.launch {
             connectionService.circles.collect { circleState ->
                 val circles = circleState.circles
-                    .filterNot { it.circle.disabled }
                     .sortedWith(
                         compareBy(
+                            { it.circle.disabled },
                             { it.circle.circleSortRank(developerPreferences.connectionReviewEnabled.value) },
                             { it.circle.name.lowercase() },
                         ),
@@ -197,6 +197,7 @@ class ContactBookViewModel(
                             it.pendingMembers
                         },
                         drives = resolveCircleDrives(match.circle),
+                        disabled = match.circle.disabled,
                     )
                 }
                 // Flag off: main's path — re-derive pending live, since it isn't read from the snapshot.
@@ -458,6 +459,7 @@ class ContactBookViewModel(
             }
             is ContactBookUiAction.CircleClicked -> handleCircleClicked(action.circle)
             ContactBookUiAction.CircleMembersDismiss -> _circleMembers.value = null
+            is ContactBookUiAction.CircleEnabledChanged -> handleCircleEnabledChanged(action.circleId, action.enabled)
             is ContactBookUiAction.CircleAddMemberClicked -> _events.tryEmit(
                 ContactBookUiEvent.OpenCircleMemberAdd(action.circleId, action.circleName)
             )
@@ -659,6 +661,8 @@ class ContactBookViewModel(
             circleName = circle.circle.name,
             circleEmoji = circle.circle.emoji.takeIf { reviewEnabled },
             manageable = manageable,
+            disabled = circle.circle.disabled,
+            offersEnableToggle = circle.circle.offersEnableToggle(),
             members = members,
             pendingMembers = if (reviewEnabled) pending else emptyList(),
             isLoading = false,
@@ -718,6 +722,25 @@ class ContactBookViewModel(
                         pendingChecking = false,
                     )
                 } else it
+            }
+        }
+    }
+
+    private fun handleCircleEnabledChanged(circleIdRaw: String, enabled: Boolean) {
+        if (_circleMembers.value?.togglingEnabled == true) return
+        fun setToggling(on: Boolean) =
+            _circleMembers.update { if (it?.circleId == circleIdRaw) it.copy(togglingEnabled = on) else it }
+        setToggling(true)
+        viewModelScope.launch {
+            try {
+                connectionService.setCircleEnabled(Uuid.parseHex(circleIdRaw), enabled)
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, "ContactBookViewModel") { "setCircleEnabled($enabled) failed for $circleIdRaw" }
+                _events.tryEmit(ContactBookUiEvent.Error(e.toCircleToggleError()))
+            } finally {
+                setToggling(false)
             }
         }
     }

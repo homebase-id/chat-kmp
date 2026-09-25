@@ -46,6 +46,7 @@ import id.homebase.core.ui.screens.contactbook.detail.ReviewSheetState
 import id.homebase.resources.MR
 import id.homebase.resources.contact_review_accept_failed
 import id.homebase.resources.contact_review_already_added
+import id.homebase.resources.contactbook_circle_disabled
 import id.homebase.resources.contactbook_detail_reject
 import id.homebase.resources.contactbook_circle_members_count
 import id.homebase.resources.contact_review_chat_only_hint
@@ -413,8 +414,10 @@ private fun CircleToggleRow(
     onToggle: () -> Unit,
 ) {
     val emoji = circle.emoji
+    val locked = held || circle.disabled
     val supporting = when {
         held -> stringResource(MR.string.contact_review_already_added)
+        circle.disabled -> stringResource(MR.string.contactbook_circle_disabled)
         !circle.description.isNullOrBlank() -> circle.description
         circle.memberCount != null && circle.memberCount > 0 ->
             stringResource(MR.string.contactbook_circle_members_count, circle.memberCount)
@@ -423,7 +426,7 @@ private fun CircleToggleRow(
     ListItem(
         modifier = Modifier.toggleable(
             value = checked,
-            enabled = enabled && !held,
+            enabled = enabled && !locked,
             onValueChange = { onToggle() },
             role = Role.Switch,
         ),
@@ -450,6 +453,6 @@ private fun CircleToggleRow(
                 )
             }
         },
-        trailingContent = { Switch(checked = checked, onCheckedChange = null, enabled = !held) },
+        trailingContent = { Switch(checked = checked, onCheckedChange = null, enabled = !locked) },
     )
 }

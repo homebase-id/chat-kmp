@@ -82,6 +82,7 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.circle_access_awaiting_app
+import id.homebase.resources.contactbook_circle_disabled
 import id.homebase.resources.circle_access_awaiting_named
 import id.homebase.resources.circle_access_awaiting_unknown_circle
 import id.homebase.resources.circle_access_awaiting_you
@@ -355,6 +356,8 @@ private fun CircleChip(circle: ContactCircleUi, reviewEnabled: Boolean, onClick:
             // A bare name claims access the contact may not have. Active needs no mark; the two
             // states that overstate the grant do.
             val mark = when {
+                circle.disabled -> stringResource(MR.string.contactbook_circle_disabled)
+
                 circle.pending || circle.accessState == CircleAccessState.Pending ->
                     stringResource(MR.string.circle_member_pending)
 
