@@ -17,6 +17,12 @@ internal object CameraCapability {
     fun anyCameraIsLegacy(context: Context): Boolean =
         cachedAnyLegacy ?: queryAnyLegacy(context).also { cachedAnyLegacy = it }
 
+    /** Null until [anyCameraIsLegacy] has queried the HAL once in this process. */
+    val knownAnyCameraIsLegacy: Boolean? get() = cachedAnyLegacy
+
+    // A lens's Preview+Image+Video support doesn't change within a process; simulating the bind costs ~60 ms per open.
+    val simultaneousSupport: MutableMap<CameraLens, Boolean> = java.util.concurrent.ConcurrentHashMap()
+
     private fun queryAnyLegacy(context: Context): Boolean {
         val manager = context.applicationContext.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         return try {
