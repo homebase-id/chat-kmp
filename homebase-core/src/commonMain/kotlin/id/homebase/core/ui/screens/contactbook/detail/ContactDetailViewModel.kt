@@ -45,7 +45,7 @@ import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
 import id.homebase.core.ui.screens.contactbook.ConnectionRequestFailure
 import id.homebase.core.ui.screens.contactbook.connectionRequestFailure
 import id.homebase.core.ui.screens.contactbook.isTerminal
-import id.homebase.core.ui.screens.contactbook.toCircleUuids
+import id.homebase.chat.services.requests.toCircleUuids
 import id.homebase.core.ui.screens.contactbook.assignableCircles
 import id.homebase.core.ui.screens.contactbook.CircleAccessState
 import id.homebase.core.ui.screens.contactbook.ContactState

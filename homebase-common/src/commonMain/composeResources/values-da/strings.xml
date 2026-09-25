@@ -72,11 +72,7 @@
     <string name="error_too_many_attempts">For mange forsøg</string>
     <string name="error_delivery_failed">Levering mislykkedes</string>
     <string name="connect">Forbind</string>
-    <string name="chat_auto_connect_connected">Forbundet</string>
-    <string name="auto_connect_pending_manual_approval">Anmodning sendt. %1$s skal godkende.</string>
     <string name="auto_connect_blocked">Kan ikke forbinde med %1$s.</string>
-    <string name="auto_connect_outgoing_request_exists">Du har allerede sendt en anmodning til %1$s.</string>
-    <string name="auto_connect_duplicate_introductory_request">En anmodning til %1$s er allerede i gang.</string>
     <string name="auto_connect_recipient_unreachable">Kunne ikke nå %1$s. Prøv igen senere.</string>
     <string name="auto_connect_recipient_rejected">%1$s tager ikke imod forbindelser lige nu.</string>
     <string name="auto_connect_recipient_not_configured">%1$s har ikke færdiggjort opsætningen af sin identitet endnu.</string>
@@ -209,6 +205,8 @@
     <string name="connections_message_label">Besked (valgfri)</string>
     <string name="connections_checking_identity">Kontrollerer identitet\u2026</string>
     <string name="connections_invalid_identity">Dette er ikke en gyldig Homebase-identitet</string>
+    <string name="connections_circle_not_grantable">En af de kredse kan ikke tildeles fra denne app. Intet blev sendt.</string>
+    <string name="connections_circle_not_found">En af de kredse findes ikke længere. Intet blev sendt.</string>
     <string name="connections_request_sent">Forbindelsesanmodning sendt</string>
     <string name="connections_tab_incoming">Indgående (%1$s)</string>
     <string name="connections_tab_outgoing">Udgående (%1$s)</string>
@@ -1201,7 +1199,6 @@
     <string name="cd_not_selected">Ikke valgt</string>
     <string name="cd_open_externally">Åbn eksternt</string>
     <string name="cd_navigate_forward">Navigér frem</string>
-    <string name="cd_connection_succeeded">Forbindelse oprettet</string>
     <string name="cd_video_scrubber_frame">Videoskrubberbillede</string>
     <string name="video_web_large_playback_unsupported">Store videoer kan endnu ikke afspilles i browseren</string>
 

@@ -122,64 +122,13 @@ class ConnectionRequestProvider(
     }
 
     // ------------------------------------------------------------
-    // SEND
-    // ------------------------------------------------------------
-
-    suspend fun sendConnectionRequest(
-        request: ConnectionRequestHeader
-    ) {
-
-        val creds = requireCreds()
-
-        val endpoint = "/connections/requests"
-
-        val response = encryptedPostJson(
-            url = apiUrl(creds.domain, endpoint),
-            token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(request),
-            secret = creds.secret
-        )
-
-        throwForFailure(response)
-    }
-
-    // ------------------------------------------------------------
-    // AUTO-CONNECT
-    // ------------------------------------------------------------
-
-    /**
-     * Sends a connection request on the app-origin auto-connect path. The server runs the
-     * recipient's auto-accept synchronously, so a single HTTP call can resolve the whole flow
-     * and return a typed [ConnectionRequestResult]. Non-2xx responses throw — callers treat transport
-     * / auth failures separately from in-band [AutoConnectOutcome]s.
-     */
-    suspend fun autoConnect(
-        request: ConnectionRequestHeader
-    ): ConnectionRequestResult {
-
-        val creds = requireCreds()
-
-        val endpoint = "/connections/requests/auto-connect"
-
-        val response = encryptedPostJson(
-            url = apiUrl(creds.domain, endpoint),
-            token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(request),
-            secret = creds.secret
-        )
-
-        throwForFailure(response)
-        return deserialize(response.body)
-    }
-
-    // ------------------------------------------------------------
     // SEND REVIEWED
     // ------------------------------------------------------------
 
     /**
-     * Owner-intent send: the same outcomes as [autoConnect], but the call also counts as the
-     * sender's review. A 403 (an owner-console circle named) or 400 `circleNotFound` means nothing
-     * was sent.
+     * The only send: the server runs the recipient's auto-accept synchronously and the call also
+     * counts as the sender's review. A 403 (an owner-console circle named) or 400
+     * `circleNotFound` means nothing was sent.
      */
     suspend fun sendReviewed(
         request: SendReviewedConnectionRequest

@@ -87,7 +87,6 @@ import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.chat.widget.StickerCreatorSheet
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.connections.ConnectRequestAction
-import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -178,6 +177,8 @@ fun ConversationListScreen(
     archivedConversationsViewModel: ArchivedConversationsViewModel,
     extendPermissionViewModel: ExtendPermissionViewModel,
     connectRequestViewModel: ConnectRequestViewModel,
+    /** homebase-core's Connect sheet: the review content it embeds lives there. */
+    connectRequestSheet: @Composable (ConnectRequestViewModel, SnackbarHostState) -> Unit,
     onNavigateBack: () -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
     onNavigateToNewConversation: () -> Unit,
@@ -352,10 +353,7 @@ fun ConversationListScreen(
         }
     }
 
-    ConnectRequestBottomSheet(
-        viewModel = connectRequestViewModel,
-        snackbarHostState = snackbarHostState,
-    )
+    connectRequestSheet(connectRequestViewModel, snackbarHostState)
 
     when (val dialog = conversationsUiState.uiDialog) {
         null -> {}

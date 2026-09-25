@@ -73,11 +73,7 @@
     <string name="error_too_many_attempts">Too many attempts</string>
     <string name="error_delivery_failed">Delivery failed</string>
     <string name="connect">Connect</string>
-    <string name="chat_auto_connect_connected">Connected</string>
-    <string name="auto_connect_pending_manual_approval">Request sent. %1$s will need to approve.</string>
     <string name="auto_connect_blocked">Cannot connect with %1$s.</string>
-    <string name="auto_connect_outgoing_request_exists">You've already sent a request to %1$s.</string>
-    <string name="auto_connect_duplicate_introductory_request">A request to %1$s is already in progress.</string>
     <string name="auto_connect_recipient_unreachable">Couldn't reach %1$s. Try again later.</string>
     <string name="auto_connect_recipient_rejected">%1$s isn't accepting connections right now.</string>
     <string name="auto_connect_recipient_not_configured">%1$s hasn't finished setting up their identity yet.</string>
@@ -222,6 +218,8 @@
     <string name="connections_message_label">Message (optional)</string>
     <string name="connections_checking_identity">Checking identity\u2026</string>
     <string name="connections_invalid_identity">This isn't a valid Homebase identity</string>
+    <string name="connections_circle_not_grantable">One of those circles can't be granted from this app. Nothing was sent.</string>
+    <string name="connections_circle_not_found">One of those circles no longer exists. Nothing was sent.</string>
     <string name="connections_request_sent">Connection request sent</string>
     <string name="connections_tab_incoming">Incoming (%1$s)</string>
     <string name="connections_tab_outgoing">Outgoing (%1$s)</string>
@@ -1518,7 +1516,6 @@
     <string name="cd_not_selected">Not selected</string>
     <string name="cd_open_externally">Open externally</string>
     <string name="cd_navigate_forward">Navigate forward</string>
-    <string name="cd_connection_succeeded">Connection succeeded</string>
     <string name="cd_video_scrubber_frame">Video scrubber frame</string>
     <string name="video_web_large_playback_unsupported">Large videos can't be played in the browser yet</string>
 

@@ -32,7 +32,7 @@ import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 import id.homebase.core.ui.screens.contactbook.detail.ReviewSheetState
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.saveContactDraft
-import id.homebase.core.ui.screens.contactbook.toCircleUuids
+import id.homebase.chat.services.requests.toCircleUuids
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

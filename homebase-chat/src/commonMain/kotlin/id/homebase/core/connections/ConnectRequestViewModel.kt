@@ -4,12 +4,26 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.AutoConnectOutcome
+import id.homebase.api.client.connections.ConnectionRequestResult
+import id.homebase.resources.MR
+import id.homebase.resources.auto_connect_blocked
+import id.homebase.resources.auto_connect_failed_generic
+import id.homebase.resources.auto_connect_invalid_request
+import id.homebase.resources.auto_connect_invalid_request_with_detail
+import id.homebase.resources.auto_connect_recipient_not_configured
+import id.homebase.resources.auto_connect_recipient_rejected
+import id.homebase.resources.auto_connect_recipient_requires_upgrade
+import id.homebase.resources.auto_connect_recipient_unreachable
+import id.homebase.resources.connections_invalid_identity
+import org.jetbrains.compose.resources.StringResource
 import id.homebase.api.client.identity.PublicIdentity
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.chat.services.requests.toCircleUuids
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.StatusMessage
@@ -63,19 +77,20 @@ class ConnectRequestViewModel(
                         recipient = "",
                         message = "",
                         resolution = RecipientResolution.Idle,
+                        circleError = null,
                     )
                 }
             }
 
             is ConnectRequestAction.RecipientChanged -> {
-                _state.update { it.copy(recipient = action.value) }
+                _state.update { it.copy(recipient = action.value, circleError = null) }
                 startRecipientResolution(action.value)
             }
 
             is ConnectRequestAction.MessageChanged ->
                 _state.update { it.copy(message = action.value) }
 
-            ConnectRequestAction.SendClicked -> sendRequest()
+            is ConnectRequestAction.SendClicked -> sendRequest(action.circleIds)
 
             ConnectRequestAction.DismissAlreadySentDialog ->
                 _state.update { it.copy(alreadySentRecipient = null) }
@@ -178,26 +193,29 @@ class ConnectRequestViewModel(
         }
     }
 
-    private fun sendRequest() {
+    private fun sendRequest(circleIds: Set<String>) {
         val current = _state.value
         val recipient = current.recipient.trim()
         if (recipient.isBlank()) {
-            _state.update { it.copy(uiEvent = ConnectRequestEvent.SendError("Recipient is required")) }
+            _state.update { it.copy(uiEvent = ConnectRequestEvent.SendError(ConnectFailure(MR.string.auto_connect_invalid_request))) }
             return
         }
         if (!OdinId.isValid(recipient)) {
-            _state.update { it.copy(uiEvent = ConnectRequestEvent.SendError("Recipient is not a valid OdinId")) }
+            _state.update { it.copy(uiEvent = ConnectRequestEvent.SendError(ConnectFailure(MR.string.connections_invalid_identity))) }
             return
         }
 
         val recipientId = OdinId(recipient)
         val message = current.message.trim().takeIf { it.isNotEmpty() }
 
-        _state.update { it.copy(isSending = true) }
+        _state.update { it.copy(isSending = true, circleError = null) }
         viewModelScope.launch {
             try {
-                val result = connectionRequestService.sendReviewed(recipientId, message)
-
+                val result = connectionRequestService.sendReviewed(
+                    recipientId,
+                    message,
+                    circleIds.toCircleUuids(),
+                )
                 when (result.outcome) {
                     AutoConnectOutcome.Connected,
                     AutoConnectOutcome.AcceptedFromExistingIncoming,
@@ -205,12 +223,7 @@ class ConnectRequestViewModel(
                     AutoConnectOutcome.PendingManualApproval -> {
                         val conversationId = startConversationWithRecipient(recipientId)
                         _state.update {
-                            it.copy(
-                                isSending = false,
-                                showDialog = false,
-                                recipient = "",
-                                message = "",
-                                resolution = RecipientResolution.Idle,
+                            it.closed().copy(
                                 uiEvent = conversationId
                                     ?.let { id -> ConnectRequestEvent.NavigateToConversation(id) }
                                     ?: ConnectRequestEvent.SendSuccess,
@@ -219,97 +232,39 @@ class ConnectRequestViewModel(
                     }
 
                     AutoConnectOutcome.OutgoingRequestAlreadyExists,
-                    AutoConnectOutcome.DuplicateIntroductoryRequest -> {
-                        _state.update {
-                            it.copy(
-                                isSending = false,
-                                showDialog = false,
-                                recipient = "",
-                                message = "",
-                                resolution = RecipientResolution.Idle,
-                                alreadySentRecipient = recipientId,
-                            )
-                        }
-                    }
+                    AutoConnectOutcome.DuplicateIntroductoryRequest ->
+                        _state.update { it.closed().copy(alreadySentRecipient = recipientId) }
 
-                    AutoConnectOutcome.RecipientIdentityNotConfigured -> {
-                        _state.update {
-                            it.copy(
-                                isSending = false,
-                                uiEvent = ConnectRequestEvent.SendError(
-                                    "$recipient hasn't finished setting up their identity yet.",
-                                ),
-                            )
-                        }
-                    }
-
-                    AutoConnectOutcome.RecipientRequiresUpgrade -> {
-                        _state.update {
-                            it.copy(
-                                isSending = false,
-                                uiEvent = ConnectRequestEvent.SendError(
-                                    "$recipient's server needs to be updated before you can connect.",
-                                ),
-                            )
-                        }
-                    }
-
-                    AutoConnectOutcome.Blocked,
-                    AutoConnectOutcome.RecipientUnreachable,
-                    AutoConnectOutcome.RecipientRejected,
-                    AutoConnectOutcome.InvalidRequest,
-                    AutoConnectOutcome.Failed,
-                    AutoConnectOutcome.Unknown -> {
-                        _state.update {
-                            it.copy(
-                                isSending = false,
-                                uiEvent = ConnectRequestEvent.SendError(
-                                    result.detail ?: "Failed to send request",
-                                ),
-                            )
-                        }
-                    }
+                    else -> failed(result.failureMessage(recipientId))
                 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: ClientException) {
-                // Fallback for legacy 400 behavior — server may still bubble some failures
-                // as ProblemDetails instead of typed AutoConnectOutcomes.
-                Logger.e(e) { "Connection request rejected by server: ${e.errorCode}" }
-                val title = e.problem?.title.orEmpty()
-                val alreadySent = e.errorCode == OdinClientErrorCode.ConnectionRequestAlreadySent ||
-                        title.contains("existing", ignoreCase = true) &&
-                        title.contains("outgoing", ignoreCase = true)
+            } catch (e: ForbiddenException) {
+                Logger.w(e) { "Send refused a circle this app may not grant" }
                 _state.update {
-                    if (alreadySent) {
-                        it.copy(
-                            isSending = false,
-                            showDialog = false,
-                            recipient = "",
-                            message = "",
-                            resolution = RecipientResolution.Idle,
-                            alreadySentRecipient = recipientId,
-                        )
-                    } else {
-                        it.copy(
-                            isSending = false,
-                            uiEvent = ConnectRequestEvent.SendError(
-                                e.message ?: "Failed to send request"
-                            ),
-                        )
+                    it.copy(isSending = false, circleError = ConnectCircleError.NotGrantable)
+                }
+            } catch (e: ClientException) {
+                Logger.w(e) { "Connection request rejected by server: ${e.errorCode}" }
+                when (e.errorCode) {
+                    OdinClientErrorCode.CircleNotFound -> _state.update {
+                        it.copy(isSending = false, circleError = ConnectCircleError.NotFound)
                     }
+                    OdinClientErrorCode.ConnectionRequestAlreadySent ->
+                        _state.update { it.closed().copy(alreadySentRecipient = recipientId) }
+                    else -> failed(e.failureMessage(recipientId))
                 }
             } catch (e: Exception) {
                 Logger.e(e) { "Failed to send connection request" }
-                _state.update {
-                    it.copy(
-                        isSending = false,
-                        uiEvent = ConnectRequestEvent.SendError(e.message ?: "Failed to send request"),
-                    )
-                }
+                failed(ConnectFailure(MR.string.auto_connect_failed_generic))
             }
         }
     }
+
+    private fun failed(failure: ConnectFailure) {
+        _state.update { it.copy(isSending = false, uiEvent = ConnectRequestEvent.SendError(failure)) }
+    }
+
 }
 
 data class ConnectRequestState(
@@ -319,8 +274,50 @@ data class ConnectRequestState(
     val resolution: RecipientResolution = RecipientResolution.Idle,
     val isSending: Boolean = false,
     val alreadySentRecipient: OdinId? = null,
+    /** Nothing was sent: the chosen circles need changing before trying again. */
+    val circleError: ConnectCircleError? = null,
     val uiEvent: ConnectRequestEvent? = null,
 )
+
+enum class ConnectCircleError { NotGrantable, NotFound }
+
+data class ConnectFailure(val res: StringResource, val args: List<Any> = emptyList())
+
+private fun ConnectRequestState.closed() = copy(
+    isSending = false,
+    showDialog = false,
+    recipient = "",
+    message = "",
+    resolution = RecipientResolution.Idle,
+    circleError = null,
+)
+
+private fun ConnectionRequestResult.failureMessage(recipient: OdinId): ConnectFailure {
+    val who = listOf(recipient.domainName)
+    return when (outcome) {
+        AutoConnectOutcome.Blocked -> ConnectFailure(MR.string.auto_connect_blocked, who)
+        AutoConnectOutcome.RecipientUnreachable ->
+            ConnectFailure(MR.string.auto_connect_recipient_unreachable, who)
+        AutoConnectOutcome.RecipientRejected ->
+            ConnectFailure(MR.string.auto_connect_recipient_rejected, who)
+        AutoConnectOutcome.RecipientIdentityNotConfigured ->
+            ConnectFailure(MR.string.auto_connect_recipient_not_configured, who)
+        AutoConnectOutcome.RecipientRequiresUpgrade ->
+            ConnectFailure(MR.string.auto_connect_recipient_requires_upgrade, who)
+        AutoConnectOutcome.InvalidRequest -> detail
+            ?.let { ConnectFailure(MR.string.auto_connect_invalid_request_with_detail, listOf(it)) }
+            ?: ConnectFailure(MR.string.auto_connect_invalid_request)
+        else -> ConnectFailure(MR.string.auto_connect_failed_generic)
+    }
+}
+
+private fun ClientException.failureMessage(recipient: OdinId): ConnectFailure = when (errorCode) {
+    OdinClientErrorCode.BlockedConnection ->
+        ConnectFailure(MR.string.auto_connect_blocked, listOf(recipient.domainName))
+    OdinClientErrorCode.ConnectionRequestToYourself ->
+        ConnectFailure(MR.string.auto_connect_invalid_request)
+    else -> ConnectFailure(MR.string.auto_connect_failed_generic)
+}
 
 sealed interface ConnectRequestAction {
     data object OpenDialog : ConnectRequestAction
@@ -330,7 +327,7 @@ sealed interface ConnectRequestAction {
     data object CloseDialog : ConnectRequestAction
     data class RecipientChanged(val value: String) : ConnectRequestAction
     data class MessageChanged(val value: String) : ConnectRequestAction
-    data object SendClicked : ConnectRequestAction
+    data class SendClicked(val circleIds: Set<String>) : ConnectRequestAction
     data object DismissAlreadySentDialog : ConnectRequestAction
     data object OpenOwnerConsoleClicked : ConnectRequestAction
     data object EventConsumed : ConnectRequestAction
@@ -346,7 +343,7 @@ sealed interface RecipientResolution {
 
 sealed interface ConnectRequestEvent {
     data object SendSuccess : ConnectRequestEvent
-    data class SendError(val message: String) : ConnectRequestEvent
+    data class SendError(val failure: ConnectFailure) : ConnectRequestEvent
     data class OpenUrl(val url: String) : ConnectRequestEvent
     data class NavigateToConversation(val conversationId: Uuid) : ConnectRequestEvent
 }

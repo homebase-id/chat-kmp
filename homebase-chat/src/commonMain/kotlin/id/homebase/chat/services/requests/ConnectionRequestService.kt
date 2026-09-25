@@ -8,7 +8,6 @@ import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.connections.AcceptConnectionRequestV2
 import id.homebase.api.client.connections.AutoConnectOutcome
 import id.homebase.api.client.connections.ConnectionRequestResult
-import id.homebase.api.client.connections.ConnectionRequestHeader
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IncomingConnectionRequestResponse
 import id.homebase.api.client.connections.OutgoingConnectionRequestResponse
@@ -200,40 +199,19 @@ class ConnectionRequestService(
     }
 
     /**
-     * Sends a connection request and immediately refreshes the outgoing-requests list so the
-     * list UI can reflect the new pending state without waiting for a websocket event (no
-     * server event fires for our own outbound send).
-     */
-    suspend fun sendConnectionRequest(header: ConnectionRequestHeader) {
-        connectionRequestProvider.sendConnectionRequest(header)
-        markOutgoingOptimistically(header.recipient)
-        refresh()
-    }
-
-    /**
-     * App-origin auto-connect: the server may fully establish the ICR in a single round trip
-     * (if the recipient auto-accepts). Applies the right local-state side effects for each
-     * outcome so the UI updates immediately:
-     *  - Connected / AcceptedFromExistingIncoming: drop from outgoing (if present) and refresh
-     *    both pending-request and connected-identity lists.
-     *  - AlreadyConnected: refresh connected-identity list (cheap, keeps UI in sync).
+     * The one send path. The server may fully establish the ICR in a single round trip (if the
+     * recipient auto-accepts), and records the send as our review of [recipient]. Applies the
+     * local side effects for each outcome so the UI updates immediately:
+     *  - Connected / AcceptedFromExistingIncoming: drop from outgoing and refresh both
+     *    pending-request and connected-identity lists.
+     *  - AlreadyConnected: refresh connected-identity list.
      *  - PendingManualApproval / OutgoingRequestAlreadyExists / DuplicateIntroductoryRequest:
-     *    show the outgoing request optimistically.
-     *  - All other outcomes (Blocked, Rejected, Unreachable, InvalidRequest, Failed, Unknown):
-     *    no local state change — the caller decides how to surface them.
+     *    show the outgoing request optimistically. The review lands when they accept; the
+     *    ConnectionRequestAccepted event refreshes it then.
+     *  - All other outcomes: no local state change — the caller decides how to surface them.
      *
-     * Transport/auth failures propagate as exceptions; they are never returned as an outcome.
-     */
-    suspend fun autoConnect(header: ConnectionRequestHeader): ConnectionRequestResult {
-        val result = connectionRequestProvider.autoConnect(header)
-        applyOutcome(header.recipient, result.outcome)
-        return result
-    }
-
-    /**
-     * Owner-intent send: same outcomes and local side effects as [autoConnect], and the server
-     * also records it as our review of [recipient]. On [AutoConnectOutcome.PendingManualApproval]
-     * the review lands when they accept; the ConnectionRequestAccepted event refreshes it then.
+     * Transport/auth failures propagate as exceptions: a 403 (a circle this app may not grant)
+     * or 400 `circleNotFound` means nothing was sent.
      */
     suspend fun sendReviewed(
         recipient: OdinId,
@@ -247,12 +225,7 @@ class ConnectionRequestService(
                 circleIds = circleIds,
             )
         )
-        applyOutcome(recipient, result.outcome)
-        return result
-    }
-
-    private suspend fun applyOutcome(recipient: OdinId, outcome: AutoConnectOutcome) {
-        when (outcome) {
+        when (result.outcome) {
             AutoConnectOutcome.Connected,
             AutoConnectOutcome.AcceptedFromExistingIncoming -> {
                 removeFromOutgoing(recipient)
@@ -268,8 +241,7 @@ class ConnectionRequestService(
             AutoConnectOutcome.PendingManualApproval -> {
                 markOutgoingOptimistically(recipient)
                 refresh()
-                // Save contact so they appear in the contact list immediately — matches
-                // the legacy sendConnectionRequest flow, which saved on HTTP-200.
+                // Save contact so they appear in the contact list immediately.
                 contactInfo.resync(recipient)
             }
             AutoConnectOutcome.OutgoingRequestAlreadyExists,
@@ -286,6 +258,7 @@ class ConnectionRequestService(
             AutoConnectOutcome.Failed,
             AutoConnectOutcome.Unknown -> Unit
         }
+        return result
     }
 
     /**

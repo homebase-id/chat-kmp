@@ -13,7 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextField
@@ -39,6 +38,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import id.homebase.api.util.cleanDomain
+import id.homebase.api.client.identity.PublicIdentity
 import id.homebase.api.client.identity.displayNameOrDomain
 import id.homebase.api.client.identity.initials
 import id.homebase.core.avatars.AvatarOptions
@@ -57,15 +57,26 @@ import id.homebase.resources.connections_new_request
 import id.homebase.resources.connections_recipient_label
 import id.homebase.resources.connections_recipient_placeholder
 import id.homebase.resources.connections_request_sent
-import id.homebase.resources.connections_send_request
 import id.homebase.resources.settings_open_owner_console
 import kotlin.uuid.Uuid
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
+
+/**
+ * The review choices shown once the recipient resolves. Sending *is* the review, so this is the
+ * review sheet's own content; it lives in homebase-core, hence the slot.
+ */
+typealias ConnectReviewContent = @Composable (
+    identity: PublicIdentity,
+    state: ConnectRequestState,
+    onAction: (ConnectRequestAction) -> Unit,
+) -> Unit
 
 @Composable
 fun ConnectRequestBottomSheet(
     viewModel: ConnectRequestViewModel,
     snackbarHostState: SnackbarHostState,
+    review: ConnectReviewContent,
     sendSuccessMessage: String = stringResource(MR.string.connections_request_sent),
     onNavigateToConversation: ((Uuid) -> Unit)? = null,
 ) {
@@ -84,7 +95,9 @@ fun ConnectRequestBottomSheet(
             }
             is ConnectRequestEvent.SendError -> {
                 // Sheet stays open on error, so use the sheet's own snackbar
-                sheetSnackbarHostState.showSnackbar(event.message)
+                sheetSnackbarHostState.showSnackbar(
+                    getString(event.failure.res, *event.failure.args.toTypedArray())
+                )
                 viewModel.onAction(ConnectRequestAction.EventConsumed)
             }
             is ConnectRequestEvent.OpenUrl -> {
@@ -133,6 +146,7 @@ fun ConnectRequestBottomSheet(
             state = state,
             sheetSnackbarHostState = sheetSnackbarHostState,
             onAction = viewModel::onAction,
+            review = review,
         )
     }
 }
@@ -142,6 +156,7 @@ internal fun ConnectRequestSheet(
     state: ConnectRequestState,
     sheetSnackbarHostState: SnackbarHostState,
     onAction: (ConnectRequestAction) -> Unit,
+    review: ConnectReviewContent,
 ) {
     AdaptiveSheet(
         onDismiss = { onAction(ConnectRequestAction.CloseDialog) },
@@ -156,7 +171,7 @@ internal fun ConnectRequestSheet(
                 isSending = state.isSending,
                 onRecipientChange = { onAction(ConnectRequestAction.RecipientChanged(it)) },
                 onMessageChange = { onAction(ConnectRequestAction.MessageChanged(it)) },
-                onSend = { onAction(ConnectRequestAction.SendClicked) },
+                review = { identity -> review(identity, state, onAction) },
             )
             SnackbarHost(
                 hostState = sheetSnackbarHostState,
@@ -174,10 +189,8 @@ private fun ComposeRequestSheetContent(
     isSending: Boolean,
     onRecipientChange: (String) -> Unit,
     onMessageChange: (String) -> Unit,
-    onSend: () -> Unit,
+    review: @Composable (PublicIdentity) -> Unit,
 ) {
-    val canSend = resolution is RecipientResolution.Resolved
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -251,21 +264,7 @@ private fun ComposeRequestSheetContent(
             ),
         )
 
-        Button(
-            onClick = onSend,
-            enabled = !isSending && canSend,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            if (isSending) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                )
-            } else {
-                Text(stringResource(MR.string.connections_send_request))
-            }
-        }
+        if (resolution is RecipientResolution.Resolved) review(resolution.identity)
     }
 }
 
