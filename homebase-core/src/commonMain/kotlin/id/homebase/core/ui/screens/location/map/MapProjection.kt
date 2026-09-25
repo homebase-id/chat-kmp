@@ -7,6 +7,7 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.max
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 /**
@@ -33,6 +34,26 @@ internal fun MapViewport.toPx(ux: Double, uy: Double, widthPx: Float, heightPx: 
         x = ((ux - centerX) / unitsPerPx + widthPx / 2.0).toFloat(),
         y = ((uy - centerY) / unitsPerPx + heightPx / 2.0).toFloat(),
     )
+
+/**
+ * Zoom by [zoom] keeping the screen point [anchor] (px from the view center) fixed, then pan by [pan] px.
+ */
+internal fun MapViewport.transformed(anchor: Offset, pan: Offset, zoom: Float): MapViewport {
+    val newUnitsPerPx = (unitsPerPx / zoom).coerceIn(MIN_UNITS_PER_PX, MAX_UNITS_PER_PX)
+    return MapViewport(
+        centerX = centerX + anchor.x * (unitsPerPx - newUnitsPerPx) - pan.x * newUnitsPerPx,
+        centerY = centerY + anchor.y * (unitsPerPx - newUnitsPerPx) - pan.y * newUnitsPerPx,
+        unitsPerPx = newUnitsPerPx,
+    )
+}
+
+// Zoom interpolates geometrically so a world-to-street fly reads as a steady zoom, not a lurch.
+internal fun MapViewport.lerpTo(target: MapViewport, t: Float): MapViewport = MapViewport(
+    centerX = centerX + (target.centerX - centerX) * t,
+    centerY = centerY + (target.centerY - centerY) * t,
+    unitsPerPx = (unitsPerPx * (target.unitsPerPx / unitsPerPx).pow(t.toDouble()))
+        .coerceIn(MIN_UNITS_PER_PX, MAX_UNITS_PER_PX),
+)
 
 /**
  * Fit [bbox] (unit-space `[minX,minY,maxX,maxY]`) into [canvasSize] with padding. Returns null until
