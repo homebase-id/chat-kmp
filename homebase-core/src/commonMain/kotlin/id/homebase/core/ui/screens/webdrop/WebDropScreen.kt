@@ -2,10 +2,7 @@
 
 package id.homebase.core.ui.screens.webdrop
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -113,11 +110,10 @@ fun WebDropScreen(
             uiState.drops.isEmpty() -> WebDropBody.Empty
             else -> WebDropBody.Drops
         }
-        val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
-        AnimatedContent(
+        Crossfade(
             targetState = body,
             modifier = Modifier.fillMaxSize().padding(innerPadding),
-            transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
+            animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         ) { shown ->
             when (shown) {
                 WebDropBody.Loading -> Box(

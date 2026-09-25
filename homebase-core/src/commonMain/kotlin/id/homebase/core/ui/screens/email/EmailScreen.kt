@@ -1,9 +1,6 @@
 package id.homebase.core.ui.screens.email
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -90,11 +87,7 @@ fun EmailScreen(
                 setupStep == EmailSetupStep.Complete -> EmailBody.Home
                 else -> EmailBody.Setup
             }
-            val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
-            AnimatedContent(
-                targetState = body,
-                transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
-            ) { shown ->
+            Crossfade(body, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()) { shown ->
                 when (shown) {
                     EmailBody.Busy -> EmailBusy()
 
