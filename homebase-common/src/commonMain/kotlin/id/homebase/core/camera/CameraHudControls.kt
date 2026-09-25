@@ -153,7 +153,7 @@ internal fun TopBar(
             CameraCloseButton(onClick = onClose, iconRotation = iconRotation, modifier = Modifier.align(Alignment.CenterStart))
             RecordingTimer(
                 visible = recording,
-                startedAtMs = ui.recordingStartedAtMs.takeIf { ui.isRecording },
+                startedAtMs = ui.recordingStartedAtMs,
                 modifier = Modifier.align(Alignment.Center),
             )
             FlashButton(
