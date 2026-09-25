@@ -680,8 +680,6 @@
     <string name="chat_message_attachment_options">Vedhæftelses menu</string>
     <string name="chat_attach_file_failed">Kunne ikke vedhæfte fil(er): %s</string>
     <string name="chat_message_camera">Kamera</string>
-    <string name="chat_message_take_photo">Tag billede</string>
-    <string name="chat_message_record_video">Optag video</string>
     <string name="share_picker_next">Næste</string>
     <string name="share_picker_send">Send</string>
     <string name="share_picker_new_webdrop">Nyt WebDrop</string>
@@ -1913,4 +1911,7 @@
     <string name="camera_recording_started">Optagelsen er startet</string>
     <string name="camera_recording_stopped">Optagelsen er stoppet, %1$s</string>
     <string name="camera_ae_af_lock">AE/AF-lås</string>
+    <string name="settings_media_camera_header">Kamera</string>
+    <string name="settings_media_mirror_front">Spejlvend frontkamera</string>
+    <string name="settings_media_mirror_front_description">Gem selfies og videoer fra frontkameraet, som de ser ud i forhåndsvisningen.</string>
 </resources>

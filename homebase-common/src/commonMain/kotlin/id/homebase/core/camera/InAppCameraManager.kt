@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import id.homebase.core.settings.rememberMirrorFrontCamera
 import id.homebase.core.util.PlatformCameraManager
 import io.github.vinceglb.filekit.PlatformFile
 import co.touchlab.kermit.Logger
@@ -46,16 +47,9 @@ class InAppCameraLauncher internal constructor() : PlatformCameraManager {
     }
 }
 
-/**
- * Emits the camera dialog while open, so call it unconditionally (not inside an `if`).
- * [onResult] gets the captured file, or null when the camera is closed without one. [onOpenGallery], when given,
- * shows a gallery button that closes the camera and hands over to the caller's picker. With [awaitResultShown] the
- * camera stays up after a capture until the receiver calls [CaptureHandoff.contentShown], then fades out.
- */
 @Composable
 fun rememberInAppCameraManager(
     allowedModes: CameraModes,
-    mirrorFront: Boolean = true,
     awaitResultShown: Boolean = false,
     onOpenGallery: (() -> Unit)? = null,
     onResult: (PlatformFile?) -> Unit,
@@ -90,7 +84,7 @@ fun rememberInAppCameraManager(
         }
         CameraCaptureDialog(
             allowedModes = allowedModes,
-            mirrorFront = mirrorFront,
+            mirrorFront = rememberMirrorFrontCamera(),
             warmEngine = launcher.warmEngine,
             handingOff = handoff != null,
             fade = { fade.value },

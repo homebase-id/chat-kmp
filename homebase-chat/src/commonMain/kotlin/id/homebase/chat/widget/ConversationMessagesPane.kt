@@ -1,6 +1,7 @@
 package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -51,6 +52,7 @@ import id.homebase.chat.services.PaginatedConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.util.boundedFirstVisibleItemIndex
+import id.homebase.core.camera.CameraModes
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
@@ -106,13 +108,18 @@ fun ConversationMessagesPane(
             )
         }
     }
-    val cameraLauncher = rememberCameraManager { file ->
+    val cameraLauncher = rememberCameraManager(
+        modes = CameraModes.PhotoAndVideo,
+        onOpenGallery = { galleryLauncher.launch() },
+        awaitResultShown = true,
+    ) { file ->
         file?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
                     conversationId = conversation.conversation.id,
                     files = listOf(file),
                     isImage = true,
+                    fromCamera = true,
                 )
             )
         }
@@ -313,6 +320,7 @@ fun ConversationMessagesPane(
                     showBackButton = showBackButton,
                     onBackClick = onBackClick,
                     onUiAction = onUiAction,
+                    onCameraClick = { cameraLauncher.launch() },
                     animatedVisibilityScope = this@AnimatedContent,
                     sharedTransitionScope = this@SharedTransitionLayout
                 )
@@ -337,6 +345,7 @@ fun ConversationMessagesPane(
                         MediaAttachmentEditor(
                             attachments = data.attachments,
                             currentPage = currentGalleryPage,
+                            revealed = transition.currentState == EnterExitState.Visible,
                             onPageChanged = { currentGalleryPage = it },
                             onSaveFile = { onUiAction(SaveFile(it)) },
                             mediaQuality = uiState.mediaQuality,
