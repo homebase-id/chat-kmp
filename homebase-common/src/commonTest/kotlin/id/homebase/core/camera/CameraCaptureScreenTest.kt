@@ -20,6 +20,7 @@ import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.click
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -279,6 +280,23 @@ class CameraCaptureScreenTest {
         waitForIdle()
         onNodeWithTag(ZOOM_PRESET_TAG + "1").assertIsOn()
         onNodeWithText("1.4×").assertExists()
+    }
+
+    @Test
+    fun aLingeringZoomReadoutShowsATappedPresetsTarget() = runComposeUiTest {
+        val engine = FakeCameraEngine(CameraUiState(isBound = true, minZoom = 1f, maxZoom = 8f))
+        engine.holdAnimatedZoom = true
+        showCamera(engine)
+        onNodeWithTag(ZOOM_BAR_TAG).performTouchInput {
+            down(centerLeft + Offset(4f, 0f))
+            repeat(6) { moveBy(Offset(10f, 0f), delayMillis = 30) }
+            up()
+        }
+        mainClock.autoAdvance = false
+        onNodeWithTag(ZOOM_PRESET_TAG + "1").performClick()
+        engine.uiState.update { it.copy(zoomRatio = 1.2f) }
+        mainClock.advanceTimeBy(100)
+        onNodeWithTag(ZOOM_READOUT_TAG).assertTextEquals("1×")
     }
 
     @Test

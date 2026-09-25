@@ -855,7 +855,7 @@ private fun ZoomControls(
         modifier = Modifier.graphicsLayer { this.alpha = alpha },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ZoomReadout(visible = readoutVisible, zoomRatio = zoomRatio, rotation = iconRotation)
+        ZoomReadout(visible = readoutVisible, zoomRatio = { targetRatio() ?: zoomRatio() }, rotation = iconRotation)
         ZoomPresetBar(
             presets = presets,
             zoomRatio = zoomRatio,
