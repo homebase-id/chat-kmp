@@ -17,6 +17,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -40,7 +42,6 @@ import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.FlashlightOff
 import androidx.compose.material.icons.filled.FlashlightOn
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.outlined.Cameraswitch
 import androidx.compose.material.icons.outlined.LockOpen
@@ -68,6 +69,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -75,13 +80,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
-import androidx.compose.ui.semantics.progressBarRangeInfo
-import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -105,15 +110,15 @@ import id.homebase.resources.camera_state_off
 import id.homebase.resources.camera_state_on
 import id.homebase.resources.camera_switch_lens
 import id.homebase.resources.camera_torch
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
-import org.jetbrains.compose.resources.stringResource
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.roundToInt
 import kotlin.time.Clock
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
 
 internal const val CLOSE_TAG = "camera_close"
 internal const val FLASH_TAG = "camera_flash"
@@ -396,42 +401,63 @@ internal fun LockTarget(visible: Boolean, progress: () -> Float, iconRotation: (
     }
 }
 
+/** Centred in the gap between the held ring and the lock target and fitted to it; hidden when the gap is too small. */
 @Composable
 internal fun LockHint(visible: Boolean, direction: Offset, progress: () -> Float, modifier: Modifier = Modifier) {
     val degrees = (atan2(direction.y, direction.x) * 180f / PI.toFloat())
     val reduceMotion = LocalReduceMotion.current
+    val density = LocalDensity.current
+    val distance = direction.getDistance()
+    val clearStart = with(density) { (HeldRingOuterRadius + LockHintGap).toPx() }
+    val clearEnd = distance - with(density) { (SideSlotSize / 2 + LockHintGap).toPx() }
+    val length = with(density) { minOf(clearEnd - clearStart, HintMaxLength.toPx()).toDp() }
+    val centre = if (distance > 0f) direction * ((clearStart + clearEnd) / 2 / distance) else Offset.Zero
     AnimatedVisibility(
-        visible = visible && direction != Offset.Zero,
+        visible = visible && distance > 0f && length >= HintMinLength,
         enter = fadeIn(tween(durationMillis = 200, delayMillis = 150)),
         exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
-        modifier = modifier,
+        modifier = modifier.absoluteOffset { IntOffset(centre.x.roundToInt(), centre.y.roundToInt()) },
     ) {
         val shimmer = if (reduceMotion) null else rememberInfiniteTransition().animateFloat(0f, 1f, infiniteRepeatable(tween(900)))
-        Row(
-            modifier = Modifier
+        val color = MaterialTheme.colorScheme.onSurface
+        val path = remember { Path() }
+        Canvas(
+            Modifier
                 .testTag(LOCK_HINT_TAG)
                 .clearAndSetSemantics { }
+                .size(length, ChevronHeight)
                 .graphicsLayer {
                     rotationZ = degrees
                     alpha = 1f - progress()
                 },
         ) {
+            val stroke = ChevronStroke.toPx()
+            val depth = ChevronDepth.toPx()
+            val step = (size.width - depth - stroke) / (HINT_CHEVRONS - 1)
             repeat(HINT_CHEVRONS) { index ->
-                Icon(
-                    imageVector = Icons.Filled.KeyboardArrowUp,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier
-                        .size(20.dp)
-                        .graphicsLayer {
-                            rotationZ = 90f
-                            alpha = shimmer?.let { chevronAlpha(it.value, index) } ?: 0.8f
-                        },
+                val x = stroke / 2 + index * step
+                path.reset()
+                path.moveTo(x, stroke / 2)
+                path.lineTo(x + depth, size.height / 2)
+                path.lineTo(x, size.height - stroke / 2)
+                drawPath(
+                    path = path,
+                    color = color,
+                    alpha = shimmer?.let { chevronAlpha(it.value, index) } ?: 0.8f,
+                    style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
                 )
             }
         }
     }
 }
+
+private val LockHintGap = 8.dp
+private val ChevronHeight = 12.dp
+private val ChevronDepth = 6.dp
+private val ChevronStroke = 2.dp
+private val HintMaxLength = 44.dp
+// Below this the chevrons' strokes would touch.
+private val HintMinLength = 24.dp
 
 private const val HINT_CHEVRONS = 3
 

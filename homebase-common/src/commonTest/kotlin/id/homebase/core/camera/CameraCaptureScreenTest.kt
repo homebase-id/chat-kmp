@@ -20,6 +20,7 @@ import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.click
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -279,6 +280,23 @@ class CameraCaptureScreenTest {
         waitForIdle()
         onNodeWithTag(ZOOM_PRESET_TAG + "1").assertIsOn()
         onNodeWithText("1.4×").assertExists()
+    }
+
+    @Test
+    fun aLingeringZoomReadoutShowsATappedPresetsTarget() = runComposeUiTest {
+        val engine = FakeCameraEngine(CameraUiState(isBound = true, minZoom = 1f, maxZoom = 8f))
+        engine.holdAnimatedZoom = true
+        showCamera(engine)
+        onNodeWithTag(ZOOM_BAR_TAG).performTouchInput {
+            down(centerLeft + Offset(4f, 0f))
+            repeat(6) { moveBy(Offset(10f, 0f), delayMillis = 30) }
+            up()
+        }
+        mainClock.autoAdvance = false
+        onNodeWithTag(ZOOM_PRESET_TAG + "1").performClick()
+        engine.uiState.update { it.copy(zoomRatio = 1.2f) }
+        mainClock.advanceTimeBy(100)
+        onNodeWithTag(ZOOM_READOUT_TAG).assertTextEquals("1×")
     }
 
     @Test
@@ -686,6 +704,21 @@ class CameraCaptureScreenTest {
         onNodeWithTag(LOCK_HINT_TAG).assertDoesNotExist()
         holdShutter()
         onNodeWithTag(LOCK_HINT_TAG).assertExists()
+    }
+
+    @Test
+    fun theLockHintSitsBetweenTheHeldRingAndTheLock() {
+        for (width in listOf(360.dp, 393.dp, 480.dp)) runComposeUiTest {
+            showCamera(FakeCameraEngine(), size = DpSize(width, 800.dp))
+            holdShutter()
+            mainClock.advanceTimeBy(1_000)
+            val hint = onNodeWithTag(LOCK_HINT_TAG).fetchSemanticsNode().boundsInRoot
+            val shutter = onNodeWithTag(SHUTTER_TAG).fetchSemanticsNode().boundsInRoot.center
+            val lock = onNodeWithTag(LOCK_TAG).fetchSemanticsNode().boundsInRoot
+            val ring = with(density) { HeldRingOuterRadius.toPx() }
+            assertTrue(shutter.x - hint.right >= ring, "at $width the hint $hint overlaps the ring (r=$ring) around $shutter")
+            assertTrue(hint.left >= lock.right, "at $width the hint $hint overlaps the lock $lock")
+        }
     }
 
     @Test

@@ -340,6 +340,8 @@ internal val ShutterSize = 80.dp
 private val InnerSize = 64.dp
 private val RingStroke = 4.dp
 private const val HELD_RING_SCALE = 1.2f
+/** Outer edge of the ring while a hold records: its largest size, which the lock hint must stay clear of. */
+internal val HeldRingOuterRadius = (ShutterSize - RingStroke) / 2 * HELD_RING_SCALE + RingStroke / 2
 private const val HOLD_ZOOM_TRAVEL_MULTIPLIER = 4f
 private const val LOCK_INTENT_FRACTION = 0.1f
 internal const val LOCK_SNAP_FRACTION = 0.85f
