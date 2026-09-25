@@ -565,7 +565,7 @@ fun GroupSettingsUi(
                     }
 
                     if (notConnectedContacts.isNotEmpty()) {
-                        item(key = NOT_CONNECTED_HEADER_KEY) {
+                        item(key = "not-connected-header") {
                             Text(
                                 modifier = Modifier.animateItem().padding(horizontal = 24.dp).padding(top = 24.dp, bottom = 8.dp),
                                 text = stringResource(MR.string.not_connected),
@@ -1478,5 +1478,3 @@ private fun HealGroupButton(
         )
     }
 }
-
-private const val NOT_CONNECTED_HEADER_KEY = "not-connected-header"
