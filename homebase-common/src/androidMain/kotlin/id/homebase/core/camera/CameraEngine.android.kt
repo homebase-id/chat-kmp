@@ -214,7 +214,10 @@ internal class AndroidCameraEngine(
             if (released) return@launch
             logOpenStep("provider ready")
             provider = cameraProvider
-            anyCameraIsLegacy = withContext(Dispatchers.IO) { CameraCapability.anyCameraIsLegacy(context) }
+            // Only the first open in a process hops to IO: the hop hands main to the dialog's first frame, which then
+            // runs ahead of the bind, and the camera can't open under that frame.
+            anyCameraIsLegacy = CameraCapability.knownAnyCameraIsLegacy
+                ?: withContext(Dispatchers.IO) { CameraCapability.anyCameraIsLegacy(context) }
             val hasBack = cameraProvider.hasCameraSafe(CameraSelector.DEFAULT_BACK_CAMERA)
             val hasFront = cameraProvider.hasCameraSafe(CameraSelector.DEFAULT_FRONT_CAMERA)
             if (!hasBack && !hasFront) {
@@ -263,7 +266,10 @@ internal class AndroidCameraEngine(
         val perMode: List<UseCase> =
             if (state.mode == CaptureMode.Photo) listOf(newPreview, newImage) else listOf(newPreview, newVideo)
         val simultaneous = listOf(newPreview, newImage, newVideo)
-        val attempts = if (canBindSimultaneously(cameraProvider, selector, simultaneous)) {
+        val simultaneousSupported = CameraCapability.simultaneousSupport.getOrPut(state.lens) {
+            canBindSimultaneously(cameraProvider, selector, simultaneous)
+        }
+        val attempts = if (simultaneousSupported) {
             listOf(simultaneous, perMode)
         } else {
             listOf(perMode)
