@@ -88,38 +88,38 @@ internal class AttachmentHandler(
             runCatching { id.homebase.api.video.VideoCompressionService.getDurationMs(videoPath) }
                 .getOrNull()
         }
+        // Patched separately: the editor's player waits on the duration, which lands long before a decoded poster.
+        scope.launch {
+            val durationMs = try {
+                durationDeferred.await()
+            } catch (_: CancellationException) {
+                null
+            }?.takeIf { it > 0 } ?: return@launch
+            // videoPath is the path the extractor was handed; the duration-gated filmstrip and player both play it.
+            patchPendingVideo(attachmentId) { it.copy(durationMs = durationMs, playablePath = videoPath) }
+        }
         scope.launch {
             val bytes = try {
                 deferred.await()
             } catch (_: CancellationException) {
                 null
             }
-            val durationMs = try {
-                durationDeferred.await()
-            } catch (_: CancellationException) {
-                null
-            }
             pendingThumbnails.remove(attachmentId)
-            if (bytes == null && durationMs == null) return@launch
-            messagesUiState.update { state ->
-                val overlay = state.fullScreenOverlay as? FullScreenOverlay.AttachmentData
-                    ?: return@update state
-                if (overlay.attachments.none { it.attachmentId == attachmentId }) return@update state
-                val updated = overlay.attachments.map { a ->
-                    if (a is AttachmentPendingFile.FileVideo && a.attachmentId == attachmentId) {
-                        a.copy(
-                            thumbnailBytes = bytes ?: a.thumbnailBytes,
-                            durationMs = durationMs?.takeIf { it > 0 } ?: a.durationMs,
-                            // videoPath is the okio-readable path the extractor was handed
-                            // (web = materialized okio path, native = file.toString()). Storing
-                            // it here guarantees playablePath is set whenever durationMs is — the
-                            // editor's duration-gated filmstrip/player both depend on it.
-                            playablePath = videoPath,
-                        )
-                    } else a
-                }
-                state.copy(fullScreenOverlay = overlay.copy(attachments = updated))
+            if (bytes != null) patchPendingVideo(attachmentId) { it.copy(thumbnailBytes = bytes, playablePath = videoPath) }
+        }
+    }
+
+    private fun patchPendingVideo(
+        attachmentId: Uuid,
+        patch: (AttachmentPendingFile.FileVideo) -> AttachmentPendingFile.FileVideo,
+    ) {
+        messagesUiState.update { state ->
+            val overlay = state.fullScreenOverlay as? FullScreenOverlay.AttachmentData ?: return@update state
+            if (overlay.attachments.none { it.attachmentId == attachmentId }) return@update state
+            val updated = overlay.attachments.map { a ->
+                if (a is AttachmentPendingFile.FileVideo && a.attachmentId == attachmentId) patch(a) else a
             }
+            state.copy(fullScreenOverlay = overlay.copy(attachments = updated))
         }
     }
 
@@ -143,7 +143,8 @@ internal class AttachmentHandler(
                     // scope — so without this copy `readFileData` throws "Unable to read
                     // file". No-op on web; a cheap sandbox copy elsewhere. See
                     // AttachmentUploadResolve.materializeForUpload.
-                    val it = picked.materializeForUpload(fileOperationsProvider)
+                    // A capture is already a plain file in the swept upload-temp dir; copying a clip delays the editor.
+                    val it = if (action.fromCamera) picked else picked.materializeForUpload(fileOperationsProvider)
                     when {
                         ct.startsWith("video/") -> AttachmentPendingFile.FileVideo(
                             Uuid.generateV7(),

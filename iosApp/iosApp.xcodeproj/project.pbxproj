@@ -911,8 +911,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to attach picture to chat message";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow access to your microphone to record a message and send it securely over chat.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to take photos and videos for chats, Moments, events and your Vault.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages and the sound in videos you take.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving photos and videos from chat to your photo library";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -1009,8 +1009,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to attach picture to chat message";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow access to your microphone to record a message and send it securely over chat.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to take photos and videos for chats, Moments, events and your Vault.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages and the sound in videos you take.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving photos and videos from chat to your photo library";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -1198,8 +1198,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to attach picture to chat message";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow access to your microphone to record a message and send it securely over chat.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to take photos and videos for chats, Moments, events and your Vault.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages and the sound in videos you take.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving photos and videos from chat to your photo library";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

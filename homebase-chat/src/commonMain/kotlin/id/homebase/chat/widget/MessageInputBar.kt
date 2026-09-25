@@ -43,7 +43,6 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.AddLink
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.FormatBold
@@ -54,8 +53,6 @@ import androidx.compose.material.icons.outlined.FormatStrikethrough
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -142,7 +139,6 @@ import id.homebase.resources.chat_message_hide_keyboard
 import id.homebase.resources.chat_message_microphone
 import id.homebase.resources.chat_message_paste_image
 import id.homebase.resources.chat_message_processing
-import id.homebase.resources.chat_message_record_video
 import id.homebase.resources.chat_markdown_blockquote
 import id.homebase.resources.chat_markdown_code_block
 import id.homebase.resources.chat_markdown_heading
@@ -154,7 +150,6 @@ import id.homebase.resources.chat_markdown_link_dialog_text
 import id.homebase.resources.chat_markdown_link_dialog_title
 import id.homebase.resources.chat_markdown_link_dialog_url
 import id.homebase.resources.chat_markdown_nested_list
-import id.homebase.resources.chat_message_take_photo
 import id.homebase.resources.chat_new_message_placeholder
 import id.homebase.resources.chat_send_message_button
 import id.homebase.resources.collapse
@@ -206,7 +201,6 @@ fun MessageInputBar(
     onFocused: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
-    onVideoRecordClick: () -> Unit,
     onRecordingStarted: () -> Unit,
     onRecordingStopped: () -> Unit,
     onRecordingCancelled: () -> Unit,
@@ -354,7 +348,6 @@ fun MessageInputBar(
                 onKeyboardClick = onKeyboardClick,
                 onAddAttachmentClick = onAddAttachmentClick,
                 onCameraClick = onCameraClick,
-                onVideoRecordClick = onVideoRecordClick,
                 onRecordingStarted = onRecordingStarted,
                 onRecordingStopped = onRecordingStopped,
                 onRecordingCancelled = onRecordingCancelled,
@@ -585,7 +578,6 @@ fun MessageTextFieldCompact(
     onKeyboardClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
-    onVideoRecordClick: () -> Unit,
     onRecordingStarted: () -> Unit,
     onRecordingStopped: () -> Unit,
     onRecordingCancelled: () -> Unit,
@@ -828,42 +820,14 @@ fun MessageTextFieldCompact(
                                                         )
                                                     }
                                                 } else if (isMobile()) {
-                                                    var showCameraMenu by remember { mutableStateOf(false) }
-                                                    Box {
-                                                        IconButton(
-                                                            onClick = { showCameraMenu = true },
-                                                            modifier = Modifier.testTag("camera_button"),
-                                                        ) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.PhotoCamera,
-                                                                contentDescription = stringResource(MR.string.chat_message_camera)
-                                                            )
-                                                        }
-                                                        DropdownMenu(
-                                                            expanded = showCameraMenu,
-                                                            onDismissRequest = { showCameraMenu = false }
-                                                        ) {
-                                                            DropdownMenuItem(
-                                                                text = { Text(stringResource(MR.string.chat_message_take_photo)) },
-                                                                onClick = {
-                                                                    showCameraMenu = false
-                                                                    onCameraClick()
-                                                                },
-                                                                leadingIcon = {
-                                                                    Icon(Icons.Default.PhotoCamera, contentDescription = null)
-                                                                }
-                                                            )
-                                                            DropdownMenuItem(
-                                                                text = { Text(stringResource(MR.string.chat_message_record_video)) },
-                                                                onClick = {
-                                                                    showCameraMenu = false
-                                                                    onVideoRecordClick()
-                                                                },
-                                                                leadingIcon = {
-                                                                    Icon(Icons.Default.Videocam, contentDescription = null)
-                                                                }
-                                                            )
-                                                        }
+                                                    IconButton(
+                                                        onClick = onCameraClick,
+                                                        modifier = Modifier.testTag("camera_button"),
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.PhotoCamera,
+                                                            contentDescription = stringResource(MR.string.chat_message_camera)
+                                                        )
                                                     }
                                                 }
                                             }

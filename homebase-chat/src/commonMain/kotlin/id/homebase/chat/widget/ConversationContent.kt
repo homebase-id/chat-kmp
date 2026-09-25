@@ -161,8 +161,6 @@ import id.homebase.core.util.keyboardPanelSlot
 import id.homebase.core.util.rememberKeyboardPanelState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.toMessageMarkdown
-import id.homebase.core.util.rememberCameraManager
-import id.homebase.core.util.rememberVideoRecorderManager
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.ReactionsBottomSheet
 import id.homebase.core.widget.HomebaseVerticalScrollbar
@@ -268,6 +266,8 @@ fun ConversationContent(
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
+    // The camera is hosted by the pane: this content leaves composition once the editor it hands off to opens.
+    onCameraClick: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
@@ -551,48 +551,6 @@ fun ConversationContent(
         }
     }
 
-    val cameraLauncher = rememberCameraManager { file ->
-        file?.let {
-            onUiAction(
-                ConversationListUiAction.AttachPlatformFile(
-                    conversationId = conversation.conversation.id,
-                    files = listOf(file),
-                    isImage = true,
-                )
-            )
-        }
-    }
-
-    // iOS: the camera sits in a DropdownMenu (a Popup window) in MessageInputBar, and FileKit's
-    // camera picker can't be presented while that popup is tearing down — iOS dismisses the picker
-    // along with the popup ("Take Photo opens then closes instantly"). So hoist the launch out of
-    // the menu item: the item only closes the menu and flips this flag, and we present here after
-    // the popup's exit transition has finished. A single recomposition isn't enough (the popup is
-    // still animating out); the native video path is immune, which is why only photo broke.
-    var pendingCameraLaunch by remember { mutableStateOf(false) }
-    LaunchedEffect(pendingCameraLaunch) {
-        if (pendingCameraLaunch) {
-            // Closing the dropdown hands focus back to the input, which pops the keyboard up during
-            // the wait below; clear focus + hide it so the keyboard doesn't flash before the camera.
-            focusManager.clearFocus()
-            keyboardController?.hide()
-            delay(250) // let the DropdownMenu popup finish dismissing before FileKit presents
-            cameraLauncher.launch()
-            pendingCameraLaunch = false // reset AFTER launch — resetting first cancels this effect
-        }
-    }
-
-    val videoRecorderLauncher = rememberVideoRecorderManager { file ->
-        file?.let {
-            onUiAction(
-                ConversationListUiAction.AttachPlatformFile(
-                    conversationId = conversation.conversation.id,
-                    files = listOf(file),
-                    isImage = false,
-                )
-            )
-        }
-    }
     val fileLauncher = rememberFilePickerLauncher { file ->
         file?.let {
             onUiAction(
@@ -1704,8 +1662,7 @@ fun ConversationContent(
                                 onKeyboardClick = { showKeyboard() },
                                 onFocused = { bottomPanel.closeForKeyboard() },
                                 onAddAttachmentClick = { toggleAttachmentSheet() },
-                                onCameraClick = { pendingCameraLaunch = true },
-                                onVideoRecordClick = { videoRecorderLauncher.launch() },
+                                onCameraClick = onCameraClick,
                                 onRecordingStarted = {
                                     onUiAction(
                                         ConversationListUiAction.StartRecording(
