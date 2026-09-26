@@ -6,6 +6,7 @@ android-targetSdk = "36"
 androidx-activity = "1.13.0"
 androidx-appcompat = "1.7.1"
 androidx-biometric = "1.1.0"
+androidx-camera = "1.6.2"
 androidx-core = "1.18.0"
 androidx-espresso = "3.7.0"
 androidx-exifinterface = "1.4.2"
@@ -28,7 +29,7 @@ androidx-pdf-viewer = "1.0.0-alpha18"
 pdfbox = "3.0.5"
 vlcj = "4.8.2"
 jna = "5.18.1"
-jetbrains-compose-material3 = "1.9.0"
+jetbrains-compose-material3 = "1.10.0-alpha04"
 jetbrains-compose-material3-adaptive = "1.2.0"
 kotlinxHtmlJvm = "0.12.0"
 kotlinxSerializationJson = "1.11.0"
@@ -130,6 +131,11 @@ androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", vers
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "androidx-appcompat" }
 android-material = { module = "com.google.android.material:material", version.ref = "materialComponents" }
 androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "androidx-biometric" }
+androidx-camera-core = { module = "androidx.camera:camera-core", version.ref = "androidx-camera" }
+androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "androidx-camera" }
+androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "androidx-camera" }
+androidx-camera-video = { module = "androidx.camera:camera-video", version.ref = "androidx-camera" }
+androidx-camera-compose = { module = "androidx.camera:camera-compose", version.ref = "androidx-camera" }
 androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "androidx-exifinterface" }
 androidx-sharetarget = { module = "androidx.sharetarget:sharetarget", version.ref = "sharetarget" }
 androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "androidx-work" }
@@ -140,6 +146,7 @@ androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle
 # which lets us hook app foreground transitions on Android. Used by MainApplication's
 # share-outbound foreground sweep.
 androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version = "2.10.0" }
+androidx-navigationevent = { module = "androidx.navigationevent:navigationevent", version = "1.0.2" }
 androidx-media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "androidx-media3" }
 androidx-media3-exoplayer-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "androidx-media3" }
 androidx-media3-ui = { module = "androidx.media3:media3-ui", version.ref = "androidx-media3" }

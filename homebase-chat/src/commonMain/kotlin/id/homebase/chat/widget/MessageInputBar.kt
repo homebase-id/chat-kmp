@@ -2,6 +2,7 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -42,7 +43,6 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.AddLink
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.FormatBold
@@ -53,8 +53,6 @@ import androidx.compose.material.icons.outlined.FormatStrikethrough
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,12 +73,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -140,7 +139,6 @@ import id.homebase.resources.chat_message_hide_keyboard
 import id.homebase.resources.chat_message_microphone
 import id.homebase.resources.chat_message_paste_image
 import id.homebase.resources.chat_message_processing
-import id.homebase.resources.chat_message_record_video
 import id.homebase.resources.chat_markdown_blockquote
 import id.homebase.resources.chat_markdown_code_block
 import id.homebase.resources.chat_markdown_heading
@@ -152,7 +150,6 @@ import id.homebase.resources.chat_markdown_link_dialog_text
 import id.homebase.resources.chat_markdown_link_dialog_title
 import id.homebase.resources.chat_markdown_link_dialog_url
 import id.homebase.resources.chat_markdown_nested_list
-import id.homebase.resources.chat_message_take_photo
 import id.homebase.resources.chat_new_message_placeholder
 import id.homebase.resources.chat_send_message_button
 import id.homebase.resources.collapse
@@ -204,7 +201,6 @@ fun MessageInputBar(
     onFocused: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
-    onVideoRecordClick: () -> Unit,
     onRecordingStarted: () -> Unit,
     onRecordingStopped: () -> Unit,
     onRecordingCancelled: () -> Unit,
@@ -352,7 +348,6 @@ fun MessageInputBar(
                 onKeyboardClick = onKeyboardClick,
                 onAddAttachmentClick = onAddAttachmentClick,
                 onCameraClick = onCameraClick,
-                onVideoRecordClick = onVideoRecordClick,
                 onRecordingStarted = onRecordingStarted,
                 onRecordingStopped = onRecordingStopped,
                 onRecordingCancelled = onRecordingCancelled,
@@ -583,7 +578,6 @@ fun MessageTextFieldCompact(
     onKeyboardClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
-    onVideoRecordClick: () -> Unit,
     onRecordingStarted: () -> Unit,
     onRecordingStopped: () -> Unit,
     onRecordingCancelled: () -> Unit,
@@ -643,13 +637,24 @@ fun MessageTextFieldCompact(
         } else {
             40.dp
         },
-        animationSpec = tween(durationMillis = if (showActionButtons) 1000 else 300),
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
         label = "micButtonSize"
     )
     val micButtonColor by animateColorAsState(
-        targetValue = if (isMicrophonePressed) Color.Red else MaterialTheme.colorScheme.surfaceContainerHighest,
-        animationSpec = tween(durationMillis = if (showActionButtons) 1000 else 300),
+        targetValue = when {
+            isMicrophonePressed -> MaterialTheme.colorScheme.error
+            showActionButtons -> MaterialTheme.colorScheme.surfaceContainerHighest
+            // Same hue at zero alpha, so the press fill doesn't pass through translucent black.
+            else -> MaterialTheme.colorScheme.error.copy(alpha = 0f)
+        },
+        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
         label = "micButtonColor"
+    )
+    val micIconTint by animateColorAsState(
+        targetValue = if (isMicrophonePressed) MaterialTheme.colorScheme.onError
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+        label = "micIconTint"
     )
 
     // Counts up while recording is active.
@@ -797,54 +802,31 @@ fun MessageTextFieldCompact(
                                     },
                                     trailingIcon = if (editExistingMode) null else {
                                         {
-                                            if (state.annotatedString.isNotBlank()) {
-                                                AttachmentPopoverButton(
-                                                    actions = attachmentActions,
-                                                    alignToEnd = true,
-                                                    onClick = onAddAttachmentClick,
-                                                    onPopoverDismissed = { focusRequester.requestFocus() },
-                                                    modifier = Modifier.testTag("inline_attach_button"),
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Add,
-                                                        contentDescription = stringResource(MR.string.chat_message_attachment_options)
-                                                    )
-                                                }
-                                            } else if (isMobile()) {
-                                                var showCameraMenu by remember { mutableStateOf(false) }
-                                                Box {
+                                            Crossfade(
+                                                targetState = state.annotatedString.isNotBlank(),
+                                                animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                                            ) { hasText ->
+                                                if (hasText) {
+                                                    AttachmentPopoverButton(
+                                                        actions = attachmentActions,
+                                                        alignToEnd = true,
+                                                        onClick = onAddAttachmentClick,
+                                                        onPopoverDismissed = { focusRequester.requestFocus() },
+                                                        modifier = Modifier.testTag("inline_attach_button"),
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Add,
+                                                            contentDescription = stringResource(MR.string.chat_message_attachment_options)
+                                                        )
+                                                    }
+                                                } else if (isMobile()) {
                                                     IconButton(
-                                                        onClick = { showCameraMenu = true },
+                                                        onClick = onCameraClick,
                                                         modifier = Modifier.testTag("camera_button"),
                                                     ) {
                                                         Icon(
                                                             imageVector = Icons.Default.PhotoCamera,
                                                             contentDescription = stringResource(MR.string.chat_message_camera)
-                                                        )
-                                                    }
-                                                    DropdownMenu(
-                                                        expanded = showCameraMenu,
-                                                        onDismissRequest = { showCameraMenu = false }
-                                                    ) {
-                                                        DropdownMenuItem(
-                                                            text = { Text(stringResource(MR.string.chat_message_take_photo)) },
-                                                            onClick = {
-                                                                showCameraMenu = false
-                                                                onCameraClick()
-                                                            },
-                                                            leadingIcon = {
-                                                                Icon(Icons.Default.PhotoCamera, contentDescription = null)
-                                                            }
-                                                        )
-                                                        DropdownMenuItem(
-                                                            text = { Text(stringResource(MR.string.chat_message_record_video)) },
-                                                            onClick = {
-                                                                showCameraMenu = false
-                                                                onVideoRecordClick()
-                                                            },
-                                                            leadingIcon = {
-                                                                Icon(Icons.Default.Videocam, contentDescription = null)
-                                                            }
                                                         )
                                                     }
                                                 }
@@ -903,7 +885,7 @@ fun MessageTextFieldCompact(
                                             topEnd = 12.dp
                                         )
                                     )
-                                    .background(if (!showActionButtons) Color.Transparent else micButtonColor)
+                                    .drawBehind { drawRect(micButtonColor) }
                                     .pointerInput(Unit) {
                                         awaitEachGesture {
                                             val down = awaitFirstDown()
@@ -966,7 +948,7 @@ fun MessageTextFieldCompact(
                                 Icon(
                                     imageVector = Icons.Default.Mic,
                                     contentDescription = stringResource(MR.string.chat_message_microphone),
-                                    tint = if (isMicrophonePressed) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = micIconTint,
                                 )
                             }
                         }
@@ -981,7 +963,7 @@ fun MessageTextFieldCompact(
                 if (isRecordingActive) {
                     RecordingInProgress(
                         recordingSeconds,
-                        dragOffset,
+                        { dragOffset },
                         cancelThresholdPx,
                         recordingData?.isProcessing ?: false
                     )
@@ -1074,12 +1056,12 @@ fun MessageTextFieldCompact(
 @Composable
 private fun BoxScope.RecordingInProgress(
     recordingSeconds: Int,
-    dragOffset: Float,
+    dragOffset: () -> Float,
     cancelThresholdPx: Float,
     isProcessing: Boolean,
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "recording")
-    val dotAlpha by infiniteTransition.animateFloat(
+    val dotAlpha = infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = 0.3f,
         animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
@@ -1102,10 +1084,10 @@ private fun BoxScope.RecordingInProgress(
         Icon(
             modifier = Modifier
                 .size(24.dp)
-                .alpha(dotAlpha),
+                .graphicsLayer { alpha = dotAlpha.value },
             imageVector = Icons.Default.Mic,
             contentDescription = stringResource(MR.string.chat_message_microphone),
-            tint = Color.Red,
+            tint = MaterialTheme.colorScheme.error,
         )
         Spacer(modifier = Modifier.width(8.dp))
 
@@ -1123,13 +1105,13 @@ private fun BoxScope.RecordingInProgress(
         } else {
             Text(
                 text = stringResource(MR.string.slide_to_cancel),
-                modifier = Modifier.offset {
-                    IntOffset((dragOffset / 2).roundToInt(), 0)
-                },
+                modifier = Modifier
+                    .offset { IntOffset((dragOffset() / 2).roundToInt(), 0) }
+                    .graphicsLayer {
+                        alpha = (1f + dragOffset() / cancelThresholdPx).coerceIn(0f, 1f)
+                    },
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                    alpha = (1f + dragOffset / cancelThresholdPx).coerceIn(0f, 1f)
-                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -1214,13 +1196,14 @@ private fun EmojiToggleButton(
     onEmojiClick: () -> Unit,
     onKeyboardClick: () -> Unit,
 ) {
-    if (showingEmojiSheet) {
-        IconButton(onClick = onKeyboardClick) {
-            Icon(imageVector = Icons.Default.Keyboard, contentDescription = contentDescription)
-        }
-    } else if (popoverContent == null) {
-        IconButton(onClick = onEmojiClick) {
-            Icon(imageVector = Icons.Default.EmojiEmotions, contentDescription = contentDescription)
+    if (showingEmojiSheet || popoverContent == null) {
+        IconButton(onClick = if (showingEmojiSheet) onKeyboardClick else onEmojiClick) {
+            Crossfade(showingEmojiSheet, animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) { sheet ->
+                Icon(
+                    imageVector = if (sheet) Icons.Default.Keyboard else Icons.Default.EmojiEmotions,
+                    contentDescription = contentDescription,
+                )
+            }
         }
     } else {
         var popoverOpen by remember { mutableStateOf(false) }
@@ -1233,19 +1216,18 @@ private fun EmojiToggleButton(
             modifier = Modifier.popoverAnchor(anchor),
         ) {
             Icon(imageVector = Icons.Default.EmojiEmotions, contentDescription = contentDescription)
-            if (popoverOpen) {
-                ComposerPopover(
-                    anchor = anchor,
-                    // Start-aligned so the card grows over the conversation, not the conversation list.
-                    alignToEnd = false,
-                    width = EMOJI_POPOVER_WIDTH,
-                    onDismissRequest = {
-                        popoverOpen = false
-                        focusRequester.requestFocus()
-                    },
-                    content = popoverContent,
-                )
-            }
+            ComposerPopover(
+                expanded = popoverOpen,
+                anchor = anchor,
+                // Start-aligned so the card grows over the conversation, not the conversation list.
+                alignToEnd = false,
+                width = EMOJI_POPOVER_WIDTH,
+                onDismissRequest = {
+                    popoverOpen = false
+                    focusRequester.requestFocus()
+                },
+                content = popoverContent,
+            )
         }
     }
 }
@@ -1361,40 +1343,40 @@ fun MessageTextFieldForAttachment(
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
-            if (!isKeyboardVisible) {
-                SendChordTooltip(
-                    enabled = true,
-                    enterSendsMessage = enterSendsMessage,
-                ) {
+            val sendButtonColors = IconButtonDefaults.iconButtonColors(
+                containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+            )
+            Crossfade(isKeyboardVisible, animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) { keyboardUp ->
+                if (!keyboardUp) {
+                    SendChordTooltip(
+                        enabled = true,
+                        enterSendsMessage = enterSendsMessage,
+                    ) {
+                        IconButton(
+                            onClick = { hasSent = true; onSendMessage() },
+                            enabled = !hasSent,
+                            colors = sendButtonColors,
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                contentDescription = stringResource(
+                                    MR.string.chat_send_message_button
+                                ),
+                            )
+                        }
+                    }
+                } else {
                     IconButton(
-                        onClick = { hasSent = true; onSendMessage() },
-                        enabled = !hasSent,
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                            contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                        )
+                        onClick = { keyboardController?.hide() },
+                        colors = sendButtonColors,
                     ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Send,
-                            contentDescription = stringResource(
-                                MR.string.chat_send_message_button
-                            ),
+                            imageVector = Icons.Default.Check, contentDescription = stringResource(
+                                MR.string.chat_message_hide_keyboard
+                            )
                         )
                     }
-                }
-            } else {
-                IconButton(
-                    onClick = { keyboardController?.hide() },
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check, contentDescription = stringResource(
-                            MR.string.chat_message_hide_keyboard
-                        )
-                    )
                 }
             }
         }

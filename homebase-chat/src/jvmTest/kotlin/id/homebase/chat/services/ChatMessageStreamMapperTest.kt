@@ -11,6 +11,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
@@ -56,7 +57,8 @@ class ChatMessageStreamMapperTest {
      */
     private fun buildChatMessageHeader(
         localAppDataJson: String?,
-        fileState: String = "active"
+        fileState: String = "active",
+        reactionPreviewJson: String = "null",
     ): HomebaseFile {
         val now = Clock.System.now().epochSeconds
         val messageContent =
@@ -96,7 +98,7 @@ class ChatMessageStreamMapperTest {
                 },
                 "localAppData": $localAppDataField,
                 "referencedFile": null,
-                "reactionPreview": null,
+                "reactionPreview": $reactionPreviewJson,
                 "versionTag": "${Uuid.random()}",
                 "payloads": [],
                 "dataSource": null
@@ -132,6 +134,33 @@ class ChatMessageStreamMapperTest {
 
         assertNotNull(result)
         assertEquals(expectedOwnReactions, result.ownReactions.toList())
+    }
+
+    // Removing the last reaction leaves an empty summary behind, both optimistically and on the server.
+    @Test
+    fun mapToMessageData_emptyReactionSummary_mapsToNull() = runTest {
+        val header = buildChatMessageHeader(
+            localAppDataJson = null,
+            reactionPreviewJson = """{"comments":[],"reactions":{},"totalCommentCount":0}""",
+        )
+
+        val result = mapToMessageData(header, createTestCredentialsManager())
+
+        assertNotNull(result)
+        assertNull(result.reactionPreview)
+    }
+
+    @Test
+    fun mapToMessageData_reactionSummaryWithAReaction_isKept() = runTest {
+        val header = buildChatMessageHeader(
+            localAppDataJson = null,
+            reactionPreviewJson = """{"reactions":{"k":{"key":"k","count":1,"reactionContent":"heart"}}}""",
+        )
+
+        val result = mapToMessageData(header, createTestCredentialsManager())
+
+        assertNotNull(result)
+        assertEquals(1, result.reactionPreview?.reactions?.size)
     }
 
     @Test

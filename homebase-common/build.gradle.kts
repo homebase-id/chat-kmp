@@ -66,6 +66,7 @@ kotlin {
 
     compilerOptions {
         optIn.add("kotlin.uuid.ExperimentalUuidApi")
+        optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
     }
 
     sourceSets {
@@ -128,6 +129,11 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.biometric)
+            implementation(libs.androidx.camera.core)
+            implementation(libs.androidx.camera.camera2)
+            implementation(libs.androidx.camera.lifecycle)
+            implementation(libs.androidx.camera.video)
+            implementation(libs.androidx.camera.compose)
             implementation(libs.androidx.browser)
             implementation(libs.androidx.pdf.viewer)
             implementation(libs.ktor.client.okhttp)
@@ -164,6 +170,8 @@ kotlin {
             implementation(libs.nucleus.notification.linux)
             implementation(libs.kermit.io)
             implementation(libs.pdfbox)
+            implementation(libs.jna)
+            implementation(libs.jna.platform)
             // `api` so desktopApp's existing direct kmpnotifier dep stays
             // consistent and `RichNotificationDisplayer.jvm.kt` can reach the
             // type from the same source set's classpath.

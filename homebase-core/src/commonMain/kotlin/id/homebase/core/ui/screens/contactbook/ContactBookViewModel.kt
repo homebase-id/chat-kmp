@@ -167,9 +167,9 @@ class ContactBookViewModel(
         viewModelScope.launch {
             connectionService.circles.collect { circleState ->
                 val circles = circleState.circles
-                    .filterNot { it.circle.disabled }
                     .sortedWith(
                         compareBy(
+                            { it.circle.disabled },
                             { it.circle.circleSortRank(developerPreferences.connectionReviewEnabled.value) },
                             { it.circle.name.lowercase() },
                         ),
@@ -190,13 +190,14 @@ class ContactBookViewModel(
                 // pending used to live outside the value entirely.
                 _circleMembers.update {
                     it?.copy(
-                        members = entriesForDomains(domains, entries.value).sortedBy { m -> m.sortKey },
+                        members = resolveCircleMemberEntries(domains, entries.value).sortedBy { m -> m.sortKey },
                         pendingMembers = if (reviewEnabled) {
-                            entriesForDomains(pendingDomains, entries.value).sortedBy { m -> m.sortKey }
+                            resolveCircleMemberEntries(pendingDomains, entries.value).sortedBy { m -> m.sortKey }
                         } else {
                             it.pendingMembers
                         },
                         drives = resolveCircleDrives(match.circle),
+                        disabled = match.circle.disabled,
                     )
                 }
                 // Flag off: main's path — re-derive pending live, since it isn't read from the snapshot.
@@ -325,29 +326,31 @@ class ContactBookViewModel(
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
 
-        fun entriesInState(state: ContactState) =
-            entriesForDomains(domainsInState(state), overriddenContacts)
+        fun visibleEntries(domains: Set<String>) =
+            resolveCircleMemberEntries(domains, overriddenContacts)
                 .filter { it.matches(ui.query) }
                 .sortedBy { it.sortKey }
 
-        val newContacts = entriesInState(ContactState.New)
-        val circleContacts = entriesInState(ContactState.Circle)
+        val newContacts = visibleEntries(domainsInState(ContactState.New))
+        val circleContacts = visibleEntries(domainsInState(ContactState.Circle))
+        val blockedDomains = contactsData.connections.blockedDomains()
+        val blockedContacts = visibleEntries(blockedDomains)
         // Filtered from all, not built from connections: contacts with no connection belong here.
-        // No New tab while the review is dark, so nobody is carved out of this one.
-        val newDomains = if (ui.reviewEnabled) domainsInState(ContactState.New) else emptySet()
-        val knownContacts = all.filterNot { it.odinId?.lowercase() in newDomains }
+        // With the review dark there is no New tab or Blocked pill, so nobody is carved out.
+        val hiddenFromAll = if (ui.reviewEnabled) {
+            domainsInState(ContactState.New) + blockedDomains
+        } else {
+            emptySet()
+        }
+        val knownContacts = all.filterNot { it.odinId?.lowercase() in hiddenFromAll }
 
         // Flag off: main's pills — confirmed is the server-computed `vetted` flag, no circle load needed.
         @Suppress("DEPRECATION")
         val confirmedDomains = connectedRegs.filterValues { it.vetted }
             .keys.map { it.domainName.lowercase() }
             .toSet()
-        val unvetted = entriesForDomains(connectedDomains - confirmedDomains, overriddenContacts)
-            .filter { it.matches(ui.query) }
-            .sortedBy { it.sortKey }
-        val vetted = entriesForDomains(confirmedDomains, overriddenContacts)
-            .filter { it.matches(ui.query) }
-            .sortedBy { it.sortKey }
+        val unvetted = visibleEntries(connectedDomains - confirmedDomains)
+        val vetted = visibleEntries(confirmedDomains)
 
         // Pending connection requests, projected onto contact entries the same way New is:
         // reuse the saved contact when we have one, else a synthetic display-only entry for the
@@ -383,6 +386,8 @@ class ContactBookViewModel(
             unvetted = unvetted,
             vetted = vetted,
             circleContacts = circleContacts,
+            blockedContacts = blockedContacts,
+            connectionStatuses = contactsData.connections.statusByDomain(),
             contactStates = contactStates,
             statesLoading = circlesData.loading,
             reviewEnabled = ui.reviewEnabled,
@@ -400,7 +405,8 @@ class ContactBookViewModel(
             filter = when {
                 ui.reviewEnabled && (ui.filter == ContactFilter.UNVETTED || ui.filter == ContactFilter.VETTED) ->
                     ContactFilter.ALL
-                !ui.reviewEnabled && ui.filter == ContactFilter.CIRCLES -> ContactFilter.ALL
+                !ui.reviewEnabled && (ui.filter == ContactFilter.CIRCLES || ui.filter == ContactFilter.BLOCKED) ->
+                    ContactFilter.ALL
                 else -> ui.filter
             },
             overlay = ui.overlay,
@@ -410,16 +416,6 @@ class ContactBookViewModel(
             hasDriveError = header.hasDriveError,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ContactBookUiState())
-
-    /** Resolves a set of identity domains to entries, reusing the saved contact when one exists. */
-    private fun entriesForDomains(
-        domains: Set<String>,
-        contacts: List<ContactBookEntry>,
-    ): List<ContactBookEntry> {
-        val byOdin = contacts.filter { !it.odinId.isNullOrBlank() }
-            .associateBy { it.odinId!!.lowercase() }
-        return domains.map { domain -> byOdin[domain] ?: syntheticContact(domain) }
-    }
 
     /** A display-only "(you)" entry for the signed-in user, matched by their own name/handle. */
     private fun selfContact(session: OwnerSession): ContactBookEntry {
@@ -463,6 +459,7 @@ class ContactBookViewModel(
             }
             is ContactBookUiAction.CircleClicked -> handleCircleClicked(action.circle)
             ContactBookUiAction.CircleMembersDismiss -> _circleMembers.value = null
+            is ContactBookUiAction.CircleEnabledChanged -> handleCircleEnabledChanged(action.circleId, action.enabled)
             is ContactBookUiAction.CircleAddMemberClicked -> _events.tryEmit(
                 ContactBookUiEvent.OpenCircleMemberAdd(action.circleId, action.circleName)
             )
@@ -643,13 +640,13 @@ class ContactBookViewModel(
         // keeps this in sync going forward (an add/remove from elsewhere no longer leaves this
         // sheet stale, #1096).
         val domains = circle.members.map { it.domainName }.toSet()
-        val members = entriesForDomains(domains, entries.value).sortedBy { it.sortKey }
+        val members = resolveCircleMemberEntries(domains, entries.value).sortedBy { it.sortKey }
         // Pending deposits ride the same bundle as the members, so the sheet is complete on open.
         val pendingDomains = circle.pendingMembers
             .map { it.odinId.domainName.lowercase() }
             .filterNot { it in domains.map { d -> d.lowercase() } }
             .toSet()
-        val pending = entriesForDomains(pendingDomains, entries.value).sortedBy { it.sortKey }
+        val pending = resolveCircleMemberEntries(pendingDomains, entries.value).sortedBy { it.sortKey }
         val reviewEnabled = developerPreferences.connectionReviewEnabled.value
         // Ambient circles are enrolled with no owner present, so hand-managing a member means
         // nothing — the app re-enrols them. A review circle is the owner's own choice and stays
@@ -664,6 +661,8 @@ class ContactBookViewModel(
             circleName = circle.circle.name,
             circleEmoji = circle.circle.emoji.takeIf { reviewEnabled },
             manageable = manageable,
+            disabled = circle.circle.disabled,
+            offersEnableToggle = circle.circle.offersEnableToggle(),
             members = members,
             pendingMembers = if (reviewEnabled) pending else emptyList(),
             isLoading = false,
@@ -709,7 +708,7 @@ class ContactBookViewModel(
                 Logger.w(e, "ContactBookViewModel") { "findPendingMembers failed for ${circle.circle.id}" }
                 emptyList()
             }
-            val pendingEntries = entriesForDomains(
+            val pendingEntries = resolveCircleMemberEntries(
                 pending.map { it.domainName }.toSet(),
                 entries.value,
             ).sortedBy { it.sortKey }
@@ -727,11 +726,30 @@ class ContactBookViewModel(
         }
     }
 
+    private fun handleCircleEnabledChanged(circleIdRaw: String, enabled: Boolean) {
+        if (_circleMembers.value?.togglingEnabled == true) return
+        fun update(f: (CircleMembersUi) -> CircleMembersUi) =
+            _circleMembers.update { if (it?.circleId == circleIdRaw) f(it) else it }
+        update { it.copy(togglingEnabled = true, toggleError = null) }
+        viewModelScope.launch {
+            try {
+                connectionService.setCircleEnabled(Uuid.parseHex(circleIdRaw), enabled)
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, "ContactBookViewModel") { "setCircleEnabled($enabled) failed for $circleIdRaw" }
+                update { it.copy(toggleError = e.toCircleToggleError()) }
+            } finally {
+                update { it.copy(togglingEnabled = false) }
+            }
+        }
+    }
+
     private fun handleCircleRemoveMember(circleIdRaw: String, member: ContactBookEntry) {
         val odinId = member.odinId?.let(::OdinId) ?: return
         if (member.uniqueId in (_circleMembers.value?.removingMemberIds ?: emptySet())) return
         _circleMembers.update {
-            it?.copy(removingMemberIds = it.removingMemberIds + member.uniqueId)
+            it?.copy(removingMemberIds = it.removingMemberIds + member.uniqueId, removeError = null)
         }
         viewModelScope.launch {
             try {
@@ -750,9 +768,11 @@ class ContactBookViewModel(
                 Logger.w(e, "ContactBookViewModel") { "removeFromCircle failed for $odinId" }
                 _circleMembers.update {
                     if (it?.circleId != circleIdRaw) it
-                    else it.copy(removingMemberIds = it.removingMemberIds - member.uniqueId)
+                    else it.copy(
+                        removingMemberIds = it.removingMemberIds - member.uniqueId,
+                        removeError = ContactBookError.CircleActionFailed,
+                    )
                 }
-                _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.CircleActionFailed))
             }
         }
     }

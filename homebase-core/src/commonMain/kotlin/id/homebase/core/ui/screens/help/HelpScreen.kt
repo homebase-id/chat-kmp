@@ -1,5 +1,11 @@
 package id.homebase.core.ui.screens.help
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -216,7 +222,13 @@ fun HelpUi(
                 title = stringResource(MR.string.help_terms_privacy),
                 action = SettingsRowAction.External { onAction(HelpUiAction.TermsPrivacyClicked) },
             )
-            if (uiState.showDeveloperMenu) {
+            AnimatedVisibility(
+                visible = uiState.showDeveloperMenu,
+                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            ) {
                 SettingsRow(
                     modifier = Modifier.testTag("developerMenuRow"),
                     icon = Icons.Outlined.Code,
@@ -239,32 +251,36 @@ private fun UpdateRow(uiState: HelpUiState, onAction: (HelpUiAction) -> Unit) {
         else -> stringResource(MR.string.update_using_latest_version)
     }
 
-    when {
-        uiState.isCheckingForUpdate -> HelpInfoRow(
-            modifier = Modifier.testTag("updateCheckingRow"),
-            icon = Icons.Outlined.SystemUpdateAlt,
-            title = stringResource(MR.string.update_checking),
-            trailing = {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            },
-        )
+    Crossfade(uiState.isCheckingForUpdate, animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) { isChecking ->
+        when {
+            isChecking -> HelpInfoRow(
+                modifier = Modifier.testTag("updateCheckingRow"),
+                icon = Icons.Outlined.SystemUpdateAlt,
+                title = stringResource(MR.string.update_checking),
+                // Same two-line height as the rows it swaps with, so the rows below don't jump.
+                supportingText = status,
+                trailing = {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                },
+            )
 
-        // Not External: only the store-backed platforms leave the app, Desktop updates in place.
-        uiState.isUpdateAvailable -> SettingsRow(
-            modifier = Modifier.testTag("getUpdateRow"),
-            icon = Icons.Outlined.SystemUpdateAlt,
-            title = stringResource(MR.string.update_get_update),
-            supportingText = status,
-            action = SettingsRowAction.Invoke { onAction(HelpUiAction.DownloadUpdateClicked) },
-        )
+            // Not External: only the store-backed platforms leave the app, Desktop updates in place.
+            uiState.isUpdateAvailable -> SettingsRow(
+                modifier = Modifier.testTag("getUpdateRow"),
+                icon = Icons.Outlined.SystemUpdateAlt,
+                title = stringResource(MR.string.update_get_update),
+                supportingText = status,
+                action = SettingsRowAction.Invoke { onAction(HelpUiAction.DownloadUpdateClicked) },
+            )
 
-        else -> SettingsRow(
-            modifier = Modifier.testTag("checkForUpdateRow"),
-            icon = Icons.Outlined.SystemUpdateAlt,
-            title = stringResource(MR.string.update_check_now),
-            supportingText = status,
-            action = SettingsRowAction.Invoke { onAction(HelpUiAction.CheckForUpdatedClicked) },
-        )
+            else -> SettingsRow(
+                modifier = Modifier.testTag("checkForUpdateRow"),
+                icon = Icons.Outlined.SystemUpdateAlt,
+                title = stringResource(MR.string.update_check_now),
+                supportingText = status,
+                action = SettingsRowAction.Invoke { onAction(HelpUiAction.CheckForUpdatedClicked) },
+            )
+        }
     }
 }
 

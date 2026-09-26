@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.devmenu
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.NetworkCheck
 import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.WavingHand
@@ -59,13 +61,29 @@ import id.homebase.api.client.diagnostics.ProbeStage
 import id.homebase.api.client.diagnostics.ProbeStatus
 import id.homebase.api.client.diagnostics.ResolutionRung
 import id.homebase.api.client.diagnostics.ResolutionSource
+import id.homebase.core.camera.CameraModes
+import id.homebase.core.camera.rememberInAppCameraManager
 import id.homebase.core.clipboard.clipEntryOf
+import id.homebase.core.util.contentType
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.name
+import io.github.vinceglb.filekit.size
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.dev_menu_camera_cancelled
+import id.homebase.resources.dev_menu_camera_result_name
+import id.homebase.resources.dev_menu_camera_result_size
+import id.homebase.resources.dev_menu_camera_result_title
+import id.homebase.resources.dev_menu_camera_result_type
 import id.homebase.resources.dev_menu_clear_data
+import id.homebase.resources.dev_menu_open_camera
+import id.homebase.resources.dev_menu_open_camera_desc
+import id.homebase.resources.ok
 import id.homebase.resources.dev_menu_force_logout
 import id.homebase.resources.dev_menu_force_logout_confirm_action
 import id.homebase.resources.dev_menu_force_logout_confirm_message
@@ -156,6 +174,34 @@ fun DeveloperMenuUi(
     var showForceLogoutConfirm by remember { mutableStateOf(false) }
     val clipboard = LocalClipboard.current
     val clipboardScope = rememberCoroutineScope()
+    var cameraResult by remember { mutableStateOf<CameraCaptureResult?>(null) }
+    val camera = rememberInAppCameraManager(allowedModes = CameraModes.PhotoAndVideo) { file ->
+        clipboardScope.launch { cameraResult = CameraCaptureResult.of(file) }
+    }
+
+    cameraResult?.let { result ->
+        AlertDialog(
+            onDismissRequest = { cameraResult = null },
+            title = { Text(stringResource(MR.string.dev_menu_camera_result_title)) },
+            text = {
+                Text(
+                    if (result.name == null) {
+                        stringResource(MR.string.dev_menu_camera_cancelled)
+                    } else {
+                        listOf(
+                            stringResource(MR.string.dev_menu_camera_result_name, result.name),
+                            stringResource(MR.string.dev_menu_camera_result_size, result.sizeBytes.toString()),
+                            stringResource(MR.string.dev_menu_camera_result_type, result.contentType.orEmpty()),
+                        ).joinToString("\n")
+                    },
+                    modifier = Modifier.testTag("cameraResultText"),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { cameraResult = null }) { Text(stringResource(MR.string.ok)) }
+            },
+        )
+    }
 
     if (showCrashConfirm) {
         AlertDialog(
@@ -314,6 +360,13 @@ fun DeveloperMenuUi(
                 },
             )
             SettingsRow(
+                modifier = Modifier.testTag("openCameraRow"),
+                icon = Icons.Outlined.PhotoCamera,
+                title = stringResource(MR.string.dev_menu_open_camera),
+                supportingText = stringResource(MR.string.dev_menu_open_camera_desc),
+                action = SettingsRowAction.Invoke { camera.launch() },
+            )
+            SettingsRow(
                 modifier = Modifier.testTag("scheduledPushTestRow"),
                 icon = Icons.Outlined.Schedule,
                 title = stringResource(MR.string.dev_menu_test_scheduled_push),
@@ -364,50 +417,55 @@ private fun NetworkStatusSection(
         action = SettingsRowAction.Invoke(onRun),
     )
 
-    if (isRunning) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            CircularProgressIndicator(modifier = Modifier.size(24.dp))
-        }
-    }
-
-    diagnostics?.let { d ->
-        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-            Column(
+    Column(
+        modifier = Modifier.fillMaxWidth()
+            .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec()),
+    ) {
+        if (isRunning) {
+            Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.Center,
             ) {
-                val serverLine = "Server: ${d.hostname}"
-                Text(
-                    text = serverLine,
-                    style = MaterialTheme.typography.titleSmall,
-                )
+                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+            }
+        }
 
-                d.rungs.forEach { rung -> NetworkRungBlock(rung) }
-
-                if (d.captivePortalSuspected) {
-                    Text(
-                        text = stringResource(MR.string.dev_menu_network_captive_portal),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
+        diagnostics?.let { d ->
+            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    TextButton(onClick = { onCopy(buildNetworkSnapshot(d)) }) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = stringResource(MR.string.dev_menu_network_copy),
-                            modifier = Modifier.size(18.dp),
+                    val serverLine = "Server: ${d.hostname}"
+                    Text(
+                        text = serverLine,
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+
+                    d.rungs.forEach { rung -> NetworkRungBlock(rung) }
+
+                    if (d.captivePortalSuspected) {
+                        Text(
+                            text = stringResource(MR.string.dev_menu_network_captive_portal),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = stringResource(MR.string.dev_menu_network_copy))
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = { onCopy(buildNetworkSnapshot(d)) }) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = stringResource(MR.string.dev_menu_network_copy),
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = stringResource(MR.string.dev_menu_network_copy))
+                        }
                     }
                 }
             }
@@ -509,4 +567,13 @@ private fun buildNetworkSnapshot(d: NetworkDiagnostics): String = buildString {
     }
     if (d.captivePortalSuspected) appendLine("Captive portal suspected")
     if (!d.supported) appendLine("(Network diagnostics unsupported on this platform)")
+}
+
+private data class CameraCaptureResult(val name: String?, val sizeBytes: Long, val contentType: String?) {
+    companion object {
+        suspend fun of(file: PlatformFile?): CameraCaptureResult = withContext(Dispatchers.Default) {
+            if (file == null) CameraCaptureResult(null, 0L, null)
+            else CameraCaptureResult(file.name, file.size(), file.contentType())
+        }
+    }
 }

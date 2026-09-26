@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.contactbook.components
 
+import id.homebase.api.client.connections.ConnectionStatus
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -17,6 +19,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,15 +31,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.CircleDriveUi
 import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
+import id.homebase.core.ui.screens.contactbook.messageRes
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.contactbook_detail_blocked
 import id.homebase.resources.circle_drive_unknown
 import id.homebase.resources.circle_drives_section_title
 import id.homebase.resources.circle_member_pending
@@ -45,6 +52,9 @@ import id.homebase.resources.circle_member_remove_confirm_title
 import id.homebase.resources.circle_member_status_member
 import id.homebase.resources.circle_member_status_pending
 import id.homebase.resources.contactbook_circle_add_member
+import id.homebase.resources.contactbook_circle_disabled
+import id.homebase.resources.contactbook_circle_enabled
+import id.homebase.resources.contactbook_circle_enabled_hint
 import id.homebase.resources.contactbook_circle_members_count
 import id.homebase.resources.contactbook_circle_members_count_with_pending
 import id.homebase.resources.contactbook_circle_members_empty
@@ -65,6 +75,9 @@ fun CircleMembersSheet(
     onMemberClick: (ContactBookEntry) -> Unit,
     onAddMemberClick: () -> Unit,
     onRemoveMemberClick: (ContactBookEntry) -> Unit,
+    /** By lowercased domain; members missing from it are not connections. */
+    connectionStatuses: Map<String, ConnectionStatus>,
+    onEnabledChange: (Boolean) -> Unit = {},
 ) {
     var confirmRemove by remember { mutableStateOf<ContactBookEntry?>(null) }
 
@@ -103,13 +116,48 @@ fun CircleMembersSheet(
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
+            if (state.offersEnableToggle) {
+                val toggleError = state.toggleError
+                ListItem(
+                    modifier = Modifier
+                        .padding(bottom = if (toggleError == null) 12.dp else 4.dp)
+                        .toggleable(
+                            value = !state.disabled,
+                            enabled = !state.togglingEnabled,
+                            onValueChange = onEnabledChange,
+                            role = Role.Switch,
+                        ),
+                    headlineContent = { Text(stringResource(MR.string.contactbook_circle_enabled)) },
+                    supportingContent = { Text(stringResource(MR.string.contactbook_circle_enabled_hint)) },
+                    trailingContent = {
+                        Switch(checked = !state.disabled, onCheckedChange = null, enabled = !state.togglingEnabled)
+                    },
+                )
+                if (toggleError != null) {
+                    Text(
+                        text = stringResource(toggleError.messageRes()),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                    )
+                }
+            } else if (state.disabled) {
+                Text(
+                    text = stringResource(MR.string.contactbook_circle_disabled),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
             // distinctBy is a final guard, not the fix — the ViewModels already keep members/
             // pendingMembers mutually exclusive at update time. This just makes the keyed
             // LazyColumn below immune to any future regression of that invariant: a duplicate
             // key here is a hard crash (unlike a plain Column, which would just double-render).
-            val allMembers = (state.members + state.pendingMembers)
-                .distinctBy { it.uniqueId }
-                .filterNot { it.uniqueId == state.viewerContactId }
+            val allMembers = remember(state.members, state.pendingMembers, state.viewerContactId) {
+                (state.members + state.pendingMembers)
+                    .distinctBy { it.uniqueId }
+                    .filterNot { it.uniqueId == state.viewerContactId }
+            }
             val pendingIds = remember(state.pendingMembers) { state.pendingMembers.map { it.uniqueId }.toSet() }
             // Counts must match what's actually rendered below (allMembers excludes the viewer's
             // own row when this sheet is opened from a contact's page) — otherwise the header
@@ -151,18 +199,31 @@ fun CircleMembersSheet(
                             )
                         }
                     }
+                    state.removeError?.let { error ->
+                        Text(
+                            text = stringResource(error.messageRes()),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(vertical = 4.dp),
+                        )
+                    }
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
                         items(allMembers, key = { it.uniqueId.toString() }) { entry ->
+                            val status = entry.odinId?.lowercase()?.let { connectionStatuses[it] }
+                            val blocked = status == ConnectionStatus.Blocked
                             ContactBookRow(
                                 entry = entry,
-                                connected = true,
+                                connected = status == ConnectionStatus.Connected,
                                 onClick = { onMemberClick(entry) },
-                                trailing = if (state.manageable) {
+                                trailing = if (state.manageable || blocked) {
                                     {
                                         CircleMemberTrailing(
                                             pending = pendingIds.contains(entry.uniqueId),
+                                            blocked = blocked,
                                             removing = state.removingMemberIds.contains(entry.uniqueId),
-                                            onRemoveClick = { confirmRemove = entry },
+                                            onRemoveClick = if (state.manageable) {
+                                                { confirmRemove = entry }
+                                            } else null,
                                         )
                                     }
                                 } else null,
@@ -199,11 +260,22 @@ fun CircleMembersSheet(
     }
 }
 
-/** Trailing content for a circle-member row: an optional "Pending" label (a sealed deposit
- *  that hasn't converted into a real grant yet) plus a remove button. */
+/** Pending means a sealed deposit that hasn't converted into a real grant yet. */
 @Composable
-private fun CircleMemberTrailing(pending: Boolean, removing: Boolean, onRemoveClick: () -> Unit) {
+private fun CircleMemberTrailing(
+    pending: Boolean,
+    blocked: Boolean,
+    removing: Boolean,
+    onRemoveClick: (() -> Unit)?,
+) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (blocked && !removing) {
+            Text(
+                text = stringResource(MR.string.contactbook_detail_blocked),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
         if (pending && !removing) {
             Text(
                 text = stringResource(MR.string.circle_member_pending),
@@ -216,7 +288,7 @@ private fun CircleMemberTrailing(pending: Boolean, removing: Boolean, onRemoveCl
                 modifier = Modifier.size(24.dp).padding(4.dp),
                 strokeWidth = 2.dp,
             )
-        } else {
+        } else if (onRemoveClick != null) {
             IconButton(onClick = onRemoveClick) {
                 Icon(
                     imageVector = Icons.Default.Close,

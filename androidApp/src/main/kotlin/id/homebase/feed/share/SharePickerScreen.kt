@@ -1,6 +1,12 @@
 package id.homebase.feed.share
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,6 +34,7 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -80,6 +87,7 @@ import id.homebase.resources.share_picker_new_webdrop_subtitle
 import id.homebase.resources.share_picker_next
 import id.homebase.resources.share_picker_send
 import id.homebase.resources.share_to
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -87,7 +95,7 @@ import kotlin.uuid.Uuid
 private const val RECENTS_COUNT = 5
 private const val COLD_TAG = "ShareCold"
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class, ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalUuidApi::class, ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun SharePickerScreen(
     conversationStream: ConversationStream,
@@ -202,7 +210,11 @@ fun SharePickerScreen(
         Logger.d(tag = COLD_TAG) { "picker: enrichedConversations size=${enrichedConversations.size}" }
     }
 
+    val motion = MaterialTheme.motionScheme
     Scaffold(
+        // Edge-to-edge, so adjustResize leaves the IME to insets: without this the send bar
+        // and the last search results sit behind the keyboard.
+        modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(MR.string.share_to)) },
@@ -214,7 +226,13 @@ fun SharePickerScreen(
             )
         },
         bottomBar = {
-            if (selectedIds.isNotEmpty() && !isSending) {
+            AnimatedVisibility(
+                visible = selectedIds.isNotEmpty() && !isSending,
+                enter = slideInVertically(motion.defaultSpatialSpec()) { it } +
+                    fadeIn(motion.defaultEffectsSpec()),
+                exit = slideOutVertically(motion.fastSpatialSpec()) { it } +
+                    fadeOut(motion.fastEffectsSpec()),
+            ) {
                 ShareSendBar(
                     count = selectedIds.size,
                     buttonText = if (hasFiles) stringResource(MR.string.share_picker_next) else stringResource(MR.string.share_picker_send),
@@ -268,7 +286,7 @@ fun SharePickerScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator()
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text(stringResource(MR.string.sending_to_conversations, selectedIds.size.toString()))
+                        Text(pluralStringResource(MR.plurals.sending_to_conversations, selectedIds.size, selectedIds.size))
                     }
                 }
             } else if (!conversationsData.dataReady) {
@@ -393,7 +411,7 @@ private fun ShareSendBar(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = stringResource(MR.string.conversations_selected, count.toString()),
+                text = pluralStringResource(MR.plurals.conversations_selected, count, count),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

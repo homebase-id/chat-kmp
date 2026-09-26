@@ -28,6 +28,11 @@ class ConnectionNetworkProvider(
         postOdinId("/connections/disconnect", odinId)
     }
 
+    /** The identity stays blocked; a later [unblock] leaves them at None, not connected. */
+    suspend fun removeBlockedConnection(odinId: OdinId) {
+        postOdinId("/connections/remove-blocked-connection", odinId)
+    }
+
     private companion object {
         const val TAG = "ConnectionNetworkProvider"
     }
@@ -252,6 +257,15 @@ class ConnectionNetworkProvider(
             "/connections/circles/revoke",
             RevokeCircleMembershipRequest(odinId, circleId)
         )
+    }
+
+    /** Only the owning app may toggle a circle; the server refuses anything else with a 403. */
+    suspend fun disableCircle(circleId: Uuid) {
+        post("/connections/circles/disable", circleId)
+    }
+
+    suspend fun enableCircle(circleId: Uuid) {
+        post("/connections/circles/enable", circleId)
     }
 
     private suspend fun postOdinId(endpoint: String, odinId: OdinId) {

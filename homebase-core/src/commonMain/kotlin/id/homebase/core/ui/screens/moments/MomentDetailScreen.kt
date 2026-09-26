@@ -1,14 +1,19 @@
 package id.homebase.core.ui.screens.moments
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -67,6 +72,7 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -103,6 +109,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -135,6 +142,7 @@ import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
 import id.homebase.core.ui.screens.moments.widget.MomentVideoTapMode
 import id.homebase.core.ui.screens.moments.widget.SenderAvatarBadge
+import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
@@ -1431,10 +1439,17 @@ private fun MomentDetailContent(
     // While the comments sheet is open, the media animates down to the top
     // third of the screen (top-aligned) so the tapped photo/video stays fully
     // visible above the sheet. 1f = full-screen immersive viewer (sheet closed).
-    val mediaHeightFraction by animateFloatAsState(
+    val mediaHeightFraction = animateFloatAsState(
         targetValue = if (commentsOpen) MOMENT_MEDIA_FRACTION_WITH_COMMENTS else 1f,
         label = "momentMediaShrink",
     )
+    // Flip crop/fit only once the height animation settles, so the frame doesn't re-crop mid-shrink.
+    val fitVideoToBand by remember(commentsOpen) {
+        derivedStateOf {
+            val fraction = mediaHeightFraction.value
+            if (commentsOpen) fraction == MOMENT_MEDIA_FRACTION_WITH_COMMENTS else fraction < 1f
+        }
+    }
 
     // Share the mute toggle with the feed via the app-session singleton so a
     // single tap persists across nav-in / nav-out of the detail screen.
@@ -1568,7 +1583,7 @@ private fun MomentDetailContent(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(mediaHeightFraction)
+                    .fillMaxHeightFraction { mediaHeightFraction.value }
                     .align(Alignment.TopCenter)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -1603,7 +1618,7 @@ private fun MomentDetailContent(
                 state = pagerState,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(mediaHeightFraction)
+                    .fillMaxHeightFraction { mediaHeightFraction.value }
                     .align(Alignment.TopCenter),
                 // This pager fills the whole page (mediaHeightFraction = 1f when
                 // comments are closed), so it sits under every swipe. A
@@ -1681,10 +1696,7 @@ private fun MomentDetailContent(
                             tapMode = MomentVideoTapMode.ButtonOnly,
                             showPauseAffordance = true,
                             useNativeControls = false,
-                            // While the comments sheet is open the media is
-                            // shrunk to the top band — show the whole frame
-                            // (fit) instead of the immersive crop-to-fill.
-                            fitToContent = commentsOpen,
+                            fitToContent = fitVideoToBand,
                         )
                     } else {
                         MomentMediaItem(
@@ -1878,6 +1890,12 @@ private fun DetailActionColumn(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+internal fun AnimatedContentTransitionScope<Int>.rollCount(motion: MotionScheme): ContentTransform {
+    val up = targetState > initialState
+    return (slideInVertically(motion.fastSpatialSpec()) { if (up) it else -it } + fadeIn(motion.fastEffectsSpec()))
+        .togetherWith(slideOutVertically(motion.fastSpatialSpec()) { if (up) -it else it } + fadeOut(motion.fastEffectsSpec()))
+}
+
 @Composable
 internal fun EmojiReactionButton(
     emoji: String,
@@ -1886,20 +1904,23 @@ internal fun EmojiReactionButton(
     onClick: () -> Unit,
     onLongPress: () -> Unit,
 ) {
-    // Computed outside the Text composable so the Konsist string-literal
-    // check doesn't see a Text(...) literal — even an interpolated one.
-    val countLabel = remember(count) { count.toString() }
-    val activeTint = if (isActive) {
-        Color.White
-    } else {
-        Color.White.copy(alpha = 0.55f)
-    }
+    val motion = MaterialTheme.motionScheme
+    val tint by animateColorAsState(
+        targetValue = if (isActive) Color.White else Color.White.copy(alpha = 0.55f),
+        animationSpec = motion.fastEffectsSpec(),
+        label = "reactionTint",
+    )
+    val container by animateColorAsState(
+        targetValue = Color.Black.copy(alpha = if (isActive) 0.65f else 0.4f),
+        animationSpec = motion.fastEffectsSpec(),
+        label = "reactionContainer",
+    )
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(Color.Black.copy(alpha = if (isActive) 0.65f else 0.4f))
+                .background(container)
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = onLongPress,
@@ -1909,11 +1930,17 @@ internal fun EmojiReactionButton(
             Text(
                 text = emoji,
                 style = MaterialTheme.typography.titleMedium,
-                color = activeTint,
+                color = tint,
             )
         }
-        if (count > 0) {
-            Spacer(modifier = Modifier.height(2.dp))
+        Spacer(modifier = Modifier.height(2.dp))
+        // The count line is always laid out (empty at 0) so the first reaction doesn't shift the column.
+        AnimatedContent(
+            targetState = count,
+            transitionSpec = { rollCount(motion) },
+            label = "reactionCount",
+        ) { shown ->
+            val countLabel = if (shown > 0) shown.toString() else ""
             Text(
                 text = countLabel,
                 color = Color.White,
@@ -3119,7 +3146,8 @@ private fun AddCommentRow(
                     onSend = { if (canSend) onSend() },
                 ),
             singleLine = true,
-            enabled = !isPosting,
+            // Disabling would drop focus and take the keyboard down after every send.
+            readOnly = isPosting,
         )
         IconButton(onClick = onSend, enabled = canSend) {
             if (isPosting) {
@@ -3393,4 +3421,16 @@ private fun formatCapturedAt(epochMs: Long): String {
     val instant = Instant.fromEpochMilliseconds(epochMs)
     val local = instant.toLocalDateTime(TimeZone.currentSystemDefault())
     return capturedAtFormat.format(local)
+}
+
+// Read in the layout phase so the comments shrink relayouts the media without recomposing it.
+private fun Modifier.fillMaxHeightFraction(fraction: () -> Float): Modifier = layout { measurable, constraints ->
+    if (!constraints.hasBoundedHeight) {
+        val placeable = measurable.measure(constraints)
+        return@layout layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+    val height = (constraints.maxHeight * fraction()).roundToInt()
+        .coerceIn(constraints.minHeight, constraints.maxHeight)
+    val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
+    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
 }

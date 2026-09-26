@@ -28,15 +28,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -53,7 +50,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
@@ -81,7 +77,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -96,19 +91,16 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -120,7 +112,6 @@ import id.homebase.chat.data.MessageUiModel
 import kotlinx.collections.immutable.ImmutableList
 import id.homebase.api.common.OdinId
 import id.homebase.chat.contactcard.LocalSavedContactIdentities
-import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import co.touchlab.kermit.Logger
 import id.homebase.chat.dice.BattleRollSheet
@@ -144,6 +135,7 @@ import id.homebase.chat.conversationlist.RecipientModel
 import id.homebase.chat.conversationlist.RecipientType
 import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.chat.conversationlist.lastEditableMessage
+import id.homebase.chat.conversationlist.messageListKey
 import id.homebase.chat.conversationlist.resolveOwnSendFollowTarget
 import id.homebase.chat.createconversation.ContactItem
 import id.homebase.chat.createconversation.GroupOrConversationItem
@@ -164,11 +156,11 @@ import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
-import id.homebase.core.util.rememberImeOffsetState
+import id.homebase.core.util.keyboardPanelAnchoredList
+import id.homebase.core.util.keyboardPanelSlot
+import id.homebase.core.util.rememberKeyboardPanelState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.toMessageMarkdown
-import id.homebase.core.util.rememberCameraManager
-import id.homebase.core.util.rememberVideoRecorderManager
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.ReactionsBottomSheet
 import id.homebase.core.widget.HomebaseVerticalScrollbar
@@ -176,7 +168,6 @@ import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
-import id.homebase.resources.chat_auto_connect_connected
 import id.homebase.resources.chat_drop_files_none_usable
 import id.homebase.resources.chat_group_not_connected_disclaimer
 import id.homebase.resources.chat_group_rejoin_accept
@@ -213,7 +204,6 @@ import id.homebase.resources.connect
 import id.homebase.resources.contacts
 import id.homebase.resources.groups
 import id.homebase.resources.menu_back
-import id.homebase.resources.cd_connection_succeeded
 import id.homebase.resources.recents
 import id.homebase.resources.search
 import id.homebase.resources.time_today
@@ -250,6 +240,8 @@ import kotlin.uuid.Uuid
  *  follow token is consumed unscrolled (the send failed or was gated out). */
 private const val OWN_SEND_FOLLOW_TIMEOUT_MS = 5_000L
 
+private enum class ComposerPanel { Emoji, Attachments }
+
 private const val SCROLL_TO_NEWEST_ATTEMPTS = 4
 
 // Mirrors the states in which the composer below is replaced by a banner — keep the two in sync,
@@ -274,6 +266,8 @@ fun ConversationContent(
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
+    // The camera is hosted by the pane: this content leaves composition once the editor it hands off to opens.
+    onCameraClick: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
@@ -281,12 +275,12 @@ fun ConversationContent(
     val focusRequesterSearch = remember { FocusRequester() }
     val enterSendsMessage = rememberEnterSendsMessage()
     val focusManager = LocalFocusManager.current
-    var showAttachmentSheet by remember { mutableStateOf(false) }
+    val bottomPanel = rememberKeyboardPanelState()
+    var panelContent by remember { mutableStateOf(ComposerPanel.Emoji) }
     var showEventComposer by remember { mutableStateOf(false) }
     var showGroodleComposer by remember { mutableStateOf(false) }
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showPollComposer by remember { mutableStateOf(false) }
-    var showEmojiSheet by remember { mutableStateOf(false) }
     val composerPopovers = isDesktopOrWeb() && isExpandedLayout()
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
@@ -429,6 +423,7 @@ fun ConversationContent(
             previousTotal = total
         }
     }
+    KeepListEndInView(listState, conversation.conversation.id)
 
     // One-time own-send follow: every send arm sets scrollToLatestRequest so the
     // user's own message always lands visible, even when scrolled up into history
@@ -463,26 +458,6 @@ fun ConversationContent(
             }
         }
         onUiAction(ConversationListUiAction.ConsumeScrollToLatestRequest)
-    }
-
-    // Add this state to track keyboard height
-    var keyboardHeight by remember { mutableStateOf(0.dp) }
-    val density = LocalDensity.current
-    val imeInsets = WindowInsets.ime
-    val imeState = rememberImeOffsetState()
-
-    val imeVisible by remember { derivedStateOf { imeInsets.getBottom(density) > 0 } }
-
-    // Add a LaunchedEffect to listen for keyboard changes
-    LaunchedEffect(imeVisible) {
-        if (imeVisible) {
-            // Keyboard is shown
-            keyboardHeight = with(density) { imeInsets.getBottom(density).toDp() }
-            // Add any other logic you need when keyboard appears
-        } else {
-            // Keyboard is hidden
-            // Add any logic you need when keyboard disappears
-        }
     }
 
     // On iOS, UITextView can auto-become first responder during initial
@@ -559,14 +534,13 @@ fun ConversationContent(
         onUiAction(ConversationListUiAction.FlushDraft)
     }
 
-    @Suppress("DEPRECATION") BackHandler(uiState.isSearchActive || showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
+    @Suppress("DEPRECATION") BackHandler(uiState.isSearchActive || bottomPanel.isOpen || isKeyboardVisible || uiState.isEditingMessageId != null) {
         if (uiState.isSearchActive) {
             onUiAction(ConversationListUiAction.SearchMessagesBackClicked)
             searchTextState.clearText()
             return@BackHandler
         }
-        showEmojiSheet = false
-        showAttachmentSheet = false
+        bottomPanel.close()
         keyboardController?.hide()
         // Only a back that's actually cancelling an in-progress edit should reset
         // the composer — CancelEditMessage clears it. A back that's merely
@@ -577,48 +551,6 @@ fun ConversationContent(
         }
     }
 
-    val cameraLauncher = rememberCameraManager { file ->
-        file?.let {
-            onUiAction(
-                ConversationListUiAction.AttachPlatformFile(
-                    conversationId = conversation.conversation.id,
-                    files = listOf(file),
-                    isImage = true,
-                )
-            )
-        }
-    }
-
-    // iOS: the camera sits in a DropdownMenu (a Popup window) in MessageInputBar, and FileKit's
-    // camera picker can't be presented while that popup is tearing down — iOS dismisses the picker
-    // along with the popup ("Take Photo opens then closes instantly"). So hoist the launch out of
-    // the menu item: the item only closes the menu and flips this flag, and we present here after
-    // the popup's exit transition has finished. A single recomposition isn't enough (the popup is
-    // still animating out); the native video path is immune, which is why only photo broke.
-    var pendingCameraLaunch by remember { mutableStateOf(false) }
-    LaunchedEffect(pendingCameraLaunch) {
-        if (pendingCameraLaunch) {
-            // Closing the dropdown hands focus back to the input, which pops the keyboard up during
-            // the wait below; clear focus + hide it so the keyboard doesn't flash before the camera.
-            focusManager.clearFocus()
-            keyboardController?.hide()
-            delay(250) // let the DropdownMenu popup finish dismissing before FileKit presents
-            cameraLauncher.launch()
-            pendingCameraLaunch = false // reset AFTER launch — resetting first cancels this effect
-        }
-    }
-
-    val videoRecorderLauncher = rememberVideoRecorderManager { file ->
-        file?.let {
-            onUiAction(
-                ConversationListUiAction.AttachPlatformFile(
-                    conversationId = conversation.conversation.id,
-                    files = listOf(file),
-                    isImage = false,
-                )
-            )
-        }
-    }
     val fileLauncher = rememberFilePickerLauncher { file ->
         file?.let {
             onUiAction(
@@ -790,7 +722,6 @@ fun ConversationContent(
                 }
             },
         ),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -986,18 +917,6 @@ fun ConversationContent(
         ) {
             Column(
                 modifier = Modifier.fillMaxSize()
-                    .offset {
-                        val imeHeight = imeInsets.getBottom(this)
-                        val pureImeHeight = imeState.pureImeBottomPx
-                        val sheetHeight = keyboardHeight.coerceAtLeast(300.dp).roundToPx()
-                        val sheetOffset = when {
-                            showEmojiSheet && imeHeight > 0 -> pureImeHeight + sheetHeight
-                            imeHeight > 0 -> pureImeHeight
-                            showEmojiSheet || showAttachmentSheet -> sheetHeight
-                            else -> 0
-                        }
-                        IntOffset(0, -sheetOffset)
-                    }
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             ) {
                 PinnedMessagesBar(
@@ -1008,7 +927,13 @@ fun ConversationContent(
 
                 JumpTargetWaitingBar(isWaiting = uiState.awaitingJumpMessageId != null)
 
-                if (conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty()) {
+                AnimatedVisibility(
+                    visible = conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty(),
+                    enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                        fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                        fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
@@ -1093,10 +1018,8 @@ fun ConversationContent(
                     ) return@SideEffect
                     val indexByKey = HashMap<String, Int>(mergedItems.size)
                     mergedItems.forEachIndexed { i, item ->
-                        when (item) {
-                            is MessageListContentModel.Message -> indexByKey[item.id] = i
-                            is PendingOutgoingMessage -> indexByKey["pending-${item.id}"] = i
-                            else -> {}
+                        if (item is MessageListContentModel.Message || item is PendingOutgoingMessage) {
+                            indexByKey[messageListKey(item)] = i
                         }
                     }
                     val anchor = visible.firstOrNull {
@@ -1171,7 +1094,8 @@ fun ConversationContent(
                     if (!uiState.isLoadingMessages) {
                         CompositionLocalProvider(LocalExpandedMessages provides expandedMessages) {
                         LazyColumn(
-                            modifier = Modifier.fillMaxSize().dismissKeyboardOnTap(),
+                            modifier = Modifier.keyboardPanelAnchoredList(bottomPanel, listState)
+                                .fillMaxSize().dismissKeyboardOnTap(),
                             state = listState,
                             contentPadding = PaddingValues(
                                 top = 24.dp,
@@ -1180,13 +1104,7 @@ fun ConversationContent(
                         ) {
                             items(
                                 mergedItems,
-                                key = { item ->
-                                    when (item) {
-                                        is MessageListContentModel -> item.id
-                                        is PendingOutgoingMessage -> "pending-${item.id}"
-                                        else -> item.hashCode().toString()
-                                    }
-                                },
+                                key = ::messageListKey,
                                 // One contentType per row shape, so scrolling reuses a recycled
                                 // item's composition instead of discarding and rebuilding it.
                                 // A 45 s device profile of an image-heavy thread (iPhone 15,
@@ -1272,8 +1190,8 @@ fun ConversationContent(
                                         Box(
                                             modifier = if (animationsEnabled) {
                                                 Modifier.animateItem(
-                                                    fadeInSpec = tween(300),
-                                                    fadeOutSpec = tween(400),
+                                                    fadeInSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                                    fadeOutSpec = MaterialTheme.motionScheme.slowEffectsSpec(),
                                                 )
                                             } else {
                                                 Modifier
@@ -1293,8 +1211,8 @@ fun ConversationContent(
                                         val isHighlighted = uiState.highlightedMessageId == item.message.id
                                         val highlightAlpha by animateFloatAsState(
                                             targetValue = if (isHighlighted) 0.15f else 0f,
-                                            animationSpec = if (isHighlighted) tween(durationMillis = 300)
-                                            else tween(durationMillis = 600),
+                                            animationSpec = if (isHighlighted) MaterialTheme.motionScheme.defaultEffectsSpec()
+                                            else MaterialTheme.motionScheme.slowEffectsSpec(),
                                         )
                                         LaunchedEffect(isHighlighted) {
                                             if (!isHighlighted) return@LaunchedEffect
@@ -1470,6 +1388,7 @@ fun ConversationContent(
                     } else {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     }
+                    SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
                 }
 
                 AnimatedVisibility(
@@ -1672,34 +1591,15 @@ fun ConversationContent(
                             }
                         }
 
-                        val toggleAttachmentSheet = {
-                            showEmojiSheet = false
-                            if (showAttachmentSheet && !isKeyboardVisible) {
-                                showAttachmentSheet = false
-                                if (wasKeyboardVisible) {
-                                    focusRequester.requestFocus()
-                                    keyboardController?.show()
-                                }
-                            } else {
-                                if (isKeyboardVisible) {
-                                    wasKeyboardVisible = true
-                                    focusManager.clearFocus()
-                                    keyboardController?.hide()
-                                } else {
-                                    wasKeyboardVisible = false
-                                }
-                                showAttachmentSheet = true
-                            }
+                        val showKeyboard: () -> Unit = {
+                            bottomPanel.closeForKeyboard()
+                            focusRequester.requestFocus()
+                            keyboardController?.show()
                         }
 
-                        val toggleEmojiSheet = {
-                            showAttachmentSheet = false
-                            if (showEmojiSheet && !isKeyboardVisible) {
-                                showEmojiSheet = false
-                                if (wasKeyboardVisible) {
-                                    focusRequester.requestFocus()
-                                    keyboardController?.show()
-                                }
+                        val togglePanel = { content: ComposerPanel ->
+                            if (bottomPanel.isOpen && panelContent == content && !isKeyboardVisible) {
+                                if (wasKeyboardVisible) showKeyboard() else bottomPanel.close()
                             } else {
                                 if (isKeyboardVisible) {
                                     wasKeyboardVisible = true
@@ -1708,9 +1608,12 @@ fun ConversationContent(
                                 } else {
                                     wasKeyboardVisible = false
                                 }
-                                showEmojiSheet = true
+                                panelContent = content
+                                bottomPanel.open()
                             }
                         }
+                        val toggleAttachmentSheet = { togglePanel(ComposerPanel.Attachments) }
+                        val toggleEmojiSheet = { togglePanel(ComposerPanel.Emoji) }
 
                         UnifiedInputBubble(
                             replyToMessage = uiState.replyToMessage,
@@ -1738,7 +1641,7 @@ fun ConversationContent(
                                 recordingData = recordingData,
                                 focusRequester = focusRequester,
                                 editExistingMode = uiState.isEditingMessageId != null,
-                                showingEmojiSheet = showEmojiSheet,
+                                showingEmojiSheet = bottomPanel.isOpen && panelContent == ComposerPanel.Emoji,
                                 isSendingMessage = uiState.isSendingMessage,
                                 showActionButtons = false,
                                 onSendStateChanged = { showSendButton = it },
@@ -1752,23 +1655,14 @@ fun ConversationContent(
                                     emptyList()
                                 },
                                 onEmojiClick = if (composerPopovers) {
-                                    { showAttachmentSheet = false }
+                                    { bottomPanel.close() }
                                 } else {
                                     toggleEmojiSheet
                                 },
-                                onKeyboardClick = {
-                                    showEmojiSheet = false
-                                    showAttachmentSheet = false
-                                    focusRequester.requestFocus()
-                                    keyboardController?.show()
-                                },
-                                onFocused = {
-                                    showEmojiSheet = false
-                                    showAttachmentSheet = false
-                                },
+                                onKeyboardClick = { showKeyboard() },
+                                onFocused = { bottomPanel.closeForKeyboard() },
                                 onAddAttachmentClick = { toggleAttachmentSheet() },
-                                onCameraClick = { pendingCameraLaunch = true },
-                                onVideoRecordClick = { videoRecorderLauncher.launch() },
+                                onCameraClick = onCameraClick,
                                 onRecordingStarted = {
                                     onUiAction(
                                         ConversationListUiAction.StartRecording(
@@ -1818,55 +1712,44 @@ fun ConversationContent(
                         }
                     } // else (not Left)
                 }
-            }
 
-            // Sheets live outside the offset Column so they sit flush at the screen
-            // bottom without double-counting the offset.
-            // Each sheet applies its modifier to its inner Column, not to the root
-            // AnimatedVisibility, so we wrap in a Box to anchor them at the bottom.
-            // Offset the emoji sheet upward by the IME height so that when the
-            // emoji search keyboard is open, the sheet sits above the keyboard.
-            Box(
-                modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                    .offset { IntOffset(0, -imeInsets.getBottom(this)) }) {
-                ExpressionSheet(
-                    visible = showEmojiSheet,
-                    conversationId = conversation.conversation.id,
-                    onUiAction = onUiAction,
-                    onBackSpace = { textFieldState.programmaticBackspace() },
-                    onEmojiSelected = { textFieldState.addTextAfterSelection(it) },
+                Box(
                     modifier = Modifier.fillMaxWidth()
-                        .height(keyboardHeight.coerceAtLeast(300.dp)),
-                )
-            }
-
-            Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
-                AttachmentOptionsDisplay(
-                    modifier = Modifier.fillMaxWidth()
-                        .height(keyboardHeight.coerceAtLeast(300.dp)),
-                    visible = showAttachmentSheet && !isKeyboardVisible,
+                        .background(MaterialTheme.colorScheme.surface)
+                        .keyboardPanelSlot(bottomPanel)
                 ) {
-                    // The gallery thumb strip reads the OS photo library via GalleryCache,
-                    // which only exists on Android/iOS. On desktop/web the row would be
-                    // empty, so we skip it entirely and let the icon row sit at the top of
-                    // the sheet. The 300 dp height floor on AttachmentOptionsDisplay still
-                    // applies — desktop can host a virtual keyboard, so the floor stays.
-                    if (isMobile()) {
-                        AttachmentGallery(
-                            onImagesSelected = { images ->
-                                showAttachmentSheet = false
-                                onUiAction(
-                                    ConversationListUiAction.AttachGalleryItem(
-                                        conversationId = conversation.conversation.id,
-                                        files = images
+                    if (bottomPanel.isPanelComposed) {
+                        when (panelContent) {
+                            ComposerPanel.Emoji -> ExpressionPanel(
+                                conversationId = conversation.conversation.id,
+                                onUiAction = onUiAction,
+                                onBackSpace = { textFieldState.programmaticBackspace() },
+                                onEmojiSelected = { textFieldState.addTextAfterSelection(it) },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            ComposerPanel.Attachments -> Column(
+                                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                            ) {
+                                // GalleryCache only exists on Android/iOS; elsewhere the strip would be empty.
+                                if (isMobile()) {
+                                    AttachmentGallery(
+                                        onImagesSelected = { images ->
+                                            bottomPanel.close()
+                                            onUiAction(
+                                                ConversationListUiAction.AttachGalleryItem(
+                                                    conversationId = conversation.conversation.id,
+                                                    files = images
+                                                )
+                                            )
+                                        },
                                     )
-                                )
-                            },
-                        )
+                                }
+                                AttachmentOptions(attachmentActions, onPicked = { bottomPanel.close() })
+                            }
+                        }
                     }
-                    AttachmentOptions(attachmentActions, onPicked = { showAttachmentSheet = false })
                 }
-            } // AttachmentOptionsDisplay wrapper Box
+            }
 
             FileDropOverlay(
                 preview = dropPreview,
@@ -1931,9 +1814,10 @@ fun ConversationContentSheets(
         is MessageListUiSheet.ConnectIdentities -> {
             ConnectIdentitiesSheet(
                 identities = sheet.identities,
-                autoConnectStates = sheet.autoConnectStates,
                 onDismiss = { onUiAction(ConversationListUiAction.DismissSheet) },
-                onAutoConnect = { onUiAction(ConversationListUiAction.AutoConnect(it)) },
+                onConnect = {
+                    onUiAction(ConversationListUiAction.OpenSendConnectionRequestDialog(it))
+                },
             )
         }
 
@@ -2144,9 +2028,8 @@ private fun PinnedMessagesSheet(
 @Composable
 fun ConnectIdentitiesSheet(
     identities: List<OdinId>,
-    autoConnectStates: Map<OdinId, AutoConnectRowState>,
     onDismiss: () -> Unit,
-    onAutoConnect: (OdinId) -> Unit,
+    onConnect: (OdinId) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
     val scrollState = rememberScrollState()
@@ -2161,8 +2044,7 @@ fun ConnectIdentitiesSheet(
             identities.forEach { odinId ->
                 ConnectIdentityRow(
                     odinId = odinId,
-                    rowState = autoConnectStates[odinId],
-                    onAutoConnect = { onAutoConnect(odinId) },
+                    onConnect = { onConnect(odinId) },
                 )
             }
         }
@@ -2172,8 +2054,7 @@ fun ConnectIdentitiesSheet(
 @Composable
 private fun ConnectIdentityRow(
     odinId: OdinId,
-    rowState: AutoConnectRowState?,
-    onAutoConnect: () -> Unit,
+    onConnect: () -> Unit,
 ) {
     val contactInfo = koinInject<ContactInfoGateway>()
     var resolvedName by remember(odinId) { mutableStateOf(odinId.domainName) }
@@ -2200,60 +2081,18 @@ private fun ConnectIdentityRow(
             animatedVisibilityScope = null,
         )
         Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            ContactName(
-                odinId = odinId,
-                knownName = resolvedName,
-                style = MaterialTheme.typography.titleMedium,
-            )
-            if (rowState is AutoConnectRowState.Failed) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = stringResource(rowState.res, *rowState.args.toTypedArray()),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-        }
+        ContactName(
+            odinId = odinId,
+            knownName = resolvedName,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.weight(1f),
+        )
         Spacer(modifier = Modifier.width(8.dp))
-        when (rowState) {
-            AutoConnectRowState.Succeeded -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = stringResource(MR.string.cd_connection_succeeded),
-                        tint = SuccessGreen,
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(MR.string.chat_auto_connect_connected),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = SuccessGreen,
-                    )
-                }
-            }
-            AutoConnectRowState.Connecting -> {
-                ElevatedButton(
-                    onClick = {},
-                    enabled = false,
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                    )
-                }
-            }
-            is AutoConnectRowState.Failed,
-            null -> {
-                ElevatedButton(onClick = onAutoConnect) {
-                    Text(stringResource(MR.string.connect))
-                }
-            }
+        ElevatedButton(onClick = onConnect) {
+            Text(stringResource(MR.string.connect))
         }
     }
 }
-
-private val SuccessGreen = Color(0xFF2E7D32)
 
 @Composable
 fun RecipientsSelectorList(
@@ -2373,6 +2212,45 @@ internal fun dateSectionLabel(
                 }
             }
             messageDate.format(format)
+        }
+    }
+}
+
+private data class ListEndSample(val total: Int, val overflow: Int?, val atEnd: Boolean)
+
+// A list that sat at its end stays there when anything pushes its end down without adding a row: a row
+// growing in place (reaction pill, preview, media) or the viewport shrinking from above (pinned bar,
+// banners). LazyColumn keeps its first item anchored, so either would slide the newest row under the composer.
+@Composable
+internal fun KeepListEndInView(listState: LazyListState, key: Any?) {
+    LaunchedEffect(listState, key) {
+        var previousTotal = -1
+        var wasAtEnd = false
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.takeIf { it.index == info.totalItemsCount - 1 }
+            ListEndSample(
+                info.totalItemsCount,
+                last?.let { it.offset + it.size + info.afterContentPadding - info.viewportEndOffset },
+                !listState.canScrollForward,
+            )
+        }.collect { sample ->
+            val pushed = wasAtEnd && !sample.atEnd && sample.total == previousTotal
+            previousTotal = sample.total
+            if (pushed && !listState.isScrollInProgress) {
+                // Not scrollBy: that force-remeasures synchronously, and on skiko this collector can resume inside layout.
+                val overflow = sample.overflow
+                if (overflow != null) {
+                    listState.requestScrollToItem(
+                        listState.firstVisibleItemIndex,
+                        listState.firstVisibleItemScrollOffset + overflow,
+                    )
+                } else {
+                    listState.requestScrollToItem(sample.total - 1)
+                }
+            } else {
+                wasAtEnd = sample.atEnd
+            }
         }
     }
 }

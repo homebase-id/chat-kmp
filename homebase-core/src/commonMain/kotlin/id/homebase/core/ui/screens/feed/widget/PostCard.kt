@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.feed.widget
 
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -103,6 +105,8 @@ fun PostCard(
     onReportPost: (() -> Unit)? = null,
     onBlockAuthor: (() -> Unit)? = null,
     permission: CanReact? = null,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     Column(
         modifier = modifier
@@ -163,7 +167,9 @@ fun PostCard(
         PostMedia(
             post = post,
             onMediaClick = onMediaClick,
-            onDoubleTapLike = { onToggleReaction(DOUBLE_TAP_EMOJI) },
+            onDoubleTapLike = { if (DOUBLE_TAP_EMOJI !in post.ownReactions) onToggleReaction(DOUBLE_TAP_EMOJI) },
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         )
 
@@ -418,6 +424,8 @@ private fun PostMedia(
     post: FeedPostItem,
     onMediaClick: (index: Int) -> Unit,
     onDoubleTapLike: () -> Unit,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
     modifier: Modifier = Modifier,
 ) {
     val mediaPayloads: List<PayloadDescriptor> =
@@ -452,8 +460,8 @@ private fun PostMedia(
                 burstTick++
                 onDoubleTapLike()
             },
-            sharedTransitionScope = null,
-            animatedVisibilityScope = null,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
             messageId = post.id,
             downloadingFiles = emptySet(),
             minAspect = FeedMinMediaAspect,

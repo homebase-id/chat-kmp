@@ -1,28 +1,47 @@
 package id.homebase.core.ui.screens.location.map
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateCentroidSize
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.center
+import androidx.compose.ui.unit.toOffset
+import androidx.compose.ui.unit.LayoutDirection
 import id.homebase.api.client.location.WebMercator
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.decodeToImageBitmap
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -63,72 +82,136 @@ fun TiledMapView(
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     val camera = cameraState ?: remember { MapCameraState() }
-    // Drop the user pan/zoom override (re-fit to bbox) whenever the reset key changes — same
-    // semantics the pre-camera `remember(resetViewportOn) { mutableStateOf(null) }` had.
-    remember(resetViewportOn, camera) { camera.viewport = null }
+    // A reset key change drops the user's pan/zoom; hold the old view so the re-fit below glides from it.
+    val refitFrom = remember(resetViewportOn, camera) {
+        camera.isUserPositioned = false
+        camera.effective.also { camera.viewport = it }
+    }
 
-    val viewport = camera.viewport ?: fitViewport(bbox, canvasSize)
-    SideEffect { camera.effective = viewport }
+    // The live viewport is read only in derived state, draw and placement, so a gesture frame
+    // redraws the map without recomposing it or the caller's markers.
+    val fit = fitViewport(bbox, canvasSize)
+    SideEffect { camera.fit = fit }
+
+    val refitSpec = MaterialTheme.motionScheme.slowSpatialSpec<Float>()
+    LaunchedEffect(resetViewportOn, camera) {
+        if (refitFrom == null) return@LaunchedEffect
+        if (camera.fit == null || camera.animateTo(refitSpec) { camera.fit }) camera.viewport = null
+    }
 
     // ── Tile layer state ──
     val tileBitmaps = remember { mutableStateMapOf<MapTileKey, ImageBitmap>() }
-    val visibleTiles = if (showMapTiles && viewport != null && canvasSize != IntSize.Zero) {
-        visibleTileKeys(viewport, canvasSize)
-    } else emptyList()
+    val pendingTiles = remember { mutableSetOf<MapTileKey>() }
+    val scope = rememberCoroutineScope()
+    val visibleTiles by remember(camera, showMapTiles) {
+        derivedStateOf {
+            val viewport = camera.effective
+            if (showMapTiles && viewport != null && canvasSize != IntSize.Zero) {
+                visibleTileKeys(viewport, canvasSize)
+            } else emptyList()
+        }
+    }
     LaunchedEffect(visibleTiles, showMapTiles) {
         if (!showMapTiles) return@LaunchedEffect
-        // Concurrent fetches: the provider single-flights and runs downloads on
-        // its own scope, so restarts of this effect (pan/zoom) neither cancel
-        // nor duplicate them. Failures are simply retried on the next restart.
+        // Fetches outlive this effect: a camera glide restarts it every frame, which would drop each
+        // tile before it lands. Failures are retried on the next restart.
         for (key in visibleTiles) {
-            if (tileBitmaps.containsKey(key)) continue
-            launch {
-                val bytes = fetchTile(key.zoom, key.x, key.y)
-                val bitmap = bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() }
-                if (bitmap != null) tileBitmaps[key] = bitmap
+            if (tileBitmaps.containsKey(key) || !pendingTiles.add(key)) continue
+            scope.launch {
+                try {
+                    val bytes = fetchTile(key.zoom, key.x, key.y)
+                    val bitmap = bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() }
+                    if (bitmap != null) tileBitmaps[key] = bitmap
+                } finally {
+                    pendingTiles.remove(key)
+                }
             }
         }
     }
 
     val gestureModifier = if (!interactive) Modifier else {
-        Modifier.pointerInput(resetViewportOn, camera) {
-            detectTransformGestures { centroid, pan, zoom, _ ->
-                val current = camera.viewport ?: fitViewport(bbox, canvasSize) ?: return@detectTransformGestures
-                val newUnitsPerPx = (current.unitsPerPx / zoom)
-                    .coerceIn(MIN_UNITS_PER_PX, MAX_UNITS_PER_PX)
-                // Keep the gesture centroid anchored while zooming, then pan.
-                val cx = centroid.x - size.width / 2f
-                val cy = centroid.y - size.height / 2f
-                val anchoredX = current.centerX + cx * (current.unitsPerPx - newUnitsPerPx)
-                val anchoredY = current.centerY + cy * (current.unitsPerPx - newUnitsPerPx)
-                camera.viewport = MapViewport(
-                    centerX = anchoredX - pan.x * newUnitsPerPx,
-                    centerY = anchoredY - pan.y * newUnitsPerPx,
-                    unitsPerPx = newUnitsPerPx,
-                )
+        val zoomSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+        Modifier
+            .pointerInput(camera, zoomSpec) {
+                detectTapGestures(onDoubleTap = { tap ->
+                    scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        camera.zoomAround(tap - size.center.toOffset(), 2f, zoomSpec)
+                    }
+                })
             }
-        }
+            .pointerInput(camera) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    camera.stopMotion()
+                    val velocity = VelocityTracker()
+                    var pastSlop = false
+                    var multiTouch = false
+                    var slopPan = Offset.Zero
+                    var slopZoom = 1f
+                    do {
+                        val event = awaitPointerEvent()
+                        if (event.changes.size > 1) multiTouch = true
+                        val zoom = event.calculateZoom()
+                        val pan = event.calculatePan()
+                        if (!pastSlop) {
+                            slopZoom *= zoom
+                            slopPan += pan
+                            val span = event.calculateCentroidSize(useCurrent = false)
+                            pastSlop = abs(1 - slopZoom) * span > viewConfiguration.touchSlop ||
+                                slopPan.getDistance() > viewConfiguration.touchSlop
+                        }
+                        // The lift event has no pointer pressed across it, so its centroid is Unspecified (NaN).
+                        if (pastSlop && (zoom != 1f || pan != Offset.Zero)) {
+                            val centroid = event.calculateCentroid(useCurrent = false)
+                            camera.applyGesture(centroid - size.center.toOffset(), pan, zoom)
+                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+                        event.changes.firstOrNull { it.id == down.id }?.let(velocity::addPointerInputChange)
+                    } while (event.changes.any { it.pressed })
+                    if (pastSlop && !multiTouch) {
+                        val v = velocity.calculateVelocity()
+                        scope.launch(start = CoroutineStart.UNDISPATCHED) { camera.fling(v) }
+                    }
+                }
+            }
     }
 
     Box(modifier = modifier.fillMaxSize().onSizeChanged { canvasSize = it }.then(gestureModifier)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val vp = viewport ?: return@Canvas
+            val vp = camera.effective ?: return@Canvas
             fun project(ux: Double, uy: Double): Offset = vp.toPx(ux, uy, size.width, size.height)
 
             // ── Basemap tiles (under the overlay) ──
-            for (key in visibleTiles) {
-                val bitmap = tileBitmaps[key] ?: continue
+            fun drawTile(key: MapTileKey, bitmap: ImageBitmap, srcOffset: IntOffset, srcSize: IntSize) {
                 val b = WebMercator.tileToUnitBounds(key.x, key.y, key.zoom)
                 val topLeft = project(b[0], b[1])
                 val bottomRight = project(b[2], b[3])
                 drawImage(
                     image = bitmap,
+                    srcOffset = srcOffset,
+                    srcSize = srcSize,
                     dstOffset = IntOffset(topLeft.x.roundToInt(), topLeft.y.roundToInt()),
                     dstSize = IntSize(
                         width = (bottomRight.x - topLeft.x).roundToInt().coerceAtLeast(1),
                         height = (bottomRight.y - topLeft.y).roundToInt().coerceAtLeast(1),
                     ),
                 )
+            }
+            fun drawWhole(key: MapTileKey, bitmap: ImageBitmap) =
+                drawTile(key, bitmap, IntOffset.Zero, IntSize(bitmap.width, bitmap.height))
+
+            // A zoom-level change asks for tiles not fetched yet; stand in the cached parent (zooming
+            // in) or children (zooming out) until they land.
+            for (key in visibleTiles) {
+                val bitmap = tileBitmaps[key]
+                if (bitmap != null) {
+                    drawWhole(key, bitmap)
+                    continue
+                }
+                ancestorTile(key) { tileBitmaps[it]?.width }?.let {
+                    drawTile(key, tileBitmaps.getValue(it.key), it.srcOffset, it.srcSize)
+                }
+                for (child in key.children()) tileBitmaps[child]?.let { drawWhole(child, it) }
             }
 
             // ── Caller overlay (traces, playheads, dwell dots, …) ──
@@ -137,13 +220,18 @@ fun TiledMapView(
 
         // ── Composable marker overlay (avatar dots, …) ──
         if (markerContent != null) {
-            val vp = viewport
-            val ready = vp != null && canvasSize != IntSize.Zero
+            val hasViewport by remember(camera) { derivedStateOf { camera.effective != null } }
+            val ready = hasViewport && canvasSize != IntSize.Zero
             val w = canvasSize.width.toFloat()
             val h = canvasSize.height.toFloat()
-            markerContent({ ux, uy ->
-                vp?.toPx(ux, uy, w, h) ?: Offset.Zero
-            }, ready)
+            // The canvas is drawn in absolute pixels; an RTL parent would mirror every marker off its spot.
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Box(modifier = Modifier.matchParentSize()) {
+                    markerContent({ ux, uy ->
+                        camera.effective?.toPx(ux, uy, w, h) ?: Offset.Zero
+                    }, ready)
+                }
+            }
         }
     }
 }

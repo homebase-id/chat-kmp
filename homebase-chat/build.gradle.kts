@@ -44,6 +44,7 @@ kotlin {
 
     compilerOptions {
         optIn.add("kotlin.uuid.ExperimentalUuidApi")
+        optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
     }
 
     sourceSets {
@@ -154,6 +155,7 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.ktor.client.mock)
             implementation(libs.okio.fakefilesystem)
+            implementation(libs.androidx.navigationevent)
         }
     }
 

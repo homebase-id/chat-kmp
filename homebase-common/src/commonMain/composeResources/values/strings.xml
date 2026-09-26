@@ -73,11 +73,7 @@
     <string name="error_too_many_attempts">Too many attempts</string>
     <string name="error_delivery_failed">Delivery failed</string>
     <string name="connect">Connect</string>
-    <string name="chat_auto_connect_connected">Connected</string>
-    <string name="auto_connect_pending_manual_approval">Request sent. %1$s will need to approve.</string>
     <string name="auto_connect_blocked">Cannot connect with %1$s.</string>
-    <string name="auto_connect_outgoing_request_exists">You've already sent a request to %1$s.</string>
-    <string name="auto_connect_duplicate_introductory_request">A request to %1$s is already in progress.</string>
     <string name="auto_connect_recipient_unreachable">Couldn't reach %1$s. Try again later.</string>
     <string name="auto_connect_recipient_rejected">%1$s isn't accepting connections right now.</string>
     <string name="auto_connect_recipient_not_configured">%1$s hasn't finished setting up their identity yet.</string>
@@ -114,15 +110,14 @@
     <string name="update">Updates</string>
     <string name="update_not_supported">Update check not supported on this version</string>
     <string name="update_available">New version available</string>
+    <string name="update_available_version">New version available: %1$s</string>
     <string name="update_using_latest_version">You're up to date</string>
     <string name="update_check_now">Check for updates</string>
     <string name="update_get_update">Get new update</string>
     <string name="update_checking">Searching for update...</string>
     <string name="vlc_required">VLC is required for video playback.\nInstall it from videolan.org and restart the app.</string>
     <string name="number_of_members">%1$s members</string>
-    <string name="conversations_selected">%1$s conversation(s) selected</string>
     <string name="share_to">Share to...</string>
-    <string name="sending_to_conversations">Sending to %1$s conversation(s)...</string>
     <string name="timeout_in_seconds">Timeout in %1$ss</string>
     <string name="number_of_records">%1$s records</string>
     <string name="emoji_all">All・</string>
@@ -223,6 +218,8 @@
     <string name="connections_message_label">Message (optional)</string>
     <string name="connections_checking_identity">Checking identity\u2026</string>
     <string name="connections_invalid_identity">This isn't a valid Homebase identity</string>
+    <string name="connections_circle_not_grantable">One of those circles can't be granted from this app. Nothing was sent.</string>
+    <string name="connections_circle_not_found">One of those circles no longer exists. Nothing was sent.</string>
     <string name="connections_request_sent">Connection request sent</string>
     <string name="connections_tab_incoming">Incoming (%1$s)</string>
     <string name="connections_tab_outgoing">Outgoing (%1$s)</string>
@@ -230,7 +227,6 @@
     <string name="connections_empty_incoming_subtitle">When someone sends you a connection request, it will appear here.</string>
     <string name="connections_empty_outgoing_title">No outgoing requests</string>
     <string name="connections_empty_outgoing_subtitle">Tap the + button to send a connection request.</string>
-    <string name="connections_send_request">Send Request</string>
     <string name="settings_notifications">Notifications</string>
     <string name="settings_security_setup">Security setup</string>
     <string name="settings_help">Help</string>
@@ -732,8 +728,6 @@
     <string name="chat_drop_folders_subtitle">Drop individual files instead</string>
     <string name="chat_drop_files_none_usable">Folders can't be attached. Drop files instead.</string>
     <string name="chat_message_camera">Camera</string>
-    <string name="chat_message_take_photo">Take photo</string>
-    <string name="chat_message_record_video">Record video</string>
     <string name="share_picker_next">Next</string>
     <string name="share_picker_send">Send</string>
     <string name="share_picker_new_webdrop">New WebDrop</string>
@@ -1328,6 +1322,7 @@
     <string name="vault_settings_open">Open Vault</string>
     <string name="vault_settings_show_icon">Show Vault icon in bottom bar</string>
     <string name="vault_settings_biometrics">Biometrics protection</string>
+    <string name="vault_settings_biometrics_unavailable">This device can't verify your identity, so the Vault opens unlocked.</string>
     <string name="vault_biometric_prompt_title">Unlock Vault</string>
     <string name="vault_biometric_prompt_subtitle">Authenticate to access your documents</string>
     <string name="vault_empty_title">Your vault is empty</string>
@@ -1518,7 +1513,6 @@
     <string name="cd_not_selected">Not selected</string>
     <string name="cd_open_externally">Open externally</string>
     <string name="cd_navigate_forward">Navigate forward</string>
-    <string name="cd_connection_succeeded">Connection succeeded</string>
     <string name="cd_video_scrubber_frame">Video scrubber frame</string>
     <string name="video_web_large_playback_unsupported">Large videos can't be played in the browser yet</string>
 
@@ -1544,6 +1538,9 @@
     <string name="settings_media_autosave_description">Photos and videos people send you are downloaded in the background and added to your album.</string>
     <string name="settings_media_autosave_unmetered">Only on Wi-Fi</string>
     <string name="settings_media_autosave_unmetered_description">Wait for an unmetered network instead of using mobile data.</string>
+    <string name="settings_media_camera_header">Camera</string>
+    <string name="settings_media_mirror_front">Mirror front camera</string>
+    <string name="settings_media_mirror_front_description">Save selfies and front-camera videos as they look in the preview.</string>
 
     <!-- Composer keyboard -->
     <string name="settings_composer_enter_sends">Enter sends the message</string>
@@ -1889,10 +1886,16 @@
     <string name="contactbook_filter_circles">Circles</string>
     <string name="contactbook_new_empty">Nothing waiting on you.</string>
     <string name="contactbook_circles_filter_empty">Nobody is in your circles yet.</string>
+    <string name="contactbook_filter_blocked">Blocked</string>
+    <string name="contactbook_blocked_filter_empty">You haven't blocked anyone.</string>
     <string name="contactbook_circles_empty">You don't have any circles yet.</string>
     <string name="contactbook_circle_unvetted">Unvetted</string>
     <string name="contactbook_circle_new">New</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
+    <string name="contactbook_circle_disabled">Disabled</string>
+    <string name="contactbook_circle_name_disabled">%1$s (disabled)</string>
+    <string name="contactbook_circle_enabled">Circle enabled</string>
+    <string name="contactbook_circle_enabled_hint">Disabling keeps the members but stops their access.</string>
     <string name="contactbook_circle_members_count">%1$d members</string>
     <string name="contactbook_circle_members_count_with_pending">%1$d members, %2$d pending</string>
     <string name="contactbook_circle_add_member">Add member</string>
@@ -1937,6 +1940,9 @@
     <string name="contact_review_submit_chat_only">Chat only</string>
     <string name="contact_review_chat_only_hint">They will see your public profile only. You can add them to circles anytime.</string>
     <string name="contact_review_keep_new">Keep as new</string>
+    <string name="contact_review_just_chat">Just chat</string>
+    <string name="contact_review_more_access">Give more access</string>
+    <string name="contact_review_more_access_desc">Add to circles, share your location, or allow apps.</string>
     <string name="contact_review_already_added">Already added</string>
     <string name="contact_review_group_yours">Add to a circle</string>
     <string name="contact_review_emergency_title">Emergency location</string>
@@ -1994,6 +2000,7 @@
     <string name="contactbook_detail_block">Block</string>
     <string name="contactbook_detail_unblock">Unblock</string>
     <string name="contactbook_detail_disconnect">Disconnect</string>
+    <string name="contactbook_detail_remove_blocked">Remove connection</string>
     <string name="contactbook_detail_connect">Send connection request</string>
     <string name="contactbook_detail_not_connected">Not connected</string>
     <string name="contactbook_detail_pending">Connection request pending</string>
@@ -2032,9 +2039,12 @@
     <string name="contactbook_detail_block_message">They won't be able to reach you, and they won't be notified. You can unblock them later to restore the connection.</string>
     <string name="contactbook_detail_disconnect_title">Disconnect?</string>
     <string name="contactbook_detail_disconnect_message">This permanently removes your connection and the access it granted. They won't be notified. To reconnect, you'll need to send a new connection request.</string>
+    <string name="contactbook_detail_remove_blocked_title">Remove %1$s?</string>
+    <string name="contactbook_detail_remove_blocked_message">They stay blocked, and you can unblock them later. But this permanently removes your connection and the access it granted. Unblocking won't restore it — they'd have to send you a new connection request.</string>
     <string name="contactbook_detail_delete_title">Delete contact?</string>
     <string name="contactbook_detail_delete_message">This removes the contact from your address book.</string>
     <string name="contactbook_detail_delete_message_connected">This removes the contact from your address book and disconnects your connection, removing the access it granted. They won't be notified. To reconnect, you'll need to send a new connection request.</string>
+    <string name="contactbook_detail_delete_message_blocked">This removes the contact from your address book and permanently removes your connection and the access it granted. They stay blocked. Unblocking won't restore the connection — they'd have to send you a new connection request.</string>
     <string name="contactbook_detail_danger_zone">Danger zone</string>
 
     <string name="contactbook_edit_title_new">New contact</string>
@@ -2082,10 +2092,16 @@
     <string name="contactbook_error_message">Couldn't open the chat.</string>
     <string name="contactbook_error_clear_unsupported">Clearing a contact field isn't supported yet, so that field was kept.</string>
     <string name="contactbook_error_circle_action">Something went wrong. Please try again.</string>
+    <string name="contactbook_error_circle_toggle_forbidden">This app can't enable or disable this circle.</string>
+    <string name="contactbook_error_circle_toggle_system">System circles can't be disabled.</string>
+    <string name="contactbook_error_circle_toggle_not_found">This circle no longer exists.</string>
 
     <string name="contactbook_action_blocked">Contact blocked.</string>
     <string name="contactbook_action_unblocked">Contact unblocked.</string>
     <string name="contactbook_action_disconnected">Disconnected.</string>
+    <string name="contactbook_action_disconnect_blocked">%1$s is blocked. Unblock them to reconnect.</string>
+    <string name="contactbook_action_blocked_connection_removed">Connection removed. They're still blocked.</string>
+    <string name="contactbook_action_not_blocked">They're no longer blocked, so there was nothing to remove.</string>
     <string name="contactbook_action_sync_started">Syncing this contact from their profile…</string>
     <string name="contactbook_action_request_accepted">Connection request accepted.</string>
     <string name="contactbook_action_request_rejected">Connection request declined.</string>
@@ -2273,8 +2289,18 @@
     <string name="profile_card_error">Couldn't show your card.</string>
     <string name="profile_card_share_failed">Couldn't create the card image.</string>
     <string name="profile_card_unsupported">Your Homebase server doesn't support profile cards yet.</string>
-    <string name="profile_card_channel_access">Some posts your connections can see aren't shown. Allow access to your channels.</string>
-    <string name="profile_card_channel_access_allow">Allow</string>
+    <string name="profile_card_edit">Edit card</string>
+    <string name="profile_card_editor_title">Card design</string>
+    <string name="profile_card_edit_profile">Edit profile details</string>
+    <string name="profile_card_design_save_failed">Couldn't save the card design.</string>
+    <string name="profile_card_nfc">Share card by tapping phones</string>
+    <string name="profile_card_nfc_title">Hold your phone near another phone</string>
+    <string name="profile_card_nfc_body">Touch the backs of the phones together while Homebase is open. Your card opens on theirs.</string>
+    <string name="profile_card_nfc_off">NFC is turned off. Turn it on to share your card by tapping phones.</string>
+    <string name="profile_card_nfc_open_settings">Open NFC settings</string>
+    <string name="profile_card_nfc_switch">Share my card by tap while Homebase is open</string>
+    <string name="profile_card_nfc_switch_desc">Another phone can open your card by touching yours</string>
+    <string name="profile_card_nfc_shared">Card shared</string>
     <string name="settings_profile_card">Profile card</string>
     <string name="settings_profile_card_desc">See how others see you, and share it as an image</string>
 
@@ -2392,4 +2418,54 @@
     <string name="webdrop_error_too_many">A drop can hold at most %1$d files</string>
     <string name="notification_reply_failed_title">Couldn't send your reply</string>
     <string name="notification_reply_failed_hint">Tap to open Homebase and send it again</string>
+    <string name="camera_close">Close camera</string>
+    <string name="camera_shutter_photo">Take photo</string>
+    <string name="camera_shutter_video">Start recording</string>
+    <string name="camera_shutter_stop">Stop recording</string>
+    <string name="camera_shutter_hold_hint">Hold to record a video</string>
+    <string name="camera_flash">Flash</string>
+    <string name="camera_torch">Torch</string>
+    <string name="camera_exposure">Exposure</string>
+    <string name="camera_exposure_value">%1$s EV</string>
+    <string name="camera_state_auto">Auto</string>
+    <string name="camera_state_on">On</string>
+    <string name="camera_state_off">Off</string>
+    <string name="camera_switch_lens">Switch camera</string>
+    <string name="camera_open_gallery">Open gallery</string>
+    <string name="camera_lens_front">Front camera</string>
+    <string name="camera_lens_back">Back camera</string>
+    <string name="camera_mode_photo">Photo</string>
+    <string name="camera_mode_video">Video</string>
+    <string name="camera_zoom_level">%1$s×</string>
+    <string name="camera_zoom_preset_a11y">Zoom %1$s×</string>
+    <string name="camera_recording_a11y">Recording, %1$s</string>
+    <string name="camera_no_mic">No microphone</string>
+    <string name="camera_no_mic_a11y">Recording without sound. Allow microphone access</string>
+    <string name="camera_permission_title">Take photos and videos</string>
+    <string name="camera_permission_body">Allow camera access to take photos and videos right here and send them.</string>
+    <string name="camera_permission_denied_title">Camera access is off</string>
+    <string name="camera_permission_denied_body">Homebase uses the camera only while this screen is open.</string>
+    <string name="camera_permission_retry">Try again</string>
+    <string name="camera_permission_settings_body">Camera access is turned off for Homebase. Turn it on in Settings, then come back here.</string>
+    <string name="camera_permission_open_settings">Open Settings</string>
+    <string name="camera_unavailable_title">No camera available</string>
+    <string name="camera_unavailable_body">This device doesn't have a camera Homebase can use.</string>
+    <string name="camera_error_bind">Couldn't start the camera</string>
+    <string name="camera_error_in_use">Another app is using the camera</string>
+    <string name="camera_error_interrupted">The camera was interrupted</string>
+    <string name="camera_error_storage">Not enough storage to save</string>
+    <string name="camera_error_photo">Couldn't take the photo</string>
+    <string name="camera_error_recording">Couldn't save the video</string>
+    <string name="camera_starting">Starting camera</string>
+    <string name="camera_saving">Saving</string>
+    <string name="dev_menu_open_camera">Open camera</string>
+    <string name="dev_menu_open_camera_desc">Try the in-app camera. Nothing is sent.</string>
+    <string name="dev_menu_camera_result_title">Camera result</string>
+    <string name="dev_menu_camera_result_name">Name: %1$s</string>
+    <string name="dev_menu_camera_result_size">Size: %1$s bytes</string>
+    <string name="dev_menu_camera_result_type">Type: %1$s</string>
+    <string name="dev_menu_camera_cancelled">Camera closed without a capture</string>
+    <string name="camera_recording_started">Recording started</string>
+    <string name="camera_recording_stopped">Recording stopped, %1$s</string>
+    <string name="camera_ae_af_lock">AE/AF lock</string>
 </resources>

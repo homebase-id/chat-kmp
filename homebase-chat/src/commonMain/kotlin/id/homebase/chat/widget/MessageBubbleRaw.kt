@@ -3,8 +3,6 @@ package id.homebase.chat.widget
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -413,13 +411,7 @@ fun MessageBubbleRaw(
     val isAnimatingLongPress = remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
-    // Use a spring for smoother, natural motion and avoid tiny abrupt tweens
-    val springSpec = remember {
-        spring<Float>(
-            dampingRatio = Spring.DampingRatioNoBouncy, // less bounce on emulator
-            stiffness = Spring.StiffnessLow
-        )
-    }
+    val springSpec = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
 
     // Keep quick press feedback when not running the long-press animation
     LaunchedEffect(isPressed) {
@@ -436,8 +428,8 @@ fun MessageBubbleRaw(
         isAnimatingLongPress.value = true
         coroutineScope.launch {
             try {
-                scaleAnim.animateTo(0.94f, animationSpec = springSpec)
                 onLongClick()
+                scaleAnim.animateTo(0.94f, animationSpec = springSpec)
                 scaleAnim.animateTo(1f, animationSpec = springSpec)
             } finally {
                 isAnimatingLongPress.value = false
@@ -448,9 +440,10 @@ fun MessageBubbleRaw(
     val timestamp = formatMessageTimestamp(message.userDate)
     val messageInfoText =
         if (message.isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp" else timestamp
-    val mediaOnly = remember { !message.content.hasContent() && hasMedia && message.messageAppData.replyPreview == null }
-    val replyMediaOnly = remember { !message.content.hasContent() && hasMedia && message.messageAppData.replyPreview != null }
-    val emojiOnly = remember { message.content.isEmojiContentOnly() && !hasMedia }
+    val hasReplyPreview = message.messageAppData.replyPreview != null
+    val mediaOnly = remember(message.content, hasMedia, hasReplyPreview) { !message.content.hasContent() && hasMedia && !hasReplyPreview }
+    val replyMediaOnly = remember(message.content, hasMedia, hasReplyPreview) { !message.content.hasContent() && hasMedia && hasReplyPreview }
+    val emojiOnly = remember(message.content, hasMedia) { message.content.isEmojiContentOnly() && !hasMedia }
 
     // A media-only sticker message must float directly on the chat wallpaper, so its
     // transparent pixels show the background — not the bubble fill. Detect it the same

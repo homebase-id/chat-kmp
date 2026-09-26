@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.common.OdinId
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
@@ -38,6 +39,7 @@ import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.layout.AnimatedPane
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
+import androidx.compose.material3.adaptive.layout.MutableThreePaneScaffoldState
 import androidx.compose.material3.adaptive.layout.PaneAdaptedValue
 import androidx.compose.material3.adaptive.layout.PaneExpansionAnchor
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
@@ -56,7 +58,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.backhandler.PredictiveBackHandler
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -82,9 +87,6 @@ import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.chat.widget.StickerCreatorSheet
 import id.homebase.core.HomebaseConstants
-import id.homebase.core.connections.ConnectRequestAction
-import id.homebase.core.connections.ConnectRequestBottomSheet
-import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
@@ -142,7 +144,10 @@ import id.homebase.resources.error_unknown
 import id.homebase.resources.file_save_failed
 import id.homebase.resources.file_saved_to
 import id.homebase.resources.file_share_failed
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
@@ -170,7 +175,9 @@ fun ConversationListScreen(
     viewModel: ConversationListViewModel,
     archivedConversationsViewModel: ArchivedConversationsViewModel,
     extendPermissionViewModel: ExtendPermissionViewModel,
-    connectRequestViewModel: ConnectRequestViewModel,
+    onOpenConnectRequest: (OdinId) -> Unit,
+    /** Supplied by homebase-core, which owns the Connect sheet and the review it embeds. */
+    connectRequestSheet: @Composable (SnackbarHostState) -> Unit,
     onNavigateBack: () -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
     onNavigateToNewConversation: () -> Unit,
@@ -184,8 +191,6 @@ fun ConversationListScreen(
     onNavigateToMessageInfo: (conversationId: Uuid, messageId: Uuid, fileId: Uuid) -> Unit,
     onNavigateToCropper: (requestId: Uuid) -> Unit = {},
     onNavigateToDrawer: (requestId: Uuid) -> Unit = {},
-    onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
-    onMediaViewerVisibilityChanged: (Boolean) -> Unit = {},
     onComposerVisibilityChanged: (Boolean) -> Unit = {},
     onSaveContactCard: (card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit = { _, _ -> },
     /** Hosts the new-conversation flow inside the list pane on an expanded window instead of
@@ -333,9 +338,7 @@ fun ConversationListScreen(
                 is ConversationListUiEvent.OpenUrl -> fileSystemHandler.openUrl(event.url)
 
                 is ConversationListUiEvent.OpenSendConnectionRequestDialog ->
-                    connectRequestViewModel.onAction(
-                        ConnectRequestAction.OpenDialogWithRecipient(event.odinId)
-                    )
+                    onOpenConnectRequest(event.odinId)
 
                 is ConversationListUiEvent.NavigateToCropper -> onNavigateToCropper(event.requestId)
 
@@ -347,10 +350,7 @@ fun ConversationListScreen(
         }
     }
 
-    ConnectRequestBottomSheet(
-        viewModel = connectRequestViewModel,
-        snackbarHostState = snackbarHostState,
-    )
+    connectRequestSheet(snackbarHostState)
 
     when (val dialog = conversationsUiState.uiDialog) {
         null -> {}
@@ -559,11 +559,9 @@ fun ConversationListScreen(
             messagesSearchTextState = viewModel.messagesSearchTextState,
             onUiAction = viewModel::onAction,
             onNavigateToSettingsScreen = onNavigateToSettingsScreen,
-            onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged,
             newConversationPane = newConversationPane,
             showNewConversationPane = newConversationInPane,
             onNewConversationPaneDismissed = { newConversationInPane = false },
-            onMediaViewerVisibilityChanged = onMediaViewerVisibilityChanged,
             onComposerVisibilityChanged = onComposerVisibilityChanged,
         )
 
@@ -764,6 +762,12 @@ private fun id.homebase.api.client.connections.IntroductionPreflightStatus.reaso
         MR.string.chat_introduce_preflight_reason_unknown
 }
 
+// Plain fields, not state: written and read only while composing the detail pane.
+private class LastOpenDetail {
+    var detail: ChatDetail.Open? = null
+    var messages: MessageListUiState = MessageListUiState()
+}
+
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ConversationListUi(
@@ -776,14 +780,12 @@ fun ConversationListUi(
     messagesSearchTextState: TextFieldState,
     onUiAction: (ConversationListUiAction) -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
-    onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
     newConversationPane: (@Composable (
         onDismiss: () -> Unit,
         onConversationOpened: (Uuid) -> Unit,
     ) -> Unit)? = null,
     showNewConversationPane: Boolean = false,
     onNewConversationPaneDismissed: () -> Unit = {},
-    onMediaViewerVisibilityChanged: (Boolean) -> Unit = {},
     onComposerVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
@@ -815,6 +817,7 @@ fun ConversationListUi(
     val isListPaneHidden =
         scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
     val isComposerVisible = detail is ChatDetail.Open
+    val lastOpenDetail = remember { LastOpenDetail() }
 
     // Record what the user last saw at the top, so the return can tell whether the list reordered
     // while they were gone. ON_STOP runs inside the lifecycle callback; a coroutine would not be
@@ -830,29 +833,43 @@ fun ConversationListUi(
         listPaneWasVisible = !isListPaneHidden
     }
 
-    // Notify parent about detail pane visibility in compact view
-    LaunchedEffect(isListPaneHidden) { onDetailPaneVisibilityChanged(isListPaneHidden) }
-
-    LaunchedEffect(isComposerVisible) { onComposerVisibilityChanged(isComposerVisible) }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(isComposerVisible) {
+        onComposerVisibilityChanged(isComposerVisible)
+        // The closed chat stays composed while its pane slides out, so its composer's own
+        // dispose-time keyboard hide would land only after the slide.
+        if (!isComposerVisible) {
+            focusManager.clearFocus()
+            keyboardController?.hide()
+        }
+    }
 
     val hoistedMediaViewer = messagesUiState.hoistedMediaViewer(isExpanded)
-    // The rail lives above this screen, so the viewer can only own the window if the rail is told
-    // to stand down — same contract the feed and the Vault gallery already use.
-    LaunchedEffect(hoistedMediaViewer != null) {
-        onMediaViewerVisibilityChanged(hoistedMediaViewer != null)
-    }
     DisposableEffect(Unit) {
         onDispose {
-            onMediaViewerVisibilityChanged(false)
             onComposerVisibilityChanged(false)
         }
     }
 
-    @Suppress("DEPRECATION") BackHandler(detail is ChatDetail.Open) {
-        if (messagesUiState.fullScreenOverlay != null) {
-            onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
-        } else if (!isExpanded) {
+    // What the value overload of ListDetailPaneScaffold does internally, held here so the back
+    // gesture can seek the list/detail transition.
+    val scaffoldState = remember { MutableThreePaneScaffoldState(scaffoldValue) }
+    LaunchedEffect(scaffoldValue) { scaffoldState.animateTo(scaffoldValue) }
+
+    val hasOverlay = messagesUiState.fullScreenOverlay != null
+    @Suppress("DEPRECATION") BackHandler(detail is ChatDetail.Open && hasOverlay) {
+        onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
+    }
+    @Suppress("DEPRECATION") PredictiveBackHandler(detail is ChatDetail.Open && !hasOverlay && !isExpanded) { progress ->
+        val listValue = chatScaffoldValue(isExpanded = false, detail = ChatDetail.None)
+        try {
+            progress.collect { scaffoldState.seekTo(it.progress, listValue) }
             onUiAction(ConversationListUiAction.ClearSelection)
+        } catch (e: CancellationException) {
+            // A cancelled gesture leaves the value unchanged, so nothing else animates it back.
+            withContext(NonCancellable) { scaffoldState.animateTo(scaffoldState.currentState) }
+            throw e
         }
     }
 
@@ -876,7 +893,7 @@ fun ConversationListUi(
                     }
                 },
                 directive = scaffoldDirective,
-                value = scaffoldValue,
+                scaffoldState = scaffoldState,
                 listPane = {
                     AnimatedPane(modifier = Modifier) {
                         val pane = newConversationPane
@@ -908,17 +925,25 @@ fun ConversationListUi(
                 detailPane = {
                     AnimatedPane {
                         if (detail is ChatDetail.Open) {
-                            key(detail.conversation.conversation.id) {
+                            lastOpenDetail.detail = detail
+                            lastOpenDetail.messages = messagesUiState
+                        }
+                        // On a compact window closing a chat hides this pane, which slides out with
+                        // whatever it renders: keep drawing the chat, not the empty placeholder.
+                        val closing = !isExpanded && detail !is ChatDetail.Open
+                        val shown = if (closing) lastOpenDetail.detail else detail
+                        if (shown is ChatDetail.Open) {
+                            key(shown.conversation.conversation.id) {
                                 ConversationMessagesPane(
-                                    conversation = detail.conversation,
-                                    uiState = messagesUiState,
+                                    conversation = shown.conversation,
+                                    uiState = if (closing) lastOpenDetail.messages else messagesUiState,
                                     textFieldState = messageInputTextFieldState,
                                     searchTextState = messagesSearchTextState,
                                     showBackButton = isListPaneHidden,
                                     onBackClick = {
-                                        onUiAction(ConversationListUiAction.ClearSelection)
+                                        if (!closing) onUiAction(ConversationListUiAction.ClearSelection)
                                     },
-                                    onUiAction = onUiAction,
+                                    onUiAction = if (closing) ({}) else onUiAction,
                                     hoistMediaViewer = isExpanded,
                                 )
                             }

@@ -157,13 +157,13 @@ class PostDetailViewModel(
 
     // Needs the resolved post, not just [postId]: routing a peer comment read wants author/channel/globalTransitId.
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val _comments: Flow<List<PostCommentItem>> = timelineService.timeline
+    private val _comments: Flow<List<PostCommentItem>?> = timelineService.timeline
         .mapNotNull { feed -> feed.firstOrNull { it.id == postId } }
         .distinctUntilChangedBy {
             listOf(it.id, it.senderOdinId, it.globalTransitId, it.channelId)
         }
         .flatMapLatest { post -> commentsService.commentsFor(post) }
-        .onStart { emit(emptyList()) }
+        .onStart { emit(null) }
 
     val uiState: StateFlow<PostDetailUiState> = combine(
         timelineService.timeline
@@ -181,11 +181,12 @@ class PostDetailViewModel(
             reactionPreview = aux.liveReactions
                 ?.takeIf { useLiveReactions && it.reactions.isNotEmpty() }
                 ?: postRaw.reactionPreview,
-            commentCount = comments.size,
+            commentCount = comments?.size ?: postRaw.commentCount,
         )?.withOwnReactions(aux.ownReactions)
         PostDetailUiState(
             post = post,
-            comments = comments,
+            comments = comments.orEmpty(),
+            isLoadingComments = comments == null,
             isLoading = !timelineEmitted && post == null,
             replyingTo = replyingTo,
             selfOdinId = aux.self,

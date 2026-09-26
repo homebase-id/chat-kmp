@@ -3,10 +3,24 @@ package id.homebase.core.ui.screens.contactbook
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.connections.CircleWithMembers
+import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
+import id.homebase.resources.MR
+import id.homebase.resources.chat_contact_card_partial_additions
+import id.homebase.resources.contactbook_error_circle_action
+import id.homebase.resources.contactbook_error_circle_toggle_forbidden
+import id.homebase.resources.contactbook_error_circle_toggle_not_found
+import id.homebase.resources.contactbook_error_circle_toggle_system
+import id.homebase.resources.contactbook_error_clear_unsupported
+import id.homebase.resources.contactbook_error_delete
+import id.homebase.resources.contactbook_error_forbidden
+import id.homebase.resources.contactbook_error_message
+import id.homebase.resources.contactbook_error_photo
+import id.homebase.resources.contactbook_error_save
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
+import org.jetbrains.compose.resources.StringResource
 
 /** The two sections of the unified Contacts screen. */
 enum class ContactTab {
@@ -20,8 +34,8 @@ enum class ContactTab {
     CIRCLES,
 }
 
-/** Pills within [ContactTab.KNOWN]. Dark launch: UNVETTED/VETTED while the review flag is off, CIRCLES while on. */
-enum class ContactFilter { ALL, UNVETTED, VETTED, CIRCLES }
+/** Pills within [ContactTab.KNOWN]. Dark launch: UNVETTED/VETTED while the review flag is off, CIRCLES/BLOCKED while on. */
+enum class ContactFilter { ALL, UNVETTED, VETTED, CIRCLES, BLOCKED }
 
 /** Which way a pending connection request points relative to the signed-in identity. */
 enum class RequestDirection {
@@ -55,6 +69,12 @@ data class CircleMembersUi(
      *  / [id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID]), which are computed by the vetting
      *  flow rather than manually curated. */
     val manageable: Boolean = true,
+    val disabled: Boolean = false,
+    val offersEnableToggle: Boolean = false,
+    val togglingEnabled: Boolean = false,
+    /** Shown in the sheet, like [removeError]: the screen's snackbar sits underneath it. */
+    val toggleError: ContactBookError? = null,
+    val removeError: ContactBookError? = null,
     val members: List<ContactBookEntry> = emptyList(),
     val isLoading: Boolean = true,
     /**
@@ -171,6 +191,10 @@ data class ContactBookUiState(
     val vetted: List<ContactBookEntry> = emptyList(),
     /** Known tab, Circles pill: in at least one personal circle. */
     val circleContacts: List<ContactBookEntry> = emptyList(),
+    /** Known tab, Blocked pill; with the review flag on these are left out of All. */
+    val blockedContacts: List<ContactBookEntry> = emptyList(),
+    /** By lowercased domain, for circle rosters; a plain block keeps a member's circle grants. */
+    val connectionStatuses: Map<String, ConnectionStatus> = emptyMap(),
     /** Per-domain (lowercased) contact state, for the row's trailing state icon. */
     val contactStates: Map<String, ContactState> = emptyMap(),
     /** True until the circle memberships the three states need have loaded. */
@@ -211,6 +235,7 @@ sealed interface ContactBookUiAction {
     /** "Add member" tapped in the circle-members sheet — opens the picker for this circle. */
     data class CircleAddMemberClicked(val circleId: String, val circleName: String) : ContactBookUiAction
     data object EnrollmentCandidatesClicked : ContactBookUiAction
+    data class CircleEnabledChanged(val circleId: String, val enabled: Boolean) : ContactBookUiAction
     /** Revoke [member]'s membership (real or still-pending) in the circle [circleId]. */
     data class CircleRemoveMemberClicked(
         val circleId: String,
@@ -273,4 +298,21 @@ enum class ContactBookError {
     ClearUnsupported,
     AdditionsFailed,
     CircleActionFailed,
+    CircleToggleForbidden,
+    CircleToggleSystemCircle,
+    CircleToggleNotFound,
+}
+
+fun ContactBookError.messageRes(): StringResource = when (this) {
+    ContactBookError.SaveFailed -> MR.string.contactbook_error_save
+    ContactBookError.SaveForbidden -> MR.string.contactbook_error_forbidden
+    ContactBookError.DeleteFailed -> MR.string.contactbook_error_delete
+    ContactBookError.PhotoFailed -> MR.string.contactbook_error_photo
+    ContactBookError.MessageFailed -> MR.string.contactbook_error_message
+    ContactBookError.ClearUnsupported -> MR.string.contactbook_error_clear_unsupported
+    ContactBookError.AdditionsFailed -> MR.string.chat_contact_card_partial_additions
+    ContactBookError.CircleActionFailed -> MR.string.contactbook_error_circle_action
+    ContactBookError.CircleToggleForbidden -> MR.string.contactbook_error_circle_toggle_forbidden
+    ContactBookError.CircleToggleSystemCircle -> MR.string.contactbook_error_circle_toggle_system
+    ContactBookError.CircleToggleNotFound -> MR.string.contactbook_error_circle_toggle_not_found
 }

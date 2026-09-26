@@ -2,12 +2,15 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
+import id.homebase.core.ui.screens.contactbook.resolveCircleMemberEntries
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ClientException
 import id.homebase.api.client.ForbiddenException
+import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionNetworkProvider
@@ -34,9 +37,6 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactService
 import id.homebase.core.contactbook.LocateVerifyStatus
-import id.homebase.core.contactbook.ReconcileAction
-import id.homebase.core.contactbook.reconcileAction
-import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
 import id.homebase.core.ui.screens.contactbook.ConnectionRequestFailure
@@ -326,6 +326,7 @@ class ContactDetailViewModel(
                             // Membership alone overstates it: a read grant without its storage
                             // key reads as access the contact cannot actually exercise.
                             accessState = if (reviewEnabled) registration?.circleAccessState(it.id) else null,
+                            disabled = it.disabled,
                         )
                     } +
                         pendingCircles.map {
@@ -335,6 +336,7 @@ class ContactDetailViewModel(
                                 pending = true,
                                 emoji = it.emoji.takeIf { reviewEnabled },
                                 accessState = CircleAccessState.Pending,
+                                disabled = it.disabled,
                             )
                         } +
                         awaitingEntries.map { entry ->
@@ -379,6 +381,7 @@ class ContactDetailViewModel(
                             ) == ContactState.New,
                         reviewCircleGroups = circ.reviewCircleGroups(),
                         circles = circleItems,
+                        connectionStatuses = conn.statusByDomain(),
                         assignableCircles = assignableCircles,
                         isLoading = false,
                         isSelf = isSelf,
@@ -450,7 +453,7 @@ class ContactDetailViewModel(
         val match = circ.circles.firstOrNull { it.circle.id.equals(circleId, ignoreCase = true) } ?: return
         val domain = odinId
         val memberDomains = match.members.map { it.domainName }.toSet()
-        val members = resolveCircleContactEntries(memberDomains, latestContacts).sortedBy { it.sortKey }
+        val members = resolveCircleMemberEntries(memberDomains, latestContacts).sortedBy { it.sortKey }
         // Members and pending deposits come out of the one circle snapshot, so the roster is
         // complete the moment the dialog opens — no second read, and no window where the two
         // lists disagree about who has converted.
@@ -458,7 +461,7 @@ class ContactDetailViewModel(
             .map { it.odinId.domainName }
             .filterNot { d -> memberDomains.any { it.equals(d, ignoreCase = true) } }
             .toSet()
-        val pending = resolveCircleContactEntries(pendingDomains, latestContacts)
+        val pending = resolveCircleMemberEntries(pendingDomains, latestContacts)
             .sortedBy { it.sortKey }
         val reviewEnabled = developerPreferences.connectionReviewEnabled.value
         val isRealMember = domain != null && memberDomains.any { it.equals(domain, ignoreCase = true) }
@@ -472,6 +475,7 @@ class ContactDetailViewModel(
                     circleName = match.circle.name,
                     circleEmoji = match.circle.emoji.takeIf { reviewEnabled },
                     manageable = false,
+                    disabled = match.circle.disabled,
                     members = members,
                     pendingMembers = if (reviewEnabled) pending else emptyList(),
                     isLoading = false,
@@ -541,7 +545,7 @@ class ContactDetailViewModel(
                 Logger.w(e, TAG) { "findPendingMembers failed for ${circle.circle.id}" }
                 emptyList()
             }
-            val pendingEntries = resolveCircleContactEntries(
+            val pendingEntries = resolveCircleMemberEntries(
                 pending.map { it.domainName }.toSet(),
                 latestContacts,
             ).sortedBy { it.sortKey }
@@ -571,26 +575,6 @@ class ContactDetailViewModel(
 
     fun onCircleDetailDismiss() {
         _uiState.update { it.copy(circleDetail = null) }
-    }
-
-    private fun resolveCircleContactEntries(
-        domains: Set<String>,
-        contacts: List<ContactBookEntry>,
-    ): List<ContactBookEntry> {
-        val byOdin = contacts.filter { !it.odinId.isNullOrBlank() }.associateBy { it.odinId!!.lowercase() }
-        return domains.map { domain -> byOdin[domain.lowercase()] ?: syntheticCircleContactEntry(domain) }
-    }
-
-    private fun syntheticCircleContactEntry(domain: String): ContactBookEntry {
-        val uid = Md5.toGuidId(domain.lowercase())
-        return ContactBookEntry(
-            uniqueId = uid,
-            fileId = uid,
-            versionTag = null,
-            odinId = domain,
-            displayName = domain,
-            source = ContactBookSource.CONNECTION,
-        )
     }
 
     // endregion
@@ -633,11 +617,7 @@ class ContactDetailViewModel(
             ContactDetailAction.DisconnectClicked ->
                 _uiState.update { it.copy(confirm = ContactDetailConfirm.DISCONNECT) }
             is ContactDetailAction.AcceptRequestClicked -> {
-                // Circle ids arrive as 32-char N-format strings; the accept API takes Uuids. Drop
-                // any that fail to parse rather than aborting the accept.
-                val circleUuids = action.circleIds.mapNotNull {
-                    runCatching { Uuid.parseHex(it) }.getOrNull()
-                }
+                val circleUuids = action.circleIds.toCircleUuids()
                 handleRequestAction(event = ContactDetailEvent.RequestAccepted) {
                     connectionRequestService.acceptIncomingRequest(it, circleUuids)
                 }
@@ -649,6 +629,8 @@ class ContactDetailViewModel(
                 event = ContactDetailEvent.RequestCancelled,
             ) { connectionRequestService.cancelOutgoingRequest(it) }
             ContactDetailAction.UnblockClicked -> handleUnblock()
+            ContactDetailAction.RemoveBlockedClicked ->
+                _uiState.update { it.copy(confirm = ContactDetailConfirm.REMOVE_BLOCKED) }
             ContactDetailAction.ConfirmYes -> handleConfirm()
             ContactDetailAction.ConfirmDismiss -> _uiState.update { it.copy(confirm = null) }
             is ContactDetailAction.OpenMedia -> _uiState.update { it.copy(fullScreenMedia = action.item) }
@@ -724,10 +706,8 @@ class ContactDetailViewModel(
                 }
                 val entry = _uiState.value.entry
                 val versionTag = entry?.versionTag
-                if (entry != null && versionTag != null &&
-                    reconcileAction(hasAccess = true, entry.iCanLocate) == ReconcileAction.Set
-                ) {
-                    runCatching { contactRepository.setICanLocate(entry.uniqueId, versionTag) }
+                if (entry != null && versionTag != null && !entry.iCanLocate) {
+                    runCatching { emergencyContacts.setICanLocate(peer, entry.uniqueId, versionTag) }
                         .onFailure { Logger.w(it, TAG) { "setICanLocate failed for ${peer.domainName}" } }
                 }
             }
@@ -954,11 +934,44 @@ class ContactDetailViewModel(
         )
     }
 
+    /** A refusal with [staleCode] means our status was out of date: re-read it rather than show an error. */
+    private suspend fun onConnectionActionFailed(
+        error: Throwable,
+        staleCode: OdinClientErrorCode,
+        staleEvent: ContactDetailEvent,
+    ) {
+        if (error is ClientException && error.errorCode == staleCode) {
+            connectionService.refresh()
+            _events.tryEmit(staleEvent)
+        } else {
+            emitConnectionError(error)
+        }
+    }
+
+    private suspend fun disconnectConnection(odinId: OdinId): Result<Unit> =
+        runCatching { connectionNetworkProvider.disconnect(odinId) }
+            .onSuccess { connectionService.refresh() }
+            .onFailure {
+                onConnectionActionFailed(
+                    it,
+                    OdinClientErrorCode.BlockedConnection,
+                    ContactDetailEvent.DisconnectRefusedBlocked(_uiState.value.displayName),
+                )
+            }
+
+    private suspend fun removeBlockedConnection(odinId: OdinId): Result<Unit> =
+        runCatching { connectionNetworkProvider.removeBlockedConnection(odinId) }
+            .onSuccess { connectionService.refresh() }
+            .onFailure {
+                onConnectionActionFailed(it, OdinClientErrorCode.IdentityIsNotBlocked, ContactDetailEvent.NotBlocked)
+            }
+
     private fun handleConfirm() {
         val confirm = _uiState.value.confirm ?: return
         val entry = _uiState.value.entry
         val domain = odinId
         val wasConnected = _uiState.value.isConnected
+        val wasBlocked = _uiState.value.isBlocked
         _uiState.update { it.copy(confirm = null, actionInProgress = true) }
         viewModelScope.launch {
             try {
@@ -968,19 +981,15 @@ class ContactDetailViewModel(
                             _events.tryEmit(ContactDetailEvent.Back)
                             return@launch
                         }
-                        // A connected contact must be disconnected before its record is removed —
-                        // otherwise deleting the address-book entry leaves the connection (and the
-                        // access it granted) live. Tear that down first; abort the delete if it
-                        // fails so we don't silently drop the contact while the connection lingers.
-                        if (wasConnected && domain != null) {
-                            val disconnected = runCatching {
-                                connectionNetworkProvider.disconnect(OdinId(domain))
-                            }
-                                .onSuccess { connectionService.refresh() }
-                                .onFailure { emitConnectionError(it) }
-                                .isSuccess
-                            if (!disconnected) return@launch
+                        // Sever first so deleting the entry can't leave its access live.
+                        val id = domain?.let(::OdinId)
+                        val severed = when {
+                            id == null -> null
+                            wasConnected -> disconnectConnection(id)
+                            wasBlocked -> removeBlockedConnection(id)
+                            else -> null
                         }
+                        if (severed?.isFailure == true) return@launch
                         // repo.delete does the optimistic remove and restores on failure.
                         val event = try {
                             if (contactRepository.delete(entry.uniqueId)) ContactDetailEvent.DeletedAndBack
@@ -1000,14 +1009,19 @@ class ContactDetailViewModel(
                                 .onFailure { emitConnectionError(it) }
                         }
                     }
-                    ContactDetailConfirm.DISCONNECT -> {
+                    ContactDetailConfirm.DISCONNECT -> when {
+                        domain == null -> Unit
+                        // Blocked while the dialog was open.
+                        wasBlocked -> _events.tryEmit(
+                            ContactDetailEvent.DisconnectRefusedBlocked(_uiState.value.displayName),
+                        )
+                        else -> disconnectConnection(OdinId(domain))
+                            .onSuccess { _events.tryEmit(ContactDetailEvent.Disconnected) }
+                    }
+                    ContactDetailConfirm.REMOVE_BLOCKED -> {
                         if (domain != null) {
-                            runCatching { connectionNetworkProvider.disconnect(OdinId(domain)) }
-                                .onSuccess {
-                                    connectionService.refresh()
-                                    _events.tryEmit(ContactDetailEvent.Disconnected)
-                                }
-                                .onFailure { emitConnectionError(it) }
+                            removeBlockedConnection(OdinId(domain))
+                                .onSuccess { _events.tryEmit(ContactDetailEvent.BlockedConnectionRemoved) }
                         }
                     }
                 }

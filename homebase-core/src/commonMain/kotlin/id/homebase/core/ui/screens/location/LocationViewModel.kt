@@ -20,7 +20,6 @@ import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.contactbook.EmergencyContactService
 import id.homebase.core.contactbook.LOCATE_VERIFY_TTL_MS
 import id.homebase.core.contactbook.LocateVerifyStatus
-import id.homebase.core.contactbook.locatableContacts
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.location.emergency.EmergencyLocateService
@@ -47,7 +46,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -160,23 +158,16 @@ class LocationViewModel(
         }
 
         // "Who you can locate" = the contacts carrying our `iCanLocate` app-data flag (set when they
-        // designated us via their emergency circle). The flag is a reactive cache; step 8 reconciles
-        // it against a temporal-access preflight. Reactive so a new designation appears live.
+        // designated us via their emergency circle). Reactive so a new designation appears live.
         viewModelScope.launch {
-            val self = runCatching { credentialsManager.getActiveDomain() }
-                .getOrNull()?.domainName?.lowercase()
-            contactRepository.locatableContacts
-                .map { list ->
-                    list.mapNotNull { it.toContactUiModel() }
-                        .filterNot { it.odinId.domainName.lowercase() == self }
-                        .distinctBy { it.odinId }
-                        .sortedBy { it.name.lowercase() }
+            emergencyContacts.locatable.collect { list ->
+                val members = list.orEmpty()
+                    .mapNotNull { it.contact.toContactUiModel() }
+                    .sortedBy { it.name.lowercase() }
+                _uiState.update {
+                    it.copy(whoICanLocate = members, whoICanLocateLoaded = list != null)
                 }
-                .collect { members ->
-                    _uiState.update {
-                        it.copy(whoICanLocate = members, whoICanLocateLoaded = true)
-                    }
-                }
+            }
         }
 
         viewModelScope.launch {

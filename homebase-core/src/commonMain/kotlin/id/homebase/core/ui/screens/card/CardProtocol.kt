@@ -14,6 +14,14 @@ object CardDesign {
     const val COLLAGE = "collage"
     const val DOSSIER = "dossier"
     val all = listOf(POSTER, BOARD, COLLAGE, DOSSIER)
+
+    // Native copy of each page's base colour, shown until the page can be probed so the first frame already matches.
+    fun baseArgb(design: String): Int = when (design) {
+        POSTER -> 0xFF14120F
+        COLLAGE -> 0xFFF3EADB
+        DOSSIER -> 0xFF0E1013
+        else -> 0xFF1F4E8C
+    }.toInt()
 }
 
 @Serializable
@@ -64,11 +72,15 @@ sealed interface CardEvent {
     data class Link(val href: String) : CardEvent
     data class Png(val base64: String, val width: Int, val height: Int) : CardEvent
     data class Error(val message: String, val unsupported: Boolean = false) : CardEvent
+    data class Edges(val topArgb: Int?, val bottomArgb: Int?) : CardEvent
+    data object Painted : CardEvent
 }
 
 internal sealed interface CardCommand {
     data class Render(val payload: CardPayload) : CardCommand
     data object ExportPng : CardCommand
+    data object ProbeEdges : CardCommand
+    data object RequestPaint : CardCommand
 }
 
 // Optional fields are omitted rather than sent as null; empty lists are always sent.
@@ -96,6 +108,11 @@ fun parseCardEvent(json: String): CardEvent? {
             height = event.long("height")?.toInt() ?: return null,
         )
         "error" -> CardEvent.Error(event.string("message") ?: return null)
+        "hostEdges" -> CardEvent.Edges(
+            topArgb = event.string("top")?.let(::parseCssColor),
+            bottomArgb = event.string("bottom")?.let(::parseCssColor),
+        )
+        "hostPainted" -> CardEvent.Painted
         else -> null
     }
 }
@@ -105,6 +122,31 @@ internal fun CardPayload.toJson(): String = cardJson.encodeToString(CardPayload.
 internal fun CardCommand.script(): String = when (this) {
     is CardCommand.Render -> "window.homebaseCard.render(${payload.toJson()})"
     CardCommand.ExportPng -> "window.homebaseCard.exportPng()"
+    CardCommand.ProbeEdges -> PROBE_EDGES_SCRIPT
+    CardCommand.RequestPaint -> REQUEST_PAINT_SCRIPT
+}
+
+// Host-side only: reads the colour of the full-width surface at the page's top and bottom edges (not a card that happens to sit there), so native chrome can continue it.
+private const val PROBE_EDGES_SCRIPT =
+    "(function(){function c(y){var e=document.elementsFromPoint(innerWidth/2,y);" +
+        "for(var i=0;i<e.length;i++){var b=getComputedStyle(e[i]).backgroundColor;" +
+        "if(e[i].getBoundingClientRect().width<innerWidth-1)continue;" +
+        "if(b&&b!=='transparent'&&!/^rgba\\(.*,\\s*0\\)${'$'}/.test(b))return b}return null}" +
+        "window.homebaseCardHost.post(JSON.stringify({type:'hostEdges',top:c(1),bottom:c(innerHeight-1)}))})()"
+
+// Two animation frames: the first commits pending layout, the second runs after it has been drawn.
+private const val REQUEST_PAINT_SCRIPT =
+    "requestAnimationFrame(function(){requestAnimationFrame(function(){" +
+        "window.homebaseCardHost.post(JSON.stringify({type:'hostPainted'}))})})"
+
+private val CSS_RGB = Regex("""rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\s*\)""")
+
+internal fun parseCssColor(css: String): Int? {
+    val match = CSS_RGB.matchEntire(css.trim()) ?: return null
+    val alpha = match.groupValues[4].takeIf { it.isNotEmpty() }?.toDoubleOrNull() ?: 1.0
+    if (alpha < 1.0) return null
+    val (r, g, b) = match.groupValues.subList(1, 4).map { it.toInt().coerceIn(0, 255) }
+    return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
 }
 
 // Installed before any page script runs, so the page's boot-time `loaded` isn't lost.

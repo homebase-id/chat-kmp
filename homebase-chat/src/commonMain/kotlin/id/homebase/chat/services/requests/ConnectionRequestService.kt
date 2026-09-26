@@ -4,14 +4,15 @@ package id.homebase.chat.services.requests
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.connections.AcceptConnectionRequestV2
 import id.homebase.api.client.connections.AutoConnectOutcome
 import id.homebase.api.client.connections.ConnectionRequestResult
-import id.homebase.api.client.connections.ConnectionRequestHeader
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IncomingConnectionRequestResponse
 import id.homebase.api.client.connections.OutgoingConnectionRequestResponse
+import id.homebase.api.client.connections.SendReviewedConnectionRequest
 import kotlin.uuid.Uuid
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.eventbus.BackendEvent
@@ -199,55 +200,60 @@ class ConnectionRequestService(
     }
 
     /**
-     * Sends a connection request and immediately refreshes the outgoing-requests list so the
-     * list UI can reflect the new pending state without waiting for a websocket event (no
-     * server event fires for our own outbound send).
-     */
-    suspend fun sendConnectionRequest(header: ConnectionRequestHeader) {
-        connectionRequestProvider.sendConnectionRequest(header)
-        markOutgoingOptimistically(header.recipient)
-        refresh()
-    }
-
-    /**
-     * App-origin auto-connect: the server may fully establish the ICR in a single round trip
-     * (if the recipient auto-accepts). Applies the right local-state side effects for each
-     * outcome so the UI updates immediately:
-     *  - Connected / AcceptedFromExistingIncoming: drop from outgoing (if present) and refresh
-     *    both pending-request and connected-identity lists.
-     *  - AlreadyConnected: refresh connected-identity list (cheap, keeps UI in sync).
+     * The one send path. The server may fully establish the ICR in a single round trip (if the
+     * recipient auto-accepts), and records the send as our review of [recipient]. Applies the
+     * local side effects for each outcome so the UI updates immediately:
+     *  - Connected / AcceptedFromExistingIncoming: drop from outgoing and refresh both
+     *    pending-request and connected-identity lists.
+     *  - AlreadyConnected: refresh connected-identity list.
      *  - PendingManualApproval / OutgoingRequestAlreadyExists / DuplicateIntroductoryRequest:
-     *    show the outgoing request optimistically.
-     *  - All other outcomes (Blocked, Rejected, Unreachable, InvalidRequest, Failed, Unknown):
-     *    no local state change — the caller decides how to surface them.
-     *
-     * Transport/auth failures propagate as exceptions; they are never returned as an outcome.
+     *    show the outgoing request optimistically. The review lands when they accept; the
+     *    ConnectionRequestAccepted event refreshes it then.
+     *  - All other outcomes: no local state change — the caller decides how to surface them.
      */
-    suspend fun autoConnect(header: ConnectionRequestHeader): ConnectionRequestResult {
-        val result = connectionRequestProvider.autoConnect(header)
+    suspend fun sendReviewed(
+        recipient: OdinId,
+        message: String?,
+        circleIds: List<Uuid>,
+    ): ConnectionRequestResult {
+        val result = try {
+            connectionRequestProvider.sendReviewed(
+                SendReviewedConnectionRequest(
+                    recipient = recipient,
+                    message = message,
+                    circleIds = circleIds,
+                )
+            )
+        } catch (e: ForbiddenException) {
+            // With no circles named, a 403 is about the app's own permissions, not a circle.
+            if (circleIds.isEmpty()) throw e
+            throw CirclesRefusedException(RefusedCircles.NotGrantable, e)
+        } catch (e: ClientException) {
+            if (e.errorCode != OdinClientErrorCode.CircleNotFound) throw e
+            throw CirclesRefusedException(RefusedCircles.NotFound, e)
+        }
         when (result.outcome) {
             AutoConnectOutcome.Connected,
             AutoConnectOutcome.AcceptedFromExistingIncoming -> {
-                removeFromOutgoing(header.recipient)
+                removeFromOutgoing(recipient)
                 refresh()
                 connectionService.refresh()
-                contactInfo.resync(header.recipient)
+                contactInfo.resync(recipient)
             }
             AutoConnectOutcome.AlreadyConnected -> {
                 connectionService.refresh()
                 // No transition: their photo is no more suspect than a second ago.
-                contactInfo.syncContactRecord(header.recipient)
+                contactInfo.syncContactRecord(recipient)
             }
             AutoConnectOutcome.PendingManualApproval -> {
-                markOutgoingOptimistically(header.recipient)
+                markOutgoingOptimistically(recipient)
                 refresh()
-                // Save contact so they appear in the contact list immediately — matches
-                // the legacy sendConnectionRequest flow, which saved on HTTP-200.
-                contactInfo.resync(header.recipient)
+                // Save contact so they appear in the contact list immediately.
+                contactInfo.resync(recipient)
             }
             AutoConnectOutcome.OutgoingRequestAlreadyExists,
             AutoConnectOutcome.DuplicateIntroductoryRequest -> {
-                markOutgoingOptimistically(header.recipient)
+                markOutgoingOptimistically(recipient)
                 refresh()
             }
             AutoConnectOutcome.Blocked,
@@ -299,8 +305,8 @@ class ConnectionRequestService(
 
     /**
      * Rejects (declines) an incoming connection request and drops it from the pending list. The
-     * sender isn't notified; the request simply disappears. Optimistically removes it so the UI
-     * updates without waiting on the round trip, then refreshes to reconcile with the server.
+     * sender isn't notified; the request simply disappears. The local copy is dropped only once the
+     * server delete succeeds, then refreshes to reconcile.
      */
     suspend fun rejectIncomingRequest(senderId: OdinId) {
         connectionRequestProvider.rejectIncomingRequest(senderId)
@@ -310,7 +316,7 @@ class ConnectionRequestService(
 
     /**
      * Cancels (withdraws) an outgoing connection request we previously sent and drops it from the
-     * pending list. Optimistically removes it, then refreshes to reconcile with the server.
+     * pending list once the server delete succeeds, then refreshes to reconcile.
      */
     suspend fun cancelOutgoingRequest(recipientId: OdinId) {
         connectionRequestProvider.cancelOutgoingRequest(recipientId)
@@ -393,3 +399,8 @@ class ConnectionRequestService(
     }
 
 }
+
+enum class RefusedCircles { NotGrantable, NotFound }
+
+/** Nothing was sent; the chosen circles need changing before trying again. */
+class CirclesRefusedException(val reason: RefusedCircles, cause: Throwable) : Exception(cause)

@@ -105,8 +105,9 @@ import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
-import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.contactbook.EmergencyContactService
+import id.homebase.core.ui.screens.card.CardPreferences
+import id.homebase.core.ui.screens.card.CardTapShare
 import id.homebase.core.ui.screens.card.DefaultProfileCardSource
 import id.homebase.core.ui.screens.card.ProfileCardSource
 import id.homebase.core.ui.screens.card.ProfileCardViewModel
@@ -694,13 +695,7 @@ val appModule = module {
                 conversationStream.onEmergencyContactRevoked = { sender, file ->
                     emergencyContactReceive.onRevoked(sender, file)
                 }
-                // Background backstop: the live status-message handlers above only fire on the
-                // WS-push path, so a designation that arrived during cold sync (or a dropped
-                // event) is never applied. Recover missed SETs against the temporal-access
-                // preflight in the background — no screen required. Set-only: the reconciler
-                // never clears; revocation is applied solely by onRevoked above (issue #961).
-                get<EmergencyContactService>().apply { reset(); start() }
-                get<EmergencyContactReconciler>().start()
+                get<EmergencyContactService>().apply { reset(); start(); sweepAfterLogin() }
                 // endregion
 
                 // region Auto-unarchive: incoming message for archived conversation
@@ -718,6 +713,7 @@ val appModule = module {
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
+                get<CardPreferences>().reset()
                 get<ContactRepository>().apply { reset(); start() }
                 // Hydrate the saved-stickers tray for the new identity (mirror Vault).
                 get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
@@ -792,7 +788,6 @@ val appModule = module {
         )
     }
     singleOf(::EmergencyContactReceiveService)
-    singleOf(::EmergencyContactReconciler)
     singleOf(::ContactService)
     singleOf(::ConversationStream) bind ConversationLoader::class
     single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
@@ -858,6 +853,8 @@ val appModule = module {
     singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
     singleOf(::HomebaseImageLoader)
     factoryOf(::DefaultProfileCardSource) bind ProfileCardSource::class
+    singleOf(::CardPreferences)
+    singleOf(::CardTapShare)
     singleOf(::ChatMessageActionService)
     singleOf(::DiceRollPreferences)
     singleOf(::EventReminderPreferences)
@@ -1281,7 +1278,7 @@ val appModule = module {
             webDropShareFlowState = get(),
         )
     }
-    viewModelOf(::VaultSettingsViewModel)
+    viewModel { VaultSettingsViewModel(vaultPreferences = get()) }
 
     viewModel {
         EmailViewModel(

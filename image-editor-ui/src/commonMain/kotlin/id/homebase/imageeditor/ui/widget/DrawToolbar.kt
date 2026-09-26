@@ -1,6 +1,7 @@
 package id.homebase.imageeditor.ui.widget
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,6 +9,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -20,19 +23,24 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconToggleButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconToggleButtonShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.imageeditor.core.draw.BrushType
 import id.homebase.imageeditor.ui.Res
 import id.homebase.imageeditor.ui.draw_action_back
@@ -101,11 +109,8 @@ fun DrawBottomBar(
             onPositionChange = onColorPositionChange,
         )
 
-        // History + brush row. Each brush is a circular IconButton; the
-        // active one's container is filled with the primary colour so it
-        // pops against the dark editor toolbar.
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -121,24 +126,20 @@ fun DrawBottomBar(
                     contentDescription = stringResource(Res.string.draw_action_redo),
                 )
             }
-            BrushIconButton(
-                selected = selectedBrush == BrushType.Pen,
-                icon = Icons.Default.Edit,
-                contentDescription = stringResource(Res.string.draw_brush_pen),
-                onClick = { onBrushSelected(BrushType.Pen) },
-            )
-            BrushIconButton(
-                selected = selectedBrush == BrushType.Highlighter,
-                icon = Icons.Default.BorderColor,
-                contentDescription = stringResource(Res.string.draw_brush_highlighter),
-                onClick = { onBrushSelected(BrushType.Highlighter) },
-            )
-            BrushIconButton(
-                selected = selectedBrush == BrushType.Blur,
-                icon = Icons.Default.BlurOn,
-                contentDescription = stringResource(Res.string.draw_brush_blur),
-                onClick = { onBrushSelected(BrushType.Blur) },
-            )
+            Row(
+                modifier = Modifier.selectableGroup(),
+                horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+            ) {
+                brushes.forEachIndexed { index, (brush, icon, label) ->
+                    BrushIconButton(
+                        selected = selectedBrush == brush,
+                        icon = icon,
+                        contentDescription = stringResource(label),
+                        shapes = connectedButtonShapes(index, brushes.size),
+                        onClick = { onBrushSelected(brush) },
+                    )
+                }
+            }
             ColorPreview(currentColorArgb)
             AssistChip(
                 onClick = onReset,
@@ -155,20 +156,33 @@ fun DrawBottomBar(
     }
 }
 
+private val brushes = listOf(
+    Triple(BrushType.Pen, Icons.Default.Edit, Res.string.draw_brush_pen),
+    Triple(BrushType.Highlighter, Icons.Default.BorderColor, Res.string.draw_brush_highlighter),
+    Triple(BrushType.Blur, Icons.Default.BlurOn, Res.string.draw_brush_blur),
+)
+
 @Composable
 private fun BrushIconButton(
     selected: Boolean,
     icon: ImageVector,
     contentDescription: String,
+    shapes: ToggleButtonShapes,
     onClick: () -> Unit,
 ) {
-    IconButton(
-        onClick = onClick,
-        colors = IconButtonDefaults.iconButtonColors(
-            containerColor = if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.surfaceContainerHighest,
-            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
-            else MaterialTheme.colorScheme.onSurface,
+    FilledIconToggleButton(
+        checked = selected,
+        onCheckedChange = { onClick() },
+        shapes = IconToggleButtonShapes(
+            shape = shapes.shape,
+            pressedShape = shapes.pressedShape,
+            checkedShape = shapes.checkedShape,
+        ),
+        colors = IconButtonDefaults.filledIconToggleButtonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            checkedContainerColor = MaterialTheme.colorScheme.primary,
+            checkedContentColor = MaterialTheme.colorScheme.onPrimary,
         ),
     ) {
         Icon(imageVector = icon, contentDescription = contentDescription)

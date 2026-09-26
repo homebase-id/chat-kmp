@@ -3,6 +3,7 @@
 package id.homebase.core.ui.screens.contactbook.detail
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.outlined.PersonRemove
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.WavingHand
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -53,7 +55,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -115,6 +116,7 @@ import id.homebase.resources.contactbook_detail_blocked
 import id.homebase.resources.contactbook_detail_connect
 import id.homebase.resources.contactbook_detail_delete
 import id.homebase.resources.contactbook_detail_delete_message
+import id.homebase.resources.contactbook_detail_delete_message_blocked
 import id.homebase.resources.contactbook_detail_delete_message_connected
 import id.homebase.resources.contactbook_detail_delete_title
 import id.homebase.resources.contactbook_detail_disconnect
@@ -128,6 +130,12 @@ import id.homebase.resources.contactbook_detail_tab_about
 import id.homebase.resources.contactbook_detail_tab_activity
 import id.homebase.resources.contactbook_detail_tab_details
 import id.homebase.resources.contactbook_detail_unblock
+import id.homebase.resources.contactbook_detail_remove_blocked
+import id.homebase.resources.contactbook_detail_remove_blocked_message
+import id.homebase.resources.contactbook_detail_remove_blocked_title
+import id.homebase.resources.contactbook_action_blocked_connection_removed
+import id.homebase.resources.contactbook_action_not_blocked
+import id.homebase.resources.contactbook_action_disconnect_blocked
 import id.homebase.resources.contactbook_detail_cancel_request
 import id.homebase.resources.contactbook_detail_not_connected
 import id.homebase.resources.contactbook_detail_pending
@@ -151,6 +159,7 @@ import id.homebase.resources.contact_unreview_confirm
 import id.homebase.resources.contact_unreview_failed
 import id.homebase.resources.contact_unreview_title
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -181,6 +190,8 @@ fun ContactDetailScreen(
     val msgBlocked = stringResource(MR.string.contactbook_action_blocked)
     val msgUnblocked = stringResource(MR.string.contactbook_action_unblocked)
     val msgDisconnected = stringResource(MR.string.contactbook_action_disconnected)
+    val msgBlockedRemoved = stringResource(MR.string.contactbook_action_blocked_connection_removed)
+    val msgNotBlocked = stringResource(MR.string.contactbook_action_not_blocked)
     val msgSyncStarted = stringResource(MR.string.contactbook_action_sync_started)
     val msgRequestAccepted = stringResource(MR.string.contactbook_action_request_accepted)
     val msgRequestRejected = stringResource(MR.string.contactbook_action_request_rejected)
@@ -209,6 +220,12 @@ fun ContactDetailScreen(
                 ContactDetailEvent.Blocked -> snackbarHostState.showSnackbar(msgBlocked)
                 ContactDetailEvent.Unblocked -> snackbarHostState.showSnackbar(msgUnblocked)
                 ContactDetailEvent.Disconnected -> snackbarHostState.showSnackbar(msgDisconnected)
+                is ContactDetailEvent.DisconnectRefusedBlocked -> snackbarHostState.showSnackbar(
+                    getString(MR.string.contactbook_action_disconnect_blocked, event.name),
+                )
+                ContactDetailEvent.BlockedConnectionRemoved ->
+                    snackbarHostState.showSnackbar(msgBlockedRemoved)
+                ContactDetailEvent.NotBlocked -> snackbarHostState.showSnackbar(msgNotBlocked)
                 ContactDetailEvent.SyncStarted -> snackbarHostState.showSnackbar(msgSyncStarted)
                 ContactDetailEvent.RequestAccepted -> snackbarHostState.showSnackbar(msgRequestAccepted)
                 ContactDetailEvent.RequestRejected -> snackbarHostState.showSnackbar(msgRequestRejected)
@@ -325,6 +342,7 @@ fun ContactDetailScreen(
     uiState.circleDetail?.let { detail ->
         CircleMembersSheet(
             state = detail,
+            connectionStatuses = uiState.connectionStatuses,
             onDismiss = { viewModel.onAction(ContactDetailAction.CircleDetailDismiss) },
             onMemberClick = { viewModel.onAction(ContactDetailAction.CircleMemberClicked(it)) },
             onAddMemberClick = {},
@@ -352,6 +370,8 @@ fun ContactDetailScreen(
         ConfirmDialog(
             confirm = confirm,
             isConnected = uiState.isConnected,
+            isBlocked = uiState.isBlocked,
+            name = uiState.displayName,
             onConfirm = { viewModel.onAction(ContactDetailAction.ConfirmYes) },
             onDismiss = { viewModel.onAction(ContactDetailAction.ConfirmDismiss) },
         )
@@ -373,13 +393,15 @@ private fun ContactDetailContent(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
-    Scaffold(
-        topBar = {
-            // While the full-screen media viewer is open it draws its own top bar
-            // (contact name + date + back/menu). Suppress this screen's app bar so
-            // the two don't stack — the viewer's opaque surface already covers the
-            // content beneath it. Mirrors ConversationMediaScreen.
-            if (uiState.fullScreenMedia == null) {
+    ChatMediaFullScreenHost(
+        item = uiState.fullScreenMedia,
+        driveId = chatTargetDrive.alias,
+        title = uiState.entry?.displayName.orEmpty(),
+        snackbarHostState = snackbarHostState,
+        onDismiss = { onAction(ContactDetailAction.CloseMedia) },
+    ) { hero ->
+        Scaffold(
+            topBar = {
                 TopAppBar(
                     title = {},
                     navigationIcon = {
@@ -407,182 +429,187 @@ private fun ContactDetailContent(
                         }
                     },
                 )
-            }
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            val entry = uiState.entry
-            when {
-                entry == null && uiState.isLoading -> Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) { CircularProgressIndicator() }
+            },
+        ) { padding ->
+            Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+                val entry = uiState.entry
+                when {
+                    entry == null && uiState.isLoading -> Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) { CircularProgressIndicator() }
 
-                entry == null -> {}
+                    entry == null -> {}
 
-                // A pending incoming request has no connection-scoped data (contact fields,
-                // groups-in-common, circles are empty; Activity needs a conversation and About
-                // needs synced ext_data — none exist before connecting). Show a self-contained
-                // public-profile card to inform Accept/Reject instead of the placeholder tabs
-                // (#921). Once accepted, this same screen flips to the full detail below.
-                uiState.isPendingIncoming -> PendingRequestProfile(
-                    entry = entry,
-                    assignableCircles = uiState.assignableCircles,
-                    review = uiState.requestReview,
-                    reviewCircleGroups = uiState.reviewCircleGroups,
-                    onAccept = { selectedCircleIds ->
-                        onAction(ContactDetailAction.AcceptRequestClicked(selectedCircleIds))
-                    },
-                    onReviewSubmit = { ids -> onAction(ContactDetailAction.RequestReviewSubmitted(ids)) },
-                    onReject = { onAction(ContactDetailAction.RejectRequestClicked) },
-                    actionInProgress = uiState.actionInProgress,
-                    onAvatarClick = onAvatarClick,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
-                )
+                    // A pending incoming request has no connection-scoped data (contact fields,
+                    // groups-in-common, circles are empty; Activity needs a conversation and About
+                    // needs synced ext_data — none exist before connecting). Show a self-contained
+                    // public-profile card to inform Accept/Reject instead of the placeholder tabs
+                    // (#921). Once accepted, this same screen flips to the full detail below.
+                    uiState.isPendingIncoming -> PendingRequestProfile(
+                        entry = entry,
+                        assignableCircles = uiState.assignableCircles,
+                        review = uiState.requestReview,
+                        reviewCircleGroups = uiState.reviewCircleGroups,
+                        onAccept = { selectedCircleIds ->
+                            onAction(ContactDetailAction.AcceptRequestClicked(selectedCircleIds))
+                        },
+                        onReviewSubmit = { ids -> onAction(ContactDetailAction.RequestReviewSubmitted(ids)) },
+                        onReject = { onAction(ContactDetailAction.RejectRequestClicked) },
+                        actionInProgress = uiState.actionInProgress,
+                        onAvatarClick = onAvatarClick,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                    )
 
-                else -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        DetailHeader(
-                            uiState = uiState,
-                            onAction = onAction,
-                            onAvatarClick = onAvatarClick,
-                            onConnect = onConnect,
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
-                        )
+                    else -> {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            DetailHeader(
+                                uiState = uiState,
+                                onAction = onAction,
+                                onAvatarClick = onAvatarClick,
+                                onConnect = onConnect,
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope,
+                            )
 
-                        if (contactDetailTabs.size > 1) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TabRow(selectedTabIndex = contactDetailTabs.indexOf(currentTab)) {
-                                contactDetailTabs.forEach { tab ->
-                                    Tab(
-                                        selected = tab == currentTab,
-                                        onClick = { onSelectTab(tab) },
-                                        text = { Text(stringResource(tab.labelRes)) },
-                                    )
+                            if (contactDetailTabs.size > 1) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                TabRow(selectedTabIndex = contactDetailTabs.indexOf(currentTab)) {
+                                    contactDetailTabs.forEach { tab ->
+                                        Tab(
+                                            selected = tab == currentTab,
+                                            onClick = { onSelectTab(tab) },
+                                            text = { Text(stringResource(tab.labelRes)) },
+                                        )
+                                    }
                                 }
                             }
-                        }
 
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .verticalScroll(tabScroll),
-                        ) {
-                            Spacer(
-                                modifier = Modifier.height(
-                                    if (contactDetailTabs.size > 1) 12.dp else 20.dp
-                                )
-                            )
-                            when (currentTab) {
-                                ContactDetailTab.DETAILS -> {
-                                    if (uiState.isAccessRevoked) AccessRevokedBanner()
-                                    if (uiState.needsReview && uiState.reviewEnabled) {
-                                        NeedsReviewBanner(
-                                            onReview = {
-                                                onAction(ContactDetailAction.ReviewClicked)
-                                            },
-                                        )
-                                    }
-                                    uiState.introducedByName?.let { IntroducedBySection(it) }
-                                    ContactFieldsSection(
-                                        entry = entry,
-                                        expanded = detailsExpanded,
-                                        onToggleMore = onToggleDetails,
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .verticalScroll(tabScroll),
+                            ) {
+                                Spacer(
+                                    modifier = Modifier.height(
+                                        if (contactDetailTabs.size > 1) 12.dp else 20.dp
                                     )
-                                    // Circles + groups-in-common only apply to Homebase identities.
-                                    if (uiState.hasOdinId) {
-                                        GroupsInCommonSection(
-                                            groups = uiState.groupsInCommon,
-                                            isConnected = uiState.isConnected,
-                                            onOpenGroup = {
-                                                onAction(ContactDetailAction.OpenGroup(it))
-                                            },
-                                        )
-                                        CirclesSection(
-                                            circles = uiState.circles,
-                                            isConnected = uiState.isConnected,
-                                            reviewEnabled = uiState.reviewEnabled,
-                                            onCircleClicked = {
-                                                onAction(ContactDetailAction.CircleClicked(it))
-                                            },
-                                        )
-                                    }
-                                }
-
-                                ContactDetailTab.ABOUT -> {
-                                    if (uiState.hasAboutContent) {
-                                        // Bio, then social handles, then experience. All text here
-                                        // is selectable/copyable (one selection scope for the whole
-                                        // tab — it reads like a profile page).
-                                        SelectionContainer {
-                                            Column {
-                                                BioSection(entry.shortBio)
-                                                SocialSection(entry.socialHandles)
-                                                ExperienceSection(
-                                                    uiState.experience,
-                                                    uiState.experienceImage,
+                                )
+                                val tabFade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+                                AnimatedContent(
+                                    targetState = currentTab,
+                                    transitionSpec = { fadeIn(tabFade) togetherWith fadeOut(tabFade) },
+                                    label = "contactDetailTab",
+                                ) { tab ->
+                                    Column {
+                                        when (tab) {
+                                            ContactDetailTab.DETAILS -> {
+                                                if (uiState.isAccessRevoked) AccessRevokedBanner()
+                                                if (uiState.needsReview && uiState.reviewEnabled) {
+                                                    NeedsReviewBanner(
+                                                        onReview = {
+                                                            onAction(ContactDetailAction.ReviewClicked)
+                                                        },
+                                                    )
+                                                }
+                                                uiState.introducedByName?.let { IntroducedBySection(it) }
+                                                ContactFieldsSection(
+                                                    entry = entry,
+                                                    expanded = detailsExpanded,
+                                                    onToggleMore = onToggleDetails,
                                                 )
+                                                // Circles + groups-in-common only apply to Homebase identities.
+                                                if (uiState.hasOdinId) {
+                                                    GroupsInCommonSection(
+                                                        groups = uiState.groupsInCommon,
+                                                        isConnected = uiState.isConnected,
+                                                        onOpenGroup = {
+                                                            onAction(ContactDetailAction.OpenGroup(it))
+                                                        },
+                                                    )
+                                                    CirclesSection(
+                                                        circles = uiState.circles,
+                                                        isConnected = uiState.isConnected,
+                                                        reviewEnabled = uiState.reviewEnabled,
+                                                        onCircleClicked = {
+                                                            onAction(ContactDetailAction.CircleClicked(it))
+                                                        },
+                                                    )
+                                                }
+                                            }
+
+                                            ContactDetailTab.ABOUT -> {
+                                                if (uiState.hasAboutContent) {
+                                                    // Bio, then social handles, then experience. All text here
+                                                    // is selectable/copyable (one selection scope for the whole
+                                                    // tab — it reads like a profile page).
+                                                    SelectionContainer {
+                                                        Column {
+                                                            BioSection(entry.shortBio)
+                                                            SocialSection(entry.socialHandles)
+                                                            ExperienceSection(
+                                                                uiState.experience,
+                                                                uiState.experienceImage,
+                                                            )
+                                                        }
+                                                    }
+                                                } else {
+                                                    TabEmptyMessage(
+                                                        stringResource(MR.string.contactbook_detail_about_empty),
+                                                    )
+                                                }
+                                            }
+
+                                            ContactDetailTab.ACTIVITY -> {
+                                                if (uiState.hasActivityContent) {
+                                                    RecentMediaSection(
+                                                        overview = uiState.overview,
+                                                        hero = hero,
+                                                        onMediaClick = {
+                                                            onAction(ContactDetailAction.OpenMedia(it))
+                                                        },
+                                                        onSeeAll = {
+                                                            onAction(ContactDetailAction.SeeAllMediaClicked)
+                                                        },
+                                                    )
+                                                } else {
+                                                    TabEmptyMessage(
+                                                        stringResource(MR.string.contactbook_detail_activity_empty),
+                                                    )
+                                                }
                                             }
                                         }
-                                    } else {
-                                        TabEmptyMessage(
-                                            stringResource(MR.string.contactbook_detail_about_empty),
-                                        )
                                     }
                                 }
-
-                                ContactDetailTab.ACTIVITY -> {
-                                    if (uiState.hasActivityContent) {
-                                        RecentMediaSection(
-                                            overview = uiState.overview,
-                                            onMediaClick = {
-                                                onAction(ContactDetailAction.OpenMedia(it))
-                                            },
-                                            onSeeAll = {
-                                                onAction(ContactDetailAction.SeeAllMediaClicked)
-                                            },
-                                        )
-                                    } else {
-                                        TabEmptyMessage(
-                                            stringResource(MR.string.contactbook_detail_activity_empty),
-                                        )
-                                    }
-                                }
+                                Spacer(modifier = Modifier.height(24.dp))
                             }
-                            Spacer(modifier = Modifier.height(24.dp))
                         }
                     }
                 }
-            }
 
-            ChatMediaFullScreenHost(
-                item = uiState.fullScreenMedia,
-                driveId = chatTargetDrive.alias,
-                title = uiState.entry?.displayName.orEmpty(),
-                snackbarHostState = snackbarHostState,
-                onDismiss = { onAction(ContactDetailAction.CloseMedia) },
-            )
-
-            if (uiState.actionInProgress) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
-                        .pointerInput(Unit) {
-                            // Swallow taps so the action can't be re-triggered while it runs.
-                            awaitPointerEventScope {
-                                while (true) {
-                                    awaitPointerEvent().changes.forEach { it.consume() }
-                                }
-                            }
-                        },
-                    contentAlignment = Alignment.Center,
+                AnimatedVisibility(
+                    visible = uiState.actionInProgress,
+                    enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    exit = fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
                 ) {
-                    CircularProgressIndicator()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
+                            .pointerInput(Unit) {
+                                // Swallow taps so the action can't be re-triggered while it runs.
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        awaitPointerEvent().changes.forEach { it.consume() }
+                                    }
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ContainedLoadingIndicator()
+                    }
                 }
             }
         }
@@ -651,6 +678,15 @@ private fun ManagementMenu(
                     text = { Text(stringResource(MR.string.contactbook_detail_unblock)) },
                     leadingIcon = { Icon(Icons.Outlined.Block, contentDescription = null) },
                     onClick = { open = false; onAction(ContactDetailAction.UnblockClicked) },
+                )
+                DropdownMenuItem(
+                    text = {
+                        Text(stringResource(MR.string.contactbook_detail_remove_blocked), color = error)
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Outlined.PersonRemove, contentDescription = null, tint = error)
+                    },
+                    onClick = { open = false; onAction(ContactDetailAction.RemoveBlockedClicked) },
                 )
             } else {
                 DropdownMenuItem(
@@ -894,6 +930,8 @@ private fun UnreviewDialog(
 private fun ConfirmDialog(
     confirm: ContactDetailConfirm,
     isConnected: Boolean,
+    isBlocked: Boolean,
+    name: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -910,15 +948,23 @@ private fun ConfirmDialog(
         )
         ContactDetailConfirm.DELETE -> Triple(
             MR.string.contactbook_detail_delete_title,
-            // Deleting a connected contact also tears down the connection — warn about that.
-            if (isConnected) MR.string.contactbook_detail_delete_message_connected
-            else MR.string.contactbook_detail_delete_message,
+            when {
+                isConnected -> MR.string.contactbook_detail_delete_message_connected
+                isBlocked -> MR.string.contactbook_detail_delete_message_blocked
+                else -> MR.string.contactbook_detail_delete_message
+            },
             MR.string.contactbook_detail_delete,
+        )
+        ContactDetailConfirm.REMOVE_BLOCKED -> Triple(
+            MR.string.contactbook_detail_remove_blocked_title,
+            MR.string.contactbook_detail_remove_blocked_message,
+            MR.string.contactbook_detail_remove_blocked,
         )
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(title)) },
+        // Titles without a placeholder ignore [name].
+        title = { Text(stringResource(title, name)) },
         text = { Text(stringResource(message)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {

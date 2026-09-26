@@ -35,6 +35,10 @@ sealed class Route {
     data object ProfileCard : Route()
 
     @Serializable
+    @SerialName("profile-card-editor")
+    data object ProfileCardEditor : Route()
+
+    @Serializable
     @SerialName("create-conversation")
     data object CreateConversation : Route()
 
@@ -241,20 +245,12 @@ sealed class Route {
     data object CreateMomentGroup : Route()
 
     @Serializable
-    @SerialName("moments-onboarding")
-    data object MomentsOnboarding : Route()
-
-    @Serializable
     @SerialName("moments-settings")
     data object MomentsSettings : Route()
 
     @Serializable
     @SerialName("location")
     data object Location : Route()
-
-    @Serializable
-    @SerialName("location-onboarding")
-    data object LocationOnboarding : Route()
 
     @Serializable
     @SerialName("location-history")

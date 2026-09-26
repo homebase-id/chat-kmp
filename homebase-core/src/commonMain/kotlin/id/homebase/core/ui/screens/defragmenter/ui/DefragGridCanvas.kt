@@ -101,8 +101,8 @@ fun DefragGridCanvas(
     gridVersion: Long,
     inFlight: List<InFlightMove>,
     targetHighlights: IntArray,
-    frameTimeNanos: Long,
-    celebratoryProgress: Float = 0f,
+    frameTimeNanos: () -> Long,
+    celebratoryProgress: () -> Float = { 0f },
     // analyzedUpto = the exclusive upper bound of positions scanned so far.
     // When equal to grid.totalBlocks (default), the whole grid is analyzed and
     // no dim overlay is drawn. During Analyzing, positions >= analyzedUpto
@@ -136,7 +136,10 @@ fun DefragGridCanvas(
             if (!classic) buildFilledPath(grid, layout) else null
         }
 
+        // The frame clock and sweep are read only here, so animating them redraws without recomposing.
         Canvas(modifier = Modifier.fillMaxSize()) {
+            val frameTimeNanos = frameTimeNanos()
+            val celebratoryProgress = celebratoryProgress()
             if (classic) {
                 drawClassic(
                     layout = layout,
@@ -231,6 +234,9 @@ private fun DrawScope.drawScanHead(
 
 // region Modern (neon) renderer ------------------------------------------------
 
+private val ModernBackground =
+    Brush.verticalGradient(listOf(Win98Palette.CanvasBackgroundTop, Win98Palette.CanvasBackground))
+
 private fun DrawScope.drawModern(
     layout: GridLayout,
     filledPath: Path,
@@ -243,12 +249,7 @@ private fun DrawScope.drawModern(
     scanHeadIndex: Int?,
     cellStates: ByteArray,
 ) {
-    drawRect(
-        brush = Brush.verticalGradient(
-            listOf(Win98Palette.CanvasBackgroundTop, Win98Palette.CanvasBackground)
-        ),
-        size = size,
-    )
+    drawRect(brush = ModernBackground, size = size)
     drawUnanalyzedRegion(
         layout = layout,
         totalBlocks = totalBlocks,

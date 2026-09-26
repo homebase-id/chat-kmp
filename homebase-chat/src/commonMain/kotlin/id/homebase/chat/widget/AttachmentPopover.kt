@@ -2,7 +2,6 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.indication
@@ -69,8 +68,9 @@ internal fun AttachmentPopoverButton(
         colors = colors,
     ) {
         content()
-        if (open && actions != null) {
+        if (actions != null) {
             ComposerPopover(
+                expanded = open,
                 anchor = anchor,
                 alignToEnd = alignToEnd,
                 onDismissRequest = {
@@ -125,11 +125,11 @@ private fun AttachmentTile(
             hovered -> 1.06f
             else -> 1f
         },
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 800f),
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
     )
     val corner by animateDpAsState(
         targetValue = if (hovered || pressed) TILE_ACTIVE_CORNER else TILE_REST_CORNER,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 800f),
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
     )
 
     Column(

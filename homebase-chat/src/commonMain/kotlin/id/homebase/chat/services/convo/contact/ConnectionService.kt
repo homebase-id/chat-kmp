@@ -56,6 +56,13 @@ data class ConnectionState(
         map.filter { (odinId, reg) ->
             reg.status == ConnectionStatus.Connected && odinId.domainName !in lowercaseSavedDomains
         }.keys
+
+    fun statusByDomain(): Map<String, ConnectionStatus> =
+        map.entries.associate { (odinId, reg) -> odinId.domainName.lowercase() to reg.status }
+
+    fun blockedDomains(): Set<String> =
+        map.filterValues { it.status == ConnectionStatus.Blocked }
+            .keys.mapTo(mutableSetOf()) { it.domainName.lowercase() }
 }
 
 /**
@@ -369,6 +376,12 @@ class ConnectionService(
     /** Revoke [odinId]'s membership in [circleId] — also drops any still-pending deposit. */
     suspend fun removeFromCircle(circleId: Uuid, odinId: OdinId) {
         provider.removeFromCircle(circleId, odinId)
+        refresh()
+    }
+
+    /** Re-reads rather than patching [circles]: older servers returned 200 without persisting. */
+    suspend fun setCircleEnabled(circleId: Uuid, enabled: Boolean) {
+        if (enabled) provider.enableCircle(circleId) else provider.disableCircle(circleId)
         refresh()
     }
 

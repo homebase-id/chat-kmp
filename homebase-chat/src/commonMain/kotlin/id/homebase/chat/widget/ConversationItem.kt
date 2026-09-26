@@ -1,10 +1,19 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -40,18 +49,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,7 +80,6 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.emojiFontFamily
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatTimestamp
-import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.stripComposerLineBreakArtifacts
@@ -93,6 +103,7 @@ import id.homebase.resources.chat_unarchive
 import id.homebase.resources.you
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.absoluteValue
+import kotlin.math.roundToInt
 
 // Deliberately hard to reach: an accidental archive costs the user more than a missed swipe.
 private const val COMMIT_FRACTION_OF_ROW = 0.4f
@@ -146,10 +157,10 @@ fun ConversationItem(
         slideOutOnSwipeRight = !isRtl,
         slideOutOnSwipeLeft = isRtl,
         reveal = { state ->
-            val revealingArchive = (state.offsetPx > 0f) != isRtl
+            val revealingArchive = state.movesRight != isRtl
             ConversationSwipeReveal(
                 state = state,
-                atLeftEdge = state.offsetPx > 0f,
+                atLeftEdge = state.movesRight,
                 icon = when {
                     !revealingArchive -> Icons.Default.MarkChatRead
                     isArchived -> Icons.Default.Unarchive
@@ -165,12 +176,14 @@ fun ConversationItem(
             )
         },
     ) {
+        val selectedBackground by animateColorAsState(
+            targetValue = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = if (isSelected) 1f else 0f),
+            animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .ifTrue(isSelected) {
-                    Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
-                }
+                .drawBehind { drawRect(selectedBackground) }
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = { showMenu = true }
@@ -221,14 +234,22 @@ fun ConversationItem(
 
                     Spacer(modifier = Modifier.width(Dimens.Spacing.item))
 
-                    if (enrichedData.conversation.isPinned) {
-                        Icon(
-                            imageVector = Icons.Default.PushPin,
-                            contentDescription = stringResource(MR.string.chat_search_result_pinned),
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(modifier = Modifier.width(Dimens.Spacing.label))
+                    AnimatedVisibility(
+                        visible = enrichedData.conversation.isPinned,
+                        enter = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()) +
+                            expandHorizontally(MaterialTheme.motionScheme.fastSpatialSpec()),
+                        exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
+                            shrinkHorizontally(MaterialTheme.motionScheme.fastSpatialSpec()),
+                    ) {
+                        Row {
+                            Icon(
+                                imageVector = Icons.Default.PushPin,
+                                contentDescription = stringResource(MR.string.chat_search_result_pinned),
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(modifier = Modifier.width(Dimens.Spacing.label))
+                        }
                     }
 
                     Text(
@@ -328,21 +349,8 @@ fun ConversationItem(
                         modifier = Modifier.weight(1f)
                     )
 
-                    if (enrichedData.conversation.unreadCount > 0) {
-                        Spacer(modifier = Modifier.width(Dimens.Spacing.item))
-
-                        Badge(
-                            containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                            contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                        ) {
-                            Text(
-                                modifier = Modifier.padding(4.dp),
-                                text = enrichedData.conversation.unreadCount.toString(),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    } else if (draftPreview == null && enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
+                    UnreadBadge(enrichedData.conversation.unreadCount)
+                    if (enrichedData.conversation.unreadCount == 0 && draftPreview == null && enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
                         Spacer(modifier = Modifier.width(Dimens.Spacing.label))
                         DeliveryStatus(
                             isPendingSend = enrichedData.conversation.lastMessageIsPendingSend,
@@ -439,6 +447,43 @@ fun ConversationItem(
     }
 }
 
+@Composable
+private fun UnreadBadge(count: Int) {
+    val transition = updateTransition(count)
+    val spatial = MaterialTheme.motionScheme.fastSpatialSpec<IntOffset>()
+    val effects = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+    transition.AnimatedVisibility(
+        visible = { it > 0 },
+        enter = scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(effects),
+        exit = scaleOut(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(effects),
+    ) {
+        Row {
+            Spacer(modifier = Modifier.width(Dimens.Spacing.item))
+            Badge(
+                containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+            ) {
+                // While the badge leaves, keep the last count instead of showing 0.
+                AnimatedContent(
+                    targetState = if (transition.targetState > 0) transition.targetState else transition.currentState,
+                    transitionSpec = {
+                        val up = if (targetState > initialState) 1 else -1
+                        (slideInVertically(spatial) { up * it } + fadeIn(effects)) togetherWith
+                            (slideOutVertically(spatial) { -up * it } + fadeOut(effects))
+                    },
+                ) { shown ->
+                    val countText = shown.toString()
+                    Text(
+                        text = countText,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
 /**
  * The strip uncovered behind a swiped conversation row. It spans only the exposed gap, so a
  * row at rest is drawn exactly as before and no opaque row background is needed.
@@ -455,24 +500,30 @@ private fun BoxScope.ConversationSwipeReveal(
     val committed = state.isPastThreshold
     val background by animateColorAsState(
         targetValue = if (committed) container else MaterialTheme.colorScheme.surfaceContainerHighest,
-        animationSpec = tween(durationMillis = 150),
+        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
     )
     val tint by animateColorAsState(
         targetValue = if (committed) onContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(durationMillis = 150),
+        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
     )
-    val pop by animateFloatAsState(
+    val pop = animateFloatAsState(
         targetValue = if (committed) 1.15f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
     )
-    val revealWidth = with(LocalDensity.current) { state.offsetPx.absoluteValue.toDp() }
 
     Box(modifier = Modifier.matchParentSize()) {
         Box(
             modifier = Modifier
                 .align(if (atLeftEdge) AbsoluteAlignment.CenterLeft else AbsoluteAlignment.CenterRight)
                 .fillMaxHeight()
-                .width(revealWidth)
+                .layout { measurable, constraints ->
+                    val width = state.offsetPx.absoluteValue.roundToInt()
+                        .coerceIn(constraints.minWidth, constraints.maxWidth)
+                    val placeable = measurable.measure(
+                        constraints.copy(minWidth = width, maxWidth = width)
+                    )
+                    layout(width, placeable.height) { placeable.place(0, 0) }
+                }
                 .background(background),
             contentAlignment = if (atLeftEdge) AbsoluteAlignment.CenterLeft
             else AbsoluteAlignment.CenterRight,
@@ -486,7 +537,11 @@ private fun BoxScope.ConversationSwipeReveal(
                         left = if (atLeftEdge) 20.dp else 0.dp,
                         right = if (atLeftEdge) 0.dp else 20.dp,
                     )
-                    .scale((0.6f + 0.4f * state.progress) * pop)
+                    .graphicsLayer {
+                        val scale = (0.6f + 0.4f * state.progress) * pop.value
+                        scaleX = scale
+                        scaleY = scale
+                    }
                     .size(24.dp),
             )
         }

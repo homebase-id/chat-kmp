@@ -18,6 +18,7 @@ class UserPreferences(private val settings: Settings) {
             autoSaveOnUnmeteredOnly = autoSaveOnUnmeteredOnly,
             enterSendsMessage = enterSendsMessage,
             arrowUpEditsLastMessage = arrowUpEditsLastMessage,
+            mirrorFrontCamera = mirrorFrontCamera,
         )
     )
     val preferenceState: StateFlow<PreferenceState> = _preferenceState
@@ -104,7 +105,7 @@ class UserPreferences(private val settings: Settings) {
         }
 
     var enterSendsMessage: Boolean
-        get() = settings.getBoolean("composer_enter_sends", false)
+        get() = settings.getBoolean("composer_enter_sends", true)
         set(value) {
             settings.putBoolean("composer_enter_sends", value)
             _preferenceState.value = _preferenceState.value.copy(enterSendsMessage = value)
@@ -115,6 +116,13 @@ class UserPreferences(private val settings: Settings) {
         set(value) {
             settings.putBoolean("composer_arrow_up_edits_last", value)
             _preferenceState.value = _preferenceState.value.copy(arrowUpEditsLastMessage = value)
+        }
+
+    var mirrorFrontCamera: Boolean
+        get() = settings.getBoolean("camera_mirror_front", true)
+        set(value) {
+            settings.putBoolean("camera_mirror_front", value)
+            _preferenceState.value = _preferenceState.value.copy(mirrorFrontCamera = value)
         }
 
     var preferredUserReactions: List<String>
@@ -205,8 +213,9 @@ data class PreferenceState(
     val mediaQuality: MediaQuality = MediaQuality.STANDARD,
     val autoSaveIncomingMedia: Boolean = false,
     val autoSaveOnUnmeteredOnly: Boolean = true,
-    val enterSendsMessage: Boolean = false,
+    val enterSendsMessage: Boolean = true,
     val arrowUpEditsLastMessage: Boolean = true,
+    val mirrorFrontCamera: Boolean = true,
 )
 
 enum class ThemeState {

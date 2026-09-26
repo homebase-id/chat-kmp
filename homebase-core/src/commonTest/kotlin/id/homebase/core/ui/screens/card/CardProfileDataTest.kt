@@ -24,11 +24,10 @@ class CardProfileDataTest {
 
     private fun payload(
         attributes: List<ProfileAttribute>,
-        tier: ProfileVisibility = ProfileVisibility.ANONYMOUS,
         photoSrc: String? = null,
         headerSrc: String? = null,
         tagLine: String? = null,
-    ) = buildCardPayload(odinId, attributes, tier, CardDesign.BOARD, photoSrc, headerSrc, tagLine)
+    ) = buildCardPayload(odinId, attributes, CardDesign.BOARD, photoSrc, headerSrc, tagLine)
 
     /** One stored record per attribute type that has any of [values], at [tier]. */
     private fun records(tier: ProfileVisibility, vararg values: Pair<ProfileField, String>): List<ProfileAttribute> {
@@ -85,7 +84,7 @@ class CardProfileDataTest {
         payload(records(ProfileVisibility.ANONYMOUS, *values)).data.socials
 
     @Test
-    fun publicTierIgnoresConnectedValues() {
+    fun theCardIgnoresConnectedValues() {
         val attributes = records(
             ProfileVisibility.ANONYMOUS,
             ProfileField.GIVEN_NAME to "Frodo",
@@ -97,7 +96,7 @@ class CardProfileDataTest {
             ProfileField.STATUS to "Vetted status",
             ProfileField.TWITTER to "frodo_vetted",
         )
-        val data = payload(attributes, ProfileVisibility.ANONYMOUS).data
+        val data = payload(attributes).data
         assertEquals("Frodo", data.firstName)
         assertEquals("Baggins", data.surName)
         assertEquals("Frodo Baggins", data.displayName)
@@ -106,33 +105,7 @@ class CardProfileDataTest {
     }
 
     @Test
-    fun vettedTierTakesTheConnectedRecordPerTypeAndFallsBackToPublic() {
-        val attributes = records(
-            ProfileVisibility.ANONYMOUS,
-            ProfileField.GIVEN_NAME to "Frodo",
-            ProfileField.SURNAME to "Baggins",
-            ProfileField.STATUS to "Public status",
-            ProfileField.INSTAGRAM to "frodo_public",
-        ) + records(
-            ProfileVisibility.CONNECTED,
-            ProfileField.GIVEN_NAME to "Mr. Frodo",
-            ProfileField.SURNAME to "   ",
-            ProfileField.STATUS to "  ",
-            ProfileField.TWITTER to "frodo_vetted",
-        )
-        val data = payload(attributes, ProfileVisibility.CONNECTED).data
-        assertEquals("Mr. Frodo", data.firstName)
-        assertNull(data.surName)
-        assertEquals("Mr. Frodo", data.displayName)
-        assertEquals("Public status", data.headline)
-        assertEquals(
-            listOf(CardSocial("twitter", "frodo_vetted"), CardSocial("instagram", "frodo_public")),
-            data.socials,
-        )
-    }
-
-    @Test
-    fun ownerOnlyAndCircleOnlyRecordsNeverReachTheVettedCard() {
+    fun ownerOnlyAndCircleOnlyRecordsNeverReachTheCard() {
         val attributes = records(ProfileVisibility.ANONYMOUS, ProfileField.STATUS to "Public status") +
             records(ProfileVisibility.OWNER, ProfileField.GIVEN_NAME to "Private", ProfileField.STATUS to "Owner only") +
             record(
@@ -141,29 +114,19 @@ class CardProfileDataTest {
                 mapOf(ProfileAttributeTypes.KEY_TWITTER to JsonPrimitive("inner_circle")),
                 AccessControlList("connected", circleIdList = listOf("0f2c1a8e5b3d4e6f9a1b2c3d4e5f6a7b")),
             )
-        val data = payload(attributes, ProfileVisibility.CONNECTED).data
+        val data = payload(attributes).data
         assertNull(data.firstName)
         assertEquals("Public status", data.headline)
         assertEquals(emptyList(), data.socials)
     }
 
     @Test
-    fun photoTierFallsBackToPublicOnlyAboveThePublicTier() {
+    fun onlyThePublicPhotoIsPublic() {
         val public = photo(ProfileVisibility.ANONYMOUS)
         val vetted = photo(ProfileVisibility.CONNECTED)
 
-        val both = listOf(public, vetted)
-        assertSame(public, both.visiblePhoto(ProfileVisibility.ANONYMOUS))
-        assertSame(vetted, both.visiblePhoto(ProfileVisibility.CONNECTED))
-
-        val publicOnly = listOf(public)
-        assertSame(public, publicOnly.visiblePhoto(ProfileVisibility.CONNECTED))
-
-        val vettedOnly = listOf(vetted)
-        assertNull(vettedOnly.visiblePhoto(ProfileVisibility.ANONYMOUS))
-        assertSame(vetted, vettedOnly.visiblePhoto(ProfileVisibility.CONNECTED))
-
-        assertNull(listOf(photo(ProfileVisibility.OWNER)).visiblePhoto(ProfileVisibility.CONNECTED))
+        assertSame(public, listOf(public, vetted).visiblePhoto(ProfileVisibility.ANONYMOUS))
+        assertNull(listOf(vetted, photo(ProfileVisibility.OWNER)).visiblePhoto(ProfileVisibility.ANONYMOUS))
     }
 
     @Test
@@ -200,12 +163,12 @@ class CardProfileDataTest {
 
     @Test
     fun emptyProfileIsJustTheOwner() {
-        val data = payload(emptyList(), ProfileVisibility.CONNECTED).data
+        val data = payload(emptyList()).data
         assertEquals(CardData(odinId = odinId), data)
     }
 
     @Test
-    fun bioIsTheSummaryEachTierCanRead() {
+    fun bioIsThePublicSummary() {
         val publicBio = bio(ProfileVisibility.ANONYMOUS, " Ring-bearer. ")
         val vettedBio = bio(ProfileVisibility.CONNECTED, "Ring-bearer, and fond of mushrooms.")
         val ownerBio = bio(ProfileVisibility.OWNER, "Still has the ring.")
@@ -216,10 +179,8 @@ class CardProfileDataTest {
         )
         val all = listOf(publicBio, vettedBio, ownerBio, circleBio)
 
-        assertEquals("Ring-bearer.", payload(all, ProfileVisibility.ANONYMOUS).data.bio)
-        assertEquals("Ring-bearer, and fond of mushrooms.", payload(all, ProfileVisibility.CONNECTED).data.bio)
-        assertEquals("Ring-bearer.", payload(listOf(publicBio, ownerBio), ProfileVisibility.CONNECTED).data.bio)
-        assertNull(payload(listOf(vettedBio, ownerBio), ProfileVisibility.ANONYMOUS).data.bio)
+        assertEquals("Ring-bearer.", payload(all).data.bio)
+        assertNull(payload(listOf(vettedBio, ownerBio, circleBio)).data.bio)
     }
 
     @Test
@@ -251,7 +212,7 @@ class CardProfileDataTest {
     }
 
     @Test
-    fun eachTierGetsEveryLinkItCanReadInPriorityOrder() {
+    fun theCardGetsEveryPublicLinkInPriorityOrder() {
         val circle = AccessControlList("connected", circleIdList = listOf("0f2c1a8e5b3d4e6f9a1b2c3d4e5f6a7b"))
         val attributes = listOf(
             link("Vetted only", "https://shire.me/vetted", ProfileVisibility.CONNECTED, priority = 20),
@@ -263,27 +224,9 @@ class CardProfileDataTest {
             link("Public tie", "https://shire.me/tie-public", priority = 40),
         ) + records(ProfileVisibility.ANONYMOUS, ProfileField.TWITTER to "frodo")
 
-        assertEquals(
-            listOf("Shop", "Blog", "Public tie"),
-            payload(attributes, ProfileVisibility.ANONYMOUS).data.links.map { it.text },
-        )
-        assertEquals(
-            listOf("Shop", "Vetted only", "Blog", "Vetted tie", "Public tie"),
-            payload(attributes, ProfileVisibility.CONNECTED).data.links.map { it.text },
-        )
-        assertEquals(listOf("1", "2", "3", "4", "5"), payload(attributes, ProfileVisibility.CONNECTED).data.links.map { it.id })
-    }
-
-    @Test
-    fun aLinkKeptAtBothTiersShowsOnce() {
-        val attributes = listOf(
-            link("Blog", "https://shire.me/blog", ProfileVisibility.CONNECTED, priority = 1),
-            link("Blog", "https://shire.me/blog", priority = 2),
-        )
-        assertEquals(
-            listOf(CardLink(id = "1", text = "Blog", target = "https://shire.me/blog")),
-            payload(attributes, ProfileVisibility.CONNECTED).data.links,
-        )
+        val links = payload(attributes).data.links
+        assertEquals(listOf("Shop", "Blog", "Public tie"), links.map { it.text })
+        assertEquals(listOf("1", "2", "3"), links.map { it.id })
     }
 
     @Test
@@ -351,7 +294,7 @@ class CardProfileDataTest {
         ) + bio(ProfileVisibility.ANONYMOUS, "Ring-bearer.") + link("Blog", "https://frodo.dotyou.cloud/posts")
         val post = CardPost(id = "f1", href = "https://frodo.dotyou.cloud/posts/public-posts/p1", date = 1)
         val built = buildCardPayload(
-            odinId, state, ProfileVisibility.ANONYMOUS, CardDesign.POSTER,
+            odinId, state, CardDesign.POSTER,
             photoSrc = "data:image/jpeg;base64,AAAA", headerSrc = "data:image/jpeg;base64,BBBB", tagLine = null,
             posts = listOf(post),
         )

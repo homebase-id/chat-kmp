@@ -2,7 +2,14 @@
 
 package id.homebase.core.ui.screens.settings
 
-import androidx.compose.foundation.layout.Box
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -24,8 +31,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
+import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
 import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.ProfileCardViewModel
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
@@ -61,7 +72,7 @@ internal data class SettingsPaneActions(
     val onNavigateToDefragmenter: () -> Unit,
 )
 
-private enum class ProfilePage { Edit, Avatar, Card }
+private enum class ProfilePage { Edit, Avatar, Card, CardEditor }
 
 @Composable
 internal fun SettingsPaneHost(
@@ -113,12 +124,33 @@ internal fun SettingsPaneHost(
                 },
             )
             VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                val profile = profilePage
+            val enterFade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+            val exitFade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+            val slide = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
+            val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+            AnimatedContent(
+                targetState = category to profilePage,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                transitionSpec = {
+                    val from = initialState.second
+                    val to = targetState.second
+                    when {
+                        // The card pages host a native view that neither fades nor can run twice at once.
+                        from.isCard() || to.isCard() -> EnterTransition.None togetherWith ExitTransition.None
+                        from == to -> fadeIn(enterFade) togetherWith fadeOut(exitFade)
+                        else -> {
+                            val forward = (to?.ordinal ?: -1) > (from?.ordinal ?: -1)
+                            val sign = (if (forward) 1 else -1) * (if (rtl) -1 else 1)
+                            (slideInHorizontally(slide) { sign * it / 10 } + fadeIn(enterFade)) togetherWith
+                                (slideOutHorizontally(slide) { -sign * it / 10 } + fadeOut(exitFade))
+                        }
+                    }
+                },
+            ) { (shownCategory, profile) ->
                 if (profile == null) {
                     ProvideSettingsChrome(embedded = true) {
                         CategoryPage(
-                            category = category,
+                            category = shownCategory,
                             onDismiss = onDismiss,
                             onSelectCategory = { category = it },
                             onProfileEdit = { profilePage = ProfilePage.Edit },
@@ -156,6 +188,18 @@ internal fun SettingsPaneHost(
                                 ProfileCardScreen(
                                     viewModel = it,
                                     onBack = { profilePage = if (cardOpenedFromEdit) ProfilePage.Edit else null },
+                                    onEdit = { profilePage = ProfilePage.CardEditor },
+                                )
+                            }
+
+                            ProfilePage.CardEditor -> cardViewModel?.let {
+                                ProfileCardEditorScreen(
+                                    viewModel = it,
+                                    onBack = { profilePage = ProfilePage.Card },
+                                    onEditProfile = {
+                                        cardOpenedFromEdit = false
+                                        profilePage = ProfilePage.Edit
+                                    },
                                 )
                             }
                         }
@@ -165,6 +209,8 @@ internal fun SettingsPaneHost(
         }
     }
 }
+
+private fun ProfilePage?.isCard() = this == ProfilePage.Card || this == ProfilePage.CardEditor
 
 @Composable
 private fun CategoryPage(

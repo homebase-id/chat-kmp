@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -25,8 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -37,6 +38,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.Alignment
@@ -50,6 +52,7 @@ import id.homebase.chat.conversationsettings.DiceRollItem
 import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.widget.ChatMediaFullScreenHost
+import id.homebase.chat.widget.SharedMediaHero
 import id.homebase.chat.widget.LoadingListItem
 import id.homebase.chat.widget.LocationListRow
 import id.homebase.chat.widget.MediaItem
@@ -70,12 +73,20 @@ import id.homebase.resources.conversation_media_tab_locations
 import id.homebase.resources.conversation_media_tab_media
 import id.homebase.resources.menu_back
 import kotlinx.collections.immutable.ImmutableMap
+import kotlinx.coroutines.launch
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
-private enum class MediaTab { MEDIA, FILES, AUDIO, DICE, LOCATIONS }
+private enum class MediaTab(val label: StringResource) {
+    MEDIA(MR.string.conversation_media_tab_media),
+    FILES(MR.string.conversation_media_tab_files),
+    AUDIO(MR.string.conversation_media_tab_audio),
+    DICE(MR.string.conversation_media_tab_dice),
+    LOCATIONS(MR.string.conversation_media_tab_locations),
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,17 +98,23 @@ fun ConversationMediaScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var fullScreenItem by remember { mutableStateOf<SharedMediaItem?>(null) }
-    var selectedTab by remember { mutableStateOf(MediaTab.MEDIA) }
+    val pagerState = rememberPagerState { MediaTab.entries.size }
+    val scope = rememberCoroutineScope()
     val saveItem = rememberSharedMediaSaver(chatTargetDrive.alias, snackbarHostState)
 
-    Scaffold(
-        topBar = {
-            // While the full-screen viewer is open it draws its own top bar
-            // (title + date + back/menu). Suppress this screen's app bar so the
-            // two don't stack — the viewer's opaque surface already covers the
-            // tabs beneath it. Mirrors the chat, which replaces its whole content
-            // (app bar included) with the viewer.
-            if (fullScreenItem == null) {
+    ChatMediaFullScreenHost(
+        item = fullScreenItem,
+        driveId = chatTargetDrive.alias,
+        title = stringResource(MR.string.conversation_media_album_title),
+        snackbarHostState = snackbarHostState,
+        onDismiss = { fullScreenItem = null },
+        onNavigateToMessage = { messageId ->
+            fullScreenItem = null
+            onNavigateToMessage(messageId)
+        },
+    ) { hero ->
+        Scaffold(
+            topBar = {
                 TopAppBar(
                     title = { Text(stringResource(MR.string.conversation_media_album_title)) },
                     navigationIcon = {
@@ -109,89 +126,64 @@ fun ConversationMediaScreen(
                         }
                     },
                 )
-            }
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-            val overview = uiState.overview
-            if (overview == null) {
-                if (uiState.isLoading) LoadingListItem()
-            } else {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    ScrollableTabRow(
-                        selectedTabIndex = selectedTab.ordinal,
-                        edgePadding = 0.dp,
-                    ) {
-                        Tab(
-                            selected = selectedTab == MediaTab.MEDIA,
-                            onClick = { selectedTab = MediaTab.MEDIA },
-                            text = { Text(stringResource(MR.string.conversation_media_tab_media)) },
-                        )
-                        Tab(
-                            selected = selectedTab == MediaTab.FILES,
-                            onClick = { selectedTab = MediaTab.FILES },
-                            text = { Text(stringResource(MR.string.conversation_media_tab_files)) },
-                        )
-                        Tab(
-                            selected = selectedTab == MediaTab.AUDIO,
-                            onClick = { selectedTab = MediaTab.AUDIO },
-                            text = { Text(stringResource(MR.string.conversation_media_tab_audio)) },
-                        )
-                        Tab(
-                            selected = selectedTab == MediaTab.DICE,
-                            onClick = { selectedTab = MediaTab.DICE },
-                            text = { Text(stringResource(MR.string.conversation_media_tab_dice)) },
-                        )
-                        Tab(
-                            selected = selectedTab == MediaTab.LOCATIONS,
-                            onClick = { selectedTab = MediaTab.LOCATIONS },
-                            text = { Text(stringResource(MR.string.conversation_media_tab_locations)) },
-                        )
-                    }
+            },
+        ) { padding ->
+            Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+                val overview = uiState.overview
+                if (overview == null) {
+                    if (uiState.isLoading) LoadingListItem()
+                } else {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        PrimaryScrollableTabRow(
+                            selectedTabIndex = pagerState.currentPage,
+                            edgePadding = 0.dp,
+                        ) {
+                            MediaTab.entries.forEach { tab ->
+                                Tab(
+                                    selected = pagerState.currentPage == tab.ordinal,
+                                    onClick = { scope.launch { pagerState.animateScrollToPage(tab.ordinal) } },
+                                    text = { Text(stringResource(tab.label)) },
+                                )
+                            }
+                        }
 
-                    when (selectedTab) {
-                        MediaTab.MEDIA -> MediaGridTab(overview.media) { fullScreenItem = it }
-                        MediaTab.FILES -> AttachmentListTab(
-                            items = overview.files,
-                            onClick = saveItem,
-                            onNavigateToMessage = onNavigateToMessage,
-                        )
-                        MediaTab.AUDIO -> AudioListTab(
-                            items = overview.audio,
-                            decryptedFiles = uiState.decryptedFiles,
-                            onRequestDecrypt = viewModel::requestDecryptedAudio,
-                            onNavigateToMessage = onNavigateToMessage,
-                        )
-                        MediaTab.DICE -> DiceTab(overview.diceRolls, onNavigateToMessage)
-                        MediaTab.LOCATIONS -> LocationListTab(
-                            items = uiState.locations,
-                            hasMore = uiState.hasMoreLocations,
-                            isLoading = uiState.isLoadingLocations,
-                            onLoadMore = viewModel::loadMoreLocations,
-                            onNavigateToMessage = onNavigateToMessage,
-                        )
+                        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+                            when (MediaTab.entries[page]) {
+                                MediaTab.MEDIA -> MediaGridTab(overview.media, hero) { fullScreenItem = it }
+                                MediaTab.FILES -> AttachmentListTab(
+                                    items = overview.files,
+                                    onClick = saveItem,
+                                    onNavigateToMessage = onNavigateToMessage,
+                                )
+                                MediaTab.AUDIO -> AudioListTab(
+                                    items = overview.audio,
+                                    decryptedFiles = uiState.decryptedFiles,
+                                    onRequestDecrypt = viewModel::requestDecryptedAudio,
+                                    onNavigateToMessage = onNavigateToMessage,
+                                )
+                                MediaTab.DICE -> DiceTab(overview.diceRolls, onNavigateToMessage)
+                                MediaTab.LOCATIONS -> LocationListTab(
+                                    items = uiState.locations,
+                                    hasMore = uiState.hasMoreLocations,
+                                    isLoading = uiState.isLoadingLocations,
+                                    onLoadMore = viewModel::loadMoreLocations,
+                                    onNavigateToMessage = onNavigateToMessage,
+                                )
+                            }
+                        }
                     }
                 }
             }
-
-            ChatMediaFullScreenHost(
-                item = fullScreenItem,
-                driveId = chatTargetDrive.alias,
-                title = stringResource(MR.string.conversation_media_album_title),
-                snackbarHostState = snackbarHostState,
-                onDismiss = { fullScreenItem = null },
-                onNavigateToMessage = { messageId ->
-                    fullScreenItem = null
-                    onNavigateToMessage(messageId)
-                },
-            )
         }
     }
 }
 
 @Composable
-private fun MediaGridTab(items: List<SharedMediaItem>, onClick: (SharedMediaItem) -> Unit) {
+private fun MediaGridTab(
+    items: List<SharedMediaItem>,
+    hero: SharedMediaHero,
+    onClick: (SharedMediaItem) -> Unit,
+) {
     if (items.isEmpty()) {
         EmptyTab()
         return
@@ -204,20 +196,22 @@ private fun MediaGridTab(items: List<SharedMediaItem>, onClick: (SharedMediaItem
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         items(items) { item ->
-            MediaItem(
-                payload = item.payload,
-                fileId = item.fileId,
-                driveId = chatTargetDrive.alias,
-                previewThumbnail = item.previewThumbnail,
-                keyHeader = item.keyHeader,
-                imageSize = ImageSize.THUMB_MEDIUM,
-                isSticker = item.isSticker,
-                modifier = Modifier.aspectRatio(1f),
-                shape = RoundedCornerShape(8.dp),
-                onClick = { onClick(item) },
-                sharedTransitionScope = null,
-                animatedVisibilityScope = null,
-            )
+            hero.Tile(item, Modifier.aspectRatio(1f)) { sharedTransitionScope, animatedVisibilityScope ->
+                MediaItem(
+                    payload = item.payload,
+                    fileId = item.fileId,
+                    driveId = chatTargetDrive.alias,
+                    previewThumbnail = item.previewThumbnail,
+                    keyHeader = item.keyHeader,
+                    imageSize = ImageSize.THUMB_MEDIUM,
+                    isSticker = item.isSticker,
+                    modifier = Modifier.fillMaxSize(),
+                    shape = RoundedCornerShape(8.dp),
+                    onClick = { onClick(item) },
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                )
+            }
         }
     }
 }

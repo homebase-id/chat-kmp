@@ -8,14 +8,24 @@ import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.email.EmailViewModel
 import id.homebase.core.ui.screens.email.EmailScreen
 import id.homebase.core.email.EmailPreferences
-import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.navigation.NavGraphBuilder
+import id.homebase.chat.conversationlist.chatOwnsWindow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,10 +49,10 @@ import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ShortNavigationBar
+import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -50,6 +60,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
@@ -141,6 +152,9 @@ import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.ui.screens.location.EmergencyContactPickerScreen
+import id.homebase.core.connections.ConnectRequestAction
+import id.homebase.core.connections.ConnectRequestBottomSheet
+import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.contactbook.EmergencyContactService
 import id.homebase.core.ui.screens.location.LocationEmergencyScreen
 import id.homebase.core.ui.screens.location.LocationHistoryOverviewScreen
@@ -155,6 +169,10 @@ import id.homebase.core.ui.screens.location.livelocation.LiveLocationScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
 import id.homebase.core.ui.screens.location.share.ShareLocationScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
+import id.homebase.core.haptics.HapticEvent
+import id.homebase.core.haptics.rememberHaptics
+import id.homebase.core.ui.screens.card.CardTapShareDriver
+import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
 import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
@@ -225,6 +243,7 @@ import id.homebase.imageeditor.ui.CropScreen
 import id.homebase.imageeditor.ui.DrawScreen
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.navigation.toRoute
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -241,6 +260,7 @@ import androidx.compose.material3.TextButton
 import id.homebase.core.upgrade.PendingUpgradeState
 import id.homebase.resources.cancel
 import id.homebase.resources.pending_upgrade_snackbar_message
+import id.homebase.resources.profile_card_nfc_shared
 import id.homebase.resources.pending_upgrade_snackbar_action
 import id.homebase.resources.pending_upgrade_title
 import id.homebase.resources.database_upgrade_snackbar
@@ -283,14 +303,15 @@ fun AppNavHost(
     val currentDestination = navBackStackEntry?.destination
     // A settings pane floats over the screen beneath it, which stays mounted. The rail and bottom
     // bar must keep tracking that screen or they vanish (and reflow it) the moment a pane opens.
-    val chromeDestination = if (isDesktopOrWeb()) {
-        val backStack by navController.currentBackStack.collectAsStateWithLifecycle()
+    val backStack by navController.currentBackStack.collectAsStateWithLifecycle()
+    val chromeEntry = if (isDesktopOrWeb()) {
         backStack.lastOrNull {
             it.destination !is FloatingWindow && it.destination !is NavGraph
-        }?.destination
+        }
     } else {
-        currentDestination
+        navBackStackEntry
     }
+    val chromeDestination = chromeEntry?.destination
     val momentsPreferences = koinInject<MomentsPreferences>()
     val momentsIconVisible by momentsPreferences.iconVisible.collectAsStateWithLifecycle()
     val momentsFeedService = koinInject<MomentsFeedService>()
@@ -337,42 +358,15 @@ fun AppNavHost(
             add(TopLevelRoute.Home)
         }
     }
-    val openEmail: () -> Unit = {
-        navController.navigate(Route.Email) {
-            popUpTo(Route.ChatList) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
-        }
-    }
-    val openContactBook: () -> Unit = {
-        navController.navigate(Route.ContactBook) {
-            popUpTo(Route.ChatList) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
-        }
-    }
-    val openMoments: () -> Unit = {
-        if (momentsViewModel.isActivated.value) {
-            navController.navigate(Route.Moments) {
-                popUpTo(Route.ChatList) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
-            }
-        } else {
-            navController.navigate(Route.MomentsOnboarding)
-        }
-    }
-    val openLocation: () -> Unit = {
-        if (locationViewModel.isActivated.value) {
-            navController.navigate(Route.Location) {
-                popUpTo(Route.ChatList) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
-            }
-        } else {
-            navController.navigate(Route.LocationOnboarding)
-        }
-    }
+    // Read at call time: the event collectors below capture these lambdas once.
+    val tabRoutes by rememberUpdatedState(topLevelRoutes.map { it.route })
+    // The nearest tab root with a bar item: it stays lit under a pushed screen or a hidden add-on.
+    val selectedTab = backStack.currentTabRoot(tabRoutes)?.destination
+    val openEmail: () -> Unit = { navController.openApp(Route.Email, tabRoutes) }
+    val openContactBook: () -> Unit = { navController.openApp(Route.ContactBook, tabRoutes) }
+    val openMoments: () -> Unit = { navController.openApp(Route.Moments, tabRoutes) }
+    val openLocation: () -> Unit = { navController.openApp(Route.Location, tabRoutes) }
+    val openChats: () -> Unit = { navController.switchTab(Route.ChatList, tabRoutes) }
     val uriHandler = getUriHandler()
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarMessage = stringResource(MR.string.pending_upgrade_snackbar_message)
@@ -385,20 +379,17 @@ fun AppNavHost(
         }
     }
 
-    // Track if we're showing only the detail pane (list hidden) in a top level screen
-    var showingOnlyDetailPane by remember { mutableStateOf(false) }
-
-    // The feed's media viewer is inline in the NavHost (a Dialog paints grey safe-area strips on iOS), so it
-    // renders *under* this Scaffold's bottom bar unless the screen reports it up.
-    var isFeedMediaOpen by remember { mutableStateOf(false) }
-
-    // Same contract for the chat's two-pane media viewer, which additionally has to displace the
-    // navigation rail to own the whole window.
-    var isChatMediaOpen by remember { mutableStateOf(false) }
-
     // This Scaffold's SnackbarHost is anchored to the bottom of the window, where the chat
     // composer is: a notice raised here would sit on top of the input field.
     var isChatComposerOpen by remember { mutableStateOf(false) }
+
+    val cardSharedMessage = stringResource(MR.string.profile_card_nfc_shared)
+    val haptics = rememberHaptics()
+    val cardSharedScope = rememberCoroutineScope()
+    CardTapShareDriver {
+        haptics.perform(HapticEvent.Confirm)
+        if (!isChatComposerOpen) cardSharedScope.launch { snackbarHostState.showSnackbar(cardSharedMessage) }
+    }
 
     // Latched out of the composer gate below so the notice survives being suppressed on a chat
     // screen, and is consumed only once it has actually run its course.
@@ -417,28 +408,81 @@ fun AppNavHost(
     // Check if current destination is a top-level route. Uses the static route-type
     // check (not topLevelRoutes) so the bottom nav still shows on the Vault screen even
     // when the user has hidden the Vault icon from the nav bar.
-    val isTopLevelRoute =
-        chromeDestination.isTopLevelRoute() ||
-                topLevelRoutes.any { topLevelRoute ->
-                    chromeDestination?.hasRoute(topLevelRoute.route::class) == true
-                }
+    val isTopLevelRoute = chromeDestination.isTopLevelRoute()
 
-    // Only show bottom nav if on a top-level route AND not showing only detail pane
-    val isOnTopLevelScreen = isAuthenticated && isTopLevelRoute && !showingOnlyDetailPane
+    val showNavigationRail = isExpandedLayout()
+    val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
+    // The full-screen image editor (newly-picked images) is a state-driven overlay, not a nav
+    // destination, so it folds into the same gate the gallery uses.
+    val isVaultOverlayOpen = vaultUiState.fullScreenOverlay != null || vaultUiState.pendingEditor != null
+    val chromeOwnedByScreen =
+        chromeEntry != null && entryOwnsWindow(chromeEntry, showNavigationRail, isVaultOverlayOpen)
+    val isOnTopLevelScreen = isAuthenticated && isTopLevelRoute && !chromeOwnedByScreen
 
     // Safe only because login's top-left is bare in both its layouts: brand artwork on the
     // two-pane, plain surface in portrait — the traffic lights land on nothing either way.
     val paintsUnderTitleBar = chromeDestination?.hasRoute(Route.Login::class) == true
-    val showNavigationRail = isExpandedLayout()
-    val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
-    val isVaultGalleryOpen = vaultUiState.fullScreenOverlay != null
-    // The full-screen image editor (newly-picked images) is a state-driven overlay, not a
-    // nav destination, so it doesn't hide the bottom nav on its own — fold it into the same
-    // gate the gallery uses.
-    val isVaultEditorOpen = vaultUiState.pendingEditor != null
-    val showBottomNavigationBar =
-        isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen && !isVaultEditorOpen &&
-                !isFeedMediaOpen && !isChatMediaOpen
+    // The card fills its sheet to the screen's bottom edge; its own chrome pads for the navigation bar.
+    val paintsUnderNavigationBar = chromeDestination.isCardRoute()
+    val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail
+    val railVisible = isOnTopLevelScreen && showNavigationRail
+    val contentInsets = ScaffoldDefaults.contentWindowInsets.only(
+        if (paintsUnderNavigationBar) WindowInsetsSides.Horizontal
+        else WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+    )
+    // Tab roots pad for the bar themselves, so a push or pop never re-measures the screen under it.
+    var bottomBarHeightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val bottomBarPadding = with(density) {
+        (bottomBarHeightPx - contentInsets.getBottom(density)).coerceAtLeast(0).toDp()
+    }
+    val chromeMotion = MaterialTheme.motionScheme
+    val pendingUpgradeState = uiState.pendingUpgrade
+    val tabRoot: @Composable (NavBackStackEntry, @Composable () -> Unit) -> Unit = { entry, content ->
+        val ownsWindow = entryOwnsWindow(entry, showNavigationRail, isVaultOverlayOpen)
+        val barPadding = if (showNavigationRail || ownsWindow) 0.dp else bottomBarPadding
+        val showUpdate = uiState.updateAvailable && !ownsWindow
+        val showUpgradeRunning = pendingUpgradeState is PendingUpgradeState.UpgradeRunning && !ownsWindow
+        Column(
+            modifier = Modifier
+                .consumeWindowInsets(PaddingValues(bottom = barPadding))
+                .padding(bottom = barPadding),
+        ) {
+            // Not statusBarsPadding(): outside Android it consumes into a legacy modifier-local
+            // channel the screens' TopAppBars cannot see, so they would re-pad the top inset.
+            AnimatedVisibility(
+                visible = showUpdate,
+                enter = expandVertically(chromeMotion.defaultSpatialSpec()) + fadeIn(chromeMotion.defaultEffectsSpec()),
+                exit = shrinkVertically(chromeMotion.fastSpatialSpec()) + fadeOut(chromeMotion.fastEffectsSpec()),
+            ) {
+                UpdateAvailableBanner(
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
+                    versionName = uiState.updateAvailableVersion,
+                    onUpdateClick = { viewModel.triggerUpdate() },
+                )
+            }
+            AnimatedVisibility(
+                visible = showUpgradeRunning,
+                enter = expandVertically(chromeMotion.defaultSpatialSpec()) + fadeIn(chromeMotion.defaultEffectsSpec()),
+                exit = shrinkVertically(chromeMotion.fastSpatialSpec()) + fadeOut(chromeMotion.fastEffectsSpec()),
+            ) {
+                UpgradeRunningStrip(
+                    modifier = if (showUpdate) Modifier else Modifier.windowInsetsPadding(WindowInsets.statusBars),
+                )
+            }
+            Box(
+                modifier = Modifier.weight(1f).then(
+                    if (showUpdate || showUpgradeRunning) {
+                        Modifier.consumeWindowInsets(WindowInsets.statusBars)
+                    } else {
+                        Modifier
+                    }
+                ),
+            ) {
+                content()
+            }
+        }
+    }
 
     // Get the lifecycle owner of the current composable
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -520,7 +564,7 @@ fun AppNavHost(
             when (event) {
                 is ContactBookUiEvent.OpenConversation -> {
                     navController.selectConversationOnChatList(event.conversationId)
-                    navController.popBackStack(Route.ChatList, inclusive = false)
+                    openChats()
                 }
                 is ContactBookUiEvent.OpenDetail ->
                     navController.navigate(Route.ContactBookDetail(event.uniqueId, event.odinId))
@@ -531,8 +575,7 @@ fun AppNavHost(
 
                 ContactBookUiEvent.OpenEnrollmentCandidates ->
                     navController.navigate(Route.EnrollmentCandidates)
-                ContactBookUiEvent.CloseOnboarding ->
-                    navController.popBackStack(Route.ChatList, inclusive = false)
+                ContactBookUiEvent.CloseOnboarding -> navController.popBackStack()
                 else -> { /* Error handled by ContactBookScreen */ }
             }
         }
@@ -540,20 +583,8 @@ fun AppNavHost(
 
     val isVaultActivated by vaultViewModel.isActivated.collectAsStateWithLifecycle()
 
-    val openVault: () -> Unit = {
-        navController.navigate(Route.Vault) {
-            popUpTo(Route.ChatList) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
-        }
-    }
-
-    // Deliberately not a top-level route: WebDrop has no bar icon, so the bottom bar hides here.
-    val openWebDrop: () -> Unit = {
-        navController.navigate(Route.WebDrop) {
-            launchSingleTop = true
-        }
-    }
+    val openVault: () -> Unit = { navController.openApp(Route.Vault, tabRoutes) }
+    val openWebDrop: () -> Unit = { navController.openApp(Route.WebDrop, tabRoutes) }
 
     // Handle notification tap navigation (needs navController, stays in composable)
     LaunchedEffect(Unit) {
@@ -578,8 +609,7 @@ fun AppNavHost(
                     Logger.i(tag = "AppNavHost") {
                         "ChatList present in stack (size=${stack.size}), popping to it"
                     }
-                    val popped = navController.popBackStack(Route.ChatList, inclusive = false)
-                    Logger.i(tag = "AppNavHost") { "popBackStack(ChatList)=$popped" }
+                    openChats()
                     // Share intents carry no messageId, so PendingNotificationTap
                     // cannot resolve them. Drop the conversation id directly into
                     // ChatList's savedStateHandle — the LaunchedEffect on the
@@ -645,11 +675,7 @@ fun AppNavHost(
                         // on the feed, then open the detail pager on the tapped moment.
                         // The pager resolves the moment from MomentsFeedService's live
                         // feed, which is already syncing post-auth (and waits for it).
-                        navController.navigate(Route.Moments) {
-                            popUpTo(Route.ChatList) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
+                        openMoments()
                         navController.navigate(
                             Route.MomentDetail(
                                 momentId = momentId.toString(),
@@ -673,11 +699,7 @@ fun AppNavHost(
                         navController.currentBackStack.firstContaining {
                             it.destination.hasRoute(Route.ChatList::class)
                         }
-                        navController.navigate(Route.Moments) {
-                            popUpTo(Route.ChatList) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
+                        openMoments()
                         navController.navigate(Route.MomentCompose)
                     }
                 }
@@ -699,13 +721,8 @@ fun AppNavHost(
     LaunchedEffect(Unit) {
         momentsViewModel.events.collect { event ->
             when (event) {
-                MomentsUiEvent.Activated -> {
-                    navController.popBackStack(Route.MomentsOnboarding, inclusive = true)
-                    navController.navigate(Route.Moments) {
-                        popUpTo(Route.ChatList) { saveState = true }
-                        launchSingleTop = true
-                    }
-                }
+                // Onboarding is the tab root's own content, which swaps to the feed on activation.
+                MomentsUiEvent.Activated -> Unit
                 MomentsUiEvent.CloseOnboarding -> navController.popBackStack()
             }
         }
@@ -717,13 +734,7 @@ fun AppNavHost(
     LaunchedEffect(Unit) {
         locationViewModel.events.collect { event ->
             when (event) {
-                LocationUiEvent.Activated -> {
-                    navController.popBackStack(Route.LocationOnboarding, inclusive = true)
-                    navController.navigate(Route.Location) {
-                        popUpTo(Route.ChatList) { saveState = true }
-                        launchSingleTop = true
-                    }
-                }
+                LocationUiEvent.Activated -> Unit
                 LocationUiEvent.CloseOnboarding -> navController.popBackStack()
 
                 is LocationUiEvent.OpenPeerHistory -> navController.navigate(
@@ -759,15 +770,20 @@ fun AppNavHost(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         // Leave the top inset to each screen: consuming it here pads everything
         // below the status bar, so no screen's TopAppBar can extend behind it.
-        contentWindowInsets = ScaffoldDefaults.contentWindowInsets
-            .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+        contentWindowInsets = contentInsets,
         bottomBar = {
-            if (showBottomNavigationBar) {
-                NavigationBar {
+            AnimatedVisibility(
+                visible = showBottomNavigationBar,
+                enter = slideInVertically(chromeMotion.defaultSpatialSpec()) { it } +
+                    fadeIn(chromeMotion.defaultEffectsSpec()),
+                exit = slideOutVertically(chromeMotion.defaultSpatialSpec()) { it } +
+                    fadeOut(chromeMotion.fastEffectsSpec()),
+            ) {
+                ShortNavigationBar(modifier = Modifier.onSizeChanged { bottomBarHeightPx = it.height }) {
                     topLevelRoutes.forEach { topLevelRoute ->
                         val isSelected =
-                            chromeDestination?.hasRoute(topLevelRoute.route::class) == true
-                        NavigationBarItem(
+                            selectedTab?.hasRoute(topLevelRoute.route::class) == true
+                        ShortNavigationBarItem(
                             icon = {
                                 TopLevelNavIcon(
                                     topLevelRoute = topLevelRoute,
@@ -786,112 +802,82 @@ fun AppNavHost(
                             },
                             selected = isSelected,
                             onClick = {
-                                when {
-                                    // Re-tapping the active tab scrolls to the top instead of re-navigating.
-                                    isSelected -> navController.currentBackStackEntry
+                                // Re-tapping the tab on screen scrolls to the top; a lit tab under a
+                                // hidden add-on is switched back to.
+                                if (isSelected && chromeDestination?.hasRoute(topLevelRoute.route::class) == true) {
+                                    navController.currentBackStackEntry
                                         ?.savedStateHandle?.set(SCROLL_TO_TOP_KEY, true)
-
-                                    topLevelRoute is TopLevelRoute.Moments -> openMoments()
-                                    topLevelRoute is TopLevelRoute.Vault -> openVault()
-                                    topLevelRoute is TopLevelRoute.Email -> openEmail()
-                                    topLevelRoute is TopLevelRoute.Location -> openLocation()
-                                    topLevelRoute is TopLevelRoute.ContactBook -> openContactBook()
-                                    else -> navController.navigate(topLevelRoute.route) {
-                                        popUpTo(Route.ChatList) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
+                                } else {
+                                    navController.switchTab(topLevelRoute.route, tabRoutes)
                                 }
                             },
                         )
                     }
                 }
             }
-        }) { paddingValues ->
-        Box(
-            modifier = Modifier.fillMaxSize().consumeWindowInsets(paddingValues)
-                .padding(paddingValues)
-        ) {
+        }) { _ ->
+        // Laid out under the bar, not above it: tabRoot pads the tab screens instead.
+        Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(contentInsets)) {
             Row(modifier = Modifier.fillMaxSize()) {
-                val railVisible =
-                    showNavigationRail && isAuthenticated && isOnTopLevelScreen && !isChatMediaOpen
-                if (railVisible) {
-                    NavigationRail(
-                        modifier = Modifier.width(NavigationRailWidth),
-                        header = { Spacer(modifier = Modifier.height(8.dp + topInset)) },
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    ) {
-                        topLevelRoutes.forEach { topLevelRoute ->
-                            val isSelected =
-                                chromeDestination?.hasRoute(topLevelRoute.route::class) == true
-                            RailItem(
-                                topLevelRoute = topLevelRoute,
-                                selected = isSelected,
-                                showMomentsBadge = momentsUnseenCount > 0,
-                                showLocationBadge = locationAttention,
-                                onClick = {
-                                    when {
-                                        isSelected -> navController.currentBackStackEntry
-                                            ?.savedStateHandle?.set(SCROLL_TO_TOP_KEY, true)
-
-                                        topLevelRoute is TopLevelRoute.Moments -> openMoments()
-                                        topLevelRoute is TopLevelRoute.Vault -> openVault()
-                                    topLevelRoute is TopLevelRoute.Email -> openEmail()
-                                        topLevelRoute is TopLevelRoute.Location -> openLocation()
-                                        else -> navController.navigate(topLevelRoute.route) {
-                                            popUpTo(Route.ChatList) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
+                AnimatedVisibility(
+                    visible = railVisible,
+                    enter = expandHorizontally(chromeMotion.defaultSpatialSpec()) +
+                        fadeIn(chromeMotion.defaultEffectsSpec()),
+                    exit = shrinkHorizontally(chromeMotion.defaultSpatialSpec()) +
+                        fadeOut(chromeMotion.fastEffectsSpec()),
+                ) {
+                    Row {
+                        NavigationRail(
+                            modifier = Modifier.width(NavigationRailWidth),
+                            header = { Spacer(modifier = Modifier.height(8.dp + topInset)) },
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        ) {
+                            topLevelRoutes.forEach { topLevelRoute ->
+                                val isSelected =
+                                    selectedTab?.hasRoute(topLevelRoute.route::class) == true
+                                RailItem(
+                                    topLevelRoute = topLevelRoute,
+                                    selected = isSelected,
+                                    showMomentsBadge = momentsUnseenCount > 0,
+                                    showLocationBadge = locationAttention,
+                                    onClick = {
+                                        if (isSelected && chromeDestination?.hasRoute(topLevelRoute.route::class) == true) {
+                                            navController.currentBackStackEntry
+                                                ?.savedStateHandle?.set(SCROLL_TO_TOP_KEY, true)
+                                        } else {
+                                            navController.switchTab(topLevelRoute.route, tabRoutes)
                                         }
-                                    }
-                                })
-                        }
+                                    })
+                            }
 
-                        if (isDesktopOrWeb()) {
-                            Spacer(modifier = Modifier.weight(1f))
-                            RailActionItem(
-                                icon = Icons.Default.Archive,
-                                contentDescription = stringResource(MR.string.chat_archived_chats),
-                                onClick = {
-                                    navController.navigate(Route.ChatList) {
-                                        popUpTo(Route.ChatList) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                    runCatching { navController.getBackStackEntry<Route.ChatList>() }
-                                        .getOrNull()
-                                        ?.savedStateHandle?.set(SHOW_ARCHIVED_KEY, true)
-                                },
-                            )
-                            RailActionItem(
-                                icon = Icons.Outlined.Settings,
-                                contentDescription = stringResource(MR.string.settings),
-                                onClick = { navController.navigate(Route.Settings) },
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
+                            if (isDesktopOrWeb()) {
+                                Spacer(modifier = Modifier.weight(1f))
+                                RailActionItem(
+                                    icon = Icons.Default.Archive,
+                                    contentDescription = stringResource(MR.string.chat_archived_chats),
+                                    onClick = {
+                                        openChats()
+                                        runCatching { navController.getBackStackEntry<Route.ChatList>() }
+                                            .getOrNull()
+                                            ?.savedStateHandle?.set(SHOW_ARCHIVED_KEY, true)
+                                    },
+                                )
+                                RailActionItem(
+                                    icon = Icons.Outlined.Settings,
+                                    contentDescription = stringResource(MR.string.settings),
+                                    onClick = { navController.navigate(Route.Settings) },
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
                         }
+                        VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
-                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
 
-                val showUpdateBanner = isOnTopLevelScreen && uiState.updateAvailable
                 Column(
-                    // Not statusBarsPadding(): outside Android it consumes into a legacy
-                    // modifier-local channel the NavHost's TopAppBars cannot see, so they
-                    // re-pad the top inset and the header drops a safe-area below the banner.
-                    modifier = if (showUpdateBanner) {
-                        Modifier.windowInsetsPadding(WindowInsets.statusBars)
-                    } else {
-                        Modifier
-                    }.padding(top = if (railVisible || paintsUnderTitleBar) 0.dp else topInset),
+                    modifier = Modifier.padding(top = if (railVisible || paintsUnderTitleBar) 0.dp else topInset),
                 ) {
                     if (isOnTopLevelScreen) {
-                        if (showUpdateBanner) {
-                            UpdateAvailableBanner(
-                                versionName = uiState.updateAvailableVersion,
-                                onUpdateClick = { viewModel.triggerUpdate() }
-                            )
-                        }
                         val pendingUpgrade = uiState.pendingUpgrade
                         if (pendingUpgrade is PendingUpgradeState.ShowSnackbar && !isChatComposerOpen) {
                             LaunchedEffect(pendingUpgrade) {
@@ -937,65 +923,17 @@ fun AppNavHost(
                                 },
                             )
                         }
-
-                        if (pendingUpgrade is PendingUpgradeState.UpgradeRunning) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                tonalElevation = 2.dp,
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(20.dp),
-                                        strokeWidth = 2.dp,
-                                    )
-                                    Text(
-                                        text = stringResource(MR.string.upgrade_running_message),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    )
-                                }
-                            }
-                        }
                     }
 
                     NavHost(
                         navController = navController,
                         startDestination = Route.AppLoading,
                         modifier = Modifier.weight(1f),
-                        enterTransition = {
-                            if (isBetweenTopLevelRoutes()) EnterTransition.None
-                            else if (targetState.destination.isVerticalSlideRoute()) EnterTransition.None
-                            else slideInHorizontally(
-                                initialOffsetX = { 1000 }, animationSpec = tween(500)
-                            )
-                        },
-                        exitTransition = {
-                            if (isBetweenTopLevelRoutes()) ExitTransition.None
-                            else if (targetState.destination.isVerticalSlideRoute()) ExitTransition.None
-                            else slideOutHorizontally(
-                                targetOffsetX = { -1000 }, animationSpec = tween(500)
-                            )
-                        },
-                        popEnterTransition = {
-                            if (isBetweenTopLevelRoutes()) EnterTransition.None
-                            else if (initialState.destination.isVerticalSlideRoute()) EnterTransition.None
-                            else slideInHorizontally(
-                                initialOffsetX = { -1000 }, animationSpec = tween(500)
-                            )
-                        },
-                        popExitTransition = {
-                            if (isBetweenTopLevelRoutes()) ExitTransition.None
-                            else if (initialState.destination.isVerticalSlideRoute()) ExitTransition.None
-                            else slideOutHorizontally(
-                                targetOffsetX = { 1000 }, animationSpec = tween(500)
-                            )
-                        }) {
+                        enterTransition = { navEnter(chromeMotion) },
+                        exitTransition = { navExit(chromeMotion) },
+                        popEnterTransition = { navPopEnter(chromeMotion) },
+                        popExitTransition = { navPopExit(chromeMotion) },
+                    ) {
                         composable<Route.AppLoading> {
                             AppLoadingScreen(
                                 viewModel = koinViewModel(),
@@ -1023,7 +961,7 @@ fun AppNavHost(
                             )
                         }
 
-                        composable<Route.Home> {
+                        tab<Route.Home>(tabRoot) {
                             if (isAuthenticated) {
                                 HomeScreen(
                                     viewModel = koinViewModel(),
@@ -1037,7 +975,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Feed> { entry ->
+                        tab<Route.Feed>(tabRoot) { entry ->
                             if (isAuthenticated) {
                                 // Read on each Feed entry so the Settings toggle takes effect on return.
                                 val useNativeFeed = koinInject<UserPreferences>().useNativeFeed
@@ -1055,7 +993,7 @@ fun AppNavHost(
                                         onAuthorClick = {
                                             navController.navigateToIdentity(it.domainName)
                                         },
-                                        onFullScreenMediaChanged = { isFeedMediaOpen = it },
+                                        onFullScreenMediaChanged = { entry.savedStateHandle[OWNS_WINDOW_KEY] = it },
                                         scrollToTop = scrollFeedToTop,
                                         onScrollToTopHandled = {
                                             entry.savedStateHandle[SCROLL_TO_TOP_KEY] = false
@@ -1087,7 +1025,7 @@ fun AppNavHost(
                         // controller, so the screen could only show its 404 empty state. The screen,
                         // VM and provider are kept; re-add this destination once the routes ship.
 
-                        composable<Route.ContactBook> {
+                        tab<Route.ContactBook>(tabRoot) {
                             if (isAuthenticated) {
                                 if (!contactBookOnboardingComplete) {
                                     ContactBookOnboardingScreen(viewModel = contactBookViewModel)
@@ -1100,7 +1038,7 @@ fun AppNavHost(
                                         },
                                         onOpenConversation = { conversationId ->
                                             navController.selectConversationOnChatList(conversationId)
-                                            navController.popBackStack(Route.ChatList, inclusive = false)
+                                            openChats()
                                         },
                                     )
                                 }
@@ -1157,7 +1095,7 @@ fun AppNavHost(
                                     onBack = { navController.popBackStack() },
                                     onOpenConversation = { conversationId ->
                                         navController.selectConversationOnChatList(conversationId)
-                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                        openChats()
                                     },
                                 )
                             }
@@ -1180,7 +1118,7 @@ fun AppNavHost(
                                     },
                                     onOpenConversation = { conversationId ->
                                         navController.selectConversationOnChatList(conversationId)
-                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                        openChats()
                                     },
                                     onSeeAllMedia = { conversationId ->
                                         navController.navigate(Route.ConversationMedia(conversationId))
@@ -1200,7 +1138,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ChatList> { backStackEntry ->
+                        tab<Route.ChatList>(tabRoot) { backStackEntry ->
                             if (isAuthenticated) {
                                 val conversationListViewModel: ConversationListViewModel =
                                     koinViewModel()
@@ -1296,11 +1234,19 @@ fun AppNavHost(
                                     },
                                     onSaved = { name, uniqueId -> savedContact = name to uniqueId },
                                 )
+                                val connectRequestViewModel: ConnectRequestViewModel = koinViewModel()
                                 ConversationListScreen(
                                     viewModel = conversationListViewModel,
                                     archivedConversationsViewModel = koinViewModel(),
                                     extendPermissionViewModel = koinViewModel(),
-                                    connectRequestViewModel = koinViewModel(),
+                                    onOpenConnectRequest = {
+                                        connectRequestViewModel.onAction(
+                                            ConnectRequestAction.OpenDialogWithRecipient(it)
+                                        )
+                                    },
+                                    connectRequestSheet = { snackbar ->
+                                        ConnectRequestBottomSheet(connectRequestViewModel, snackbar)
+                                    },
                                     onNavigateBack = { navController.popBackStack() },
                                     onNavigateToSettingsScreen = {
                                         navController.navigate(Route.Settings)
@@ -1351,15 +1297,6 @@ fun AppNavHost(
                                     },
                                     onNavigateToDrawer = { requestId ->
                                         navController.navigate(Route.Draw(requestId.toString()))
-                                    },
-                                    onDetailPaneVisibilityChanged = {
-                                        // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
-                                        @Suppress("AssignedValueIsNeverRead")
-                                        showingOnlyDetailPane = it
-                                    },
-                                    onMediaViewerVisibilityChanged = {
-                                        @Suppress("AssignedValueIsNeverRead")
-                                        isChatMediaOpen = it
                                     },
                                     onComposerVisibilityChanged = {
                                         @Suppress("AssignedValueIsNeverRead")
@@ -1519,7 +1456,7 @@ fun AppNavHost(
                                     },
                                     onOpenConversation = { conversationId ->
                                         navController.selectConversationOnChatList(conversationId)
-                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                        openChats()
                                     },
                                     onNavigateToLiveLocationMap = {
                                         navController.navigate(Route.LocationLive)
@@ -1718,6 +1655,19 @@ fun AppNavHost(
                                         viewModelStoreOwner = rememberCardHostOwner(navController, entry),
                                     ),
                                     onBack = { navController.popBackStack() },
+                                    onEdit = { navController.navigate(Route.ProfileCardEditor) },
+                                )
+                            }
+                        }
+
+                        composable<Route.ProfileCardEditor> { entry ->
+                            if (isAuthenticated) {
+                                ProfileCardEditorScreen(
+                                    viewModel = koinViewModel(
+                                        viewModelStoreOwner = rememberCardHostOwner(navController, entry),
+                                    ),
+                                    onBack = { navController.popBackStack() },
+                                    onEditProfile = { navController.navigate(Route.ProfileEdit) },
                                 )
                             }
                         }
@@ -1736,17 +1686,14 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.MomentsOnboarding> {
-                            if (isAuthenticated) {
+                        tab<Route.Moments>(tabRoot) {
+                            val momentsActivated by momentsViewModel.isActivated.collectAsStateWithLifecycle()
+                            if (isAuthenticated && !momentsActivated) {
                                 MomentsOnboardingScreen(
                                     viewModel = momentsViewModel,
                                     onNavigateBack = { navController.popBackStack() },
                                 )
-                            }
-                        }
-
-                        composable<Route.Moments> {
-                            if (isAuthenticated) {
+                            } else if (isAuthenticated) {
                                 MomentsScreen(
                                     viewModel = koinViewModel(),
                                     extendPermissionViewModel = momentsViewModel.momentsExtendPermissionViewModel,
@@ -1845,17 +1792,14 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.LocationOnboarding> {
-                            if (isAuthenticated) {
+                        tab<Route.Location>(tabRoot) {
+                            val locationActivated by locationViewModel.isActivated.collectAsStateWithLifecycle()
+                            if (isAuthenticated && !locationActivated) {
                                 LocationOnboardingScreen(
                                     viewModel = locationViewModel,
                                     onNavigateBack = { navController.popBackStack() },
                                 )
-                            }
-                        }
-
-                        composable<Route.Location> {
-                            if (isAuthenticated) {
+                            } else if (isAuthenticated) {
                                 LocationScreen(
                                     viewModel = locationViewModel,
                                     onOpenEmergency = { navController.navigate(Route.LocationEmergency) },
@@ -2049,7 +1993,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Vault> { entry ->
+                        tab<Route.Vault>(tabRoot) { entry ->
                             if (isAuthenticated) {
                                 val scrollVaultToTop by entry.savedStateHandle
                                     .getStateFlow(SCROLL_TO_TOP_KEY, false)
@@ -2073,12 +2017,7 @@ fun AppNavHost(
                                             vaultExtendPermissionViewModel = vaultViewModel.vaultExtendPermissionViewModel,
                                             viewModel = vaultViewModel,
                                             onNavigateToSettings = { navController.navigate(Route.VaultSettings) },
-                                            onNavigateToChats = {
-                                                navController.popBackStack(
-                                                    Route.ChatList,
-                                                    inclusive = false
-                                                )
-                                            },
+                                            onNavigateToChats = openChats,
                                             onNavigateToNoteEditor = { sectionId, entryId ->
                                                 navController.navigate(Route.VaultNoteEditor(sectionId, entryId))
                                             },
@@ -2132,7 +2071,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Email> {
+                        tab<Route.Email>(tabRoot) {
                             if (isAuthenticated) {
                                 EmailScreen(
                                     viewModel = emailViewModel,
@@ -2191,32 +2130,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.VaultNoteEditor>(
-                            enterTransition = {
-                                slideInVertically(
-                                    initialOffsetY = { it },
-                                    animationSpec = tween(400),
-                                )
-                            },
-                            exitTransition = {
-                                slideOutVertically(
-                                    targetOffsetY = { it },
-                                    animationSpec = tween(400),
-                                )
-                            },
-                            popEnterTransition = {
-                                slideInVertically(
-                                    initialOffsetY = { it },
-                                    animationSpec = tween(400),
-                                )
-                            },
-                            popExitTransition = {
-                                slideOutVertically(
-                                    targetOffsetY = { it },
-                                    animationSpec = tween(400),
-                                )
-                            },
-                        ) { backStackEntry ->
+                        composable<Route.VaultNoteEditor> { backStackEntry ->
                             if (isAuthenticated) {
                                 val route = backStackEntry.toRoute<Route.VaultNoteEditor>()
                                 val sectionUuid = Uuid.parse(route.sectionId)
@@ -2338,6 +2252,7 @@ private fun rememberCardHostOwner(navController: NavHostController, entry: NavBa
         val backStack = navController.currentBackStack.value
         backStack.lastOrNull { it.destination.hasRoute(Route.Settings::class) }
             ?: backStack.lastOrNull { it.destination.hasRoute(Route.ProfileEdit::class) }
+            ?: backStack.lastOrNull { it.destination.hasRoute(Route.ProfileCard::class) }
             ?: entry
     }
 
@@ -2359,24 +2274,73 @@ private fun NavHostController.selectConversationOnChatList(
     return true
 }
 
-private fun NavDestination?.isTopLevelRoute(): Boolean {
-    return this?.hasRoute(Route.ChatList::class) == true ||
-            this?.hasRoute(Route.Feed::class) == true ||
-            this?.hasRoute(Route.Moments::class) == true ||
-            this?.hasRoute(Route.Home::class) == true ||
-            this?.hasRoute(Route.Vault::class) == true ||
-            this?.hasRoute(Route.Email::class) == true ||
-            this?.hasRoute(Route.Location::class) == true ||
-            this?.hasRoute(Route.ContactBook::class) == true
+private const val OWNS_WINDOW_KEY = "ownsWindow"
+
+// A screen whose own full-screen state (open conversation, media viewer) needs the whole window,
+// read from the entry itself so it cannot outlive the screen that raised it.
+@Composable
+private fun entryOwnsWindow(
+    entry: NavBackStackEntry,
+    isExpanded: Boolean,
+    isVaultOverlayOpen: Boolean,
+): Boolean {
+    val destination = entry.destination
+    return when {
+        destination.hasRoute(Route.ChatList::class) -> {
+            val chat: ConversationListViewModel = koinViewModel(viewModelStoreOwner = entry)
+            val ui by chat.uiState.collectAsStateWithLifecycle()
+            val messages by chat.messagesUiState.collectAsStateWithLifecycle()
+            val owns by remember(chat, isExpanded) {
+                derivedStateOf { chatOwnsWindow(ui, messages, isExpanded) }
+            }
+            owns
+        }
+
+        destination.hasRoute(Route.Vault::class) -> isVaultOverlayOpen
+        else -> entry.savedStateHandle.getStateFlow(OWNS_WINDOW_KEY, false)
+            .collectAsStateWithLifecycle().value
+    }
 }
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
-    return initialState.destination.isTopLevelRoute() && targetState.destination.isTopLevelRoute()
+private inline fun <reified T : Any> NavGraphBuilder.tab(
+    noinline root: @Composable (NavBackStackEntry, @Composable () -> Unit) -> Unit,
+    noinline content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit,
+) {
+    composable<T> { entry ->
+        val scope = this
+        root(entry) { scope.content(entry) }
+    }
 }
 
-private fun NavDestination?.isVerticalSlideRoute(): Boolean {
-    return this?.hasRoute(Route.VaultNoteEditor::class) == true
+@Composable
+private fun UpgradeRunningStrip(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        tonalElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+            )
+            Text(
+                text = stringResource(MR.string.upgrade_running_message),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
+    }
 }
+
+private fun NavDestination?.isCardRoute(): Boolean =
+    this?.hasRoute(Route.ProfileCard::class) == true || this?.hasRoute(Route.ProfileCardEditor::class) == true
 
 sealed class TopLevelRoute(
     val route: Route,

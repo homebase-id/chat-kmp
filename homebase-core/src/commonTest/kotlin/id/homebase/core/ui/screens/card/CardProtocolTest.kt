@@ -20,6 +20,22 @@ class CardProtocolTest {
             parseCardEvent("""{"type":"png","base64":"iVBORw0KGgo=","width":1080,"height":2338}"""),
         )
         assertEquals(CardEvent.Error("boom"), parseCardEvent("""{"type":"error","message":"boom"}"""))
+        assertEquals(CardEvent.Painted, parseCardEvent("""{"type":"hostPainted"}"""))
+        assertEquals(
+            CardEvent.Edges(0xFF1F4E8C.toInt(), null),
+            parseCardEvent("""{"type":"hostEdges","top":"rgb(31, 78, 140)","bottom":null}"""),
+        )
+    }
+
+    @Test
+    fun cssColoursParseOnlyWhenOpaque() {
+        assertEquals(0xFFF3EADB.toInt(), parseCssColor("rgb(243, 234, 219)"))
+        assertEquals(0xFF000000.toInt(), parseCssColor("rgb(0, 0, 0)"))
+        assertEquals(0xFF0E1013.toInt(), parseCssColor("rgba(14, 16, 19, 1)"))
+        assertNull(parseCssColor("rgba(0, 0, 0, 0)"))
+        assertNull(parseCssColor("rgba(20, 18, 15, 0.5)"))
+        assertNull(parseCssColor("transparent"))
+        assertNull(parseCssColor("color(display-p3 1 0 0)"))
     }
 
     @Test

@@ -1,8 +1,6 @@
 package id.homebase.core.widget
 
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,8 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,12 +77,9 @@ fun ReactionList(
 
     var animatePop by remember { mutableStateOf(false) }
     val prevCount = remember { mutableIntStateOf(totalCount) }
-    val scaleValue by animateFloatAsState(
+    val scale = animateFloatAsState(
         targetValue = if (animatePop) 1.15f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
         finishedListener = { animatePop = false },
     )
     LaunchedEffect(totalCount) {
@@ -108,7 +103,10 @@ fun ReactionList(
     ) {
         Surface(
             modifier = Modifier
-                .scale(scaleValue)
+                .graphicsLayer {
+                    scaleX = scale.value
+                    scaleY = scale.value
+                }
                 .clip(RoundedCornerShape(16.dp))
                 .clickable(onClick = onReactionClick),
             shape = RoundedCornerShape(16.dp),
@@ -186,33 +184,39 @@ fun ReactionMenu(
     ownReactions: ImmutableList<String> = persistentListOf(),
     onSelect: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
+    backgroundModifier: Modifier = Modifier,
+    emojiModifier: (index: Int) -> Modifier = { Modifier },
 ) {
     val baseDefaults = listOf("❤️", "👍", "👎", "😂", "😮", "😢")
     val reactions = (userDefaultReactions + baseDefaults).distinctByEmoji().take(6)
     val scrollState = rememberScrollState()
     val haptics = rememberHaptics()
 
-    Surface(
+    // The background is a sibling, not the parent, so fading it doesn't also fade the emoji.
+    Box(
         modifier = modifier
             .wrapContentWidth()
             .padding(top = 4.dp),
-        shape = RoundedCornerShape(12.dp),
-        shadowElevation = 4.dp,
-        tonalElevation = 4.dp
     ) {
+        Surface(
+            modifier = backgroundModifier.matchParentSize(),
+            shape = RoundedCornerShape(12.dp),
+            shadowElevation = 4.dp,
+            tonalElevation = 4.dp,
+        ) {}
         Row(
             modifier = Modifier
                 .horizontalScroll(scrollState)
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            reactions.forEach { emoji ->
+            reactions.forEachIndexed { index, emoji ->
                 val isOwn = ownReactions.containsEmoji(emoji)
                 Surface(
                     shape = CircleShape,
                     color = if (isOwn) MaterialTheme.colorScheme.primaryContainer
                     else Color.Transparent,
-                    modifier = Modifier
+                    modifier = emojiModifier(index)
                         .size(40.dp)
                         .clip(CircleShape)
                         .clickable {
@@ -234,11 +238,12 @@ fun ReactionMenu(
             }
             IconButton(
                 onClick = onShowAllEmojis,
-                modifier = Modifier.size(40.dp).testTag("emoji_options_button")
+                modifier = emojiModifier(reactions.size).size(40.dp).testTag("emoji_options_button")
             ) {
                 Icon(
                     Icons.Default.MoreHoriz,
-                    contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                    contentDescription = stringResource(MR.string.chat_message_emoji_options),
+                    tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
