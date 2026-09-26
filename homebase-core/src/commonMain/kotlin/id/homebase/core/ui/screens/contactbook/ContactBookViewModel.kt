@@ -728,9 +728,9 @@ class ContactBookViewModel(
 
     private fun handleCircleEnabledChanged(circleIdRaw: String, enabled: Boolean) {
         if (_circleMembers.value?.togglingEnabled == true) return
-        fun setToggling(on: Boolean) =
-            _circleMembers.update { if (it?.circleId == circleIdRaw) it.copy(togglingEnabled = on) else it }
-        setToggling(true)
+        fun update(f: (CircleMembersUi) -> CircleMembersUi) =
+            _circleMembers.update { if (it?.circleId == circleIdRaw) f(it) else it }
+        update { it.copy(togglingEnabled = true, toggleError = null) }
         viewModelScope.launch {
             try {
                 connectionService.setCircleEnabled(Uuid.parseHex(circleIdRaw), enabled)
@@ -738,9 +738,9 @@ class ContactBookViewModel(
                 throw e
             } catch (e: Exception) {
                 Logger.w(e, "ContactBookViewModel") { "setCircleEnabled($enabled) failed for $circleIdRaw" }
-                _events.tryEmit(ContactBookUiEvent.Error(e.toCircleToggleError()))
+                update { it.copy(toggleError = e.toCircleToggleError()) }
             } finally {
-                setToggling(false)
+                update { it.copy(togglingEnabled = false) }
             }
         }
     }
@@ -749,7 +749,7 @@ class ContactBookViewModel(
         val odinId = member.odinId?.let(::OdinId) ?: return
         if (member.uniqueId in (_circleMembers.value?.removingMemberIds ?: emptySet())) return
         _circleMembers.update {
-            it?.copy(removingMemberIds = it.removingMemberIds + member.uniqueId)
+            it?.copy(removingMemberIds = it.removingMemberIds + member.uniqueId, removeError = null)
         }
         viewModelScope.launch {
             try {
@@ -768,9 +768,11 @@ class ContactBookViewModel(
                 Logger.w(e, "ContactBookViewModel") { "removeFromCircle failed for $odinId" }
                 _circleMembers.update {
                     if (it?.circleId != circleIdRaw) it
-                    else it.copy(removingMemberIds = it.removingMemberIds - member.uniqueId)
+                    else it.copy(
+                        removingMemberIds = it.removingMemberIds - member.uniqueId,
+                        removeError = ContactBookError.CircleActionFailed,
+                    )
                 }
-                _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.CircleActionFailed))
             }
         }
     }

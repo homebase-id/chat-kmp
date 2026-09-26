@@ -62,17 +62,6 @@ import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_action_add
-import id.homebase.resources.contactbook_error_circle_action
-import id.homebase.resources.contactbook_error_circle_toggle_forbidden
-import id.homebase.resources.contactbook_error_circle_toggle_not_found
-import id.homebase.resources.contactbook_error_circle_toggle_system
-import id.homebase.resources.contactbook_error_delete
-import id.homebase.resources.contactbook_error_forbidden
-import id.homebase.resources.chat_contact_card_partial_additions
-import id.homebase.resources.contactbook_error_clear_unsupported
-import id.homebase.resources.contactbook_error_message
-import id.homebase.resources.contactbook_error_photo
-import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.contactbook_label
 import id.homebase.resources.contactbook_search_hint
 import id.homebase.resources.contactbook_tab_circles
@@ -84,6 +73,7 @@ import id.homebase.resources.search
 import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionSheet
 import id.homebase.resources.contact_review_failed
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
@@ -98,19 +88,6 @@ fun ContactBookScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Pre-resolve error strings (cannot call stringResource inside collect).
-    val errSave = stringResource(MR.string.contactbook_error_save)
-    val errDelete = stringResource(MR.string.contactbook_error_delete)
-    val errPhoto = stringResource(MR.string.contactbook_error_photo)
-    val errMessage = stringResource(MR.string.contactbook_error_message)
-    val errClearUnsupported = stringResource(MR.string.contactbook_error_clear_unsupported)
-    val errAdditionsFailed = stringResource(MR.string.chat_contact_card_partial_additions)
-    val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
-    val errCircleAction = stringResource(MR.string.contactbook_error_circle_action)
-    val errCircleToggleForbidden = stringResource(MR.string.contactbook_error_circle_toggle_forbidden)
-    val errCircleToggleSystem = stringResource(MR.string.contactbook_error_circle_toggle_system)
-    val errCircleToggleNotFound = stringResource(MR.string.contactbook_error_circle_toggle_not_found)
-
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
@@ -119,22 +96,8 @@ fun ContactBookScreen(
                 ContactBookUiEvent.OpenAddContact -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.OpenCircleMemberAdd -> { /* navigation handled in AppNavHost */ }
                 ContactBookUiEvent.OpenEnrollmentCandidates -> { /* navigation handled in AppNavHost */ }
-                is ContactBookUiEvent.Error -> {
-                    val msg = when (event.error) {
-                        ContactBookError.SaveFailed -> errSave
-                        ContactBookError.SaveForbidden -> errForbidden
-                        ContactBookError.DeleteFailed -> errDelete
-                        ContactBookError.PhotoFailed -> errPhoto
-                        ContactBookError.MessageFailed -> errMessage
-                        ContactBookError.ClearUnsupported -> errClearUnsupported
-                        ContactBookError.AdditionsFailed -> errAdditionsFailed
-                        ContactBookError.CircleActionFailed -> errCircleAction
-                        ContactBookError.CircleToggleForbidden -> errCircleToggleForbidden
-                        ContactBookError.CircleToggleSystemCircle -> errCircleToggleSystem
-                        ContactBookError.CircleToggleNotFound -> errCircleToggleNotFound
-                    }
-                    snackbarHostState.showSnackbar(msg)
-                }
+                is ContactBookUiEvent.Error ->
+                    snackbarHostState.showSnackbar(getString(event.error.messageRes()))
                 ContactBookUiEvent.CloseOnboarding -> { /* handled in AppNavHost */ }
             }
         }
