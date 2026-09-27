@@ -50,7 +50,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
@@ -92,7 +91,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clipToBounds
@@ -114,7 +112,6 @@ import id.homebase.chat.data.MessageUiModel
 import kotlinx.collections.immutable.ImmutableList
 import id.homebase.api.common.OdinId
 import id.homebase.chat.contactcard.LocalSavedContactIdentities
-import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import co.touchlab.kermit.Logger
 import id.homebase.chat.dice.BattleRollSheet
@@ -164,8 +161,6 @@ import id.homebase.core.util.keyboardPanelSlot
 import id.homebase.core.util.rememberKeyboardPanelState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.toMessageMarkdown
-import id.homebase.core.util.rememberCameraManager
-import id.homebase.core.util.rememberVideoRecorderManager
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.ReactionsBottomSheet
 import id.homebase.core.widget.HomebaseVerticalScrollbar
@@ -173,7 +168,6 @@ import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
-import id.homebase.resources.chat_auto_connect_connected
 import id.homebase.resources.chat_drop_files_none_usable
 import id.homebase.resources.chat_group_not_connected_disclaimer
 import id.homebase.resources.chat_group_rejoin_accept
@@ -210,7 +204,6 @@ import id.homebase.resources.connect
 import id.homebase.resources.contacts
 import id.homebase.resources.groups
 import id.homebase.resources.menu_back
-import id.homebase.resources.cd_connection_succeeded
 import id.homebase.resources.recents
 import id.homebase.resources.search
 import id.homebase.resources.time_today
@@ -273,6 +266,8 @@ fun ConversationContent(
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
+    // The camera is hosted by the pane: this content leaves composition once the editor it hands off to opens.
+    onCameraClick: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
@@ -428,6 +423,7 @@ fun ConversationContent(
             previousTotal = total
         }
     }
+    KeepListEndInView(listState, conversation.conversation.id)
 
     // One-time own-send follow: every send arm sets scrollToLatestRequest so the
     // user's own message always lands visible, even when scrolled up into history
@@ -555,48 +551,6 @@ fun ConversationContent(
         }
     }
 
-    val cameraLauncher = rememberCameraManager { file ->
-        file?.let {
-            onUiAction(
-                ConversationListUiAction.AttachPlatformFile(
-                    conversationId = conversation.conversation.id,
-                    files = listOf(file),
-                    isImage = true,
-                )
-            )
-        }
-    }
-
-    // iOS: the camera sits in a DropdownMenu (a Popup window) in MessageInputBar, and FileKit's
-    // camera picker can't be presented while that popup is tearing down — iOS dismisses the picker
-    // along with the popup ("Take Photo opens then closes instantly"). So hoist the launch out of
-    // the menu item: the item only closes the menu and flips this flag, and we present here after
-    // the popup's exit transition has finished. A single recomposition isn't enough (the popup is
-    // still animating out); the native video path is immune, which is why only photo broke.
-    var pendingCameraLaunch by remember { mutableStateOf(false) }
-    LaunchedEffect(pendingCameraLaunch) {
-        if (pendingCameraLaunch) {
-            // Closing the dropdown hands focus back to the input, which pops the keyboard up during
-            // the wait below; clear focus + hide it so the keyboard doesn't flash before the camera.
-            focusManager.clearFocus()
-            keyboardController?.hide()
-            delay(250) // let the DropdownMenu popup finish dismissing before FileKit presents
-            cameraLauncher.launch()
-            pendingCameraLaunch = false // reset AFTER launch — resetting first cancels this effect
-        }
-    }
-
-    val videoRecorderLauncher = rememberVideoRecorderManager { file ->
-        file?.let {
-            onUiAction(
-                ConversationListUiAction.AttachPlatformFile(
-                    conversationId = conversation.conversation.id,
-                    files = listOf(file),
-                    isImage = false,
-                )
-            )
-        }
-    }
     val fileLauncher = rememberFilePickerLauncher { file ->
         file?.let {
             onUiAction(
@@ -973,7 +927,13 @@ fun ConversationContent(
 
                 JumpTargetWaitingBar(isWaiting = uiState.awaitingJumpMessageId != null)
 
-                if (conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty()) {
+                AnimatedVisibility(
+                    visible = conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty(),
+                    enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                        fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                        fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
@@ -1702,8 +1662,7 @@ fun ConversationContent(
                                 onKeyboardClick = { showKeyboard() },
                                 onFocused = { bottomPanel.closeForKeyboard() },
                                 onAddAttachmentClick = { toggleAttachmentSheet() },
-                                onCameraClick = { pendingCameraLaunch = true },
-                                onVideoRecordClick = { videoRecorderLauncher.launch() },
+                                onCameraClick = onCameraClick,
                                 onRecordingStarted = {
                                     onUiAction(
                                         ConversationListUiAction.StartRecording(
@@ -1855,9 +1814,10 @@ fun ConversationContentSheets(
         is MessageListUiSheet.ConnectIdentities -> {
             ConnectIdentitiesSheet(
                 identities = sheet.identities,
-                autoConnectStates = sheet.autoConnectStates,
                 onDismiss = { onUiAction(ConversationListUiAction.DismissSheet) },
-                onAutoConnect = { onUiAction(ConversationListUiAction.AutoConnect(it)) },
+                onConnect = {
+                    onUiAction(ConversationListUiAction.OpenSendConnectionRequestDialog(it))
+                },
             )
         }
 
@@ -2068,9 +2028,8 @@ private fun PinnedMessagesSheet(
 @Composable
 fun ConnectIdentitiesSheet(
     identities: List<OdinId>,
-    autoConnectStates: Map<OdinId, AutoConnectRowState>,
     onDismiss: () -> Unit,
-    onAutoConnect: (OdinId) -> Unit,
+    onConnect: (OdinId) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
     val scrollState = rememberScrollState()
@@ -2085,8 +2044,7 @@ fun ConnectIdentitiesSheet(
             identities.forEach { odinId ->
                 ConnectIdentityRow(
                     odinId = odinId,
-                    rowState = autoConnectStates[odinId],
-                    onAutoConnect = { onAutoConnect(odinId) },
+                    onConnect = { onConnect(odinId) },
                 )
             }
         }
@@ -2096,8 +2054,7 @@ fun ConnectIdentitiesSheet(
 @Composable
 private fun ConnectIdentityRow(
     odinId: OdinId,
-    rowState: AutoConnectRowState?,
-    onAutoConnect: () -> Unit,
+    onConnect: () -> Unit,
 ) {
     val contactInfo = koinInject<ContactInfoGateway>()
     var resolvedName by remember(odinId) { mutableStateOf(odinId.domainName) }
@@ -2124,60 +2081,18 @@ private fun ConnectIdentityRow(
             animatedVisibilityScope = null,
         )
         Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            ContactName(
-                odinId = odinId,
-                knownName = resolvedName,
-                style = MaterialTheme.typography.titleMedium,
-            )
-            if (rowState is AutoConnectRowState.Failed) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = stringResource(rowState.res, *rowState.args.toTypedArray()),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-        }
+        ContactName(
+            odinId = odinId,
+            knownName = resolvedName,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.weight(1f),
+        )
         Spacer(modifier = Modifier.width(8.dp))
-        when (rowState) {
-            AutoConnectRowState.Succeeded -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = stringResource(MR.string.cd_connection_succeeded),
-                        tint = SuccessGreen,
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(MR.string.chat_auto_connect_connected),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = SuccessGreen,
-                    )
-                }
-            }
-            AutoConnectRowState.Connecting -> {
-                ElevatedButton(
-                    onClick = {},
-                    enabled = false,
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                    )
-                }
-            }
-            is AutoConnectRowState.Failed,
-            null -> {
-                ElevatedButton(onClick = onAutoConnect) {
-                    Text(stringResource(MR.string.connect))
-                }
-            }
+        ElevatedButton(onClick = onConnect) {
+            Text(stringResource(MR.string.connect))
         }
     }
 }
-
-private val SuccessGreen = Color(0xFF2E7D32)
 
 @Composable
 fun RecipientsSelectorList(
@@ -2297,6 +2212,45 @@ internal fun dateSectionLabel(
                 }
             }
             messageDate.format(format)
+        }
+    }
+}
+
+private data class ListEndSample(val total: Int, val overflow: Int?, val atEnd: Boolean)
+
+// A list that sat at its end stays there when anything pushes its end down without adding a row: a row
+// growing in place (reaction pill, preview, media) or the viewport shrinking from above (pinned bar,
+// banners). LazyColumn keeps its first item anchored, so either would slide the newest row under the composer.
+@Composable
+internal fun KeepListEndInView(listState: LazyListState, key: Any?) {
+    LaunchedEffect(listState, key) {
+        var previousTotal = -1
+        var wasAtEnd = false
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.takeIf { it.index == info.totalItemsCount - 1 }
+            ListEndSample(
+                info.totalItemsCount,
+                last?.let { it.offset + it.size + info.afterContentPadding - info.viewportEndOffset },
+                !listState.canScrollForward,
+            )
+        }.collect { sample ->
+            val pushed = wasAtEnd && !sample.atEnd && sample.total == previousTotal
+            previousTotal = sample.total
+            if (pushed && !listState.isScrollInProgress) {
+                // Not scrollBy: that force-remeasures synchronously, and on skiko this collector can resume inside layout.
+                val overflow = sample.overflow
+                if (overflow != null) {
+                    listState.requestScrollToItem(
+                        listState.firstVisibleItemIndex,
+                        listState.firstVisibleItemScrollOffset + overflow,
+                    )
+                } else {
+                    listState.requestScrollToItem(sample.total - 1)
+                }
+            } else {
+                wasAtEnd = sample.atEnd
+            }
         }
     }
 }

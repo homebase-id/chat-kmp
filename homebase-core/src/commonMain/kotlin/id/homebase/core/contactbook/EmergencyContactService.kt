@@ -29,9 +29,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Clock
+import kotlin.uuid.Uuid
 import kotlin.uuid.ExperimentalUuidApi
 
 /**
@@ -69,6 +72,9 @@ const val RECONNECT_RESWEEP_MIN_INTERVAL_MS = 4L * 60 * 60_000L
 
 private const val STALE_TICK_MS = 5L * 60_000L
 
+/** A full sweep verifies this many peers at a time, so a large flagged set isn't one burst. */
+private const val MAX_CONCURRENT_VERIFIES = 4
+
 fun LocateVerifyStatus?.needsReverify(nowMs: Long): Boolean = when (this) {
     LocateVerifyStatus.Loading -> false
     is LocateVerifyStatus.Active ->
@@ -88,16 +94,17 @@ data class LocatableContact(
 )
 
 /**
- * Single owner of "can we still locate this contact, and how fresh is their data?" — the
- * in-memory overlay every verify caller reads and writes, layered over
- * [ContactRepository.locatableContacts] the way ContactService layers connection state.
+ * Single owner of "can we still locate this contact, and how fresh is their data?" — the in-memory
+ * overlay every verify caller reads and writes, layered over the `iCanLocate` flag.
  */
 class EmergencyContactService internal constructor(
     private val contacts: StateFlow<List<Contact>>,
+    private val contactsLoaded: StateFlow<Boolean>,
+    private val writeICanLocate: suspend (uniqueId: Uuid, versionTag: Uuid) -> Unit,
     private val verify: suspend (OdinId) -> TemporalAccessStatus,
     private val isOnline: StateFlow<Boolean>,
-    /** The logged-in identity's domain (lowercase) — you are never your own emergency contact. */
-    private val selfDomain: suspend () -> String?,
+    /** You are never your own emergency contact. */
+    private val selfId: suspend () -> OdinId?,
     private val scope: CoroutineScope,
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
@@ -109,32 +116,45 @@ class EmergencyContactService internal constructor(
         scope: CoroutineScope,
     ) : this(
         contacts = contactRepository.contacts,
+        contactsLoaded = contactRepository.isLoaded,
+        writeICanLocate = { uniqueId, versionTag -> contactRepository.setICanLocate(uniqueId, versionTag) },
         verify = { peer -> temporalRead.verifyTemporalAccess(peer, locationLabeledDrive.drive.alias) },
         isOnline = authConnectionCoordinator.isOnline,
-        selfDomain = {
-            kotlin.runCatching { credentialsManager.getActiveDomain() }.getOrNull()?.domainName?.lowercase()
-        },
+        selfId = { kotlin.runCatching { credentialsManager.getActiveDomain() }.getOrNull() },
         scope = scope,
     )
 
     private val _status = MutableStateFlow<Map<String, LocateVerifyStatus>>(emptyMap())
     val status: StateFlow<Map<String, LocateVerifyStatus>> = _status.asStateFlow()
 
-    val locatable: StateFlow<List<LocatableContact>> =
-        combine(contacts.map { it.filterLocatable() }, _status) { contacts, status ->
-            val self = selfDomain()
-            contacts.mapNotNull { contact ->
-                val odinId = contact.content.odinId?.takeIf { it.isNotBlank() }?.let(::OdinId)
-                    ?: return@mapNotNull null
-                if (odinId.domainName.lowercase() == self) return@mapNotNull null
+    suspend fun isSelf(odinId: OdinId): Boolean = odinId == selfId()
+
+    /** The only write of the flag: refuses self, so no caller has to remember to. */
+    suspend fun setICanLocate(odinId: OdinId, uniqueId: Uuid, versionTag: Uuid) {
+        if (isSelf(odinId)) return
+        writeICanLocate(uniqueId, versionTag)
+    }
+
+    private suspend fun List<Contact>.locatableIds(): List<Pair<Contact, OdinId>> {
+        val self = selfId()
+        return filterLocatable().mapNotNull { contact ->
+            contact.odinIdOrNull()?.takeIf { it != self }?.let { contact to it }
+        }
+    }
+
+    /** Null until the contacts have loaded, so "not loaded yet" never reads as "nobody". */
+    val locatable: StateFlow<List<LocatableContact>?> =
+        combine(contacts, _status, contactsLoaded) { contacts, status, loaded ->
+            if (!loaded) return@combine null
+            contacts.locatableIds().map { (contact, odinId) ->
                 LocatableContact(contact, odinId, status[odinId.domainName])
             }
-        }.stateIn(scope, SharingStarted.Eagerly, emptyList())
+        }.stateIn(scope, SharingStarted.Eagerly, null)
 
     val staleIds: StateFlow<Set<String>> =
         combine(locatable, staleTicker()) { list, _ ->
             val now = now()
-            list.filter { entry ->
+            list.orEmpty().filter { entry ->
                 val active = entry.status as? LocateVerifyStatus.Active
                 active != null && locateSignalStale(active.newestModifiedMs, now)
             }.map { it.odinId.domainName }.toSet()
@@ -146,6 +166,7 @@ class EmergencyContactService internal constructor(
     private var started = false
     private var lastFullSweepMs = 0L
     private val sweepMutex = Mutex()
+    private val verifyPermits = Semaphore(MAX_CONCURRENT_VERIFIES)
 
     fun start() {
         if (started) return
@@ -159,6 +180,17 @@ class EmergencyContactService internal constructor(
                         runCatching { refreshAll() }
                     }
                 }
+        }
+    }
+
+    /** Re-verifies the contacts already flagged; never probes the rest of the book. */
+    fun sweepAfterLogin() {
+        // Claims the sweep before waiting, so the reconnect collector's 4h gate skips the same wake-up.
+        lastFullSweepMs = now()
+        scope.launch {
+            contactsLoaded.first { it }
+            withTimeoutOrNull(LOCATE_VERIFY_ONLINE_WAIT_MS) { isOnline.first { it } }
+            runCatching { refreshAll() }.onFailure { Logger.w(it, TAG) { "login sweep failed" } }
         }
     }
 
@@ -224,17 +256,15 @@ class EmergencyContactService internal constructor(
         sweepMutex.withLock {
             val now = now()
             val status = _status.value
-            val self = selfDomain()
-            val targets = contacts.value.filterLocatable()
-                .mapNotNull { it.content.odinId?.takeIf { id -> id.isNotBlank() }?.let(::OdinId) }
-                .filter { it.domainName.lowercase() != self }
+            val targets = contacts.value.locatableIds()
+                .map { (_, odinId) -> odinId }
                 .filter { only == null || it.domainName in only }
                 .filter { status[it.domainName].needsReverify(now) }
             if (only == null) lastFullSweepMs = now
             Logger.i(TAG) { "refreshAll: targets=${targets.size} only=${only?.size} spinner=$showSpinner" }
             if (targets.isEmpty()) return
             coroutineScope {
-                targets.forEach { peer -> launch { refresh(peer, showSpinner) } }
+                targets.forEach { peer -> launch { verifyPermits.withPermit { refresh(peer, showSpinner) } } }
             }
         }
     }

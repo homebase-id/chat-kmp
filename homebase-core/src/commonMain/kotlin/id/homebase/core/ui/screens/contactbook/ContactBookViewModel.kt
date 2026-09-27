@@ -167,9 +167,9 @@ class ContactBookViewModel(
         viewModelScope.launch {
             connectionService.circles.collect { circleState ->
                 val circles = circleState.circles
-                    .filterNot { it.circle.disabled }
                     .sortedWith(
                         compareBy(
+                            { it.circle.disabled },
                             { it.circle.circleSortRank(developerPreferences.connectionReviewEnabled.value) },
                             { it.circle.name.lowercase() },
                         ),
@@ -197,6 +197,7 @@ class ContactBookViewModel(
                             it.pendingMembers
                         },
                         drives = resolveCircleDrives(match.circle),
+                        disabled = match.circle.disabled,
                     )
                 }
                 // Flag off: main's path — re-derive pending live, since it isn't read from the snapshot.
@@ -458,6 +459,7 @@ class ContactBookViewModel(
             }
             is ContactBookUiAction.CircleClicked -> handleCircleClicked(action.circle)
             ContactBookUiAction.CircleMembersDismiss -> _circleMembers.value = null
+            is ContactBookUiAction.CircleEnabledChanged -> handleCircleEnabledChanged(action.circleId, action.enabled)
             is ContactBookUiAction.CircleAddMemberClicked -> _events.tryEmit(
                 ContactBookUiEvent.OpenCircleMemberAdd(action.circleId, action.circleName)
             )
@@ -659,6 +661,8 @@ class ContactBookViewModel(
             circleName = circle.circle.name,
             circleEmoji = circle.circle.emoji.takeIf { reviewEnabled },
             manageable = manageable,
+            disabled = circle.circle.disabled,
+            offersEnableToggle = circle.circle.offersEnableToggle(),
             members = members,
             pendingMembers = if (reviewEnabled) pending else emptyList(),
             isLoading = false,
@@ -722,11 +726,30 @@ class ContactBookViewModel(
         }
     }
 
+    private fun handleCircleEnabledChanged(circleIdRaw: String, enabled: Boolean) {
+        if (_circleMembers.value?.togglingEnabled == true) return
+        fun update(f: (CircleMembersUi) -> CircleMembersUi) =
+            _circleMembers.update { if (it?.circleId == circleIdRaw) f(it) else it }
+        update { it.copy(togglingEnabled = true, toggleError = null) }
+        viewModelScope.launch {
+            try {
+                connectionService.setCircleEnabled(Uuid.parseHex(circleIdRaw), enabled)
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, "ContactBookViewModel") { "setCircleEnabled($enabled) failed for $circleIdRaw" }
+                update { it.copy(toggleError = e.toCircleToggleError()) }
+            } finally {
+                update { it.copy(togglingEnabled = false) }
+            }
+        }
+    }
+
     private fun handleCircleRemoveMember(circleIdRaw: String, member: ContactBookEntry) {
         val odinId = member.odinId?.let(::OdinId) ?: return
         if (member.uniqueId in (_circleMembers.value?.removingMemberIds ?: emptySet())) return
         _circleMembers.update {
-            it?.copy(removingMemberIds = it.removingMemberIds + member.uniqueId)
+            it?.copy(removingMemberIds = it.removingMemberIds + member.uniqueId, removeError = null)
         }
         viewModelScope.launch {
             try {
@@ -745,9 +768,11 @@ class ContactBookViewModel(
                 Logger.w(e, "ContactBookViewModel") { "removeFromCircle failed for $odinId" }
                 _circleMembers.update {
                     if (it?.circleId != circleIdRaw) it
-                    else it.copy(removingMemberIds = it.removingMemberIds - member.uniqueId)
+                    else it.copy(
+                        removingMemberIds = it.removingMemberIds - member.uniqueId,
+                        removeError = ContactBookError.CircleActionFailed,
+                    )
                 }
-                _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.CircleActionFailed))
             }
         }
     }

@@ -80,7 +80,6 @@ class ComposerKeyActionTest {
                         onKeyboardClick = {},
                         onAddAttachmentClick = {},
                         onCameraClick = {},
-                        onVideoRecordClick = {},
                         onRecordingStarted = {},
                         onRecordingStopped = {},
                         onRecordingCancelled = {},

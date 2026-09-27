@@ -7,7 +7,7 @@ import androidx.compose.ui.Modifier
 expect fun LocalVideoPlayerSurface(
     filePath: String,
     modifier: Modifier = Modifier,
-    onFirstFrameRendered: () -> Unit = {},
+    onFirstFrameRendered: (() -> Unit)? = null,
 )
 
 /**
@@ -27,5 +27,5 @@ expect fun TrimmableVideoPlayerSurface(
     seekRequestMs: Long?,
     onPositionMs: (Long) -> Unit,
     modifier: Modifier = Modifier,
-    onFirstFrameRendered: () -> Unit = {},
+    onFirstFrameRendered: (() -> Unit)? = null,
 )

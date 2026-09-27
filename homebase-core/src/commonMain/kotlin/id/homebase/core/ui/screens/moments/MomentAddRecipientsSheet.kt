@@ -39,6 +39,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.FallbackAvatar
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.moments.services.MomentsRecipient
+import id.homebase.core.moments.services.isDisabledCircle
 import id.homebase.core.moments.services.MomentsRecipientId
 import id.homebase.core.moments.services.MomentsRecipientsSnapshot
 import id.homebase.resources.MR
@@ -213,7 +214,7 @@ private fun AddRecipientRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = !locked, onClick = onClick)
+            .clickable(enabled = !locked && !recipient.isDisabledCircle, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),

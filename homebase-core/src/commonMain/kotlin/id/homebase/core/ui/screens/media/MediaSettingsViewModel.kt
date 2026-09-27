@@ -25,6 +25,7 @@ class MediaSettingsViewModel(
                         mediaQuality = prefs.mediaQuality,
                         autoSaveIncomingMedia = prefs.autoSaveIncomingMedia,
                         autoSaveOnUnmeteredOnly = prefs.autoSaveOnUnmeteredOnly,
+                        mirrorFrontCamera = prefs.mirrorFrontCamera,
                     )
                 }
             }
@@ -43,6 +44,10 @@ class MediaSettingsViewModel(
 
             is MediaSettingsUiAction.SetAutoSaveOnUnmeteredOnly -> {
                 userPreferences.autoSaveOnUnmeteredOnly = action.enabled
+            }
+
+            is MediaSettingsUiAction.SetMirrorFrontCamera -> {
+                userPreferences.mirrorFrontCamera = action.enabled
             }
         }
     }

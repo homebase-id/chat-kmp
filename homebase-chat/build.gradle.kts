@@ -155,6 +155,7 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.ktor.client.mock)
             implementation(libs.okio.fakefilesystem)
+            implementation(libs.androidx.navigationevent)
         }
     }
 

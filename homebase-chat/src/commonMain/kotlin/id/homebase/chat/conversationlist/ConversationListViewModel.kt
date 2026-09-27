@@ -305,7 +305,6 @@ class ConversationListViewModel(
         messagesUiState = _messagesUiState,
         conversationService = conversationService,
         conversationStream = conversationStream,
-        connectionRequestService = connectionRequestService,
         credentialsManager = credentialsManager,
         sendEvent = ::sendEvent,
         dispatch = ::onAction,
@@ -1530,8 +1529,6 @@ class ConversationListViewModel(
             is ConversationListUiAction.ConnectIdentities -> conversationLifecycleHandler.handleConnectIdentities(action)
 
             is ConversationListUiAction.ConnectToIdentity -> conversationLifecycleHandler.handleConnectToIdentity(action)
-
-            is ConversationListUiAction.AutoConnect -> conversationLifecycleHandler.handleAutoConnect(action)
 
             is ConversationListUiAction.OpenConnectionRequestInOwnerConsole -> conversationLifecycleHandler.handleOpenConnectionRequestInOwnerConsole(action)
 

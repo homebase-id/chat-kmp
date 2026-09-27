@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -15,6 +16,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,6 +29,7 @@ import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.resources.MR
 import id.homebase.resources.enroll_banner
 import id.homebase.resources.enroll_banner_action
+import id.homebase.resources.contactbook_circle_disabled
 import id.homebase.resources.contactbook_circle_new
 import id.homebase.resources.contactbook_circle_unvetted
 import id.homebase.resources.contactbook_circles_empty
@@ -42,6 +45,7 @@ fun CirclesTabContent(
     candidateCount: Int = 0,
     /** Dark launch: off keeps main's "Unvetted" label and no emoji. */
     reviewEnabled: Boolean = false,
+    listState: LazyListState,
 ) {
     when {
         loading && circles.isEmpty() -> Box(
@@ -67,6 +71,7 @@ fun CirclesTabContent(
                 if (reviewEnabled) MR.string.contactbook_circle_new else MR.string.contactbook_circle_unvetted
             )
             LazyColumn(
+                state = listState,
                 modifier = modifier.fillMaxSize(),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
@@ -122,9 +127,23 @@ fun CirclesTabContent(
                             }
                         },
                         headlineContent = { Text(displayName) },
-                        supportingContent = if (!description.isNullOrBlank()) {
-                            { Text(description) }
-                        } else null,
+                        supportingContent = when {
+                            circle.circle.disabled -> {
+                                { Text(stringResource(MR.string.contactbook_circle_disabled)) }
+                            }
+                            !description.isNullOrBlank() -> {
+                                { Text(description) }
+                            }
+                            else -> null
+                        },
+                        colors = if (circle.circle.disabled) {
+                            ListItemDefaults.colors(
+                                headlineColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                leadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            ListItemDefaults.colors()
+                        },
                         trailingContent = {
                             Icon(
                                 Icons.AutoMirrored.Filled.KeyboardArrowRight,

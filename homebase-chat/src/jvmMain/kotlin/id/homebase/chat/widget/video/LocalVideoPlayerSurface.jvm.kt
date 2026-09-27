@@ -7,9 +7,9 @@ import androidx.compose.ui.Modifier
 actual fun LocalVideoPlayerSurface(
     filePath: String,
     modifier: Modifier,
-    onFirstFrameRendered: () -> Unit,
+    onFirstFrameRendered: (() -> Unit)?,
 ) {
-    VlcjPlayer(videoPath = filePath, modifier = modifier, onFirstFrameRendered = onFirstFrameRendered)
+    VlcjPlayer(videoPath = filePath, modifier = modifier, onFirstFrameRendered = onFirstFrameRendered ?: {})
 }
 
 @Composable
@@ -21,12 +21,12 @@ actual fun TrimmableVideoPlayerSurface(
     seekRequestMs: Long?,
     onPositionMs: (Long) -> Unit,
     modifier: Modifier,
-    onFirstFrameRendered: () -> Unit,
+    onFirstFrameRendered: (() -> Unit)?,
 ) {
     VlcjPlayer(
         videoPath = filePath,
         modifier = modifier,
-        onFirstFrameRendered = onFirstFrameRendered,
+        onFirstFrameRendered = onFirstFrameRendered ?: {},
         showControls = false,
         clipStartMs = clipStartMs,
         clipEndMs = clipEndMs,

@@ -61,5 +61,8 @@ sealed interface MomentsRecipient {
         val memberCount: Int,
         /** The underlying circle's id (32-char N-format). */
         val circleId: String,
+        val disabled: Boolean = false,
     ) : MomentsRecipient
 }
+
+val MomentsRecipient.isDisabledCircle: Boolean get() = this is MomentsRecipient.Circle && disabled
