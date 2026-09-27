@@ -63,6 +63,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
@@ -243,6 +244,7 @@ import id.homebase.imageeditor.ui.CropScreen
 import id.homebase.imageeditor.ui.DrawScreen
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import androidx.navigation.toRoute
 import org.koin.compose.viewmodel.koinViewModel
@@ -280,6 +282,12 @@ private const val SHOW_ARCHIVED_KEY = "showArchived"
 private val NavigationRailWidth = 64.dp
 private val RailIndicatorSize = 48.dp
 private val RailIconSize = 20.dp
+
+// Requesting focus (and so the IME) before the destination's slide-in settles
+// resizes the screen mid-transition.
+private suspend fun AnimatedContentScope.awaitEnterTransitionSettled() {
+    snapshotFlow { transition.isRunning }.first { !it }
+}
 
 @Composable
 fun AppNavHost(
@@ -1350,7 +1358,9 @@ fun AppNavHost(
                                         // From a chat flow: a contact is only useful with a
                                         // Homebase ID, so hide manual entry.
                                         navController.navigate(Route.AddContact(identityOnly = true))
-                                    })
+                                    },
+                                    awaitEnterTransition = { awaitEnterTransitionSettled() },
+                                )
                             }
                         }
 
@@ -1361,7 +1371,9 @@ fun AppNavHost(
                                     onNavigateBack = { navController.popBackStack() },
                                     onMembersSelected = { ids ->
                                         navController.navigate(Route.CreateConversationGroup(ids))
-                                    })
+                                    },
+                                    awaitEnterTransition = { awaitEnterTransitionSettled() },
+                                )
                             }
                         }
 

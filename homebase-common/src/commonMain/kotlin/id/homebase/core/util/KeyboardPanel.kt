@@ -22,6 +22,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.dp
@@ -96,10 +97,11 @@ class KeyboardPanelState internal constructor(
 fun rememberKeyboardPanelState(
     imeOffsetState: ImeOffsetState = rememberImeOffsetState(),
     hasSoftKeyboard: Boolean = isMobile(),
+    fallbackHeight: Dp = FallbackPanelHeight,
 ): KeyboardPanelState {
     val ime = rememberUpdatedState(imeOffsetState)
     val windowSize = rememberUpdatedState(LocalWindowInfo.current.containerSize)
-    val fallbackPx = with(LocalDensity.current) { FallbackPanelHeight.roundToPx() }
+    val fallbackPx = with(LocalDensity.current) { fallbackHeight.roundToPx() }
     val state = remember { KeyboardPanelState(ime, windowSize, fallbackPx, hasSoftKeyboard) }
     val spec by rememberUpdatedState(MaterialTheme.motionScheme.fastSpatialSpec<Int>())
 

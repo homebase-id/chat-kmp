@@ -3,8 +3,6 @@ package id.homebase.chat.widget
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -77,14 +75,13 @@ fun UnifiedInputBubble(
     Row(
         modifier = modifier
             .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = if (editExistingMode || replyToMessage != null)
-            Alignment.Bottom else Alignment.CenterVertically,
+        verticalAlignment = Alignment.Bottom,
     ) {
         // Left FAB: Cancel — only in edit mode
         AnimatedVisibility(
             visible = editExistingMode,
-            enter = signalExpandHorizontally,
-            exit = signalShrinkHorizontally,
+            enter = signalExpandHorizontally(),
+            exit = signalShrinkHorizontally(),
         ) {
             Row {
                 IconButton(
@@ -111,7 +108,7 @@ fun UnifiedInputBubble(
             modifier = Modifier
                 .weight(1f)
                 .animateContentSize(
-                    animationSpec = tween(SIGNAL_TRANSITION_MS, easing = FastOutSlowInEasing),
+                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
                 ),
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surfaceVariant,
@@ -121,8 +118,8 @@ fun UnifiedInputBubble(
                 val replyTransition = updateTransition(replyToMessage, label = "replyPreview")
                 replyTransition.AnimatedVisibility(
                     visible = { it != null },
-                    enter = expandVertically(tween(SIGNAL_TRANSITION_MS)),
-                    exit = shrinkVertically(tween(SIGNAL_TRANSITION_MS)),
+                    enter = expandVertically(MaterialTheme.motionScheme.fastSpatialSpec()),
+                    exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()),
                 ) {
                     // Exiting, the target is already null; shrink the reply that was showing.
                     (replyTransition.targetState ?: replyTransition.currentState)?.let { reply ->
@@ -144,8 +141,8 @@ fun UnifiedInputBubble(
                 // Edit message label
                 AnimatedVisibility(
                     visible = editExistingMode,
-                    enter = signalFadeIn,
-                    exit = signalFadeOut,
+                    enter = signalFadeIn(),
+                    exit = signalFadeOut(),
                 ) {
                     Row(
                         modifier = Modifier
@@ -176,12 +173,14 @@ fun UnifiedInputBubble(
         // Right FAB — fades out during recording, cross-fades between icons
         AnimatedVisibility(
             visible = !isRecordingActive,
-            enter = signalFadeIn,
-            exit = signalFadeOut,
+            enter = signalFadeIn(),
+            exit = signalFadeOut(),
         ) {
             Row {
                 Spacer(modifier = Modifier.width(8.dp))
 
+                val fabToggleIn = signalToggleIn()
+                val fabToggleOut = signalToggleOut()
                 val fabAction = when {
                     editExistingMode -> BubbleFabAction.Confirm
                     showSendButton -> BubbleFabAction.Send
@@ -218,7 +217,7 @@ fun UnifiedInputBubble(
                     ) {
                         AnimatedContent(
                             targetState = fabAction,
-                            transitionSpec = { signalToggleIn togetherWith signalToggleOut },
+                            transitionSpec = { fabToggleIn togetherWith fabToggleOut },
                             label = "fab_icon_toggle",
                         ) { action ->
                             Icon(

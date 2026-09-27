@@ -122,7 +122,9 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
+import id.homebase.core.util.keyboardPanelSlot
 import id.homebase.core.util.programmaticBackspace
+import id.homebase.core.util.rememberKeyboardPanelState
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.core.widget.composerKeyHandler
 import id.homebase.core.widget.EmojiAutocomplete
@@ -691,8 +693,8 @@ fun MessageTextFieldCompact(
     ) {
         AnimatedVisibility(
             visible = !isRecordingActive,
-            enter = signalFadeIn,
-            exit = signalFadeOut,
+            enter = signalFadeIn(),
+            exit = signalFadeOut(),
         ) {
             Column {
                 if (isDesktopOrWeb()) {
@@ -984,8 +986,8 @@ fun MessageTextFieldCompact(
                     Column {
                         AnimatedVisibility(
                             visible = editExistingMode,
-                            enter = signalFadeIn,
-                            exit = signalFadeOut,
+                            enter = signalFadeIn(),
+                            exit = signalFadeOut(),
                         ) {
                             Column {
                                 IconButton(
@@ -1017,6 +1019,8 @@ fun MessageTextFieldCompact(
                             StandaloneFabAction.Send -> "send_fab"
                             StandaloneFabAction.Attach -> "attachment_fab"
                         }
+                        val standaloneToggleIn = signalToggleIn()
+                        val standaloneToggleOut = signalToggleOut()
                         IconButton(
                             onClick = fabClick,
                             enabled = fabEnabled,
@@ -1030,7 +1034,7 @@ fun MessageTextFieldCompact(
                         ) {
                             AnimatedContent(
                                 targetState = standaloneFab,
-                                transitionSpec = { signalToggleIn togetherWith signalToggleOut },
+                                transitionSpec = { standaloneToggleIn togetherWith standaloneToggleOut },
                                 label = "standalone_fab_icon_toggle",
                             ) { action ->
                                 Icon(
@@ -1246,12 +1250,39 @@ fun MessageTextFieldForAttachment(
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
     var hasSent by remember { mutableStateOf(false) }
-    var showEmojiPicker by remember { mutableStateOf(false) }
     val autocomplete = rememberComposerAutocompleteController()
     val isKeyboardVisible by keyboardAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val captionFocusRequester = remember { FocusRequester() }
+
+    // The media pager is the only weighted child of MediaAttachmentEditor's Column, so it
+    // absorbs every dp this panel takes; cap against the viewport (the StickerMessage idiom)
+    // so a flat 300dp doesn't measure it to 0 on a landscape phone.
+    val viewportHeightPx = LocalWindowInfo.current.containerSize.height
+    val panelHeight = with(LocalDensity.current) {
+        if (viewportHeightPx > 0)
+            minOf(EMOJI_PANEL_HEIGHT, viewportHeightPx.toDp() * EMOJI_PANEL_MAX_HEIGHT_FRACTION)
+        else EMOJI_PANEL_HEIGHT
+    }
+    // keyboardHandledByHost: MediaAttachmentEditor already wraps bottomBar() in a
+    // WindowInsets.ime padding, so the keyboard-to-panel handoff snaps instead of
+    // double-animating against that padding's own shrink.
+    val emojiPanel = rememberKeyboardPanelState(fallbackHeight = panelHeight)
+
+    fun setEmojiPicker(visible: Boolean) {
+        if (emojiPanel.isOpen == visible) return
+        if (visible) emojiPanel.open() else emojiPanel.close()
+        onEmojiPickerVisibilityChanged(visible)
+    }
+
+    // The keyboard is about to rise and cover the same reserved height, so keep
+    // reserving it instead of shrinking the panel out from under the rising keyboard.
+    fun closeEmojiPickerForKeyboard() {
+        if (!emojiPanel.isOpen) return
+        emojiPanel.closeForKeyboard()
+        onEmojiPickerVisibilityChanged(false)
+    }
 
     // Only where a hardware keyboard is a given: on mobile this would raise the IME
     // over the very media the caption describes.
@@ -1259,13 +1290,7 @@ fun MessageTextFieldForAttachment(
         if (isDesktopOrWeb()) captionFocusRequester.requestFocus()
     }
 
-    fun setEmojiPicker(visible: Boolean) {
-        if (showEmojiPicker == visible) return
-        showEmojiPicker = visible
-        onEmojiPickerVisibilityChanged(visible)
-    }
-
-    @Suppress("DEPRECATION") BackHandler(showEmojiPicker) { setEmojiPicker(false) }
+    @Suppress("DEPRECATION") BackHandler(emojiPanel.isOpen) { setEmojiPicker(false) }
 
     EmojiShortcodeEffect(state)
 
@@ -1287,7 +1312,7 @@ fun MessageTextFieldForAttachment(
                     modifier = Modifier.fillMaxWidth().testTag(ATTACHMENT_CAPTION_FIELD_TAG)
                         .focusRequester(captionFocusRequester)
                         // Tapping into the caption closes the panel; the keyboard reclaims the space.
-                        .onFocusChanged { if (it.isFocused) setEmojiPicker(false) }
+                        .onFocusChanged { if (it.isFocused) closeEmojiPickerForKeyboard() }
                         .composerKeyHandler(
                             autocomplete = autocomplete,
                             enterSendsMessage = enterSendsMessage,
@@ -1305,7 +1330,7 @@ fun MessageTextFieldForAttachment(
                     leadingIcon = {
                         IconButton(
                             onClick = {
-                                if (showEmojiPicker) {
+                                if (emojiPanel.isOpen) {
                                     setEmojiPicker(false)
                                 } else {
                                     keyboardController?.hide()
@@ -1382,19 +1407,10 @@ fun MessageTextFieldForAttachment(
         }
 
         // Emoji only, no sticker/GIF tabs: a caption is text, and a sticker isn't.
-        AnimatedVisibility(visible = showEmojiPicker) {
-            // MediaAttachmentEditor's media pager is the only weighted child of its
-            // Column, so it absorbs every dp this panel takes; a flat 300 dp measures
-            // it to 0 on a landscape phone and the attachment disappears. Cap against
-            // the viewport (the StickerMessage idiom) so the pager always keeps room.
-            val viewportHeightPx = LocalWindowInfo.current.containerSize.height
-            val panelHeight = with(LocalDensity.current) {
-                if (viewportHeightPx > 0)
-                    minOf(EMOJI_PANEL_HEIGHT, viewportHeightPx.toDp() * EMOJI_PANEL_MAX_HEIGHT_FRACTION)
-                else EMOJI_PANEL_HEIGHT
-            }
+        if (emojiPanel.isPanelComposed) {
             EmojiSelection(
-                modifier = Modifier.fillMaxWidth().height(panelHeight)
+                modifier = Modifier.fillMaxWidth()
+                    .keyboardPanelSlot(emojiPanel, keyboardHandledByHost = true)
                     .testTag(ATTACHMENT_EMOJI_PICKER_TAG),
                 messageInputMode = true,
                 onBackSpace = { state.programmaticBackspace() },
