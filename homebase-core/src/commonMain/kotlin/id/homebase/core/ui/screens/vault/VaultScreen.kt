@@ -316,10 +316,18 @@ fun VaultScreen(
         isPickerActive = isPickerActive,
         onPickerHandled = { isPickerActive = false },
     ) {
+        val showGridChrome = uiState.fullScreenOverlay == null && uiState.pendingEditor == null
+        val motion = MaterialTheme.motionScheme
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
-                if (uiState.fullScreenOverlay == null && uiState.pendingEditor == null) {
+                // Fade only, no expand/shrink — the bar's height (and so Scaffold's innerPadding)
+                // stays put while the grid underneath is still fading out.
+                AnimatedVisibility(
+                    visible = showGridChrome,
+                    enter = fadeIn(motion.defaultEffectsSpec()),
+                    exit = fadeOut(motion.defaultEffectsSpec()),
+                ) {
                     TopAppBar(
                         title = { Text(stringResource(MR.string.vault_label)) },
                         actions = {
@@ -334,7 +342,11 @@ fun VaultScreen(
                 }
             },
             floatingActionButton = {
-                if (uiState.sections.isNotEmpty() && uiState.fullScreenOverlay == null && uiState.pendingEditor == null) {
+                AnimatedVisibility(
+                    visible = uiState.sections.isNotEmpty() && showGridChrome,
+                    enter = fadeIn(motion.defaultEffectsSpec()),
+                    exit = fadeOut(motion.defaultEffectsSpec()),
+                ) {
                     VaultAddSectionControl(onAddSection = { showNewSectionSheet = true })
                 }
             },
