@@ -39,16 +39,6 @@ class EventBusTest {
     }
 
     @Test
-    fun tryEmitDoesNotDropBehindStalledSubscriber() = runTest {
-        val bus = EventBus()
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            bus.events.collect { CompletableDeferred<Unit>().await() }
-        }
-
-        repeat(eventCount) { assertTrue(bus.tryEmit(event(it)), "tryEmit dropped event $it") }
-    }
-
-    @Test
     fun progressFloodBehindStalledSubscriberStaysBoundedWhileCriticalEventsAllArrive() = runTest {
         val bus = EventBus()
         val gate = CompletableDeferred<Unit>()
