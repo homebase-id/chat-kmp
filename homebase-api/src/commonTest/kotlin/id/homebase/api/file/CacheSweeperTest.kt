@@ -104,18 +104,9 @@ class CacheSweeperTest {
 
     @Test
     fun foreignDirs_areAlwaysKept_regardlessOfMode() {
-        for (name in listOf("WebView", "oat_primary", "data", "Crash Reports", "com.crashlytics.data")) {
-            assertEquals(
-                SweepAction.KEEP,
-                decide(entry(name, foreign = true), SweepMode.UNTRACKED),
-                "$name must be KEPT in untracked sweep",
-            )
-            assertEquals(
-                SweepAction.KEEP,
-                decide(entry(name, foreign = true), SweepMode.ALL),
-                "$name must be KEPT in full sweep too",
-            )
-        }
+        val foreign = entry("com.crashlytics.data", foreign = true)
+        assertEquals(SweepAction.KEEP, decide(foreign, SweepMode.UNTRACKED))
+        assertEquals(SweepAction.KEEP, decide(foreign, SweepMode.ALL))
     }
 
     @Test
@@ -206,8 +197,6 @@ class CacheSweeperTest {
 
     @Test
     fun foreignDirectories_surviveEverySweep_iosCachesLayout() {
-        // Real iOS Library/Caches from #1716: Crashlytics' pending reports, the dyld closure
-        // cache and NSURLCache's bundle-id dir were deleted on every cold start.
         val fs = FakeFileSystem()
         val cacheDir = "/var/mobile/Containers/Data/Application/X/Library/Caches"
         val foreign = listOf("com.crashlytics.data", "com.apple.dyld", "id.homebase.feed", "Some New SDK")

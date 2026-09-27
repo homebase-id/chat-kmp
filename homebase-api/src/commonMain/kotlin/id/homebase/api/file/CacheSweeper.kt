@@ -50,8 +50,6 @@ object CacheSweeper {
      * tracked Coil DiskCache directories. Foreign directories are still kept.
      */
     fun sweepAll(report: CacheAudit.Report, fileSystem: FileSystem = systemFileSystem) {
-        // sweepAll deletes tracked too, but foreign dirs stay — so the truthful
-        // "deleting" total is everything except foreign.
         val deleting = report.untrackedBytes + report.knownBytes
         Logger.i(tag = TAG) {
             "sweepAll: cacheDir=${report.cacheDirPath} " +

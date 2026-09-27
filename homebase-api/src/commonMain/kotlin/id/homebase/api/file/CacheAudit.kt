@@ -60,22 +60,14 @@ object CacheAudit {
     const val UPLOAD_TEMP_DIR_NAME: String = "upload-temp"
     const val OUTBOX_TEMP_DIR_NAME: String = "outbox-temp"
 
-    /**
-     * Top-level directories are swept only when positively identified as ours: the OS and
-     * third-party SDKs namespace their data in directories here (iOS `com.crashlytics.data/`
-     * holds pending crash reports, `com.apple.dyld/`; Android `WebView/`, `Crash Reports/`), and
-     * a keep-list silently deleted every one it didn't name. Loose files stay sweepable because
-     * several of our writers use user-supplied names at the cache root.
-     */
+    // Allowlist: the OS and SDKs namespace their data in directories here. Loose files stay
+    // sweepable because some of our writers use user-supplied names at the cache root.
     fun isOwnedDirectory(name: String): Boolean =
-        name in KNOWN_CACHE_DIRS ||
-            name == UPLOAD_TEMP_DIR_NAME ||
-            name == OUTBOX_TEMP_DIR_NAME ||
-            name == SHARE_OUTBOUND_DIR_NAME ||
-            name == ORPHAN_COIL_DIR_NAME ||
-            name == "share_temp" ||
-            OWNED_DIR_PREFIXES.any { name.startsWith(it) }
+        name in OWNED_DIR_NAMES || OWNED_DIR_PREFIXES.any { name.startsWith(it) }
 
+    private val OWNED_DIR_NAMES = KNOWN_CACHE_DIRS + setOf(
+        UPLOAD_TEMP_DIR_NAME, OUTBOX_TEMP_DIR_NAME, SHARE_OUTBOUND_DIR_NAME, ORPHAN_COIL_DIR_NAME, "share_temp",
+    )
     private val OWNED_DIR_PREFIXES = listOf("homebase-", "hls_", "hbvid_", "vts_")
 
     /** A single top-level entry of the cache directory. */
@@ -85,7 +77,6 @@ object CacheAudit {
         val sizeBytes: Long,
         /** True when [name] is one of [KNOWN_CACHE_DIRS]. */
         val known: Boolean,
-        /** A directory not [isOwnedDirectory] — never swept, in any mode. */
         val foreign: Boolean = false,
         /** Best-guess human-readable origin, for the log line. Diagnostic only. */
         val label: String,
