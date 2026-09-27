@@ -18,8 +18,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class ServerExceptionMessageTest {
 
@@ -57,11 +55,10 @@ class ServerExceptionMessageTest {
         val e = assertFailsWith<ServerException> { provider.follow(request) }
 
         assertEquals("9c0b1703-d648-4027-b993-7ab0a54eca99", e.correlationId)
-        val message = e.message.orEmpty()
-        assertTrue("9c0b1703-d648-4027-b993-7ab0a54eca99" in message, message)
-        assertTrue("status=500" in message, message)
-        assertTrue("Internal Server Error" in message, message)
-        assertTrue("unhandledScenario" in message, message)
+        assertEquals(
+            "Internal Server Error (status=500, errorCode=unhandledScenario, correlationId=9c0b1703-d648-4027-b993-7ab0a54eca99)",
+            e.message,
+        )
     }
 
     @Test
@@ -71,6 +68,5 @@ class ServerExceptionMessageTest {
         val e = assertFailsWith<ServerException> { provider.follow(request) }
 
         assertEquals("Server error (status=502)", e.message)
-        assertFalse("html" in e.message.orEmpty())
     }
 }
