@@ -256,8 +256,9 @@ fun CreateConversationGroupUi(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(16.dp),
             ) {
-                items(uiState.contacts) { contact ->
+                items(uiState.contacts, key = { it.id.toString() }) { contact ->
                     ContactItem(
+                        modifier = Modifier.animateItem(),
                         name = contact.name,
                         subTitle = contact.odinId.domainName,
                         odinId = contact.odinId,

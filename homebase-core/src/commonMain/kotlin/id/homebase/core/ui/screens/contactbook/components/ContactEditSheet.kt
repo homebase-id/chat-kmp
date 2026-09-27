@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.contactbook.components
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,6 +57,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import id.homebase.api.util.cleanDomain
@@ -310,26 +312,30 @@ fun ContactEditSheet(
                         )
                     }
                     val removeDesc = stringResource(MR.string.contactbook_edit_remove)
+                    val rowResize = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
                     // Additional phones use the same E.164 control + validation as the primary number.
-                    addPhones.forEachIndexed { i, entry ->
-                        key(entry.id) {
-                            PhoneNumberField(
-                                e164Value = entry.value,
-                                onValueChange = { addPhones = addPhones.replaceAt(i, entry.copy(value = it)) },
-                                label = stringResource(MR.string.contactbook_edit_phone),
-                                isError = entry.value.isNotBlank() &&
-                                    !ContactFieldValidation.isValidPhone(entry.value),
-                                errorText = phoneErrorText,
-                                trailingIcon = {
-                                    IconButton(
-                                        onClick = { addPhones = addPhones.filterNot { it.id == entry.id } },
-                                        enabled = !saving,
-                                    ) {
-                                        Icon(Icons.Outlined.Close, contentDescription = removeDesc)
-                                    }
-                                },
-                                modifier = fieldModifier,
-                            )
+                    // The viewport is capped (full-height sheet, keyboard), so only this node's height changes.
+                    Column(Modifier.fillMaxWidth().animateContentSize(rowResize)) {
+                        addPhones.forEachIndexed { i, entry ->
+                            key(entry.id) {
+                                PhoneNumberField(
+                                    e164Value = entry.value,
+                                    onValueChange = { addPhones = addPhones.replaceAt(i, entry.copy(value = it)) },
+                                    label = stringResource(MR.string.contactbook_edit_phone),
+                                    isError = entry.value.isNotBlank() &&
+                                        !ContactFieldValidation.isValidPhone(entry.value),
+                                    errorText = phoneErrorText,
+                                    trailingIcon = {
+                                        IconButton(
+                                            onClick = { addPhones = addPhones.filterNot { it.id == entry.id } },
+                                            enabled = !saving,
+                                        ) {
+                                            Icon(Icons.Outlined.Close, contentDescription = removeDesc)
+                                        }
+                                    },
+                                    modifier = fieldModifier,
+                                )
+                            }
                         }
                     }
                     AddMoreButton(
@@ -349,24 +355,26 @@ fun ContactEditSheet(
                         onReset = { draft = draft.copy(email = synced?.email.orEmpty()) },
                     ) { draft = draft.copy(email = it) }
                     val emailErrorText = stringResource(MR.string.contactbook_error_email)
-                    addEmails.forEachIndexed { i, entry ->
-                        key(entry.id) {
-                            Field(
-                                value = entry.value,
-                                label = stringResource(MR.string.contactbook_edit_email),
-                                isError = !ContactFieldValidation.isValidEmail(entry.value),
-                                errorText = emailErrorText,
-                                keyboardType = KeyboardType.Email,
-                                enabled = !saving,
-                                trailingIcon = {
-                                    IconButton(
-                                        onClick = { addEmails = addEmails.filterNot { it.id == entry.id } },
-                                        enabled = !saving,
-                                    ) {
-                                        Icon(Icons.Outlined.Close, contentDescription = removeDesc)
-                                    }
-                                },
-                            ) { addEmails = addEmails.replaceAt(i, entry.copy(value = it)) }
+                    Column(Modifier.fillMaxWidth().animateContentSize(rowResize)) {
+                        addEmails.forEachIndexed { i, entry ->
+                            key(entry.id) {
+                                Field(
+                                    value = entry.value,
+                                    label = stringResource(MR.string.contactbook_edit_email),
+                                    isError = !ContactFieldValidation.isValidEmail(entry.value),
+                                    errorText = emailErrorText,
+                                    keyboardType = KeyboardType.Email,
+                                    enabled = !saving,
+                                    trailingIcon = {
+                                        IconButton(
+                                            onClick = { addEmails = addEmails.filterNot { it.id == entry.id } },
+                                            enabled = !saving,
+                                        ) {
+                                            Icon(Icons.Outlined.Close, contentDescription = removeDesc)
+                                        }
+                                    },
+                                ) { addEmails = addEmails.replaceAt(i, entry.copy(value = it)) }
+                            }
                         }
                     }
                     AddMoreButton(

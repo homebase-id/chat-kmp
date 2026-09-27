@@ -20,25 +20,14 @@ private class AndroidMainThreadLivenessProbe : MainThreadLivenessProbe.Probe {
         val handler = Handler(Looper.getMainLooper())
         val running = atomic(true)
         val thread = Thread({
-            while (running.value) {
-                val acked = atomic(false)
-                val postedAtNanos = System.nanoTime()
-                handler.post { acked.value = true }
-
-                val deadlineNanos = postedAtNanos + thresholdMs * 1_000_000
-                while (!acked.value && System.nanoTime() < deadlineNanos) {
-                    Thread.sleep(POLL_STEP_MS)
-                }
-                if (!acked.value) {
-                    // Don't pile up posts on the handler queue: wait out the real ack before
-                    // reporting/ticking again, mirroring the coroutine loop's own behavior.
-                    while (!acked.value && running.value) Thread.sleep(POLL_STEP_MS)
-                    val stalledMs = (System.nanoTime() - postedAtNanos) / 1_000_000
-                    onStalled(stalledMs)
-                }
-
-                Thread.sleep(pollIntervalMs)
-            }
+            runLivenessProbeLoop(
+                thresholdMs = thresholdMs,
+                pollIntervalMs = pollIntervalMs,
+                isRunning = { running.value },
+                sleepMs = Thread::sleep,
+                postToMainThread = { handler.post(it) },
+                onStalled = onStalled,
+            )
         }, "MainThreadLivenessProbe").apply {
             isDaemon = true
             start()
@@ -48,10 +37,6 @@ private class AndroidMainThreadLivenessProbe : MainThreadLivenessProbe.Probe {
             running.value = false
             thread.interrupt()
         }
-    }
-
-    private companion object {
-        const val POLL_STEP_MS = 50L
     }
 }
 
