@@ -1270,18 +1270,16 @@ fun MessageTextFieldForAttachment(
     // double-animating against that padding's own shrink.
     val emojiPanel = rememberKeyboardPanelState(fallbackHeight = panelHeight)
 
-    fun setEmojiPicker(visible: Boolean) {
-        if (emojiPanel.isOpen == visible) return
-        if (visible) emojiPanel.open() else emojiPanel.close()
-        onEmojiPickerVisibilityChanged(visible)
-    }
-
-    // The keyboard is about to rise and cover the same reserved height, so keep
+    // forKeyboard: the keyboard is about to rise and cover the same reserved height, so keep
     // reserving it instead of shrinking the panel out from under the rising keyboard.
-    fun closeEmojiPickerForKeyboard() {
-        if (!emojiPanel.isOpen) return
-        emojiPanel.closeForKeyboard()
-        onEmojiPickerVisibilityChanged(false)
+    fun setEmojiPicker(visible: Boolean, forKeyboard: Boolean = false) {
+        if (emojiPanel.isOpen == visible) return
+        when {
+            visible -> emojiPanel.open()
+            forKeyboard -> emojiPanel.closeForKeyboard()
+            else -> emojiPanel.close()
+        }
+        onEmojiPickerVisibilityChanged(visible)
     }
 
     // Only where a hardware keyboard is a given: on mobile this would raise the IME
@@ -1312,7 +1310,7 @@ fun MessageTextFieldForAttachment(
                     modifier = Modifier.fillMaxWidth().testTag(ATTACHMENT_CAPTION_FIELD_TAG)
                         .focusRequester(captionFocusRequester)
                         // Tapping into the caption closes the panel; the keyboard reclaims the space.
-                        .onFocusChanged { if (it.isFocused) closeEmojiPickerForKeyboard() }
+                        .onFocusChanged { if (it.isFocused) setEmojiPicker(false, forKeyboard = true) }
                         .composerKeyHandler(
                             autocomplete = autocomplete,
                             enterSendsMessage = enterSendsMessage,
