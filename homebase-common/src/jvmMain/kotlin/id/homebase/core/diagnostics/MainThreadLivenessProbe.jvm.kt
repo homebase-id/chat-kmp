@@ -18,23 +18,16 @@ private class JvmMainThreadLivenessProbe : MainThreadLivenessProbe.Probe {
     ): MainThreadLivenessProbe.Handle {
         val running = atomic(true)
         val thread = Thread({
-            while (running.value) {
-                val acked = atomic(false)
-                val postedAtNanos = System.nanoTime()
-                SwingUtilities.invokeLater { acked.value = true }
-
-                val deadlineNanos = postedAtNanos + thresholdMs * 1_000_000
-                while (!acked.value && System.nanoTime() < deadlineNanos) {
-                    Thread.sleep(POLL_STEP_MS)
-                }
-                if (!acked.value) {
-                    while (!acked.value && running.value) Thread.sleep(POLL_STEP_MS)
-                    val stalledMs = (System.nanoTime() - postedAtNanos) / 1_000_000
-                    onStalled(stalledMs)
-                }
-
-                Thread.sleep(pollIntervalMs)
-            }
+            runLivenessProbeLoop(
+                thresholdMs = thresholdMs,
+                pollIntervalMs = pollIntervalMs,
+                pollStepMs = POLL_STEP_MS,
+                isRunning = { running.value },
+                nowMs = { System.nanoTime() / 1_000_000 },
+                sleepMs = Thread::sleep,
+                postToMainThread = { SwingUtilities.invokeLater(it) },
+                onStalled = onStalled,
+            )
         }, "MainThreadLivenessProbe").apply {
             isDaemon = true
             start()

@@ -1,5 +1,6 @@
 package id.homebase.core.diagnostics
 
+import kotlinx.atomicfu.atomic
 import kotlin.concurrent.Volatile
 
 /**
@@ -37,6 +38,42 @@ object MainThreadLivenessProbe {
         pollIntervalMs: Long,
         onStalled: (stalledMs: Long) -> Unit,
     ): Handle? = probe?.start(thresholdMs, pollIntervalMs, onStalled)
+}
+
+/**
+ * The dedicated-thread probe loop, with the clock, sleep and UI-thread post injected so the
+ * Android and JVM actuals share it and tests can drive it on a fake clock. [onStalled] fires once
+ * at [thresholdMs] while the stall is still ongoing — a hang that never ends must still leave a
+ * log line — and once more with the total when the UI thread recovers.
+ */
+internal fun runLivenessProbeLoop(
+    thresholdMs: Long,
+    pollIntervalMs: Long,
+    pollStepMs: Long,
+    isRunning: () -> Boolean,
+    nowMs: () -> Long,
+    sleepMs: (Long) -> Unit,
+    postToMainThread: (() -> Unit) -> Unit,
+    onStalled: (stalledMs: Long) -> Unit,
+) {
+    while (isRunning()) {
+        val acked = atomic(false)
+        val postedAtMs = nowMs()
+        postToMainThread { acked.value = true }
+
+        var reported = false
+        // Wait out the real ack rather than re-posting, so a long hang leaves one sentinel queued.
+        while (!acked.value && isRunning()) {
+            if (!reported && nowMs() - postedAtMs >= thresholdMs) {
+                onStalled(nowMs() - postedAtMs)
+                reported = true
+            }
+            sleepMs(pollStepMs)
+        }
+        if (reported && acked.value) onStalled(nowMs() - postedAtMs)
+
+        sleepMs(pollIntervalMs)
+    }
 }
 
 /**
