@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
@@ -97,10 +98,7 @@ class HomebaseImageLoaderThumbScopeTest {
     @AfterTest
     fun tearDown() {
         httpClient.close()
-        runCatching {
-            Files.walk(java.nio.file.Path.of(tempDir)).sorted(Comparator.reverseOrder())
-                .forEach { Files.deleteIfExists(it) }
-        }
+        File(tempDir).deleteRecursively()
     }
 
     @Test

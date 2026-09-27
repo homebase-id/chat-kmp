@@ -150,8 +150,7 @@ class HomebaseImageLoader(
         }
     }
 
-    // Runs on cacheScope, not the caller: a list row that scrolls away mid-download must not
-    // abort it, or the bytes never reach the disk cache and every pass refetches them.
+    // On cacheScope so a row scrolling away mid-download doesn't abort the disk-cache write.
     private suspend fun loadThumbCoalesced(key: String, load: suspend () -> CachedImage?): CachedImage? {
         val deferred = inFlightThumbsMutex.withLock {
             inFlightThumbs.getOrPut(key) {
