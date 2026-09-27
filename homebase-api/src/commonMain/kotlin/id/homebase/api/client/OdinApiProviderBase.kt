@@ -528,7 +528,7 @@ abstract class OdinApiProviderBase(
             400 -> {
                 val problem = deserialize<ProblemDetails>(response.body)
                 Logger.e(tag = "HttpIO") {
-                    "BadRequest (400) Returned from Server - code: ${problem.errorCodeEnumOrUnhandled()} (raw: ${problem.errorCode()}).  title: ${problem.title}"
+                    "BadRequest (400) Returned from Server - code: ${problem.errorCodeEnumOrUnhandled()} (raw: ${problem.errorCode()}).  title: ${problem.title} correlationId: ${problem.correlationId()}"
                 }
 
                 throw ClientException(
