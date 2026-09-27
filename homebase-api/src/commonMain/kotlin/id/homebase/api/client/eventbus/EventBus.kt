@@ -1,5 +1,6 @@
 package id.homebase.api.client.eventbus
 
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -14,9 +15,28 @@ class EventBus(replay: Int = 1) {
         MutableSharedFlow<BackendEvent>(replay = replay, extraBufferCapacity = Channel.UNLIMITED)
     val events: SharedFlow<BackendEvent> = _events.asSharedFlow()
 
+    // High-volume progress ticks. Each is superseded by the next and the item's end state arrives
+    // losslessly on [events] (ItemCompleted/ItemFailed/…), so a lagging collector may skip ticks.
+    private val _progress = MutableSharedFlow<BackendEvent>(
+        extraBufferCapacity = PROGRESS_BUFFER_CAPACITY,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val progress: SharedFlow<BackendEvent> = _progress.asSharedFlow()
+
     val subscriptionCount: StateFlow<Int> = _events.subscriptionCount
 
-    suspend fun emit(event: BackendEvent) = _events.emit(event)
+    suspend fun emit(event: BackendEvent) {
+        tryEmit(event)
+    }
 
-    fun tryEmit(event: BackendEvent): Boolean = _events.tryEmit(event)
+    fun tryEmit(event: BackendEvent): Boolean =
+        if (event.isProgress) _progress.tryEmit(event) else _events.tryEmit(event)
+
+    private val BackendEvent.isProgress: Boolean
+        get() = this is BackendEvent.OutboxEvent.ItemProgress ||
+            this is BackendEvent.PayloadBundlingEvent.Video.PhaseProgress
+
+    companion object {
+        const val PROGRESS_BUFFER_CAPACITY = 64
+    }
 }

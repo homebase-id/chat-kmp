@@ -823,7 +823,7 @@ class ConversationListViewModel(
 
         // Track upload progress via outbox and payload bundling events
         viewModelScope.launch {
-            eventBus.events.filter { it is BackendEvent.PayloadBundlingEvent.Video.PhaseProgress }
+            eventBus.progress.filter { it is BackendEvent.PayloadBundlingEvent.Video.PhaseProgress }
                 .collect { event ->
                     event as BackendEvent.PayloadBundlingEvent.Video.PhaseProgress
                     _messagesUiState.update { state ->
@@ -838,7 +838,7 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
-            eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemProgress }
+            eventBus.progress.filter { it is BackendEvent.OutboxEvent.ItemProgress }
                 .collect { event ->
                     event as BackendEvent.OutboxEvent.ItemProgress
                     // A header-only update (editing a caption) still streams a

@@ -258,7 +258,7 @@ class MomentsFeedViewModel(
         // EventBus events fire globally keyed by `uniqueId`, and moments use
         // `momentUniqueId` as the file's uniqueId, so the lookups line up.
         viewModelScope.launch {
-            eventBus.events.filter { it is BackendEvent.PayloadBundlingEvent.Video.PhaseProgress }
+            eventBus.progress.filter { it is BackendEvent.PayloadBundlingEvent.Video.PhaseProgress }
                 .collect { event ->
                     event as BackendEvent.PayloadBundlingEvent.Video.PhaseProgress
                     _uiState.update { state ->
@@ -273,7 +273,7 @@ class MomentsFeedViewModel(
         }
 
         viewModelScope.launch {
-            eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemProgress }
+            eventBus.progress.filter { it is BackendEvent.OutboxEvent.ItemProgress }
                 .collect { event ->
                     event as BackendEvent.OutboxEvent.ItemProgress
                     _uiState.update { state ->
