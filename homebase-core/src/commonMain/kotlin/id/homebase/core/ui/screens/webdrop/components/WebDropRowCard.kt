@@ -65,6 +65,7 @@ fun WebDropRowCard(
     onCopyLink: () -> Unit,
     onRevoke: () -> Unit,
     onClear: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val status = row.status
     var confirmRevoke by remember { mutableStateOf(false) }
@@ -114,7 +115,7 @@ fun WebDropRowCard(
     }
     val removed = status == DropStatus.Removed
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
