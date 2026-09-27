@@ -12,14 +12,14 @@ class CacheSweeperTest {
     private fun entry(
         name: String,
         known: Boolean = false,
-        androidSystem: Boolean = false,
+        foreign: Boolean = false,
     ): CacheAudit.Entry =
         CacheAudit.Entry(
             name = name,
             isDirectory = true,
             sizeBytes = 100L,
             known = known,
-            androidSystem = androidSystem,
+            foreign = foreign,
             label = "test",
         )
 
@@ -103,26 +103,23 @@ class CacheSweeperTest {
     }
 
     @Test
-    fun androidSystemDirs_areAlwaysKept_regardlessOfMode() {
-        // Sacred set: WebView/, oat_primary/, data/, Crash Reports/. Even on
-        // logout (full sweep), we don't touch them — they're owned by the
-        // Android platform / WebView / Crashlytics, not the chat app.
-        for (name in listOf("WebView", "oat_primary", "data", "Crash Reports")) {
+    fun foreignDirs_areAlwaysKept_regardlessOfMode() {
+        for (name in listOf("WebView", "oat_primary", "data", "Crash Reports", "com.crashlytics.data")) {
             assertEquals(
                 SweepAction.KEEP,
-                decide(entry(name, androidSystem = true), SweepMode.UNTRACKED),
+                decide(entry(name, foreign = true), SweepMode.UNTRACKED),
                 "$name must be KEPT in untracked sweep",
             )
             assertEquals(
                 SweepAction.KEEP,
-                decide(entry(name, androidSystem = true), SweepMode.ALL),
+                decide(entry(name, foreign = true), SweepMode.ALL),
                 "$name must be KEPT in full sweep too",
             )
         }
     }
 
     @Test
-    fun sweepUntracked_deletes_untrackedEntries_keeps_trackedAndAndroidSystem() {
+    fun sweepUntracked_deletes_untrackedEntries_keeps_trackedAndForeign() {
         val fs = FakeFileSystem()
         val cacheDir = "/data/data/id.homebase.test/cache"
         fs.createDirectories(cacheDir.toPath())
@@ -135,7 +132,7 @@ class CacheSweeperTest {
         // Tracked Coil cache: kept in untracked sweep.
         fs.createDirectories("$cacheDir/homebase-payloads-v2".toPath())
         fs.write("$cacheDir/homebase-payloads-v2/x.bin".toPath()) { write(ByteArray(8)) }
-        // Android system dir: sacred — kept regardless of sweep mode.
+        // Foreign dir: kept regardless of sweep mode.
         fs.createDirectories("$cacheDir/WebView".toPath())
         fs.write("$cacheDir/WebView/cookies.bin".toPath()) { write(ByteArray(8)) }
 
@@ -160,7 +157,7 @@ class CacheSweeperTest {
         )
         assertTrue(
             fs.exists("$cacheDir/WebView".toPath()),
-            "Android system dir is sacred, must survive any sweep",
+            "foreign dir must survive any sweep",
         )
     }
 
@@ -189,7 +186,7 @@ class CacheSweeperTest {
     }
 
     @Test
-    fun sweepAll_deletesEverythingExceptAndroidSystem() {
+    fun sweepAll_deletesEverythingExceptForeign() {
         val fs = FakeFileSystem()
         val cacheDir = "/data/data/id.homebase.test/cache"
         fs.createDirectories(cacheDir.toPath())
@@ -204,6 +201,31 @@ class CacheSweeperTest {
 
         assertFalse(fs.exists("$cacheDir/homebase-payloads-v2".toPath()), "logout sweep deletes tracked too")
         assertFalse(fs.exists("$cacheDir/resolved_99.jpeg".toPath()), "logout sweep deletes untracked too")
-        assertTrue(fs.exists("$cacheDir/WebView".toPath()), "logout sweep still keeps Android system dirs")
+        assertTrue(fs.exists("$cacheDir/WebView".toPath()), "logout sweep still keeps foreign dirs")
+    }
+
+    @Test
+    fun foreignDirectories_surviveEverySweep_iosCachesLayout() {
+        // Real iOS Library/Caches from #1716: Crashlytics' pending reports, the dyld closure
+        // cache and NSURLCache's bundle-id dir were deleted on every cold start.
+        val fs = FakeFileSystem()
+        val cacheDir = "/var/mobile/Containers/Data/Application/X/Library/Caches"
+        val foreign = listOf("com.crashlytics.data", "com.apple.dyld", "id.homebase.feed", "Some New SDK")
+        for (name in foreign) {
+            fs.createDirectories("$cacheDir/$name".toPath())
+            fs.write("$cacheDir/$name/f.bin".toPath()) { write(ByteArray(8)) }
+        }
+        fs.createDirectories("$cacheDir/hls_abc".toPath())
+        fs.write("$cacheDir/hls_abc/index.ts".toPath()) { write(ByteArray(8)) }
+        fs.write("$cacheDir/decrypted download.jpg".toPath()) { write(ByteArray(8)) }
+
+        CacheSweeper.sweepUntracked(CacheAudit.audit(cacheDir, fs), fs)
+        CacheSweeper.sweepAll(CacheAudit.audit(cacheDir, fs), fs)
+
+        for (name in foreign) {
+            assertTrue(fs.exists("$cacheDir/$name/f.bin".toPath()), "$name/ is not ours and must survive")
+        }
+        assertFalse(fs.exists("$cacheDir/hls_abc".toPath()), "our own scratch dir is still reclaimed")
+        assertFalse(fs.exists("$cacheDir/decrypted download.jpg".toPath()), "loose files are still reclaimed")
     }
 }

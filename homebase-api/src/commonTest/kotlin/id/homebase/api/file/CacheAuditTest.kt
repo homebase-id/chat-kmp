@@ -33,7 +33,7 @@ class CacheAuditTest {
 
         assertEquals(300L, report.knownBytes)
         assertEquals(550L, report.untrackedBytes)
-        assertEquals(0L, report.androidSystemBytes)
+        assertEquals(0L, report.foreignBytes)
         assertEquals(850L, report.totalBytes)
         assertEquals(3, report.entries.size)
         // sorted largest-first
@@ -109,34 +109,33 @@ class CacheAuditTest {
     }
 
     @Test
-    fun audit_flagsAndroidSystemDirs_andLabelsThem() {
-        // These four directories live under the app's cacheDir on Android but
-        // are managed by the Android platform / WebView / Crashlytics — never
-        // by us. The audit must mark them so the CacheSweeper can KEEP them
-        // regardless of sweep mode (even on logout / "Clear caches"). Wiping
-        // them would, in order: nuke in-app browser cookies + storage (WebView,
-        // data), force a slow ART re-compile of WebView native libs
-        // (oat_primary), and lose pending crash reports (Crash Reports).
+    fun audit_flagsDirectoriesThatArentOurs_asForeign() {
         val fs = FakeFileSystem()
         fs.createDirectories(cacheDir)
-        fs.writeFile("/cache/WebView/cookies.bin", 100)
-        fs.writeFile("/cache/oat_primary/some.oat", 100)
-        fs.writeFile("/cache/data/x.bin", 100)
-        fs.writeFile("/cache/Crash Reports/report.json", 100)
+        val foreign = listOf("WebView", "oat_primary", "data", "Crash Reports", "com.crashlytics.data", "com.apple.dyld")
+        for (name in foreign) fs.writeFile("/cache/$name/x.bin", 100)
+        val ours = listOf(
+            "homebase-payloads-v2", "homebase-thumbs-v1", "hls_abc", "hbvid_preload", "vts_1",
+            CacheAudit.UPLOAD_TEMP_DIR_NAME, CacheAudit.OUTBOX_TEMP_DIR_NAME, SHARE_OUTBOUND_DIR_NAME,
+            ORPHAN_COIL_DIR_NAME, "share_temp",
+        )
+        for (name in ours) fs.writeFile("/cache/$name/x.bin", 100)
+        fs.writeFile("/cache/unknown-loose-file.bin", 100)
 
         val report = CacheAudit.audit(cacheDir.toString(), fs)
 
-        for (name in listOf("WebView", "oat_primary", "data", "Crash Reports")) {
+        for (name in foreign) {
             val entry = report.entries.single { it.name == name }
-            assertTrue(entry.androidSystem, "$name must be flagged as Android system")
+            assertTrue(entry.foreign, "$name must be flagged foreign")
             assertFalse(entry.known, "$name must not be classified as a tracked Coil cache")
-            assertTrue(entry.label.isNotBlank(), "$name needs a descriptive label")
         }
+        for (name in ours) assertFalse(report.entries.single { it.name == name }.foreign, "$name is ours")
+        assertFalse(report.entries.single { it.name == "unknown-loose-file.bin" }.foreign, "loose files are ours")
     }
 
     @Test
-    fun audit_androidSystemBytes_areBucketedSeparately_notLumpedIntoUntracked() {
-        // Real-device regression: when only sacred dirs lived alongside the
+    fun audit_foreignBytes_areBucketedSeparately_notLumpedIntoUntracked() {
+        // Real-device regression: when only foreign dirs lived alongside the
         // tracked Coil caches, the audit lumped WebView/Crash Reports/etc. into
         // `untrackedBytes`. The sweeper then logged "deleting=N bytes (untracked)"
         // for entries it would actually KEEP, and the post-sweep "freed=0 bytes"
@@ -145,15 +144,15 @@ class CacheAuditTest {
         val fs = FakeFileSystem()
         fs.createDirectories(cacheDir)
         fs.writeFile("/cache/homebase-payloads-v2/x", 100)         // tracked Coil
-        fs.writeFile("/cache/WebView/cookies.bin", 200)            // android system
-        fs.writeFile("/cache/Crash Reports/r.json", 50)            // android system
+        fs.writeFile("/cache/WebView/cookies.bin", 200)            // foreign
+        fs.writeFile("/cache/Crash Reports/r.json", 50)            // foreign
         fs.writeFile("/cache/hls_orphan/index.ts", 400)            // untracked
 
         val report = CacheAudit.audit(cacheDir.toString(), fs)
 
         assertEquals(100L, report.knownBytes, "tracked Coil bucket")
         assertEquals(400L, report.untrackedBytes, "untracked bucket — must NOT include WebView/Crash Reports")
-        assertEquals(250L, report.androidSystemBytes, "android system bucket")
-        assertEquals(750L, report.totalBytes, "total = known + untracked + androidSystem")
+        assertEquals(250L, report.foreignBytes, "foreign bucket")
+        assertEquals(750L, report.totalBytes, "total = known + untracked + foreign")
     }
 }
