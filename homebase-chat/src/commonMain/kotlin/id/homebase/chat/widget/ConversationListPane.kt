@@ -341,10 +341,12 @@ fun ConversationListPane(
                                     )
                                 }
                             }
+                            // Shrinks as well as fades: the actions bound the title slot the search
+                            // field fills, so a fade-only exit snaps the field wider when it ends.
                             AnimatedVisibility(
                                 visible = !uiState.isSearchActive,
-                                enter = fadeIn(enterFade),
-                                exit = fadeOut(exitFade),
+                                enter = fadeIn(enterFade) + expandHorizontally(resize, expandFrom = Alignment.End),
+                                exit = fadeOut(exitFade) + shrinkHorizontally(resize, shrinkTowards = Alignment.End),
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     // One pin, either direction (#1012): I'm sharing with anyone OR anyone
