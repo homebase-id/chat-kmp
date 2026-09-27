@@ -23,9 +23,7 @@ private class AndroidMainThreadLivenessProbe : MainThreadLivenessProbe.Probe {
             runLivenessProbeLoop(
                 thresholdMs = thresholdMs,
                 pollIntervalMs = pollIntervalMs,
-                pollStepMs = POLL_STEP_MS,
                 isRunning = { running.value },
-                nowMs = { System.nanoTime() / 1_000_000 },
                 sleepMs = Thread::sleep,
                 postToMainThread = { handler.post(it) },
                 onStalled = onStalled,
@@ -39,10 +37,6 @@ private class AndroidMainThreadLivenessProbe : MainThreadLivenessProbe.Probe {
             running.value = false
             thread.interrupt()
         }
-    }
-
-    private companion object {
-        const val POLL_STEP_MS = 50L
     }
 }
 

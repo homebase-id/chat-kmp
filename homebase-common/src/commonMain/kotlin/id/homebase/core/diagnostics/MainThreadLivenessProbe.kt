@@ -2,6 +2,7 @@ package id.homebase.core.diagnostics
 
 import kotlinx.atomicfu.atomic
 import kotlin.concurrent.Volatile
+import kotlin.time.TimeSource
 
 /**
  * Platform hook for a UI-thread liveness check that runs on a dedicated OS thread rather than
@@ -40,21 +41,16 @@ object MainThreadLivenessProbe {
     ): Handle? = probe?.start(thresholdMs, pollIntervalMs, onStalled)
 }
 
-/**
- * The dedicated-thread probe loop, with the clock, sleep and UI-thread post injected so the
- * Android and JVM actuals share it and tests can drive it on a fake clock. [onStalled] fires once
- * at [thresholdMs] while the stall is still ongoing — a hang that never ends must still leave a
- * log line — and once more with the total when the UI thread recovers.
- */
+// Reports at the threshold while still stalled so an endless hang leaves a line, then the total on recovery.
 internal fun runLivenessProbeLoop(
     thresholdMs: Long,
     pollIntervalMs: Long,
-    pollStepMs: Long,
     isRunning: () -> Boolean,
-    nowMs: () -> Long,
     sleepMs: (Long) -> Unit,
     postToMainThread: (() -> Unit) -> Unit,
     onStalled: (stalledMs: Long) -> Unit,
+    pollStepMs: Long = 50,
+    nowMs: () -> Long = TimeSource.Monotonic.markNow().let { start -> { start.elapsedNow().inWholeMilliseconds } },
 ) {
     while (isRunning()) {
         val acked = atomic(false)

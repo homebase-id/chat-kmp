@@ -15,10 +15,9 @@ class LivenessProbeLoopTest {
             if (blockedDuring.none { nowMs in it }) while (queue.isNotEmpty()) queue.removeFirst()()
         }
 
-        fun run(thresholdMs: Long = 4_000) = runLivenessProbeLoop(
-            thresholdMs = thresholdMs,
+        fun run() = runLivenessProbeLoop(
+            thresholdMs = 4_000,
             pollIntervalMs = 1_000,
-            pollStepMs = 50,
             isRunning = { nowMs < stopAtMs },
             nowMs = { nowMs },
             sleepMs = { nowMs += it; drainIfFree() },
