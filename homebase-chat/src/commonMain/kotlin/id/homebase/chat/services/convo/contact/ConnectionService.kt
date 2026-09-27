@@ -379,6 +379,12 @@ class ConnectionService(
         refresh()
     }
 
+    /** Re-reads rather than patching [circles]: older servers returned 200 without persisting. */
+    suspend fun setCircleEnabled(circleId: Uuid, enabled: Boolean) {
+        if (enabled) provider.enableCircle(circleId) else provider.disableCircle(circleId)
+        refresh()
+    }
+
     /**
      * Main's per-contact pending lookup, kept for the connection-review dark launch: one
      * `/connections/status` read per Connected identity that isn't already a real member.

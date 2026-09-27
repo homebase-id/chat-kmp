@@ -182,19 +182,36 @@ fun TiledMapView(
             fun project(ux: Double, uy: Double): Offset = vp.toPx(ux, uy, size.width, size.height)
 
             // ── Basemap tiles (under the overlay) ──
-            for (key in visibleTiles) {
-                val bitmap = tileBitmaps[key] ?: continue
+            fun drawTile(key: MapTileKey, bitmap: ImageBitmap, srcOffset: IntOffset, srcSize: IntSize) {
                 val b = WebMercator.tileToUnitBounds(key.x, key.y, key.zoom)
                 val topLeft = project(b[0], b[1])
                 val bottomRight = project(b[2], b[3])
                 drawImage(
                     image = bitmap,
+                    srcOffset = srcOffset,
+                    srcSize = srcSize,
                     dstOffset = IntOffset(topLeft.x.roundToInt(), topLeft.y.roundToInt()),
                     dstSize = IntSize(
                         width = (bottomRight.x - topLeft.x).roundToInt().coerceAtLeast(1),
                         height = (bottomRight.y - topLeft.y).roundToInt().coerceAtLeast(1),
                     ),
                 )
+            }
+            fun drawWhole(key: MapTileKey, bitmap: ImageBitmap) =
+                drawTile(key, bitmap, IntOffset.Zero, IntSize(bitmap.width, bitmap.height))
+
+            // A zoom-level change asks for tiles not fetched yet; stand in the cached parent (zooming
+            // in) or children (zooming out) until they land.
+            for (key in visibleTiles) {
+                val bitmap = tileBitmaps[key]
+                if (bitmap != null) {
+                    drawWhole(key, bitmap)
+                    continue
+                }
+                ancestorTile(key) { tileBitmaps[it]?.width }?.let {
+                    drawTile(key, tileBitmaps.getValue(it.key), it.srcOffset, it.srcSize)
+                }
+                for (child in key.children()) tileBitmaps[child]?.let { drawWhole(child, it) }
             }
 
             // ── Caller overlay (traces, playheads, dwell dots, …) ──

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.NetworkCheck
 import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.WavingHand
@@ -60,13 +61,29 @@ import id.homebase.api.client.diagnostics.ProbeStage
 import id.homebase.api.client.diagnostics.ProbeStatus
 import id.homebase.api.client.diagnostics.ResolutionRung
 import id.homebase.api.client.diagnostics.ResolutionSource
+import id.homebase.core.camera.CameraModes
+import id.homebase.core.camera.rememberInAppCameraManager
 import id.homebase.core.clipboard.clipEntryOf
+import id.homebase.core.util.contentType
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.name
+import io.github.vinceglb.filekit.size
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.dev_menu_camera_cancelled
+import id.homebase.resources.dev_menu_camera_result_name
+import id.homebase.resources.dev_menu_camera_result_size
+import id.homebase.resources.dev_menu_camera_result_title
+import id.homebase.resources.dev_menu_camera_result_type
 import id.homebase.resources.dev_menu_clear_data
+import id.homebase.resources.dev_menu_open_camera
+import id.homebase.resources.dev_menu_open_camera_desc
+import id.homebase.resources.ok
 import id.homebase.resources.dev_menu_force_logout
 import id.homebase.resources.dev_menu_force_logout_confirm_action
 import id.homebase.resources.dev_menu_force_logout_confirm_message
@@ -157,6 +174,34 @@ fun DeveloperMenuUi(
     var showForceLogoutConfirm by remember { mutableStateOf(false) }
     val clipboard = LocalClipboard.current
     val clipboardScope = rememberCoroutineScope()
+    var cameraResult by remember { mutableStateOf<CameraCaptureResult?>(null) }
+    val camera = rememberInAppCameraManager(allowedModes = CameraModes.PhotoAndVideo) { file ->
+        clipboardScope.launch { cameraResult = CameraCaptureResult.of(file) }
+    }
+
+    cameraResult?.let { result ->
+        AlertDialog(
+            onDismissRequest = { cameraResult = null },
+            title = { Text(stringResource(MR.string.dev_menu_camera_result_title)) },
+            text = {
+                Text(
+                    if (result.name == null) {
+                        stringResource(MR.string.dev_menu_camera_cancelled)
+                    } else {
+                        listOf(
+                            stringResource(MR.string.dev_menu_camera_result_name, result.name),
+                            stringResource(MR.string.dev_menu_camera_result_size, result.sizeBytes.toString()),
+                            stringResource(MR.string.dev_menu_camera_result_type, result.contentType.orEmpty()),
+                        ).joinToString("\n")
+                    },
+                    modifier = Modifier.testTag("cameraResultText"),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { cameraResult = null }) { Text(stringResource(MR.string.ok)) }
+            },
+        )
+    }
 
     if (showCrashConfirm) {
         AlertDialog(
@@ -313,6 +358,13 @@ fun DeveloperMenuUi(
                 action = SettingsRowAction.Invoke {
                     onAction(DeveloperMenuUiAction.TestTemporalLocationRead)
                 },
+            )
+            SettingsRow(
+                modifier = Modifier.testTag("openCameraRow"),
+                icon = Icons.Outlined.PhotoCamera,
+                title = stringResource(MR.string.dev_menu_open_camera),
+                supportingText = stringResource(MR.string.dev_menu_open_camera_desc),
+                action = SettingsRowAction.Invoke { camera.launch() },
             )
             SettingsRow(
                 modifier = Modifier.testTag("scheduledPushTestRow"),
@@ -515,4 +567,13 @@ private fun buildNetworkSnapshot(d: NetworkDiagnostics): String = buildString {
     }
     if (d.captivePortalSuspected) appendLine("Captive portal suspected")
     if (!d.supported) appendLine("(Network diagnostics unsupported on this platform)")
+}
+
+private data class CameraCaptureResult(val name: String?, val sizeBytes: Long, val contentType: String?) {
+    companion object {
+        suspend fun of(file: PlatformFile?): CameraCaptureResult = withContext(Dispatchers.Default) {
+            if (file == null) CameraCaptureResult(null, 0L, null)
+            else CameraCaptureResult(file.name, file.size(), file.contentType())
+        }
+    }
 }

@@ -10,6 +10,9 @@ enum class HapticEvent {
     /** Light incremental tick — e.g. a rotation-dial scrub crossing a degree. */
     Selection,
 
+    /** A distinct step — flipping a lens, cycling a toggle, crossing a detent. */
+    Tick,
+
     /** Firm press / threshold cross — swipe threshold, press-and-hold, long-press. */
     LongPress,
 

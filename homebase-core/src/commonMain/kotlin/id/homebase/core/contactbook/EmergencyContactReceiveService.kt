@@ -25,8 +25,8 @@ import kotlin.uuid.ExperimentalUuidApi
  *
  * Consume = soft-delete on our OWN identity only (local + server, recipients = null), mirroring
  * [id.homebase.chat.services.convo.GroupHealService]. The ConversationStream dispatcher short-circuits
- * on `content == null`, so a consumed message re-dispatches as a no-op. The flag is the cheap cache;
- * the authoritative backstop is a temporal-access preflight (reconcile, step 8).
+ * on `content == null`, so a consumed message re-dispatches as a no-op. Messages that arrive during
+ * a cold sync are dispatched from the local DB once the sync lands.
  */
 class EmergencyContactReceiveService(
     private val contactRepository: ContactRepository,
@@ -44,11 +44,17 @@ class EmergencyContactReceiveService(
             val uniqueId = Md5.toGuidId(sender.domainName)
             val contact = contactRepository.contacts.value.firstOrNull { it.uniqueId == uniqueId }
             val versionTag = contact?.versionTag
-            when (designationAction(contact != null, contact?.iCanLocate() == true, versionTag != null)) {
+            val action = designationAction(
+                isSelf = emergencyContacts.isSelf(sender),
+                contactExists = contact != null,
+                alreadyICanLocate = contact?.iCanLocate() == true,
+                hasVersionTag = versionTag != null,
+            )
+            when (action) {
                 DesignationAction.SyncOnly -> contactInfo.syncContactRecord(sender)
                 DesignationAction.Consume -> consume(messageFile)
                 DesignationAction.SetThenConsume -> {
-                    contactRepository.setICanLocate(uniqueId, versionTag!!)
+                    emergencyContacts.setICanLocate(sender, uniqueId, versionTag!!)
                     consume(messageFile)
                     emergencyContacts.refreshAsync(sender)
                 }
@@ -117,10 +123,13 @@ internal enum class DesignationAction { SyncOnly, Consume, SetThenConsume, Ignor
  * row exists. Once set (or already set) we consume to neutralise re-deliveries.
  */
 internal fun designationAction(
+    isSelf: Boolean,
     contactExists: Boolean,
     alreadyICanLocate: Boolean,
     hasVersionTag: Boolean,
 ): DesignationAction = when {
+    // You are never your own emergency contact; consume so it isn't re-delivered.
+    isSelf -> DesignationAction.Consume
     !contactExists -> DesignationAction.SyncOnly
     alreadyICanLocate -> DesignationAction.Consume
     hasVersionTag -> DesignationAction.SetThenConsume

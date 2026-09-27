@@ -186,6 +186,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       return typeId
   }
 
+  // The in-app camera pins iPhone to portrait while open; otherwise the Info.plist orientations apply.
+  func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+      if CameraOrientationLock.shared.portraitOnly { return .portrait }
+      return UIDevice.current.userInterfaceIdiom == .pad ? .all : .allButUpsideDown
+  }
+
   func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         Messaging.messaging().apnsToken = deviceToken
   }

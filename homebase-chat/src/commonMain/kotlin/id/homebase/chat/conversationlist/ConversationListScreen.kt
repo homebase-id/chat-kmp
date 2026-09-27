@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.common.OdinId
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
@@ -86,9 +87,6 @@ import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.chat.widget.StickerCreatorSheet
 import id.homebase.core.HomebaseConstants
-import id.homebase.core.connections.ConnectRequestAction
-import id.homebase.core.connections.ConnectRequestBottomSheet
-import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
@@ -177,7 +175,9 @@ fun ConversationListScreen(
     viewModel: ConversationListViewModel,
     archivedConversationsViewModel: ArchivedConversationsViewModel,
     extendPermissionViewModel: ExtendPermissionViewModel,
-    connectRequestViewModel: ConnectRequestViewModel,
+    onOpenConnectRequest: (OdinId) -> Unit,
+    /** Supplied by homebase-core, which owns the Connect sheet and the review it embeds. */
+    connectRequestSheet: @Composable (SnackbarHostState) -> Unit,
     onNavigateBack: () -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
     onNavigateToNewConversation: () -> Unit,
@@ -191,8 +191,6 @@ fun ConversationListScreen(
     onNavigateToMessageInfo: (conversationId: Uuid, messageId: Uuid, fileId: Uuid) -> Unit,
     onNavigateToCropper: (requestId: Uuid) -> Unit = {},
     onNavigateToDrawer: (requestId: Uuid) -> Unit = {},
-    onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
-    onMediaViewerVisibilityChanged: (Boolean) -> Unit = {},
     onComposerVisibilityChanged: (Boolean) -> Unit = {},
     onSaveContactCard: (card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit = { _, _ -> },
     /** Hosts the new-conversation flow inside the list pane on an expanded window instead of
@@ -340,9 +338,7 @@ fun ConversationListScreen(
                 is ConversationListUiEvent.OpenUrl -> fileSystemHandler.openUrl(event.url)
 
                 is ConversationListUiEvent.OpenSendConnectionRequestDialog ->
-                    connectRequestViewModel.onAction(
-                        ConnectRequestAction.OpenDialogWithRecipient(event.odinId)
-                    )
+                    onOpenConnectRequest(event.odinId)
 
                 is ConversationListUiEvent.NavigateToCropper -> onNavigateToCropper(event.requestId)
 
@@ -354,10 +350,7 @@ fun ConversationListScreen(
         }
     }
 
-    ConnectRequestBottomSheet(
-        viewModel = connectRequestViewModel,
-        snackbarHostState = snackbarHostState,
-    )
+    connectRequestSheet(snackbarHostState)
 
     when (val dialog = conversationsUiState.uiDialog) {
         null -> {}
@@ -566,11 +559,9 @@ fun ConversationListScreen(
             messagesSearchTextState = viewModel.messagesSearchTextState,
             onUiAction = viewModel::onAction,
             onNavigateToSettingsScreen = onNavigateToSettingsScreen,
-            onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged,
             newConversationPane = newConversationPane,
             showNewConversationPane = newConversationInPane,
             onNewConversationPaneDismissed = { newConversationInPane = false },
-            onMediaViewerVisibilityChanged = onMediaViewerVisibilityChanged,
             onComposerVisibilityChanged = onComposerVisibilityChanged,
         )
 
@@ -789,14 +780,12 @@ fun ConversationListUi(
     messagesSearchTextState: TextFieldState,
     onUiAction: (ConversationListUiAction) -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
-    onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
     newConversationPane: (@Composable (
         onDismiss: () -> Unit,
         onConversationOpened: (Uuid) -> Unit,
     ) -> Unit)? = null,
     showNewConversationPane: Boolean = false,
     onNewConversationPaneDismissed: () -> Unit = {},
-    onMediaViewerVisibilityChanged: (Boolean) -> Unit = {},
     onComposerVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
@@ -844,9 +833,6 @@ fun ConversationListUi(
         listPaneWasVisible = !isListPaneHidden
     }
 
-    // Notify parent about detail pane visibility in compact view
-    LaunchedEffect(isListPaneHidden) { onDetailPaneVisibilityChanged(isListPaneHidden) }
-
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     LaunchedEffect(isComposerVisible) {
@@ -860,14 +846,8 @@ fun ConversationListUi(
     }
 
     val hoistedMediaViewer = messagesUiState.hoistedMediaViewer(isExpanded)
-    // The rail lives above this screen, so the viewer can only own the window if the rail is told
-    // to stand down — same contract the feed and the Vault gallery already use.
-    LaunchedEffect(hoistedMediaViewer != null) {
-        onMediaViewerVisibilityChanged(hoistedMediaViewer != null)
-    }
     DisposableEffect(Unit) {
         onDispose {
-            onMediaViewerVisibilityChanged(false)
             onComposerVisibilityChanged(false)
         }
     }

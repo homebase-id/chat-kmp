@@ -45,9 +45,9 @@ actual object FFmpegUtils {
         v
     }
 
-    actual suspend fun getDurationMs(inputPath: String): Long {
+    actual suspend fun getDurationMs(inputPath: String): Long = withContext(Dispatchers.IO) {
         val retriever = MediaMetadataRetriever()
-        return try {
+        try {
             // setDataSource(String) requires a filesystem path. FileKit returns
             // content:// URIs for gallery picks — use the (Context, Uri) overload.
             if (inputPath.startsWith("content://") || inputPath.startsWith("content:")) {

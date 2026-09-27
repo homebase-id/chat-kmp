@@ -67,7 +67,6 @@ class ComposerExpandToggleTest {
                         onFocused = {},
                         onAddAttachmentClick = {},
                         onCameraClick = {},
-                        onVideoRecordClick = {},
                         onRecordingStarted = {},
                         onRecordingStopped = {},
                         onRecordingCancelled = {},

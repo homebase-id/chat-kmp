@@ -184,33 +184,39 @@ fun ReactionMenu(
     ownReactions: ImmutableList<String> = persistentListOf(),
     onSelect: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
+    backgroundModifier: Modifier = Modifier,
+    emojiModifier: (index: Int) -> Modifier = { Modifier },
 ) {
     val baseDefaults = listOf("❤️", "👍", "👎", "😂", "😮", "😢")
     val reactions = (userDefaultReactions + baseDefaults).distinctByEmoji().take(6)
     val scrollState = rememberScrollState()
     val haptics = rememberHaptics()
 
-    Surface(
+    // The background is a sibling, not the parent, so fading it doesn't also fade the emoji.
+    Box(
         modifier = modifier
             .wrapContentWidth()
             .padding(top = 4.dp),
-        shape = RoundedCornerShape(12.dp),
-        shadowElevation = 4.dp,
-        tonalElevation = 4.dp
     ) {
+        Surface(
+            modifier = backgroundModifier.matchParentSize(),
+            shape = RoundedCornerShape(12.dp),
+            shadowElevation = 4.dp,
+            tonalElevation = 4.dp,
+        ) {}
         Row(
             modifier = Modifier
                 .horizontalScroll(scrollState)
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            reactions.forEach { emoji ->
+            reactions.forEachIndexed { index, emoji ->
                 val isOwn = ownReactions.containsEmoji(emoji)
                 Surface(
                     shape = CircleShape,
                     color = if (isOwn) MaterialTheme.colorScheme.primaryContainer
                     else Color.Transparent,
-                    modifier = Modifier
+                    modifier = emojiModifier(index)
                         .size(40.dp)
                         .clip(CircleShape)
                         .clickable {
@@ -232,11 +238,12 @@ fun ReactionMenu(
             }
             IconButton(
                 onClick = onShowAllEmojis,
-                modifier = Modifier.size(40.dp).testTag("emoji_options_button")
+                modifier = emojiModifier(reactions.size).size(40.dp).testTag("emoji_options_button")
             ) {
                 Icon(
                     Icons.Default.MoreHoriz,
-                    contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                    contentDescription = stringResource(MR.string.chat_message_emoji_options),
+                    tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }

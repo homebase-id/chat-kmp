@@ -1,5 +1,15 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -49,19 +59,30 @@ fun PinnedMessagesBar(
     onUiAction: (ConversationListUiAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (pinnedMessages.isEmpty()) return
+    val shown = if (pinnedMessages.isEmpty()) null else {
+        val index = currentPinIndex.coerceIn(0, pinnedMessages.size - 1)
+        PinnedBarItem(pinnedMessages[index], index, pinnedMessages.size)
+    }
+    val transition = updateTransition(shown, label = "pinnedBar")
+    val motion = MaterialTheme.motionScheme
+    transition.AnimatedVisibility(
+        visible = { it != null },
+        modifier = modifier.fillMaxWidth(),
+        enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+        exit = shrinkVertically(motion.defaultSpatialSpec()) + fadeOut(motion.defaultEffectsSpec()),
+    ) {
+        (transition.targetState ?: transition.currentState)?.let { PinnedBarContent(it, onUiAction) }
+    }
+}
 
-    val total = pinnedMessages.size
-    val index = currentPinIndex.coerceIn(0, total - 1)
-    val current = pinnedMessages[index]
+private data class PinnedBarItem(val message: MessageUiModel, val index: Int, val total: Int)
 
-    val sender = current.displayName.ifBlank { current.originalAuthor?.domainName.orEmpty() }
-    val body = current.pinnedPreviewBody().truncateToCodePoints(80)
-    // Built outside Text() so Konsist's "no hardcoded strings in Composables" passes.
-    val previewText = if (sender.isBlank()) body else "$sender: $body"
-    val countLabel = stringResource(MR.string.chat_pinned_bar_count, index + 1, total)
+@Composable
+private fun PinnedBarContent(item: PinnedBarItem, onUiAction: (ConversationListUiAction) -> Unit) {
+    val motion = MaterialTheme.motionScheme
+    val countLabel = stringResource(MR.string.chat_pinned_bar_count, item.index + 1, item.total)
 
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -86,7 +107,11 @@ fun PinnedMessagesBar(
                 modifier = Modifier.padding(horizontal = 10.dp).size(18.dp),
             )
             Column(modifier = Modifier.weight(1f)) {
-                if (total > 1) {
+                AnimatedVisibility(
+                    visible = item.total > 1,
+                    enter = expandVertically(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()),
+                    exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                ) {
                     Text(
                         text = countLabel,
                         style = MaterialTheme.typography.labelSmall,
@@ -94,13 +119,29 @@ fun PinnedMessagesBar(
                         maxLines = 1,
                     )
                 }
-                Text(
-                    text = previewText.withEmojiFont(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                AnimatedContent(
+                    targetState = item.message,
+                    contentKey = { it.id },
+                    transitionSpec = {
+                        (slideInVertically(motion.defaultSpatialSpec()) { it } + fadeIn(motion.defaultEffectsSpec()))
+                            .togetherWith(
+                                slideOutVertically(motion.defaultSpatialSpec()) { -it } + fadeOut(motion.defaultEffectsSpec()),
+                            )
+                    },
+                    label = "pinnedPreview",
+                ) { message ->
+                    val sender = message.displayName.ifBlank { message.originalAuthor?.domainName.orEmpty() }
+                    val body = message.pinnedPreviewBody().truncateToCodePoints(80)
+                    // Built outside Text() so Konsist's "no hardcoded strings in Composables" passes.
+                    val previewText = if (sender.isBlank()) body else "$sender: $body"
+                    Text(
+                        text = previewText.withEmojiFont(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             IconButton(onClick = { onUiAction(ConversationListUiAction.ShowPinnedMessagesSheet) }) {
                 Icon(

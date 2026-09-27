@@ -47,6 +47,7 @@ import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.widget.MediaAttachmentEditor
 import id.homebase.chat.widget.secondaryChromeEnter
 import id.homebase.chat.widget.secondaryChromeExit
+import id.homebase.core.camera.CameraModes
 import id.homebase.core.ui.screens.moments.widget.MomentDateChip
 import id.homebase.core.ui.screens.moments.widget.MomentDescriptionField
 import id.homebase.core.ui.screens.moments.widget.MomentImageInfoChip
@@ -139,7 +140,7 @@ fun MomentComposeScreen(
         }
     }
 
-    val cameraLauncher = rememberCameraManager { file ->
+    val cameraLauncher = rememberCameraManager(CameraModes.PhotoAndVideo) { file ->
         file?.let {
             val ct = it.contentType()
             val pending = if (ct.startsWith("video/")) {
