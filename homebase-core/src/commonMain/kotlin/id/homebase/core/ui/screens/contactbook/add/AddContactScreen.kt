@@ -212,30 +212,39 @@ fun AddContactScreen(
             // The photo picker only belongs to manual entry. In identity mode the avatar comes from
             // the Homebase profile, so we never prompt to add one — we just say where it's from once
             // the identity resolves.
-            when {
-                uiState.mode == AddContactMode.MANUAL -> {
-                    TextButton(onClick = { photoPicker.launch() }) {
+            val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+            val resize = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
+            val photoHint = when {
+                uiState.mode == AddContactMode.MANUAL -> PhotoHint.AddPhoto
+                uiState.resolution is RecipientResolution.Resolved -> PhotoHint.FromProfile
+                else -> PhotoHint.None
+            }
+            AnimatedContent(
+                targetState = photoHint,
+                transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) using SizeTransform { _, _ -> resize } },
+            ) { hint ->
+                when (hint) {
+                    PhotoHint.AddPhoto -> TextButton(onClick = { photoPicker.launch() }) {
                         Icon(Icons.Outlined.AddAPhoto, contentDescription = null)
                         Spacer(modifier = Modifier.size(8.dp))
                         Text(stringResource(MR.string.contactbook_edit_change_photo))
                     }
-                }
 
-                uiState.resolution is RecipientResolution.Resolved -> {
-                    Text(
+                    PhotoHint.FromProfile -> Text(
                         text = stringResource(MR.string.add_contact_photo_from_profile),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp),
                     )
+
+                    PhotoHint.None -> {}
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
 
-            val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
             AnimatedContent(
                 targetState = uiState.mode,
-                transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
+                transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) using SizeTransform { _, _ -> resize } },
             ) { mode ->
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -299,6 +308,8 @@ private fun AddContactAvatar(uiState: AddContactUiState, photoBytes: ByteArray?)
         }
     }
 }
+
+private enum class PhotoHint { None, AddPhoto, FromProfile }
 
 @Composable
 private fun ByIdentitySection(
