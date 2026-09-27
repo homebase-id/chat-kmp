@@ -11,7 +11,11 @@ import org.koin.compose.koinInject
 
 /** Maps a semantic [HapticEvent] to Compose's [HapticFeedbackType]. */
 internal fun HapticEvent.toComposeType(): HapticFeedbackType = when (this) {
-    HapticEvent.Selection -> HapticFeedbackType.TextHandleMove
+    // Not TextHandleMove: iOS drops it and pre-34 Android plays it only if the OEM enabled text-handle haptics.
+    // This one falls back to CLOCK_TICK below API 34 and is UISelectionFeedbackGenerator on iOS.
+    HapticEvent.Selection -> HapticFeedbackType.SegmentFrequentTick
+    // CONTEXT_CLICK below API 34, a selection tick on iOS.
+    HapticEvent.Tick -> HapticFeedbackType.SegmentTick
     HapticEvent.LongPress -> HapticFeedbackType.LongPress
     HapticEvent.Confirm -> HapticFeedbackType.Confirm
 }

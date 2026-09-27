@@ -75,7 +75,6 @@ sealed interface ConversationListUiAction {
     data object ShowArchivedMessagesClicked : ConversationListUiAction
     data class ConnectIdentities(val identities: List<OdinId>) : ConversationListUiAction
     data class ConnectToIdentity(val odinId: OdinId) : ConversationListUiAction
-    data class AutoConnect(val odinId: OdinId) : ConversationListUiAction
     data class OpenConnectionRequestInOwnerConsole(val odinId: OdinId) : ConversationListUiAction
     data class OpenSendConnectionRequestDialog(val odinId: OdinId) : ConversationListUiAction
     data object DismissSheet : ConversationListUiAction
@@ -99,6 +98,7 @@ sealed interface ConversationListUiAction {
         val conversationId: Uuid,
         val files: List<PlatformFile>,
         val isImage: Boolean = false,
+        val fromCamera: Boolean = false,
     ) : ConversationListUiAction
 
     data class UnAttachFile(

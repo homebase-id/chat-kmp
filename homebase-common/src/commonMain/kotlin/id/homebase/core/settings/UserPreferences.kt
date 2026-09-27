@@ -18,6 +18,7 @@ class UserPreferences(private val settings: Settings) {
             autoSaveOnUnmeteredOnly = autoSaveOnUnmeteredOnly,
             enterSendsMessage = enterSendsMessage,
             arrowUpEditsLastMessage = arrowUpEditsLastMessage,
+            mirrorFrontCamera = mirrorFrontCamera,
         )
     )
     val preferenceState: StateFlow<PreferenceState> = _preferenceState
@@ -117,6 +118,13 @@ class UserPreferences(private val settings: Settings) {
             _preferenceState.value = _preferenceState.value.copy(arrowUpEditsLastMessage = value)
         }
 
+    var mirrorFrontCamera: Boolean
+        get() = settings.getBoolean("camera_mirror_front", true)
+        set(value) {
+            settings.putBoolean("camera_mirror_front", value)
+            _preferenceState.value = _preferenceState.value.copy(mirrorFrontCamera = value)
+        }
+
     var preferredUserReactions: List<String>
         get() = settings.getStringOrNull("preferred_user_reactions")?.split(",") ?: listOf()
         set(value) = settings.putString("preferred_user_reactions", value.joinToString(","))
@@ -207,6 +215,7 @@ data class PreferenceState(
     val autoSaveOnUnmeteredOnly: Boolean = true,
     val enterSendsMessage: Boolean = true,
     val arrowUpEditsLastMessage: Boolean = true,
+    val mirrorFrontCamera: Boolean = true,
 )
 
 enum class ThemeState {

@@ -64,6 +64,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -78,6 +79,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
+import id.homebase.core.camera.CaptureHandoff
 import id.homebase.api.video.IndexedFrame
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
@@ -180,6 +183,8 @@ fun MediaAttachmentEditor(
     onDismiss: (() -> Unit)? = null,
     collapseSecondaryChrome: Boolean = false,
     centerImageInPage: Boolean = false,
+    // False while the editor's own enter transition runs; a camera held over it waits for both.
+    revealed: Boolean = true,
     imageOverlay: @Composable BoxScope.(AttachmentPendingFile) -> Unit = {},
     pagerTopEndSlot: @Composable BoxScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
@@ -214,6 +219,19 @@ fun MediaAttachmentEditor(
 
     val activeAttachment = attachments.getOrNull(pagerState.currentPage)
     val activeVideo = activeAttachment as? AttachmentPendingFile.FileVideo
+
+    // Pages whose media has drawn: a camera held over the editor leaves once the page on screen is one of them.
+    val drawnAttachments = remember { mutableStateSetOf<Uuid>() }
+    val markDrawn = { id: Uuid -> drawnAttachments += id }
+    val markDrawnOnceLoaded = { id: Uuid ->
+        { state: AsyncImagePainter.State ->
+            if (state is AsyncImagePainter.State.Success || state is AsyncImagePainter.State.Error) markDrawn(id)
+        }
+    }
+    val activeDrawn = activeAttachment != null && activeAttachment.attachmentId in drawnAttachments
+    LaunchedEffect(activeDrawn, revealed, attachments.size) {
+        if (activeDrawn && revealed) CaptureHandoff.contentShown()
+    }
 
     // Extract the thumbnail strip for the currently-visible video. Persist across
     // swipes by stashing in framesByAtt; cancellation happens automatically when
@@ -253,6 +271,7 @@ fun MediaAttachmentEditor(
                         val isPdf = remember(attachment.file) {
                             resolveContentType(fileName = attachment.file.name) == "application/pdf"
                         }
+                        LaunchedEffect(attachment.attachmentId) { markDrawn(attachment.attachmentId) }
                         if (isPdf) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 PdfAttachmentPreview(
@@ -286,7 +305,8 @@ fun MediaAttachmentEditor(
                                     .then(if (centerImageInPage) Modifier.align(Alignment.Center) else Modifier)
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(16.dp)),
-                                contentScale = ContentScale.Fit
+                                contentScale = ContentScale.Fit,
+                                onState = markDrawnOnceLoaded(attachment.attachmentId),
                             )
                             imageOverlay(attachment)
                         }
@@ -308,6 +328,7 @@ fun MediaAttachmentEditor(
                                 .background(Color.Black),
                             contentAlignment = Alignment.Center,
                         ) {
+                            val firstFrameShown = attId in drawnAttachments
                             if (durationMs != null && durationMs > 0L) {
                                 TrimmableVideoPlayerSurface(
                                     filePath = attachment.playablePath ?: attachment.file.toString(),
@@ -324,7 +345,19 @@ fun MediaAttachmentEditor(
                                         }
                                     },
                                     modifier = Modifier.fillMaxSize(),
+                                    onFirstFrameRendered = { markDrawn(attId) },
                                 )
+                                // The surface is black (or see-through on Android) until its first decoded frame.
+                                val poster = attachment.thumbnailBytes
+                                if (!firstFrameShown && poster != null) {
+                                    AsyncImage(
+                                        imageLoader = imageLoader,
+                                        model = poster,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Fit,
+                                    )
+                                }
                             } else {
                                 // Duration not known yet — show poster while extractThumbnailAsync
                                 // resolves. Player mounts as soon as durationMs lands.
@@ -368,11 +401,13 @@ fun MediaAttachmentEditor(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp)),
-                            contentScale = ContentScale.Fit
+                            contentScale = ContentScale.Fit,
+                            onState = markDrawnOnceLoaded(attachment.attachmentId),
                         )
                     }
                     is AttachmentPendingFile.Audio -> {
                         // not currently supported
+                        LaunchedEffect(attachment.attachmentId) { markDrawn(attachment.attachmentId) }
                     }
                 }
             }

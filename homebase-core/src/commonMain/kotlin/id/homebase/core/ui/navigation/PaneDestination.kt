@@ -1,5 +1,10 @@
 package id.homebase.core.ui.navigation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -96,30 +101,42 @@ internal fun FloatingPaneContainer(
         Modifier.fillMaxSize()
     }
 
-    Surface(
-        modifier = sizing
-            .focusRequester(focusRequester)
-            .focusable()
-            .onPreviewKeyEvent { event ->
-                if (event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
-                    if (!dismissRequested) {
-                        dismissRequested = true
-                        onDismiss()
-                    }
-                    true
-                } else {
-                    false
-                }
-            },
-        shape = if (floating) MaterialTheme.shapes.extraLarge else RectangleShape,
-        color = if (floating) {
-            MaterialTheme.colorScheme.surface
+    // Enter only: every dismissal pops the dialog entry directly, which removes it in one frame.
+    val appear = remember { MutableTransitionState(false).apply { targetState = true } }
+    val motion = MaterialTheme.motionScheme
+    AnimatedVisibility(
+        visibleState = appear,
+        enter = if (floating) {
+            scaleIn(motion.fastSpatialSpec(), initialScale = 0.9f) + fadeIn(motion.defaultEffectsSpec())
         } else {
-            MaterialTheme.colorScheme.background
+            EnterTransition.None
         },
-        tonalElevation = if (floating) 6.dp else 0.dp,
-        shadowElevation = if (floating) 6.dp else 0.dp,
     ) {
-        if (floating) paneContent() else content()
+        Surface(
+            modifier = sizing
+                .focusRequester(focusRequester)
+                .focusable()
+                .onPreviewKeyEvent { event ->
+                    if (event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
+                        if (!dismissRequested) {
+                            dismissRequested = true
+                            onDismiss()
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                },
+            shape = if (floating) MaterialTheme.shapes.extraLarge else RectangleShape,
+            color = if (floating) {
+                MaterialTheme.colorScheme.surface
+            } else {
+                MaterialTheme.colorScheme.background
+            },
+            tonalElevation = if (floating) 6.dp else 0.dp,
+            shadowElevation = if (floating) 6.dp else 0.dp,
+        ) {
+            if (floating) paneContent() else content()
+        }
     }
 }

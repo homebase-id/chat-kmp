@@ -32,13 +32,15 @@ enum class ContactState {
  * [CircleGrantOn.OwnFlowConnect]) happens without the owner present, and the two legacy system
  * circles are auto-connect carriers. A [CircleGrantOn.Review] circle does count — it is granted by
  * the owner's own review, which is exactly the act this state reports.
- *
- * Also the "can be assigned by hand" set: a review circle is chosen by the owner, so nothing
- * stops it being chosen from a picker too.
  */
-fun RedactedCircleDefinition.isPersonalCircle(): Boolean =
-    !disabled &&
-        designation == CircleDesignation.Personal &&
+fun RedactedCircleDefinition.isPersonalCircle(): Boolean = !disabled && isPersonalKind()
+
+/**
+ * [isPersonalCircle] whether or not it is enabled. The "can be assigned by hand" set: a review
+ * circle is chosen by the owner, so nothing stops it being chosen from a picker too.
+ */
+fun RedactedCircleDefinition.isPersonalKind(): Boolean =
+    designation == CircleDesignation.Personal &&
         grantOn != CircleGrantOn.Connect &&
         grantOn != CircleGrantOn.OwnFlowConnect &&
         !isLegacySystemCircleId(id)

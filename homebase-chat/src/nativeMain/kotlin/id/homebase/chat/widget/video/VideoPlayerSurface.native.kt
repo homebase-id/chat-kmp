@@ -29,6 +29,7 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.core.audio.AudioSession
 import id.homebase.resources.MR
 import id.homebase.resources.video_error_generic
+import id.homebase.core.util.KeepScreenOn
 import org.jetbrains.compose.resources.stringResource
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -103,7 +104,6 @@ import platform.Foundation.NSUUID
 import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.create
 import platform.Foundation.writeToURL
-import platform.UIKit.UIApplication
 import platform.darwin.NSObjectProtocol
 import kotlin.time.measureTimedValue
 
@@ -248,15 +248,7 @@ actual fun VideoPlayerSurface(
         }
     }
 
-    // Keep the screen awake only while this player is actively playing. Because
-    // idleTimerDisabled is app-global, the onDispose ALWAYS clears it — so a
-    // paused/ended/dismissed player can never leave it pinned. The DisposableEffect
-    // body and onDispose both run on the composition (main) thread.
-    val keepAwake = state is VpsState.Playing && !paused && !ended
-    DisposableEffect(keepAwake) {
-        UIApplication.sharedApplication.idleTimerDisabled = keepAwake
-        onDispose { UIApplication.sharedApplication.idleTimerDisabled = false }
-    }
+    KeepScreenOn(state is VpsState.Playing && !paused && !ended)
 
     LaunchedEffect(data) {
         onProgress(0f)

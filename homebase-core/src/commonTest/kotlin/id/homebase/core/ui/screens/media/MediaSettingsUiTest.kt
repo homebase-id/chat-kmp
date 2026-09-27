@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runComposeUiTest
 import id.homebase.api.image.MediaQuality
 import id.homebase.core.test.setTestLocale
@@ -103,6 +104,27 @@ class MediaSettingsUiTest {
         }
         onNodeWithTag("autoSaveToggle").performClick()
         assertEquals(true, enabled)
+    }
+
+    @Test
+    fun turningMirrorFrontCameraOffEmitsTheAction() = runComposeUiTest {
+        setTestLocale("en-US")
+        var enabled: Boolean? = null
+        setContent {
+            MaterialTheme {
+                MediaSettingsUi(
+                    uiState = MediaSettingsUiState(mirrorFrontCamera = true),
+                    onAction = { action ->
+                        if (action is MediaSettingsUiAction.SetMirrorFrontCamera) {
+                            enabled = action.enabled
+                        }
+                    },
+                    onBackClick = {},
+                )
+            }
+        }
+        onNodeWithTag("mirrorFrontCameraToggle").performScrollTo().performClick()
+        assertEquals(false, enabled)
     }
 
     @Test

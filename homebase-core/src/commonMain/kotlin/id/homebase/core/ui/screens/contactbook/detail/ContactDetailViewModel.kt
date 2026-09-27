@@ -37,9 +37,6 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactService
 import id.homebase.core.contactbook.LocateVerifyStatus
-import id.homebase.core.contactbook.ReconcileAction
-import id.homebase.core.contactbook.reconcileAction
-import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
 import id.homebase.core.ui.screens.contactbook.ConnectionRequestFailure
@@ -329,6 +326,7 @@ class ContactDetailViewModel(
                             // Membership alone overstates it: a read grant without its storage
                             // key reads as access the contact cannot actually exercise.
                             accessState = if (reviewEnabled) registration?.circleAccessState(it.id) else null,
+                            disabled = it.disabled,
                         )
                     } +
                         pendingCircles.map {
@@ -338,6 +336,7 @@ class ContactDetailViewModel(
                                 pending = true,
                                 emoji = it.emoji.takeIf { reviewEnabled },
                                 accessState = CircleAccessState.Pending,
+                                disabled = it.disabled,
                             )
                         } +
                         awaitingEntries.map { entry ->
@@ -476,6 +475,7 @@ class ContactDetailViewModel(
                     circleName = match.circle.name,
                     circleEmoji = match.circle.emoji.takeIf { reviewEnabled },
                     manageable = false,
+                    disabled = match.circle.disabled,
                     members = members,
                     pendingMembers = if (reviewEnabled) pending else emptyList(),
                     isLoading = false,
@@ -617,11 +617,7 @@ class ContactDetailViewModel(
             ContactDetailAction.DisconnectClicked ->
                 _uiState.update { it.copy(confirm = ContactDetailConfirm.DISCONNECT) }
             is ContactDetailAction.AcceptRequestClicked -> {
-                // Circle ids arrive as 32-char N-format strings; the accept API takes Uuids. Drop
-                // any that fail to parse rather than aborting the accept.
-                val circleUuids = action.circleIds.mapNotNull {
-                    runCatching { Uuid.parseHex(it) }.getOrNull()
-                }
+                val circleUuids = action.circleIds.toCircleUuids()
                 handleRequestAction(event = ContactDetailEvent.RequestAccepted) {
                     connectionRequestService.acceptIncomingRequest(it, circleUuids)
                 }
@@ -710,10 +706,8 @@ class ContactDetailViewModel(
                 }
                 val entry = _uiState.value.entry
                 val versionTag = entry?.versionTag
-                if (entry != null && versionTag != null &&
-                    reconcileAction(hasAccess = true, entry.iCanLocate) == ReconcileAction.Set
-                ) {
-                    runCatching { contactRepository.setICanLocate(entry.uniqueId, versionTag) }
+                if (entry != null && versionTag != null && !entry.iCanLocate) {
+                    runCatching { emergencyContacts.setICanLocate(peer, entry.uniqueId, versionTag) }
                         .onFailure { Logger.w(it, TAG) { "setICanLocate failed for ${peer.domainName}" } }
                 }
             }

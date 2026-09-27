@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Flip
 import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,6 +37,9 @@ import id.homebase.resources.settings_media_autosave_description
 import id.homebase.resources.settings_media_autosave_header
 import id.homebase.resources.settings_media_autosave_unmetered
 import id.homebase.resources.settings_media_autosave_unmetered_description
+import id.homebase.resources.settings_media_camera_header
+import id.homebase.resources.settings_media_mirror_front
+import id.homebase.resources.settings_media_mirror_front_description
 import id.homebase.resources.settings_media_quality_footer
 import id.homebase.resources.settings_media_quality_header
 import org.jetbrains.compose.resources.stringResource
@@ -131,6 +135,23 @@ fun MediaSettingsUi(
                     ),
                 )
             }
+
+            SettingsSectionHeader(
+                title = stringResource(MR.string.settings_media_camera_header),
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
+            )
+            SettingsRow(
+                modifier = Modifier.testTag("mirrorFrontCameraToggle"),
+                icon = Icons.Outlined.Flip,
+                title = stringResource(MR.string.settings_media_mirror_front),
+                supportingText = stringResource(MR.string.settings_media_mirror_front_description),
+                action = SettingsRowAction.Toggle(
+                    checked = uiState.mirrorFrontCamera,
+                    onCheckedChange = {
+                        onAction(MediaSettingsUiAction.SetMirrorFrontCamera(it))
+                    },
+                ),
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
         }

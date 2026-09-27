@@ -2,14 +2,13 @@
 
 package id.homebase.core.contactbook
 
+import id.homebase.api.common.OdinId
 import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.contacts.ContactWriteResponse
 import id.homebase.api.client.contacts.appDataFor
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.config.AppConfig
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -38,22 +37,16 @@ data class ChatContactAppData(
 fun Contact.iCanLocate(): Boolean = chatAppData()?.iCanLocate == true
 
 /**
- * Live list of the contacts we can locate, derived from [ContactRepository.contacts] via the app-data
- * flag — so it tracks the same optimistic writes and sync reconciliation. Cold flow: collect it
- * (e.g. `collectAsStateWithLifecycle`) or `stateIn` it yourself. Consumers sort.
- */
-val ContactRepository.locatableContacts: Flow<List<Contact>>
-    get() = contacts.map { it.filterLocatable() }
-
-/**
- * Filters to contacts carrying the `iCanLocate` flag, then dedups by odinId (issue #982): the same
+ * Filters to contacts carrying the `iCanLocate` flag, then dedups by normalized odinId: the same
  * person can hold two [Contact] rows with different `uniqueId`s (e.g. a manual contact created before
  * an identity link, later joined by a second, identity-keyed row) — [ContactRepository.contacts] only
  * dedups by `uniqueId`, so both rows can independently end up flagged. Assumes `NewestFirst` order
  * (mirroring [ContactRepository.contacts]'s own order), so `distinctBy` keeps the freshest row.
  */
 internal fun List<Contact>.filterLocatable(): List<Contact> =
-    filter { it.iCanLocate() }.distinctBy { it.content.odinId }
+    filter { it.iCanLocate() }.distinctBy { it.content.odinId?.trim()?.lowercase() }
+
+internal fun Contact.odinIdOrNull(): OdinId? = content.odinId?.takeIf { it.isNotBlank() }?.let(::OdinId)
 
 private fun Contact.chatAppData(): ChatContactAppData? =
     appDataFor(AppConfig.APP_ID)?.let {

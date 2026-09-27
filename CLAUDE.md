@@ -292,6 +292,12 @@ question differently.
 If a finding is a design change rather than a cleanup, file it instead of
 widening the PR.
 
+**Always prefix the commit title with `SIMPLIFY: `** when the commit comes from
+a `/simplify` pass — e.g. `SIMPLIFY: fold the duplicate accept paths together`.
+It keeps a cleanup pass legible in `git log` next to the feature work it
+follows, and tells a reviewer the diff is meant to preserve behaviour, so any
+behaviour change in it is either a bug or something the body must call out.
+
 ## Comments
 
 Default to none. This codebase is over-commented; do not add to it.

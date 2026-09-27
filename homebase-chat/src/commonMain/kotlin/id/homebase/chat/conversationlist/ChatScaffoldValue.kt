@@ -29,6 +29,18 @@ internal fun chatDetail(
     return if (open == null) ChatDetail.Loading(selectedConversationId) else ChatDetail.Open(open)
 }
 
+// The conversation or its media viewer owns the window: compact shows only the detail pane, and a
+// two-pane window lifts the viewer over both panes.
+fun chatOwnsWindow(
+    uiState: ConversationListUiState,
+    messagesUiState: MessageListUiState,
+    isExpanded: Boolean,
+): Boolean = if (isExpanded) {
+    messagesUiState.hoistedMediaViewer(isExpandedLayout = true) != null
+} else {
+    chatDetail(uiState.selectedConversationId, uiState.activeConversations) is ChatDetail.Open
+}
+
 private val adaptStrategies = ListDetailPaneScaffoldDefaults.adaptStrategies()
 
 internal fun chatScaffoldValue(isExpanded: Boolean, detail: ChatDetail): ThreePaneScaffoldValue =
