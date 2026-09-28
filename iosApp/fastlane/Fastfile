@@ -10,23 +10,26 @@ platform :ios do
       is_key_content_base64: false
     )
 
+    build_number = latest_testflight_build_number(api_key: api_key, app_identifier: "id.homebase.feed")
+    app_version = lane_context[SharedValues::LATEST_TESTFLIGHT_VERSION]
+
+    # Every build ships a new marketing version, so deliver must create the App Store version
+    # itself; without app_version it reuses a stale one or finds none.
     deliver(
       api_key: api_key,
       app_identifier: "id.homebase.feed",
+      app_version: app_version,
+      build_number: build_number.to_s,
 
-      # Skip upload, just submit existing build
       skip_binary_upload: true,
       skip_screenshots: true,
-      skip_metadata: true,
+      # Apple rejects an update with empty "What's New", so metadata upload stays on for release_notes only.
+      skip_metadata: false,
+      release_notes: { "default" => ENV.fetch("RELEASE_NOTES", "").strip.empty? ? "Bug fixes and improvements." : ENV["RELEASE_NOTES"] },
 
-      # Don't specify build_number - will use latest
-      # build_number: nil,  # Remove this line entirely
-
-      # Required metadata (minimal)
       submit_for_review: true,
       automatic_release: false,
 
-      # Submission info
       submission_information: {
         add_id_info_uses_idfa: false,
         export_compliance_uses_encryption: false
