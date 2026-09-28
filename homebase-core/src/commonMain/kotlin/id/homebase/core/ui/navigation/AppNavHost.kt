@@ -10,6 +10,8 @@ import id.homebase.core.ui.screens.email.EmailScreen
 import id.homebase.core.email.EmailPreferences
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -848,6 +850,7 @@ fun AppNavHost(
                                     topLevelRoute = topLevelRoute,
                                     selected = isSelected,
                                     showMomentsBadge = momentsUnseenCount > 0,
+                                    showEmailBadge = emailUnreadCount > 0,
                                     showLocationBadge = locationAttention,
                                     onClick = {
                                         if (isSelected && chromeDestination?.hasRoute(topLevelRoute.route::class) == true) {
@@ -2055,30 +2058,35 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 val webDropViewModel: WebDropViewModel = koinViewModel()
                                 val webDropUiState by webDropViewModel.uiState.collectAsStateWithLifecycle()
-                                when (webDropUiState.driveActivated) {
-                                    null -> {
-                                        Box(
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            CircularProgressIndicator()
+                                Crossfade(
+                                    targetState = webDropUiState.driveActivated,
+                                    animationSpec = chromeMotion.defaultEffectsSpec(),
+                                ) { driveActivated ->
+                                    when (driveActivated) {
+                                        null -> {
+                                            Box(
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                CircularProgressIndicator()
+                                            }
                                         }
-                                    }
-                                    false -> {
-                                        WebDropOnboardingScreen(viewModel = webDropViewModel)
-                                        LaunchedEffect(Unit) {
-                                            webDropViewModel.events.collect { event ->
-                                                if (event is WebDropUiEvent.CloseOnboarding) {
-                                                    navController.popBackStack()
+                                        false -> {
+                                            WebDropOnboardingScreen(viewModel = webDropViewModel)
+                                            LaunchedEffect(Unit) {
+                                                webDropViewModel.events.collect { event ->
+                                                    if (event is WebDropUiEvent.CloseOnboarding) {
+                                                        navController.popBackStack()
+                                                    }
                                                 }
                                             }
                                         }
-                                    }
-                                    true -> {
-                                        WebDropScreen(
-                                            viewModel = webDropViewModel,
-                                            onNavigateBack = { navController.popBackStack() },
-                                        )
+                                        true -> {
+                                            WebDropScreen(
+                                                viewModel = webDropViewModel,
+                                                onNavigateBack = { navController.popBackStack() },
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -2382,18 +2390,24 @@ private fun RailItem(
     topLevelRoute: TopLevelRoute,
     selected: Boolean,
     showMomentsBadge: Boolean,
+    showEmailBadge: Boolean,
     showLocationBadge: Boolean,
     onClick: () -> Unit,
 ) {
+    val indicatorColor by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        MaterialTheme.motionScheme.defaultEffectsSpec(),
+    )
     Box(
         modifier = Modifier.size(RailIndicatorSize).clip(NavigationIndicatorShape).background(
-            if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+            indicatorColor
         ).selectable(selected = selected, role = Role.Tab, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         TopLevelNavIcon(
             topLevelRoute = topLevelRoute,
             showMomentsBadge = showMomentsBadge,
+            showEmailBadge = showEmailBadge,
             showLocationBadge = showLocationBadge,
             size = RailIconSize,
             tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer

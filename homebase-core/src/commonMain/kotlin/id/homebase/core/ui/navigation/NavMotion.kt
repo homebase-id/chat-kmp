@@ -23,7 +23,7 @@ internal expect object PlatformNavMotion {
     fun popExit(scheme: MotionScheme): ExitTransition
 }
 
-internal enum class RouteMotion { Push, Tab, Modal, Fade }
+internal enum class RouteMotion { Push, Tab, Modal, Fade, Redirect }
 
 internal fun NavDestination?.isTopLevelRoute(): Boolean {
     return this?.hasRoute(Route.ChatList::class) == true ||
@@ -46,6 +46,7 @@ internal fun NavDestination.routeMotion(): RouteMotion = when {
     hasRoute(Route.AppLoading::class) ||
             hasRoute(Route.Login::class) ||
             hasRoute(Route.ProfileCardEditor::class) -> RouteMotion.Fade
+    hasRoute(Route.VaultEntryDetail::class) -> RouteMotion.Redirect
     else -> RouteMotion.Push
 }
 
@@ -70,6 +71,7 @@ internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navEnter(scheme: 
         // Effects springs don't overshoot; a spatial one would pull a full-height slide past its edge.
         RouteMotion.Modal -> slideInVertically(effective.slowEffectsSpec()) { it } + fadeIn(effective.defaultEffectsSpec())
         RouteMotion.Fade -> fadeIn(effective.defaultEffectsSpec())
+        RouteMotion.Redirect -> EnterTransition.None
     }
 }
 
@@ -80,6 +82,7 @@ internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navExit(scheme: M
         RouteMotion.Tab -> fadeThroughOut(effective)
         RouteMotion.Modal -> ExitTransition.KeepUntilTransitionsFinished
         RouteMotion.Fade -> fadeOut(effective.fastEffectsSpec())
+        RouteMotion.Redirect -> ExitTransition.KeepUntilTransitionsFinished
     }
 }
 
@@ -90,6 +93,7 @@ internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navPopEnter(schem
         RouteMotion.Tab -> fadeThroughIn(effective)
         RouteMotion.Modal -> EnterTransition.None
         RouteMotion.Fade -> fadeIn(effective.defaultEffectsSpec())
+        RouteMotion.Redirect -> EnterTransition.None
     }
 }
 
@@ -101,5 +105,6 @@ internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navPopExit(scheme
         RouteMotion.Modal ->
             slideOutVertically(effective.defaultEffectsSpec()) { it } + fadeOut(effective.slowEffectsSpec())
         RouteMotion.Fade -> fadeOut(effective.fastEffectsSpec())
+        RouteMotion.Redirect -> ExitTransition.None
     }
 }
