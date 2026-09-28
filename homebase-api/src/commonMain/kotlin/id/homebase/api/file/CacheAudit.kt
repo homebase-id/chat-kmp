@@ -60,21 +60,15 @@ object CacheAudit {
     const val UPLOAD_TEMP_DIR_NAME: String = "upload-temp"
     const val OUTBOX_TEMP_DIR_NAME: String = "outbox-temp"
 
-    /**
-     * Top-level entries Android places inside our `cacheDir` that are owned by
-     * the platform / WebView / a crash reporter — not by us. Wiping any of
-     * these is destructive: nukes in-app browser cookies + storage, forces a
-     * slow ART recompile of WebView native libs, or loses pending crash
-     * reports. The CacheSweeper KEEPS these regardless of mode (even on
-     * logout / "Clear caches"). The user-facing way to clear browser state is
-     * `WebView.clearCache()`, not deleting files under it.
-     */
-    val ANDROID_SYSTEM_DIRS: Set<String> = setOf(
-        "WebView",
-        "oat_primary",
-        "data",
-        "Crash Reports",
+    // Allowlist: the OS and SDKs namespace their data in directories here. Loose files stay
+    // sweepable because some of our writers use user-supplied names at the cache root.
+    fun isOwnedDirectory(name: String): Boolean =
+        name in OWNED_DIR_NAMES || OWNED_DIR_PREFIXES.any { name.startsWith(it) }
+
+    private val OWNED_DIR_NAMES = KNOWN_CACHE_DIRS + setOf(
+        UPLOAD_TEMP_DIR_NAME, OUTBOX_TEMP_DIR_NAME, SHARE_OUTBOUND_DIR_NAME, ORPHAN_COIL_DIR_NAME, "share_temp",
     )
+    private val OWNED_DIR_PREFIXES = listOf("homebase-", "hls_", "hbvid_", "vts_")
 
     /** A single top-level entry of the cache directory. */
     data class Entry(
@@ -83,8 +77,7 @@ object CacheAudit {
         val sizeBytes: Long,
         /** True when [name] is one of [KNOWN_CACHE_DIRS]. */
         val known: Boolean,
-        /** True when [name] is one of [ANDROID_SYSTEM_DIRS] — the sacred set. */
-        val androidSystem: Boolean = false,
+        val foreign: Boolean = false,
         /** Best-guess human-readable origin, for the log line. Diagnostic only. */
         val label: String,
     )
@@ -96,13 +89,12 @@ object CacheAudit {
         /** Bytes in tracked Coil `-v2` caches ([KNOWN_CACHE_DIRS]). */
         val knownBytes: Long,
         /**
-         * Bytes in entries that are neither tracked Coil caches nor
-         * [ANDROID_SYSTEM_DIRS]. Sweeper-eligible — this is what
-         * `sweepUntracked` actually deletes.
+         * Bytes in our own entries that aren't tracked Coil caches.
+         * Sweeper-eligible — this is what `sweepUntracked` actually deletes.
          */
         val untrackedBytes: Long,
-        /** Bytes in [ANDROID_SYSTEM_DIRS] (sacred — never swept). */
-        val androidSystemBytes: Long,
+        /** Bytes in [Entry.foreign] directories (never swept). */
+        val foreignBytes: Long,
         val totalBytes: Long,
     )
 
@@ -137,7 +129,7 @@ object CacheAudit {
                         isDirectory = isDir,
                         sizeBytes = size,
                         known = name in KNOWN_CACHE_DIRS,
-                        androidSystem = name in ANDROID_SYSTEM_DIRS,
+                        foreign = isDir && !isOwnedDirectory(name),
                         label = classify(name),
                     )
                 )
@@ -149,14 +141,14 @@ object CacheAudit {
 
         var known = 0L
         var untracked = 0L
-        var androidSystem = 0L
+        var foreign = 0L
         for (e in entries) {
-            // Three disjoint buckets — androidSystem entries must NOT spill into
+            // Three disjoint buckets — foreign entries must NOT spill into
             // `untracked`, otherwise the sweeper logs "deleting=N (untracked)"
             // for bytes it will actually KEEP and the post-sweep "freed=0" line
             // looks like a delete failure.
             when {
-                e.androidSystem -> androidSystem += e.sizeBytes
+                e.foreign -> foreign += e.sizeBytes
                 e.known -> known += e.sizeBytes
                 else -> untracked += e.sizeBytes
             }
@@ -166,8 +158,8 @@ object CacheAudit {
             entries = entries,
             knownBytes = known,
             untrackedBytes = untracked,
-            androidSystemBytes = androidSystem,
-            totalBytes = known + untracked + androidSystem,
+            foreignBytes = foreign,
+            totalBytes = known + untracked + foreign,
         )
     }
 
@@ -176,12 +168,12 @@ object CacheAudit {
         Logger.i(tag = TAG) {
             "cacheDir=${report.cacheDirPath} total=${report.totalBytes} " +
                 "known=${report.knownBytes} untracked=${report.untrackedBytes} " +
-                "androidSystem=${report.androidSystemBytes} " +
+                "foreign=${report.foreignBytes} " +
                 "entries=${report.entries.size}"
         }
         for (e in report.entries) {
             val origin = when {
-                e.androidSystem -> "android system"
+                e.foreign -> "foreign"
                 e.known -> "tracked"
                 else -> "untracked"
             }
@@ -189,9 +181,9 @@ object CacheAudit {
                 "[$origin: ${e.label}]"
             // Untracked entries over the threshold are the ones worth chasing —
             // log them at WARN so they stand out in an `adb logcat` capture.
-            // Tracked Coil caches and Android system dirs are never WARN-worthy
+            // Tracked Coil caches and foreign dirs are never WARN-worthy
             // here: we don't (and won't) sweep them.
-            if (!e.known && !e.androidSystem && e.sizeBytes >= LOUD_THRESHOLD_BYTES) {
+            if (!e.known && !e.foreign && e.sizeBytes >= LOUD_THRESHOLD_BYTES) {
                 Logger.w(tag = TAG) { line }
             } else {
                 Logger.i(tag = TAG) { line }
@@ -206,10 +198,12 @@ object CacheAudit {
      */
     private fun classify(name: String): String = when {
         name in KNOWN_CACHE_DIRS -> "tracked Coil disk cache"
-        name == "WebView" -> "Android system: WebView (cookies/storage) — sacred"
-        name == "oat_primary" -> "Android system: WebView ART/OAT cache — sacred"
-        name == "data" -> "Android system: WebView data — sacred"
-        name == "Crash Reports" -> "Android system: crash reporter — sacred"
+        name == "WebView" -> "Android system: WebView (cookies/storage)"
+        name == "oat_primary" -> "Android system: WebView ART/OAT cache"
+        name == "data" -> "Android system: WebView data"
+        name == "Crash Reports" -> "Android system: crash reporter"
+        name == "com.crashlytics.data" -> "Crashlytics pending crash reports"
+        name == "com.apple.dyld" -> "iOS dyld closure cache"
         name == "hbvid_preload" -> "legacy video preload dir"
         name.startsWith("hbvid_res_") -> "streamed MP4 playback temp (deleted on player dispose; swept as backstop)"
         name.startsWith("hbvid_") -> "decrypted video playback scratch"
