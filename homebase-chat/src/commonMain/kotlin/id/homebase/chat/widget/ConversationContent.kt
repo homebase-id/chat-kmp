@@ -2232,7 +2232,7 @@ internal suspend fun LazyListState.jumpToItem(index: Int, scrollOffset: Int = 0)
     animateScrollToItem(index, scrollOffset)
 }
 
-private data class ListEndSample(val total: Int, val overflow: Int?, val atEnd: Boolean, val firstVisible: Pair<Int, Int>)
+private data class ListEndSample(val total: Int, val overflow: Int?, val atEnd: Boolean, val firstIndex: Int, val firstOffset: Int)
 
 // A list that sat at its end stays there when anything pushes its end down without adding a row: a row
 // growing in place (reaction pill, preview, media) or the viewport shrinking from above (pinned bar,
@@ -2242,7 +2242,8 @@ internal fun KeepListEndInView(listState: LazyListState, key: Any?) {
     LaunchedEffect(listState, key) {
         var previousTotal = -1
         var wasAtEnd = false
-        var previousFirstVisible: Pair<Int, Int>? = null
+        var previousFirstIndex = -1
+        var previousFirstOffset = -1
         snapshotFlow {
             val info = listState.layoutInfo
             val last = info.visibleItemsInfo.lastOrNull()?.takeIf { it.index == info.totalItemsCount - 1 }
@@ -2250,14 +2251,16 @@ internal fun KeepListEndInView(listState: LazyListState, key: Any?) {
                 info.totalItemsCount,
                 last?.let { it.offset + it.size + info.afterContentPadding - info.viewportEndOffset },
                 !listState.canScrollForward,
-                listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset,
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset,
             )
         }.collect { sample ->
             // A push keeps the first visible row anchored; a scroll (a jump to a message) moves it.
             val pushed = wasAtEnd && !sample.atEnd && sample.total == previousTotal &&
-                sample.firstVisible == previousFirstVisible
+                sample.firstIndex == previousFirstIndex && sample.firstOffset == previousFirstOffset
             previousTotal = sample.total
-            previousFirstVisible = sample.firstVisible
+            previousFirstIndex = sample.firstIndex
+            previousFirstOffset = sample.firstOffset
             if (pushed && !listState.isScrollInProgress) {
                 // Not scrollBy: that force-remeasures synchronously, and on skiko this collector can resume inside layout.
                 val overflow = sample.overflow
