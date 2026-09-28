@@ -1,5 +1,10 @@
 package id.homebase.core.ui.screens.location
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -75,13 +80,14 @@ fun LocationTileHomeContent(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(modifier = Modifier.height(12.dp))
-        Column(
-            modifier = Modifier.widthIn(max = 560.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            if (uiState.trackingAvailable && !(uiState.whileInUseGranted && uiState.alwaysGranted)) {
+        Column(modifier = Modifier.widthIn(max = 560.dp)) {
+            AnimatedVisibility(
+                visible = uiState.trackingAvailable && !(uiState.whileInUseGranted && uiState.alwaysGranted),
+                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            ) {
                 Card(
-                    modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenSettings),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp).clickable(onClick = onOpenSettings),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.errorContainer,
                     ),
@@ -154,7 +160,10 @@ fun LocationTileHomeContent(
                     modifier = Modifier.weight(1f).aspectRatio(1f),
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 LocationTile(
                     style = LocationTileStyle.Live,
                     icon = Icons.Outlined.ShareLocation,

@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.location
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,49 +54,68 @@ fun LocationTile(
 ) {
     val scheme = MaterialTheme.colorScheme
     val warning = HomebaseTheme.extendedColors.warning
-    val background: Brush
+    val gradientStart: Color
+    val gradientEnd: Color
     val content: Color
     val iconTint: Color
     when {
         !on -> {
-            background = Brush.linearGradient(listOf(scheme.surfaceContainerLow, scheme.surfaceContainerLow))
+            gradientStart = scheme.surfaceContainerLow
+            gradientEnd = scheme.surfaceContainerLow
             content = scheme.onSurfaceVariant
             iconTint = scheme.onSurfaceVariant
         }
 
         style == LocationTileStyle.Emergency -> {
-            background = Brush.linearGradient(listOf(scheme.tertiaryContainer, scheme.surfaceContainerHighest))
+            gradientStart = scheme.tertiaryContainer
+            gradientEnd = scheme.surfaceContainerHighest
             content = scheme.onTertiaryContainer
             iconTint = scheme.onTertiaryContainer
         }
 
         style == LocationTileStyle.History -> {
-            background = Brush.linearGradient(listOf(scheme.primaryContainer, scheme.surfaceContainerHigh))
+            gradientStart = scheme.primaryContainer
+            gradientEnd = scheme.surfaceContainerHigh
             content = scheme.onPrimaryContainer
             iconTint = scheme.onPrimaryContainer
         }
 
         style == LocationTileStyle.Live -> {
-            background = Brush.linearGradient(listOf(scheme.secondaryContainer, scheme.surfaceContainerHigh))
+            gradientStart = scheme.secondaryContainer
+            gradientEnd = scheme.surfaceContainerHigh
             content = scheme.onSecondaryContainer
             iconTint = HomebaseTheme.extendedColors.liveSharing
         }
 
         else -> {
-            background = Brush.linearGradient(listOf(scheme.surfaceContainerHigh, scheme.surfaceContainerHighest))
+            gradientStart = scheme.surfaceContainerHigh
+            gradientEnd = scheme.surfaceContainerHighest
             content = scheme.onSurface
             iconTint = scheme.onSurface
         }
     }
+    val spec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
+    val animatedStart by animateColorAsState(gradientStart, spec)
+    val animatedEnd by animateColorAsState(gradientEnd, spec)
+    val animatedContent by animateColorAsState(content, spec)
+    val animatedIconTint by animateColorAsState(iconTint, spec)
+    val iconCircleColor by animateColorAsState(
+        if (on) scheme.surfaceContainerLowest else scheme.surfaceContainerHigh,
+        spec,
+    )
+    val borderColor by animateColorAsState(
+        if (on) scheme.outlineVariant.copy(alpha = 0f) else scheme.outlineVariant,
+        spec,
+    )
 
     Card(
         onClick = onClick,
         modifier = modifier,
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        border = if (on) null else BorderStroke(1.dp, scheme.outlineVariant),
+        border = BorderStroke(1.dp, borderColor),
     ) {
-        Box(modifier = Modifier.fillMaxSize().background(background)) {
+        Box(modifier = Modifier.fillMaxSize().background(Brush.linearGradient(listOf(animatedStart, animatedEnd)))) {
             Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val iconCircle: @Composable () -> Unit = {
@@ -102,13 +123,13 @@ fun LocationTile(
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(CircleShape)
-                                .background(if (on) scheme.surfaceContainerLowest else scheme.surfaceContainerHigh),
+                                .background(iconCircleColor),
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
                                 imageVector = icon,
                                 contentDescription = null,
-                                tint = iconTint,
+                                tint = animatedIconTint,
                                 modifier = Modifier.size(24.dp),
                             )
                         }
@@ -136,14 +157,14 @@ fun LocationTile(
                     Text(
                         text = stringResource(if (on) MR.string.location_tile_on else MR.string.location_tile_off),
                         style = MaterialTheme.typography.labelSmall,
-                        color = content,
+                        color = animatedContent,
                     )
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = content,
+                    color = animatedContent,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -151,7 +172,7 @@ fun LocationTile(
                 Text(
                     text = statusText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (warningCount > 0) warning else content,
+                    color = if (warningCount > 0) warning else animatedContent,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )

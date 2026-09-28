@@ -1,5 +1,10 @@
 package id.homebase.core.ui.screens.location
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -105,7 +110,11 @@ fun LocationContent(
                         onRequest = { onAction(LocationUiAction.RequestAlwaysClicked) },
                         onOpenSettings = { onAction(LocationUiAction.OpenSystemSettingsClicked) },
                     )
-                    if (!uiState.alwaysGranted) {
+                    AnimatedVisibility(
+                        visible = !uiState.alwaysGranted,
+                        enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                        exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    ) {
                         Text(
                             // Once the runtime dialog won't reappear, guide the user to the
                             // "Allow all the time" toggle in system Settings instead.
@@ -130,25 +139,31 @@ fun LocationContent(
             title = stringResource(MR.string.location_map_section),
             modifier = Modifier.padding(horizontal = 4.dp),
         )
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column {
-                LocationMapProvider.entries.forEachIndexed { index, provider ->
-                    if (index > 0) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                    MapOptionRow(
-                        label = mapProviderLabel(provider),
-                        selected = uiState.mapProvider == provider,
-                        onSelect = { onAction(LocationUiAction.SetMapProvider(provider)) },
-                    )
+        Column {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    LocationMapProvider.entries.forEachIndexed { index, provider ->
+                        if (index > 0) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        MapOptionRow(
+                            label = mapProviderLabel(provider),
+                            selected = uiState.mapProvider == provider,
+                            onSelect = { onAction(LocationUiAction.SetMapProvider(provider)) },
+                        )
+                    }
                 }
             }
-        }
-        if (uiState.mapProvider == LocationMapProvider.OpenStreetMap) {
-            Text(
-                text = stringResource(MR.string.location_history_map_disclosure),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp),
-            )
+            AnimatedVisibility(
+                visible = uiState.mapProvider == LocationMapProvider.OpenStreetMap,
+                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            ) {
+                Text(
+                    text = stringResource(MR.string.location_history_map_disclosure),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, top = 24.dp, end = 4.dp),
+                )
+            }
         }
 
         // ── Display ──
