@@ -9,6 +9,13 @@ fun List<PayloadDescriptor>?.mediaPayloads(): List<PayloadDescriptor> =
             !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
     }.orEmpty()
 
+// mediaPayloads() minus PAYLOAD_KEY_LINKS: a link preview uploads with an image content-type
+// (so it passes isVisualMedia()) but no THUMB_SMALL/MEDIUM thumbnails, so a reply quote asking
+// the drive for one gets a broken image (#1708). Scoped to reply quotes only — the message's
+// own bubble still renders the link card through mediaPayloads() via MediaMessage/MediaItem.
+fun List<PayloadDescriptor>?.replyQuoteMediaPayloads(): List<PayloadDescriptor> =
+    mediaPayloads().filter { it.key != ChatProtocol.PAYLOAD_KEY_LINKS }
+
 /**
  * Resolves the display name for a reply quote's author.
  *

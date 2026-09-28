@@ -76,7 +76,7 @@ fun ReplyPreviewBar(
     accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
     val currentOdinId = LocalCurrentOdinId.current
-    val mediaPayloads = remember(message.payloads) { message.payloads.mediaPayloads() }
+    val mediaPayloads = remember(message.payloads) { message.payloads.replyQuoteMediaPayloads() }
 
     val firstPayload = mediaPayloads.firstOrNull()
     val hasMultiplePayloads = mediaPayloads.size > 1
