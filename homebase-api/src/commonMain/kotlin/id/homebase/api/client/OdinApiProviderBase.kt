@@ -521,6 +521,9 @@ abstract class OdinApiProviderBase(
     protected inline fun <reified T> deserialize(json: String): T =
         OdinSystemSerializer.deserialize(json)
 
+    private fun parseProblemOrNull(body: String): ProblemDetails? =
+        runCatching { deserialize<ProblemDetails>(body) }.getOrNull()
+
     protected fun throwForFailure(response: ApiResponse) {
         if (response.status in 200..299) return
 
@@ -540,7 +543,7 @@ abstract class OdinApiProviderBase(
                 )
             }
 
-            401 -> throw UnauthorizedException()
+            401 -> throw UnauthorizedException(parseProblemOrNull(response.body))
 
             403 -> {
                 // OdinSecurityException carries no errorCode (always NoErrorCode/0), but its
@@ -551,7 +554,7 @@ abstract class OdinApiProviderBase(
                 throw ForbiddenException(problem)
             }
 
-            404 -> throw NotFoundException()
+            404 -> throw NotFoundException(parseProblemOrNull(response.body))
 
             in 500..599 -> {
                 val problem = runCatching {

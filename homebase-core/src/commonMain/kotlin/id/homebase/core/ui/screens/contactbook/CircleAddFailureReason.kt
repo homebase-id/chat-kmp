@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.contactbook
 
 import id.homebase.api.client.ForbiddenException
+import id.homebase.api.client.OdinApiException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.errorCodeEnum
 
@@ -8,7 +9,7 @@ import id.homebase.api.client.errorCodeEnum
  * Why a single contact's `circles/add` call failed, shaped so the UI layer (not this ViewModel-
  * agnostic classification) resolves the actual display string via `stringResource` — a
  * ViewModel can't call that directly. [Raw] carries real, server-provided text (a 400
- * ClientException's message already is the server's title); the two 403 cases need distinct
+ * ClientException's problem title is the server's text); the two 403 cases need distinct
  * copy because only one of them is user-actionable.
  */
 sealed interface CircleAddFailureReason {
@@ -33,5 +34,5 @@ fun Throwable.toCircleAddFailureReason(): CircleAddFailureReason = when {
     this is ForbiddenException && problem?.errorCodeEnum() == OdinClientErrorCode.CannotSourceDriveStorageKeyForGrant ->
         CircleAddFailureReason.DriveAccessDenied
     this is ForbiddenException -> CircleAddFailureReason.OpaqueForbidden
-    else -> CircleAddFailureReason.Raw(message ?: "Failed")
+    else -> CircleAddFailureReason.Raw((this as? OdinApiException)?.problem?.title ?: message ?: "Failed")
 }
