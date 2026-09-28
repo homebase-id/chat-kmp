@@ -8,6 +8,7 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.forms.InputProvider
 import io.ktor.http.Headers
+import java.util.concurrent.CountDownLatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -189,6 +190,35 @@ class DriveFileProviderCachedInFlightTest {
             provider.readPayloadThrough("ok") { response() }
             assertFailsWith<IllegalStateException> { provider.readPayloadThrough("bad") { error("boom") } }
             assertEquals(0, provider.inFlightCount())
+        }
+    }
+
+    @Test
+    fun `a write that races a clear leaves no cache entry`() = runBlocking {
+        withTimeout(10_000) {
+            val fetches = AtomicInteger()
+            val writing = CompletableDeferred<Unit>()
+            val release = CountDownLatch(1)
+            provider.beforeCacheWrite = {
+                writing.complete(Unit)
+                release.await()
+            }
+            val racing = launch(Dispatchers.Default) {
+                provider.readPayloadThrough("k") {
+                    fetches.incrementAndGet()
+                    response()
+                }
+            }
+            writing.await()
+            racing.cancelAndJoin()
+            provider.clearCaches()
+            release.countDown()
+
+            // Same payload semaphore: this read only gets its permit after the racing write is done.
+            provider.readPayloadThrough("other") { response() }
+            provider.readPayloadThrough("k") { fetches.incrementAndGet(); response() }
+
+            assertEquals(2, fetches.get())
         }
     }
 }

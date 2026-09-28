@@ -336,6 +336,8 @@ class DriveFileProviderCached(
         }
     }
 
+    internal var beforeCacheWrite: (() -> Unit)? = null
+
     internal suspend fun inFlightCount(): Int = inFlightMutex.withLock { inFlight.size }
 
     // One in-flight fetch per cache key, run on fetchScope so a cancelled caller only abandons its
@@ -386,14 +388,19 @@ class DriveFileProviderCached(
                     check(result.status in 200..299) {
                         "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
                     }
-                    inFlightMutex.withLock {
-                        if (generation == startedGeneration) writeToDiskCache(cache, cacheKey, logTag, result)
+                    // clearCaches bumps generation before clearing disk: a write landing before the
+                    // clear is wiped by it, one landing after is caught by this re-check.
+                    if (generation == startedGeneration) {
+                        beforeCacheWrite?.invoke()
+                        writeToDiskCache(cache, cacheKey, logTag, result)
+                        if (generation != startedGeneration) cache.remove(cacheKey.toDiskKey())
                     }
                     result
                 } catch (e: NotFoundException) {
-                    inFlightMutex.withLock {
-                        if (generation == startedGeneration) {
-                            notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
+                    if (generation == startedGeneration) {
+                        notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
+                        if (generation != startedGeneration) {
+                            notFoundCacheMutex.withLock { notFoundCache = notFoundCache - cacheKey }
                         }
                     }
                     throw e
@@ -506,10 +513,10 @@ class DriveFileProviderCached(
             writeBytesResponse(editor.data.toString(), value)
             editor.commit()
         } catch (e: CancellationException) {
-            try { editor.abort() } catch (_: Exception) {}
+            try { editor.abort() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
             throw e
         } catch (e: Exception) {
-            try { editor.abort() } catch (_: Exception) {}
+            try { editor.abort() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
             Logger.e(tag = logTag, throwable = e) { "cache-write FAILED key=$cacheKey" }
         }
     }
@@ -693,7 +700,7 @@ class DriveFileProviderCached(
                     editor.commit()
                     true
                 } catch (e: Exception) {
-                    try { editor.abort() } catch (_: Exception) {}
+                    try { editor.abort() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
                     throw e
                 }
             } ?: false
