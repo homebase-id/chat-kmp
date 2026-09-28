@@ -171,14 +171,6 @@ class OdinWebSocketClient(
             // close() racing with construction).
             Logger.i(tag = "WebSocket") { "WS[$instanceId] connection loop dispatched" }
             while (true) {
-                // tryEmit, not emit. The WS lifecycle is the source of truth for
-                // connection state (see [connectionState]); the bus emission is an
-                // informational mirror for collectors that care. A blocking emit
-                // here parks the entire WS connect on whatever the slowest
-                // unrelated subscriber is doing — which is what locked up the
-                // post-login sync when a singleton's eventBus collector got stuck
-                // mid-batch during the logout DB wipe. tryEmit drops the event
-                // (returns false) when the buffer is full rather than suspend.
                 eventBus.tryEmit(BackendEvent.Connecting)
 
                 try {

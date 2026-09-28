@@ -17,6 +17,7 @@ import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.systemFileSystem
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -352,6 +353,8 @@ class DriveFileProviderCached(
                     result
                 } catch (e: NotFoundException) {
                     notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
+                    throw e
+                } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     Logger.w(tag = logTag) {

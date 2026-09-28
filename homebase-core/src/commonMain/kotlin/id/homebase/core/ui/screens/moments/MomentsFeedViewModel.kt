@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
@@ -258,9 +259,8 @@ class MomentsFeedViewModel(
         // EventBus events fire globally keyed by `uniqueId`, and moments use
         // `momentUniqueId` as the file's uniqueId, so the lookups line up.
         viewModelScope.launch {
-            eventBus.events.filter { it is BackendEvent.PayloadBundlingEvent.Video.PhaseProgress }
+            eventBus.progress.filterIsInstance<BackendEvent.PayloadBundlingEvent.Video.PhaseProgress>()
                 .collect { event ->
-                    event as BackendEvent.PayloadBundlingEvent.Video.PhaseProgress
                     _uiState.update { state ->
                         state.copy(
                             uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Processing(
@@ -273,9 +273,8 @@ class MomentsFeedViewModel(
         }
 
         viewModelScope.launch {
-            eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemProgress }
+            eventBus.progress.filterIsInstance<BackendEvent.OutboxEvent.ItemProgress>()
                 .collect { event ->
-                    event as BackendEvent.OutboxEvent.ItemProgress
                     _uiState.update { state ->
                         state.copy(
                             uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Uploading(

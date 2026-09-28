@@ -100,6 +100,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -823,9 +824,8 @@ class ConversationListViewModel(
 
         // Track upload progress via outbox and payload bundling events
         viewModelScope.launch {
-            eventBus.events.filter { it is BackendEvent.PayloadBundlingEvent.Video.PhaseProgress }
+            eventBus.progress.filterIsInstance<BackendEvent.PayloadBundlingEvent.Video.PhaseProgress>()
                 .collect { event ->
-                    event as BackendEvent.PayloadBundlingEvent.Video.PhaseProgress
                     _messagesUiState.update { state ->
                         state.copy(
                             uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Processing(
@@ -838,9 +838,8 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
-            eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemProgress }
+            eventBus.progress.filterIsInstance<BackendEvent.OutboxEvent.ItemProgress>()
                 .collect { event ->
-                    event as BackendEvent.OutboxEvent.ItemProgress
                     // A header-only update (editing a caption) still streams a
                     // multipart body, so it reports byte progress — but no media is
                     // moving. Reacting to it scrimmed the photo and parked it on
