@@ -186,8 +186,8 @@ class DriveFileProviderCached(
             options: PayloadOperationOptions = PayloadOperationOptions(),
             onDownloadProgress: ((Float) -> Unit)? = null,
     ): ByteApiResponse {
-        val cacheKey =
-                buildPayloadCacheKey(driveId, fileId, key, options.chunkStart, options.chunkLength)
+        val cacheKey = buildPayloadCacheKey(
+                driveId, fileId, key, options.chunkStart, options.chunkLength, options.lastModified)
         // The ONE routing decision (#845): range-shaped requests live in the
         // dedicated chunk cache, full-payload reads in the payload LRU. Keeping
         // it here (not per-caller) guarantees prefetch and playback share a
@@ -207,6 +207,7 @@ class DriveFileProviderCached(
             chunkStart: Long? = null,
             chunkLength: Long? = null,
             onDownloadProgress: ((Float) -> Unit)? = null,
+            lastModified: Long? = null,
     ): BytesResponse? {
         val raw =
                 getPayloadBytesRaw(
@@ -216,7 +217,8 @@ class DriveFileProviderCached(
                         options =
                                 PayloadOperationOptions(
                                         chunkStart = chunkStart,
-                                        chunkLength = chunkLength
+                                        chunkLength = chunkLength,
+                                        lastModified = lastModified,
                                 ),
                         onDownloadProgress = onDownloadProgress,
                 )
@@ -670,9 +672,11 @@ class DriveFileProviderCached(
             fileId: Uuid,
             key: String,
             chunkStart: Long?,
-            chunkLength: Long?
+            chunkLength: Long?,
+            // Omitted when null so existing entries keep their keys.
+            lastModified: Long? = null,
     ): String =
-            listOf("payload", driveId, fileId, key, chunkStart ?: "full", chunkLength ?: "full")
+            listOfNotNull("payload", driveId, fileId, key, chunkStart ?: "full", chunkLength ?: "full", lastModified)
                     .joinToString(":")
 
     private fun buildThumbCacheKey(

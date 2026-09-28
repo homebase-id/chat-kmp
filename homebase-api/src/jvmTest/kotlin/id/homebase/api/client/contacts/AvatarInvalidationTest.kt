@@ -124,37 +124,45 @@ class AvatarInvalidationTest {
     @Test
     fun resyncInvalidatesBeforeItReachesTheContactRepository() = runBlocking {
         val odinId = OdinId("resync.me")
-        val gateway = ContactInfoGateway(
-            contactRepository = { throw RepositoryReached() },
-            publicProfiles = provider,
-        )
 
-        assertContentEquals(firstBytes, gateway.avatarBytes(odinId))
+        assertContentEquals(firstBytes, avatarGateway().avatarBytes(odinId))
         assertEquals(1, requestCount)
 
         nextBytes = secondBytes
-        assertFailsWith<RepositoryReached> { gateway.resync(odinId) }
+        assertFailsWith<RepositoryReached> { throwingGateway().resync(odinId) }
 
-        assertContentEquals(secondBytes, gateway.avatarBytes(odinId))
+        assertContentEquals(secondBytes, avatarGateway().avatarBytes(odinId))
         assertEquals(2, requestCount, "resync must drop the cached avatar before the drive sync")
     }
 
     @Test
     fun syncContactRecordLeavesTheAvatarAlone() = runBlocking {
         val odinId = OdinId("recordonly.me")
-        val gateway = ContactInfoGateway(
-            contactRepository = { throw RepositoryReached() },
-            publicProfiles = provider,
-        )
 
-        assertContentEquals(firstBytes, gateway.avatarBytes(odinId))
+        assertContentEquals(firstBytes, avatarGateway().avatarBytes(odinId))
         nextBytes = secondBytes
-        assertFailsWith<RepositoryReached> { gateway.syncContactRecord(odinId) }
+        assertFailsWith<RepositoryReached> { throwingGateway().syncContactRecord(odinId) }
 
-        assertContentEquals(firstBytes, gateway.avatarBytes(odinId))
+        assertContentEquals(firstBytes, avatarGateway().avatarBytes(odinId))
         assertEquals(1, requestCount, "a record-only sync must not re-download the photo")
         assertNull(PublicAvatarRevisions.revisionOf(odinId.domainName))
     }
+
+    // The avatar read looks up the local contact too, so it needs a repository that doesn't throw;
+    // only a sync call may reach the repository in these tests.
+    private fun avatarGateway() = ContactInfoGateway(
+        contactRepository = { emptyContactRepository() },
+        publicProfiles = provider,
+        driveFiles = unusedDriveFiles(),
+        contactHeaders = { _, _ -> null },
+    )
+
+    private fun throwingGateway() = ContactInfoGateway(
+        contactRepository = { throw RepositoryReached() },
+        publicProfiles = provider,
+        driveFiles = unusedDriveFiles(),
+        contactHeaders = { _, _ -> null },
+    )
 
     private class RepositoryReached : RuntimeException()
 }
