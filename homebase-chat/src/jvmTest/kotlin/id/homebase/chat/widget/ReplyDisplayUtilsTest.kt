@@ -1,12 +1,18 @@
 package id.homebase.chat.widget
 
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
+import id.homebase.api.common.SecureByteArray
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.core.image.HomebaseImageLoader
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.uuid.Uuid
 
 class ReplyDisplayUtilsTest {
 
@@ -273,5 +279,36 @@ class ReplyDisplayUtilsTest {
     @Test
     fun contentIcon_hidden_whenNoLabel() {
         assertFalse(shouldShowContentIcon(hasThumbnail = false, contentLabelText = null))
+    }
+
+    // ── replyQuoteImageData: a GIF reply quote must load the original, not a 404ing server thumb ──
+
+    private val gifPayload = PayloadDescriptor(
+        key = "chat_web0",
+        contentType = "image/gif",
+        iv = "AAAAAAAAAAAAAAAAAAAAAA==",
+        lastModified = 1790087953369,
+        previewThumbnail = ThumbnailDescriptor(pixelWidth = 20, pixelHeight = 20, contentType = "image/webp", content = "AA=="),
+    )
+
+    private fun build(payload: PayloadDescriptor) = payload.replyQuoteImageData(
+        driveId = Uuid.random(),
+        fileId = Uuid.random(),
+        aesKey = SecureByteArray(ByteArray(16)),
+        fallbackPreview = null,
+    )
+
+    @Test
+    fun replyQuoteImageData_gifIsThumbless_despiteWebpPreview() {
+        val data = assertNotNull(build(gifPayload))
+        assertEquals("image/webp", data.contentTypeHint)
+        assertEquals("image/gif", data.effectiveContentType)
+        assertTrue(data.effectiveContentType in HomebaseImageLoader.THUMBLESS_CONTENT_TYPES)
+        assertEquals(gifPayload.lastModified, data.lastModified)
+    }
+
+    @Test
+    fun replyQuoteImageData_nullWithoutIv() {
+        assertNull(build(gifPayload.copy(iv = null)))
     }
 }
