@@ -1,11 +1,18 @@
 package id.homebase.feed.share
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -23,6 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,6 +48,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -53,6 +62,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -269,130 +279,179 @@ fun SharePickerScreen(
             // rows, so they dispatch immediately rather than joining the
             // multi-select set. WebDrop first: it is the newer, outward-facing
             // share (files leave the identity as a link).
-            if (showNewWebDropOption && !isSending && conversationsData.dataReady) {
-                NewWebDropRow(onClick = { onTargetSelected(ShareTarget.NewWebDrop) })
-                HorizontalDivider()
+            AnimatedVisibility(
+                visible = showNewWebDropOption && !isSending && conversationsData.dataReady,
+                enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            ) {
+                Column {
+                    NewWebDropRow(onClick = { onTargetSelected(ShareTarget.NewWebDrop) })
+                    HorizontalDivider()
+                }
             }
-            if (showNewMomentOption && !isSending && conversationsData.dataReady) {
-                NewMomentRow(onClick = { onTargetSelected(ShareTarget.NewMoment) })
-                HorizontalDivider()
+            AnimatedVisibility(
+                visible = showNewMomentOption && !isSending && conversationsData.dataReady,
+                enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            ) {
+                Column {
+                    NewMomentRow(onClick = { onTargetSelected(ShareTarget.NewMoment) })
+                    HorizontalDivider()
+                }
             }
 
-            if (isSending) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator()
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(pluralStringResource(MR.plurals.sending_to_conversations, selectedIds.size, selectedIds.size))
+            val mode = when {
+                isSending -> PickerMode.Sending
+                !conversationsData.dataReady -> PickerMode.Loading
+                isSearchActive -> PickerMode.Search
+                else -> PickerMode.Sections
+            }
+            AnimatedContent(
+                targetState = mode,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = {
+                    fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
+                },
+                label = "pickerMode",
+            ) { target ->
+                when (target) {
+                    PickerMode.Sending -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator()
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(pluralStringResource(MR.plurals.sending_to_conversations, selectedIds.size, selectedIds.size))
+                            }
+                        }
                     }
-                }
-            } else if (!conversationsData.dataReady) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else if (isSearchActive) {
-                // The surfaced self row reads as the user ("Name (you)"), consistent with
-                // the create-conversation self-search affordance (#902).
-                val selfLabel = effectiveSession?.let {
-                    stringResource(MR.string.contactbook_self_you, it.selfDisplayLabel())
-                }
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(
-                        items = filteredConversations,
-                        key = { it.conversation.id },
-                    ) { enriched ->
-                        ConversationPickerItem(
-                            enriched = enriched,
-                            selfLabel = selfLabel,
-                            isSelected = enriched.conversation.id in selectedIds,
-                            onClick = {
-                                selectedIds = if (enriched.conversation.id in selectedIds) {
-                                    selectedIds - enriched.conversation.id
-                                } else {
-                                    selectedIds + enriched.conversation.id
+
+                    PickerMode.Loading -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+
+                    PickerMode.Search -> {
+                        // The surfaced self row reads as the user ("Name (you)"), consistent with
+                        // the create-conversation self-search affordance (#902).
+                        val selfLabel = effectiveSession?.let {
+                            stringResource(MR.string.contactbook_self_you, it.selfDisplayLabel())
+                        }
+                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            items(
+                                items = filteredConversations,
+                                key = { it.conversation.id },
+                            ) { enriched ->
+                                ConversationPickerItem(
+                                    modifier = pickerItemMotion(motion),
+                                    enriched = enriched,
+                                    selfLabel = selfLabel,
+                                    isSelected = enriched.conversation.id in selectedIds,
+                                    onClick = {
+                                        selectedIds = if (enriched.conversation.id in selectedIds) {
+                                            selectedIds - enriched.conversation.id
+                                        } else {
+                                            selectedIds + enriched.conversation.id
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+
+                    PickerMode.Sections -> {
+                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            if (recents.isNotEmpty()) {
+                                stickyHeader(key = "header_recents") {
+                                    SectionHeader(stringResource(MR.string.recents))
                                 }
-                            },
-                        )
-                    }
-                }
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    if (recents.isNotEmpty()) {
-                        stickyHeader(key = "header_recents") {
-                            SectionHeader(stringResource(MR.string.recents))
-                        }
-                        items(
-                            items = recents,
-                            key = { "recent_${it.conversation.id}" },
-                        ) { enriched ->
-                            ConversationPickerItem(
-                                enriched = enriched,
-                                isSelected = enriched.conversation.id in selectedIds,
-                                onClick = {
-                                    selectedIds = if (enriched.conversation.id in selectedIds) {
-                                        selectedIds - enriched.conversation.id
-                                    } else {
-                                        selectedIds + enriched.conversation.id
-                                    }
-                                },
-                            )
-                        }
-                    }
+                                items(
+                                    items = recents,
+                                    key = { "recent_${it.conversation.id}" },
+                                ) { enriched ->
+                                    ConversationPickerItem(
+                                        modifier = pickerItemMotion(motion),
+                                        enriched = enriched,
+                                        isSelected = enriched.conversation.id in selectedIds,
+                                        onClick = {
+                                            selectedIds = if (enriched.conversation.id in selectedIds) {
+                                                selectedIds - enriched.conversation.id
+                                            } else {
+                                                selectedIds + enriched.conversation.id
+                                            }
+                                        },
+                                    )
+                                }
+                            }
 
-                    if (contacts.isNotEmpty()) {
-                        stickyHeader(key = "header_contacts") {
-                            SectionHeader(stringResource(MR.string.contacts))
-                        }
-                        items(
-                            items = contacts,
-                            key = { "contact_${it.conversation.id}" },
-                        ) { enriched ->
-                            ConversationPickerItem(
-                                enriched = enriched,
-                                isSelected = enriched.conversation.id in selectedIds,
-                                onClick = {
-                                    selectedIds = if (enriched.conversation.id in selectedIds) {
-                                        selectedIds - enriched.conversation.id
-                                    } else {
-                                        selectedIds + enriched.conversation.id
-                                    }
-                                },
-                            )
-                        }
-                    }
+                            if (contacts.isNotEmpty()) {
+                                stickyHeader(key = "header_contacts") {
+                                    SectionHeader(stringResource(MR.string.contacts))
+                                }
+                                items(
+                                    items = contacts,
+                                    key = { "contact_${it.conversation.id}" },
+                                ) { enriched ->
+                                    ConversationPickerItem(
+                                        modifier = pickerItemMotion(motion),
+                                        enriched = enriched,
+                                        isSelected = enriched.conversation.id in selectedIds,
+                                        onClick = {
+                                            selectedIds = if (enriched.conversation.id in selectedIds) {
+                                                selectedIds - enriched.conversation.id
+                                            } else {
+                                                selectedIds + enriched.conversation.id
+                                            }
+                                        },
+                                    )
+                                }
+                            }
 
-                    if (groups.isNotEmpty()) {
-                        stickyHeader(key = "header_groups") {
-                            SectionHeader(stringResource(MR.string.groups))
+                            if (groups.isNotEmpty()) {
+                                stickyHeader(key = "header_groups") {
+                                    SectionHeader(stringResource(MR.string.groups))
+                                }
+                                items(
+                                    items = groups,
+                                    key = { "group_${it.conversation.id}" },
+                                ) { enriched ->
+                                    ConversationPickerItem(
+                                        modifier = pickerItemMotion(motion),
+                                        enriched = enriched,
+                                        isSelected = enriched.conversation.id in selectedIds,
+                                        onClick = {
+                                            selectedIds = if (enriched.conversation.id in selectedIds) {
+                                                selectedIds - enriched.conversation.id
+                                            } else {
+                                                selectedIds + enriched.conversation.id
+                                            }
+                                        },
+                                    )
+                                }
+                            }
                         }
-                        items(
-                            items = groups,
-                            key = { "group_${it.conversation.id}" },
-                        ) { enriched ->
-                            ConversationPickerItem(
-                                enriched = enriched,
-                                isSelected = enriched.conversation.id in selectedIds,
-                                onClick = {
-                                    selectedIds = if (enriched.conversation.id in selectedIds) {
-                                        selectedIds - enriched.conversation.id
-                                    } else {
-                                        selectedIds + enriched.conversation.id
-                                    }
-                                },
-                            )
-                        }
+            
                     }
                 }
             }
         }
     }
 }
+
+private enum class PickerMode { Sending, Loading, Search, Sections }
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+private fun LazyItemScope.pickerItemMotion(motion: MotionScheme) = Modifier.animateItem(
+    fadeInSpec = motion.defaultEffectsSpec(),
+    placementSpec = motion.defaultSpatialSpec(),
+    fadeOutSpec = motion.fastEffectsSpec(),
+)
 
 @Composable
 private fun ShareSendBar(
@@ -516,27 +575,29 @@ private fun SectionHeader(title: String) {
     )
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalSharedTransitionApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ConversationPickerItem(
     enriched: EnrichedConversationUiModel,
     isSelected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     selfLabel: String? = null,
 ) {
+    val selectedBackground by animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        else Color.Transparent,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "selectedBackground",
+    )
     val conversation = enriched.conversation
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .then(
-                if (isSelected) Modifier.background(
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                    RoundedCornerShape(8.dp)
-                ) else Modifier
-            )
+            .background(selectedBackground, RoundedCornerShape(8.dp))
             .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -564,7 +625,11 @@ private fun ConversationPickerItem(
             }
         }
 
-        if (isSelected) {
+        AnimatedVisibility(
+            visible = isSelected,
+            enter = scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()),
+            exit = scaleOut(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+        ) {
             Box(
                 modifier = Modifier
                     .size(24.dp)
