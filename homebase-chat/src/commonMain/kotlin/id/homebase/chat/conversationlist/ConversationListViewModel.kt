@@ -2101,7 +2101,8 @@ class ConversationListViewModel(
                                     Logger.i("Setting scroll position: $indexOfMessageForScroll")
                                     ScrollPosition(
                                         firstVisibleItemIndex = indexOfMessageForScroll,
-                                        triggerScroll = true
+                                        triggerScroll = true,
+                                        animate = true,
                                     )
                                 }
 

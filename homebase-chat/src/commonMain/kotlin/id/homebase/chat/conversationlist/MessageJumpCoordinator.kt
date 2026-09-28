@@ -102,6 +102,7 @@ internal class MessageJumpCoordinator(
                     scrollPosition = ScrollPosition(
                         firstVisibleItemIndex = renderedIndex,
                         triggerScroll = true,
+                        animate = true,
                     ),
                     highlightedMessageId = messageId,
                 )

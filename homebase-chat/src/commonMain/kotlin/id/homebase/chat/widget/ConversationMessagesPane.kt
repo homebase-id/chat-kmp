@@ -184,11 +184,13 @@ fun ConversationMessagesPane(
     }
 
     LaunchedEffect(uiState.scrollPosition) {
-        if (uiState.scrollPosition?.triggerScroll == true) {
-            listState.scrollToItem(
-                uiState.scrollPosition.firstVisibleItemIndex,
-                uiState.scrollPosition.firstVisibleItemScrollOffset
-            )
+        val position = uiState.scrollPosition
+        if (position?.triggerScroll == true) {
+            if (position.animate) {
+                listState.jumpToItem(position.firstVisibleItemIndex, position.firstVisibleItemScrollOffset)
+            } else {
+                listState.scrollToItem(position.firstVisibleItemIndex, position.firstVisibleItemScrollOffset)
+            }
             onUiAction(ConversationListUiAction.ClearScrollTrigger)
         }
     }

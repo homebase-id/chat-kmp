@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -16,7 +17,10 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertFalse
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalTestApi::class)
 class KeepListEndInViewTest {
@@ -60,4 +64,27 @@ class KeepListEndInViewTest {
     @Test
     fun keepsTheNewestRowInViewWhenRowsGrowAndTheBarExpands() =
         barAboveListAtEnd(keepEnd = true) { assertFalse(it.canScrollForward) }
+
+    @Test
+    fun aJumpAwayFromTheEndIsNotPulledBack() = jumpFromTheEnd { scrollToItem(10) }
+
+    @Test
+    fun anAnimatedJumpAwayFromTheEndLandsOnItsTarget() = jumpFromTheEnd { jumpToItem(10) }
+
+    private fun jumpFromTheEnd(jump: suspend LazyListState.() -> Unit) = runComposeUiTest {
+        val state = LazyListState(firstVisibleItemIndex = 49)
+        lateinit var scope: CoroutineScope
+        setContent {
+            scope = rememberCoroutineScope()
+            LazyColumn(Modifier.size(300.dp, 400.dp), state = state) {
+                items(50) { Box(Modifier.fillMaxWidth().height(50.dp)) }
+            }
+            KeepListEndInView(state, Unit)
+        }
+        waitForIdle()
+        assertFalse(state.canScrollForward)
+        scope.launch { state.jump() }
+        waitForIdle()
+        assertEquals(10, state.firstVisibleItemIndex)
+    }
 }
