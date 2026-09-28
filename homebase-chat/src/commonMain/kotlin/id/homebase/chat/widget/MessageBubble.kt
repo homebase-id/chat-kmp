@@ -1054,7 +1054,7 @@ fun InlineReplyPreview(
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
-    val mediaPayloads = remember(replyMessage?.payloads) { replyMessage?.payloads.mediaPayloads() }
+    val mediaPayloads = remember(replyMessage?.payloads) { replyMessage?.payloads.replyQuoteMediaPayloads() }
     // A voice note's embedded thumb is its waveform and a PDF's is a 20px page, so only visual media gets one.
     val showThumbnail = replyMessage == null || mediaPayloads.firstOrNull()?.isVisualMedia() == true
 

@@ -1,12 +1,40 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.services.ChatProtocol
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ReplyDisplayUtilsTest {
+
+    // ── replyQuoteMediaPayloads (#1708: link-preview reply quote had no thumbnail to show) ──
+
+    private val imagePayload = PayloadDescriptor(key = "chat_web0", contentType = "image/jpeg")
+    private val linkPayload = PayloadDescriptor(key = ChatProtocol.PAYLOAD_KEY_LINKS, contentType = "image/jpeg")
+
+    @Test
+    fun replyQuoteMediaPayloads_dropsLinkPayload() {
+        val result = listOf(linkPayload).replyQuoteMediaPayloads()
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun replyQuoteMediaPayloads_keepsRealImagePayload_dropsLinkPayload() {
+        val result = listOf(imagePayload, linkPayload).replyQuoteMediaPayloads()
+        assertEquals(listOf(imagePayload), result)
+    }
+
+    @Test
+    fun mediaPayloads_stillKeepsLinkPayload_soTheBubbleCardStillRenders() {
+        // The link payload's own bubble (MessageBubbleRaw -> MediaMessage -> MediaItem's
+        // LinkPreviewCard) reads mediaPayloads() directly, not replyQuoteMediaPayloads() -
+        // only the reply-quote thumbnail path needs the narrower filter.
+        val result = listOf(linkPayload).mediaPayloads()
+        assertEquals(listOf(linkPayload), result)
+    }
 
     // ── resolveReplyAuthorName ──
 
