@@ -286,6 +286,7 @@ private enum class ButtonContent { Busy, TryAgain, SignIn }
 private fun ErrorDetails(details: String) {
     var expanded by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
+    val motion = MaterialTheme.motionScheme
 
     Spacer(modifier = Modifier.height(4.dp))
     TextButton(
@@ -301,10 +302,10 @@ private fun ErrorDetails(details: String) {
     }
     AnimatedVisibility(
         visible = expanded,
-        enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
-            fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
-        exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) +
-            fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+        enter = expandVertically(motion.defaultSpatialSpec()) +
+            fadeIn(motion.defaultEffectsSpec()),
+        exit = shrinkVertically(motion.fastSpatialSpec()) +
+            fadeOut(motion.fastEffectsSpec()),
     ) {
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainerHighest,

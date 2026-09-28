@@ -221,6 +221,11 @@ fun SharePickerScreen(
     }
 
     val motion = MaterialTheme.motionScheme
+    val toggleSelected: (Uuid) -> Unit = { id ->
+        selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
+    }
+    val optionRowEnter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec())
+    val optionRowExit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec())
     Scaffold(
         // Edge-to-edge, so adjustResize leaves the IME to insets: without this the send bar
         // and the last search results sit behind the keyboard.
@@ -281,8 +286,8 @@ fun SharePickerScreen(
             // share (files leave the identity as a link).
             AnimatedVisibility(
                 visible = showNewWebDropOption && !isSending && conversationsData.dataReady,
-                enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-                exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                enter = optionRowEnter,
+                exit = optionRowExit,
             ) {
                 Column {
                     NewWebDropRow(onClick = { onTargetSelected(ShareTarget.NewWebDrop) })
@@ -291,8 +296,8 @@ fun SharePickerScreen(
             }
             AnimatedVisibility(
                 visible = showNewMomentOption && !isSending && conversationsData.dataReady,
-                enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-                exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                enter = optionRowEnter,
+                exit = optionRowExit,
             ) {
                 Column {
                     NewMomentRow(onClick = { onTargetSelected(ShareTarget.NewMoment) })
@@ -353,13 +358,7 @@ fun SharePickerScreen(
                                     enriched = enriched,
                                     selfLabel = selfLabel,
                                     isSelected = enriched.conversation.id in selectedIds,
-                                    onClick = {
-                                        selectedIds = if (enriched.conversation.id in selectedIds) {
-                                            selectedIds - enriched.conversation.id
-                                        } else {
-                                            selectedIds + enriched.conversation.id
-                                        }
-                                    },
+                                    onClick = { toggleSelected(enriched.conversation.id) },
                                 )
                             }
                         }
@@ -379,13 +378,7 @@ fun SharePickerScreen(
                                         modifier = pickerItemMotion(motion),
                                         enriched = enriched,
                                         isSelected = enriched.conversation.id in selectedIds,
-                                        onClick = {
-                                            selectedIds = if (enriched.conversation.id in selectedIds) {
-                                                selectedIds - enriched.conversation.id
-                                            } else {
-                                                selectedIds + enriched.conversation.id
-                                            }
-                                        },
+                                        onClick = { toggleSelected(enriched.conversation.id) },
                                     )
                                 }
                             }
@@ -402,13 +395,7 @@ fun SharePickerScreen(
                                         modifier = pickerItemMotion(motion),
                                         enriched = enriched,
                                         isSelected = enriched.conversation.id in selectedIds,
-                                        onClick = {
-                                            selectedIds = if (enriched.conversation.id in selectedIds) {
-                                                selectedIds - enriched.conversation.id
-                                            } else {
-                                                selectedIds + enriched.conversation.id
-                                            }
-                                        },
+                                        onClick = { toggleSelected(enriched.conversation.id) },
                                     )
                                 }
                             }
@@ -425,18 +412,11 @@ fun SharePickerScreen(
                                         modifier = pickerItemMotion(motion),
                                         enriched = enriched,
                                         isSelected = enriched.conversation.id in selectedIds,
-                                        onClick = {
-                                            selectedIds = if (enriched.conversation.id in selectedIds) {
-                                                selectedIds - enriched.conversation.id
-                                            } else {
-                                                selectedIds + enriched.conversation.id
-                                            }
-                                        },
+                                        onClick = { toggleSelected(enriched.conversation.id) },
                                     )
                                 }
                             }
                         }
-            
                     }
                 }
             }
@@ -584,10 +564,11 @@ private fun ConversationPickerItem(
     modifier: Modifier = Modifier,
     selfLabel: String? = null,
 ) {
+    val motion = MaterialTheme.motionScheme
     val selectedBackground by animateColorAsState(
         targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
         else Color.Transparent,
-        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        animationSpec = motion.defaultEffectsSpec(),
         label = "selectedBackground",
     )
     val conversation = enriched.conversation
@@ -627,8 +608,8 @@ private fun ConversationPickerItem(
 
         AnimatedVisibility(
             visible = isSelected,
-            enter = scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()),
-            exit = scaleOut(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+            enter = scaleIn(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()),
+            exit = scaleOut(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
         ) {
             Box(
                 modifier = Modifier
