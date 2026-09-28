@@ -50,6 +50,7 @@ import id.homebase.chat.services.StatusMessage
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.outbox.OptimisticWriter
+import id.homebase.chat.services.outbox.isLocalOnlyPlaceholder
 import id.homebase.chat.services.resendablePayloads
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CancellationException
@@ -2140,7 +2141,7 @@ class ConversationService(
         // the server rejects with 400 ("Could not find file" / "Missing version
         // tag"), and the outbox then pointlessly retries for hours. Skip the
         // server roundtrip and delete the local row directly.
-        val isLocalOnlyPlaceholder = deleteFile != null && deleteFile.fileMetadata.versionTag == null
+        val isLocalOnlyPlaceholder = deleteFile?.isLocalOnlyPlaceholder == true
         Logger.d { "deleteConversation: conversationId=$conversationId localOnly=$isLocalOnlyPlaceholder isEncrypted=${deleteFile?.fileMetadata?.isEncrypted}" }
 
         if (isLocalOnlyPlaceholder) {

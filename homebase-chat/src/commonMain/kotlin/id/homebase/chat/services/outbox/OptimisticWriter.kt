@@ -44,6 +44,9 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+// versionTag == null marks a local-only placeholder: the server has no such file to update.
+internal val HomebaseFile.isLocalOnlyPlaceholder: Boolean get() = fileMetadata.versionTag == null
+
 class OptimisticWriter(
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
@@ -974,8 +977,7 @@ class OptimisticWriter(
             )
         )
 
-        // versionTag == null is the local-only placeholder marker: the server has no such file to update.
-        val localOnly = existingFile.fileMetadata.versionTag == null
+        val localOnly = existingFile.isLocalOnlyPlaceholder
 
         // Pre-encrypt while we still have access to the key header. The outbox
         // processes this later, possibly after the participant-update has removed
@@ -1046,7 +1048,7 @@ class OptimisticWriter(
         val file = dbm.driveMainIndex.selectHomebaseFileByUnique(
             credentialsManager.requireActiveCredentials().getIdentityId(), driveId, conversationId
         )
-        return file != null && file.fileMetadata.versionTag == null
+        return file?.isLocalOnlyPlaceholder == true
     }
 
     /**
