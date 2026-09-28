@@ -167,7 +167,6 @@ fun DayPlaybackMap(
             enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
             exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
         ) {
-            val s = stats
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -177,26 +176,26 @@ fun DayPlaybackMap(
                 Text(
                     text = stringResource(
                         MR.string.location_history_distance,
-                        ((s.distanceMeters / 100.0).roundToInt() / 10.0).toString(),
+                        ((stats.distanceMeters / 100.0).roundToInt() / 10.0).toString(),
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                if (s.firstFixMs != null && s.lastFixMs != null) {
+                if (stats.firstFixMs != null && stats.lastFixMs != null) {
                     Text(
                         text = stringResource(
                             MR.string.location_history_span,
-                            formatTime(Instant.fromEpochMilliseconds(s.firstFixMs)),
-                            formatTime(Instant.fromEpochMilliseconds(s.lastFixMs)),
+                            formatTime(Instant.fromEpochMilliseconds(stats.firstFixMs)),
+                            formatTime(Instant.fromEpochMilliseconds(stats.lastFixMs)),
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
                 Text(
-                    text = stringResource(MR.string.location_history_points, s.pointCount),
+                    text = stringResource(MR.string.location_history_points, stats.pointCount),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    text = stringResource(MR.string.location_history_devices, s.deviceCount),
+                    text = stringResource(MR.string.location_history_devices, stats.deviceCount),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
