@@ -228,7 +228,6 @@ fun WebDropComposeSheet(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    val motion = MaterialTheme.motionScheme
                     val chevronRotation = animateFloatAsState(
                         targetValue = if (uiState.introExpanded) 180f else 0f,
                         animationSpec = motion.defaultSpatialSpec(),
@@ -298,7 +297,7 @@ fun WebDropComposeSheet(
                     ) {
                         Crossfade(
                             targetState = uiState.isCreating,
-                            animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                            animationSpec = motion.fastEffectsSpec(),
                         ) { creating ->
                             if (creating) {
                                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
