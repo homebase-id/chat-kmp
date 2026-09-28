@@ -75,7 +75,9 @@ fun HomebaseFile.toContact(): Contact? {
                 payload = payload,
                 previewThumbnail = fileMetadata.appData.previewThumbnail,
                 keyHeader = keyHeader,
-                isEncrypted = fileMetadata.isEncrypted,
+                // fileMetadata.isEncrypted is cleared to false by withDecryptedContent once the
+                // header is decrypted; serverFileIsEncrypted preserves what the server actually sent.
+                isEncrypted = serverFileIsEncrypted,
             )
         }
 

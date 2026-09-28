@@ -31,14 +31,17 @@ class ContactParseTest {
         content: ContactContent?,
         uniqueId: Uuid? = Uuid.parse("11111111-1111-1111-1111-111111111111"),
         payloads: List<PayloadDescriptor>? = null,
+        serverFileIsEncrypted: Boolean = false,
+        metadataIsEncrypted: Boolean = true,
     ): HomebaseFile = HomebaseFile(
         fileId = Uuid.parse("99999999-9999-9999-9999-999999999999"),
         driveId = driveId,
         fileState = FileState.Active,
         fileSystemType = FileSystemType.Standard,
         keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
+        serverFileIsEncrypted = serverFileIsEncrypted,
         fileMetadata = FileMetadata(
-            isEncrypted = true,
+            isEncrypted = metadataIsEncrypted,
             versionTag = versionTag,
             appData = AppFileMetaData(
                 uniqueId = uniqueId,
@@ -98,6 +101,26 @@ class ContactParseTest {
 
         assertEquals(ContactsProvider.CONTACT_IMAGE_PAYLOAD_KEY, contact?.image?.payload?.key)
         assertEquals(driveId, contact?.image?.driveId)
+    }
+
+    @Test
+    fun imagePayload_isEncrypted_readsServerFileIsEncrypted_notDecryptedFileMetadata() {
+        // fileMetadata.isEncrypted is cleared to false by withDecryptedContent once the header is
+        // decrypted; this is the real shape of a synced contact whose prfl_pic is server-encrypted.
+        val contact = fileFor(
+            content = ContactContent(name = ContactName(displayName = "Has Photo")),
+            payloads = listOf(
+                PayloadDescriptor(
+                    key = ContactsProvider.CONTACT_IMAGE_PAYLOAD_KEY,
+                    contentType = "image/jpeg",
+                    bytesWritten = 1024L,
+                ),
+            ),
+            serverFileIsEncrypted = true,
+            metadataIsEncrypted = false,
+        ).toContact()
+
+        assertEquals(true, contact?.image?.isEncrypted)
     }
 
     @Test

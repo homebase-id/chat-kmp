@@ -111,7 +111,7 @@ fun HomebaseFile.toVaultEntry(): VaultEntry? {
         createdAt = fileMetadata.created.milliseconds,
         previewThumbnail = fileMetadata.appData.previewThumbnail,
         keyHeader = keyHeader,
-        isEncrypted = fileMetadata.isEncrypted,
+        isEncrypted = serverFileIsEncrypted,
         versionTag = fileMetadata.versionTag,
         uploadStatus = if (isReallyUploading) VaultUploadStatus.Uploading(0f) else null,
         groupId = fileMetadata.appData.groupId,

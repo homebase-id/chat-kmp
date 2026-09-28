@@ -77,6 +77,7 @@ class VaultEntryTest {
             fileState = FileState.Active,
             fileSystemType = FileSystemType.Standard,
             keyHeader = testKeyHeader(),
+            serverFileIsEncrypted = isEncrypted,
             fileMetadata = FileMetadata(
                 created = UnixTimeUtc(createdMs),
                 isEncrypted = isEncrypted,
