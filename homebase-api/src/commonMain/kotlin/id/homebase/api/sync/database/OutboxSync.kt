@@ -930,17 +930,7 @@ class OutboxSync(
                 filePaths = null
             )
 
-            // Non-suspending emit: the message is durably queued — listeners are a
-            // best-effort side-effect and must not gate the caller. A slow subscriber
-            // (doing blocking network IO inside its collect body) can saturate the
-            // 11-slot SharedFlow buffer on partial connectivity; parking here would
-            // hang the chat Send button.
-            val emitted = eventBus.tryEmit(
-                BackendEvent.OutboxEvent.ItemEnqueued(driveId, uniqueId)
-            )
-            if (!emitted) {
-                Logger.w("OutboxSync: ItemEnqueued event dropped (EventBus buffer full) uniqueId=$uniqueId")
-            }
+            eventBus.emit(BackendEvent.OutboxEvent.ItemEnqueued(driveId, uniqueId))
 
             return EnqueueResult.Enqueued
 

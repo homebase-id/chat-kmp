@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.rememberPagerState
@@ -169,18 +170,22 @@ fun VaultGalleryScreen(
                 }
             },
             sheetContent = {
-                VaultGalleryDetailSheet(
-                    file = file,
-                    pages = pages,
-                    pagerState = pagerState,
-                    labelText = labelText,
-                    onLabelTextChange = { labelText = it },
-                    onAppendPages = onAppendPages,
-                    onUpdateLabel = onUpdateLabel,
-                    onUpdateNotes = onUpdateNotes,
-                    onEditPage = onEditPage,
-                    localAttachmentStore = localAttachmentStore,
-                )
+                // The floor now paints under the gesture bar (AppNavHost drops its Bottom inset for
+                // this overlay); keep the sheet's own interactive content above it.
+                Box(modifier = Modifier.navigationBarsPadding()) {
+                    VaultGalleryDetailSheet(
+                        file = file,
+                        pages = pages,
+                        pagerState = pagerState,
+                        labelText = labelText,
+                        onLabelTextChange = { labelText = it },
+                        onAppendPages = onAppendPages,
+                        onUpdateLabel = onUpdateLabel,
+                        onUpdateNotes = onUpdateNotes,
+                        onEditPage = onEditPage,
+                        localAttachmentStore = localAttachmentStore,
+                    )
+                }
             },
             containerColor = MaterialTheme.colorScheme.scrim,
             contentColor = MaterialTheme.colorScheme.onSurface,

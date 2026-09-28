@@ -43,8 +43,9 @@ import kotlin.time.TimeSource
  * Both detectors report through one shared, throttled [StallReporter], so the same incident
  * can't produce two log lines.
  *
- * Both also share one remaining blind spot: they report only once the stall *ends*, so a process
- * killed while stalled writes nothing. [ProcessHeartbeat] closes that from the next launch.
+ * A main-thread block is reported at [thresholdMs] while still ongoing, but a starved watchdog
+ * loop can only be reported once it runs again, so a process killed while starved writes nothing.
+ * [ProcessHeartbeat] closes that from the next launch.
  *
  * Platform notes (see `captureMainThreadStackTrace` actuals):
  *  - Android: stack comes from the main `Looper` thread, ~1s before the OS ANR cutoff.
