@@ -22,7 +22,7 @@ platform :ios do
       is_key_content_base64: false
     )
 
-    build_number = latest_testflight_build_number(api_key: api_key, app_identifier: "id.homebase.feed")
+    latest_testflight_build_number(api_key: api_key, app_identifier: "id.homebase.feed")
     app_version = lane_context[SharedValues::LATEST_TESTFLIGHT_VERSION]
     # deliver only expands a "default" release note onto languages it is told about.
     locales = Spaceship::ConnectAPI::App.find("id.homebase.feed")
@@ -35,7 +35,6 @@ platform :ios do
       api_key: api_key,
       app_identifier: "id.homebase.feed",
       app_version: app_version,
-      build_number: build_number.to_s,
       languages: locales,
 
       skip_binary_upload: true,
