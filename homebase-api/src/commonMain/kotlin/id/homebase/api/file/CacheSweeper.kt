@@ -8,15 +8,13 @@ import okio.Path.Companion.toPath
  * Decides what to delete from the app cache directory.
  *
  * Two entry points:
- * - [sweepUntracked] — startup reclaim: deletes every entry that isn't one of
- *   the four `-v2` Coil DiskCache directories nor an Android system dir. Eats
- *   the cache backlog (FFmpeg scratch, share temps, leftover pickers, ...).
- * - [sweepAll] — logout reclaim: also deletes the `-v2` caches.
+ * - [sweepUntracked] — startup reclaim: deletes our own entries except the
+ *   tracked Coil DiskCache directories. Eats the cache backlog (FFmpeg scratch,
+ *   share temps, leftover pickers, ...).
+ * - [sweepAll] — logout reclaim: also deletes the tracked caches.
  *
- * Sacred set ([CacheAudit.ANDROID_SYSTEM_DIRS]: `WebView/`, `oat_primary/`,
- * `data/`, `Crash Reports/`) is always kept — see [decide]. Wiping them would
- * nuke browser cookies, force a slow ART recompile of WebView native libs, or
- * lose pending crash reports.
+ * Directories that aren't ours ([CacheAudit.Entry.foreign]) are always kept —
+ * see [decide] and [CacheAudit.isOwnedDirectory].
  *
  * Special case: if `coil3_disk_cache` is found it is logged at **ERROR** and
  * deleted — its mere existence means something bypassed our configured
@@ -31,7 +29,7 @@ object CacheSweeper {
 
     /**
      * Startup-reclaim sweep — deletes everything in [report] that isn't a
-     * tracked Coil cache or an Android system dir. Best-effort; per-entry
+     * tracked Coil cache or a foreign directory. Best-effort; per-entry
      * failures are logged by [safeDeleteRecursively] and don't stop the sweep.
      */
     fun sweepUntracked(report: CacheAudit.Report, fileSystem: FileSystem = systemFileSystem) {
@@ -40,7 +38,7 @@ object CacheSweeper {
                 "totalEntries=${report.entries.size} " +
                 "deleting=${report.untrackedBytes} bytes (untracked) " +
                 "keepingTracked=${report.knownBytes} bytes (Coil caches) " +
-                "keepingAndroidSystem=${report.androidSystemBytes} bytes (sacred)"
+                "keepingForeign=${report.foreignBytes} bytes (not ours)"
         }
         val before = report.totalBytes
         for (e in report.entries) act(e, decide(e, SweepMode.UNTRACKED), report.cacheDirPath, fileSystem)
@@ -49,18 +47,15 @@ object CacheSweeper {
 
     /**
      * Full sweep (e.g. logout) — deletes everything in [report], including the
-     * tracked `-v2` Coil DiskCache directories. Android system dirs are still
-     * kept (see [CacheAudit.ANDROID_SYSTEM_DIRS]).
+     * tracked Coil DiskCache directories. Foreign directories are still kept.
      */
     fun sweepAll(report: CacheAudit.Report, fileSystem: FileSystem = systemFileSystem) {
-        // sweepAll deletes tracked too, but Android system dirs stay sacred —
-        // so the truthful "deleting" total is everything except androidSystem.
         val deleting = report.untrackedBytes + report.knownBytes
         Logger.i(tag = TAG) {
             "sweepAll: cacheDir=${report.cacheDirPath} " +
                 "totalEntries=${report.entries.size} " +
                 "deleting=$deleting bytes (untracked + tracked Coil caches) " +
-                "keepingAndroidSystem=${report.androidSystemBytes} bytes (sacred)"
+                "keepingForeign=${report.foreignBytes} bytes (not ours)"
         }
         val before = report.totalBytes
         for (e in report.entries) act(e, decide(e, SweepMode.ALL), report.cacheDirPath, fileSystem)
@@ -108,7 +103,9 @@ object CacheSweeper {
                 Logger.i(tag = TAG) { "deleting $line" }
                 safeDeleteRecursively(baseDir, e.name, fileSystem)
             }
-            SweepAction.KEEP -> Logger.i(tag = TAG) { "keeping  $line" }
+            SweepAction.KEEP ->
+                if (e.foreign) Logger.i(tag = TAG) { "leaving  $line — not ours" }
+                else Logger.i(tag = TAG) { "keeping  $line" }
         }
     }
 
@@ -124,11 +121,8 @@ internal enum class SweepAction { KEEP, DELETE, ORPHAN_COIL_DELETE }
  * unit-tested without log-capturing.
  */
 internal fun decide(entry: CacheAudit.Entry, mode: SweepMode): SweepAction = when {
-    // Sacred set: WebView/, oat_primary/, data/, Crash Reports/. Owned by the
-    // Android platform / WebView / Crashlytics — wiping them nukes browser
-    // cookies, forces a slow ART recompile, or loses pending crash reports.
-    // Wins over every other rule — including the full "logout" sweep.
-    entry.androidSystem -> SweepAction.KEEP
+    // Wins over every other rule, including the full "logout" sweep.
+    entry.foreign -> SweepAction.KEEP
     entry.name == ORPHAN_COIL_DIR_NAME -> SweepAction.ORPHAN_COIL_DELETE
     // LEGACY-ONLY (#842): new encrypted outbox payloads stage in the durable app-data dir
     // (FileOperationsProvider.getOutboxStagingDirectory(), outside cacheDir — this sweeper

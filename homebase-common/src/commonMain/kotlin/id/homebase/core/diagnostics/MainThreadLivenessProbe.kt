@@ -1,6 +1,8 @@
 package id.homebase.core.diagnostics
 
+import kotlinx.atomicfu.atomic
 import kotlin.concurrent.Volatile
+import kotlin.time.TimeSource
 
 /**
  * Platform hook for a UI-thread liveness check that runs on a dedicated OS thread rather than
@@ -37,6 +39,37 @@ object MainThreadLivenessProbe {
         pollIntervalMs: Long,
         onStalled: (stalledMs: Long) -> Unit,
     ): Handle? = probe?.start(thresholdMs, pollIntervalMs, onStalled)
+}
+
+// Reports at the threshold while still stalled so an endless hang leaves a line, then the total on recovery.
+internal fun runLivenessProbeLoop(
+    thresholdMs: Long,
+    pollIntervalMs: Long,
+    isRunning: () -> Boolean,
+    sleepMs: (Long) -> Unit,
+    postToMainThread: (() -> Unit) -> Unit,
+    onStalled: (stalledMs: Long) -> Unit,
+    pollStepMs: Long = 50,
+    nowMs: () -> Long = TimeSource.Monotonic.markNow().let { start -> { start.elapsedNow().inWholeMilliseconds } },
+) {
+    while (isRunning()) {
+        val acked = atomic(false)
+        val postedAtMs = nowMs()
+        postToMainThread { acked.value = true }
+
+        var reported = false
+        // Wait out the real ack rather than re-posting, so a long hang leaves one sentinel queued.
+        while (!acked.value && isRunning()) {
+            if (!reported && nowMs() - postedAtMs >= thresholdMs) {
+                onStalled(nowMs() - postedAtMs)
+                reported = true
+            }
+            sleepMs(pollStepMs)
+        }
+        if (reported && acked.value) onStalled(nowMs() - postedAtMs)
+
+        sleepMs(pollIntervalMs)
+    }
 }
 
 /**
