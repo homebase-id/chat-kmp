@@ -234,14 +234,13 @@ object MainIndexMetaHelpers {
             var n = 0L
             var l = 0L
             fileHeader.fileMetadata.appData.tags?.forEach { tagRecord ->
-                // println("Insert Tag ${fileHeader.fileId}: $tagRecord")
                 n += db.driveTagIndexQueries.insertTag(
                     identityId = identityId,
                     driveId = driveId,
                     fileId = fileHeader.fileId,
                     tagId = tagRecord
                 ).value
-                l++;
+                l++
             }
             if (n != l)
                 throw IllegalStateException("Unable to write TAGs")
@@ -249,27 +248,20 @@ object MainIndexMetaHelpers {
             n = 0L
             l = 0L
             fileHeader.fileMetadata.localAppData?.tags?.forEach { tagRecord ->
-                // println("Insert Local Tag ${fileHeader.fileId}: $tagRecord")
                 n += db.driveLocalTagIndexQueries.insertLocalTag(
                     identityId = identityId,
                     driveId = driveId,
                     fileId = fileHeader.fileId,
                     tagId = tagRecord
                 ).value
-                l++;
+                l++
             }
 
             if (n != l)
                 throw IllegalStateException("Unable to write local TAGs")
         }
 
-        /**
-         * transferHistory and originalRecipientCount are server-owned: the client never edits them, so
-         * the `modified` guard (which protects local optimistic edits) must not stop them advancing.
-         * A local write can tie the server's next `modified` and win, leaving the row on a stale
-         * history for good. On an equal-`modified` rejection, adopt only those fields into the stored row.
-         * Must run inside the caller's write transaction. Returns the updated stored file, or null.
-         */
+        // transferHistory/originalRecipientCount are server-owned: on an equal-`modified` rejection adopt only those into the stored row. Runs inside the caller's write transaction.
         private fun adoptServerOwnedFields(
             db: OdinDatabase,
             identityId: Uuid,
@@ -302,12 +294,7 @@ object MainIndexMetaHelpers {
             return merged
         }
 
-        /**
-         * Reads the row for [uniqueId], applies [transform], and writes it back in ONE write transaction,
-         * so a concurrent server push (e.g. a delivery-history update) can't land between the read and
-         * the write and be clobbered by the stale copy. Returns the written file, or null when there is
-         * no row or the guarded upsert rejected the write.
-         */
+        // Read-transform-write in ONE write transaction so a concurrent server push can't be clobbered by a stale copy.
         suspend fun mutateByUniqueId(
             identityId: Uuid,
             driveId: Uuid,
