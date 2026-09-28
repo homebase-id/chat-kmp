@@ -1,5 +1,12 @@
 package id.homebase.core.ui.screens.location.history
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -77,6 +84,7 @@ fun LocationHistoryScreen(
     allowDelete: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val motion = MaterialTheme.motionScheme
     var showPicker by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -169,7 +177,19 @@ fun LocationHistoryScreen(
                 }
                 AssistChip(
                     onClick = { showPicker = true },
-                    label = { Text(formatMediumDate(Instant.fromEpochMilliseconds(uiState.dayStartMs))) },
+                    label = {
+                        AnimatedContent(
+                            targetState = uiState.dayStartMs,
+                            transitionSpec = {
+                                val dir = if (targetState > initialState) 1 else -1
+                                (slideInHorizontally(motion.defaultSpatialSpec()) { dir * it } + fadeIn(motion.defaultEffectsSpec()))
+                                    .togetherWith(slideOutHorizontally(motion.defaultSpatialSpec()) { -dir * it } + fadeOut(motion.fastEffectsSpec()))
+                                    .using(SizeTransform(clip = true))
+                            },
+                        ) { dayStartMs ->
+                            Text(formatMediumDate(Instant.fromEpochMilliseconds(dayStartMs)))
+                        }
+                    },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.CalendarToday,

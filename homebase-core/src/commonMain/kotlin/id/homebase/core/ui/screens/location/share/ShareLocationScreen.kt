@@ -1,5 +1,12 @@
 package id.homebase.core.ui.screens.location.share
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.Crossfade
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -181,6 +188,7 @@ fun ShareLocationScreen(
         )
     }
 
+    val motion = MaterialTheme.motionScheme
     Scaffold(
         topBar = {
             TopAppBar(
@@ -205,54 +213,68 @@ fun ShareLocationScreen(
                 Column(modifier = Modifier.navigationBarsPadding().imePadding()) {
                     // Hidden while my live share already covers this conversation — no invitation
                     // to start what's already running (#966 follow-up; app-wide indicator = #816).
-                    val ownShareActive = uiState.ownLiveShareUntilMs
-                        ?.let { Clock.System.now().toEpochMilliseconds() < it } == true
-                    if (!ownShareActive) {
-                        var durationMenuExpanded by remember { mutableStateOf(false) }
-                        Box {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable(enabled = !uiState.isSending) { durationMenuExpanded = true }
-                                    .padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.LocationOn,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = stringResource(MR.string.share_location_live_banner),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = durationMenuExpanded,
-                                onDismissRequest = { durationMenuExpanded = false },
-                            ) {
-                                Text(
-                                    text = stringResource(MR.string.live_share_duration_prompt),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                )
-                                HorizontalDivider()
-                                LIVE_SHARE_DURATION_OPTIONS.forEach { (labelRes, durationMs) ->
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(labelRes)) },
-                                        onClick = {
-                                            durationMenuExpanded = false
-                                            viewModel.startLiveShare(durationMs)
-                                        },
+                    val shareUntilMs = uiState.ownLiveShareUntilMs
+                    var ownShareActive by remember(shareUntilMs) {
+                        mutableStateOf(shareUntilMs?.let { Clock.System.now().toEpochMilliseconds() < it } == true)
+                    }
+                    LaunchedEffect(shareUntilMs) {
+                        if (shareUntilMs != null) {
+                            delay(shareUntilMs - Clock.System.now().toEpochMilliseconds())
+                            ownShareActive = false
+                        }
+                    }
+                    AnimatedVisibility(
+                        visible = !ownShareActive,
+                        enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                        exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                    ) {
+                        Column {
+                            var durationMenuExpanded by remember { mutableStateOf(false) }
+                            Box {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = !uiState.isSending) { durationMenuExpanded = true }
+                                        .padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.LocationOn,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = stringResource(MR.string.share_location_live_banner),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.primary,
                                     )
                                 }
+                                DropdownMenu(
+                                    expanded = durationMenuExpanded,
+                                    onDismissRequest = { durationMenuExpanded = false },
+                                ) {
+                                    Text(
+                                        text = stringResource(MR.string.live_share_duration_prompt),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    )
+                                    HorizontalDivider()
+                                    LIVE_SHARE_DURATION_OPTIONS.forEach { (labelRes, durationMs) ->
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(labelRes)) },
+                                            onClick = {
+                                                durationMenuExpanded = false
+                                                viewModel.startLiveShare(durationMs)
+                                            },
+                                        )
+                                    }
+                                }
                             }
+                            HorizontalDivider()
                         }
-                        HorizontalDivider()
                     }
                     Row(
                         modifier = Modifier
@@ -273,16 +295,18 @@ fun ShareLocationScreen(
                             onClick = { viewModel.sendStaticPin() },
                             enabled = uiState.hasPin && !uiState.isSending,
                         ) {
-                            if (uiState.isSending) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Send,
-                                    contentDescription = stringResource(MR.string.share_location_send_cd),
-                                )
+                            Crossfade(targetState = uiState.isSending, animationSpec = motion.defaultEffectsSpec()) { sending ->
+                                if (sending) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.Send,
+                                        contentDescription = stringResource(MR.string.share_location_send_cd),
+                                    )
+                                }
                             }
                         }
                     }
@@ -344,10 +368,14 @@ fun ShareLocationScreen(
                     uiState.isResolvingAddress -> stringResource(MR.string.share_location_resolving)
                     else -> uiState.address
                 }
-                if (addressText.isNotEmpty()) {
+                AnimatedVisibility(
+                    visible = addressText.isNotEmpty(),
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    enter = fadeIn(motion.defaultEffectsSpec()),
+                    exit = fadeOut(motion.fastEffectsSpec()),
+                ) {
                     Surface(
                         modifier = Modifier
-                            .align(Alignment.TopCenter)
                             .padding(start = 16.dp, top = 12.dp, end = 72.dp),
                         shape = MaterialTheme.shapes.medium,
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -371,16 +399,18 @@ fun ShareLocationScreen(
                         .align(Alignment.TopEnd)
                         .padding(top = 12.dp, end = 12.dp),
                 ) {
-                    if (uiState.isAcquiringFix) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.MyLocation,
-                            contentDescription = stringResource(MR.string.share_location_recenter_cd),
-                        )
+                    Crossfade(targetState = uiState.isAcquiringFix, animationSpec = motion.defaultEffectsSpec()) { acquiring ->
+                        if (acquiring) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.MyLocation,
+                                contentDescription = stringResource(MR.string.share_location_recenter_cd),
+                            )
+                        }
                     }
                 }
             }

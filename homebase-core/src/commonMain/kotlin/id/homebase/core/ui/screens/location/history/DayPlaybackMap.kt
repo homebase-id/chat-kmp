@@ -1,5 +1,10 @@
 package id.homebase.core.ui.screens.location.history
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -80,6 +85,7 @@ fun DayPlaybackMap(
     val playback = remember(traces) { DayPlayback.build(traces) }
     val stats = remember(traces) { LocationHistoryAssembler.stats(traces) }
     val isEmpty = !isLoading && traces.isEmpty()
+    val motion = MaterialTheme.motionScheme
 
     // ── Playback / scrubber state (reset per day) ──
     // `clockMs` is the single source of truth: the day-instant the map renders.
@@ -156,7 +162,12 @@ fun DayPlaybackMap(
         }
 
         // ── Stats ──
-        stats.takeIf { it.pointCount > 0 }?.let { s ->
+        AnimatedVisibility(
+            visible = stats.pointCount > 0,
+            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+        ) {
+            val s = stats
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -192,24 +203,32 @@ fun DayPlaybackMap(
         }
 
         // ── 24h scrubber (the only playback control) ──
-        if (playback != null) {
-            PlaybackScrubber(
-                clockMs = { clockMs },
-                dayStartMs = dayStartMs,
-                onScrub = { v ->
-                    isScrubbing = true
-                    clockMs = dayStartMs + (v * DAY_MS).toLong()
-                },
-                onScrubFinished = {
-                    isScrubbing = false
-                    // Released at the far left → rewind and replay the sweep.
-                    val frac = (clockMs - dayStartMs).toFloat() / DAY_MS
-                    if (frac <= REWIND_REPLAY_FRACTION) {
-                        autoPlayed = false
-                        replayToken++
-                    }
-                },
-            )
+        AnimatedVisibility(
+            visible = playback != null,
+            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+        ) {
+            if (playback != null) {
+                Column {
+                    PlaybackScrubber(
+                        clockMs = { clockMs },
+                        dayStartMs = dayStartMs,
+                        onScrub = { v ->
+                            isScrubbing = true
+                            clockMs = dayStartMs + (v * DAY_MS).toLong()
+                        },
+                        onScrubFinished = {
+                            isScrubbing = false
+                            // Released at the far left → rewind and replay the sweep.
+                            val frac = (clockMs - dayStartMs).toFloat() / DAY_MS
+                            if (frac <= REWIND_REPLAY_FRACTION) {
+                                autoPlayed = false
+                                replayToken++
+                            }
+                        },
+                    )
+                }
+            }
         }
     }
 }
