@@ -5,11 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -166,7 +164,7 @@ internal fun CameraPermissionPane(
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.scrim)
-            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .windowInsetsPadding(cameraSafeInsets)
             .testTag(PERMISSION_PANE_TAG),
     ) {
         CameraCloseButton(onClick = onDismiss, iconRotation = { 0f }, modifier = Modifier.padding(8.dp))
@@ -210,7 +208,7 @@ internal fun CameraUnavailablePane(onDismiss: () -> Unit) {
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.scrim)
-            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .windowInsetsPadding(cameraSafeInsets)
             .testTag(UNAVAILABLE_TAG),
     ) {
         CameraMessage(
