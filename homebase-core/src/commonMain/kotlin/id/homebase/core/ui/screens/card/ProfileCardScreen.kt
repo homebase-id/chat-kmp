@@ -1,12 +1,14 @@
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalComposeUiApi::class)
 
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
@@ -60,7 +62,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
@@ -155,6 +159,7 @@ fun ProfileCardScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val host by viewModel.host.collectAsStateWithLifecycle()
+    val motion = MaterialTheme.motionScheme
     val snackbarHostState = remember { SnackbarHostState() }
     val fileSystemHandler = getUriHandler()
     // Desktop and web have no share sheet; saving is their way to get the image out.
@@ -224,7 +229,7 @@ fun ProfileCardScreen(
             if (rawPull > dismissDistance || velocity > DISMISS_FLING_VELOCITY) {
                 onBack()
             } else {
-                animate(rawPull, 0f) { value, _ -> rawPull = value }
+                animate(rawPull, 0f, animationSpec = motion.fastSpatialSpec()) { value, _ -> rawPull = value }
                 coverHeld = false
             }
         },
@@ -239,6 +244,9 @@ fun ProfileCardScreen(
             }
         }
     }
+    // System back (incl. predictive back) would otherwise pop straight past holdCover(), leaving
+    // the native card view behind on iOS/Desktop instead of following cardSheetExitTransition().
+    @Suppress("DEPRECATION") BackHandler { leave() }
     val cover by viewModel.cover.collectAsStateWithLifecycle()
 
     CardExpressiveTheme {
@@ -509,18 +517,24 @@ private fun ShareAction(
     saveInsteadOfShare: Boolean,
     onClick: () -> Unit,
 ) {
-    if (isExporting) {
-        Box(modifier = Modifier.minimumInteractiveComponentSize(), contentAlignment = Alignment.Center) {
-            LoadingIndicator(modifier = Modifier.size(40.dp))
-        }
-    } else {
-        IconButton(onClick = onClick, enabled = enabled) {
-            Icon(
-                imageVector = if (saveInsteadOfShare) Icons.Outlined.Download else Icons.Outlined.Share,
-                contentDescription = stringResource(
-                    if (saveInsteadOfShare) MR.string.profile_card_save else MR.string.profile_card_share,
-                ),
-            )
+    val motion = MaterialTheme.motionScheme
+    AnimatedContent(
+        targetState = isExporting,
+        transitionSpec = { fadeIn(motion.fastEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
+    ) { exporting ->
+        if (exporting) {
+            Box(modifier = Modifier.minimumInteractiveComponentSize(), contentAlignment = Alignment.Center) {
+                LoadingIndicator(modifier = Modifier.size(40.dp))
+            }
+        } else {
+            IconButton(onClick = onClick, enabled = enabled) {
+                Icon(
+                    imageVector = if (saveInsteadOfShare) Icons.Outlined.Download else Icons.Outlined.Share,
+                    contentDescription = stringResource(
+                        if (saveInsteadOfShare) MR.string.profile_card_save else MR.string.profile_card_share,
+                    ),
+                )
+            }
         }
     }
 }

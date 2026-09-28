@@ -54,35 +54,52 @@ internal fun fadeThroughIn(scheme: MotionScheme): EnterTransition =
 
 internal fun fadeThroughOut(scheme: MotionScheme): ExitTransition = fadeOut(scheme.fastEffectsSpec())
 
-internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navEnter(scheme: MotionScheme): EnterTransition =
-    when (targetState.destination.routeMotion()) {
-        RouteMotion.Push -> PlatformNavMotion.push(scheme)
-        RouteMotion.Tab -> fadeThroughIn(scheme)
+// The card viewer/editor render inside CardExpressiveTheme (MotionScheme.expressive()); match their
+// route transition to that instead of the app's ambient (standard) scheme.
+private fun NavDestination?.isCardRoute(): Boolean =
+    this?.hasRoute(Route.ProfileCard::class) == true || this?.hasRoute(Route.ProfileCardEditor::class) == true
+
+private fun cardAwareScheme(scheme: MotionScheme, destination: NavDestination?): MotionScheme =
+    if (destination.isCardRoute()) MotionScheme.expressive() else scheme
+
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navEnter(scheme: MotionScheme): EnterTransition {
+    val effective = cardAwareScheme(scheme, targetState.destination)
+    return when (targetState.destination.routeMotion()) {
+        RouteMotion.Push -> PlatformNavMotion.push(effective)
+        RouteMotion.Tab -> fadeThroughIn(effective)
         // Effects springs don't overshoot; a spatial one would pull a full-height slide past its edge.
-        RouteMotion.Modal -> slideInVertically(scheme.slowEffectsSpec()) { it } + fadeIn(scheme.defaultEffectsSpec())
-        RouteMotion.Fade -> fadeIn(scheme.defaultEffectsSpec())
+        RouteMotion.Modal -> slideInVertically(effective.slowEffectsSpec()) { it } + fadeIn(effective.defaultEffectsSpec())
+        RouteMotion.Fade -> fadeIn(effective.defaultEffectsSpec())
     }
+}
 
-internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navExit(scheme: MotionScheme): ExitTransition =
-    when (targetState.destination.routeMotion()) {
-        RouteMotion.Push -> PlatformNavMotion.pushExit(scheme)
-        RouteMotion.Tab -> fadeThroughOut(scheme)
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navExit(scheme: MotionScheme): ExitTransition {
+    val effective = cardAwareScheme(scheme, targetState.destination)
+    return when (targetState.destination.routeMotion()) {
+        RouteMotion.Push -> PlatformNavMotion.pushExit(effective)
+        RouteMotion.Tab -> fadeThroughOut(effective)
         RouteMotion.Modal -> ExitTransition.KeepUntilTransitionsFinished
-        RouteMotion.Fade -> fadeOut(scheme.fastEffectsSpec())
+        RouteMotion.Fade -> fadeOut(effective.fastEffectsSpec())
     }
+}
 
-internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navPopEnter(scheme: MotionScheme): EnterTransition =
-    when (initialState.destination.routeMotion()) {
-        RouteMotion.Push -> PlatformNavMotion.pop(scheme)
-        RouteMotion.Tab -> fadeThroughIn(scheme)
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navPopEnter(scheme: MotionScheme): EnterTransition {
+    val effective = cardAwareScheme(scheme, initialState.destination)
+    return when (initialState.destination.routeMotion()) {
+        RouteMotion.Push -> PlatformNavMotion.pop(effective)
+        RouteMotion.Tab -> fadeThroughIn(effective)
         RouteMotion.Modal -> EnterTransition.None
-        RouteMotion.Fade -> fadeIn(scheme.defaultEffectsSpec())
+        RouteMotion.Fade -> fadeIn(effective.defaultEffectsSpec())
     }
+}
 
-internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navPopExit(scheme: MotionScheme): ExitTransition =
-    when (initialState.destination.routeMotion()) {
-        RouteMotion.Push -> PlatformNavMotion.popExit(scheme)
-        RouteMotion.Tab -> fadeThroughOut(scheme)
-        RouteMotion.Modal -> slideOutVertically(scheme.defaultEffectsSpec()) { it } + fadeOut(scheme.slowEffectsSpec())
-        RouteMotion.Fade -> fadeOut(scheme.fastEffectsSpec())
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navPopExit(scheme: MotionScheme): ExitTransition {
+    val effective = cardAwareScheme(scheme, initialState.destination)
+    return when (initialState.destination.routeMotion()) {
+        RouteMotion.Push -> PlatformNavMotion.popExit(effective)
+        RouteMotion.Tab -> fadeThroughOut(effective)
+        RouteMotion.Modal ->
+            slideOutVertically(effective.defaultEffectsSpec()) { it } + fadeOut(effective.slowEffectsSpec())
+        RouteMotion.Fade -> fadeOut(effective.fastEffectsSpec())
     }
+}
