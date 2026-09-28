@@ -1,4 +1,16 @@
+require "spaceship"
 default_platform(:ios)
+
+# fastlane's error message drops Apple's meta.associatedErrors, which is the only place
+# "is not in valid state" says what is actually missing.
+Spaceship::ConnectAPI::APIClient.prepend(Module.new do
+  def handle_response(response)
+    if response.body.kind_of?(Hash) && response.body["errors"]
+      UI.error(JSON.pretty_generate(response.body["errors"]))
+    end
+    super
+  end
+end)
 
 platform :ios do
   desc "Submit latest TestFlight build to App Store for review"
