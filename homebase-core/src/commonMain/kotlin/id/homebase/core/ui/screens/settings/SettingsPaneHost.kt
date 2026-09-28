@@ -7,8 +7,6 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,9 +29,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.LayoutDirection
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
@@ -52,6 +47,7 @@ import id.homebase.core.ui.screens.profile.ProfileEditScreen
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
 import id.homebase.core.widget.ProvideSettingsChrome
+import id.homebase.core.widget.rememberTabSlideFade
 import id.homebase.resources.MR
 import id.homebase.resources.close
 import id.homebase.resources.settings
@@ -126,8 +122,7 @@ internal fun SettingsPaneHost(
             VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             val enterFade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
             val exitFade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
-            val slide = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
-            val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+            val tabSlideFade = rememberTabSlideFade()
             AnimatedContent(
                 targetState = category to profilePage,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -138,12 +133,7 @@ internal fun SettingsPaneHost(
                         // The card pages host a native view that neither fades nor can run twice at once.
                         from.isCard() || to.isCard() -> EnterTransition.None togetherWith ExitTransition.None
                         from == to -> fadeIn(enterFade) togetherWith fadeOut(exitFade)
-                        else -> {
-                            val forward = (to?.ordinal ?: -1) > (from?.ordinal ?: -1)
-                            val sign = (if (forward) 1 else -1) * (if (rtl) -1 else 1)
-                            (slideInHorizontally(slide) { sign * it / 10 } + fadeIn(enterFade)) togetherWith
-                                (slideOutHorizontally(slide) { -sign * it / 10 } + fadeOut(exitFade))
-                        }
+                        else -> tabSlideFade.transform((to?.ordinal ?: -1) > (from?.ordinal ?: -1))
                     }
                 },
             ) { (shownCategory, profile) ->

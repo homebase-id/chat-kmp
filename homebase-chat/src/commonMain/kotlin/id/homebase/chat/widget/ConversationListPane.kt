@@ -6,8 +6,6 @@ import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -76,8 +74,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -101,6 +97,7 @@ import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.core.widget.MinimalSearchTextField
+import id.homebase.core.widget.rememberTabSlideFade
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
 import id.homebase.resources.chat_archived_chats
@@ -162,8 +159,7 @@ fun ConversationListPane(
     val enterFade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
     val exitFade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
     val resize = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
-    val slide = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
-    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val tabSlideFade = rememberTabSlideFade()
     val focusRequesterNone = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
     var showMenu by remember { mutableStateOf(false) }
@@ -478,9 +474,7 @@ fun ConversationListPane(
             AnimatedContent(
                 targetState = uiState.showArchived,
                 transitionSpec = {
-                    val sign = (if (targetState) 1 else -1) * (if (rtl) -1 else 1)
-                    (slideInHorizontally(slide) { sign * it / 10 } + fadeIn(enterFade)) togetherWith
-                        (slideOutHorizontally(slide) { -sign * it / 10 } + fadeOut(exitFade))
+                    tabSlideFade.transform(targetState)
                 },
             ) { archived ->
                 Box {
