@@ -374,7 +374,6 @@ fun FullScreenMediaViewer(
                                 driveId = data.driveId,
                                 fileId = data.fileId,
                                 descriptor = payload,
-                                // Request the measured rail-tile size unsnapped, as before.
                                 availableThumbSizes = emptyList(),
                                 isEncrypted = railIv != null,
                                 keyHeader = railIv

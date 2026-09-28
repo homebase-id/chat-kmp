@@ -66,7 +66,6 @@ fun ProfileAttribute.photoImageData(): HomebaseImageData? {
         driveId = drive,
         fileId = file,
         descriptor = descriptor,
-        // No preview blur-up and no native-size snapping for the avatar, as before.
         previewThumbnail = null,
         availableThumbSizes = emptyList(),
         keyHeader = KeyHeader(iv = iv, aesKey = kh.aesKey),

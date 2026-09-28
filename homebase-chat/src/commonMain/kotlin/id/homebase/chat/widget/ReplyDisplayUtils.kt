@@ -42,7 +42,6 @@ fun PayloadDescriptor.replyQuoteImageData(
         descriptor = this,
         previewThumbnail = previewThumbnail?.toEmbeddedThumb() ?: fallbackPreview,
         requestedSize = ImageSize.THUMB_SMALL,
-        // Request the measured reply-quote size unsnapped, as before.
         availableThumbSizes = emptyList(),
         keyHeader = KeyHeader(iv = payloadIv, aesKey = aesKey),
     )

@@ -444,7 +444,6 @@ class ConversationMapper(
                             aesKey = conversation.keyHeader.aesKey
                         ),
                     requestedSize = ImageSize.THUMB_MEDIUM,
-                    // Request the measured size unsnapped rather than the nearest native thumbnail.
                     availableThumbSizes = emptyList(),
                 )
 

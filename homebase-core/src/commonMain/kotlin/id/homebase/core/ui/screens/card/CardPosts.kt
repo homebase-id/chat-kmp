@@ -133,7 +133,6 @@ internal fun postImage(file: HomebaseFile, content: PostContent): HomebaseImageD
         driveId = file.driveId,
         fileId = file.fileId,
         descriptor = payload,
-        // No preview blur-up for the card thumbnail, as before.
         previewThumbnail = null,
         isEncrypted = iv != null,
         keyHeader = iv?.let { KeyHeader(iv = it, aesKey = file.keyHeader.aesKey) } ?: file.keyHeader,

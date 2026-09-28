@@ -74,13 +74,7 @@ data class HomebaseImageData(
             keyHeader = KeyHeader.newRandom16(),
         )
 
-        /**
-         * Build from a [PayloadDescriptor] so payloadKey/payloadContentType/availableThumbSizes/
-         * previewThumbnail/lastModified are always derived from it — a caller can't forget
-         * payloadContentType and 404 a GIF's never-generated server thumb. Every derived default
-         * is overridable for the sites whose derivation genuinely differs (e.g. a fallback preview
-         * thumbnail, or a size-gated payloadContentType).
-         */
+        /** Derives payloadKey/contentType/thumb sizes/preview/lastModified from [descriptor] so a caller can't forget payloadContentType and 404 a GIF's never-generated thumbnail. */
         fun from(
             driveId: Uuid,
             fileId: Uuid,

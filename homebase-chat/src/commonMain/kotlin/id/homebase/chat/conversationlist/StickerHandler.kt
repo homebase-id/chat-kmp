@@ -190,7 +190,6 @@ internal class StickerHandler(
             payloadKey = action.payloadKey,
             previewThumbnail = message.previewThumbnail,
             requestedSize = ImageSize.THUMB_MEDIUM,
-            isEncrypted = true,
             keyHeader = stickerKeyHeader,
         )
         messagesUiState.update {

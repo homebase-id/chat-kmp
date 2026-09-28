@@ -230,7 +230,6 @@ private fun AlbumMomentCell(
                         previewThumbnail = firstImagePayload.previewThumbnail?.toEmbeddedThumb()
                             ?: moment.previewThumbnail,
                         requestedSize = ImageSize.THUMB_MEDIUM,
-                        isEncrypted = true,
                         keyHeader = id.homebase.api.client.KeyHeader(
                             iv = payloadIv,
                             aesKey = moment.keyHeader.aesKey,

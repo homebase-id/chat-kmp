@@ -255,7 +255,6 @@ fun MomentInlineVideoTile(
             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                 ?: previewThumbnail,
             requestedSize = ImageSize.THUMB_MEDIUM,
-            isEncrypted = true,
             keyHeader = perPayloadKeyHeader,
         )
     }

@@ -151,7 +151,6 @@ data class ContactBookEntry(
             descriptor = descriptor,
             // Use the contact's own file-level preview, not the payload's, as before.
             previewThumbnail = previewThumbnail,
-            // Request the measured avatar size unsnapped, as before.
             availableThumbSizes = emptyList(),
             isEncrypted = isEncrypted,
             keyHeader = KeyHeader(iv = iv, aesKey = kh.aesKey),
