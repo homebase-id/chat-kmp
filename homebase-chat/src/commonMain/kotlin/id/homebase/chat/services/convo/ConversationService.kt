@@ -2754,6 +2754,10 @@ class ConversationService(
                     latestMessageTimestamp = UnixTimeUtc(convo.latestMessageTimestamp.toEpochMilliseconds()),
                 )
                 if (request == null) {
+                    if (optimisticWriter.isLocalOnlyConversation(chatDrive, id)) {
+                        participantLookup.clearLastReadDirtyIfUnchanged(id, target)
+                        continue
+                    }
                     Logger.w(tag = "MarkAsRead") {
                         "ConversationService.flushDirtyLastRead: stamp returned null for convo=$id — " +
                                 "conversation file missing or optimistic write failed (left dirty)"

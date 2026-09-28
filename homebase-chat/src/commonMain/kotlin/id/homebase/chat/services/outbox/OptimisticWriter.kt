@@ -64,6 +64,8 @@ class OptimisticWriter(
     // toggles on different messages don't queue against each other.
     private val reactionToggleLocks = mutableMapOf<Pair<Uuid, Uuid>, Mutex>()
     private val reactionToggleLocksGuard = Mutex()
+    private val loggedLocalOnlySkips = mutableSetOf<Uuid>()
+    private val localOnlySkipLock = Mutex()
 
     private suspend fun reactionLockFor(driveId: Uuid, uniqueId: Uuid): Mutex =
         reactionToggleLocksGuard.withLock {
@@ -972,13 +974,19 @@ class OptimisticWriter(
             )
         )
 
+        // versionTag == null is the local-only placeholder marker: the server has no such file to update.
+        val localOnly = existingFile.fileMetadata.versionTag == null
+
         // Pre-encrypt while we still have access to the key header. The outbox
         // processes this later, possibly after the participant-update has removed
         // us from the group — at which point getFileHeader returns isEncrypted=false
         // and the server rejects the update with "A string IV is required".
         val ivBase64: String?
         val encryptedContent: String?
-        if (existingFile.serverFileIsEncrypted) {
+        if (localOnly) {
+            ivBase64 = null
+            encryptedContent = content
+        } else if (existingFile.serverFileIsEncrypted) {
             val iv = ByteArrayUtil.getRndByteArray(16)
             val keyHeader = KeyHeader(iv = iv, aesKey = existingFile.keyHeader.aesKey)
             val encrypted = keyHeader.encryptDataAes(content.encodeToByteArray())
@@ -1006,18 +1014,39 @@ class OptimisticWriter(
             Logger.d(tag = "MarkAsRead") {
                 "OptimisticWriter.$opName: optimistic local upsert ok fileId=${existingFile.fileId} encrypted=${existingFile.serverFileIsEncrypted} → returning UpdateLocalAppdataContentOutboxRequest"
             }
-            UpdateLocalAppdataContentOutboxRequest(
-                driveId = driveId,
-                fileId = existingFile.fileId,
-                versionTag = null,
-                content = encryptedContent,
-                iv = ivBase64
-            )
+            if (localOnly) {
+                logLocalOnlySkipOnce(existingFile)
+                null
+            } else {
+                UpdateLocalAppdataContentOutboxRequest(
+                    driveId = driveId,
+                    fileId = existingFile.fileId,
+                    versionTag = null,
+                    content = encryptedContent,
+                    iv = ivBase64
+                )
+            }
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "$opName failed for fileId=${existingFile.fileId}" }
             Logger.e(throwable = e, tag = "MarkAsRead") { "OptimisticWriter.$opName FAILED fileId=${existingFile.fileId}" }
             null
         }
+    }
+
+    private suspend fun logLocalOnlySkipOnce(file: HomebaseFile) {
+        val uniqueId = file.fileMetadata.appData.uniqueId ?: return
+        if (localOnlySkipLock.withLock { loggedLocalOnlySkips.add(uniqueId) }) {
+            Logger.w(tag = TAG) {
+                "conversation uniqueId=$uniqueId is local-only (no server file); read-state stays on this device"
+            }
+        }
+    }
+
+    suspend fun isLocalOnlyConversation(driveId: Uuid, conversationId: Uuid): Boolean {
+        val file = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentialsManager.requireActiveCredentials().getIdentityId(), driveId, conversationId
+        )
+        return file != null && file.fileMetadata.versionTag == null
     }
 
     /**
