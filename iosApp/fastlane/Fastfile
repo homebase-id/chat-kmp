@@ -24,6 +24,10 @@ platform :ios do
 
     build_number = latest_testflight_build_number(api_key: api_key, app_identifier: "id.homebase.feed")
     app_version = lane_context[SharedValues::LATEST_TESTFLIGHT_VERSION]
+    # deliver only expands a "default" release note onto languages it is told about.
+    locales = Spaceship::ConnectAPI::App.find("id.homebase.feed")
+      .get_live_app_store_version(platform: Spaceship::ConnectAPI::Platform::IOS)
+      .get_app_store_version_localizations.map(&:locale)
 
     # Every build ships a new marketing version, so deliver must create the App Store version
     # itself; without app_version it reuses a stale one or finds none.
@@ -32,6 +36,7 @@ platform :ios do
       app_identifier: "id.homebase.feed",
       app_version: app_version,
       build_number: build_number.to_s,
+      languages: locales,
 
       skip_binary_upload: true,
       skip_screenshots: true,
