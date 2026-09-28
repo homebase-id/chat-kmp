@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.contactbook.components
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -62,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import id.homebase.api.util.cleanDomain
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
 import id.homebase.core.ui.screens.contactbook.mergeSeed
@@ -462,29 +464,35 @@ fun ContactEditSheet(
 @Composable
 private fun EditAvatar(editing: ContactBookEntry?, photoBytes: ByteArray?) {
     val size = 88.dp
-    when {
-        photoBytes != null -> AsyncImage(
-            model = photoBytes,
-            contentDescription = null,
-            modifier = Modifier.size(size).clip(CircleShape),
-        )
-        editing?.profileImageData() != null -> HomebaseImage(
-            imageData = editing.profileImageData()!!,
-            modifier = Modifier.size(size).clip(CircleShape),
-        )
-        else -> Box(
-            modifier = Modifier
-                .size(size)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Outlined.Person,
+    val existing = remember(editing) { editing?.profileImageData() }
+    Crossfade(
+        targetState = photoBytes ?: existing,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+    ) { avatar ->
+        when (avatar) {
+            is ByteArray -> AsyncImage(
+                model = avatar,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(size / 2),
+                modifier = Modifier.size(size).clip(CircleShape),
             )
+            is HomebaseImageData -> HomebaseImage(
+                imageData = avatar,
+                modifier = Modifier.size(size).clip(CircleShape),
+            )
+            else -> Box(
+                modifier = Modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(size / 2),
+                )
+            }
         }
     }
 }

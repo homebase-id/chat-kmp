@@ -3,6 +3,7 @@
 package id.homebase.core.ui.screens.contactbook.add
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -279,32 +280,37 @@ fun AddContactScreen(
 @Composable
 private fun AddContactAvatar(uiState: AddContactUiState, photoBytes: ByteArray?) {
     val size = 88.dp
-    val resolution = uiState.resolution
-    when {
-        photoBytes != null -> AsyncImage(
-            model = photoBytes,
-            contentDescription = null,
-            modifier = Modifier.size(size).clip(CircleShape),
-        )
-        resolution is RecipientResolution.Resolved -> ContactAvatar(
-            odinId = resolution.identity.odinId,
-            profileImageData = null,
-            initials = resolution.identity.initials(),
-            options = AvatarOptions(size = size),
-        )
-        else -> Box(
-            modifier = Modifier
-                .size(size)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Outlined.Person,
+    val resolved = uiState.resolution as? RecipientResolution.Resolved
+    Crossfade(
+        targetState = photoBytes ?: resolved,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+    ) { avatar ->
+        when (avatar) {
+            is ByteArray -> AsyncImage(
+                model = avatar,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(size / 2),
+                modifier = Modifier.size(size).clip(CircleShape),
             )
+            is RecipientResolution.Resolved -> ContactAvatar(
+                odinId = avatar.identity.odinId,
+                profileImageData = null,
+                initials = avatar.identity.initials(),
+                options = AvatarOptions(size = size),
+            )
+            else -> Box(
+                modifier = Modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(size / 2),
+                )
+            }
         }
     }
 }

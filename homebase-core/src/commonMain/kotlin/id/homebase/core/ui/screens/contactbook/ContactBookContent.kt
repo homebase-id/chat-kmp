@@ -1,5 +1,10 @@
 package id.homebase.core.ui.screens.contactbook
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -42,6 +48,9 @@ import id.homebase.core.ui.screens.contactbook.components.ContactStateIcon
 import id.homebase.resources.contact_review_action
 import org.jetbrains.compose.resources.stringResource
 
+private enum class ContactBookContentPhase { LOADING, EMPTY, LIST }
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ContactBookContent(
     uiState: ContactBookUiState,
@@ -74,112 +83,126 @@ fun ContactBookContent(
             else -> uiState.knownContacts
         }
 
-        when {
-            // Only the state-derived views wait on circles: they aren't cached, so gating All on
-            // them would strand the whole list behind a spinner whenever circles fail to load.
-            uiState.isLoading || (derivedFromStates && uiState.statesLoading) -> Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
-
-            list.isEmpty() && incomingRequests.isEmpty() && uiState.searchQuery.isNotBlank() ->
-                CenterText(stringResource(MR.string.contactbook_no_results))
-
-            list.isEmpty() && incomingRequests.isEmpty() -> when {
-                showNew -> CenterText(stringResource(MR.string.contactbook_new_empty))
-
-                uiState.filter == ContactFilter.CIRCLES ->
-                    CenterText(stringResource(MR.string.contactbook_circles_filter_empty))
-
-                uiState.filter == ContactFilter.UNVETTED ->
-                    CenterText(stringResource(MR.string.contactbook_unvetted_empty))
-
-                uiState.filter == ContactFilter.VETTED ->
-                    CenterText(stringResource(MR.string.contactbook_vetted_empty))
-
-                uiState.filter == ContactFilter.BLOCKED ->
-                    CenterText(stringResource(MR.string.contactbook_blocked_filter_empty))
-
-                else -> ContactBookEmptyState(
-                    onAddClick = { onAction(ContactBookUiAction.AddClicked) },
-                )
-            }
-
-            else -> {
-                val grouped = list.groupBy { it.sectionKey }
-                val sections = grouped.keys.sorted()
-                LazyColumn(
-                    state = listState,
+        // Only the state-derived views wait on circles: they aren't cached, so gating All on
+        // them would strand the whole list behind a spinner whenever circles fail to load.
+        val phase = when {
+            uiState.isLoading || (derivedFromStates && uiState.statesLoading) -> ContactBookContentPhase.LOADING
+            list.isEmpty() && incomingRequests.isEmpty() -> ContactBookContentPhase.EMPTY
+            else -> ContactBookContentPhase.LIST
+        }
+        val motion = MaterialTheme.motionScheme
+        AnimatedContent(
+            targetState = phase,
+            transitionSpec = {
+                fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
+            },
+        ) { targetPhase ->
+            when (targetPhase) {
+                ContactBookContentPhase.LOADING -> Box(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 88.dp),
-                ) {
-                    if (incomingRequests.isNotEmpty()) {
-                        item(key = "h_requests") {
-                            Text(
-                                text = stringResource(MR.string.contactbook_requests_header),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .animateItem()
-                                    .fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.surface)
-                                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                            )
-                        }
-                        items(incomingRequests, key = { "req_${it.entry.uniqueId}" }) { request ->
-                            ContactBookRow(
-                                entry = request.entry,
-                                onClick = { onAction(ContactBookUiAction.ContactClicked(request.entry)) },
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
+                    contentAlignment = Alignment.Center,
+                ) { CircularProgressIndicator() }
+
+                ContactBookContentPhase.EMPTY -> when {
+                    uiState.searchQuery.isNotBlank() -> CenterText(stringResource(MR.string.contactbook_no_results))
+
+                    showNew -> CenterText(stringResource(MR.string.contactbook_new_empty))
+
+                    uiState.filter == ContactFilter.CIRCLES ->
+                        CenterText(stringResource(MR.string.contactbook_circles_filter_empty))
+
+                    uiState.filter == ContactFilter.UNVETTED ->
+                        CenterText(stringResource(MR.string.contactbook_unvetted_empty))
+
+                    uiState.filter == ContactFilter.VETTED ->
+                        CenterText(stringResource(MR.string.contactbook_vetted_empty))
+
+                    uiState.filter == ContactFilter.BLOCKED ->
+                        CenterText(stringResource(MR.string.contactbook_blocked_filter_empty))
+
+                    else -> ContactBookEmptyState(
+                        onAddClick = { onAction(ContactBookUiAction.AddClicked) },
+                    )
+                }
+
+                ContactBookContentPhase.LIST -> {
+                    val (grouped, sections) = remember(list) {
+                        val g = list.groupBy { it.sectionKey }
+                        g to g.keys.sorted()
                     }
-                    sections.forEach { section ->
-                        val entries = grouped[section].orEmpty()
-                        item(key = "h_$section") {
-                            Text(
-                                text = section,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .animateItem()
-                                    .fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.surface)
-                                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                            )
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 88.dp),
+                    ) {
+                        if (incomingRequests.isNotEmpty()) {
+                            stickyHeader(key = "h_requests") {
+                                Text(
+                                    text = stringResource(MR.string.contactbook_requests_header),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .animateItem()
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.surface)
+                                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                                )
+                            }
+                            items(incomingRequests, key = { "req_${it.entry.uniqueId}" }) { request ->
+                                ContactBookRow(
+                                    entry = request.entry,
+                                    onClick = { onAction(ContactBookUiAction.ContactClicked(request.entry)) },
+                                    modifier = Modifier.animateItem(),
+                                )
+                            }
                         }
-                        items(entries, key = { it.uniqueId.toString() }) { entry ->
-                            val state = entry.odinId?.lowercase()
-                                ?.takeIf { uiState.reviewEnabled }
-                                ?.let { uiState.contactStates[it] }
-                            ContactBookRow(
-                                entry = entry,
-                                onClick = { onAction(ContactBookUiAction.ContactClicked(entry)) },
-                                modifier = Modifier.animateItem(),
-                                // Check shows whenever the identity is connected, in every
-                                // filter (a New contact is still a connection).
-                                connected = entry.odinId?.lowercase() in uiState.connectedOdinIds,
-                                trailing = when (state) {
-                                    null -> null
-                                    // New is the one state with something to do, so it gets the
-                                    // action rather than the icon that merely reports the state.
-                                    ContactState.New -> {
-                                        {
-                                            TextButton(
-                                                onClick = {
-                                                    onAction(ContactBookUiAction.ReviewClicked(entry))
-                                                },
-                                            ) {
-                                                Text(stringResource(MR.string.contact_review_action))
+                        sections.forEach { section ->
+                            val entries = grouped[section].orEmpty()
+                            stickyHeader(key = "h_$section") {
+                                Text(
+                                    text = section,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .animateItem()
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.surface)
+                                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                                )
+                            }
+                            items(entries, key = { it.uniqueId.toString() }) { entry ->
+                                val state = entry.odinId?.lowercase()
+                                    ?.takeIf { uiState.reviewEnabled }
+                                    ?.let { uiState.contactStates[it] }
+                                ContactBookRow(
+                                    entry = entry,
+                                    onClick = { onAction(ContactBookUiAction.ContactClicked(entry)) },
+                                    modifier = Modifier.animateItem(),
+                                    // Check shows whenever the identity is connected, in every
+                                    // filter (a New contact is still a connection).
+                                    connected = entry.odinId?.lowercase() in uiState.connectedOdinIds,
+                                    trailing = when (state) {
+                                        null -> null
+                                        // New is the one state with something to do, so it gets the
+                                        // action rather than the icon that merely reports the state.
+                                        ContactState.New -> {
+                                            {
+                                                TextButton(
+                                                    onClick = {
+                                                        onAction(ContactBookUiAction.ReviewClicked(entry))
+                                                    },
+                                                ) {
+                                                    Text(stringResource(MR.string.contact_review_action))
+                                                }
                                             }
                                         }
-                                    }
 
-                                    else -> {
-                                        { ContactStateIcon(state) }
-                                    }
-                                },
-                            )
+                                        else -> {
+                                            { ContactStateIcon(state) }
+                                        }
+                                    },
+                                )
+                            }
                         }
                     }
                 }
