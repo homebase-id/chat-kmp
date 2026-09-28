@@ -44,7 +44,7 @@ platform :ios do
       release_notes: { "default" => ENV.fetch("RELEASE_NOTES", "").strip.empty? ? "Bug fixes and improvements." : ENV["RELEASE_NOTES"] },
 
       submit_for_review: true,
-      automatic_release: false,
+      automatic_release: true,
 
       submission_information: {
         add_id_info_uses_idfa: false,
