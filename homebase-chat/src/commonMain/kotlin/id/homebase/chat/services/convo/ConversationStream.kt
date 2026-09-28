@@ -29,6 +29,7 @@ import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.share.ShareableConversation
 import id.homebase.core.sync.OptionalDriveActivation
+import id.homebase.core.util.initials
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -539,6 +540,7 @@ class ConversationStream(
                     ConversationAvatarModel(
                         type = ConversationAvatarModel.Type.Connection,
                         odinId = m.sender,
+                        initials = m.sender?.domainName?.initials(),
                     )
                 } else {
                     ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback)

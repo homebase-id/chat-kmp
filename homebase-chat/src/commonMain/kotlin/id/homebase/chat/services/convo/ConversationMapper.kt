@@ -17,6 +17,7 @@ import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.util.initials
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -466,9 +467,11 @@ class ConversationMapper(
         // Otherwise a 2-person group would be indistinguishable from a 1:1 with the same
         // person — both in title and avatar.
         if (!isAnyGroup && others.size == 1) {
+            val other = others.first()
             return ConversationAvatarModel(
                 type = ConversationAvatarModel.Type.Connection,
-                odinId = others.first()
+                odinId = other,
+                initials = other.domainName.initials()
             )
         }
 
