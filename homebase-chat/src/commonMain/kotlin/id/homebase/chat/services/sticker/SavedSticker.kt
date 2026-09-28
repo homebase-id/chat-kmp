@@ -11,7 +11,6 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
-import id.homebase.core.image.thumbSizesFrom
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
@@ -97,22 +96,18 @@ fun SavedSticker.toImageData(requestedSize: ImageSize? = ImageSize.THUMB_SMALL):
     val ivBytes = payloadDescriptor.iv?.let {
         try { Base64.decode(it) } catch (_: Exception) { null }
     } ?: return null
-    return HomebaseImageData(
+    return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,
-        payloadKey = payloadKey,
+        descriptor = payloadDescriptor,
         previewThumbnail = previewThumbnail,
         requestedSize = requestedSize,
-        availableThumbSizes = thumbSizesFrom(payloadDescriptor.thumbnails),
-        loadFullPayload = false,
         // Lets a GIF animate from its original, but only small ones: a tray is a grid of these.
         payloadContentType = contentType.takeIf {
             it !in HomebaseImageLoader.THUMBLESS_CONTENT_TYPES ||
                 // bytesWritten is the encrypted size: PKCS7 padding adds up to one 16-byte AES block.
                 (payloadDescriptor.bytesWritten ?: Long.MAX_VALUE) <= TRAY_ANIMATED_MAX_BYTES + 16
         },
-        isEncrypted = true,
-        lastModified = payloadDescriptor.lastModified,
         keyHeader = KeyHeader(iv = ivBytes, aesKey = keyHeader.aesKey),
     )
 }

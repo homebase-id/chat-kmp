@@ -157,13 +157,13 @@ fun FullScreenVideoPlayer(
                     data.payloadKey,
                     data.payload.lastModified
                 ) {
-                    HomebaseImageData(
+                    HomebaseImageData.from(
                         driveId = data.driveId,
                         fileId = data.fileId,
-                        payloadKey = data.payloadKey,
-                        previewThumbnail = data.payload.previewThumbnail?.toEmbeddedThumb(),
+                        descriptor = data.payload,
                         requestedSize = ImageSize.THUMB_MEDIUM,
-                        lastModified = data.payload.lastModified,
+                        // Video payloads never carry server thumbnails; request the measured size.
+                        availableThumbSizes = emptyList(),
                         isEncrypted = payloadIv != null,
                         keyHeader = payloadIv
                             ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }

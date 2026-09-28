@@ -1,6 +1,7 @@
 package id.homebase.core.image
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
@@ -71,6 +72,39 @@ data class HomebaseImageData(
             previewThumbnail = previewThumbnail,
             pendingFileUri = fileUri,
             keyHeader = KeyHeader.newRandom16(),
+        )
+
+        /** Derives payloadKey/contentType/thumb sizes/preview/lastModified from [descriptor] so a caller can't forget payloadContentType and 404 a GIF's never-generated thumbnail. */
+        fun from(
+            driveId: Uuid,
+            fileId: Uuid,
+            descriptor: PayloadDescriptor,
+            keyHeader: KeyHeader,
+            previewThumbnail: EmbeddedThumb? = descriptor.previewThumbnail?.toEmbeddedThumb(),
+            requestedSize: ImageSize? = null,
+            availableThumbSizes: List<ImageSize> = thumbSizesFrom(descriptor.thumbnails),
+            loadFullPayload: Boolean = false,
+            isEncrypted: Boolean = true,
+            lastModified: Long? = descriptor.lastModified,
+            pendingFileUri: String? = null,
+            payloadContentType: String? = descriptor.contentType,
+            remoteOdinId: OdinId? = null,
+            globalTransitId: Uuid? = null,
+        ): HomebaseImageData = HomebaseImageData(
+            driveId = driveId,
+            fileId = fileId,
+            payloadKey = descriptor.key,
+            previewThumbnail = previewThumbnail,
+            requestedSize = requestedSize,
+            availableThumbSizes = availableThumbSizes,
+            loadFullPayload = loadFullPayload,
+            isEncrypted = isEncrypted,
+            lastModified = lastModified,
+            pendingFileUri = pendingFileUri,
+            payloadContentType = payloadContentType,
+            keyHeader = keyHeader,
+            remoteOdinId = remoteOdinId,
+            globalTransitId = globalTransitId,
         )
     }
 

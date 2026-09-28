@@ -171,15 +171,11 @@ fun FullScreenMediaViewer(
 
                 is MediaPageSource.Remote -> {
                     val source = remember(data.driveId, data.fileId, payload.key, resolved.iv) {
-                        val imageData = HomebaseImageData(
+                        val imageData = HomebaseImageData.from(
                             driveId = data.driveId,
                             fileId = data.fileId,
-                            payloadKey = payload.key,
-                            previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
+                            descriptor = payload,
                             loadFullPayload = true,
-                            lastModified = payload.lastModified,
-                            // The placeholder copies this with loadFullPayload = false; a GIF has no server thumb.
-                            payloadContentType = payload.contentType,
                             isEncrypted = resolved.iv != null,
                             keyHeader = resolved.iv
                                 ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
@@ -374,16 +370,11 @@ fun FullScreenMediaViewer(
                             payload.lastModified,
                             railIv,
                         ) {
-                            HomebaseImageData(
+                            HomebaseImageData.from(
                                 driveId = data.driveId,
                                 fileId = data.fileId,
-                                payloadKey = payload.key,
-                                previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
-                                lastModified = payload.lastModified,
-                                // Real payload type so a GIF rail thumbnail loads
-                                // the animated original instead of a never-generated
-                                // server thumbnail (its preview thumb is WebP).
-                                payloadContentType = payload.contentType,
+                                descriptor = payload,
+                                availableThumbSizes = emptyList(),
                                 isEncrypted = railIv != null,
                                 keyHeader = railIv
                                     ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }

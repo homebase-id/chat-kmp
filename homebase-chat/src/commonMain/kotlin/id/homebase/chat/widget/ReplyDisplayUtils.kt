@@ -36,15 +36,13 @@ fun PayloadDescriptor.replyQuoteImageData(
     } catch (_: Exception) {
         null
     } ?: return null
-    return HomebaseImageData(
+    return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,
-        payloadKey = key,
+        descriptor = this,
         previewThumbnail = previewThumbnail?.toEmbeddedThumb() ?: fallbackPreview,
         requestedSize = ImageSize.THUMB_SMALL,
-        lastModified = lastModified,
-        isEncrypted = true,
-        payloadContentType = contentType,
+        availableThumbSizes = emptyList(),
         keyHeader = KeyHeader(iv = payloadIv, aesKey = aesKey),
     )
 }

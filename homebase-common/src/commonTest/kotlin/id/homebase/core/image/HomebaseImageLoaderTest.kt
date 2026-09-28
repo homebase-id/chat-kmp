@@ -1,6 +1,8 @@
 package id.homebase.core.image
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -169,6 +171,54 @@ class HomebaseImageLoaderTest {
         assertTrue(msg.contains("size=320x320"), "missing size: $msg")
         assertTrue(msg.contains("lastMod=1776703690500"), "missing lastModified: $msg")
         assertTrue(msg.contains("cause=NullPointerException"), "missing cause: $msg")
+    }
+
+    @Test
+    fun `HomebaseImageData_from derives payloadKey, contentType, thumb sizes, preview and lastModified from the descriptor`() {
+        val descriptor = PayloadDescriptor(
+            key = "chat_web0",
+            contentType = "image/gif",
+            lastModified = 1776703690500L,
+            thumbnails = listOf(
+                ThumbnailDescriptor(pixelWidth = 320, pixelHeight = 320, contentType = "image/webp"),
+            ),
+            previewThumbnail = ThumbnailDescriptor(
+                pixelWidth = 20,
+                pixelHeight = 20,
+                contentType = "image/webp",
+                content = "base64data",
+            ),
+        )
+
+        val data = HomebaseImageData.from(
+            driveId = Uuid.random(),
+            fileId = Uuid.random(),
+            descriptor = descriptor,
+            keyHeader = KeyHeader.newRandom16(),
+        )
+
+        assertEquals("chat_web0", data.payloadKey)
+        assertEquals("image/gif", data.payloadContentType)
+        assertTrue(data.effectiveContentType in HomebaseImageLoader.THUMBLESS_CONTENT_TYPES)
+        assertEquals(1776703690500L, data.lastModified)
+        assertEquals(listOf(ImageSize(320, 320)), data.availableThumbSizes)
+        assertEquals(20, data.previewThumbnail?.pixelWidth)
+        assertEquals("base64data", data.previewThumbnail?.content)
+    }
+
+    @Test
+    fun `HomebaseImageData_from lets a caller override the derived payloadContentType`() {
+        val descriptor = PayloadDescriptor(key = "chat_web0", contentType = "image/gif")
+
+        val data = HomebaseImageData.from(
+            driveId = Uuid.random(),
+            fileId = Uuid.random(),
+            descriptor = descriptor,
+            keyHeader = KeyHeader.newRandom16(),
+            payloadContentType = null,
+        )
+
+        assertNull(data.payloadContentType)
     }
 
     @Test
