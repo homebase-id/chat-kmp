@@ -49,6 +49,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -210,7 +211,7 @@ fun SentMessageBubble(
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     val popupTransition = updateTransition(popupMode, label = "messagePopup")
     val handback = rememberBubbleHandback()
-    handback.active = popupTransition.shownMode == MessagePopupMode.All
+    SideEffect { handback.active = popupTransition.shownMode == MessagePopupMode.All }
     var showEmojiPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -538,7 +539,7 @@ fun ReceivedMessageBubble(
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     val popupTransition = updateTransition(popupMode, label = "messagePopup")
     val handback = rememberBubbleHandback()
-    handback.active = popupTransition.shownMode == MessagePopupMode.All
+    SideEffect { handback.active = popupTransition.shownMode == MessagePopupMode.All }
     var showEmojiPicker by remember { mutableStateOf(false) }
     var showBlockConfirm by remember { mutableStateOf(false) }
     var showReportConfirm by remember { mutableStateOf(false) }

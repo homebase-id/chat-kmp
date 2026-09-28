@@ -3,6 +3,7 @@ package id.homebase.chat.widget
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -15,8 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -25,7 +24,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.layout.layout
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 
 @Stable
@@ -83,20 +82,12 @@ internal fun AnimatedVisibilityScope.HandbackBubble(handback: BubbleHandback) {
     SideEffect { handback.hidden = true }
     DisposableEffect(handback) { onDispose { handback.hidden = false } }
 
-    val density = LocalDensity.current
     val size = handback.size
-    Modifier
-        .layout { measurable, _ ->
-            val placeable = measurable.measure(
-                androidx.compose.ui.unit.Constraints.fixed(size.width, size.height),
-            )
-            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-        }
-    androidx.compose.foundation.layout.Box(
+    Box(
         Modifier
             .layout { measurable, _ ->
                 val placeable = measurable.measure(
-                    androidx.compose.ui.unit.Constraints.fixed(size.width, size.height),
+                    Constraints.fixed(size.width, size.height),
                 )
                 layout(placeable.width, placeable.height) { placeable.place(0, 0) }
             }
