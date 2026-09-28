@@ -1,7 +1,8 @@
 package id.homebase.api.client
 
-class UnauthorizedException :
-    OdinApiException(401, "Unauthorized")
+class UnauthorizedException(
+    problem: ProblemDetails? = null
+) : OdinApiException(401, "Unauthorized", problem?.correlationId(), problem)
 
 /**
  * True when [this] (or anything in its cause chain) is a 401. Walks the cause chain defensively

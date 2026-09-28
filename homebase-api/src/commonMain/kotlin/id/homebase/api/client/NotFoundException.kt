@@ -1,4 +1,5 @@
 package id.homebase.api.client
 
-class NotFoundException :
-    OdinApiException(404, "Not found")
+class NotFoundException(
+    problem: ProblemDetails? = null
+) : OdinApiException(404, "Not found", problem?.correlationId(), problem)

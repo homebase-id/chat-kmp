@@ -2,7 +2,7 @@ package id.homebase.api.client
 
 class ForbiddenException(
     problem: ProblemDetails? = null
-) : OdinApiException(403, problem?.title ?: "Forbidden", problem = problem)
+) : OdinApiException(403, problem?.title ?: "Forbidden", problem?.correlationId(), problem)
 
 /**
  * True when [this] (or anything in its cause chain) is a server **permission denial** — a 403.
