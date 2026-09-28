@@ -124,6 +124,7 @@ kotlin {
             implementation(compose.desktop.currentOs)
             implementation(libs.sqldelight.sqlite.driver)
             implementation(libs.konsist)
+            implementation(libs.ktor.client.mock)
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)

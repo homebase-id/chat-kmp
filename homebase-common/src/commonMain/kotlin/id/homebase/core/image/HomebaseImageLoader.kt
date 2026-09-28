@@ -13,7 +13,14 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.util.contentType
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
 /** Image data container */
@@ -52,6 +59,8 @@ class HomebaseImageLoader(
         maxBytes = MAX_FULL_PAYLOAD_CACHE_BYTES,
         scope = cacheScope,
     )
+    private val inFlightThumbs = HashMap<String, Deferred<CachedImage?>>()
+    private val inFlightThumbsMutex = Mutex()
 
     companion object {
         private const val TAG = "HomebaseImageLoader"
@@ -136,7 +145,31 @@ class HomebaseImageLoader(
         // the read hit what the sender seeded under the optimistic fileId.
         val nativeSize = selectThumbSize(targetSize, data.availableThumbSizes)
 
-        // Fetch from server with retry
+        return loadThumbCoalesced("${fullPayloadCacheKey(data)}/${nativeSize.pixelWidth}x${nativeSize.pixelHeight}") {
+            fetchThumbUncached(data, nativeSize, retryConfig)
+        }
+    }
+
+    // On cacheScope so a row scrolling away mid-download doesn't abort the disk-cache write.
+    private suspend fun loadThumbCoalesced(key: String, load: suspend () -> CachedImage?): CachedImage? {
+        val deferred = inFlightThumbsMutex.withLock {
+            inFlightThumbs.getOrPut(key) {
+                cacheScope.async(start = CoroutineStart.LAZY) {
+                    try {
+                        load()
+                    } finally {
+                        withContext(NonCancellable) { inFlightThumbsMutex.withLock { inFlightThumbs.remove(key) } }
+                    }
+                }
+            }
+        }
+        deferred.start()
+        return deferred.await()
+    }
+
+    private suspend fun fetchThumbUncached(
+        data: HomebaseImageData, nativeSize: ImageSize, retryConfig: RetryConfig
+    ): CachedImage? {
         return withRetry(retryConfig, TAG) {
             val response = try {
                 if (data.isOverPeer) {
