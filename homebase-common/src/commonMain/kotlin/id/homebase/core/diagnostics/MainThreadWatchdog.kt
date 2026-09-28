@@ -2,15 +2,20 @@ package id.homebase.core.diagnostics
 
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CompletableDeferred
+import co.touchlab.kermit.Severity
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.concurrent.Volatile
 import kotlin.time.TimeSource
 
 /**
@@ -22,10 +27,9 @@ import kotlin.time.TimeSource
  * [captureMainThreadStackTrace] hook and emits a WARN (throttled to one per [throttleMs]) into
  * `homebase.log` — so a freeze leaves usable evidence instead of nothing.
  *
- * That mechanism has a blind spot: it runs on [workDispatcher] (`Dispatchers.Default` by
- * default), so if the *whole process* stalls — most plausibly `Dispatchers.Default`'s own
- * limited-parallelism pool getting exhausted by blocking work dispatched to it elsewhere in the
- * app — the watchdog's own loop never gets scheduled and can't emit anything either. Two
+ * That mechanism has a blind spot: it runs on [workDispatcher] (a dedicated
+ * single thread by default, so `Dispatchers.Default` pool exhaustion cannot starve it), but a
+ * *whole-process* stall would still leave it unscheduled and unable to emit anything. Two
  * production incidents hit exactly this: a real ~30s user-facing freeze with zero
  * `MainThreadWatchdog` log lines. Two additional, independent detectors close that gap:
  *
@@ -59,17 +63,28 @@ class MainThreadWatchdog(
     private val tickIntervalMs: Long = 1_000,
     throttleMs: Long = 30_000,
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
-    private val workDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    workDispatcher: CoroutineDispatcher? = null,
     private val log: (String) -> Unit = { Logger.w(tag = TAG) { it } },
     private val heartbeat: ProcessHeartbeat? = null,
     private val heartbeatIntervalMs: Long = 5_000,
+    private val aliveLogIntervalMs: Long = 600_000,
+    private val lifecycleLog: (Severity, String, Throwable?) -> Unit =
+        { severity, message, throwable -> Logger.log(severity, TAG, throwable, message) },
+    private val captureStack: () -> String? = { captureMainThreadStackTrace() },
+    private val useLivenessProbe: Boolean = true,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + workDispatcher)
+    // Own thread by default: on Dispatchers.Default the loop shares its pool with the work a
+    // wedge would exhaust, so it could go silent exactly when it is needed.
+    private val workDispatcher: CoroutineDispatcher = workDispatcher ?: createWatchdogDispatcher()
+    private val scope = CoroutineScope(SupervisorJob() + this.workDispatcher)
     private val timeOrigin = TimeSource.Monotonic.markNow()
     private fun nowMs(): Long = timeOrigin.elapsedNow().inWholeMilliseconds
 
     private val reporter = StallReporter(throttleMs = throttleMs, nowMs = ::nowMs, log = log)
     private var livenessHandle: MainThreadLivenessProbe.Handle? = null
+
+    @Volatile
+    private var stopRequested = false
 
     fun start() {
         heartbeat?.let { hb ->
@@ -78,86 +93,134 @@ class MainThreadWatchdog(
         }
         installMainThreadLivenessProbe()
         installMemoryDiagnostics()
-        livenessHandle = MainThreadLivenessProbe.startIfAvailable(
-            thresholdMs = thresholdMs,
-            pollIntervalMs = tickIntervalMs,
-        ) { stalledMs ->
-            val stack = captureMainThreadStackTrace()
+        if (useLivenessProbe) {
+            livenessHandle = MainThreadLivenessProbe.startIfAvailable(
+                thresholdMs = thresholdMs,
+                pollIntervalMs = tickIntervalMs,
+            ) { stalledMs ->
+                val stack = captureStack()
+                reporter.reportIfDue {
+                    renderStallMessage(
+                        StallEvent(
+                            kind = StallKind.MainThreadBlock,
+                            source = StallSource.DedicatedThread,
+                            observedMs = stalledMs,
+                            memory = MemoryDiagnostics.capture(),
+                        ),
+                        stack = stack,
+                    )
+                }
+            }
+        }
+
+        scope.launch { runLoop() }
+    }
+
+    private suspend fun CoroutineScope.runLoop() {
+        lifecycleLog(
+            Severity.Info,
+            "Watchdog loop started: thread=${currentThreadName()} dispatcher=$workDispatcher " +
+                "main=$mainDispatcher thresholdMs=$thresholdMs tickMs=$tickIntervalMs",
+            null,
+        )
+        try {
+            var lastBeatMs = nowMs()
+            var lastAliveMs = lastBeatMs
+            var iterations = 0L
+            var consecutiveFailures = 0
+            while (currentCoroutineContext().isActive) {
+                try {
+                    tick()
+                    consecutiveFailures = 0
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    consecutiveFailures++
+                    if (consecutiveFailures <= 3 || consecutiveFailures % 100 == 0) {
+                        lifecycleLog(
+                            Severity.Error,
+                            "Watchdog loop iteration failed (consecutive=$consecutiveFailures); continuing",
+                            e,
+                        )
+                    }
+                    delay(tickIntervalMs)
+                }
+                iterations++
+
+                val now = nowMs()
+                if (heartbeat != null && now - lastBeatMs >= heartbeatIntervalMs) {
+                    lastBeatMs = now
+                    heartbeat.beat()
+                }
+                if (now - lastAliveMs >= aliveLogIntervalMs) {
+                    lastAliveMs = now
+                    lifecycleLog(Severity.Info, "Watchdog loop alive: iterations=$iterations", null)
+                }
+            }
+        } catch (e: CancellationException) {
+            val why = if (stopRequested) "stop() called" else "cancelled without stop()"
+            lifecycleLog(Severity.Info, "Watchdog loop stopped: $why, cause=${e.cause ?: e.message}", e)
+            throw e
+        } catch (e: Throwable) {
+            lifecycleLog(Severity.Error, "Watchdog loop died", e)
+            throw e
+        }
+    }
+
+    private suspend fun CoroutineScope.tick() {
+        val pong = CompletableDeferred<Unit>()
+        val postedAt = nowMs()
+        // Post the sentinel to the UI dispatcher. If it's blocked, this never runs.
+        launch(mainDispatcher) { pong.complete(Unit) }
+
+        val acked = withTimeoutOrNull(thresholdMs) { pong.await() }
+        if (acked == null) {
+            val stalledMs = nowMs() - postedAt
+            val stack = captureStack()
             reporter.reportIfDue {
                 renderStallMessage(
                     StallEvent(
                         kind = StallKind.MainThreadBlock,
-                        source = StallSource.DedicatedThread,
+                        source = StallSource.CoroutineLoop,
                         observedMs = stalledMs,
                         memory = MemoryDiagnostics.capture(),
                     ),
                     stack = stack,
                 )
             }
+            // Wait for the UI thread to recover before ticking again, so a long hang
+            // leaves only one outstanding sentinel rather than one per tick.
+            pong.await()
         }
 
-        scope.launch {
-            var lastBeatMs = nowMs()
-            while (isActive) {
-                val pong = CompletableDeferred<Unit>()
-                val postedAt = nowMs()
-                // Post the sentinel to the UI dispatcher. If it's blocked, this never runs.
-                launch(mainDispatcher) { pong.complete(Unit) }
-
-                val acked = withTimeoutOrNull(thresholdMs) { pong.await() }
-                if (acked == null) {
-                    val stalledMs = nowMs() - postedAt
-                    val stack = captureMainThreadStackTrace()
-                    reporter.reportIfDue {
-                        renderStallMessage(
-                            StallEvent(
-                                kind = StallKind.MainThreadBlock,
-                                source = StallSource.CoroutineLoop,
-                                observedMs = stalledMs,
-                                memory = MemoryDiagnostics.capture(),
-                            ),
-                            stack = stack,
-                        )
-                    }
-                    // Wait for the UI thread to recover before ticking again, so a long hang
-                    // leaves only one outstanding sentinel rather than one per tick.
-                    pong.await()
-                }
-
-                // Checkpoint immediately around the suspend point that depends on workDispatcher
-                // rescheduling us: if that takes far longer than requested, the watchdog's own
-                // loop — not just the UI thread — was starved.
-                val checkpointMs = nowMs()
-                val checkpointTimes = captureProcessTimes()
-                delay(tickIntervalMs)
-                val actualGapMs = nowMs() - checkpointMs
-                val starvedMs = detectWatchdogStarvation(expectedGapMs = tickIntervalMs, actualGapMs = actualGapMs)
-                if (starvedMs != null) {
-                    val processDelta = processTimesDelta(checkpointTimes, captureProcessTimes())
-                    val stack = captureMainThreadStackTrace()
-                    reporter.reportIfDue {
-                        renderStallMessage(
-                            StallEvent(
-                                kind = StallKind.WatchdogStarved,
-                                source = StallSource.CoroutineLoop,
-                                observedMs = starvedMs,
-                                memory = MemoryDiagnostics.capture(),
-                                processDelta = processDelta,
-                            ),
-                            stack = stack,
-                        )
-                    }
-                }
-
-                if (heartbeat != null && nowMs() - lastBeatMs >= heartbeatIntervalMs) {
-                    lastBeatMs = nowMs()
-                    heartbeat.beat()
-                }
+        // Checkpoint immediately around the suspend point that depends on workDispatcher
+        // rescheduling us: if that takes far longer than requested, the watchdog's own
+        // loop — not just the UI thread — was starved.
+        val checkpointMs = nowMs()
+        val checkpointTimes = captureProcessTimes()
+        delay(tickIntervalMs)
+        val actualGapMs = nowMs() - checkpointMs
+        val starvedMs = detectWatchdogStarvation(expectedGapMs = tickIntervalMs, actualGapMs = actualGapMs)
+        if (starvedMs != null) {
+            val processDelta = processTimesDelta(checkpointTimes, captureProcessTimes())
+            val stack = captureStack()
+            reporter.reportIfDue {
+                renderStallMessage(
+                    StallEvent(
+                        kind = StallKind.WatchdogStarved,
+                        source = StallSource.CoroutineLoop,
+                        observedMs = starvedMs,
+                        memory = MemoryDiagnostics.capture(),
+                        processDelta = processDelta,
+                    ),
+                    stack = stack,
+                )
             }
         }
     }
 
     fun stop() {
+        stopRequested = true
         scope.cancel()
         livenessHandle?.stop()
         livenessHandle = null
@@ -173,3 +236,8 @@ class MainThreadWatchdog(
  * cannot capture another thread's stack from the watchdog thread.
  */
 internal expect fun captureMainThreadStackTrace(maxFrames: Int = 60): String?
+
+/** A single thread nothing else shares, so the watchdog loop can't be starved by pool exhaustion. */
+internal expect fun createWatchdogDispatcher(): CoroutineDispatcher
+
+internal expect fun currentThreadName(): String
