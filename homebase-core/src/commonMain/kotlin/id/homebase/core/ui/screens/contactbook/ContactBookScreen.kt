@@ -6,8 +6,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
@@ -54,9 +52,6 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -83,6 +78,7 @@ import id.homebase.resources.search
 import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionSheet
 import id.homebase.resources.contact_review_failed
+import id.homebase.core.widget.rememberTabSlideFade
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
@@ -303,15 +299,12 @@ fun ContactBookScreen(
                 }
             }
 
-            val slide = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
-            val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+            val tabSlideFade = rememberTabSlideFade()
             AnimatedContent(
                 targetState = uiState.selectedTab,
                 modifier = Modifier.weight(1f),
                 transitionSpec = {
-                    val sign = (if (targetState.ordinal > initialState.ordinal) 1 else -1) * (if (rtl) -1 else 1)
-                    (slideInHorizontally(slide) { sign * it / 10 } + fadeIn(enterFade)) togetherWith
-                        (slideOutHorizontally(slide) { -sign * it / 10 } + fadeOut(exitFade))
+                    tabSlideFade.transform(targetState.ordinal > initialState.ordinal)
                 },
             ) { tab ->
                 when (tab) {
