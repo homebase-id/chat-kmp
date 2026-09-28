@@ -2,9 +2,15 @@
 
 package id.homebase.core.ui.screens.profile
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -156,6 +162,7 @@ fun ProfileEditScreen(
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
     val avatarUiState by avatarViewModel.state.collectAsStateWithLifecycle()
+    val motion = MaterialTheme.motionScheme
     val snackbarHostState = remember { SnackbarHostState() }
     var previewMode by remember { mutableStateOf(false) }
 
@@ -203,13 +210,18 @@ fun ProfileEditScreen(
                 actions = {
                     if (!uiState.isLoading && !uiState.loadFailed) {
                         IconButton(onClick = { previewMode = !previewMode }) {
-                            Icon(
-                                imageVector = if (previewMode) Icons.Outlined.Edit else Icons.Outlined.Visibility,
-                                contentDescription = stringResource(
-                                    if (previewMode) MR.string.profile_edit_preview_exit
-                                    else MR.string.profile_edit_preview_enter
-                                ),
-                            )
+                            Crossfade(
+                                targetState = previewMode,
+                                animationSpec = motion.fastEffectsSpec(),
+                            ) { preview ->
+                                Icon(
+                                    imageVector = if (preview) Icons.Outlined.Edit else Icons.Outlined.Visibility,
+                                    contentDescription = stringResource(
+                                        if (preview) MR.string.profile_edit_preview_exit
+                                        else MR.string.profile_edit_preview_enter
+                                    ),
+                                )
+                            }
                         }
                         if (onOpenCard != null) {
                             IconButton(onClick = onOpenCard) {
@@ -231,29 +243,41 @@ fun ProfileEditScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 onRetry = { viewModel.onAction(ProfileEditAction.RetryLoadClicked) },
             )
-            previewMode -> ProfilePreview(
-                uiState = uiState,
-                modifier = Modifier.fillMaxSize().padding(padding),
-            )
-            else -> Box(modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
-                CompositionLocalProvider(LocalReviewEnabled provides uiState.reviewEnabled) {
-                    ProfileForm(
-                        uiState = uiState,
-                        onAction = viewModel::onAction,
-                        avatarUiState = avatarUiState,
-                        onAvatarAction = avatarViewModel::onAction,
-                        onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
-                        onPickConnectedPhoto = { connectedPhotoPicker.launch() },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                AnimatedVisibility(
-                    visible = uiState.savingAttributes.isNotEmpty(),
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
-                    exit = fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
-                ) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            else -> {
+                AnimatedContent(
+                    targetState = previewMode,
+                    transitionSpec = {
+                        fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
+                    },
+                ) { preview ->
+                    if (preview) {
+                        ProfilePreview(
+                            uiState = uiState,
+                            modifier = Modifier.fillMaxSize().padding(padding),
+                        )
+                    } else {
+                        Box(modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+                            CompositionLocalProvider(LocalReviewEnabled provides uiState.reviewEnabled) {
+                                ProfileForm(
+                                    uiState = uiState,
+                                    onAction = viewModel::onAction,
+                                    avatarUiState = avatarUiState,
+                                    onAvatarAction = avatarViewModel::onAction,
+                                    onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
+                                    onPickConnectedPhoto = { connectedPhotoPicker.launch() },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                            AnimatedVisibility(
+                                visible = uiState.savingAttributes.isNotEmpty(),
+                                modifier = Modifier.align(Alignment.TopCenter),
+                                enter = fadeIn(motion.defaultEffectsSpec()),
+                                exit = fadeOut(motion.defaultEffectsSpec()),
+                            ) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -316,6 +340,7 @@ private fun ProfileForm(
             displayValueFor(it.type, uiState.connectedValues) == null
     }
     val hasMissing = missingAttributes.isNotEmpty()
+    val motion = MaterialTheme.motionScheme
 
     Box(modifier = modifier) {
         Column(
@@ -360,11 +385,13 @@ private fun ProfileForm(
             Spacer(Modifier.height(88.dp))
         }
 
-        if (hasMissing) {
-            FloatingActionButton(
-                onClick = { showAddSheet = true },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-            ) {
+        AnimatedVisibility(
+            visible = hasMissing,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            enter = scaleIn(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()),
+            exit = scaleOut(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+        ) {
+            FloatingActionButton(onClick = { showAddSheet = true }) {
                 Icon(
                     Icons.Filled.Add,
                     contentDescription = stringResource(MR.string.profile_edit_add_attribute),
@@ -417,7 +444,9 @@ private fun ProfileFieldsSection(
     fun vf(editTier: ProfileVisibility, field: ProfileField): String =
         (if (editTier == ProfileVisibility.ANONYMOUS) uiState.anonymousValues else uiState.connectedValues)[field].orEmpty()
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier.fillMaxWidth().animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec()),
+    ) {
         SectionHeader(title, description)
 
         if (photoState != null) {
@@ -697,11 +726,10 @@ private fun EditableFieldGroup(
 
     Column(modifier = Modifier.fillMaxWidth()) {
         ListItem(
-            modifier = if (editing) {
-                Modifier.fillMaxWidth()
-            } else {
-                Modifier.fillMaxWidth().clickable { editingRows[key] = true }
-            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())
+                .then(if (editing) Modifier else Modifier.clickable { editingRows[key] = true }),
             leadingContent = { Icon(icon, contentDescription = null) },
             overlineContent = { Text(label) },
             headlineContent = {

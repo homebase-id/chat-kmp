@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -248,7 +250,11 @@ fun ContactBookScreen(
             // Composing a brand-new connection request to any Homebase ID doesn't need its own
             // FAB entry point — Add Contact already offers "Send connection request" once an
             // entered ID resolves to someone not yet connected.
-            if (onContacts) {
+            AnimatedVisibility(
+                visible = onContacts,
+                enter = scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(enterFade),
+                exit = scaleOut(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(exitFade),
+            ) {
                 FloatingActionButton(onClick = { viewModel.onAction(ContactBookUiAction.AddClicked) }) {
                     Icon(
                         Icons.Filled.Add,

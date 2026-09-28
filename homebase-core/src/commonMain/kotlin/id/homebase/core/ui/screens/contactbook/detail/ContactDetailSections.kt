@@ -163,7 +163,7 @@ fun RecentMediaSection(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(media.take(50)) { item ->
+            items(media.take(50), key = { "${it.fileId}_${it.payload.key}" }) { item ->
                 SharedMediaThumb(item, size = 84.dp, hero = hero) { onMediaClick(item) }
             }
         }

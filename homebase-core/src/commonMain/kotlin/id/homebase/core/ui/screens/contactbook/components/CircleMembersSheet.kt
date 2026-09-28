@@ -215,6 +215,7 @@ fun CircleMembersSheet(
                                 entry = entry,
                                 connected = status == ConnectionStatus.Connected,
                                 onClick = { onMemberClick(entry) },
+                                modifier = Modifier.animateItem(),
                                 trailing = if (state.manageable || blocked) {
                                     {
                                         CircleMemberTrailing(
