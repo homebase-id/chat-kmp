@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.readImageMetadata
 import id.homebase.api.video.VideoCompressionService
 import id.homebase.api.video.VideoThumbnailService
@@ -12,6 +13,7 @@ import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.moments.services.MediaInfo
 import id.homebase.core.moments.services.MomentCreateFlowState
+import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.contentType
 import id.homebase.core.util.resolveContentType
 import id.homebase.imageeditor.ui.CropResultBus
@@ -40,6 +42,7 @@ class MomentComposeViewModel(
     private val fileOperationsProvider: FileOperationsProvider,
     private val cropResultBus: CropResultBus,
     private val drawResultBus: DrawResultBus,
+    private val userPreferences: UserPreferences,
 ) : ViewModel(), IdentityScoped {
 
     private val _uiState = MutableStateFlow(restoreFromDraft())
@@ -76,7 +79,10 @@ class MomentComposeViewModel(
      */
     private fun restoreFromDraft(): MomentComposeUiState {
         val draft = flowState.draft.value
-            ?: return MomentComposeUiState(momentInstant = Clock.System.now())
+            ?: return MomentComposeUiState(
+                momentInstant = Clock.System.now(),
+                mediaQuality = userPreferences.mediaQuality,
+            )
         return MomentComposeUiState(
             attachments = draft.attachments,
             description = draft.description,
@@ -84,6 +90,7 @@ class MomentComposeViewModel(
             // null; treat that the same as a fresh compose and default to now.
             momentInstant = draft.momentInstant ?: Clock.System.now(),
             isMomentDateUserOverride = draft.isMomentDateUserOverride,
+            mediaQuality = userPreferences.mediaQuality,
         )
     }
 
@@ -233,6 +240,13 @@ class MomentComposeViewModel(
                     }
                     state.copy(attachments = updated)
                 }
+            }
+
+            MomentComposeUiAction.ToggleMediaQuality -> {
+                userPreferences.mediaQuality =
+                    if (userPreferences.mediaQuality == MediaQuality.HIGH) MediaQuality.STANDARD
+                    else MediaQuality.HIGH
+                _uiState.update { it.copy(mediaQuality = userPreferences.mediaQuality) }
             }
         }
     }

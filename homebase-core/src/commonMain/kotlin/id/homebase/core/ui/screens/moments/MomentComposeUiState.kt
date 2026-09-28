@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.moments
 
 import id.homebase.api.image.ImageMetadata
+import id.homebase.api.image.MediaQuality
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -30,6 +31,7 @@ data class MomentComposeUiState(
      * date picker (we treat that as "go back to following the photos").
      */
     val isMomentDateUserOverride: Boolean = false,
+    val mediaQuality: MediaQuality = MediaQuality.STANDARD,
 ) {
     val canContinue: Boolean get() = attachments.isNotEmpty()
 }
@@ -78,6 +80,9 @@ sealed interface MomentComposeUiAction {
 
     /** Flip the per-image GPS opt-in. No-op if the image has no GPS metadata. */
     data class ToggleIncludeLocation(val attachmentId: Uuid) : MomentComposeUiAction
+
+    /** Flips the same persisted quality preference the in-chat editor writes. */
+    data object ToggleMediaQuality : MomentComposeUiAction
 
     /**
      * User picked a date via the date chip. `epochMillis = null` clears the
