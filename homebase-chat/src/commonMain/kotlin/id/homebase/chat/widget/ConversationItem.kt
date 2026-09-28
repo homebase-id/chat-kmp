@@ -474,6 +474,7 @@ private fun UnreadBadge(count: Int) {
                 ) { shown ->
                     val countText = shown.toString()
                     Text(
+                        modifier = Modifier.padding(4.dp),
                         text = countText,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold

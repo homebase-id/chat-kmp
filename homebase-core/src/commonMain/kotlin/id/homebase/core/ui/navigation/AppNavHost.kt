@@ -423,7 +423,8 @@ fun AppNavHost(
     // two-pane, plain surface in portrait — the traffic lights land on nothing either way.
     val paintsUnderTitleBar = chromeDestination?.hasRoute(Route.Login::class) == true
     // The card fills its sheet to the screen's bottom edge; its own chrome pads for the navigation bar.
-    val paintsUnderNavigationBar = chromeDestination.isCardRoute()
+    // The Vault gallery/editor floor does the same (VaultGalleryScreen pads its sheet content itself).
+    val paintsUnderNavigationBar = chromeDestination.isCardRoute() || isVaultOverlayOpen
     val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail
     val railVisible = isOnTopLevelScreen && showNavigationRail
     val contentInsets = ScaffoldDefaults.contentWindowInsets.only(

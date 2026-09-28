@@ -2,6 +2,11 @@
 
 package id.homebase.core.ui.screens.contactbook.add
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,6 +60,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -206,39 +212,59 @@ fun AddContactScreen(
             // The photo picker only belongs to manual entry. In identity mode the avatar comes from
             // the Homebase profile, so we never prompt to add one — we just say where it's from once
             // the identity resolves.
-            when {
-                uiState.mode == AddContactMode.MANUAL -> {
-                    TextButton(onClick = { photoPicker.launch() }) {
+            val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+            val resize = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
+            val photoHint = when {
+                uiState.mode == AddContactMode.MANUAL -> PhotoHint.AddPhoto
+                uiState.resolution is RecipientResolution.Resolved -> PhotoHint.FromProfile
+                else -> PhotoHint.None
+            }
+            AnimatedContent(
+                targetState = photoHint,
+                transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) using SizeTransform { _, _ -> resize } },
+            ) { hint ->
+                when (hint) {
+                    PhotoHint.AddPhoto -> TextButton(onClick = { photoPicker.launch() }) {
                         Icon(Icons.Outlined.AddAPhoto, contentDescription = null)
                         Spacer(modifier = Modifier.size(8.dp))
                         Text(stringResource(MR.string.contactbook_edit_change_photo))
                     }
-                }
 
-                uiState.resolution is RecipientResolution.Resolved -> {
-                    Text(
+                    PhotoHint.FromProfile -> Text(
                         text = stringResource(MR.string.add_contact_photo_from_profile),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp),
                     )
+
+                    PhotoHint.None -> {}
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
 
-            when (uiState.mode) {
-                AddContactMode.BY_IDENTITY -> ByIdentitySection(
-                    uiState = uiState,
-                    onAction = viewModel::onAction,
-                    identityOnly = identityOnly,
-                    onSendConnectionRequest = { odinId ->
-                        connectRequestViewModel.onAction(
-                            ConnectRequestAction.OpenDialogWithRecipient(odinId),
+            AnimatedContent(
+                targetState = uiState.mode,
+                transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) using SizeTransform { _, _ -> resize } },
+            ) { mode ->
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    when (mode) {
+                        AddContactMode.BY_IDENTITY -> ByIdentitySection(
+                            uiState = uiState,
+                            onAction = viewModel::onAction,
+                            identityOnly = identityOnly,
+                            onSendConnectionRequest = { odinId ->
+                                connectRequestViewModel.onAction(
+                                    ConnectRequestAction.OpenDialogWithRecipient(odinId),
+                                )
+                            },
                         )
-                    },
-                )
 
-                AddContactMode.MANUAL -> ManualSection(uiState, viewModel::onAction)
+                        AddContactMode.MANUAL -> ManualSection(uiState, viewModel::onAction)
+                    }
+                }
             }
         }
 
@@ -283,6 +309,8 @@ private fun AddContactAvatar(uiState: AddContactUiState, photoBytes: ByteArray?)
     }
 }
 
+private enum class PhotoHint { None, AddPhoto, FromProfile }
+
 @Composable
 private fun ByIdentitySection(
     uiState: AddContactUiState,
@@ -326,44 +354,57 @@ private fun ByIdentitySection(
 
     ResolutionIndicator(resolution)
 
-    when (resolution) {
-        // A resolved identity is presented read-only: the profile data we pulled, plus exactly
-        // the connection action that currently applies (send / accept / reject / cancel /
-        // already connected) and a one-tap "Save as new contact". We deliberately do NOT show
-        // editable fields for data that came from their Homebase profile.
-        is RecipientResolution.Resolved -> {
-            ResolvedIdentityCard(resolution.identity)
-            RelationActions(
-                relation = uiState.relation,
-                odinId = resolution.identity.odinId,
-                assignableCircles = uiState.assignableCircles,
-                displayName = resolution.identity.displayNameOrDomain(),
-                requestReview = uiState.requestReview,
-                reviewCircleGroups = uiState.reviewCircleGroups,
-                actionInProgress = uiState.actionInProgress,
-                identityOnly = identityOnly,
-                onSendConnectionRequest = onSendConnectionRequest,
-                onAction = onAction,
-            )
-            // In identity-only (chat) mode a contact can't be "saved as new" — the only useful
-            // outcomes are connect or message-once-connected, both handled by RelationActions.
-            if (!identityOnly) SaveAsNewRow(uiState, onAction)
-        }
+    val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    val resize = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
+    AnimatedContent(
+        targetState = resolution,
+        contentKey = { it is RecipientResolution.Resolved },
+        transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) using SizeTransform { _, _ -> resize } },
+    ) { shown ->
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            when (shown) {
+                // A resolved identity is presented read-only: the profile data we pulled, plus exactly
+                // the connection action that currently applies (send / accept / reject / cancel /
+                // already connected) and a one-tap "Save as new contact". We deliberately do NOT show
+                // editable fields for data that came from their Homebase profile.
+                is RecipientResolution.Resolved -> {
+                    ResolvedIdentityCard(shown.identity)
+                    RelationActions(
+                        relation = uiState.relation,
+                        odinId = shown.identity.odinId,
+                        assignableCircles = uiState.assignableCircles,
+                        displayName = shown.identity.displayNameOrDomain(),
+                        requestReview = uiState.requestReview,
+                        reviewCircleGroups = uiState.reviewCircleGroups,
+                        actionInProgress = uiState.actionInProgress,
+                        identityOnly = identityOnly,
+                        onSendConnectionRequest = onSendConnectionRequest,
+                        onAction = onAction,
+                    )
+                    // In identity-only (chat) mode a contact can't be "saved as new" — the only useful
+                    // outcomes are connect or message-once-connected, both handled by RelationActions.
+                    if (!identityOnly) SaveAsNewRow(uiState, onAction)
+                }
 
-        else -> {}
-    }
+                else -> {}
+            }
 
-    // The "Add manually" escape hatch is only offered when a manual contact is useful — never
-    // from a chat flow, where a contact without a Homebase ID can't be messaged — and never once
-    // an identity has resolved, where switching to manual entry makes no sense. Manual entry
-    // (NameFields/OptionalDetails/SaveButton) lives entirely in ManualSection, reached via this
-    // link; it must stay a deliberate action, not auto-open just because a typed ID hasn't
-    // resolved yet (RecipientResolution.NotFound is a normal mid-typing state, not a request for
-    // the manual form).
-    if (!identityOnly && resolution !is RecipientResolution.Resolved) {
-        Spacer(modifier = Modifier.height(8.dp))
-        TextButton(onClick = { onAction(AddContactAction.SwitchToManual) }) {
-            Text(stringResource(MR.string.add_contact_manual_link))
+            // The "Add manually" escape hatch is only offered when a manual contact is useful — never
+            // from a chat flow, where a contact without a Homebase ID can't be messaged — and never once
+            // an identity has resolved, where switching to manual entry makes no sense. Manual entry
+            // (NameFields/OptionalDetails/SaveButton) lives entirely in ManualSection, reached via this
+            // link; it must stay a deliberate action, not auto-open just because a typed ID hasn't
+            // resolved yet (RecipientResolution.NotFound is a normal mid-typing state, not a request for
+            // the manual form).
+            if (!identityOnly && shown !is RecipientResolution.Resolved) {
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = { onAction(AddContactAction.SwitchToManual) }) {
+                    Text(stringResource(MR.string.add_contact_manual_link))
+                }
+            }
         }
     }
 }

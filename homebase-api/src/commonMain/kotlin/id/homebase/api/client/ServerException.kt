@@ -4,4 +4,15 @@ class ServerException(
     status: Int,
     correlationId: String?,
     problem: ProblemDetails?
-) : OdinApiException(status, "Server error (status=$status)", correlationId, problem)
+) : OdinApiException(
+    status,
+    buildString {
+        append(problem?.title ?: "Server error")
+        append(" (status=").append(status)
+        problem?.errorCode()?.let { append(", errorCode=").append(it) }
+        correlationId?.let { append(", correlationId=").append(it) }
+        append(')')
+    },
+    correlationId,
+    problem,
+)
