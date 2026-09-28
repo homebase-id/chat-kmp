@@ -124,16 +124,13 @@ class AvatarInvalidationTest {
     @Test
     fun resyncInvalidatesBeforeItReachesTheContactRepository() = runBlocking {
         val odinId = OdinId("resync.me")
-        val gateway = ContactInfoGateway(
-            contactRepository = { throw RepositoryReached() },
-            publicProfiles = provider,
-        )
+        val gateway = gatewayThatThrowsOnSync()
 
         assertContentEquals(firstBytes, gateway.avatarBytes(odinId))
         assertEquals(1, requestCount)
 
         nextBytes = secondBytes
-        assertFailsWith<RepositoryReached> { gateway.resync(odinId) }
+        assertFailsWith<RepositoryReached> { sync { gateway.resync(odinId) } }
 
         assertContentEquals(secondBytes, gateway.avatarBytes(odinId))
         assertEquals(2, requestCount, "resync must drop the cached avatar before the drive sync")
@@ -142,18 +139,31 @@ class AvatarInvalidationTest {
     @Test
     fun syncContactRecordLeavesTheAvatarAlone() = runBlocking {
         val odinId = OdinId("recordonly.me")
-        val gateway = ContactInfoGateway(
-            contactRepository = { throw RepositoryReached() },
-            publicProfiles = provider,
-        )
+        val gateway = gatewayThatThrowsOnSync()
 
         assertContentEquals(firstBytes, gateway.avatarBytes(odinId))
         nextBytes = secondBytes
-        assertFailsWith<RepositoryReached> { gateway.syncContactRecord(odinId) }
+        assertFailsWith<RepositoryReached> { sync { gateway.syncContactRecord(odinId) } }
 
         assertContentEquals(firstBytes, gateway.avatarBytes(odinId))
         assertEquals(1, requestCount, "a record-only sync must not re-download the photo")
         assertNull(PublicAvatarRevisions.revisionOf(odinId.domainName))
+    }
+
+    // The avatar read looks up the local contact too, so only a sync may reach the repository.
+    private var syncing = false
+    private val emptyRepository = emptyContactRepository()
+
+    private fun gatewayThatThrowsOnSync() = ContactInfoGateway(
+        contactRepository = { if (syncing) throw RepositoryReached() else emptyRepository },
+        publicProfiles = provider,
+        driveFiles = unusedDriveFiles(),
+        contactHeaders = { _, _ -> null },
+    )
+
+    private suspend fun sync(block: suspend () -> Unit) {
+        syncing = true
+        try { block() } finally { syncing = false }
     }
 
     private class RepositoryReached : RuntimeException()
