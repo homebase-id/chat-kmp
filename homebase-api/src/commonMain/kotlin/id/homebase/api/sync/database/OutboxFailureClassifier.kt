@@ -4,6 +4,7 @@ import id.homebase.api.client.ClientException
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.upload.StagedPayloadMissingException
+import id.homebase.api.serialization.OutboxDecodeException
 
 /**
  * The single classification point for outbox upload failures: returns a
@@ -27,6 +28,7 @@ internal fun classifyPermanentFailure(e: Throwable): String? {
     // the sweeper/OS reclaimed an enc temp out from under a pending row). Thrown
     // by DriveUploadProvider's pre-flight BEFORE the network call, so it can't
     // be wrapped into a transient NetworkException.
+    if (e is OutboxDecodeException) return "undecodable ${e.requestType} row: ${e.cause?.message}"
     if (e is StagedPayloadMissingException) return "staged payload missing: ${e.message}"
     if (e is ClientException) {
         when (e.errorCode) {

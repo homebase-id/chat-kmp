@@ -38,6 +38,8 @@ import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.ProblemDetails
 import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.serialization.OutboxSerializer
 import id.homebase.api.client.drives.upload.StagedPayloadMissingException
 
 class TestUploader : OutboxUploader {
@@ -1506,4 +1508,67 @@ class OutboxSyncTest {
         assertFalse(sync.send(), "send() must decline while offline")
         advanceUntilIdle()
     }
+
+    private class DecodingUploader : OutboxUploader {
+        override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) {
+            OutboxSerializer.decode<UploadFileRequest>(outboxRecord)
+        }
+    }
+
+    private fun runUndecodableRowTest(json: String) = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val sync = OutboxSync(
+            databaseManager = db, uploader = DecodingUploader(), eventBus = eventBus, scope = backgroundScope
+        )
+        sync.setOnline(true)
+
+        val events = mutableListOf<BackendEvent.OutboxEvent>()
+        val collectorJob = backgroundScope.launch {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent>().collect { events.add(it) }
+        }
+        val completedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>().first()
+        }
+        testScheduler.runCurrent()
+
+        val uniqueId = Uuid.random()
+        db.outbox.insert(
+            driveId = Uuid.random(),
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = 0,
+            json = json.encodeToByteArray(),
+            filePaths = null,
+        )
+
+        try { sync.send() } catch (_: Exception) {}
+        advanceUntilIdle()
+        completedDeferred.await()
+        advanceUntilIdle()
+
+        val dropped = events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().single()
+        assertEquals(0L, db.outbox.count(), "undecodable row must leave the outbox")
+        assertEquals(uniqueId, dropped.uniqueId)
+        assertEquals(1, dropped.attempts, "decode failure must not be retried")
+        assertTrue(dropped.reason!!.contains("undecodable UploadFileRequest"), "reason was: ${dropped.reason}")
+        assertTrue(events.filterIsInstance<BackendEvent.OutboxEvent.ItemFailed>().isEmpty(), "no charged-retry failure event")
+        assertTrue(events.filterIsInstance<BackendEvent.OutboxEvent.ItemCompleted>().isEmpty())
+
+        collectorJob.cancel()
+        sync.clearCheckout(timeoutMs = 5_000)
+    }
+
+    @Test
+    fun undecodableRow_unknownKey_isDroppedOnFirstAttempt() = runUndecodableRowTest(
+        """{"driveId":"${Uuid.random()}","removedField":1}"""
+    )
+
+    @Test
+    fun undecodableRow_missingRequiredField_isDroppedOnFirstAttempt() = runUndecodableRowTest("{}")
+
+    @Test
+    fun undecodableRow_unknownEnumValue_isDroppedOnFirstAttempt() = runUndecodableRowTest(
+        """{"driveId":"${Uuid.random()}","fileSystemType":"bogus"}"""
+    )
 }
