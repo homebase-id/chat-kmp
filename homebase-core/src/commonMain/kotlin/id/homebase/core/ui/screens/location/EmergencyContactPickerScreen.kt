@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.location
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -45,6 +46,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -167,10 +170,19 @@ private fun EmergencyContactPickerUi(
                 FloatingActionButton(
                     onClick = { if (!uiState.submitting) onUiAction(EmergencyContactPickerUiAction.AddClicked) },
                 ) {
-                    if (uiState.submitting) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Default.Check, contentDescription = stringResource(MR.string.location_emergency_add_title))
+                    val addLabel = stringResource(MR.string.location_emergency_add_title)
+                    Crossfade(
+                        targetState = uiState.submitting,
+                        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                    ) { submitting ->
+                        if (submitting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp).semantics { contentDescription = addLabel },
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(Icons.Default.Check, contentDescription = addLabel)
+                        }
                     }
                 }
             }
