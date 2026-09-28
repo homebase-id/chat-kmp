@@ -742,8 +742,13 @@ private fun EditableFieldGroup(
                     },
                 )
             },
-            trailingContent = if (editing) {
-                {
+            trailingContent = {
+                val motion = MaterialTheme.motionScheme
+                AnimatedVisibility(
+                    visible = editing,
+                    enter = fadeIn(motion.fastEffectsSpec()) + scaleIn(motion.fastSpatialSpec()),
+                    exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec()),
+                ) {
                     TextButton(
                         enabled = isValidForSave(selectedTier),
                         onClick = {
@@ -756,8 +761,6 @@ private fun EditableFieldGroup(
                         Text(stringResource(MR.string.save))
                     }
                 }
-            } else {
-                null
             },
         )
         AnimatedVisibility(visible = editing) {
