@@ -29,7 +29,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import io.ktor.client.HttpClient
@@ -40,6 +39,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import okio.ByteString.Companion.encodeUtf8
 import okio.Path.Companion.toPath
 import okio.buffer
@@ -513,10 +513,10 @@ class DriveFileProviderCached(
             writeBytesResponse(editor.data.toString(), value)
             editor.commit()
         } catch (e: CancellationException) {
-            try { editor.abort() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+            editor.abortQuietly()
             throw e
         } catch (e: Exception) {
-            try { editor.abort() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+            editor.abortQuietly()
             Logger.e(tag = logTag, throwable = e) { "cache-write FAILED key=$cacheKey" }
         }
     }
@@ -700,7 +700,7 @@ class DriveFileProviderCached(
                     editor.commit()
                     true
                 } catch (e: Exception) {
-                    try { editor.abort() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+                    editor.abortQuietly()
                     throw e
                 }
             } ?: false
@@ -814,4 +814,8 @@ class DriveFileProviderCached(
         }
         return out
     }
+}
+
+private fun DiskCache.Editor.abortQuietly() {
+    try { abort() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
 }
