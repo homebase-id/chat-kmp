@@ -800,6 +800,38 @@ class AdminQueryTest {
     }
 
     @Test
+    fun mapToBasic_oneOnOne_connectionAvatarGetsInitialsFromDisplayName() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+            val mapper = ConversationMapper(cm, dbm)
+
+            val conversationId = Uuid.random()
+            val convoJson = buildConversationFileJson(
+                fileId = Uuid.random(),
+                uniqueId = conversationId,
+                participants = listOf(testDomain, alice),
+                originalAuthor = testDomain,
+                isGroup = false
+            )
+            insertFile(dbm, convoJson)
+
+            val convoFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+                testIdentityId, chatDriveId, conversationId
+            )!!
+            val result = mapper.mapToBasic(convoFile)
+
+            // A blank avatarModel.initials is what sends FallbackAvatar to the generic
+            // Person icon instead of the contact's initials when the avatar image fails.
+            assertEquals(
+                id.homebase.core.avatars.ConversationAvatarModel.Type.Connection,
+                result.avatarModel.type
+            )
+            assertEquals(OdinId(alice), result.avatarModel.odinId)
+            assertEquals("A", result.avatarModel.initials)
+        }
+    }
+
+    @Test
     fun mapToBasic_group_seedsAdminsFromAdminDataWithoutDbLookup() = runTest {
         createTestDatabaseManager().use { dbm ->
             val cm = createTestCredentialsManager()
