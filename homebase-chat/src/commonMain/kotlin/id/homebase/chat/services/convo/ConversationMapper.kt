@@ -433,7 +433,7 @@ class ConversationMapper(
                     driveId = chatTargetDrive.alias,
                     fileId = conversation.fileId,
                     descriptor = imagePayload,
-                    isEncrypted = metadata.isEncrypted,
+                    isEncrypted = conversation.serverFileIsEncrypted,
                     previewThumbnail = imagePayload.previewThumbnail?.toEmbeddedThumb()
                         ?: appData.previewThumbnail,
                     keyHeader =
