@@ -228,8 +228,9 @@ fun ConversationMenu(
 }
 
 @Composable
-fun ReceivedMessagePopup(
+internal fun ReceivedMessagePopup(
     transition: Transition<MessagePopupMode>,
+    handback: BubbleHandback,
     message: MessageUiModel,
     userDefaultReactions: ImmutableList<String>,
     dismissMenu: () -> Unit,
@@ -370,7 +371,7 @@ fun ReceivedMessagePopup(
                     bubble = {
                         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            ReceivedMessageBubbleDisplayOnly(message = message)
+                            HandbackBubble(handback)
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                     },
@@ -383,8 +384,9 @@ fun ReceivedMessagePopup(
 }
 
 @Composable
-fun SentMessagePopup(
+internal fun SentMessagePopup(
     transition: Transition<MessagePopupMode>,
+    handback: BubbleHandback,
     message: MessageUiModel,
     userDefaultReactions: ImmutableList<String>,
     dismissMenu: () -> Unit,
@@ -525,7 +527,7 @@ fun SentMessagePopup(
                     bubble = {
                         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            SentMessageBubbleDisplayOnly(message = message)
+                            HandbackBubble(handback)
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                     },
@@ -568,7 +570,9 @@ private fun decelerate(power: Float) = Easing { 1f - (1f - it).pow(power) }
 
 private fun <T> signalReveal(delayMillis: Int) = tween<T>(200, delayMillis, decelerate(2f))
 
-private fun <T> signalHide() = tween<T>(150, easing = decelerate(2f))
+internal fun <T> signalHide() = tween<T>(150, easing = decelerate(2f))
+
+internal fun <T> signalFly() = tween<T>(200, easing = AccelerateDecelerate)
 
 private val AccelerateDecelerate = Easing { cos((it + 1f) * PI).toFloat() / 2f + 0.5f }
 
@@ -578,7 +582,7 @@ private val AccelerateDecelerate = Easing { cos((it + 1f) * PI).toFloat() / 2f +
 internal fun AnimatedVisibilityScope.MessageLongPressLayout(
     alignEnd: Boolean,
     reactionMenu: (@Composable (background: Modifier, emoji: (Int) -> Modifier) -> Unit)?,
-    bubble: @Composable () -> Unit,
+    bubble: @Composable AnimatedVisibilityScope.() -> Unit,
     actionMenu: @Composable () -> Unit,
 ) {
     Layout(
@@ -598,15 +602,7 @@ internal fun AnimatedVisibilityScope.MessageLongPressLayout(
                     )
                 }
             },
-            {
-                Box(
-                    Modifier.animateEnterExit(
-                        enter = scaleIn(tween(200, easing = AccelerateDecelerate), initialScale = 0.95f),
-                        // Signal hides the row under its snapshot; our row stays visible, so fade instead.
-                        exit = fadeOut(signalHide()),
-                    ),
-                ) { bubble() }
-            },
+            { bubble() },
             {
                 Box(
                     Modifier.animateEnterExit(
