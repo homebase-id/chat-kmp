@@ -1,5 +1,12 @@
 package id.homebase.core.ui.screens.location
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.input.TextFieldState
@@ -7,7 +14,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -16,14 +22,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
@@ -154,12 +159,13 @@ private fun EmergencyContactPickerUi(
             )
         },
         floatingActionButton = {
-            if (uiState.selectedContacts.isNotEmpty()) {
-                Button(
-                    onClick = { onUiAction(EmergencyContactPickerUiAction.AddClicked) },
-                    modifier = Modifier.defaultMinSize(minWidth = 56.dp),
-                    enabled = !uiState.submitting,
-                    shape = CircleShape,
+            AnimatedVisibility(
+                visible = uiState.selectedContacts.isNotEmpty(),
+                enter = scaleIn(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = scaleOut(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            ) {
+                FloatingActionButton(
+                    onClick = { if (!uiState.submitting) onUiAction(EmergencyContactPickerUiAction.AddClicked) },
                 ) {
                     if (uiState.submitting) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -177,11 +183,15 @@ private fun EmergencyContactPickerUi(
                 showSearchIcon = false,
                 placeHolderText = stringResource(MR.string.chat_new_conversation_search_placeholder),
             )
-            if (uiState.selectedContacts.isNotEmpty()) {
+            AnimatedVisibility(
+                visible = uiState.selectedContacts.isNotEmpty(),
+                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            ) {
                 LazyRow(contentPadding = PaddingValues(vertical = 8.dp, horizontal = 16.dp)) {
-                    items(uiState.selectedContacts) { contact ->
+                    items(uiState.selectedContacts, key = { it.odinId.domainName }) { contact ->
                         InputChip(
-                            modifier = Modifier.widthIn(max = 200.dp).padding(end = 8.dp),
+                            modifier = Modifier.animateItem().widthIn(max = 200.dp).padding(end = 8.dp),
                             onClick = {},
                             label = {
                                 Text(text = contact.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
