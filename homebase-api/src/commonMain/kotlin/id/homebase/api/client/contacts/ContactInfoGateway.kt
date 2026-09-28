@@ -66,23 +66,22 @@ class ContactInfoGateway internal constructor(
     // A payload replaced under us answers 404, and its IV moves with it: the re-read header names
     // the current version, which the version-addressed cache key then fetches fresh.
     private suspend fun localAvatarBytes(contact: Contact, ref: ContactImageRef): ByteArray? {
+        readAvatarOrWarn(ref) { "local avatar read failed for ${ref.fileId}; re-reading its header" }
+            ?.let { return it }
+        val current = contactHeaders.getHeaderByUid(ref.driveId, contact.uniqueId)?.toContact()?.image
+            ?: return null
+        return readAvatarOrWarn(current) { "local avatar retry failed for ${ref.fileId}" }
+    }
+
+    private suspend fun readAvatarOrWarn(ref: ContactImageRef, warning: () -> String): ByteArray? =
         try {
-            return readAvatar(ref)
+            readAvatar(ref)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.w(e, TAG) { "local avatar read failed for ${ref.fileId}; re-reading its header" }
-        }
-        return try {
-            contactHeaders.getHeaderByUid(ref.driveId, contact.uniqueId)?.toContact()?.image
-                ?.let { current -> readAvatar(current) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.w(e, TAG) { "local avatar retry failed for ${ref.fileId}" }
+            Logger.w(e, TAG) { warning() }
             null
         }
-    }
 
     // The response's payloadencrypted header decides, not ref.isEncrypted: decrypting the header
     // content clears fileMetadata.isEncrypted, so a synced contact always reads as unencrypted.
