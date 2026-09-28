@@ -46,7 +46,6 @@ import kotlinx.coroutines.test.runTest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -85,29 +84,6 @@ class ChatMessageStreamLoadRaceTest {
     // so it parks on that read alone.
     private val messagePageRead: (String) -> Boolean = { it.contains("idx_chatmessage_convid_userDate") }
 
-    /**
-     * DISABLED — #1172. The three tests carrying this annotation fail
-     * intermittently on the CI Linux runner (14/80, 18/80 and 2/80 in a stress
-     * run there; 0/300 on macOS across JDK 21 and 26). They were the cause of
-     * every Build Check failure between 2026-07-27 and 2026-07-28.
-     *
-     * NOTE FOR WHOEVER PICKS THIS UP: it is NOT established that the harness is
-     * at fault. The leading theory — that `advanceUntilIdle()` is not a barrier
-     * for the `DriveEvent.Stopped` → `markAllInitialLoadsDirty()` hop, so
-     * `endInitialLoad` returns false and the re-read never runs — is refuted by
-     * the data: 18/18 `survivesTheWriteBack` failures show TWO paging reads, so
-     * the re-read did run, and the row it reports missing was committed before
-     * that read's snapshot. A real race in ChatMessageStream /
-     * PaginatedConversationState is still on the table.
-     *
-     * While these are ignored, the #1135 message-loss regression guard is off.
-     * Do not delete them; fix the cause. #1172 has the full evidence and the
-     * next instrumentation step.
-     */
-    private annotation class FlakyOnLinuxCi1172
-
-    @Ignore
-    @FlakyOnLinuxCi1172
     @Test
     fun loadConversation_rowCommittedMidFetch_isRecoveredViaDriveSyncStopped() = runTest {
         val fixture = buildFixture(this)
@@ -121,6 +97,7 @@ class ChatMessageStreamLoadRaceTest {
         // Reader is now parked holding the pre-write snapshot.
         fetchA.reached.await()
         fixture.commit(racingMessage)
+        val refreshDone = fixture.awaitPostSyncRefresh()
         fixture.eventBus.emit(
             BackendEvent.DriveEvent.Stopped(
                 driveId = chatDriveId,
@@ -128,7 +105,7 @@ class ChatMessageStreamLoadRaceTest {
                 result = BackendEvent.DriveResult.Completed,
             )
         )
-        advanceUntilIdle()
+        refreshDone.await()
 
         fetchA.release()
         load.join()
@@ -189,8 +166,6 @@ class ChatMessageStreamLoadRaceTest {
         fixture.close()
     }
 
-    @Ignore
-    @FlakyOnLinuxCi1172
     @Test
     fun loadConversation_rowCommittedDuringTheReRead_survivesTheWriteBack() = runTest {
         // The re-read has its own snapshot boundary. By then the window exists, so a
@@ -216,6 +191,7 @@ class ChatMessageStreamLoadRaceTest {
         // Commit during the initial fetch — this is what triggers the re-read.
         fetchA.reached.await()
         fixture.commit(duringFetchA)
+        val refreshDone = fixture.awaitPostSyncRefresh()
         fixture.eventBus.emit(
             BackendEvent.DriveEvent.Stopped(
                 driveId = chatDriveId,
@@ -223,7 +199,7 @@ class ChatMessageStreamLoadRaceTest {
                 result = BackendEvent.DriveResult.Completed,
             )
         )
-        advanceUntilIdle()
+        refreshDone.await()
 
         // Arm the re-read's query before letting the initial fetch finish.
         val reRead = fixture.gate.armNextRead(messagePageRead)
@@ -261,8 +237,6 @@ class ChatMessageStreamLoadRaceTest {
         fixture.close()
     }
 
-    @Ignore
-    @FlakyOnLinuxCi1172
     @Test
     fun loadConversationAroundMessage_rowCommittedMidFetch_isRecovered() = runTest {
         // The scroll-anchored open — the common cold-open path — builds its window
@@ -280,6 +254,7 @@ class ChatMessageStreamLoadRaceTest {
 
         fetchA.reached.await()
         fixture.commit(racingMessage)
+        val refreshDone = fixture.awaitPostSyncRefresh()
         fixture.eventBus.emit(
             BackendEvent.DriveEvent.Stopped(
                 driveId = chatDriveId,
@@ -287,7 +262,7 @@ class ChatMessageStreamLoadRaceTest {
                 result = BackendEvent.DriveResult.Completed,
             )
         )
-        advanceUntilIdle()
+        refreshDone.await()
 
         fetchA.release()
         load.join()
@@ -402,6 +377,11 @@ class ChatMessageStreamLoadRaceTest {
         val stream: ChatMessageStream,
     ) {
         fun close() = dbm.close()
+
+        fun awaitPostSyncRefresh(): CompletableDeferred<Unit> =
+            CompletableDeferred<Unit>().also { done ->
+                stream.onPostSyncRefreshComplete = { done.complete(Unit) }
+            }
 
         /** Build a chat-message header without writing it to `DriveMainIndex`. */
         fun buildMessageFile(userDateMs: Long, uniqueId: Uuid = Uuid.random()): HomebaseFile {
