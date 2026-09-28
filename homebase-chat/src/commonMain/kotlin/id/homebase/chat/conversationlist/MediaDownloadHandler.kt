@@ -116,11 +116,8 @@ internal class MediaDownloadHandler(
     fun handleShareMessage(action: ConversationListUiAction.ShareMessage) {
         val message = action.message
         val filteredPayloads = message.payloads?.filter {
-            !listOf(
-                ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-                ChatProtocol.DefaultPayloadKey,
-                ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
-            ).contains(it.key)
+            !listOf(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB, ChatProtocol.DefaultPayloadKey).contains(it.key) &&
+                !it.isInternalDescriptor()
         }
         val hasMedia = !filteredPayloads.isNullOrEmpty()
         if (hasMedia) {

@@ -7,6 +7,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.withoutInternalDescriptors
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
@@ -85,8 +86,8 @@ data class VaultEntry(
  * has no payloads or the content cannot be parsed.
  */
 fun HomebaseFile.toVaultEntry(): VaultEntry? {
-    val payloads = fileMetadata.payloads
-    if (payloads.isNullOrEmpty()) return null
+    val payloads = fileMetadata.payloads.orEmpty().withoutInternalDescriptors()
+    if (payloads.isEmpty()) return null
 
     val contentJson = fileMetadata.appData.content ?: return null
     val vaultFileContent = try {

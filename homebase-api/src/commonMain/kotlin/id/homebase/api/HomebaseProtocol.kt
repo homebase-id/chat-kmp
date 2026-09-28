@@ -3,6 +3,8 @@ package id.homebase.api
 object HomebaseProtocol {
 
     const val MaxPayloadDescriptorBytes = 1024
+
+    const val PayloadDescriptorKeyPrefix = "pld_desc"
     const val MaxHeaderContentBytes = 7000
 
     // Mirrors odin-core FileMetadata.MaxPayloadsCount — the server rejects a file with more.

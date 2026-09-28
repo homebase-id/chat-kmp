@@ -1,5 +1,6 @@
 package id.homebase.upload
 
+import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
@@ -89,7 +90,7 @@ class PayloadBundleEncryptionService(
                         payload = payload,
                         keyHeader = keyHeader,
                         onProgress = progress,
-                        descriptorContentPayloadKey = "${UploadProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY}$index",
+                        descriptorContentPayloadKey = "${HomebaseProtocol.PayloadDescriptorKeyPrefix}$index",
                         trimStartMs = payload.trimStartMs,
                         trimEndMs = payload.trimEndMs,
                         inputBlobUrl = payload.inputBlobUrl,
