@@ -1,9 +1,9 @@
 package id.homebase.core.diagnostics
 
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CompletableDeferred
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
