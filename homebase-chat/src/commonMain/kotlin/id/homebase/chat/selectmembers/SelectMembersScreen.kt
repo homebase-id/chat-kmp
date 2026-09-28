@@ -61,6 +61,7 @@ fun SelectMembersScreen(
     viewModel: SelectMembersViewModel,
     onNavigateBack: () -> Unit,
     onMembersSelected: (contactIds: List<String>) -> Unit,
+    awaitEnterTransition: suspend () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -90,7 +91,8 @@ fun SelectMembersScreen(
         snackbarHostState = snackbarHostState,
         uiState = uiState,
         searchTextState = viewModel.searchTextState,
-        onUiAction = viewModel::onUiAction
+        onUiAction = viewModel::onUiAction,
+        awaitEnterTransition = awaitEnterTransition,
     )
 }
 
@@ -104,9 +106,11 @@ fun SelectMembersUi(
     uiState: SelectMembersUiState,
     searchTextState: TextFieldState,
     onUiAction: (SelectMembersUiAction) -> Unit,
+    awaitEnterTransition: suspend () -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) {
+        awaitEnterTransition()
         focusRequester.requestFocus()
     }
 

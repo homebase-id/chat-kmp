@@ -2,35 +2,37 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 
-internal const val SIGNAL_TRANSITION_MS = 150
+@Composable
+internal fun signalFadeIn(): EnterTransition = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec())
 
-internal val signalFadeIn: EnterTransition =
-    fadeIn(tween(SIGNAL_TRANSITION_MS, easing = FastOutSlowInEasing))
+@Composable
+internal fun signalFadeOut(): ExitTransition = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec())
 
-internal val signalFadeOut: ExitTransition =
-    fadeOut(tween(SIGNAL_TRANSITION_MS, easing = FastOutSlowInEasing))
-
-internal val signalToggleIn: EnterTransition = scaleIn(
+@Composable
+internal fun signalToggleIn(): EnterTransition = scaleIn(
     initialScale = 0.6f,
-    animationSpec = tween(SIGNAL_TRANSITION_MS, easing = FastOutSlowInEasing),
-) + fadeIn(tween(SIGNAL_TRANSITION_MS, easing = FastOutSlowInEasing))
+    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+) + fadeIn(MaterialTheme.motionScheme.fastEffectsSpec())
 
-internal val signalToggleOut: ExitTransition = scaleOut(
+@Composable
+internal fun signalToggleOut(): ExitTransition = scaleOut(
     targetScale = 0.6f,
-    animationSpec = tween(SIGNAL_TRANSITION_MS, easing = FastOutSlowInEasing),
-) + fadeOut(tween(SIGNAL_TRANSITION_MS, easing = FastOutSlowInEasing))
+    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec())
 
-internal val signalExpandHorizontally: EnterTransition =
-    expandHorizontally(tween(SIGNAL_TRANSITION_MS, easing = FastOutSlowInEasing))
+@Composable
+internal fun signalExpandHorizontally(): EnterTransition =
+    expandHorizontally(MaterialTheme.motionScheme.fastSpatialSpec())
 
-internal val signalShrinkHorizontally: ExitTransition =
-    shrinkHorizontally(tween(SIGNAL_TRANSITION_MS, easing = FastOutSlowInEasing))
+@Composable
+internal fun signalShrinkHorizontally(): ExitTransition =
+    shrinkHorizontally(MaterialTheme.motionScheme.fastSpatialSpec())

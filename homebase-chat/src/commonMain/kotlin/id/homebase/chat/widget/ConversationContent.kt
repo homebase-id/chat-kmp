@@ -7,7 +7,6 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.keyframes
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -728,8 +727,8 @@ fun ConversationContent(
                     Box(modifier = Modifier.fillMaxWidth()) {
                         AnimatedVisibility(
                             visible = !uiState.isSearchActive,
-                            enter = fadeIn(animationSpec = tween(300, delayMillis = 200)),
-                            exit = fadeOut(animationSpec = tween(150))
+                            enter = fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
+                            exit = fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec())
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -770,12 +769,16 @@ fun ConversationContent(
                             modifier = Modifier.align(Alignment.CenterEnd).fillMaxWidth()
                                 .padding(end = 16.dp),
                             visible = uiState.isSearchActive,
-                            enter = fadeIn(animationSpec = tween(200)) + expandHorizontally(
-                                animationSpec = tween(300), expandFrom = Alignment.End
-                            ),
-                            exit = fadeOut(animationSpec = tween(150)) + shrinkHorizontally(
-                                animationSpec = tween(250), shrinkTowards = Alignment.End
-                            )
+                            enter = fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()) +
+                                expandHorizontally(
+                                    animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                                    expandFrom = Alignment.End,
+                                ),
+                            exit = fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) +
+                                shrinkHorizontally(
+                                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                                    shrinkTowards = Alignment.End,
+                                )
                         ) {
                             MinimalSearchTextField(
                                 textFieldState = searchTextState,
@@ -1334,12 +1337,12 @@ fun ConversationContent(
                                 visible = showFloatingDate && floatingDateLabel != null,
                                 enter = slideInVertically(
                                     initialOffsetY = { -it },
-                                    animationSpec = tween(100),
-                                ) + fadeIn(animationSpec = tween(100)),
+                                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                                ) + fadeIn(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
                                 exit = slideOutVertically(
                                     targetOffsetY = { -it },
-                                    animationSpec = tween(100),
-                                ) + fadeOut(animationSpec = tween(100)),
+                                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                                ) + fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
                             ) {
                                 Surface(
                                     shape = FloatingDateShape,
@@ -1393,8 +1396,10 @@ fun ConversationContent(
 
                 AnimatedVisibility(
                     visible = uiState.isSearchActive,
-                    enter = fadeIn() + expandVertically(animationSpec = tween(200)),
-                    exit = fadeOut() + shrinkVertically(animationSpec = tween(150)),
+                    enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) +
+                        expandVertically(animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec()),
+                    exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
+                        shrinkVertically(animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()),
                 ) {
                     Surface(
                         shadowElevation = 4.dp,

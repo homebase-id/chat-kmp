@@ -85,6 +85,7 @@ fun CreateConversationScreen(
     onShowConversation: (conversationId: Uuid) -> Unit,
     onShowCreateGroup: () -> Unit,
     onAddContact: () -> Unit,
+    awaitEnterTransition: suspend () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -121,6 +122,7 @@ fun CreateConversationScreen(
         searchTextState = viewModel.searchTextState,
         onUiAction = viewModel::onUiAction,
         onNewContactClicked = onAddContact,
+        awaitEnterTransition = awaitEnterTransition,
     )
 }
 
@@ -132,10 +134,12 @@ fun CreateConversationUi(
     searchTextState: TextFieldState,
     onUiAction: (CreateConversationUiAction) -> Unit,
     onNewContactClicked: () -> Unit,
+    awaitEnterTransition: suspend () -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
+        awaitEnterTransition()
         focusRequester.requestFocus()
     }
 
