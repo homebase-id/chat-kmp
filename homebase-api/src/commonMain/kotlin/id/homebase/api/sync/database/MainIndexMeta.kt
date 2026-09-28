@@ -200,51 +200,13 @@ object MainIndexMetaHelpers {
                     // if n < 1 then the record wasn't written (because its modified timestamp was
                     // less or equal to the existing modified timestamp), we only want to update the
                     // TAGs if the record is "new"
+                    if (n <= 0L) {
+                        adoptServerOwnedFields(db, identityId, driveId, fileHeader, driveMainIndexRecord)
+                            ?.let { written.add(it) }
+                    }
                     if (n > 0L) {
                         written.add(fileHeader)
-
-                        db.driveTagIndexQueries.deleteByFile(
-                            identityId = identityId,
-                            driveId = driveId,
-                            fileId = driveMainIndexRecord.fileId
-                        )
-                        db.driveLocalTagIndexQueries.deleteByFile(
-                            identityId = identityId,
-                            driveId = driveId,
-                            fileId = driveMainIndexRecord.fileId
-                        )
-
-                        n = 0L
-                        var l = 0L
-                        fileHeader.fileMetadata.appData.tags?.forEach { tagRecord ->
-                            // println("Insert Tag ${driveMainIndexRecord.fileId}: $tagRecord")
-                            n += db.driveTagIndexQueries.insertTag(
-                                identityId = identityId,
-                                driveId = driveId,
-                                fileId = driveMainIndexRecord.fileId,
-                                tagId = tagRecord
-                            ).value
-                            l++;
-                        }
-                        if (n != l)
-                            throw IllegalStateException("Unable to write TAGs")
-
-                        n = 0L
-                        l = 0L
-                        fileHeader.fileMetadata.localAppData?.tags?.forEach { tagRecord ->
-                            // println("Insert Local Tag ${driveMainIndexRecord.fileId}: $tagRecord")
-                            n += db.driveLocalTagIndexQueries.insertLocalTag(
-                                identityId = identityId,
-                                driveId = driveId,
-                                fileId = driveMainIndexRecord.fileId,
-                                tagId = tagRecord
-                            ).value
-                            l++;
-                        }
-
-                        if (n != l)
-                            throw IllegalStateException("Unable to write local TAGs")
-
+                        rewriteTags(db, identityId, driveId, fileHeader)
                     }
 
                     // Even if we didn't update the record we advance the cursor
@@ -255,6 +217,116 @@ object MainIndexMetaHelpers {
                 }
             }
             return written
+        }
+
+        private fun rewriteTags(db: OdinDatabase, identityId: Uuid, driveId: Uuid, fileHeader: HomebaseFile) {
+            db.driveTagIndexQueries.deleteByFile(
+                identityId = identityId,
+                driveId = driveId,
+                fileId = fileHeader.fileId
+            )
+            db.driveLocalTagIndexQueries.deleteByFile(
+                identityId = identityId,
+                driveId = driveId,
+                fileId = fileHeader.fileId
+            )
+
+            var n = 0L
+            var l = 0L
+            fileHeader.fileMetadata.appData.tags?.forEach { tagRecord ->
+                // println("Insert Tag ${fileHeader.fileId}: $tagRecord")
+                n += db.driveTagIndexQueries.insertTag(
+                    identityId = identityId,
+                    driveId = driveId,
+                    fileId = fileHeader.fileId,
+                    tagId = tagRecord
+                ).value
+                l++;
+            }
+            if (n != l)
+                throw IllegalStateException("Unable to write TAGs")
+
+            n = 0L
+            l = 0L
+            fileHeader.fileMetadata.localAppData?.tags?.forEach { tagRecord ->
+                // println("Insert Local Tag ${fileHeader.fileId}: $tagRecord")
+                n += db.driveLocalTagIndexQueries.insertLocalTag(
+                    identityId = identityId,
+                    driveId = driveId,
+                    fileId = fileHeader.fileId,
+                    tagId = tagRecord
+                ).value
+                l++;
+            }
+
+            if (n != l)
+                throw IllegalStateException("Unable to write local TAGs")
+        }
+
+        /**
+         * transferHistory and originalRecipientCount are server-owned: the client never edits them, so
+         * the `modified` guard (which protects local optimistic edits) must not stop them advancing.
+         * A local write can tie the server's next `modified` and win, leaving the row on a stale
+         * history for good. On an equal-`modified` rejection, adopt only those fields into the stored row.
+         * Must run inside the caller's write transaction. Returns the updated stored file, or null.
+         */
+        private fun adoptServerOwnedFields(
+            db: OdinDatabase,
+            identityId: Uuid,
+            driveId: Uuid,
+            incoming: HomebaseFile,
+            incomingRecord: DriveMainIndex,
+        ): HomebaseFile? {
+            val history = incoming.serverMetadata.transferHistory ?: return null
+            val uniqueId = incomingRecord.uniqueId
+            val stored = (
+                if (uniqueId != null) {
+                    db.driveMainIndexQueries.selectByIdentityAndDriveAndUnique(identityId, driveId, uniqueId)
+                } else {
+                    db.driveMainIndexQueries.selectByIdentityAndDriveAndFile(identityId, driveId, incomingRecord.fileId)
+                }
+                ).executeAsOneOrNull() ?: return null
+            if (incomingRecord.modified < stored.modified) return null
+
+            val storedFile = OdinSystemSerializer.deserialize<HomebaseFile>(stored.jsonHeader)
+            val storedMeta = storedFile.serverMetadata
+            val recipientCount =
+                if (storedMeta.originalRecipientCount == 0) incoming.serverMetadata.originalRecipientCount
+                else storedMeta.originalRecipientCount
+            if (storedMeta.transferHistory == history && storedMeta.originalRecipientCount == recipientCount) return null
+
+            val merged = storedFile.copy(
+                serverMetadata = storedMeta.copy(transferHistory = history, originalRecipientCount = recipientCount)
+            )
+            db.driveMainIndexQueries.repairJsonHeaderByRowId(OdinSystemSerializer.serialize(merged), stored.rowId)
+            return merged
+        }
+
+        /**
+         * Reads the row for [uniqueId], applies [transform], and writes it back in ONE write transaction,
+         * so a concurrent server push (e.g. a delivery-history update) can't land between the read and
+         * the write and be clobbered by the stale copy. Returns the written file, or null when there is
+         * no row or the guarded upsert rejected the write.
+         */
+        suspend fun mutateByUniqueId(
+            identityId: Uuid,
+            driveId: Uuid,
+            uniqueId: Uuid,
+            transform: (HomebaseFile) -> HomebaseFile,
+        ): HomebaseFile? {
+            var result: HomebaseFile? = null
+            databaseManager.withWriteTransaction { db ->
+                val stored = db.driveMainIndexQueries
+                    .selectByIdentityAndDriveAndUnique(identityId, driveId, uniqueId)
+                    .executeAsOneOrNull() ?: return@withWriteTransaction
+                val updated = transform(OdinSystemSerializer.deserialize<HomebaseFile>(stored.jsonHeader))
+                val record = convertFileHeaderToDriveMainIndexRecord(identityId, driveId, updated)
+                if (upsertDriveMainIndex(db, record) > 0L) {
+                    rewriteTags(db, identityId, driveId, updated)
+                    result = updated
+                }
+            }
+            return result
         }
 
         /**
