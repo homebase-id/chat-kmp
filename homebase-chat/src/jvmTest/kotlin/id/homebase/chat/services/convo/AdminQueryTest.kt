@@ -800,7 +800,7 @@ class AdminQueryTest {
     }
 
     @Test
-    fun mapToBasic_oneOnOne_connectionAvatarGetsInitialsFromDisplayName() = runTest {
+    fun mapToBasic_oneOnOne_connectionAvatarGetsInitialsFromDomainName() = runTest {
         createTestDatabaseManager().use { dbm ->
             val cm = createTestCredentialsManager()
             val mapper = ConversationMapper(cm, dbm)
