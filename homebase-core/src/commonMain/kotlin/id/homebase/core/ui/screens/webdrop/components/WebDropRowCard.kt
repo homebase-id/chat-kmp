@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.webdrop.components
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -114,6 +115,14 @@ fun WebDropRowCard(
         DropStatus.Removed -> stringResource(MR.string.webdrop_status_removed)
     }
     val removed = status == DropStatus.Removed
+    val statusColor by animateColorAsState(
+        targetValue = when (status) {
+            is DropStatus.Opened -> MaterialTheme.colorScheme.error
+            DropStatus.Removed -> MaterialTheme.colorScheme.onSurfaceVariant
+            else -> MaterialTheme.colorScheme.primary
+        },
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+    )
 
     Card(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -151,11 +160,7 @@ fun WebDropRowCard(
                 Text(
                     text = statusText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = when (status) {
-                        is DropStatus.Opened -> MaterialTheme.colorScheme.error
-                        DropStatus.Removed -> MaterialTheme.colorScheme.onSurfaceVariant
-                        else -> MaterialTheme.colorScheme.primary
-                    },
+                    color = statusColor,
                 )
             }
 
