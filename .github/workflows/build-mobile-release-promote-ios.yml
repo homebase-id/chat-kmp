@@ -2,6 +2,11 @@ name: Promote iOS Release to public
 
 on:
   workflow_dispatch:
+    inputs:
+      release_notes:
+        description: "What's New text (blank = \"Bug fixes and improvements.\")"
+        required: false
+        default: ""
 
 concurrency:
   group: mobile-release-ios-public-${{ github.ref }}
@@ -17,7 +22,7 @@ jobs:
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.2'
+          ruby-version: '3.3'
           bundler-cache: true
 
       - name: Install Fastlane
@@ -30,6 +35,7 @@ jobs:
           APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
           APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
         run: |
           fastlane submit_for_review
 
