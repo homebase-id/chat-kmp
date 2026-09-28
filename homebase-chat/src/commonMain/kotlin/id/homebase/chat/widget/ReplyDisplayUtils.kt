@@ -12,8 +12,7 @@ import kotlin.uuid.Uuid
 
 fun List<PayloadDescriptor>?.mediaPayloads(): List<PayloadDescriptor> =
     this?.filter { payload ->
-        payload.key != ChatProtocol.DefaultPayloadKey &&
-            !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
+        payload.key != ChatProtocol.DefaultPayloadKey && !payload.isInternalDescriptor()
     }.orEmpty()
 
 // mediaPayloads() minus PAYLOAD_KEY_LINKS: a link preview uploads with an image content-type

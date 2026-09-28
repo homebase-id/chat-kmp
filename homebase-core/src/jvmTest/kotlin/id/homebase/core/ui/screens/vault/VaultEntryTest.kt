@@ -138,6 +138,24 @@ class VaultEntryTest {
     }
 
     @Test
+    fun toVaultEntry_dropsInternalVideoDescriptorPayload() {
+        val file = buildHomebaseFile(
+            payloads = listOf(
+                PayloadDescriptor(key = "vlt_pg_00", contentType = "video/mp4", bytesWritten = 9_000L),
+                PayloadDescriptor(key = "pld_desc0", contentType = "application/json", bytesWritten = 1_400L),
+            ),
+            contentJson = OdinSystemSerializer.serialize(VaultFileContent(name = "clip.mp4")),
+        )
+
+        val item = file.toVaultEntry()
+
+        assertNotNull(item)
+        assertEquals(listOf("vlt_pg_00"), item.payloadDescriptors.map { it.key })
+        assertEquals("video/mp4", item.contentType)
+        assertEquals(9_000L, item.sizeBytes)
+    }
+
+    @Test
     fun toVaultEntry_mapsPdfPayloadCorrectly() {
         val file = buildHomebaseFile(
             payloads = listOf(

@@ -149,10 +149,6 @@ object ChatProtocol {
 
     const val ARCHIVAL_STATUS_DELETED = 2
 
-    // Single source of truth lives in homebase-upload's UploadProtocol; delegated here so
-    // existing chat call sites stay unchanged.
-    const val DEFAULT_PAYLOAD_DESCRIPTOR_KEY = id.homebase.upload.UploadProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
-
     const val PAYLOAD_KEY_MESSAGE_WEB = "chat_web"
     const val PAYLOAD_KEY_LINKS = "chat_links"
     // Server-side constraint: payload keys must match `^[a-z0-9_]{8,10}$`. "chat_location"

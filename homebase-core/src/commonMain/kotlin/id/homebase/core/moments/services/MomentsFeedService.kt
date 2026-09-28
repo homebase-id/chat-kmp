@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.withoutInternalDescriptors
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
@@ -365,7 +366,7 @@ data class MomentFeedItem(
     val ownReactions: List<String>,
 )
 
-private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
+internal fun HomebaseFile.toFeedItem(): MomentFeedItem? {
     val appData = fileMetadata.appData
     val uniqueId = appData.uniqueId ?: return null
     val content = appData.content?.let { raw ->
@@ -397,7 +398,7 @@ private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
         fileId = fileId,
         driveId = driveId,
         keyHeader = keyHeader,
-        payloads = fileMetadata.payloads.orEmpty(),
+        payloads = fileMetadata.payloads.orEmpty().withoutInternalDescriptors(),
         description = content?.description.orEmpty(),
         userDateMs = sqlUserDateMs(),
         createdMs = fileMetadata.created.milliseconds,

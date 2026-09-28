@@ -30,7 +30,7 @@ fun shouldAutoSave(
     // contact's photo (215) are keyed `chat_web0` too, so the payload key alone cannot tell
     // them from a first attachment.
     if ((messageDataType ?: 0) != 0) return false
-    if (isNonMediaPayloadKey(payload.key)) return false
+    if (payload.isInternalDescriptor() || isNonMediaPayloadKey(payload.key)) return false
 
     val contentType = payload.contentType ?: return false
     return when {
@@ -60,5 +60,4 @@ private fun isNonMediaPayloadKey(key: String): Boolean =
     key == ChatProtocol.DefaultPayloadKey ||
         key == ChatProtocol.PAYLOAD_KEY_LINKS ||
         key == ChatProtocol.PAYLOAD_KEY_LOCATION ||
-        key == ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB ||
-        key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
+        key == ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB

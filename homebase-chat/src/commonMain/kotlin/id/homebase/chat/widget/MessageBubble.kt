@@ -539,11 +539,8 @@ fun ReceivedMessageBubble(
     val isHovered by interactionSource.collectIsHoveredAsState()
     var bubbleWidthPx by remember { mutableIntStateOf(0) }
     val filteredPayloads = message.payloads?.filter {
-        !listOf(
-            ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-            ChatProtocol.DefaultPayloadKey,
-            ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
-        ).contains(it.key)
+        !listOf(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB, ChatProtocol.DefaultPayloadKey).contains(it.key) &&
+            !it.isInternalDescriptor()
     }
     val hasMedia = !filteredPayloads.isNullOrEmpty()
     val mediaOnly = !message.content.hasContent() && hasMedia
