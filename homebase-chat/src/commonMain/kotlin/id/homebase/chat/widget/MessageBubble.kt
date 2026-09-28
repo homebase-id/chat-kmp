@@ -94,7 +94,6 @@ import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.MessageSent
@@ -1062,25 +1061,11 @@ fun InlineReplyPreview(
         if (replyMessage == null || driveId == null) return@remember null
         val firstVisualPayload = mediaPayloads.firstOrNull()?.takeIf { it.isVisualMedia() }
             ?: return@remember null
-        val payloadIv = try {
-            firstVisualPayload.iv?.let { Base64.decode(it) }
-        } catch (_: Exception) {
-            null
-        } ?: return@remember null
-        HomebaseImageData(
+        firstVisualPayload.replyQuoteImageData(
             driveId = driveId,
             fileId = replyMessage.fileId,
-            payloadKey = firstVisualPayload.key,
-            previewThumbnail = firstVisualPayload.previewThumbnail?.toEmbeddedThumb()
-                ?: replyMessage.previewThumbnail
-                ?: replyPreview.previewThumbnail,
-            requestedSize = ImageSize.THUMB_SMALL,
-            isEncrypted = true,
-            // Real payload type so a GIF reply preview loads the animated
-            // original instead of a never-generated server thumbnail (its
-            // preview thumb is WebP).
-            payloadContentType = firstVisualPayload.contentType,
-            keyHeader = KeyHeader(iv = payloadIv, aesKey = replyMessage.keyHeader.aesKey),
+            aesKey = replyMessage.keyHeader.aesKey,
+            fallbackPreview = replyMessage.previewThumbnail ?: replyPreview.previewThumbnail,
         )
     }
 

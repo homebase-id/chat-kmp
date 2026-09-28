@@ -1,7 +1,14 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.ImageSize
+import kotlin.io.encoding.Base64
+import kotlin.uuid.Uuid
 
 fun List<PayloadDescriptor>?.mediaPayloads(): List<PayloadDescriptor> =
     this?.filter { payload ->
@@ -15,6 +22,32 @@ fun List<PayloadDescriptor>?.mediaPayloads(): List<PayloadDescriptor> =
 // own bubble still renders the link card through mediaPayloads() via MediaMessage/MediaItem.
 fun List<PayloadDescriptor>?.replyQuoteMediaPayloads(): List<PayloadDescriptor> =
     mediaPayloads().filter { it.key != ChatProtocol.PAYLOAD_KEY_LINKS }
+
+// payloadContentType is load-bearing: a GIF has no server thumbnails and its preview thumb is WebP,
+// so without it the loader asks the drive for a thumb that 404s.
+fun PayloadDescriptor.replyQuoteImageData(
+    driveId: Uuid,
+    fileId: Uuid,
+    aesKey: SecureByteArray,
+    fallbackPreview: EmbeddedThumb?,
+): HomebaseImageData? {
+    val payloadIv = try {
+        iv?.let { Base64.decode(it) }
+    } catch (_: Exception) {
+        null
+    } ?: return null
+    return HomebaseImageData(
+        driveId = driveId,
+        fileId = fileId,
+        payloadKey = key,
+        previewThumbnail = previewThumbnail?.toEmbeddedThumb() ?: fallbackPreview,
+        requestedSize = ImageSize.THUMB_SMALL,
+        lastModified = lastModified,
+        isEncrypted = true,
+        payloadContentType = contentType,
+        keyHeader = KeyHeader(iv = payloadIv, aesKey = aesKey),
+    )
+}
 
 /**
  * Resolves the display name for a reply quote's author.

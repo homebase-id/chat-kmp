@@ -178,6 +178,8 @@ fun FullScreenMediaViewer(
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
                             loadFullPayload = true,
                             lastModified = payload.lastModified,
+                            // The placeholder copies this with loadFullPayload = false; a GIF has no server thumb.
+                            payloadContentType = payload.contentType,
                             isEncrypted = resolved.iv != null,
                             keyHeader = resolved.iv
                                 ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }

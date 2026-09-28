@@ -34,7 +34,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.event.EventDateChip
@@ -42,8 +41,6 @@ import id.homebase.chat.event.rememberEventTimes
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImage
-import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.resources.MR
@@ -51,7 +48,6 @@ import id.homebase.resources.cancel_reply
 import id.homebase.resources.cd_reply_thumbnail
 import id.homebase.resources.you
 import org.jetbrains.compose.resources.stringResource
-import kotlin.io.encoding.Base64
 
 private val QuoteCardShape = RoundedCornerShape(
     topStart = 18.dp, topEnd = 18.dp,
@@ -87,21 +83,11 @@ fun ReplyPreviewBar(
     val chatDriveId = chatTargetDrive.alias
     val thumbnailData = remember(message.fileId, firstPayload?.key, firstPayload?.lastModified) {
         if (!isVisualMedia || firstPayload == null) return@remember null
-        val payloadIv = try {
-            firstPayload.iv?.let { Base64.decode(it) }
-        } catch (_: Exception) {
-            null
-        } ?: return@remember null
-        HomebaseImageData(
+        firstPayload.replyQuoteImageData(
             driveId = chatDriveId,
             fileId = message.fileId,
-            payloadKey = firstPayload.key,
-            previewThumbnail = firstPayload.previewThumbnail?.toEmbeddedThumb()
-                ?: message.previewThumbnail,
-            requestedSize = ImageSize.THUMB_SMALL,
-            lastModified = firstPayload.lastModified,
-            isEncrypted = true,
-            keyHeader = KeyHeader(iv = payloadIv, aesKey = message.keyHeader.aesKey),
+            aesKey = message.keyHeader.aesKey,
+            fallbackPreview = message.previewThumbnail,
         )
     }
 
