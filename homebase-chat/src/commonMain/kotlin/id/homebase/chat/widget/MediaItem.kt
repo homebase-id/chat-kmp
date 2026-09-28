@@ -61,7 +61,6 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.image.rememberFullScreenImagePrefetch
-import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.widget.AudioPlayerWidget
 import id.homebase.core.widget.VoiceNoteSender
@@ -284,25 +283,13 @@ fun MediaItem(
                 val imageData =
                     remember(driveId, fileId, payload.key, payload.lastModified, imageSize, contentType) {
                         val payloadIv = payload.iv?.let { Base64.decode(it) } ?: return@remember null
-                        HomebaseImageData(
+                        HomebaseImageData.from(
                             driveId = driveId,
                             fileId = fileId,
-                            payloadKey = payload.key,
+                            descriptor = payload,
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                                 ?: previewThumbnail,
                             requestedSize = imageSize,
-                            // Native thumbnail sizes this image actually has, so the
-                            // loader requests/caches by a native size — matching the
-                            // sender's optimistic seed (sharp thumb through finalizing)
-                            // and deduplicating the disk cache across measured sizes.
-                            availableThumbSizes = thumbSizesFrom(payload.thumbnails),
-                            lastModified = payload.lastModified,
-                            isEncrypted = true,
-                            // Pass the real payload content type so the loader
-                            // recognises a GIF (whose preview thumb is WebP) and
-                            // loads the animated original inline instead of a
-                            // non-existent server thumbnail. See HomebaseImageData.
-                            payloadContentType = contentType,
                             keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
                         )
                     }
@@ -368,15 +355,15 @@ fun MediaItem(
                     )
                 }
                 val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
-                    HomebaseImageData(
+                    HomebaseImageData.from(
                         driveId = driveId,
                         fileId = fileId,
-                        payloadKey = payload.key,
+                        descriptor = payload,
                         previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                             ?: previewThumbnail,
                         requestedSize = ImageSize.THUMB_MEDIUM,
-                        lastModified = payload.lastModified,
-                        isEncrypted = true,
+                        // Video payloads never carry server thumbnails; request the measured size.
+                        availableThumbSizes = emptyList(),
                         keyHeader = perPayloadKeyHeader,
                     )
                 }
@@ -562,16 +549,12 @@ fun MediaItem(
                     val previewThumb = payload.previewThumbnail?.toEmbeddedThumb() ?: previewThumbnail
                     val payloadIv = payload.iv?.let { Base64.decode(it) }
                     if (previewThumb == null || payloadIv == null) return@remember null
-                    HomebaseImageData(
+                    HomebaseImageData.from(
                         driveId = driveId,
                         fileId = fileId,
-                        payloadKey = payload.key,
+                        descriptor = payload,
                         previewThumbnail = previewThumb,
                         requestedSize = ImageSize.THUMB_MEDIUM,
-                        availableThumbSizes = thumbSizesFrom(payload.thumbnails),
-                        lastModified = payload.lastModified,
-                        isEncrypted = true,
-                        payloadContentType = contentType,
                         keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey),
                     )
                 }

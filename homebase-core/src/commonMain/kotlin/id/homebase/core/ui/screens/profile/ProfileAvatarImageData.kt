@@ -62,13 +62,13 @@ fun ProfileAttribute.photoImageData(): HomebaseImageData? {
         }
     }
 
-    return HomebaseImageData(
+    return HomebaseImageData.from(
         driveId = drive,
         fileId = file,
-        payloadKey = descriptor.key,
-        loadFullPayload = false,
-        lastModified = descriptor.lastModified,
-        payloadContentType = descriptor.contentType,
+        descriptor = descriptor,
+        // No preview blur-up and no native-size snapping for the avatar, as before.
+        previewThumbnail = null,
+        availableThumbSizes = emptyList(),
         keyHeader = KeyHeader(iv = iv, aesKey = kh.aesKey),
     )
 }

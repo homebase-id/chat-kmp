@@ -66,7 +66,6 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.collectContext
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.ui.screens.vault.VaultEditorTool
 import id.homebase.core.ui.screens.vault.components.pageTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
@@ -179,13 +178,11 @@ fun VaultGalleryDetailSheet(
                                         null
                                     }
                                 } ?: return@remember null
-                                HomebaseImageData(
+                                HomebaseImageData.from(
                                     driveId = file.driveId,
                                     fileId = file.fileId,
-                                    payloadKey = descriptor.key,
+                                    descriptor = descriptor,
                                     previewThumbnail = file.previewThumbnail,
-                                    availableThumbSizes = thumbSizesFrom(descriptor.thumbnails),
-                                    lastModified = descriptor.lastModified,
                                     isEncrypted = file.isEncrypted,
                                     keyHeader = KeyHeader(
                                         iv = payloadIv, aesKey = file.keyHeader.aesKey

@@ -429,10 +429,10 @@ class ConversationMapper(
         if (imagePayload != null) {
 
             val imageData =
-                HomebaseImageData(
+                HomebaseImageData.from(
                     driveId = chatTargetDrive.alias,
                     fileId = conversation.fileId,
-                    payloadKey = imagePayload.key,
+                    descriptor = imagePayload,
                     isEncrypted = metadata.isEncrypted,
                     previewThumbnail = imagePayload.previewThumbnail?.toEmbeddedThumb()
                         ?: appData.previewThumbnail,
@@ -444,7 +444,8 @@ class ConversationMapper(
                             aesKey = conversation.keyHeader.aesKey
                         ),
                     requestedSize = ImageSize.THUMB_MEDIUM,
-                    lastModified = imagePayload.lastModified
+                    // Request the measured size unsnapped rather than the nearest native thumbnail.
+                    availableThumbSizes = emptyList(),
                 )
 
             return ConversationAvatarModel(

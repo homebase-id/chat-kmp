@@ -16,7 +16,6 @@ import id.homebase.core.feed.services.ChannelDefinition
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostContent
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.thumbSizesFrom
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -130,13 +129,12 @@ internal fun postImage(file: HomebaseFile, content: PostContent): HomebaseImageD
     }
     val payload = file.fileMetadata.getPayloadDescriptor(media.fileKey) ?: return null
     val iv = payload.iv?.let { runCatching { Base64.decode(it) }.getOrNull() }
-    return HomebaseImageData(
+    return HomebaseImageData.from(
         driveId = file.driveId,
         fileId = file.fileId,
-        payloadKey = payload.key,
-        availableThumbSizes = thumbSizesFrom(payload.thumbnails),
-        lastModified = payload.lastModified,
-        payloadContentType = payload.contentType,
+        descriptor = payload,
+        // No preview blur-up for the card thumbnail, as before.
+        previewThumbnail = null,
         isEncrypted = iv != null,
         keyHeader = iv?.let { KeyHeader(iv = it, aesKey = file.keyHeader.aesKey) } ?: file.keyHeader,
     )

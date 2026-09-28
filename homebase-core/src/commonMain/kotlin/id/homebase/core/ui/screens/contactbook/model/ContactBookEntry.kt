@@ -145,15 +145,15 @@ data class ContactBookEntry(
         val kh = keyHeader ?: return null
         val drive = driveId ?: return null
         val iv = descriptor.iv?.let { runCatching { Base64.decode(it) }.getOrNull() } ?: return null
-        return HomebaseImageData(
+        return HomebaseImageData.from(
             driveId = drive,
             fileId = fileId,
-            payloadKey = descriptor.key,
+            descriptor = descriptor,
+            // Use the contact's own file-level preview, not the payload's, as before.
             previewThumbnail = previewThumbnail,
-            loadFullPayload = false,
+            // Request the measured avatar size unsnapped, as before.
+            availableThumbSizes = emptyList(),
             isEncrypted = isEncrypted,
-            lastModified = descriptor.lastModified,
-            payloadContentType = descriptor.contentType,
             keyHeader = KeyHeader(iv = iv, aesKey = kh.aesKey),
         )
     }

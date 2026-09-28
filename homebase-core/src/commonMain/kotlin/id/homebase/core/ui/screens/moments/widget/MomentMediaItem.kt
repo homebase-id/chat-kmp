@@ -61,7 +61,6 @@ import id.homebase.chat.widget.LocationPreviewCard
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.image.ImageSize
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
@@ -227,15 +226,13 @@ fun MomentMediaItem(
                     // only when an IV is present). Bailing to null here left public feed images as a
                     // blank Box that never even requested bytes; matches the non-zoom builder below.
                     val payloadIv = payload.iv?.let { Base64.decode(it) }
-                    val imageData = HomebaseImageData(
+                    val imageData = HomebaseImageData.from(
                         driveId = driveId,
                         fileId = fileId,
-                        payloadKey = payload.key,
+                        descriptor = payload,
                         previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                             ?: previewThumbnail,
                         requestedSize = imageSize,
-                        availableThumbSizes = thumbSizesFrom(payload.thumbnails),
-                        lastModified = payload.lastModified,
                         isEncrypted = payloadIv != null,
                         keyHeader = payloadIv
                             ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
@@ -313,15 +310,13 @@ fun MomentMediaItem(
                         // as-is (keyHeader ignored). Encrypted payloads (chat, moments) still
                         // carry an IV, so they keep the encrypted path unchanged.
                         val payloadIv = payload.iv?.let { Base64.decode(it) }
-                        HomebaseImageData(
+                        HomebaseImageData.from(
                             driveId = driveId,
                             fileId = fileId,
-                            payloadKey = payload.key,
+                            descriptor = payload,
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                                 ?: previewThumbnail,
                             requestedSize = imageSize,
-                            availableThumbSizes = thumbSizesFrom(payload.thumbnails),
-                            lastModified = payload.lastModified,
                             isEncrypted = payloadIv != null,
                             keyHeader = payloadIv
                                 ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
@@ -380,15 +375,13 @@ fun MomentMediaItem(
                 )
             }
             val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
-                HomebaseImageData(
+                HomebaseImageData.from(
                     driveId = driveId,
                     fileId = fileId,
-                    payloadKey = payload.key,
+                    descriptor = payload,
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                         ?: previewThumbnail,
                     requestedSize = ImageSize.THUMB_MEDIUM,
-                    availableThumbSizes = thumbSizesFrom(payload.thumbnails),
-                    lastModified = payload.lastModified,
                     isEncrypted = payloadIv != null,
                     keyHeader = perPayloadKeyHeader,
                     remoteOdinId = remoteOdinId,

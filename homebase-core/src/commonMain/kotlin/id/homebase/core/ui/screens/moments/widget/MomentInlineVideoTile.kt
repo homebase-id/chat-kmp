@@ -64,7 +64,6 @@ import org.koin.compose.koinInject
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_play_video
@@ -249,15 +248,13 @@ fun MomentInlineVideoTile(
         )
     }
     val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
-        HomebaseImageData(
+        HomebaseImageData.from(
             driveId = driveId,
             fileId = fileId,
-            payloadKey = payload.key,
+            descriptor = payload,
             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                 ?: previewThumbnail,
             requestedSize = ImageSize.THUMB_MEDIUM,
-            availableThumbSizes = thumbSizesFrom(payload.thumbnails),
-            lastModified = payload.lastModified,
             isEncrypted = true,
             keyHeader = perPayloadKeyHeader,
         )

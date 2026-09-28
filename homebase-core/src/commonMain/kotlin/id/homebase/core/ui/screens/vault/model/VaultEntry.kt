@@ -11,7 +11,6 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.vault.VaultUploadStatus
 import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
@@ -141,20 +140,14 @@ fun VaultEntry.imageDataFor(
     val ivBytes = descriptor.iv?.let {
         try { Base64.decode(it) } catch (_: Exception) { null }
     } ?: return null
-    return HomebaseImageData(
+    return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,
-        payloadKey = descriptor.key,
+        descriptor = descriptor,
         previewThumbnail = previewThumbnail,
         requestedSize = requestedSize,
-        availableThumbSizes = thumbSizesFrom(descriptor.thumbnails),
         loadFullPayload = loadFullPayload,
         isEncrypted = isEncrypted,
-        lastModified = descriptor.lastModified,
-        // Carry the real payload type so the loader recognises thumbless
-        // formats (GIF) and loads the animated original even for the grid
-        // thumbnail request, where the preview thumb's type is WebP.
-        payloadContentType = descriptor.contentType,
         keyHeader = KeyHeader(iv = ivBytes, aesKey = keyHeader.aesKey),
     )
 }

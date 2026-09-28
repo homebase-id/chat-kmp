@@ -11,7 +11,6 @@ import id.homebase.chat.services.sticker.SavedSticker
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.chat_sticker_remove_failed
@@ -171,22 +170,28 @@ internal class StickerHandler(
         val isAlreadySaved = findSavedFromMessage(message.fileId) != null
         val stickerPayload = message.payloads?.firstOrNull { it.key == action.payloadKey }
         val payloadIv = stickerPayload?.iv?.let { Base64.decode(it) }
-        val stickerImage = HomebaseImageData(
+        val stickerKeyHeader = if (payloadIv != null) {
+            KeyHeader(iv = payloadIv, aesKey = message.keyHeader.aesKey)
+        } else {
+            message.keyHeader
+        }
+        val stickerImage = stickerPayload?.let {
+            HomebaseImageData.from(
+                driveId = chatTargetDrive.alias,
+                fileId = message.fileId,
+                descriptor = it,
+                previewThumbnail = it.previewThumbnail?.toEmbeddedThumb() ?: message.previewThumbnail,
+                requestedSize = ImageSize.THUMB_MEDIUM,
+                keyHeader = stickerKeyHeader,
+            )
+        } ?: HomebaseImageData(
             driveId = chatTargetDrive.alias,
             fileId = message.fileId,
             payloadKey = action.payloadKey,
-            previewThumbnail = stickerPayload?.previewThumbnail?.toEmbeddedThumb()
-                ?: message.previewThumbnail,
+            previewThumbnail = message.previewThumbnail,
             requestedSize = ImageSize.THUMB_MEDIUM,
-            availableThumbSizes = thumbSizesFrom(stickerPayload?.thumbnails),
-            lastModified = stickerPayload?.lastModified,
             isEncrypted = true,
-            payloadContentType = stickerPayload?.contentType,
-            keyHeader = if (payloadIv != null) {
-                KeyHeader(iv = payloadIv, aesKey = message.keyHeader.aesKey)
-            } else {
-                message.keyHeader
-            },
+            keyHeader = stickerKeyHeader,
         )
         messagesUiState.update {
             it.copy(
