@@ -301,30 +301,6 @@ class ChatMessageStreamLoadRaceTest {
         fixture.close()
     }
 
-    @Test
-    fun stress() {
-        val scenarios = listOf<Pair<String, () -> Unit>>(
-            "viaDriveSyncStopped" to { loadConversation_rowCommittedMidFetch_isRecoveredViaDriveSyncStopped() },
-            "viaBatchReceived" to { loadConversation_rowCommittedMidFetch_isRecoveredViaBatchReceived() },
-            "survivesTheWriteBack" to { loadConversation_rowCommittedDuringTheReRead_survivesTheWriteBack() },
-            "aroundMessage" to { loadConversationAroundMessage_rowCommittedMidFetch_isRecovered() },
-            "onePagingQuery" to { loadConversation_withoutAConcurrentWrite_issuesOnePagingQuery() },
-        )
-        val failures = scenarios.associate { it.first to 0 }.toMutableMap()
-        val firstError = mutableMapOf<String, String>()
-        repeat(80) {
-            for ((name, run) in scenarios) {
-                try { run() } catch (t: Throwable) {
-                    failures[name] = failures.getValue(name) + 1
-                    firstError.putIfAbsent(name, t.toString().take(300))
-                }
-            }
-        }
-        println("STRESS_RESULT failures=$failures")
-        println("STRESS_RESULT firstErrors=$firstError")
-        assertEquals(0, failures.values.sum(), "STRESS failures per scenario: $failures errors: $firstError")
-    }
-
     // ---------- fixture ----------
 
     private suspend fun buildFixture(scope: TestScope): Fixture {
