@@ -1,9 +1,16 @@
 package id.homebase.core.ui.screens.contactbook.components
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,7 +53,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
@@ -71,6 +80,7 @@ import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.syncedDraft
 import id.homebase.core.ui.screens.contactbook.toDraft
 import id.homebase.core.widget.AdaptiveSheet
+import id.homebase.core.widget.AdaptiveSheetScope
 import id.homebase.core.widget.HomebaseIdField
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_edit_add_email
@@ -101,6 +111,7 @@ import id.homebase.resources.contactbook_error_birthday
 import id.homebase.resources.contactbook_error_email
 import id.homebase.resources.contactbook_error_odinid
 import id.homebase.resources.contactbook_error_phone
+import id.homebase.resources.loading
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -127,6 +138,73 @@ fun ContactEditSheet(
     seedAdditionalEmails: List<String> = emptyList(),
     saving: Boolean = false,
     banner: (@Composable () -> Unit)? = null,
+    resolving: Boolean = false,
+    contentKey: Any? = null,
+    closing: Boolean = false,
+    dismissOnSave: Boolean = true,
+) {
+    val motion = MaterialTheme.motionScheme
+    val fade = motion.defaultEffectsSpec<Float>()
+    val resize = motion.defaultSpatialSpec<IntSize>()
+    // Pinned open mid-write: a dismissal there strands the result with nowhere to report to.
+    AdaptiveSheet(onDismiss = onDismiss, dismissible = !saving, expandFully = true) {
+        LaunchedEffect(closing) { if (closing) dismiss() }
+        AnimatedContent(
+            targetState = resolving,
+            transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) using SizeTransform { _, _ -> resize } },
+        ) { loading ->
+            if (loading) {
+                ResolvingTargetContent()
+            } else {
+                key(contentKey) {
+                    ContactEditForm(
+                        editing = editing,
+                        onSave = onSave,
+                        odinIdLocked = odinIdLocked,
+                        odinIdNote = odinIdNote,
+                        seed = seed,
+                        seedAdditionalPhones = seedAdditionalPhones,
+                        seedAdditionalEmails = seedAdditionalEmails,
+                        saving = saving,
+                        banner = banner,
+                        dismissOnSave = dismissOnSave,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResolvingTargetContent() {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Text(
+            text = stringResource(MR.string.contactbook_edit_title_edit),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        )
+        val loading = stringResource(MR.string.loading)
+        CircularProgressIndicator(
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(vertical = 32.dp)
+                .semantics { contentDescription = loading },
+        )
+    }
+}
+
+@Composable
+private fun AdaptiveSheetScope.ContactEditForm(
+    editing: ContactBookEntry?,
+    onSave: (ContactDraft, List<String>, List<String>, PlatformFile?) -> Unit,
+    odinIdLocked: Boolean,
+    odinIdNote: String?,
+    seed: ContactDraft?,
+    seedAdditionalPhones: List<String>,
+    seedAdditionalEmails: List<String>,
+    saving: Boolean,
+    banner: (@Composable () -> Unit)?,
+    dismissOnSave: Boolean,
 ) {
     // Primaries and additional rows are decided together — see mergeSeed.
     val initial = remember(editing, seed, seedAdditionalPhones, seedAdditionalEmails) {
@@ -142,10 +220,12 @@ fun ContactEditSheet(
         mutableStateOf(seededPhones.mapIndexed { i, v -> DraftPhone(i, v) })
     }
     var nextPhoneId by remember { mutableStateOf(seededPhones.size) }
+    var focusPhoneId by remember { mutableStateOf<Int?>(null) }
     var addEmails by remember {
         mutableStateOf(seededEmails.mapIndexed { i, v -> DraftEmail(i, v) })
     }
     var nextEmailId by remember { mutableStateOf(seededEmails.size) }
+    var focusEmailId by remember { mutableStateOf<Int?>(null) }
     // Identity contact (has odinId): fields are synced from the profile and edits become private
     // overrides. `synced` is the pre-override baseline used for the per-field affordance.
     val isIdentity = editing != null && !editing.odinId.isNullOrBlank()
@@ -172,290 +252,293 @@ fun ContactEditSheet(
     val hasBanner = banner != null
     LaunchedEffect(hasBanner) { if (hasBanner) scroll.animateScrollTo(0) }
 
-    // Pinned open mid-write: a dismissal there strands the result with nowhere to report to.
-    AdaptiveSheet(onDismiss = onDismiss, dismissible = !saving, expandFully = true) {
-        Column(modifier = Modifier.fillMaxWidth().imePadding()) {
-            Column(
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .fillMaxWidth()
-                    .verticalScroll(scroll)
-                    .padding(horizontal = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = stringResource(
-                        if (editing == null) MR.string.contactbook_edit_title_new
-                        else MR.string.contactbook_edit_title_edit
-                    ),
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                )
-                if (banner != null) {
-                    banner()
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-
-                Column(
-                    modifier = Modifier.fillMaxWidth().inertWhile(saving),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    EditAvatar(editing = editing, photoBytes = photoBytes)
-                    TextButton(onClick = { photoPicker.launch() }, enabled = !saving) {
-                        Icon(Icons.Outlined.AddAPhoto, contentDescription = null)
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Text(stringResource(MR.string.contactbook_edit_change_photo))
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Identity contacts: name/phone/email/etc. are synced from their Homebase profile;
-                    // editing writes a private app-local override. Make that explicit (banner +
-                    // per-field "from their profile" / "overrides …" supporting text + reset). Manual
-                    // contacts edit their own data plainly.
-                    if (isIdentity) {
-                        SyncedBanner()
-                        Spacer(modifier = Modifier.height(4.dp))
-                    }
-
-                    SyncedField(
-                        value = draft.givenName,
-                        synced = if (isIdentity) synced?.givenName else null,
-                        label = stringResource(MR.string.contactbook_edit_given_name),
-                        enabled = !saving,
-                        onReset = { draft = draft.copy(givenName = synced?.givenName.orEmpty()) },
-                    ) { draft = draft.copy(givenName = it) }
-                    SyncedField(
-                        value = draft.surname,
-                        synced = if (isIdentity) synced?.surname else null,
-                        label = stringResource(MR.string.contactbook_edit_surname),
-                        enabled = !saving,
-                        onReset = { draft = draft.copy(surname = synced?.surname.orEmpty()) },
-                    ) { draft = draft.copy(surname = it) }
-                    // Field, not SyncedField: ContactContent has no organization leaf, so there is
-                    // never a synced original to reveal or reset to.
-                    Field(
-                        value = draft.organization,
-                        label = stringResource(MR.string.contactbook_edit_organization),
-                        enabled = !saving,
-                    ) { draft = draft.copy(organization = it) }
-                    val odinIdLockNote = if (odinIdLocked) {
-                        stringResource(MR.string.contactbook_edit_odinid_locked)
-                    } else null
-                    val odinIdErrorText = stringResource(MR.string.contactbook_error_odinid)
-                    val odinIdShowError = !draft.odinIdValid && draft.odinId.isNotBlank()
-                    // Local TextFieldValue stores space-encoded text; HomebaseIdField's visual
-                    // transformation renders those spaces as dots. Sheet is composed fresh on each
-                    // open, so `remember` re-seeding from draft.odinId is fine.
-                    var odinIdField by remember {
-                        mutableStateOf(
-                            TextFieldValue(
-                                text = draft.odinId.replace('.', ' '),
-                                selection = TextRange(draft.odinId.length),
-                            )
-                        )
-                    }
-                    HomebaseIdField(
-                        value = odinIdField,
-                        onValueChange = { incoming ->
-                            val normalizedSpaces = incoming.text.cleanDomain().replace('.', ' ')
-                            odinIdField = incoming.copy(text = normalizedSpaces)
-                            draft = draft.copy(
-                                odinId = normalizedSpaces.cleanDomain(preserveTrailingDot = false, preserveTrailingDash = false),
-                            )
-                        },
-                        label = { Text(stringResource(MR.string.contactbook_edit_odinid)) },
-                        supportingText = when {
-                            odinIdShowError -> { { Text(odinIdErrorText) } }
-                            odinIdLockNote != null -> { { Text(odinIdLockNote) } }
-                            odinIdNote != null -> { { Text(odinIdNote) } }
-                            else -> null
-                        },
-                        trailingIcon = if (odinIdLocked) {
-                            { Icon(Icons.Outlined.Lock, contentDescription = odinIdLockNote) }
-                        } else null,
-                        isError = odinIdShowError,
-                        enabled = !saving,
-                        readOnly = odinIdLocked,
-                    )
-                    val resetDesc = stringResource(MR.string.contactbook_edit_reset)
-                    // PhoneNumberField owns its national/country state after seeding, so reset re-keys it.
-                    var phoneSeed by remember { mutableStateOf(0) }
-                    val phoneOverridden =
-                        isIdentity && synced?.phone.orEmpty().trim() != draft.phone.trim()
-                    val phoneErrorText = stringResource(MR.string.contactbook_error_phone)
-                    // PhoneNumberField takes no `enabled`, so the disabled look is the caller's job;
-                    // inertWhile above already stops it taking input.
-                    val fieldModifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .alpha(if (saving) DISABLED_ALPHA else 1f)
-                    key(phoneSeed) {
-                        PhoneNumberField(
-                            e164Value = draft.phone,
-                            onValueChange = { draft = draft.copy(phone = it) },
-                            label = stringResource(MR.string.contactbook_edit_phone),
-                            isError = draft.phone.isNotBlank() && !draft.phoneValid,
-                            errorText = phoneErrorText,
-                            supportingText = if (isIdentity) {
-                                syncedSupportingText(draft.phone, synced?.phone)
-                            } else null,
-                            trailingIcon = if (phoneOverridden) {
-                                {
-                                    IconButton(
-                                        onClick = {
-                                            draft = draft.copy(phone = synced?.phone.orEmpty())
-                                            phoneSeed++
-                                        },
-                                        enabled = !saving,
-                                    ) { Icon(Icons.Outlined.Restore, contentDescription = resetDesc) }
-                                }
-                            } else null,
-                            modifier = fieldModifier,
-                        )
-                    }
-                    val removeDesc = stringResource(MR.string.contactbook_edit_remove)
-                    val rowResize = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
-                    // Additional phones use the same E.164 control + validation as the primary number.
-                    // The viewport is capped (full-height sheet, keyboard), so only this node's height changes.
-                    Column(Modifier.fillMaxWidth().animateContentSize(rowResize)) {
-                        addPhones.forEachIndexed { i, entry ->
-                            key(entry.id) {
-                                PhoneNumberField(
-                                    e164Value = entry.value,
-                                    onValueChange = { addPhones = addPhones.replaceAt(i, entry.copy(value = it)) },
-                                    label = stringResource(MR.string.contactbook_edit_phone),
-                                    isError = entry.value.isNotBlank() &&
-                                        !ContactFieldValidation.isValidPhone(entry.value),
-                                    errorText = phoneErrorText,
-                                    trailingIcon = {
-                                        IconButton(
-                                            onClick = { addPhones = addPhones.filterNot { it.id == entry.id } },
-                                            enabled = !saving,
-                                        ) {
-                                            Icon(Icons.Outlined.Close, contentDescription = removeDesc)
-                                        }
-                                    },
-                                    modifier = fieldModifier,
-                                )
-                            }
-                        }
-                    }
-                    AddMoreButton(
-                        label = stringResource(MR.string.contactbook_edit_add_phone),
-                        enabled = !saving,
-                    ) {
-                        addPhones = addPhones + DraftPhone(nextPhoneId++, "")
-                    }
-                    SyncedField(
-                        value = draft.email,
-                        synced = if (isIdentity) synced?.email else null,
-                        label = stringResource(MR.string.contactbook_edit_email),
-                        isError = !draft.emailValid,
-                        errorText = stringResource(MR.string.contactbook_error_email),
-                        keyboardType = KeyboardType.Email,
-                        enabled = !saving,
-                        onReset = { draft = draft.copy(email = synced?.email.orEmpty()) },
-                    ) { draft = draft.copy(email = it) }
-                    val emailErrorText = stringResource(MR.string.contactbook_error_email)
-                    Column(Modifier.fillMaxWidth().animateContentSize(rowResize)) {
-                        addEmails.forEachIndexed { i, entry ->
-                            key(entry.id) {
-                                Field(
-                                    value = entry.value,
-                                    label = stringResource(MR.string.contactbook_edit_email),
-                                    isError = !ContactFieldValidation.isValidEmail(entry.value),
-                                    errorText = emailErrorText,
-                                    keyboardType = KeyboardType.Email,
-                                    enabled = !saving,
-                                    trailingIcon = {
-                                        IconButton(
-                                            onClick = { addEmails = addEmails.filterNot { it.id == entry.id } },
-                                            enabled = !saving,
-                                        ) {
-                                            Icon(Icons.Outlined.Close, contentDescription = removeDesc)
-                                        }
-                                    },
-                                ) { addEmails = addEmails.replaceAt(i, entry.copy(value = it)) }
-                            }
-                        }
-                    }
-                    AddMoreButton(
-                        label = stringResource(MR.string.contactbook_edit_add_email),
-                        enabled = !saving,
-                    ) {
-                        addEmails = addEmails + DraftEmail(nextEmailId++, "")
-                    }
-                    SyncedField(
-                        value = draft.city,
-                        synced = if (isIdentity) synced?.city else null,
-                        label = stringResource(MR.string.contactbook_edit_city),
-                        enabled = !saving,
-                        onReset = { draft = draft.copy(city = synced?.city.orEmpty()) },
-                    ) { draft = draft.copy(city = it) }
-                    SyncedField(
-                        value = draft.country,
-                        synced = if (isIdentity) synced?.country else null,
-                        label = stringResource(MR.string.contactbook_edit_country),
-                        enabled = !saving,
-                        onReset = { draft = draft.copy(country = synced?.country.orEmpty()) },
-                    ) { draft = draft.copy(country = it) }
-                    SyncedField(
-                        value = draft.birthday,
-                        synced = if (isIdentity) synced?.birthday else null,
-                        label = stringResource(MR.string.contactbook_edit_birthday),
-                        isError = !draft.birthdayValid,
-                        errorText = stringResource(MR.string.contactbook_error_birthday),
-                        enabled = !saving,
-                        onReset = { draft = draft.copy(birthday = synced?.birthday.orEmpty()) },
-                    ) { draft = draft.copy(birthday = it) }
-                }
-
+    Column(modifier = Modifier.fillMaxWidth().imePadding()) {
+        Column(
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .padding(horizontal = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(
+                    if (editing == null) MR.string.contactbook_edit_title_new
+                    else MR.string.contactbook_edit_title_edit
+                ),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            )
+            if (banner != null) {
+                banner()
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
-            HorizontalDivider()
-            // Outside the scroll: the form is a dozen fields deep, and a Save the user has to go
-            // looking for is the slowest step in "save this contact".
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 12.dp, bottom = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                modifier = Modifier.fillMaxWidth().inertWhile(saving),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                if (saving) {
-                    val savingLabel = stringResource(MR.string.contactbook_edit_saving)
-                    CircularProgressIndicator(
-                        modifier = Modifier
-                            .size(20.dp)
-                            .semantics {
-                                liveRegion = LiveRegionMode.Polite
-                                contentDescription = savingLabel
-                            },
-                        strokeWidth = 2.dp,
+                EditAvatar(editing = editing, photoBytes = photoBytes)
+                TextButton(onClick = { photoPicker.launch() }, enabled = !saving) {
+                    Icon(Icons.Outlined.AddAPhoto, contentDescription = null)
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text(stringResource(MR.string.contactbook_edit_change_photo))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Identity contacts: name/phone/email/etc. are synced from their Homebase profile;
+                // editing writes a private app-local override. Make that explicit (banner +
+                // per-field "from their profile" / "overrides …" supporting text + reset). Manual
+                // contacts edit their own data plainly.
+                if (isIdentity) {
+                    SyncedBanner()
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                SyncedField(
+                    value = draft.givenName,
+                    synced = if (isIdentity) synced?.givenName else null,
+                    label = stringResource(MR.string.contactbook_edit_given_name),
+                    enabled = !saving,
+                    onReset = { draft = draft.copy(givenName = synced?.givenName.orEmpty()) },
+                ) { draft = draft.copy(givenName = it) }
+                SyncedField(
+                    value = draft.surname,
+                    synced = if (isIdentity) synced?.surname else null,
+                    label = stringResource(MR.string.contactbook_edit_surname),
+                    enabled = !saving,
+                    onReset = { draft = draft.copy(surname = synced?.surname.orEmpty()) },
+                ) { draft = draft.copy(surname = it) }
+                // Field, not SyncedField: ContactContent has no organization leaf, so there is
+                // never a synced original to reveal or reset to.
+                Field(
+                    value = draft.organization,
+                    label = stringResource(MR.string.contactbook_edit_organization),
+                    enabled = !saving,
+                ) { draft = draft.copy(organization = it) }
+                val odinIdLockNote = if (odinIdLocked) {
+                    stringResource(MR.string.contactbook_edit_odinid_locked)
+                } else null
+                val odinIdErrorText = stringResource(MR.string.contactbook_error_odinid)
+                val odinIdShowError = !draft.odinIdValid && draft.odinId.isNotBlank()
+                // Local TextFieldValue stores space-encoded text; HomebaseIdField's visual
+                // transformation renders those spaces as dots. Sheet is composed fresh on each
+                // open, so `remember` re-seeding from draft.odinId is fine.
+                var odinIdField by remember {
+                    mutableStateOf(
+                        TextFieldValue(
+                            text = draft.odinId.replace('.', ' '),
+                            selection = TextRange(draft.odinId.length),
+                        )
                     )
                 }
-                TextButton(onClick = { dismiss() }, enabled = !saving) {
-                    Text(stringResource(MR.string.contactbook_edit_cancel))
+                HomebaseIdField(
+                    value = odinIdField,
+                    onValueChange = { incoming ->
+                        val normalizedSpaces = incoming.text.cleanDomain().replace('.', ' ')
+                        odinIdField = incoming.copy(text = normalizedSpaces)
+                        draft = draft.copy(
+                            odinId = normalizedSpaces.cleanDomain(preserveTrailingDot = false, preserveTrailingDash = false),
+                        )
+                    },
+                    label = { Text(stringResource(MR.string.contactbook_edit_odinid)) },
+                    supportingText = when {
+                        odinIdShowError -> { { Text(odinIdErrorText) } }
+                        odinIdLockNote != null -> { { Text(odinIdLockNote) } }
+                        odinIdNote != null -> { { Text(odinIdNote) } }
+                        else -> null
+                    },
+                    trailingIcon = if (odinIdLocked) {
+                        { Icon(Icons.Outlined.Lock, contentDescription = odinIdLockNote) }
+                    } else null,
+                    isError = odinIdShowError,
+                    enabled = !saving,
+                    readOnly = odinIdLocked,
+                )
+                val resetDesc = stringResource(MR.string.contactbook_edit_reset)
+                // PhoneNumberField owns its national/country state after seeding, so reset re-keys it.
+                var phoneSeed by remember { mutableStateOf(0) }
+                val phoneOverridden =
+                    isIdentity && synced?.phone.orEmpty().trim() != draft.phone.trim()
+                val phoneErrorText = stringResource(MR.string.contactbook_error_phone)
+                // PhoneNumberField takes no `enabled`, so the disabled look is the caller's job;
+                // inertWhile above already stops it taking input.
+                val fieldModifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+                    .alpha(if (saving) DISABLED_ALPHA else 1f)
+                key(phoneSeed) {
+                    PhoneNumberField(
+                        e164Value = draft.phone,
+                        onValueChange = { draft = draft.copy(phone = it) },
+                        label = stringResource(MR.string.contactbook_edit_phone),
+                        isError = draft.phone.isNotBlank() && !draft.phoneValid,
+                        errorText = phoneErrorText,
+                        supportingText = if (isIdentity) {
+                            syncedSupportingText(draft.phone, synced?.phone)
+                        } else null,
+                        trailingIcon = if (phoneOverridden) {
+                            {
+                                IconButton(
+                                    onClick = {
+                                        draft = draft.copy(phone = synced?.phone.orEmpty())
+                                        phoneSeed++
+                                    },
+                                    enabled = !saving,
+                                ) { Icon(Icons.Outlined.Restore, contentDescription = resetDesc) }
+                            }
+                        } else null,
+                        modifier = fieldModifier,
+                    )
                 }
-                // Save requires at least one meaningful field AND every phone/email — primary and
-                // additional — plus the birthday to be well-formed (E.164 / valid email /
-                // ISO date). Legacy bad data stays visible but blocks Save until corrected.
-                // Must mirror ContactDraft.isSavable, which the writer enforces: an extra row with
-                // no primary passes here and is then rejected there, giving the contact card's save
-                // flow a "Try again" whose retry fails identically every time.
-                val hasContent = draft.givenName.isNotBlank() || draft.surname.isNotBlank() ||
-                    draft.phone.isNotBlank() || draft.email.isNotBlank() || draft.odinId.isNotBlank()
-                val primaryValid = draft.phoneValid && draft.emailValid && draft.odinIdValid &&
-                    draft.birthdayValid
-                val additionsValid = addPhones.all { ContactFieldValidation.isValidPhone(it.value) } &&
-                    addEmails.all { ContactFieldValidation.isValidEmail(it.value) }
-                Button(
-                    onClick = { onSave(draft, addPhones.map { it.value }, addEmails.map { it.value }, photo) },
-                    enabled = hasContent && primaryValid && additionsValid && !saving,
+                val removeDesc = stringResource(MR.string.contactbook_edit_remove)
+                val rowResize = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
+                // Additional phones use the same E.164 control + validation as the primary number.
+                // The viewport is capped (full-height sheet, keyboard), so only this node's height changes.
+                Column(Modifier.fillMaxWidth().animateContentSize(rowResize)) {
+                    addPhones.forEachIndexed { i, entry ->
+                        key(entry.id) {
+                            PhoneNumberField(
+                                e164Value = entry.value,
+                                onValueChange = { addPhones = addPhones.replaceAt(i, entry.copy(value = it)) },
+                                label = stringResource(MR.string.contactbook_edit_phone),
+                                isError = entry.value.isNotBlank() &&
+                                    !ContactFieldValidation.isValidPhone(entry.value),
+                                errorText = phoneErrorText,
+                                trailingIcon = {
+                                    IconButton(
+                                        onClick = { addPhones = addPhones.filterNot { it.id == entry.id } },
+                                        enabled = !saving,
+                                    ) {
+                                        Icon(Icons.Outlined.Close, contentDescription = removeDesc)
+                                    }
+                                },
+                                modifier = fieldModifier.focusWhenAdded(entry.id == focusPhoneId) { focusPhoneId = null },
+                            )
+                        }
+                    }
+                }
+                AddMoreButton(
+                    label = stringResource(MR.string.contactbook_edit_add_phone),
+                    enabled = !saving,
                 ) {
-                    Text(stringResource(MR.string.contactbook_edit_save))
+                    focusPhoneId = nextPhoneId
+                    addPhones = addPhones + DraftPhone(nextPhoneId++, "")
                 }
+                SyncedField(
+                    value = draft.email,
+                    synced = if (isIdentity) synced?.email else null,
+                    label = stringResource(MR.string.contactbook_edit_email),
+                    isError = !draft.emailValid,
+                    errorText = stringResource(MR.string.contactbook_error_email),
+                    keyboardType = KeyboardType.Email,
+                    enabled = !saving,
+                    onReset = { draft = draft.copy(email = synced?.email.orEmpty()) },
+                ) { draft = draft.copy(email = it) }
+                val emailErrorText = stringResource(MR.string.contactbook_error_email)
+                Column(Modifier.fillMaxWidth().animateContentSize(rowResize)) {
+                    addEmails.forEachIndexed { i, entry ->
+                        key(entry.id) {
+                            Field(
+                                value = entry.value,
+                                label = stringResource(MR.string.contactbook_edit_email),
+                                isError = !ContactFieldValidation.isValidEmail(entry.value),
+                                errorText = emailErrorText,
+                                keyboardType = KeyboardType.Email,
+                                enabled = !saving,
+                                trailingIcon = {
+                                    IconButton(
+                                        onClick = { addEmails = addEmails.filterNot { it.id == entry.id } },
+                                        enabled = !saving,
+                                    ) {
+                                        Icon(Icons.Outlined.Close, contentDescription = removeDesc)
+                                    }
+                                },
+                                modifier = Modifier.focusWhenAdded(entry.id == focusEmailId) { focusEmailId = null },
+                            ) { addEmails = addEmails.replaceAt(i, entry.copy(value = it)) }
+                        }
+                    }
+                }
+                AddMoreButton(
+                    label = stringResource(MR.string.contactbook_edit_add_email),
+                    enabled = !saving,
+                ) {
+                    focusEmailId = nextEmailId
+                    addEmails = addEmails + DraftEmail(nextEmailId++, "")
+                }
+                SyncedField(
+                    value = draft.city,
+                    synced = if (isIdentity) synced?.city else null,
+                    label = stringResource(MR.string.contactbook_edit_city),
+                    enabled = !saving,
+                    onReset = { draft = draft.copy(city = synced?.city.orEmpty()) },
+                ) { draft = draft.copy(city = it) }
+                SyncedField(
+                    value = draft.country,
+                    synced = if (isIdentity) synced?.country else null,
+                    label = stringResource(MR.string.contactbook_edit_country),
+                    enabled = !saving,
+                    onReset = { draft = draft.copy(country = synced?.country.orEmpty()) },
+                ) { draft = draft.copy(country = it) }
+                SyncedField(
+                    value = draft.birthday,
+                    synced = if (isIdentity) synced?.birthday else null,
+                    label = stringResource(MR.string.contactbook_edit_birthday),
+                    isError = !draft.birthdayValid,
+                    errorText = stringResource(MR.string.contactbook_error_birthday),
+                    enabled = !saving,
+                    onReset = { draft = draft.copy(birthday = synced?.birthday.orEmpty()) },
+                ) { draft = draft.copy(birthday = it) }
+            }
+
+        }
+
+        HorizontalDivider()
+        // Outside the scroll: the form is a dozen fields deep, and a Save the user has to go
+        // looking for is the slowest step in "save this contact".
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(top = 12.dp, bottom = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (saving) {
+                val savingLabel = stringResource(MR.string.contactbook_edit_saving)
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .semantics {
+                            liveRegion = LiveRegionMode.Polite
+                            contentDescription = savingLabel
+                        },
+                    strokeWidth = 2.dp,
+                )
+            }
+            TextButton(onClick = { dismiss() }, enabled = !saving) {
+                Text(stringResource(MR.string.contactbook_edit_cancel))
+            }
+            // Save requires at least one meaningful field AND every phone/email — primary and
+            // additional — plus the birthday to be well-formed (E.164 / valid email /
+            // ISO date). Legacy bad data stays visible but blocks Save until corrected.
+            // Must mirror ContactDraft.isSavable, which the writer enforces: an extra row with
+            // no primary passes here and is then rejected there, giving the contact card's save
+            // flow a "Try again" whose retry fails identically every time.
+            val hasContent = draft.givenName.isNotBlank() || draft.surname.isNotBlank() ||
+                draft.phone.isNotBlank() || draft.email.isNotBlank() || draft.odinId.isNotBlank()
+            val primaryValid = draft.phoneValid && draft.emailValid && draft.odinIdValid &&
+                draft.birthdayValid
+            val additionsValid = addPhones.all { ContactFieldValidation.isValidPhone(it.value) } &&
+                addEmails.all { ContactFieldValidation.isValidEmail(it.value) }
+            Button(
+                onClick = {
+                    val save = { onSave(draft, addPhones.map { it.value }, addEmails.map { it.value }, photo) }
+                    if (dismissOnSave) dismiss(save) else save()
+                },
+                enabled = hasContent && primaryValid && additionsValid && !saving,
+            ) {
+                Text(stringResource(MR.string.contactbook_edit_save))
             }
         }
     }
@@ -630,6 +713,7 @@ private fun Field(
     readOnly: Boolean = false,
     helperText: String? = null,
     trailingIcon: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier,
     onChange: (String) -> Unit,
 ) {
     val showError = isError && value.isNotBlank()
@@ -648,6 +732,20 @@ private fun Field(
             helperText != null -> { { Text(helperText) } }
             else -> null
         },
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
     )
+}
+
+@Composable
+private fun Modifier.focusWhenAdded(added: Boolean, onDone: () -> Unit): Modifier {
+    val focus = remember { FocusRequester() }
+    val bringIntoView = remember { BringIntoViewRequester() }
+    LaunchedEffect(added) {
+        if (added) {
+            focus.requestFocus()
+            bringIntoView.bringIntoView()
+            onDone()
+        }
+    }
+    return bringIntoViewRequester(bringIntoView).focusRequester(focus)
 }
