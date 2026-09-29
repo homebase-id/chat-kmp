@@ -18,7 +18,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -68,7 +67,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.ImageBitmap
+import coil3.ImageLoader
+import coil3.compose.AsyncImage
+import org.koin.compose.koinInject
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -535,7 +536,7 @@ internal fun FlipLensButton(
 internal fun GalleryButton(
     visible: Boolean,
     enabled: Boolean,
-    thumbnail: ImageBitmap?,
+    thumbnail: String?,
     iconRotation: () -> Float,
     onClick: () -> Unit,
 ) {
@@ -566,8 +567,9 @@ internal fun GalleryButton(
             ) { shown ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     if (shown != null) {
-                        Image(
-                            bitmap = shown,
+                        AsyncImage(
+                            model = shown,
+                            imageLoader = koinInject<ImageLoader>(),
                             contentDescription = label,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
