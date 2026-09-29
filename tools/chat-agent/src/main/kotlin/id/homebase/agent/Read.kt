@@ -16,6 +16,7 @@ import id.homebase.api.youauth.CredentialStorage
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
 import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 class NotLoggedInException(profile: String) :
     Exception("not logged in for profile '$profile', run: chat-agent login --profile $profile")
@@ -31,12 +32,15 @@ suspend fun openSession(profile: String): Session {
     return Session(stored.identity, credentials)
 }
 
-suspend fun read(profile: String, limit: Int) {
-    val (owner, credentials) = openSession(profile).let { it.identity to it.credentials }
-    val allowlist = Allowlist.default(owner)
-    val conversationId = ChatProtocol.ConversationWithYourselfId
-    allowlist.requireConversation(conversationId)
+class ChatMsg(
+    val id: Uuid,
+    val conversationId: Uuid,
+    val author: OdinId?,
+    val text: String,
+    val userDate: Long,
+)
 
+suspend fun fetchMessages(credentials: CredentialsManager, conversationId: Uuid, limit: Int): List<ChatMsg> {
     val response =
         DriveQueryProvider(HttpClientProvider.create(), credentials)
             .queryBatch(
@@ -54,16 +58,30 @@ suspend fun read(profile: String, limit: Int) {
                     ),
                 ),
             )
-
-    response.searchResults
-        .filter { allowlist.allowsAuthor(it.fileMetadata.originalAuthor) }
-        .sortedBy { it.fileMetadata.appData.userDate ?: it.fileMetadata.created.milliseconds }
-        .forEach { file ->
+    return response.searchResults
+        .map { file ->
             val metadata = file.fileMetadata
             val text = runCatching {
                 OdinSystemSerializer.deserialize<MessageAppData>(metadata.appData.content.orEmpty()).getMessage()
             }.getOrDefault("[unreadable message]")
-            val at = Instant.fromEpochMilliseconds(metadata.appData.userDate ?: metadata.created.milliseconds)
-            println("$at ${metadata.originalAuthor}: $text")
+            ChatMsg(
+                id = metadata.appData.uniqueId ?: file.fileId,
+                conversationId = conversationId,
+                author = metadata.originalAuthor,
+                text = text,
+                userDate = metadata.appData.userDate ?: metadata.created.milliseconds,
+            )
         }
+        .sortedBy { it.userDate }
+}
+
+suspend fun read(profile: String, limit: Int) {
+    val session = openSession(profile)
+    val allowlist = Allowlist.default(session.identity)
+    val conversationId = ChatProtocol.ConversationWithYourselfId
+    allowlist.requireConversation(conversationId)
+
+    fetchMessages(session.credentials, conversationId, limit)
+        .filter { allowlist.allowsAuthor(it.author) }
+        .forEach { println("${Instant.fromEpochMilliseconds(it.userDate)} ${it.author}: ${it.text}") }
 }

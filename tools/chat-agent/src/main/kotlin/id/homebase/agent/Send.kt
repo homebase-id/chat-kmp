@@ -68,8 +68,7 @@ fun selfTransitOptions(conversationId: Uuid, messageId: Uuid) = TransitOptions(
     ),
 )
 
-suspend fun send(profile: String, text: String) {
-    val session = openSession(profile)
+suspend fun sendToSelf(session: Session, text: String): Uuid {
     val allowlist = Allowlist.default(session.identity)
     val messageId = Uuid.random()
     val conversationId = ChatProtocol.ConversationWithYourselfId
@@ -77,7 +76,7 @@ suspend fun send(profile: String, text: String) {
     val metadata = buildSelfMessageMetadata(
         allowlist, conversationId, messageId, text, Clock.System.now().toEpochMilliseconds(), keyHeader
     )
-    val result = DriveUploadProvider(HttpClientProvider.create(), session.credentials, JvmFileOperationsProvider())
+    DriveUploadProvider(HttpClientProvider.create(), session.credentials, JvmFileOperationsProvider())
         .uploadFile(
             UploadFileRequest(
                 driveId = SystemDriveConstants.chatDrive.alias,
@@ -86,5 +85,9 @@ suspend fun send(profile: String, text: String) {
                 transitOptions = selfTransitOptions(conversationId, messageId),
             )
         )
-    println("sent $messageId${result?.let { " (file ${it.fileId})" }.orEmpty()}")
+    return messageId
+}
+
+suspend fun send(profile: String, text: String) {
+    println("sent ${sendToSelf(openSession(profile), text)}")
 }

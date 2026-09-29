@@ -11,8 +11,9 @@ object Profile {
     // Must run before anything touches SecureStorage, which resolves its directory once.
     fun select(name: String) {
         require(Regex("[a-z0-9_-]+").matches(name)) { "invalid profile name '$name'" }
-        val home = System.getProperty("user.home")
-        val dir = File(home, "Library/Application Support/HomebaseChatAgent/$name")
-        System.setProperty(JvmFileSystemUtil.DATA_DIR_OVERRIDE_PROPERTY, dir.absolutePath)
+        System.setProperty(JvmFileSystemUtil.DATA_DIR_OVERRIDE_PROPERTY, dataDir(name).absolutePath)
     }
+
+    fun dataDir(name: String): File =
+        File(System.getProperty("user.home"), "Library/Application Support/HomebaseChatAgent/$name")
 }
