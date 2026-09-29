@@ -8,6 +8,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.file.AppCacheDirs
+import id.homebase.api.file.scratchDir
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
@@ -517,8 +519,7 @@ class VaultViewModel(
             try {
                 fileData = files.mapIndexed { index, file ->
                     val ext = file.name.substringAfterLast('.', "tmp")
-                    val cacheDir = fileOperationsProvider.getCacheDirectory()
-                    val tempPath = "$cacheDir/vault_upload_${Uuid.random()}.$ext"
+                    val tempPath = "${fileOperationsProvider.scratchDir(AppCacheDirs.PICKER_COPIES)}/vault_upload_${Uuid.random()}.$ext"
                     file.copyToPath(tempPath)
                     tempPath to fileContentTypes[index]
                 }
@@ -669,7 +670,7 @@ class VaultViewModel(
             // materializeForUpload fix).
             val uploadData = action.newFiles.mapIndexed { index, file ->
                 val ext = file.name.substringAfterLast('.', "tmp")
-                val tempPath = "${fileOperationsProvider.getCacheDirectory()}/vault_upload_${Uuid.random()}.$ext"
+                val tempPath = "${fileOperationsProvider.scratchDir(AppCacheDirs.PICKER_COPIES)}/vault_upload_${Uuid.random()}.$ext"
                 file.copyToPath(tempPath)
                 tempPath to fileData[index].second
             }

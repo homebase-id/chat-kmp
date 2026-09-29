@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.foundation.toByteArray
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CompletableDeferred
@@ -158,7 +159,8 @@ internal class FFmpegKitVideoDecoder : VideoDecoder {
 
     private fun cacheDir(): String {
         val paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true)
-        return paths.firstOrNull() as? String ?: NSTemporaryDirectory()
+        val base = paths.firstOrNull() as? String ?: NSTemporaryDirectory()
+        return AppCacheDirs.scratchDir(base, AppCacheDirs.MEDIA_WORK)
     }
 
     private fun formatLocaleSafe(value: Double): String {

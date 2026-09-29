@@ -94,7 +94,7 @@ class JvmFileOperationsProvider : FileOperationsProvider {
         suffix: String
     ): String =
         withContext(Dispatchers.IO) {
-            val tempDir = File(getCacheDirectory(), dirName).apply { mkdirs() }
+            val tempDir = File(AppCacheDirs.scratchPath(getCacheDirectory(), dirName)).apply { mkdirs() }
             val file = File.createTempFile(prefix, suffix, tempDir)
             file.writeBytes(bytes)
             file.absolutePath
@@ -104,7 +104,7 @@ class JvmFileOperationsProvider : FileOperationsProvider {
         bytes: ByteArray,
         suffix: String,
     ): String = withContext(Dispatchers.IO) {
-        val dir = File(getCacheDirectory(), SHARE_OUTBOUND_DIR_NAME).apply { mkdirs() }
+        val dir = File(AppCacheDirs.scratchPath(getCacheDirectory(), SHARE_OUTBOUND_DIR_NAME)).apply { mkdirs() }
         val file = File.createTempFile("share_", suffix, dir)
         file.writeBytes(bytes)
         file.absolutePath

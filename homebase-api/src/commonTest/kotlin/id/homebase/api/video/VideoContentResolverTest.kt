@@ -58,7 +58,7 @@ class VideoContentResolverTest {
 
         val mp4 = assertIs<VideoContent.Mp4File>(content)
         assertTrue(
-            mp4.filePath.startsWith("/cache/hbvid_res_") && mp4.filePath.endsWith(".mp4"),
+            mp4.filePath.startsWith("/cache/hb-scratch/export/hbvid_res_") && mp4.filePath.endsWith(".mp4"),
             "must stream into the swept hbvid_res_* pattern: ${mp4.filePath}",
         )
         assertEquals(

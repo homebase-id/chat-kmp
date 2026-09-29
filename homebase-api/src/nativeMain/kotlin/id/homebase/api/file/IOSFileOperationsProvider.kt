@@ -227,8 +227,7 @@ class IOSFileOperationsProvider : FileOperationsProvider {
     // screen counts it and the CacheSweeper reaps it on every startup (disposable; #844 PR4).
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     private fun writeBytesIn(dirName: String, bytes: ByteArray, prefix: String, suffix: String): String {
-        val cacheDir = getCacheDirectory().trimEnd('/')
-        val tempDir = "$cacheDir/$dirName"
+        val tempDir = AppCacheDirs.scratchPath(getCacheDirectory(), dirName)
         val fm = NSFileManager.defaultManager
         if (!fm.fileExistsAtPath(tempDir)) {
             fm.createDirectoryAtPath(tempDir, true, null, null)
@@ -252,8 +251,7 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         bytes: ByteArray,
         suffix: String,
     ): String {
-        val cacheDir = getCacheDirectory().trimEnd('/')
-        val dir = "$cacheDir/$SHARE_OUTBOUND_DIR_NAME"
+        val dir = AppCacheDirs.scratchPath(getCacheDirectory(), SHARE_OUTBOUND_DIR_NAME)
         val fm = NSFileManager.defaultManager
         if (!fm.fileExistsAtPath(dir)) {
             fm.createDirectoryAtPath(dir, true, null, null)
@@ -277,6 +275,8 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         val fileManager = NSFileManager.defaultManager
 
         if (!fileManager.fileExistsAtPath(path)) {
+            val parent = path.substringBeforeLast('/', "")
+            if (parent.isNotEmpty()) fileManager.createDirectoryAtPath(parent, true, null, null)
             fileManager.createFileAtPath(path, contents = null, attributes = null)
         }
 

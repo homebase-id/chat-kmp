@@ -1,9 +1,9 @@
 package id.homebase.core.files
 
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
-import io.github.vinceglb.filekit.FileKit
+import id.homebase.api.file.scratchDir
 import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.cacheDir
 import io.github.vinceglb.filekit.copyTo
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
@@ -16,7 +16,7 @@ actual suspend fun PlatformFile.toUploadPath(fileOps: FileOperationsProvider): S
 // copying through FileKit's copyTo (which reads the content URI) yields a stable plain file the
 // send path can always read — equivalent to the downstream resolveToFilePath copy, just earlier.
 actual suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProvider): PlatformFile {
-    val dest = PlatformFile(FileKit.cacheDir, sandboxCopyName(name, mimeType()?.toString()))
+    val dest = PlatformFile("${fileOps.scratchDir(AppCacheDirs.PICKER_COPIES)}/${sandboxCopyName(name, mimeType()?.toString())}")
     copyTo(dest)
     return dest
 }

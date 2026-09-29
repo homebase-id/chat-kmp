@@ -144,7 +144,7 @@ class AndroidFileOperationsProvider(
     private suspend fun writeBytesIn(
         dirName: String, bytes: ByteArray, prefix: String, suffix: String
     ): String = withContext(Dispatchers.IO) {
-        val tempDir = File(context.cacheDir, dirName).apply { mkdirs() }
+        val tempDir = File(AppCacheDirs.scratchPath(context.cacheDir.absolutePath, dirName)).apply { mkdirs() }
         val file = File.createTempFile(prefix, suffix, tempDir)
         file.writeBytes(bytes)
         file.path
@@ -153,7 +153,7 @@ class AndroidFileOperationsProvider(
     override suspend fun writeBytesToShareOutboundFile(
         bytes: ByteArray, suffix: String
     ): String = withContext(Dispatchers.IO) {
-        val dir = File(context.cacheDir, SHARE_OUTBOUND_DIR_NAME).apply { mkdirs() }
+        val dir = File(AppCacheDirs.scratchPath(context.cacheDir.absolutePath, SHARE_OUTBOUND_DIR_NAME)).apply { mkdirs() }
         val file = File.createTempFile("share_", suffix, dir)
         file.writeBytes(bytes)
         file.path
@@ -166,7 +166,7 @@ class AndroidFileOperationsProvider(
             val ext = context.contentResolver.getType(uri)
                 ?.substringAfterLast('/')
                 ?.let { ".$it" } ?: ""
-            val tmp = File.createTempFile("resolved_", ext, context.cacheDir)
+            val tmp = File.createTempFile("resolved_", ext, File(AppCacheDirs.scratchDir(context.cacheDir.absolutePath, AppCacheDirs.PICKER_COPIES)))
             context.contentResolver.openInputStream(uri)?.use { input ->
                 tmp.outputStream().use { input.copyTo(it) }
             } ?: throw IllegalArgumentException("Unable to open content URI: $path")
@@ -191,7 +191,9 @@ class AndroidFileOperationsProvider(
 
         } else {
 
-            FileOutputStream(File(path)).use { out ->
+            val file = File(path)
+            file.parentFile?.mkdirs()
+            FileOutputStream(file).use { out ->
                 data.collect { chunk ->
                     out.write(chunk)
                 }

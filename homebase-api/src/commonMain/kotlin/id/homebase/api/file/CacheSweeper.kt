@@ -13,7 +13,7 @@ import okio.Path.Companion.toPath
  *   share temps, leftover pickers, ...).
  * - [sweepAll] — logout reclaim: also deletes the tracked caches.
  *
- * Directories that aren't ours ([CacheAudit.Entry.foreign]) are always kept —
+ * Anything that isn't ours ([CacheAudit.Entry.foreign]: loose files, other directories) is always kept —
  * see [decide] and [CacheAudit.isOwnedDirectory].
  *
  * Special case: if `coil3_disk_cache` is found it is logged at **ERROR** and

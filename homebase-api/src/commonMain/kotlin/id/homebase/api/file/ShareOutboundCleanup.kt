@@ -4,7 +4,7 @@ import co.touchlab.kermit.Logger
 import okio.FileSystem
 
 /**
- * Subdirectory of the app cache where the chat "Share to other app" flow
+ * Subdirectory of the app scratch dir ([AppCacheDirs.SCRATCH_DIR_NAME]) where the chat "Share to other app" flow
  * writes its plaintext-decrypted Homebase payloads. Sequestered so the
  * security-relevant temp files (Category 2: cleartext copies of
  * end-to-end-encrypted chat content) never mingle with general cache
@@ -19,7 +19,7 @@ import okio.FileSystem
 const val SHARE_OUTBOUND_DIR_NAME: String = "share_outbound"
 
 /**
- * Recursively delete the share-outbound subdirectory under [cacheDirPath].
+ * Recursively delete the share-outbound subdirectory of the scratch dir under [cacheDirPath].
  * Best-effort: a missing dir is a quiet no-op, a delete failure is logged.
  *
  * Called from:
@@ -35,10 +35,11 @@ fun sweepShareOutbound(
     cacheDirPath: String,
     fileSystem: FileSystem = systemFileSystem,
 ): Boolean {
-    val deleted = safeDeleteRecursively(cacheDirPath, SHARE_OUTBOUND_DIR_NAME, fileSystem)
+    val scratchRoot = AppCacheDirs.scratchRoot(cacheDirPath)
+    val deleted = safeDeleteRecursively(scratchRoot, SHARE_OUTBOUND_DIR_NAME, fileSystem)
     if (deleted) {
         Logger.i(tag = "ShareOutbound") {
-            "swept $cacheDirPath/$SHARE_OUTBOUND_DIR_NAME (cleartext share temps)"
+            "swept $scratchRoot/$SHARE_OUTBOUND_DIR_NAME (cleartext share temps)"
         }
     }
     return deleted

@@ -2,6 +2,7 @@ package id.homebase.api.client.drives.upload
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.systemFileSystem
 import okio.FileSystem
@@ -42,7 +43,7 @@ fun cleanupHlsScratch(
     val seen = HashSet<String>()
     for (p in payloads) {
         val parent = runCatching { p.filePath.toPath().parent }.getOrNull() ?: continue
-        if (!parent.name.startsWith(HLS_DIR_PREFIX)) continue
+        if (!parent.name.startsWith(AppCacheDirs.HLS_DIR_PREFIX)) continue
         val parentBase = parent.parent?.toString() ?: continue
         val key = "$parentBase|${parent.name}"
         if (!seen.add(key)) continue
@@ -54,5 +55,4 @@ fun cleanupHlsScratch(
     }
 }
 
-private const val HLS_DIR_PREFIX = "hls_"
 private const val TAG = "HlsScratchCleanup"
