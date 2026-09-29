@@ -127,7 +127,7 @@ class CacheSweeperTest {
         fs.write("$cacheDir/hls_abc/index.ts".toPath()) { write(ByteArray(8)) }
         fs.createDirectories("$cacheDir/hb-scratch/downloads".toPath())
         fs.write("$cacheDir/hb-scratch/downloads/report.pdf".toPath()) { write(ByteArray(8)) }
-        fs.write("$cacheDir/resolved_99.jpeg".toPath()) { write(ByteArray(8)) }
+        fs.write("$cacheDir/report99.jpeg".toPath()) { write(ByteArray(8)) }
         // Tracked Coil cache: kept in untracked sweep.
         fs.createDirectories("$cacheDir/homebase-payloads-v2".toPath())
         fs.write("$cacheDir/homebase-payloads-v2/x.bin".toPath()) { write(ByteArray(8)) }
@@ -151,7 +151,7 @@ class CacheSweeperTest {
             "app-owned scratch must be deleted",
         )
         assertTrue(
-            fs.exists("$cacheDir/resolved_99.jpeg".toPath()),
+            fs.exists("$cacheDir/report99.jpeg".toPath()),
             "loose files at the cache root are never swept",
         )
         assertTrue(
@@ -198,7 +198,7 @@ class CacheSweeperTest {
         fs.write("$cacheDir/homebase-payloads-v2/x.bin".toPath()) { write(ByteArray(8)) }
         fs.createDirectories("$cacheDir/hb-scratch".toPath())
         fs.write("$cacheDir/hb-scratch/x.bin".toPath()) { write(ByteArray(8)) }
-        fs.write("$cacheDir/resolved_99.jpeg".toPath()) { write(ByteArray(8)) }
+        fs.write("$cacheDir/report99.jpeg".toPath()) { write(ByteArray(8)) }
         fs.createDirectories("$cacheDir/WebView".toPath())
         fs.write("$cacheDir/WebView/cookies.bin".toPath()) { write(ByteArray(8)) }
 
@@ -207,7 +207,7 @@ class CacheSweeperTest {
 
         assertFalse(fs.exists("$cacheDir/homebase-payloads-v2".toPath()), "logout sweep deletes tracked too")
         assertFalse(fs.exists("$cacheDir/hb-scratch".toPath()), "logout sweep deletes scratch too")
-        assertTrue(fs.exists("$cacheDir/resolved_99.jpeg".toPath()), "logout sweep still keeps loose files")
+        assertTrue(fs.exists("$cacheDir/report99.jpeg".toPath()), "logout sweep still keeps loose files")
         assertTrue(fs.exists("$cacheDir/WebView".toPath()), "logout sweep still keeps foreign dirs")
     }
 
@@ -270,7 +270,7 @@ class CacheSweeperTest {
     fun looseFilesAndNonOwnedDirs_neverDeleted_inAnyMode() {
         val fs = FakeFileSystem()
         val cacheDir = "/data/data/id.homebase.test/cache"
-        val looseFiles = listOf("crash.json", "compressed_clip.mp4", "vault_upload_1.pdf", "hls_looks_like_ours.txt")
+        val looseFiles = listOf("report.txt", "crash.json", "hls_looks_like_ours.txt", "My photo.jpg")
         fs.createDirectories(cacheDir.toPath())
         for (name in looseFiles) fs.write("$cacheDir/$name".toPath()) { write(ByteArray(8)) }
         val foreignDirs = listOf("com.crashlytics.data", "Crash Reports", "some-sdk-cache")
@@ -298,5 +298,23 @@ class CacheSweeperTest {
         CacheSweeper.sweepUntracked(CacheAudit.audit(cacheDir, fs), fs)
 
         for (name in CacheAudit.KNOWN_CACHE_DIRS) assertTrue(fs.exists("$cacheDir/$name/f.bin".toPath()), "$name must survive")
+    }
+
+    @Test
+    fun legacyLooseFiles_withOurPrefixes_areDeleted_othersKept() {
+        val fs = FakeFileSystem()
+        val cacheDir = "/data/data/id.homebase.test/cache"
+        fs.createDirectories(cacheDir.toPath())
+        val ours = listOf("compressed_x.mp4", "resolved_y.jpg", "vault_upload_1.pdf", "input_hlsdl_ab.ts", "hbvid_res_1.mp4")
+        for (name in ours) fs.write("$cacheDir/$name".toPath()) { write(ByteArray(8)) }
+        fs.write("$cacheDir/report.txt".toPath()) { write(ByteArray(8)) }
+        fs.createDirectories("$cacheDir/com.crashlytics.data".toPath())
+        fs.write("$cacheDir/com.crashlytics.data/f.bin".toPath()) { write(ByteArray(8)) }
+
+        CacheSweeper.sweepUntracked(CacheAudit.audit(cacheDir, fs), fs)
+
+        for (name in ours) assertFalse(fs.exists("$cacheDir/$name".toPath()), "$name must be swept")
+        assertTrue(fs.exists("$cacheDir/report.txt".toPath()))
+        assertTrue(fs.exists("$cacheDir/com.crashlytics.data/f.bin".toPath()))
     }
 }

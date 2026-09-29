@@ -60,7 +60,15 @@ object CacheAudit {
     const val UPLOAD_TEMP_DIR_NAME: String = "upload-temp"
     const val OUTBOX_TEMP_DIR_NAME: String = "outbox-temp"
 
-    // Only directories can be ours; loose files at the cache root are never swept.
+    // A loose root file is ours only if it carries a fixed prefix our pre-hb-scratch writers used.
+    // Legacy pass, like the dir lists below: can go after a couple of releases. User-named downloads can't be matched.
+    fun isLegacyLooseFile(name: String): Boolean = LEGACY_LOOSE_FILE_PREFIXES.any { name.startsWith(it) }
+
+    private val LEGACY_LOOSE_FILE_PREFIXES = listOf(
+        "compressed_", "input_", "transcode_", "thumb_", "thumb0001-", "ffmpeg-segmented-", "vts_", "hbvid_",
+        "resolved_", "vault_upload_", "hlsdl_", "share_", "hbautosave_", "waveform-",
+    )
+
     fun isOwnedDirectory(name: String): Boolean =
         name == AppCacheDirs.SCRATCH_DIR_NAME || name in LEGACY_OWNED_DIR_NAMES ||
             LEGACY_OWNED_DIR_PREFIXES.any { name.startsWith(it) }
@@ -130,7 +138,7 @@ object CacheAudit {
                         isDirectory = isDir,
                         sizeBytes = size,
                         known = name in KNOWN_CACHE_DIRS,
-                        foreign = !isDir || !isOwnedDirectory(name),
+                        foreign = !(if (isDir) isOwnedDirectory(name) else isLegacyLooseFile(name)),
                         label = classify(name),
                     )
                 )
