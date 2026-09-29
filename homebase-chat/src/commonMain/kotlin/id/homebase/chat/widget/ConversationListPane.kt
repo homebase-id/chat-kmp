@@ -99,15 +99,15 @@ import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.core.widget.rememberTabSlideFade
 import id.homebase.resources.MR
+import id.homebase.resources.action_retry
 import id.homebase.resources.app_name
 import id.homebase.resources.chat_archived_chats
 import id.homebase.resources.chat_archived_chats_empty
 import id.homebase.resources.chat_filter_by_unread_clear_button
 import id.homebase.resources.chat_filter_by_unread_description
+import id.homebase.resources.chat_initial_sync_failed
 import id.homebase.resources.chat_new_conversation
 import id.homebase.resources.chat_options
-import id.homebase.resources.action_retry
-import id.homebase.resources.chat_initial_sync_failed
 import id.homebase.resources.chat_search_empty_description
 import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_search_result_empty

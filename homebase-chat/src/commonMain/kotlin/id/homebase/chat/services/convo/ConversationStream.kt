@@ -5,11 +5,11 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.eventbus.BackendEvent
-import id.homebase.api.sync.DriveState
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.publicImageUrl
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.sync.DriveState
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.data.ConversationState
@@ -1664,7 +1664,6 @@ data class EnrichmentState(
      *  the unread counts from ChatReadCount. */
     val hasUnreadCounts: Boolean = false,
 )
-
 
 internal suspend fun runGuardedInitialLoad(onFailure: () -> Unit, load: suspend () -> Unit) {
     try {

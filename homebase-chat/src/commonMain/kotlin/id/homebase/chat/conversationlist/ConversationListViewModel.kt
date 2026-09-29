@@ -1163,13 +1163,13 @@ class ConversationListViewModel(
 
     fun onAction(action: ConversationListUiAction) {
         when (action) {
+            is ConversationListUiAction.RetryInitialSync -> retryInitialSync()
+
             // Belt-and-braces draft save (#1122): the thread's lifecycle owner is
             // stopping — the user navigated away, or the app went to background and
             // the OS may kill the process before anything else runs. Keyed off the
             // live ActiveConversation, so it's a no-op once the thread has already
             // been left (the collector saved and cleared the composer by then).
-            is ConversationListUiAction.RetryInitialSync -> retryInitialSync()
-
             is ConversationListUiAction.FlushDraft -> {
                 ActiveConversation.conversation.value?.let {
                     viewModelScope.launch { flushDraft(it) }
