@@ -2,9 +2,12 @@ package id.homebase.core.ui.navigation
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,7 +20,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -35,6 +40,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.dialog
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
+import kotlinx.coroutines.flow.first
 
 private val PaneMaxWidth = 980.dp
 private val PaneMaxHeight = 800.dp
@@ -84,6 +90,7 @@ internal fun FloatingPaneContainer(
     val floating = isExpandedLayout()
     val focusRequester = remember { FocusRequester() }
     var dismissRequested by remember { mutableStateOf(false) }
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
 
     LaunchedEffect(focusRequester) { focusRequester.requestFocus() }
 
@@ -101,8 +108,13 @@ internal fun FloatingPaneContainer(
         Modifier.fillMaxSize()
     }
 
-    // Enter only: every dismissal pops the dialog entry directly, which removes it in one frame.
     val appear = remember { MutableTransitionState(false).apply { targetState = true } }
+    LaunchedEffect(dismissRequested) {
+        if (!dismissRequested) return@LaunchedEffect
+        appear.targetState = false
+        snapshotFlow { appear.isIdle && !appear.currentState }.first { it }
+        currentOnDismiss()
+    }
     val motion = MaterialTheme.motionScheme
     AnimatedVisibility(
         visibleState = appear,
@@ -111,6 +123,11 @@ internal fun FloatingPaneContainer(
         } else {
             EnterTransition.None
         },
+        exit = if (floating) {
+            scaleOut(motion.fastSpatialSpec(), targetScale = 0.9f) + fadeOut(motion.defaultEffectsSpec())
+        } else {
+            ExitTransition.None
+        },
     ) {
         Surface(
             modifier = sizing
@@ -118,10 +135,7 @@ internal fun FloatingPaneContainer(
                 .focusable()
                 .onPreviewKeyEvent { event ->
                     if (event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
-                        if (!dismissRequested) {
-                            dismissRequested = true
-                            onDismiss()
-                        }
+                        dismissRequested = true
                         true
                     } else {
                         false
