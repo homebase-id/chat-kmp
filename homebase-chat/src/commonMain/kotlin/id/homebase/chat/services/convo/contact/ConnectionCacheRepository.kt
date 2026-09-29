@@ -2,6 +2,7 @@ package id.homebase.chat.services.convo.contact
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
@@ -11,6 +12,9 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.data.OutgoingConnectionRequestUiModel
 import kotlin.time.Clock
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 
 /**
  * Thin persistence layer around the ConnectionCache table. Scoped to the currently-authenticated
@@ -28,6 +32,11 @@ class ConnectionCacheRepository(
         const val STATUS_BLOCKED = "blocked"
         const val STATUS_INCOMING_PENDING = "incomingPending"
         const val STATUS_OUTGOING_PENDING = "outgoingPending"
+
+        private val circlesJson = Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
     }
 
     data class HydratedConnections(
@@ -103,6 +112,26 @@ class ConnectionCacheRepository(
             STATUS_BLOCKED,
             blocked.map { it.domainName },
             now,
+        )
+    }
+
+    suspend fun hydrateCircles(): List<CircleWithMembers>? = runReading { identityId ->
+        val json = dbm.circleMembershipCache.selectJsonByIdentity(identityId.toString())
+            ?: return@runReading null
+        try {
+            circlesJson.decodeFromString(ListSerializer(CircleWithMembers.serializer()), json)
+        } catch (e: SerializationException) {
+            Logger.w(e) { "ConnectionCacheRepository: discarding unreadable circle cache" }
+            null
+        }
+    }
+
+    suspend fun persistCircles(circles: List<CircleWithMembers>) {
+        val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return
+        dbm.circleMembershipCache.upsert(
+            identityId.toString(),
+            circlesJson.encodeToString(ListSerializer(CircleWithMembers.serializer()), circles),
+            nowMs(),
         )
     }
 
