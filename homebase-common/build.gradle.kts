@@ -81,6 +81,10 @@ kotlin {
         nativeMain.get().dependsOn(skiaMain)
         wasmJsMain.get().dependsOn(skiaMain)
 
+        val cameraStubMain by creating { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(cameraStubMain)
+        wasmJsMain.get().dependsOn(cameraStubMain)
+
         commonMain.dependencies {
             api(project(":homebase-api"))
             api(project(":homebase-notifshared"))

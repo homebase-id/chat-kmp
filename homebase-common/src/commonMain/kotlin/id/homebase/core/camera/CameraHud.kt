@@ -47,7 +47,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -154,7 +153,7 @@ internal fun CameraCaptureContent(
     displayRotation: QuarterTurn = QuarterTurn.R0,
     acceptsInput: Boolean = true,
     onOpenGallery: (() -> Unit)? = null,
-    galleryThumbnail: ImageBitmap? = null,
+    galleryThumbnail: String? = null,
     preview: @Composable (Modifier) -> Unit = {
         CameraPreview(engine, it, onLongPressFocus = { haptics.perform(HapticEvent.Confirm) })
     },
@@ -218,6 +217,7 @@ internal fun CameraCaptureContent(
     }
     LaunchedEffect(engine, mirrorFront) { engine.setMirrorFront(mirrorFront) }
     LaunchedEffect(engine, deviceRotation) { engine.setCaptureRotation(deviceRotation) }
+    LaunchedEffect(engine, displayRotation) { engine.setDisplayRotation(displayRotation) }
     LaunchedEffect(engine) {
         engine.errors.collect { error ->
             if (error is CameraError.RecordingFailed && recordingIntent && !currentUi.isRecording) {

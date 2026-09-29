@@ -143,8 +143,7 @@ internal class AttachmentHandler(
                     // scope — so without this copy `readFileData` throws "Unable to read
                     // file". No-op on web; a cheap sandbox copy elsewhere. See
                     // AttachmentUploadResolve.materializeForUpload.
-                    // A capture is already a plain file in the swept upload-temp dir; copying a clip delays the editor.
-                    val it = if (action.fromCamera) picked else picked.materializeForUpload(fileOperationsProvider)
+                    val it = picked.materializeForUpload(fileOperationsProvider)
                     when {
                         ct.startsWith("video/") -> AttachmentPendingFile.FileVideo(
                             Uuid.generateV7(),
