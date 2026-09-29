@@ -3,6 +3,9 @@ package id.homebase.core.diagnostics
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.asCoroutineDispatcher
+import java.util.concurrent.Executors
 
 /**
  * Android stack capture for [MainThreadWatchdog]: snapshots the main `Looper` thread.
@@ -24,3 +27,9 @@ internal actual fun captureProcessTimes(): ProcessTimes? = ProcessTimes(
     cpuMs = Process.getElapsedCpuTime(),
     continuousMs = SystemClock.elapsedRealtime(),
 )
+
+internal actual fun createWatchdogDispatcher(): CoroutineDispatcher =
+    Executors.newSingleThreadExecutor { Thread(it, "MainThreadWatchdog").apply { isDaemon = true } }
+        .asCoroutineDispatcher()
+
+internal actual fun currentThreadName(): String = Thread.currentThread().name

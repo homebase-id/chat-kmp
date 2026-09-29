@@ -5,6 +5,10 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.newSingleThreadContext
+import platform.Foundation.NSThread
 import platform.posix.CLOCK_MONOTONIC
 import platform.posix.RUSAGE_SELF
 import platform.posix.clock_gettime
@@ -43,3 +47,8 @@ internal actual fun captureProcessTimes(): ProcessTimes? = memScoped {
 
 @OptIn(ExperimentalForeignApi::class)
 private fun timeval.toMillis(): Long = tv_sec * 1_000L + tv_usec / 1_000L
+
+@OptIn(DelicateCoroutinesApi::class)
+internal actual fun createWatchdogDispatcher(): CoroutineDispatcher = newSingleThreadContext("MainThreadWatchdog")
+
+internal actual fun currentThreadName(): String = NSThread.currentThread.name ?: "unnamed"

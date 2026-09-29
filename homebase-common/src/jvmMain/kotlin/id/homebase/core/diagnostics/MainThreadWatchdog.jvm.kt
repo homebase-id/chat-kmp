@@ -1,5 +1,9 @@
 package id.homebase.core.diagnostics
 
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.asCoroutineDispatcher
+import java.util.concurrent.Executors
+
 /**
  * Desktop (JVM) stack capture for [MainThreadWatchdog]: snapshots the AWT event-dispatch thread,
  * which is what Compose Desktop's `Dispatchers.Main` (the Swing dispatcher) runs on. A stall here
@@ -23,3 +27,9 @@ internal actual fun captureMainThreadStackTrace(maxFrames: Int): String? {
  * OS-suspended-vs-self-stalled split has nothing to distinguish here.
  */
 internal actual fun captureProcessTimes(): ProcessTimes? = null
+
+internal actual fun createWatchdogDispatcher(): CoroutineDispatcher =
+    Executors.newSingleThreadExecutor { Thread(it, "MainThreadWatchdog").apply { isDaemon = true } }
+        .asCoroutineDispatcher()
+
+internal actual fun currentThreadName(): String = Thread.currentThread().name
