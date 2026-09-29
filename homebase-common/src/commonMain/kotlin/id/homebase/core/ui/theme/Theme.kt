@@ -188,7 +188,7 @@ fun HomebaseTheme(
         val layer = rememberGraphicsLayer()
 
         if (updatesSystemChrome) {
-                val fadeSpec = remember { MotionScheme.expressive().slowEffectsSpec<Float>() }
+                val fadeSpec = remember { MotionScheme.expressive().fastEffectsSpec<Float>() }
                 LaunchedEffect(darkTheme) {
                         if (darkTheme == appliedDark) return@LaunchedEffect
                         outgoingFrame = if (layer.size.width > 0 && layer.size.height > 0) layer.toImageBitmap() else null

@@ -28,13 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -111,9 +105,6 @@ fun AppearanceSettingsUi(
     ) { innerPadding ->
         var languageExpanded by rememberSaveable { mutableStateOf(false) }
         var themeExpanded by rememberSaveable { mutableStateOf(false) }
-        val themeVisibility = remember { MutableTransitionState(themeExpanded) }
-        themeVisibility.targetState = themeExpanded
-        val scope = rememberCoroutineScope()
 
         Column(
             modifier = Modifier
@@ -163,7 +154,7 @@ fun AppearanceSettingsUi(
                     onExpandedChange = { themeExpanded = it },
                 ),
             )
-            AnimatedVisibility(visibleState = themeVisibility, enter = optionsEnter, exit = optionsExit) {
+            AnimatedVisibility(visible = themeExpanded, enter = optionsEnter, exit = optionsExit) {
                 Column(modifier = Modifier.selectableGroup()) {
                     ThemeState.entries.forEach { theme ->
                         SettingsOptionRow(
@@ -171,10 +162,7 @@ fun AppearanceSettingsUi(
                             selected = theme == uiState.selectedTheme,
                             onClick = {
                                 themeExpanded = false
-                                scope.launch {
-                                    snapshotFlow { themeVisibility.isIdle && !themeVisibility.currentState }.first { it }
-                                    onAction(AppearanceSettingsUiAction.ThemeSelected(theme))
-                                }
+                                onAction(AppearanceSettingsUiAction.ThemeSelected(theme))
                             },
                         )
                     }
