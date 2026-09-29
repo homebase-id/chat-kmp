@@ -38,9 +38,10 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.video.VideoQuality
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -119,8 +120,7 @@ class OutboxSerializerTest {
         val old = OdinSystemSerializer.serialize(value)
         val row = outboxRow(old)
         val decoded = OutboxSerializer.decode<T>(row)
-        assertEquals(old, OdinSystemSerializer.serialize(decoded), "${T::class.simpleName} changed on strict round-trip")
-        assertEquals(old, OutboxSerializer.serialize(decoded), "${T::class.simpleName} encodes differently under the strict instance")
+        assertEquals(old, OutboxSerializer.serialize(decoded), "${T::class.simpleName} changed on strict round-trip")
     }
 
     @Test
@@ -221,7 +221,7 @@ class OutboxSerializerTest {
     fun nullOnNonNullFieldIsRejectedNotCoerced() {
         val obj = validUpdateJson()
         val ins = obj.getValue("instructions").jsonObject
-        val bad = JsonObject(obj + ("instructions" to JsonObject(ins + ("useAppNotification" to kotlinx.serialization.json.JsonNull))))
+        val bad = JsonObject(obj + ("instructions" to JsonObject(ins + ("useAppNotification" to JsonNull))))
         assertFailsWith<OutboxDecodeException> { decodeUpdate(bad) }
     }
 

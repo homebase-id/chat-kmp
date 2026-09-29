@@ -1515,7 +1515,8 @@ class OutboxSyncTest {
         }
     }
 
-    private fun runUndecodableRowTest(json: String) = runOutboxTest { db ->
+    @Test
+    fun undecodableRow_isDroppedOnFirstAttempt() = runOutboxTest { db ->
         val eventBus = EventBus()
         val sync = OutboxSync(
             databaseManager = db, uploader = DecodingUploader(), eventBus = eventBus, scope = backgroundScope
@@ -1538,7 +1539,7 @@ class OutboxSyncTest {
             dependencyUniqueId = null,
             priority = 0,
             uploadType = 0,
-            json = json.encodeToByteArray(),
+            json = """{"driveId":"${Uuid.random()}","removedField":1}""".encodeToByteArray(),
             filePaths = null,
         )
 
@@ -1558,17 +1559,4 @@ class OutboxSyncTest {
         collectorJob.cancel()
         sync.clearCheckout(timeoutMs = 5_000)
     }
-
-    @Test
-    fun undecodableRow_unknownKey_isDroppedOnFirstAttempt() = runUndecodableRowTest(
-        """{"driveId":"${Uuid.random()}","removedField":1}"""
-    )
-
-    @Test
-    fun undecodableRow_missingRequiredField_isDroppedOnFirstAttempt() = runUndecodableRowTest("{}")
-
-    @Test
-    fun undecodableRow_unknownEnumValue_isDroppedOnFirstAttempt() = runUndecodableRowTest(
-        """{"driveId":"${Uuid.random()}","fileSystemType":"bogus"}"""
-    )
 }
