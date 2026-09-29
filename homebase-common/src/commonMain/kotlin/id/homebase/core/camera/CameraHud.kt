@@ -217,6 +217,7 @@ internal fun CameraCaptureContent(
     }
     LaunchedEffect(engine, mirrorFront) { engine.setMirrorFront(mirrorFront) }
     LaunchedEffect(engine, deviceRotation) { engine.setCaptureRotation(deviceRotation) }
+    LaunchedEffect(engine, displayRotation) { engine.setDisplayRotation(displayRotation) }
     LaunchedEffect(engine) {
         engine.errors.collect { error ->
             if (error is CameraError.RecordingFailed && recordingIntent && !currentUi.isRecording) {

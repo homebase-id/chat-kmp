@@ -23,6 +23,9 @@ interface CameraEngine {
 
     fun setCaptureRotation(rotation: QuarterTurn)
 
+    /** The rotation the UI is laid out in; Android rebuilds the preview's target rotation when it changes. */
+    fun setDisplayRotation(rotation: QuarterTurn) = Unit
+
     /** -1..1 of the lens's exposure compensation range; a new focus point resets it to 0. */
     fun setExposureBias(bias: Float)
 
