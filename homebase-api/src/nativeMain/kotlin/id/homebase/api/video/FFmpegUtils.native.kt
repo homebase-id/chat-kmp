@@ -298,7 +298,7 @@ actual object FFmpegUtils {
             onProgress: ((Float) -> Unit)?
     ): Pair<String, String>? =
             withContext(Dispatchers.IO) {
-                val outputDir = "${scratchDir(AppCacheDirs.HLS)}/${AppCacheDirs.HLS_DIR_PREFIX}${getUniqueId(inputPath)}"
+                val outputDir = hlsOutputDir(inputPath)
 
                 val fileManager = NSFileManager.defaultManager
                 if (!fileManager.fileExistsAtPath(outputDir)) {
@@ -379,6 +379,9 @@ actual object FFmpegUtils {
 
     private fun getCacheDirectory(): String = scratchDir(AppCacheDirs.MEDIA_WORK)
 
+    private fun hlsOutputDir(inputPath: String): String =
+        "${scratchDir(AppCacheDirs.HLS)}/${AppCacheDirs.HLS_DIR_PREFIX}${getUniqueId(inputPath)}"
+
     actual suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
             withContext(Dispatchers.IO) {
                 val cacheDir = getCacheDirectory()
@@ -407,7 +410,7 @@ actual object FFmpegUtils {
                     return@withContext null
                 }
 
-                val outputDir = "${scratchDir(AppCacheDirs.HLS)}/${AppCacheDirs.HLS_DIR_PREFIX}${getUniqueId(inputPath)}"
+                val outputDir = hlsOutputDir(inputPath)
 
                 if (!fileManager.fileExistsAtPath(outputDir)) {
                     fileManager.createDirectoryAtPath(outputDir, true, null, null)

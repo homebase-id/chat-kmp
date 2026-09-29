@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.util.Log
 import androidx.core.net.toUri
@@ -22,6 +23,9 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
 actual object FFmpegUtils {
+
+    private fun scratchFolder(context: Context, sub: String): File =
+        File(AppCacheDirs.scratchDir(context.cacheDir.absolutePath, sub))
     private const val TAG = "FFmpegUtils"
 
     @Volatile private var cachedFfmpegVersion: String? = null
@@ -147,7 +151,7 @@ actual object FFmpegUtils {
         val effectiveTrimStart = if (trimStartMs != null && trimEndMs != null) trimStartMs else null
         val effectiveTrimEnd = if (trimStartMs != null && trimEndMs != null) trimEndMs else null
 
-        val outFile = File(AppCacheDirs.scratchDir(context.cacheDir.absolutePath, AppCacheDirs.MEDIA_WORK), "compressed_${inFile.name}")
+        val outFile = File(scratchFolder(context, AppCacheDirs.MEDIA_WORK), "compressed_${inFile.name}")
         val inputDurationMs = getDurationMs(inputPath)
         val inputBytes = inFile.length()
         val probe = probeVideoTrack(inputPath)
@@ -431,7 +435,7 @@ actual object FFmpegUtils {
             val absRot = kotlin.math.abs(((rotation % 360) + 360) % 360)
             val needsRotationFix = absRot == 90 || absRot == 270
 
-            val outputDir = File(AppCacheDirs.scratchDir(context.cacheDir.absolutePath, AppCacheDirs.MEDIA_WORK))
+            val outputDir = scratchFolder(context, AppCacheDirs.MEDIA_WORK)
             val playlistName = "ffmpeg-segmented-${UUID.randomUUID()}.m3u8"
             val playlistPath = File(outputDir, playlistName).absolutePath
 
@@ -491,7 +495,7 @@ actual object FFmpegUtils {
     actual suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
         withContext(Dispatchers.IO) {
             val context = ActivityProvider.requireApplicationContext()
-            val cacheFile = File(AppCacheDirs.scratchDir(context.cacheDir.absolutePath, AppCacheDirs.MEDIA_WORK), "input_$fileName")
+            val cacheFile = File(scratchFolder(context, AppCacheDirs.MEDIA_WORK), "input_$fileName")
             cacheFile.writeBytes(data)
             return@withContext cacheFile.absolutePath
         }
@@ -511,7 +515,7 @@ actual object FFmpegUtils {
             val needsRotationFix = absRot == 90 || absRot == 270
 
             val outputDir = File(
-                AppCacheDirs.scratchDir(context.cacheDir.absolutePath, AppCacheDirs.HLS),
+                scratchFolder(context, AppCacheDirs.HLS),
                 "${AppCacheDirs.HLS_DIR_PREFIX}${UUID.randomUUID()}"
             ).apply { mkdirs() }
 
@@ -606,7 +610,7 @@ actual object FFmpegUtils {
 
     actual suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =
         withContext(Dispatchers.IO) {
-            val cacheDir = File(AppCacheDirs.scratchDir(ActivityProvider.requireApplicationContext().cacheDir.absolutePath, AppCacheDirs.MEDIA_WORK))
+            val cacheDir = scratchFolder(ActivityProvider.requireApplicationContext(), AppCacheDirs.MEDIA_WORK)
             val id = UUID.randomUUID()
             val inFile = File(cacheDir, "transcode_in_$id.$extension")
             val outFile = File(cacheDir, "transcode_out_$id.$extension")
