@@ -52,7 +52,7 @@ import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 import id.homebase.core.ui.screens.contactbook.isAccessRevoked
 import id.homebase.core.ui.screens.contactbook.isPendingIncomingRequest
-import id.homebase.core.ui.screens.contactbook.isUserCircle
+import id.homebase.core.ui.screens.contactbook.isPersonalKind
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
@@ -266,22 +266,19 @@ class ContactDetailViewModel(
                 }
                 val pendingIncoming = isPendingIncomingRequest(status, incomingRequest != null)
                 // User circles only — app default circles are surfaced through the connection
-                // status, not as chips. Both halves are now reactive: real membership from
-                // circ.circlesFor, pending deposits from the registration the refresh already
-                // updated. A circle that goes pending mid-review therefore appears at once,
-                // where the old once-per-contact live read left it invisible until the screen
-                // was resumed.
+                // status, not as chips. Real membership comes from circ.circlesFor and pending
+                // deposits from the registration, so both update with the next refresh.
                 val pendingCircleIds = registration?.accessGrant?.pendingCircleIds
                     .orEmpty()
                     .map { it.toHexString() }
                     .toSet()
                 val realCircles = domain?.let { d -> circ.circlesFor(d) }.orEmpty()
-                    .filter { it.isUserCircle() }
+                    .filter { it.isPersonalKind() }
                 val realIds = realCircles.map { it.id.lowercase() }.toSet()
                 val pendingMatched = pendingCircleIds
                     .mapNotNull { pid -> circ.circles.map { it.circle }.firstOrNull { it.id.equals(pid, ignoreCase = true) } }
                 val pendingCircles = pendingMatched
-                    .filter { it.isUserCircle() && it.id.lowercase() !in realIds }
+                    .filter { it.isPersonalKind() && it.id.lowercase() !in realIds }
                 // Waiting on the app that owns them to mint the grants. A third list, not merged
                 // into pending: they clear by different means, and only one of them resolves on
                 // its own. Without this they were selected in the review and then rendered

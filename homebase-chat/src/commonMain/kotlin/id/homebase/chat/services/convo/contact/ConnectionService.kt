@@ -202,7 +202,7 @@ class ConnectionService(
      * so it cannot tell us whether an enrolment was actually claimed. This one returns counts.
      * Idempotent and a no-op without the permission, so running both is harmless.
      */
-    suspend fun processEnrollments() {
+    private suspend fun processEnrollments() {
         // Logged before the call as well as after: without this, silence is ambiguous — never
         // reached, still in flight, and threw all look the same.
         Logger.i { "ENROLL-DIAG calling POST /connections/enrollments/process" }
@@ -220,7 +220,8 @@ class ConnectionService(
             "ENROLL-DIAG processed connections=${result.connectionsProcessed} " +
                 "enrollments=${result.enrollmentsCompleted}"
         }
-        if (result.enrollmentsCompleted > 0) refresh()
+        // Debounced so it folds into any push events the enrolment triggers.
+        if (result.enrollmentsCompleted > 0) scheduleRefresh()
     }
 
     /**

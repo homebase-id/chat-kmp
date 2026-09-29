@@ -19,6 +19,3 @@ fun RedactedCircleDefinition.isAppDefaultCircle(): Boolean =
 fun isLegacySystemCircleId(id: String): Boolean =
     id.equals(CONFIRMED_CONNECTIONS_CIRCLE_ID, ignoreCase = true) ||
         id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true)
-
-/** Whether a circle is shown as a user circle, enabled or not. */
-fun RedactedCircleDefinition.isUserCircle(): Boolean = isPersonalKind()

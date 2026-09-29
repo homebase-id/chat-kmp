@@ -439,7 +439,7 @@ private fun ContactDetailContent(
                     // needs synced ext_data — none exist before connecting). Show a self-contained
                     // public-profile card to inform Accept/Reject instead of the placeholder tabs
                     // (#921). Once accepted, this same screen flips to the full detail below.
-                    uiState.isPendingIncoming && uiState.requestReview != null -> PendingRequestProfile(
+                    uiState.requestReview != null -> PendingRequestProfile(
                         entry = entry,
                         review = uiState.requestReview,
                         reviewCircleGroups = uiState.reviewCircleGroups,

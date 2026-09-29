@@ -12,7 +12,6 @@ import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.RequestDirection
-import id.homebase.core.ui.screens.contactbook.isPendingIncomingRequest
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -67,7 +66,7 @@ data class ContactDetailUiState(
     val reviewCircleGroups: ReviewCircleGroups = ReviewCircleGroups(),
     /** Non-null while the review sheet is open. */
     val review: ReviewSheetState? = null,
-    /** With the review on, a pending incoming request is reviewed in place; accepting applies it. */
+    /** Non-null exactly while an incoming request is pending; it is reviewed in place, and submitting accepts it. */
     val requestReview: ReviewSheetState? = null,
     /** Non-null while the un-review confirmation is open. */
     val unreview: UnreviewState? = null,
@@ -125,10 +124,7 @@ data class ContactDetailUiState(
      * requester's public profile to inform the Accept/Reject decision (#921).
      */
     val isPendingIncoming: Boolean
-        get() = isPendingIncomingRequest(
-            connectionStatus,
-            requestDirection == RequestDirection.INCOMING,
-        )
+        get() = requestReview != null
 
     /** The "About" tab has content: a short bio, an Experience attribute (text/image), or socials. */
     val hasAboutContent: Boolean

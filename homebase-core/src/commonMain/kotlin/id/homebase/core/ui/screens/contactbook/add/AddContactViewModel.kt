@@ -232,7 +232,7 @@ class AddContactViewModel(
         viewModelScope.launch {
             try {
                 connectionRequestService.acceptIncomingRequest(odinId, circleIds.toCircleUuids())
-                _state.update { it.copy(requestReview = null) }
+                // Left for the fold to clear together with relation, so the two never disagree.
                 _events.tryEmit(AddContactEvent.RequestAccepted)
             } catch (e: CancellationException) {
                 throw e

@@ -36,7 +36,6 @@ import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
 import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
 import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
 import io.github.vinceglb.filekit.PlatformFile
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -177,9 +176,7 @@ class ContactBookViewModel(
                     .map { p -> p.odinId.domainName.lowercase() }
                     .filterNot { d -> domains.any { it.equals(d, ignoreCase = true) } }
                     .toSet()
-                // Pending is part of the circle value now, so a pending-only change alters this
-                // flow and lands here — the case #1096 said StateFlow would conflate, because
-                // pending used to live outside the value entirely.
+                // Pending rides the circle value, so a pending-only change lands here too.
                 _circleMembers.update {
                     it?.copy(
                         members = resolveCircleMemberEntries(domains, entries.value).sortedBy { m -> m.sortKey },
@@ -303,12 +300,13 @@ class ContactBookViewModel(
                 .filter { it.matches(ui.query) }
                 .sortedBy { it.sortKey }
 
-        val newContacts = visibleEntries(domainsInState(ContactState.New))
+        val newDomains = domainsInState(ContactState.New)
+        val newContacts = visibleEntries(newDomains)
         val circleContacts = visibleEntries(domainsInState(ContactState.Circle))
         val blockedDomains = contactsData.connections.blockedDomains()
         val blockedContacts = visibleEntries(blockedDomains)
         // Filtered from all, not built from connections: contacts with no connection belong here.
-        val hiddenFromAll = domainsInState(ContactState.New) + blockedDomains
+        val hiddenFromAll = newDomains + blockedDomains
         val knownContacts = all.filterNot { it.odinId?.lowercase() in hiddenFromAll }
 
         // Pending connection requests, projected onto contact entries the same way New is:
