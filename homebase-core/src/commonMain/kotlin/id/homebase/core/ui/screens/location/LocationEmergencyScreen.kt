@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.location
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +23,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material3.AlertDialog
@@ -48,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
@@ -101,10 +102,11 @@ fun LocationEmergencyScreen(
     // The contact whose emergency-locate panel is open; closed on dismiss and on the VM's
     // terminal events (navigate-to-viewer / fetch-failed snackbar, both handled in AppNavHost).
     var pendingLocate by remember { mutableStateOf<ContactUiModel?>(null) }
+    var locateClosing by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             if (event is LocationUiEvent.OpenPeerHistory || event is LocationUiEvent.LocateFetchFailed) {
-                pendingLocate = null
+                locateClosing = true
             }
         }
     }
@@ -239,7 +241,11 @@ fun LocationEmergencyScreen(
                 (Clock.System.now().toEpochMilliseconds() - it).coerceAtLeast(0)
             },
             submitting = uiState.locateSubmitInFlight,
-            onDismiss = { pendingLocate = null },
+            closeRequested = locateClosing,
+            onDismiss = {
+                pendingLocate = null
+                locateClosing = false
+            },
             onConfirm = { explanation, windowHours, ambush ->
                 viewModel.onAction(
                     LocationUiAction.ConfirmEmergencyLocate(
@@ -296,10 +302,15 @@ private fun PeopleListBody(
                         items = members.map { AvatarStackItem(it.odinId, it.avatarInitials) },
                         modifier = Modifier.weight(1f),
                     )
+                    val chevronRotation by animateFloatAsState(
+                        targetValue = if (expanded) 180f else 0f,
+                        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                    )
                     Icon(
-                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        imageVector = Icons.Default.ExpandMore,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.graphicsLayer { rotationZ = chevronRotation },
                     )
                 }
             }

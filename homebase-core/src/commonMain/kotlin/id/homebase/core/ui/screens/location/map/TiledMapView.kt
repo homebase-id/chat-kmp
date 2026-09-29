@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.location.map
 
+import androidx.compose.animation.core.animate
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -102,6 +103,8 @@ fun TiledMapView(
     // ── Tile layer state ──
     val tileBitmaps = remember { mutableStateMapOf<MapTileKey, ImageBitmap>() }
     val pendingTiles = remember { mutableSetOf<MapTileKey>() }
+    val tileAlpha = remember { mutableStateMapOf<MapTileKey, Float>() }
+    val tileFadeSpec = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
     val scope = rememberCoroutineScope()
     val visibleTiles by remember(camera, showMapTiles) {
         derivedStateOf {
@@ -121,8 +124,13 @@ fun TiledMapView(
                 try {
                     val bytes = fetchTile(key.zoom, key.x, key.y)
                     val bitmap = bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() }
-                    if (bitmap != null) tileBitmaps[key] = bitmap
+                    if (bitmap != null) {
+                        tileAlpha[key] = 0f
+                        tileBitmaps[key] = bitmap
+                        animate(0f, 1f, animationSpec = tileFadeSpec) { value, _ -> tileAlpha[key] = value }
+                    }
                 } finally {
+                    tileAlpha.remove(key)
                     pendingTiles.remove(key)
                 }
             }
@@ -182,7 +190,7 @@ fun TiledMapView(
             fun project(ux: Double, uy: Double): Offset = vp.toPx(ux, uy, size.width, size.height)
 
             // ── Basemap tiles (under the overlay) ──
-            fun drawTile(key: MapTileKey, bitmap: ImageBitmap, srcOffset: IntOffset, srcSize: IntSize) {
+            fun drawTile(key: MapTileKey, bitmap: ImageBitmap, srcOffset: IntOffset, srcSize: IntSize, alpha: Float) {
                 val b = WebMercator.tileToUnitBounds(key.x, key.y, key.zoom)
                 val topLeft = project(b[0], b[1])
                 val bottomRight = project(b[2], b[3])
@@ -195,10 +203,11 @@ fun TiledMapView(
                         width = (bottomRight.x - topLeft.x).roundToInt().coerceAtLeast(1),
                         height = (bottomRight.y - topLeft.y).roundToInt().coerceAtLeast(1),
                     ),
+                    alpha = alpha,
                 )
             }
             fun drawWhole(key: MapTileKey, bitmap: ImageBitmap) =
-                drawTile(key, bitmap, IntOffset.Zero, IntSize(bitmap.width, bitmap.height))
+                drawTile(key, bitmap, IntOffset.Zero, IntSize(bitmap.width, bitmap.height), tileAlpha[key] ?: 1f)
 
             // A zoom-level change asks for tiles not fetched yet; stand in the cached parent (zooming
             // in) or children (zooming out) until they land.
@@ -209,7 +218,7 @@ fun TiledMapView(
                     continue
                 }
                 ancestorTile(key) { tileBitmaps[it]?.width }?.let {
-                    drawTile(key, tileBitmaps.getValue(it.key), it.srcOffset, it.srcSize)
+                    drawTile(key, tileBitmaps.getValue(it.key), it.srcOffset, it.srcSize, tileAlpha[it.key] ?: 1f)
                 }
                 for (child in key.children()) tileBitmaps[child]?.let { drawWhole(child, it) }
             }
