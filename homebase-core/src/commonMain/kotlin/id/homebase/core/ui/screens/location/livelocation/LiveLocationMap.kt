@@ -3,7 +3,15 @@ package id.homebase.core.ui.screens.location.livelocation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.animate
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -62,11 +70,13 @@ fun LiveLocationMap(
                     val unit = unitByKey[marker.key] ?: return@forEach
                     val cd = liveMarkerContentDescription(marker)
                     key(marker.key) {
+                        val glidingUnit = rememberGlidingUnit(unit)
                         Box(
                             modifier = Modifier
                                 .wrapContentSize()
                                 .offset {
-                                    val o = project(unit.first, unit.second)
+                                    val (ux, uy) = glidingUnit()
+                                    val o = project(ux, uy)
                                     val half = (LiveMarkerSize / 2).toPx()
                                     val fan = fanOffset(marker.clusterIndex, marker.clusterSize, half)
                                     IntOffset(
@@ -83,6 +93,33 @@ fun LiveLocationMap(
             }
         },
     )
+}
+
+private class UnitGlide(start: Pair<Double, Double>) {
+    private var from by mutableStateOf(start)
+    private var to by mutableStateOf(start)
+    private var progress by mutableFloatStateOf(1f)
+
+    fun current(): Pair<Double, Double> {
+        val t = progress.toDouble()
+        return (from.first + (to.first - from.first) * t) to (from.second + (to.second - from.second) * t)
+    }
+
+    suspend fun moveTo(target: Pair<Double, Double>, spec: AnimationSpec<Float>) {
+        if (target == to) return
+        from = current()
+        to = target
+        progress = 0f
+        animate(0f, 1f, animationSpec = spec) { value, _ -> progress = value }
+    }
+}
+
+@Composable
+private fun rememberGlidingUnit(target: Pair<Double, Double>): () -> Pair<Double, Double> {
+    val spec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+    val glide = remember { UnitGlide(target) }
+    LaunchedEffect(target) { glide.moveTo(target, spec) }
+    return glide::current
 }
 
 /**

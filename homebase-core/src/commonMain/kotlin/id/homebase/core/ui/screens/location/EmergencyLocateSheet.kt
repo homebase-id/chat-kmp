@@ -23,6 +23,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,6 +66,7 @@ fun EmergencyLocateSheet(
     lastPointAgeMs: Long?,
     submitting: Boolean,
     onDismiss: () -> Unit,
+    closeRequested: Boolean = false,
     onConfirm: (explanation: String, windowHours: Int, ambush: Boolean) -> Unit,
 ) {
     val options = remember(lastPointAgeMs) { locateWindowOptionsHours(lastPointAgeMs) }
@@ -74,6 +76,7 @@ fun EmergencyLocateSheet(
     var windowMenuOpen by remember { mutableStateOf(false) }
 
     AdaptiveSheet(onDismiss = onDismiss, dismissible = !submitting) {
+        LaunchedEffect(closeRequested) { if (closeRequested) dismiss() }
         Column(
             modifier = Modifier
                 .verticalScroll(rememberScrollState())

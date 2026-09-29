@@ -1,5 +1,11 @@
 package id.homebase.core.ui.screens.location.livelocation
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -123,32 +129,58 @@ fun LiveLocationScreen(
             )
         },
     ) { innerPadding ->
+        val fadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding),
         ) {
-            when {
-                // Maps off → a tile-less canvas is just blank; show a tappable "turn on maps"
-                // state instead (#811). Takes precedence over the markers check.
-                !uiState.showMapTiles -> MapsOffState(
-                    onOpenSetup = onOpenSetup,
-                    modifier = Modifier.align(Alignment.Center),
-                )
-
-                uiState.markers.isEmpty() -> Text(
-                    text = stringResource(MR.string.live_location_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
-                )
-
-                else -> LiveLocationMap(
-                    markers = uiState.markers,
-                    showMapTiles = uiState.showMapTiles,
-                    fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
-                )
+            AnimatedContent(
+                targetState = uiState.showMapTiles,
+                transitionSpec = {
+                    fadeIn(fadeSpec) togetherWith
+                        fadeOut(fadeSpec)
+                },
+                label = "liveLocationBody",
+            ) { showMapTiles ->
+                if (!showMapTiles) {
+                    // Maps off → a tile-less canvas is just blank; show a tappable "turn on maps"
+                    // state instead (#811).
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        MapsOffState(
+                            onOpenSetup = onOpenSetup,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+                } else {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        LiveLocationMap(
+                            markers = uiState.markers,
+                            showMapTiles = true,
+                            fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
+                        )
+                        AnimatedVisibility(
+                            visible = uiState.markers.isEmpty(),
+                            enter = fadeIn(fadeSpec),
+                            exit = fadeOut(fadeSpec),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.surface),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = stringResource(MR.string.live_location_empty),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(24.dp),
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
