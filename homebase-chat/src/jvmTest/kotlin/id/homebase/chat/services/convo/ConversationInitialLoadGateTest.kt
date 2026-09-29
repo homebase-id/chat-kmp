@@ -1,6 +1,7 @@
 package id.homebase.chat.services.convo
 
 import id.homebase.api.common.OdinId
+import id.homebase.api.sync.DriveState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.core.avatars.ConversationAvatarModel
 import kotlinx.coroutines.CancellationException
@@ -152,5 +153,39 @@ class ConversationInitialLoadGateTest {
             runGuardedInitialLoad(onFailure = { failed = true }) { throw CancellationException("cancelled") }
         }
         assertFalse(failed)
+    }
+
+    @Test
+    fun syncCompletedBeforeSubscribe_seededDone_isReadyAndEmpty() {
+        val gate = InitialLoadGate()
+        gate.seed(DriveState.Completed(totalCount = 0))
+        val data = gate.settle(gate.loaded(emptyList(), wasReady = false))
+        assertTrue(data.dataReady)
+        assertFalse(data.initialSyncFailed)
+    }
+
+    @Test
+    fun syncFailedBeforeSubscribe_seededFailed_isFailed() {
+        val gate = InitialLoadGate()
+        gate.seed(DriveState.Failed("offline"))
+        val data = gate.settle(gate.loaded(emptyList(), wasReady = false))
+        assertTrue(data.initialSyncFailed)
+    }
+
+    @Test
+    fun seedFromInFlightOrMissingDrive_staysPending() {
+        val gate = InitialLoadGate()
+        gate.seed(DriveState.Synchronizing())
+        gate.seed(DriveState.Initialized)
+        gate.seed(null)
+        assertFalse(gate.settle(gate.loaded(emptyList(), wasReady = false)).dataReady)
+    }
+
+    @Test
+    fun seedDoesNotOverrideAnObservedRound() {
+        val gate = InitialLoadGate()
+        gate.syncRoundFinished(completed = true)
+        gate.seed(DriveState.Failed("stale"))
+        assertFalse(gate.settle(gate.loaded(emptyList(), wasReady = false)).initialSyncFailed)
     }
 }

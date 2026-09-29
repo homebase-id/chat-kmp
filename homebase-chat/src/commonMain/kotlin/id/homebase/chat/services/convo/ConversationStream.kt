@@ -5,6 +5,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.sync.DriveState
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.publicImageUrl
@@ -21,6 +22,7 @@ import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.avatars.ConversationAvatarModel
+import id.homebase.core.config.chatLabeledDrive
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.image.HomebaseImageLoader
@@ -1420,6 +1422,7 @@ class ConversationStream(
         if (started) return
         started = true
         Logger.d("ConversationStream: start() — loading full conversation list from DB")
+        initialLoad.seed(optionalDriveActivation.syncState(chatLabeledDrive))
         scope.launch { runInitialLoad() }
 
         // Reactively update share cache when conversations or contacts change,
@@ -1692,6 +1695,15 @@ internal class InitialLoadGate {
         )
         loadDone = true
         return data
+    }
+
+    fun seed(driveState: DriveState?) {
+        if (sync != Sync.Pending) return
+        when (driveState) {
+            is DriveState.Completed -> sync = Sync.Done
+            is DriveState.Failed -> sync = Sync.Failed
+            else -> Unit
+        }
     }
 
     fun syncRoundFinished(completed: Boolean) {
