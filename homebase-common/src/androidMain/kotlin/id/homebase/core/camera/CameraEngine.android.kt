@@ -40,6 +40,7 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.geometry.Offset
@@ -103,6 +104,7 @@ actual fun rememberCameraWarmer(): CameraWarmer {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val fileOps = koinInject<FileOperationsProvider>()
+    LaunchedEffect(context) { withContext(Dispatchers.IO) { CameraCapability.anyCameraIsLegacy(context) } }
     return remember(context, lifecycleOwner, fileOps) {
         CameraWarmer { _ ->
             val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
