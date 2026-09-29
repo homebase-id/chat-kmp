@@ -1,5 +1,14 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package id.homebase.auth.login
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -89,6 +99,7 @@ internal fun LoginForm(
     }
 
     val busy = statusText != null
+    val motion = MaterialTheme.motionScheme
 
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         HomebaseIdField(
@@ -152,8 +163,19 @@ internal fun LoginForm(
                 )
             },
         )
-        if (errorMessage != null && errorDetails != null) {
-            ErrorDetails(details = errorDetails)
+        AnimatedContent(
+            targetState = errorDetails.takeIf { errorMessage != null },
+            modifier = Modifier.fillMaxWidth(),
+            transitionSpec = {
+                fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
+            },
+            label = "errorDetails",
+        ) { details ->
+            if (details != null) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    ErrorDetails(details = details)
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp * scale))
@@ -175,60 +197,85 @@ internal fun LoginForm(
                 .heightIn(min = 56.dp * scale)
                 .testTag(if (errorMessage != null) "try_again_button" else "login_button"),
         ) {
-            when {
-                busy -> CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp * scale),
-                    strokeWidth = 2.dp * scale,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                )
-                errorMessage != null -> Text(
-                    text = stringResource(MR.string.login_try_again_button),
-                    style = if (scale >= 1.4f) MaterialTheme.typography.titleMedium else LocalTextStyle.current,
-                )
-                else -> Text(
-                    text = stringResource(MR.string.login_sign_in_button),
-                    style = if (scale >= 1.4f) MaterialTheme.typography.titleMedium else LocalTextStyle.current,
-                )
+            AnimatedContent(
+                targetState = when {
+                    busy -> ButtonContent.Busy
+                    errorMessage != null -> ButtonContent.TryAgain
+                    else -> ButtonContent.SignIn
+                },
+                transitionSpec = {
+                    fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
+                },
+                label = "loginButtonContent",
+            ) { content ->
+                when (content) {
+                    ButtonContent.Busy -> CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp * scale),
+                        strokeWidth = 2.dp * scale,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                    ButtonContent.TryAgain -> Text(
+                        text = stringResource(MR.string.login_try_again_button),
+                        style = if (scale >= 1.4f) MaterialTheme.typography.titleMedium else LocalTextStyle.current,
+                    )
+                    ButtonContent.SignIn -> Text(
+                        text = stringResource(MR.string.login_sign_in_button),
+                        style = if (scale >= 1.4f) MaterialTheme.typography.titleMedium else LocalTextStyle.current,
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(16.dp * scale))
-        if (statusText != null) {
-            // Matches the TextButton it stands in for, so the column keeps its height and the
-            // heading does not shift when the form goes busy.
-            Box(
-                modifier = Modifier.heightIn(min = 40.dp * scale),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = statusText,
-                    style =
-                        if (scale >= 1.4f) MaterialTheme.typography.titleMedium
-                        else MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.testTag("authenticating_text"),
-                )
-            }
-            if (showCountdown) {
-                var secondsLeft by remember { mutableIntStateOf(15) }
-                LaunchedEffect(Unit) {
-                    while (secondsLeft > 0) {
-                        delay(1000)
-                        secondsLeft--
+        AnimatedContent(
+            targetState = statusText,
+            contentKey = { it != null },
+            transitionSpec = {
+                fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
+            },
+            label = "loginStatus",
+        ) { status ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (status != null) {
+                    // Matches the TextButton it stands in for, so the column keeps its height and the
+                    // heading does not shift when the form goes busy.
+                    Box(
+                        modifier = Modifier.heightIn(min = 40.dp * scale),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = status,
+                            style =
+                                if (scale >= 1.4f) MaterialTheme.typography.titleMedium
+                                else MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.testTag("authenticating_text"),
+                        )
                     }
+                    if (showCountdown) {
+                        var secondsLeft by remember { mutableIntStateOf(15) }
+                        LaunchedEffect(Unit) {
+                            while (secondsLeft > 0) {
+                                delay(1000)
+                                secondsLeft--
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(MR.string.timeout_in_seconds, secondsLeft.toString()),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
+                    CreateAccountLink(onClick = onCreateAccountClick, scale = scale)
                 }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = stringResource(MR.string.timeout_in_seconds, secondsLeft.toString()),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
-        } else {
-            CreateAccountLink(onClick = onCreateAccountClick, scale = scale)
         }
     }
 }
+
+private enum class ButtonContent { Busy, TryAgain, SignIn }
 
 /**
  * A press-to-reveal block under a login error showing the raw technical cause (exception
@@ -239,6 +286,7 @@ internal fun LoginForm(
 private fun ErrorDetails(details: String) {
     var expanded by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
+    val motion = MaterialTheme.motionScheme
 
     Spacer(modifier = Modifier.height(4.dp))
     TextButton(
@@ -252,7 +300,13 @@ private fun ErrorDetails(details: String) {
             style = MaterialTheme.typography.labelLarge,
         )
     }
-    if (expanded) {
+    AnimatedVisibility(
+        visible = expanded,
+        enter = expandVertically(motion.defaultSpatialSpec()) +
+            fadeIn(motion.defaultEffectsSpec()),
+        exit = shrinkVertically(motion.fastSpatialSpec()) +
+            fadeOut(motion.fastEffectsSpec()),
+    ) {
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainerHighest,
             shape = MaterialTheme.shapes.small,
