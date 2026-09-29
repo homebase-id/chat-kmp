@@ -139,8 +139,7 @@ fun LiveLocationScreen(
             AnimatedContent(
                 targetState = uiState.showMapTiles,
                 transitionSpec = {
-                    fadeIn(fadeSpec) togetherWith
-                        fadeOut(fadeSpec)
+                    fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec)
                 },
                 label = "liveLocationBody",
             ) { showMapTiles ->
