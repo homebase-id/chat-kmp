@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -721,6 +722,8 @@ private fun EditableFieldGroup(
 ) {
     val key = sectionTier to type
     val editing = editingRows[key] == true
+    val saveVisibility = remember { MutableTransitionState(editing) }
+    saveVisibility.targetState = editing
     var selectedTier by remember(editing) { mutableStateOf(sectionTier) }
     val notSet = stringResource(MR.string.profile_edit_field_not_set)
 
@@ -742,18 +745,25 @@ private fun EditableFieldGroup(
                     },
                 )
             },
-            trailingContent = if (editing) {
+            trailingContent = if (saveVisibility.currentState || saveVisibility.targetState) {
                 {
-                    TextButton(
-                        enabled = isValidForSave(selectedTier),
-                        onClick = {
-                            onAction(ProfileEditAction.SaveAttribute(type, selectedTier))
-                            editingRows[key] = false
-                        },
+                    val motion = MaterialTheme.motionScheme
+                    AnimatedVisibility(
+                        visibleState = saveVisibility,
+                        enter = fadeIn(motion.fastEffectsSpec()) + scaleIn(motion.fastSpatialSpec()),
+                        exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec()),
                     ) {
-                        Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(MR.string.save))
+                        TextButton(
+                            enabled = isValidForSave(selectedTier),
+                            onClick = {
+                                onAction(ProfileEditAction.SaveAttribute(type, selectedTier))
+                                editingRows[key] = false
+                            },
+                        ) {
+                            Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(stringResource(MR.string.save))
+                        }
                     }
                 }
             } else {

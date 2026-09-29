@@ -8,7 +8,6 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -82,7 +81,6 @@ import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.common.OdinId
 import id.homebase.chat.widget.AvatarFullScreenViewer
 import id.homebase.chat.widget.ChatMediaFullScreenHost
-import id.homebase.core.HomebaseConstants
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.connections.ConnectRequestAction
 import id.homebase.core.media.subsample.SubSamplingImageSource
@@ -262,13 +260,14 @@ fun ContactDetailScreen(
     // The viewer replaces the screen rather than drawing inside the Scaffold's content slot: it
     // brings its own top bar, which would otherwise take the status-bar inset a second time.
     // Sharing one transition layout with the screen is also what lets the avatar morph into it.
+    val motionScheme = MaterialTheme.motionScheme
     SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = fullScreenAvatar,
             contentKey = { it == null },
             transitionSpec = {
-                fadeIn(tween(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION)) togetherWith
-                    fadeOut(tween(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION))
+                fadeIn(motionScheme.defaultEffectsSpec()) togetherWith
+                    fadeOut(motionScheme.fastEffectsSpec())
             },
             label = "contactAvatarViewer",
         ) { avatar ->
