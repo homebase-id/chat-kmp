@@ -4,6 +4,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.PayloadTooLargeException
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import kotlin.uuid.Uuid
 
@@ -15,13 +16,13 @@ import kotlin.uuid.Uuid
  *   app; reaped as a unit on cold start + foreground).
  * - [UploadTemp] — `<cacheDir>/upload-temp/` (disposable scratch; swept every
  *   startup / "Clear caches").
- * - [CacheRoot] — a prefixed file at the cacheDir root (`hbvid_res_*`,
- *   `hlsdl_*`-style; untracked → swept every startup).
+ * - [Scratch] — a prefixed file in `<cacheDir>/hb-scratch/export/` (`hbvid_res_*`-style;
+ *   swept every startup).
  */
 sealed interface ExportDestination {
     data class ShareOutbound(val suffix: String) : ExportDestination
     data class UploadTemp(val prefix: String, val suffix: String) : ExportDestination
-    data class CacheRoot(val prefix: String, val suffix: String) : ExportDestination
+    data class Scratch(val prefix: String, val suffix: String) : ExportDestination
 }
 
 /**
@@ -92,8 +93,8 @@ class PayloadDownloadService(
                 fileOperationsProvider.createShareOutboundPath(destination.suffix)
             is ExportDestination.UploadTemp ->
                 fileOperationsProvider.createUploadTempPath(destination.prefix, destination.suffix)
-            is ExportDestination.CacheRoot ->
-                fileOperationsProvider.getCacheDirectory().trimEnd('/') +
+            is ExportDestination.Scratch ->
+                AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.EXPORT) +
                     "/" + destination.prefix + randomToken() + destination.suffix
         }
         val ok = driveFileProvider.streamPayloadDecryptedToPath(

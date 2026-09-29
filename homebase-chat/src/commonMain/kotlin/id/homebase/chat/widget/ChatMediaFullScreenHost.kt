@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationsettings.SharedMediaItem
@@ -238,7 +239,7 @@ fun rememberSharedMediaSaver(
                     val ext = item.payload.contentType?.substringAfterLast('/')
                         ?.takeIf { it.isNotBlank() } ?: "bin"
                     val name = item.payload.filename() ?: "${item.payload.key}.$ext"
-                    val outPath = "${fileOps.getCacheDirectory()}/$name"
+                    val outPath = "${AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), AppCacheDirs.EXPORT)}/$name"
                     val ok = driveFileProvider.streamPayloadDecryptedToPath(
                         driveId = driveId,
                         fileId = item.fileId,

@@ -15,9 +15,9 @@ class ShareOutboundCleanupTest {
         val fs = FakeFileSystem()
         fs.createDirectories(cacheDir.toPath())
         // Two cleartext share temps in the dedicated subdir.
-        fs.createDirectories("$cacheDir/$SHARE_OUTBOUND_DIR_NAME".toPath())
-        fs.write("$cacheDir/$SHARE_OUTBOUND_DIR_NAME/share_abc.jpg".toPath()) { write(ByteArray(64)) }
-        fs.write("$cacheDir/$SHARE_OUTBOUND_DIR_NAME/share_def.mp4".toPath()) { write(ByteArray(128)) }
+        fs.createDirectories("$cacheDir/hb-scratch/$SHARE_OUTBOUND_DIR_NAME".toPath())
+        fs.write("$cacheDir/hb-scratch/$SHARE_OUTBOUND_DIR_NAME/share_abc.jpg".toPath()) { write(ByteArray(64)) }
+        fs.write("$cacheDir/hb-scratch/$SHARE_OUTBOUND_DIR_NAME/share_def.mp4".toPath()) { write(ByteArray(128)) }
         // Bystander entries that must survive.
         fs.createDirectories("$cacheDir/homebase-payloads-v2".toPath())
         fs.write("$cacheDir/some_other.bin".toPath()) { write(ByteArray(8)) }
@@ -26,7 +26,7 @@ class ShareOutboundCleanupTest {
 
         assertTrue(result, "must report a real delete")
         assertFalse(
-            fs.exists("$cacheDir/$SHARE_OUTBOUND_DIR_NAME".toPath()),
+            fs.exists("$cacheDir/hb-scratch/$SHARE_OUTBOUND_DIR_NAME".toPath()),
             "share_outbound subdir must be gone",
         )
         assertTrue(
@@ -55,12 +55,12 @@ class ShareOutboundCleanupTest {
     fun sweep_isIdempotent() {
         val fs = FakeFileSystem()
         fs.createDirectories(cacheDir.toPath())
-        fs.createDirectories("$cacheDir/$SHARE_OUTBOUND_DIR_NAME".toPath())
-        fs.write("$cacheDir/$SHARE_OUTBOUND_DIR_NAME/share_xyz.png".toPath()) { write(ByteArray(8)) }
+        fs.createDirectories("$cacheDir/hb-scratch/$SHARE_OUTBOUND_DIR_NAME".toPath())
+        fs.write("$cacheDir/hb-scratch/$SHARE_OUTBOUND_DIR_NAME/share_xyz.png".toPath()) { write(ByteArray(8)) }
 
         assertTrue(sweepShareOutbound(cacheDir, fs))
         assertFalse(sweepShareOutbound(cacheDir, fs), "second call has nothing to delete")
-        assertFalse(fs.exists("$cacheDir/$SHARE_OUTBOUND_DIR_NAME".toPath()))
+        assertFalse(fs.exists("$cacheDir/hb-scratch/$SHARE_OUTBOUND_DIR_NAME".toPath()))
     }
 
     @Test

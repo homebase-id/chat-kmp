@@ -126,7 +126,7 @@ class PayloadDownloadServiceTest {
     }
 
     @Test
-    fun `exportToTemp routes UploadTemp and CacheRoot destinations to their dirs`() = runTest {
+    fun `exportToTemp routes UploadTemp and Scratch destinations to their dirs`() = runTest {
         val (keyHeader, plaintext) = encryptedFixture(4_096)
 
         val uploadTemp = service.exportToTemp(
@@ -136,9 +136,12 @@ class PayloadDownloadServiceTest {
         assertContentEquals(plaintext, File(uploadTemp).readBytes())
 
         val cacheRoot = service.exportToTemp(
-            driveId, fileId, key, keyHeader, ExportDestination.CacheRoot("hbvid_res_", ".mp4"))
+            driveId, fileId, key, keyHeader, ExportDestination.Scratch("hbvid_res_", ".mp4"))
         assertNotNull(cacheRoot)
-        assertEquals(tempDir, File(cacheRoot).parent, "CacheRoot must land at the cacheDir root")
+        assertEquals(
+            File(tempDir, "hb-scratch/export").path, File(cacheRoot).parent,
+            "Scratch must land in hb-scratch/export",
+        )
         assertTrue(File(cacheRoot).name.startsWith("hbvid_res_"))
     }
 
@@ -152,7 +155,7 @@ class PayloadDownloadServiceTest {
         )
 
         assertNull(path)
-        val shareDir = File(tempDir, "share_outbound")
+        val shareDir = File(tempDir, "hb-scratch/share_outbound")
         assertTrue(
             shareDir.listFiles().isNullOrEmpty(),
             "a failed export must not leave a reserved file: ${shareDir.listFiles()?.toList()}",
@@ -168,7 +171,7 @@ class PayloadDownloadServiceTest {
 
         service.exportToTemp(
             driveId, fileId, key, keyHeader,
-            ExportDestination.CacheRoot("export_", ".bin"),
+            ExportDestination.Scratch("export_", ".bin"),
             onProgress = { seen.add(it) },
         )
 
@@ -201,7 +204,7 @@ class PayloadDownloadServiceTest {
 
         val path = service.exportToTemp(
             driveId, fileId, key, keyHeader,
-            ExportDestination.CacheRoot("hbvid_res_", ".mp4"),
+            ExportDestination.Scratch("hbvid_res_", ".mp4"),
         )
 
         assertNotNull(path, "playback export must be served from the warm cache")

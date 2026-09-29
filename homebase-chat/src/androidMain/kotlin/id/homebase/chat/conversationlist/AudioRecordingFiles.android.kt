@@ -1,17 +1,19 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.file.AppCacheDirs
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.cacheDir
 import io.github.vinceglb.filekit.delete
 import io.github.vinceglb.filekit.filesDir
+import io.github.vinceglb.filekit.path
 import io.github.vinceglb.filekit.write
 
 actual fun newRecordingFile(fileName: String): PlatformFile =
     PlatformFile(FileKit.filesDir, fileName)
 
 actual fun newWaveformCacheFile(fileName: String): PlatformFile =
-    PlatformFile(FileKit.cacheDir, fileName)
+    PlatformFile("${AppCacheDirs.scratchDir(FileKit.cacheDir.path, AppCacheDirs.AUDIO)}/$fileName")
 
 actual suspend fun PlatformFile.writeBytesCompat(bytes: ByteArray) = write(bytes)
 

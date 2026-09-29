@@ -128,12 +128,13 @@ class OutboxStagingTest {
         val cacheDir = "/tmp/homebase"
         fs.createDirectories(cacheDir.toPath())
         // Untracked cache junk that the sweep SHOULD eat — proves the sweep ran.
-        fs.write("$cacheDir/hbvid_junk.bin".toPath()) { writeUtf8("junk") }
+        fs.createDirectories("$cacheDir/hb-scratch".toPath())
+        fs.write("$cacheDir/hb-scratch/junk.bin".toPath()) { writeUtf8("junk") }
         val staged = createStagingPathIn(stagingDir, "enc", ".encrypted", fs)
         fs.write(staged.toPath()) { writeUtf8("pending payload") }
 
         CacheSweeper.sweepUntracked(CacheAudit.audit(cacheDir, fs), fs)
-        assertFalse(fs.exists("$cacheDir/hbvid_junk.bin".toPath()), "sweep must actually run")
+        assertFalse(fs.exists("$cacheDir/hb-scratch/junk.bin".toPath()), "sweep must actually run")
         assertTrue(fs.exists(staged.toPath()), "staged payload must survive sweepUntracked")
 
         CacheSweeper.sweepAll(CacheAudit.audit(cacheDir, fs), fs)

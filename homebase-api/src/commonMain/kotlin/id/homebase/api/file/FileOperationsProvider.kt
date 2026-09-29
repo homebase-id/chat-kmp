@@ -52,7 +52,7 @@ interface FileOperationsProvider {
     suspend fun sourceExists(path: String): Boolean = getFileSize(path) > 0L
 
     /**
-     * Write a RAW, pre-encryption source temp into `<cacheDir>/upload-temp/` (see
+     * Write a RAW, pre-encryption source temp into `<cacheDir>/hb-scratch/upload-temp/` (see
      * [CacheAudit.UPLOAD_TEMP_DIR_NAME]). Disposable: the CacheSweeper reaps this dir on every
      * startup / "Clear caches", so a leaked temp self-heals and can't grow — a source that's gone
      * at send time just fails soft (re-pick). Use this for the plaintext inputs to the pipeline.
@@ -115,7 +115,7 @@ interface FileOperationsProvider {
     }
 
     /**
-     * Write [bytes] to a sequestered subdirectory `<cacheDir>/share_outbound/`
+     * Write [bytes] to a sequestered subdirectory `<cacheDir>/hb-scratch/share_outbound/`
      * (see [SHARE_OUTBOUND_DIR_NAME]) using a `share_<random>$suffix` filename
      * and return the absolute path. Used **only** by the chat "Share to other
      * app" flow, which decrypts a Homebase payload and hands the resulting
@@ -131,7 +131,7 @@ interface FileOperationsProvider {
     ): String
 
     /**
-     * Reserve a unique writable path inside `<cacheDir>/share_outbound/` (creating
+     * Reserve a unique writable path inside `<cacheDir>/hb-scratch/share_outbound/` (creating
      * the dir) WITHOUT writing bytes — the streaming seam for the "share to other
      * app" flows (#845), which decrypt a payload directly to this path via
      * `streamPayloadDecryptedToPath` instead of buffering it in RAM
@@ -141,13 +141,13 @@ interface FileOperationsProvider {
      */
     suspend fun createShareOutboundPath(suffix: String): String =
         createStagingPathIn(
-            getCacheDirectory().trimEnd('/') + "/" + SHARE_OUTBOUND_DIR_NAME,
+            AppCacheDirs.scratchPath(getCacheDirectory(), SHARE_OUTBOUND_DIR_NAME),
             "share_",
             suffix,
         )
 
     /**
-     * Reserve a unique writable path inside `<cacheDir>/upload-temp/` (creating the
+     * Reserve a unique writable path inside `<cacheDir>/hb-scratch/upload-temp/` (creating the
      * dir) WITHOUT writing bytes — the streaming seam for export flows that need a
      * DISPOSABLE decrypted temp (#845; e.g. vault open/share). Same dir
      * [writeBytesToTempFile] targets, so the lifecycle is unchanged: swept on every
@@ -172,9 +172,9 @@ interface FileOperationsProvider {
     }
 }
 
-/** `<cacheDir>/upload-temp`, for writers that can't suspend (a capture that must start synchronously). */
+/** `<cacheDir>/hb-scratch/upload-temp`, for writers that can't suspend (a capture that must start synchronously). */
 fun FileOperationsProvider.uploadTempDirectory(): String =
-    getCacheDirectory().trimEnd('/') + "/" + CacheAudit.UPLOAD_TEMP_DIR_NAME
+    AppCacheDirs.scratchPath(getCacheDirectory(), CacheAudit.UPLOAD_TEMP_DIR_NAME)
 
 /**
  * Resolve [path] (which may be an Android `content://` URI) to a real

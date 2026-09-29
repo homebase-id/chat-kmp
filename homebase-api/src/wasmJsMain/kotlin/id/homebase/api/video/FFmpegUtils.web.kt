@@ -3,6 +3,7 @@
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.systemFileSystem
 import id.homebase.api.util.isBlobUrl
 import kotlin.js.Promise
@@ -34,7 +35,8 @@ import okio.Path.Companion.toPath
  */
 actual object FFmpegUtils {
 
-    private const val CACHE_DIR = "/tmp/homebase"
+    private val CACHE_DIR = AppCacheDirs.scratchPath("/tmp/homebase", AppCacheDirs.MEDIA_WORK)
+    private val HLS_DIR = AppCacheDirs.scratchPath("/tmp/homebase", AppCacheDirs.HLS)
 
     actual fun getUniqueId(filePath: String): String = filePath
 
@@ -223,7 +225,7 @@ actual object FFmpegUtils {
         FFmpegBridge.deleteFile(MEMFS_HLS_PLAYLIST)
         FFmpegBridge.deleteFile(MEMFS_HLS_SEGMENT)
 
-        val dir = "$CACHE_DIR/hls_${randomToken()}"
+        val dir = "$HLS_DIR/${AppCacheDirs.HLS_DIR_PREFIX}${randomToken()}"
         val playlistPath = writeBytesInDir(dir, "index.m3u8", playlistBytes)
         val segmentPath = writeBytesInDir(dir, "index.ts", segmentBytes)
         return playlistPath to segmentPath

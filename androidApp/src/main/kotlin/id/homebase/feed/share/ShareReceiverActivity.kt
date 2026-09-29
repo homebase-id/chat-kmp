@@ -51,6 +51,7 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.contacts.ContactRepository
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.image.MediaQuality
@@ -198,7 +199,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         Logger.d(tag = COLD_TAG) { "initShareFlow: kicked streams (conversationStream + contactService)" }
 
         // Extract shared content
-        val tempDir = File(cacheDir, "share_temp")
+        val tempDir = File(AppCacheDirs.scratchPath(cacheDir.absolutePath, AppCacheDirs.SHARE_INBOUND))
         val rawContent = SharedContentExtractor.extract(intent, contentResolver, tempDir)
         Logger.d(tag = COLD_TAG) {
             if (rawContent == null) "initShareFlow: extract() returned null"
@@ -589,7 +590,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 )
             )
             Logger.d(tag = COLD_TAG) { "startNewMoment: seeded draft with ${attachments.size} attachments" }
-            // The moments composer owns the temp files now; don't reap share_temp.
+            // The moments composer owns the temp files now; don't reap share-inbound.
             startActivity(openMomentComposeIntent())
             finish()
         }
@@ -619,7 +620,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
             }
         )
         Logger.d(tag = COLD_TAG) { "startNewWebDrop: seeded draft with ${content.files.size} files" }
-        // The WebDrop composer owns the temp files now; don't reap share_temp.
+        // The WebDrop composer owns the temp files now; don't reap share-inbound.
         startActivity(openWebDropComposeIntent())
         finish()
     }
@@ -828,7 +829,10 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     }
 
     private fun cleanupTempFiles() {
-        safeDeleteRecursively(cacheDir.absolutePath, "share_temp")
+        safeDeleteRecursively(
+            AppCacheDirs.scratchRoot(cacheDir.absolutePath),
+            AppCacheDirs.SHARE_INBOUND,
+        )
     }
 
     /**

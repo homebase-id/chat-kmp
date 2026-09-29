@@ -144,7 +144,7 @@ class ChatMediaAutoSaveService(
             fileId = file.fileId,
             key = payload.key,
             keyHeader = KeyHeader(Base64.decode(iv), file.keyHeader.aesKey),
-            destination = ExportDestination.CacheRoot("hbautosave_", ".$extension"),
+            destination = ExportDestination.Scratch("hbautosave_", ".$extension"),
         ) ?: return
 
         try {

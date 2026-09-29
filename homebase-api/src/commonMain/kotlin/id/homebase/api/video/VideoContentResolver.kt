@@ -1,6 +1,7 @@
 package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.random.Random
@@ -101,7 +102,7 @@ suspend fun resolveVideoContent(
         // size, LRU untouched, and the surfaces play from a file path — which they
         // already did, except they used to buffer the whole payload in RAM first
         // just to write it themselves.
-        val outputPath = fileOps.getCacheDirectory().trimEnd('/') +
+        val outputPath = AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), AppCacheDirs.EXPORT) +
             "/hbvid_res_${Random.nextLong().toULong().toString(16)}.mp4"
         val (ok, payloadElapsed) = measureTimedValue {
             driveFileProvider.streamPayloadDecryptedToPath(

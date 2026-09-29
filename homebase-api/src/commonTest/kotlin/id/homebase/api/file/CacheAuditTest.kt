@@ -24,21 +24,21 @@ class CacheAuditTest {
         // tracked Coil disk cache: 300 bytes across two files
         fs.writeFile("/cache/homebase-payloads-v2/a", 100)
         fs.writeFile("/cache/homebase-payloads-v2/b", 200)
-        // untracked FFmpeg HLS dir: 500 bytes
-        fs.writeFile("/cache/hls_abc/index.ts", 500)
-        // untracked loose decrypted download: 50 bytes
+        // untracked scratch: 500 bytes
+        fs.writeFile("/cache/hb-scratch/hls/hls_abc/index.ts", 500)
+        // loose file at the root is foreign, never swept: 50 bytes
         fs.writeFile("/cache/myphoto.jpg", 50)
 
         val report = CacheAudit.audit(cacheDir.toString(), fs)
 
         assertEquals(300L, report.knownBytes)
-        assertEquals(550L, report.untrackedBytes)
-        assertEquals(0L, report.foreignBytes)
+        assertEquals(500L, report.untrackedBytes)
+        assertEquals(50L, report.foreignBytes)
         assertEquals(850L, report.totalBytes)
         assertEquals(3, report.entries.size)
         // sorted largest-first
         assertEquals(
-            listOf("hls_abc", "homebase-payloads-v2", "myphoto.jpg"),
+            listOf("hb-scratch", "homebase-payloads-v2", "myphoto.jpg"),
             report.entries.map { it.name },
         )
 
@@ -47,13 +47,14 @@ class CacheAuditTest {
         assertTrue(tracked.isDirectory)
         assertEquals(300L, tracked.sizeBytes)
 
-        val hls = report.entries.single { it.name == "hls_abc" }
-        assertFalse(hls.known)
-        assertTrue(hls.isDirectory)
-        assertEquals("FFmpeg HLS segment dir (video send)", hls.label)
+        val scratch = report.entries.single { it.name == "hb-scratch" }
+        assertFalse(scratch.known)
+        assertFalse(scratch.foreign)
+        assertTrue(scratch.isDirectory)
 
         val loose = report.entries.single { it.name == "myphoto.jpg" }
         assertFalse(loose.known)
+        assertTrue(loose.foreign)
         assertFalse(loose.isDirectory)
         assertEquals("unknown", loose.label)
     }
@@ -109,7 +110,7 @@ class CacheAuditTest {
     }
 
     @Test
-    fun audit_flagsDirectoriesThatArentOurs_asForeign() {
+    fun audit_flagsAnythingThatIsntAnOwnedDirectory_asForeign() {
         val fs = FakeFileSystem()
         fs.createDirectories(cacheDir)
         val foreign = listOf("WebView", "oat_primary", "data", "Crash Reports", "com.crashlytics.data", "com.apple.dyld")
@@ -117,7 +118,7 @@ class CacheAuditTest {
         val ours = listOf(
             "homebase-payloads-v2", "homebase-thumbs-v1", "hls_abc", "hbvid_preload", "vts_1",
             CacheAudit.UPLOAD_TEMP_DIR_NAME, CacheAudit.OUTBOX_TEMP_DIR_NAME, SHARE_OUTBOUND_DIR_NAME,
-            ORPHAN_COIL_DIR_NAME, "share_temp",
+            ORPHAN_COIL_DIR_NAME, "share_temp", AppCacheDirs.SCRATCH_DIR_NAME,
         )
         for (name in ours) fs.writeFile("/cache/$name/x.bin", 100)
         fs.writeFile("/cache/unknown-loose-file.bin", 100)
@@ -130,7 +131,7 @@ class CacheAuditTest {
             assertFalse(entry.known, "$name must not be classified as a tracked Coil cache")
         }
         for (name in ours) assertFalse(report.entries.single { it.name == name }.foreign, "$name is ours")
-        assertFalse(report.entries.single { it.name == "unknown-loose-file.bin" }.foreign, "loose files are ours")
+        assertTrue(report.entries.single { it.name == "unknown-loose-file.bin" }.foreign, "loose files are never ours")
     }
 
     @Test

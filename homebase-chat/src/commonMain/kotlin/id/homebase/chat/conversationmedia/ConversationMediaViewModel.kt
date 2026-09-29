@@ -9,6 +9,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.QueryBatchCursor
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationsettings.ConversationOverview
@@ -158,12 +159,12 @@ class ConversationMediaViewModel(
                 )
                 val rawName = item.payload.filename() ?: item.payload.key
                 val filePath = if (rawName.contains('.')) {
-                    "${fileOperationsProvider.getCacheDirectory()}/$rawName"
+                    "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$rawName"
                 } else {
                     val extension = item.payload.contentType?.let { extensionForMimeType(it) }
                         ?: item.payload.contentType?.substringAfter("/")
                         ?: "bin"
-                    "${fileOperationsProvider.getCacheDirectory()}/$rawName.$extension"
+                    "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$rawName.$extension"
                 }
 
                 val success = driveFileProvider.streamPayloadDecryptedToPath(
