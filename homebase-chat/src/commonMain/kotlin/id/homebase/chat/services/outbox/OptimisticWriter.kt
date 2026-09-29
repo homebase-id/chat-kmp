@@ -1031,34 +1031,22 @@ class OptimisticWriter(
     ) {
         val credentials = credentialsManager.requireActiveCredentials()
 
-        val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
-            credentials.getIdentityId(), driveId, uniqueId
-        ) ?: return
-
-        val lastModified = existingFile.optimisticStamp()
-
-        val updatedFile = existingFile.copy(
-            fileMetadata = existingFile.fileMetadata.copy(
-                localAppData = (existingFile.fileMetadata.localAppData ?: LocalAppMetadata()).copy(
-                    tags = newTags.distinct()
-                ),
-                updated = lastModified
-            )
-        )
-
         try {
-            val batch = listOf(updatedFile)
-            fileProcessor.baseUpsertEntryZapZap(
-                identityId = credentials.getIdentityId(),
-                driveId = driveId,
-                fileHeaders = batch,
-                cursor = null
-            )
+            val written = fileProcessor.mutateByUniqueId(credentials.getIdentityId(), driveId, uniqueId) { existing ->
+                existing.copy(
+                    fileMetadata = existing.fileMetadata.copy(
+                        localAppData = (existing.fileMetadata.localAppData ?: LocalAppMetadata()).copy(
+                            tags = newTags.distinct()
+                        ),
+                        updated = existing.optimisticStamp()
+                    )
+                )
+            } ?: return
 
             eventBus.emit(
                 BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    batchData = batch,
+                    batchData = listOf(written),
                 )
             )
         } catch (e: Exception) {
