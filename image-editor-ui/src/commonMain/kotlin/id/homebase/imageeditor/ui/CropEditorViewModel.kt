@@ -146,8 +146,9 @@ class CropEditorViewModel(
     }
 
     /** After every gesture frame the gesture handler calls this. */
-    fun snapshotMatrices() {
-        matrixSnapshot = MatrixSnapshot.capture(model)
+    fun snapshotMatrices(animate: Boolean = false) {
+        val generation = matrixSnapshot.animGeneration + if (animate) 1 else 0
+        matrixSnapshot = MatrixSnapshot.capture(model, generation)
     }
 
     fun onUiAction(action: CropEditorUiAction) {
@@ -158,12 +159,12 @@ class CropEditorViewModel(
             CropEditorUiAction.SaveClicked -> save()
             CropEditorUiAction.UndoClicked -> {
                 model.undo()
-                snapshotMatrices()
+                snapshotMatrices(animate = true)
                 refreshUndoRedo()
             }
             CropEditorUiAction.RedoClicked -> {
                 model.redo()
-                snapshotMatrices()
+                snapshotMatrices(animate = true)
                 refreshUndoRedo()
             }
             CropEditorUiAction.ResetClicked -> {
@@ -174,7 +175,7 @@ class CropEditorViewModel(
                 } else {
                     model.setCropAspectLock(false)
                 }
-                snapshotMatrices()
+                snapshotMatrices(animate = true)
                 _uiState.update {
                     it.copy(
                         aspectMode = if (lockedToSquare) AspectMode.Square else AspectMode.Free,
@@ -187,12 +188,12 @@ class CropEditorViewModel(
             }
             CropEditorUiAction.Rotate90ClockwiseClicked -> {
                 model.rotate90Clockwise()
-                snapshotMatrices()
+                snapshotMatrices(animate = true)
                 refreshUndoRedo()
             }
             CropEditorUiAction.FlipHorizontalClicked -> {
                 model.flipHorizontal()
-                snapshotMatrices()
+                snapshotMatrices(animate = true)
                 refreshUndoRedo()
             }
             is CropEditorUiAction.AspectChanged -> {
@@ -201,7 +202,7 @@ class CropEditorViewModel(
                 // Selecting a fixed-ratio chip auto-locks; "Free" auto-unlocks.
                 val locked = action.aspect.ratio != null
                 model.setCropAspectLock(locked)
-                snapshotMatrices()
+                snapshotMatrices(animate = true)
                 _uiState.update {
                     it.copy(aspectMode = action.aspect, cropAspectLocked = locked)
                 }
@@ -421,6 +422,8 @@ data class MatrixSnapshot(
     val cropFrameMatrix: Matrix2D,
     val cropRect: RectF,
     val viewportSize: Size,
+    /** Bumped only by discrete edits (rotate, flip, aspect, reset, undo, redo), never by live gestures. */
+    val animGeneration: Int = 0,
 ) {
     /** Canonical [id.homebase.imageeditor.core.Bounds] space to canvas pixels. */
     val cropToCanvas: Matrix2D
@@ -438,7 +441,7 @@ data class MatrixSnapshot(
             viewportSize = Size(0, 0),
         )
 
-        fun capture(model: EditorModel): MatrixSnapshot {
+        fun capture(model: EditorModel, animGeneration: Int = 0): MatrixSnapshot {
             val main = model.hierarchy.mainImage()
             // Live crop matrix includes cropEditorElement.editorMatrix so the
             // user sees the frame move/shrink in real time while dragging a
@@ -462,6 +465,7 @@ data class MatrixSnapshot(
                 cropFrameMatrix = liveMatrix,
                 cropRect = liveCropRect,
                 viewportSize = model.naturalSize,
+                animGeneration = animGeneration,
             )
         }
     }
