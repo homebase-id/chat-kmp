@@ -5,11 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -27,18 +25,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.haptics.rememberHaptics
+import id.homebase.core.permissions.PermissionType
+import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.camera_permission_body
@@ -53,6 +53,7 @@ import id.homebase.resources.camera_unavailable_title
 import id.homebase.resources.close
 import io.github.vinceglb.filekit.PlatformFile
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 
 internal const val PERMISSION_PANE_TAG = "camera_permission_pane"
 internal const val PERMISSION_ACTION_TAG = "camera_permission_action"
@@ -78,8 +79,7 @@ fun CameraCaptureDialog(
     onDismiss: () -> Unit,
 ) {
     // Loaded out here, from the launching frame, rather than behind the window and the permission check.
-    val thumbnailPx = with(LocalDensity.current) { SideSlotSize.roundToPx() }
-    val galleryThumbnail = if (onOpenGallery != null) rememberLatestGalleryThumbnail(thumbnailPx) else null
+    val galleryThumbnail = if (onOpenGallery != null) rememberNewestGalleryThumbnailUri() else null
     Dialog(onDismissRequest = onDismiss, properties = cameraDialogProperties()) {
         CameraWindowEffect()
         CompositionLocalProvider(LocalCameraFade provides fade) {
@@ -118,7 +118,7 @@ internal fun CameraCaptureScreen(
     warmEngine: CameraEngine? = null,
     acceptsInput: Boolean = true,
     onOpenGallery: (() -> Unit)? = null,
-    galleryThumbnail: ImageBitmap? = null,
+    galleryThumbnail: String? = null,
     onResult: (PlatformFile) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -166,7 +166,7 @@ internal fun CameraPermissionPane(
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.scrim)
-            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .windowInsetsPadding(cameraSafeInsets)
             .testTag(PERMISSION_PANE_TAG),
     ) {
         CameraCloseButton(onClick = onDismiss, iconRotation = { 0f }, modifier = Modifier.padding(8.dp))
@@ -210,7 +210,7 @@ internal fun CameraUnavailablePane(onDismiss: () -> Unit) {
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.scrim)
-            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .windowInsetsPadding(cameraSafeInsets)
             .testTag(UNAVAILABLE_TAG),
     ) {
         CameraMessage(
@@ -271,3 +271,14 @@ private fun CameraMessage(
     }
 }
 
+
+@Composable
+private fun rememberNewestGalleryThumbnailUri(): String? {
+    val manager = koinInject<PlatformGalleryManager>()
+    val permissions = createPermissionsManager { _, _, _ -> }
+    return produceState<String?>(null, manager, permissions) {
+        val canRead = permissions.isPermissionGranted(PermissionType.GALLERY) ||
+            permissions.isPermissionGranted(PermissionType.GALLERY_LIMITED)
+        if (canRead) value = runCatching { manager.fetchGalleryImages(1) }.getOrNull()?.firstOrNull()?.thumbnailUri
+    }.value
+}

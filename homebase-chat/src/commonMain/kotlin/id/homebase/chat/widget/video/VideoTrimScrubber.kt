@@ -1,5 +1,6 @@
 package id.homebase.chat.widget.video
 
+import id.homebase.core.util.formatHms
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -253,21 +254,13 @@ private fun TrimHandle(
     }
 }
 
-/** Helper formatter shared by the trim screen toolbar. */
-internal fun formatDurationLabel(ms: Long): String {
-    val totalSec = ms / 1000
-    val m = totalSec / 60
-    val s = totalSec % 60
-    return "$m:${s.toString().padStart(2, '0')}"
-}
-
 @Composable
 internal fun TrimDurationLabel(startMs: Long, endMs: Long, totalMs: Long) {
     // Built outside the Text() argument so Konsist's "no hardcoded strings in
     // composables" architecture test doesn't flag the template literal.
-    val label = formatDurationLabel(endMs - startMs) +
+    val label = formatHms(endMs - startMs, showHours = false) +
         " / " +
-        formatDurationLabel(totalMs)
+        formatHms(totalMs, showHours = false)
     Text(
         text = label,
         style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),

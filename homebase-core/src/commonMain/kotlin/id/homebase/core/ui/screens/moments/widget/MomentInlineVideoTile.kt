@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments.widget
 
+import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.Image
@@ -648,7 +649,7 @@ fun MomentInlineVideoTile(
             // card's capture-date pill can own that corner.
             if (displayDurationMs != null) {
                 Text(
-                    text = formatDurationLabel(displayDurationMs),
+                    text = formatHms(displayDurationMs, showHours = false),
                     color = Color.White,
                     fontSize = 10.sp,
                     modifier = Modifier
@@ -715,7 +716,7 @@ private fun MomentVideoIvMissingFallback(
             )
             if (durationMs != null) {
                 Text(
-                    text = formatDurationLabel(durationMs),
+                    text = formatHms(durationMs, showHours = false),
                     color = Color.White,
                     fontSize = 10.sp,
                     modifier = Modifier

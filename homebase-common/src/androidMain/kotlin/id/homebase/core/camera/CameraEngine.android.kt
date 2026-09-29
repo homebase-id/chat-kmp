@@ -40,6 +40,7 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.geometry.Offset
@@ -103,6 +104,7 @@ actual fun rememberCameraWarmer(): CameraWarmer {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val fileOps = koinInject<FileOperationsProvider>()
+    LaunchedEffect(context) { withContext(Dispatchers.IO) { CameraCapability.anyCameraIsLegacy(context) } }
     return remember(context, lifecycleOwner, fileOps) {
         CameraWarmer { _ ->
             val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
@@ -187,20 +189,12 @@ internal class AndroidCameraEngine(
     }
 
     private val displayManager = this.context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-    private val displayListener = object : DisplayManager.DisplayListener {
-        override fun onDisplayChanged(displayId: Int) {
-            if (displayId == Display.DEFAULT_DISPLAY) onDisplayRotationChanged()
-        }
-        override fun onDisplayAdded(displayId: Int) = Unit
-        override fun onDisplayRemoved(displayId: Int) = Unit
-    }
 
     fun start() {
         if (started) return
         started = true
         openedAt = TimeSource.Monotonic.markNow()
         displayRotation = currentDisplayRotation()
-        displayManager.registerDisplayListener(displayListener, null)
         scope.launch {
             val cameraProvider = try {
                 ProcessCameraProvider.awaitInstance(context)
@@ -415,10 +409,10 @@ internal class AndroidCameraEngine(
             .build()
     }
 
-    private fun onDisplayRotationChanged() {
-        val rotation = currentDisplayRotation()
-        if (rotation == displayRotation) return
-        displayRotation = rotation
+    override fun setDisplayRotation(rotation: QuarterTurn) {
+        val surface = rotation.surfaceRotation
+        if (released || surface == displayRotation) return
+        displayRotation = surface
         rebuildPreview()
     }
 
@@ -680,7 +674,6 @@ internal class AndroidCameraEngine(
     override fun release() {
         if (released) return
         released = true
-        displayManager.unregisterDisplayListener(displayListener)
         recording?.stop()
         recording = null
         observedZoom?.removeObserver(zoomObserver)

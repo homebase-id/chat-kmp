@@ -41,13 +41,17 @@ expect suspend fun PlatformFile.toUploadPath(fileOps: FileOperationsProvider): S
  *
  * FileKit's `copyTo` is what handles the security scope on apple.
  *
- * - apple/android/jvm: copy into the FileKit cache dir, preserving the original file name (so
- *   content-type / display-name resolution from `file.name` is unchanged).
+ * - apple/android: copy into the FileKit cache dir, preserving the original file name (so
+ *   content-type / display-name resolution from `file.name` is unchanged). A file already under
+ *   the cache dir (a camera capture, an earlier copy) is returned as it is: it is ours and swept.
+ * - jvm: copy into the FileKit cache dir, as above.
  * - web: no-op (`this`). The browser has no path and no security scope; the picked
  *   [PlatformFile] keeps its bytes and [toUploadPath]'s web actual materializes them at send
  *   time via `readBytes()`.
  */
 expect suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProvider): PlatformFile
+
+internal fun isUnderDir(dir: String, path: String): Boolean = path.startsWith(dir.trimEnd('/') + "/")
 
 /**
  * Name for the pick-time sandbox copy: the original name behind a collision-proof prefix, plus an
