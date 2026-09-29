@@ -732,6 +732,8 @@ class ConversationListViewModel(
                         )
                     }
                     updateListContent()
+                } else if (uiState.value.conversationsContent is ConversationListContentState.Empty) {
+                    _uiState.update { it.copy(conversationsContent = ConversationListContentState.Loading) }
                 }
             }
         }
@@ -949,6 +951,13 @@ class ConversationListViewModel(
                 }
         }
 
+        viewModelScope.launch {
+            conversationStream.conversations
+                .map { it.initialSyncFailed }
+                .distinctUntilChanged()
+                .collect { failed -> _uiState.update { it.copy(initialSyncFailed = failed) } }
+        }
+
         // Set isConnecting state
         viewModelScope.launch {
             eventBus.events
@@ -1154,6 +1163,8 @@ class ConversationListViewModel(
 
     fun onAction(action: ConversationListUiAction) {
         when (action) {
+            is ConversationListUiAction.RetryInitialSync -> retryInitialSync()
+
             // Belt-and-braces draft save (#1122): the thread's lifecycle owner is
             // stopping — the user navigated away, or the app went to background and
             // the OS may kill the process before anything else runs. Keyed off the
@@ -1695,6 +1706,17 @@ class ConversationListViewModel(
         if (topId == _uiState.value.listTopSnapshotId) return
         userPreferences.conversationListTopId = topId
         _uiState.update { it.copy(listTopSnapshotId = topId) }
+    }
+
+    private fun retryInitialSync() {
+        _uiState.update {
+            it.copy(initialSyncFailed = false, conversationsContent = ConversationListContentState.Loading)
+        }
+        conversationStream.retryInitialLoad()
+        runCatching { driveSyncManager?.syncDrive(chatTargetDrive.alias) }.onFailure {
+            if (it is CancellationException) throw it
+            Logger.w(tag = TAG, throwable = it) { "initial sync retry: syncDrive kick failed" }
+        }
     }
 
     private fun updateListContent() {

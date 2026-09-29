@@ -2360,6 +2360,7 @@
     <string name="chat_error_send_reply">Failed to send reply: %1$s</string>
     <string name="chat_error_scroll_to_message">Failed to scroll to message: %1$s</string>
     <string name="chat_error_load_older_messages">Failed to load older messages: %1$s</string>
+    <string name="chat_initial_sync_failed">Couldn't load your conversations. Check your connection and try again.</string>
     <string name="chat_error_load_conversations">Failed to load conversations: %1$s</string>
     <string name="chat_error_load_messages">Failed to load messages: %1$s</string>
     <string name="settings_notification_content_name_content_actions">Name, Content, and Actions</string>
