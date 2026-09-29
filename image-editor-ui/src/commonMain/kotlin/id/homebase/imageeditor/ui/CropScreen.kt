@@ -132,9 +132,7 @@ fun CropScreen(
                     onZoomImage = { scale, cx, cy -> viewModel.zoomMainImage(scale, cx to cy) },
                     onCommitImage = { viewModel.commitMainImageGesture() },
                 )
-                // Gestures hit-test the target matrices, as Signal does. Only the
-                // viewLocal reflow is animated there, so the hit zone tracks the
-                // visible corner during it; the discrete-edit animation is in `draw`.
+                // Hit-test the target matrices (as Signal does); only `draw` carries the discrete-edit animation.
                 val rawSnapshot = viewModel.matrixSnapshot
                 val animated = rememberAnimatedSnapshot(rawSnapshot)
                 val snapshotState = rememberUpdatedState(animated.hit)

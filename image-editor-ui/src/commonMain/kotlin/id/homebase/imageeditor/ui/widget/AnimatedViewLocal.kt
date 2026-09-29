@@ -17,7 +17,6 @@ private const val ANIMATION_MS = 250
 
 private val DecelerateEasing = Easing { t -> 1f - (1f - t) * (1f - t) }
 
-/** [hit] is what gestures hit-test against; [draw] is what is painted. */
 class AnimatedSnapshots(val hit: MatrixSnapshot, val draw: MatrixSnapshot)
 
 internal fun MatrixSnapshot.imageChain(): Matrix2D =
@@ -26,69 +25,52 @@ internal fun MatrixSnapshot.imageChain(): Matrix2D =
         it.preConcat(mainImageEditor)
     }
 
-internal fun animationUndo(from: Matrix2D, to: Matrix2D): Matrix2D? {
+private fun animationUndo(from: Matrix2D, to: Matrix2D): Matrix2D {
     val undo = Matrix2D()
-    if (!to.invert(undo)) return null
+    if (!to.invert(undo)) return Matrix2D()
     undo.preConcat(from)
-    return if (undo.isIdentity()) null else undo
+    return undo
 }
 
-internal fun lerpToIdentity(undo: Matrix2D, fraction: Float): Matrix2D {
-    val out = Matrix2D()
-    for (i in 0 until 6) {
-        out.values[i] = undo.values[i] * fraction + out.values[i] * (1f - fraction)
-    }
-    return out
+private fun Matrix2D.withUndo(undo: Matrix2D, fraction: Float): Matrix2D {
+    val lerped = Matrix2D()
+    for (i in 0 until 6) lerped.values[i] = undo.values[i] * fraction + lerped.values[i] * (1f - fraction)
+    return Matrix2D(this).also { it.preConcat(lerped) }
 }
 
-/**
- * Signal's `AnimationMatrix`: a discrete edit is drawn as `target * lerp(to^-1 * from, I, 1 - progress)`
- * so it starts on the old picture and ends on the target. Interpolation is element-wise, so the
- * in-between matrix need not be invertible; hit-testing never sees it.
- */
+// Element-wise lerp, so the in-between matrix may be singular; hit-testing never sees it.
 internal class DiscreteChangeAnimator {
     private var generation: Int? = null
     private var previous: MatrixSnapshot? = null
-    private var imageUndo: Matrix2D? = null
-    private var cropUndo: Matrix2D? = null
+    private var imageUndo = Matrix2D()
+    private var cropUndo = Matrix2D()
     private var awaitingStart = false
 
     fun draw(target: MatrixSnapshot, liveFraction: Float): MatrixSnapshot {
         val prev = previous
         if (generation != null && generation != target.animGeneration && prev != null) {
             val f = if (awaitingStart) 1f else liveFraction
-            val fromImage = prev.imageChain().also {
-                it.preConcat(lerpToIdentity(imageUndo ?: Matrix2D(), f))
-            }
-            val fromCrop = Matrix2D(prev.cropFrameMatrix).also {
-                it.preConcat(lerpToIdentity(cropUndo ?: Matrix2D(), f))
-            }
-            imageUndo = animationUndo(fromImage, target.imageChain())
-            cropUndo = animationUndo(fromCrop, target.cropFrameMatrix)
-            awaitingStart = imageUndo != null || cropUndo != null
+            imageUndo = animationUndo(prev.imageChain().withUndo(imageUndo, f), target.imageChain())
+            cropUndo = animationUndo(prev.cropFrameMatrix.withUndo(cropUndo, f), target.cropFrameMatrix)
+            awaitingStart = true
         }
         generation = target.animGeneration
         previous = target
-        return apply(target, if (awaitingStart) 1f else liveFraction)
-    }
-
-    fun markStarted() {
-        awaitingStart = false
-    }
-
-    private fun apply(target: MatrixSnapshot, fraction: Float): MatrixSnapshot {
-        val image = imageUndo
-        val crop = cropUndo
-        if (fraction <= 0f || (image == null && crop == null)) return target
-        val editor = image?.let {
-            Matrix2D(target.mainImageEditor).also { m -> m.preConcat(lerpToIdentity(it, fraction)) }
-        } ?: target.mainImageEditor
-        val frame = crop?.let {
-            Matrix2D(target.cropFrameMatrix).also { m -> m.preConcat(lerpToIdentity(it, fraction)) }
-        } ?: target.cropFrameMatrix
+        val fraction = if (awaitingStart) 1f else liveFraction
+        if (fraction <= 0f) return target
+        val frame = target.cropFrameMatrix.withUndo(cropUndo, fraction)
         val rect = RectF()
         frame.mapRect(rect, Bounds.fullBounds())
-        return target.copy(mainImageEditor = editor, cropFrameMatrix = frame, cropRect = rect)
+        return target.copy(
+            mainImageEditor = target.mainImageEditor.withUndo(imageUndo, fraction),
+            cropFrameMatrix = frame,
+            cropRect = rect,
+        )
+    }
+
+    // The frame after a change must draw the old picture before the Animatable snaps to 1.
+    fun markStarted() {
+        awaitingStart = false
     }
 }
 
@@ -103,10 +85,6 @@ internal class DiscreteChangeAnimator {
  * scale, translateX, translateY — captures all of it. Rotation/skew on the
  * view layer would not animate correctly with this; if that ever changes,
  * decompose differently.
- *
- * Discrete edits (see [MatrixSnapshot.animGeneration]) are additionally
- * animated in [AnimatedSnapshots.draw] only, over 250 ms with a decelerate
- * curve like Signal's `AnimationMatrix`. Hit-testing keeps the target matrices.
  */
 @Composable
 fun rememberAnimatedSnapshot(target: MatrixSnapshot): AnimatedSnapshots {
@@ -114,7 +92,7 @@ fun rememberAnimatedSnapshot(target: MatrixSnapshot): AnimatedSnapshots {
     val targetScale = v[Matrix2D.MSCALE_X]
     val targetTx = v[Matrix2D.MTRANS_X]
     val targetTy = v[Matrix2D.MTRANS_Y]
-    val anim = tween<Float>(durationMillis = 250)
+    val anim = tween<Float>(durationMillis = ANIMATION_MS)
 
     val scale by animateFloatAsState(targetScale, animationSpec = anim, label = "viewScale")
     val tx by animateFloatAsState(targetTx, animationSpec = anim, label = "viewTx")

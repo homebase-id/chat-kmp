@@ -422,7 +422,7 @@ data class MatrixSnapshot(
     val cropFrameMatrix: Matrix2D,
     val cropRect: RectF,
     val viewportSize: Size,
-    /** Bumped by rotate, flip, aspect change, reset, undo and redo; never by drag, pinch or thumb gestures. */
+    /** Bumped only by discrete edits (rotate, flip, aspect, reset, undo, redo), never by live gestures. */
     val animGeneration: Int = 0,
 ) {
     /** Canonical [id.homebase.imageeditor.core.Bounds] space to canvas pixels. */
