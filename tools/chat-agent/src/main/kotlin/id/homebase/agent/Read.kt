@@ -3,6 +3,7 @@ package id.homebase.agent
 import id.homebase.api.client.HttpClientProvider
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
@@ -19,13 +20,20 @@ import kotlin.time.Instant
 class NotLoggedInException(profile: String) :
     Exception("not logged in for profile '$profile', run: chat-agent login --profile $profile")
 
-suspend fun read(profile: String, limit: Int) {
+class Session(val identity: OdinId, val credentials: CredentialsManager)
+
+suspend fun openSession(profile: String): Session {
     val stored = CredentialStorage.getCredentials() ?: throw NotLoggedInException(profile)
     val credentials = CredentialsManager()
     credentials.setActiveCredentials(
         ApiCredentials.create(stored.identity, stored.clientAuthToken, stored.sharedSecret)
     )
-    val allowlist = Allowlist.default(stored.identity)
+    return Session(stored.identity, credentials)
+}
+
+suspend fun read(profile: String, limit: Int) {
+    val (owner, credentials) = openSession(profile).let { it.identity to it.credentials }
+    val allowlist = Allowlist.default(owner)
     val conversationId = ChatProtocol.ConversationWithYourselfId
     allowlist.requireConversation(conversationId)
 
