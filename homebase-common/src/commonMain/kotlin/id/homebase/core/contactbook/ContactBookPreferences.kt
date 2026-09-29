@@ -12,9 +12,8 @@ import kotlin.uuid.Uuid
  * [id.homebase.core.vault.VaultPreferences] but without an `activated` flag —
  * the Contacts drive is mandatory (always mounted/synced), so there is no
  * extend-permissions / drive-activation step. [onboardingComplete] gates the
- * first-run intro screen; [iconVisible] toggles the bottom-bar icon. The add-on
- * is **dark-launched** — [iconVisible] defaults to `false`, so the Contacts icon
- * stays off the bottom bar until the user enables it in Settings.
+ * first-run intro screen; [iconVisible] toggles the bottom-bar icon, which is on
+ * by default and can be hidden in Settings.
  *
  * UUID namespace: `0a04xx` (claimed by Contact Book — see ADDING_ADDON_APPS.md).
  */
@@ -25,12 +24,12 @@ class ContactBookPreferences(private val databaseManager: DatabaseManager) {
     private val _onboardingComplete = MutableStateFlow(readBoolean(ONBOARDING_KEY, default = false))
     val onboardingComplete: StateFlow<Boolean> = _onboardingComplete.asStateFlow()
 
-    private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = false))
+    private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = true))
     val iconVisible: StateFlow<Boolean> = _iconVisible.asStateFlow()
 
     fun reset() {
         _onboardingComplete.value = readBoolean(ONBOARDING_KEY, default = false)
-        _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = false)
+        _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = true)
     }
 
     suspend fun setOnboardingComplete(value: Boolean) {
