@@ -353,6 +353,7 @@ fun ContactBookScreen(
             groups = uiState.reviewCircleGroups,
             alreadyHeldCircleIds = overlay.alreadyHeldCircleIds,
             isSubmitting = overlay.isSubmitting,
+            done = overlay.done,
             errorText = if (overlay.failed) stringResource(MR.string.contact_review_failed) else null,
             onSubmit = { ids ->
                 viewModel.onAction(ContactBookUiAction.ReviewSubmitted(overlay.entry, ids))

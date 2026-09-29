@@ -751,7 +751,7 @@ class ContactDetailViewModel(
                     OdinId(odinId),
                     circleIds.map { Uuid.parseHex(it) },
                 )
-                _uiState.update { it.copy(review = null) }
+                _uiState.update { it.copy(review = open.copy(isSubmitting = true, done = true)) }
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                 throw e
             } catch (e: Exception) {

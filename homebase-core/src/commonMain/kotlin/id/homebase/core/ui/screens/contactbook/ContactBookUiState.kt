@@ -119,6 +119,7 @@ sealed interface ContactBookOverlay {
         val alreadyHeldCircleIds: Set<String> = emptySet(),
         val isSubmitting: Boolean = false,
         val failed: Boolean = false,
+        val done: Boolean = false,
     ) : ContactBookOverlay
 }
 

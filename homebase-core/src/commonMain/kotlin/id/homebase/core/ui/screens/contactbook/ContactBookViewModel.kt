@@ -552,7 +552,7 @@ class ContactBookViewModel(
                     OdinId(odinId),
                     circleIds.map { Uuid.parseHex(it) },
                 )
-                _overlay.value = null
+                _overlay.value = current.copy(isSubmitting = true, done = true)
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -162,6 +162,7 @@ data class ReviewSheetState(
     val alreadyHeldCircleIds: Set<String> = emptySet(),
     val isSubmitting: Boolean = false,
     val failed: Boolean = false,
+    val done: Boolean = false,
     /** Set when the review accepts a pending request instead of reviewing a connection. */
     val incomingRequest: IncomingRequestSummary? = null,
 )

@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -97,8 +98,10 @@ fun ReviewConnectionSheet(
     errorText: String?,
     onSubmit: (Set<String>) -> Unit,
     onDismiss: () -> Unit,
+    done: Boolean = false,
 ) {
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true, maxWidth = 680.dp) {
+        LaunchedEffect(done) { if (done) dismiss() }
         ReviewConnectionContent(
             displayName = displayName,
             odinId = odinId,

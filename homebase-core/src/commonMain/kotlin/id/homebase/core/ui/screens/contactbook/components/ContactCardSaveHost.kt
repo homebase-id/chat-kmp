@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,7 +24,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
@@ -49,11 +47,9 @@ import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
 import id.homebase.core.ui.screens.contactbook.saveContactEdit
 import id.homebase.core.ui.screens.contactbook.saveNewContact
-import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.contactbook_edit_odinid_from_card
-import id.homebase.resources.contactbook_edit_title_edit
 import id.homebase.resources.chat_contact_card_exists_body
 import id.homebase.resources.chat_contact_card_exists_identity_body
 import id.homebase.resources.chat_contact_card_exists_open
@@ -72,7 +68,6 @@ import id.homebase.resources.chat_contact_card_saved_open
 import id.homebase.resources.chat_contact_card_saved_title
 import id.homebase.resources.chat_contact_card_title
 import id.homebase.resources.contactbook_error_forbidden
-import id.homebase.resources.loading
 import id.homebase.resources.ok
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.ExperimentalUuidApi
@@ -191,13 +186,13 @@ fun ContactCardSaveHost(
     // Mounted across Saving and both failures so a retry resumes on the user's own edits.
     val current = stage
     val target = mergeInto
-    if (resolvingTarget) {
-        ResolvingTargetSheet(onDismiss = onDismiss)
-    } else if (current is SaveStage.Editing || current is SaveStage.Saving ||
-        current is SaveStage.Forbidden || current is SaveStage.Failed
+    val savedCleanly = current is SaveStage.Saved &&
+        !current.additionsFailed && !current.photoFailed && !current.clearedFieldsIgnored
+    if (resolvingTarget || savedCleanly || current is SaveStage.Editing ||
+        current is SaveStage.Saving || current is SaveStage.Forbidden || current is SaveStage.Failed
     ) {
         val match = duplicate
-        val saving = current is SaveStage.Saving
+        val saving = current is SaveStage.Saving || savedCleanly
         val banner: (@Composable () -> Unit)? = when {
             target != null -> {
                 { MergeBanner(name = target.displayName) }
@@ -226,99 +221,101 @@ fun ContactCardSaveHost(
         // any host in that field — so say what saving it costs rather than silently dropping it.
         val odinIdNote = stringResource(MR.string.contactbook_edit_odinid_from_card)
             .takeIf { descriptor.identity() != null && target?.odinId.isNullOrBlank() }
-        key(descriptor, target?.uniqueId) {
-            ContactEditSheet(
-                // The unfilled target: it decides whether the sheet calls itself profile-synced,
-                // and it must agree with useOverride below. The card's own values reach the draft
-                // through `seed`, which now fills the gaps a merge target leaves.
-                editing = target,
-                seed = remember(descriptor) { ContactCardImport.toDraft(descriptor) },
-                seedAdditionalPhones = remember(descriptor, target) {
-                    if (target == null) ContactCardImport.extraPhones(descriptor)
-                    else descriptor.phonesMissingFrom(target)
-                },
-                seedAdditionalEmails = remember(descriptor, target) {
-                    if (target == null) ContactCardImport.extraEmails(descriptor)
-                    else descriptor.emailsMissingFrom(target)
-                },
-                saving = current is SaveStage.Saving,
-                banner = banner,
-                odinIdNote = odinIdNote,
-                onSave = { draft, extraPhones, extraEmails, photo ->
-                    val savedName = target?.displayName ?: cardName
-                    val attempt: () -> Unit = {
-                        // Read per attempt, not once at the first tap: a retry after the check
-                        // landed has seen the banner, and capturing it outside made every retry
-                        // bounce back to the sheet without ever writing.
-                        val sawBanner = duplicate != null
-                    stage = SaveStage.Saving
-                    appScope.launch {
-                        // A match that only lands now is one the user was never offered; show it
-                        // rather than silently creating the second contact they'd have declined.
-                        // Bounded: Saving disables Cancel, so an unbounded wait on a cold contact
-                        // book pins the user in a spinner with no way out. A timeout is treated
-                        // like the check failing — proceed, same as the catch above.
-                        if (target == null && !sawBanner) {
-                            val late = withTimeoutOrNull(DupeCheckSaveDeadlineMs) { checked.await() }
-                            if (late != null) {
-                                stage = SaveStage.Editing
-                                return@launch
-                            }
+        ContactEditSheet(
+            resolving = resolvingTarget,
+            contentKey = descriptor to target?.uniqueId,
+            closing = savedCleanly,
+            dismissOnSave = false,
+            // The unfilled target: it decides whether the sheet calls itself profile-synced,
+            // and it must agree with useOverride below. The card's own values reach the draft
+            // through `seed`, which now fills the gaps a merge target leaves.
+            editing = target,
+            seed = remember(descriptor) { ContactCardImport.toDraft(descriptor) },
+            seedAdditionalPhones = remember(descriptor, target) {
+                if (target == null) ContactCardImport.extraPhones(descriptor)
+                else descriptor.phonesMissingFrom(target)
+            },
+            seedAdditionalEmails = remember(descriptor, target) {
+                if (target == null) ContactCardImport.extraEmails(descriptor)
+                else descriptor.emailsMissingFrom(target)
+            },
+            saving = saving,
+            banner = banner,
+            odinIdNote = odinIdNote,
+            onSave = { draft, extraPhones, extraEmails, photo ->
+                val savedName = target?.displayName ?: cardName
+                val attempt: () -> Unit = {
+                    // Read per attempt, not once at the first tap: a retry after the check
+                    // landed has seen the banner, and capturing it outside made every retry
+                    // bounce back to the sheet without ever writing.
+                    val sawBanner = duplicate != null
+                stage = SaveStage.Saving
+                appScope.launch {
+                    // A match that only lands now is one the user was never offered; show it
+                    // rather than silently creating the second contact they'd have declined.
+                    // Bounded: Saving disables Cancel, so an unbounded wait on a cold contact
+                    // book pins the user in a spinner with no way out. A timeout is treated
+                    // like the check failing — proceed, same as the catch above.
+                    if (target == null && !sawBanner) {
+                        val late = withTimeoutOrNull(DupeCheckSaveDeadlineMs) { checked.await() }
+                        if (late != null) {
+                            stage = SaveStage.Editing
+                            return@launch
                         }
-                        val result = try {
-                            if (target == null) {
-                                saveNewContact(store, repo, draft, extraPhones, extraEmails, photo)
-                            } else {
-                                saveContactEdit(
-                                    store = store,
-                                    repo = repo,
-                                    useOverride = !target.odinId.isNullOrBlank() &&
-                                        target.versionTag != null,
-                                    editing = target,
-                                    synced = repo.syncedBaselineOf(target),
-                                    draft = draft,
-                                    additionalPhones = extraPhones,
-                                    additionalEmails = extraEmails,
-                                    photo = photo,
-                                )
-                            }
+                    }
+                    val result = try {
+                        if (target == null) {
+                            saveNewContact(store, repo, draft, extraPhones, extraEmails, photo)
+                        } else {
+                            saveContactEdit(
+                                store = store,
+                                repo = repo,
+                                useOverride = !target.odinId.isNullOrBlank() &&
+                                    target.versionTag != null,
+                                editing = target,
+                                synced = repo.syncedBaselineOf(target),
+                                draft = draft,
+                                additionalPhones = extraPhones,
+                                additionalEmails = extraEmails,
+                                photo = photo,
+                            )
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        Logger.e(tag = TAG, throwable = e) { "contact save threw" }
+                        null
+                    }
+                    // An override write reports no id; for a merge we already know it.
+                    val next = saveStageFor(result).let {
+                        if (it is SaveStage.Saved) {
+                            it.copy(
+                                uniqueId = it.uniqueId ?: target?.uniqueId,
+                                name = savedName,
+                            )
+                        } else {
+                            it
+                        }
+                    }
+                    // A contact saved from chat is a contact book with a contact in it; without
+                    // this AppNavHost still shows the first-run intro over it.
+                    if (next is SaveStage.Saved) {
+                        try {
+                            preferences.setOnboardingComplete(true)
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Throwable) {
-                            Logger.e(tag = TAG, throwable = e) { "contact save threw" }
-                            null
+                            Logger.w(tag = TAG, throwable = e) { "onboarding flag not stored" }
                         }
-                        // An override write reports no id; for a merge we already know it.
-                        val next = saveStageFor(result).let {
-                            if (it is SaveStage.Saved) {
-                                it.copy(
-                                    uniqueId = it.uniqueId ?: target?.uniqueId,
-                                    name = savedName,
-                                )
-                            } else {
-                                it
-                            }
-                        }
-                        // A contact saved from chat is a contact book with a contact in it; without
-                        // this AppNavHost still shows the first-run intro over it.
-                        if (next is SaveStage.Saved) {
-                            try {
-                                preferences.setOnboardingComplete(true)
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Throwable) {
-                                Logger.w(tag = TAG, throwable = e) { "onboarding flag not stored" }
-                            }
-                        }
-                        stage = next
                     }
-                    }
-                    lastAttempt = attempt
-                    attempt()
-                },
-                onDismiss = onDismiss,
-            )
-        }
+                    stage = next
+                }
+                }
+                lastAttempt = attempt
+                attempt()
+            },
+            onDismiss = onDismiss,
+        )
     }
 
     val pendingMerge = confirmMerge
@@ -382,10 +379,7 @@ fun ContactCardSaveHost(
         ) {
             val name = current.name ?: cardName
             val uniqueId = current.uniqueId
-            LaunchedEffect(current) {
-                onSaved(name, uniqueId)
-                onDismiss()
-            }
+            LaunchedEffect(current) { onSaved(name, uniqueId) }
         } else AlertDialog(
             onDismissRequest = onDismiss,
             // Every partial failure, not just the first: two can be true at once, and the
@@ -488,26 +482,6 @@ private fun DuplicateBanner(
             }
         },
     )
-}
-
-@Composable
-private fun ResolvingTargetSheet(onDismiss: () -> Unit) {
-    AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-            Text(
-                text = stringResource(MR.string.contactbook_edit_title_edit),
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            )
-            val loading = stringResource(MR.string.loading)
-            CircularProgressIndicator(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(vertical = 32.dp)
-                    .semantics { contentDescription = loading },
-            )
-        }
-    }
 }
 
 @Composable

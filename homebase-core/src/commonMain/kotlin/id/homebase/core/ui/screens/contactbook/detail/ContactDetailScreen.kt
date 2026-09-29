@@ -331,6 +331,7 @@ fun ContactDetailScreen(
             groups = uiState.reviewCircleGroups,
             alreadyHeldCircleIds = review.alreadyHeldCircleIds,
             isSubmitting = review.isSubmitting,
+            done = review.done,
             errorText = if (review.failed) {
                 stringResource(MR.string.contact_review_failed)
             } else null,
