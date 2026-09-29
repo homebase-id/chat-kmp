@@ -1,5 +1,6 @@
 package id.homebase.chat.widget.video
 
+import id.homebase.core.util.formatHms
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -12,31 +13,31 @@ class FormatDurationLabelTest {
 
     @Test
     fun zeroAndSubSecond_formatAsZeroZero() {
-        assertEquals("0:00", formatDurationLabel(0))
-        assertEquals("0:00", formatDurationLabel(999))
+        assertEquals("0:00", formatHms(0, showHours = false))
+        assertEquals("0:00", formatHms(999, showHours = false))
     }
 
     @Test
     fun secondsTransitions() {
-        assertEquals("0:01", formatDurationLabel(1_000))
-        assertEquals("0:09", formatDurationLabel(9_999))
-        assertEquals("0:10", formatDurationLabel(10_000))
-        assertEquals("0:59", formatDurationLabel(59_999))
+        assertEquals("0:01", formatHms(1_000, showHours = false))
+        assertEquals("0:09", formatHms(9_999, showHours = false))
+        assertEquals("0:10", formatHms(10_000, showHours = false))
+        assertEquals("0:59", formatHms(59_999, showHours = false))
     }
 
     @Test
     fun minuteTransitions() {
-        assertEquals("1:00", formatDurationLabel(60_000))
+        assertEquals("1:00", formatHms(60_000, showHours = false))
         // Sub-second within the same minute floors down to that minute's :00
-        assertEquals("1:00", formatDurationLabel(60_999))
-        assertEquals("9:59", formatDurationLabel(599_999))
-        assertEquals("10:00", formatDurationLabel(600_000))
+        assertEquals("1:00", formatHms(60_999, showHours = false))
+        assertEquals("9:59", formatHms(599_999, showHours = false))
+        assertEquals("10:00", formatHms(600_000, showHours = false))
     }
 
     @Test
     fun overflowMinutes_areExpressedInDecimal() {
         // We deliberately do NOT introduce H:MM:SS for >60 min. Bubble shows raw minutes.
-        assertEquals("61:01", formatDurationLabel(3_661_000))
-        assertEquals("120:00", formatDurationLabel(7_200_000))
+        assertEquals("61:01", formatHms(3_661_000, showHours = false))
+        assertEquals("120:00", formatHms(7_200_000, showHours = false))
     }
 }

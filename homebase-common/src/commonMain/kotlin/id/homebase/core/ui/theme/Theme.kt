@@ -1,11 +1,25 @@
 package id.homebase.core.ui.theme
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.runtime.staticCompositionLocalOf
 
 /** Light color scheme using Signal-based LightColors */
@@ -160,6 +174,7 @@ val LocalHomebaseExtendedColors = staticCompositionLocalOf { LightExtendedColors
  * restyle the host activity's or window's bars.
  * @param content The content to display with this theme.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun HomebaseTheme(
         darkTheme: Boolean = isSystemInDarkTheme(),
@@ -167,17 +182,50 @@ fun HomebaseTheme(
         updatesSystemChrome: Boolean = true,
         content: @Composable () -> Unit
 ) {
-        val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-        val extendedColors = if (darkTheme) DarkExtendedColors else LightExtendedColors
+        var appliedDark by remember { mutableStateOf(darkTheme) }
+        var outgoingFrame by remember { mutableStateOf<ImageBitmap?>(null) }
+        val outgoingAlpha = remember { Animatable(0f) }
+        val layer = rememberGraphicsLayer()
 
-        if (updatesSystemChrome) UpdateEdgeToEdge(darkTheme, followsSystemTheme)
+        if (updatesSystemChrome) {
+                val fadeSpec = remember { MotionScheme.expressive().fastEffectsSpec<Float>() }
+                LaunchedEffect(darkTheme) {
+                        if (darkTheme == appliedDark) return@LaunchedEffect
+                        outgoingFrame = if (layer.size.width > 0 && layer.size.height > 0) layer.toImageBitmap() else null
+                        appliedDark = darkTheme
+                        outgoingAlpha.snapTo(1f)
+                        outgoingAlpha.animateTo(0f, fadeSpec)
+                        outgoingFrame = null
+                }
+        } else {
+                appliedDark = darkTheme
+        }
+
+        val colorScheme = if (appliedDark) DarkColorScheme else LightColorScheme
+        val extendedColors = if (appliedDark) DarkExtendedColors else LightExtendedColors
+
+        if (updatesSystemChrome) UpdateEdgeToEdge(appliedDark, followsSystemTheme)
 
         CompositionLocalProvider(LocalHomebaseExtendedColors provides extendedColors) {
                 MaterialExpressiveTheme(
                         colorScheme = colorScheme,
                         typography = appTypography(),
-                        content = content
-                )
+                ) {
+                        Box(
+                                modifier = if (updatesSystemChrome) {
+                                        Modifier.drawWithContent {
+                                                layer.record { this@drawWithContent.drawContent() }
+                                                drawLayer(layer)
+                                                outgoingFrame?.let { drawImage(it, alpha = outgoingAlpha.value) }
+                                        }
+                                } else {
+                                        Modifier
+                                },
+                                propagateMinConstraints = true,
+                        ) {
+                                content()
+                        }
+                }
         }
 }
 

@@ -30,6 +30,7 @@ import id.homebase.api.crypto.toUtf8ByteArray
 import id.homebase.api.platform.BackgroundExecutionAssertion
 import id.homebase.api.platform.beginBackgroundExecutionAssertion
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OutboxSerializer
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -417,7 +418,7 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.DeleteFilesByGroupId,
-            json = OdinSystemSerializer.serialize(request)
+            json = OutboxSerializer.serialize(request)
         ),
         sendNow,
     )
@@ -434,7 +435,7 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.DeleteFile,
-            json = OdinSystemSerializer.serialize(request)
+            json = OutboxSerializer.serialize(request)
         ),
         sendNow,
     )
@@ -452,7 +453,7 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UpdateFile,
-            json = OdinSystemSerializer.serialize(request)
+            json = OutboxSerializer.serialize(request)
         ),
         sendNow,
     )
@@ -470,7 +471,7 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UpdateFile,
-            json = OdinSystemSerializer.serialize(request)
+            json = OutboxSerializer.serialize(request)
         ),
         sendNow,
     )
@@ -488,7 +489,7 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UploadNewFile,
-            json = OdinSystemSerializer.serialize(request)
+            json = OutboxSerializer.serialize(request)
         ),
         sendNow,
     )
@@ -509,7 +510,7 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UploadNewFile,
-            json = OdinSystemSerializer.serialize(request)
+            json = OutboxSerializer.serialize(request)
         ),
         sendNow,
     )
@@ -537,7 +538,7 @@ class OutboxSync(
             dependencyUniqueId = null,
             priority = priority,
             uploadType = ScheduledPushOutboxUploader.SchedulePush,
-            json = OdinSystemSerializer.serialize(request),
+            json = OutboxSerializer.serialize(request),
         ),
         sendNow,
     )
@@ -557,7 +558,7 @@ class OutboxSync(
             dependencyUniqueId = null,
             priority = priority,
             uploadType = ScheduledPushOutboxUploader.CancelPush,
-            json = OdinSystemSerializer.serialize(request),
+            json = OutboxSerializer.serialize(request),
         ),
         sendNow,
     )
@@ -569,7 +570,7 @@ class OutboxSync(
     public suspend fun pendingUploadFileRequest(driveId: Uuid, uniqueId: Uuid): UploadFileRequest? {
         val row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId) ?: return null
         if (row.uploadType != DriveOutboxUploader.UploadNewFile) return null
-        return OdinSystemSerializer.deserialize<UploadFileRequest>(row.json.decodeToString())
+        return OutboxSerializer.decode<UploadFileRequest>(row)
     }
 
     // In-memory last upload-failure reason per (driveId, uniqueId), surfaced as
@@ -787,7 +788,7 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UpdateLocalMetadataTags,
-            json = OdinSystemSerializer.serialize(request)
+            json = OutboxSerializer.serialize(request)
         ),
         sendNow,
     )
@@ -807,7 +808,7 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UpdateLocalMetadataContent,
-            json = OdinSystemSerializer.serialize(request)
+            json = OutboxSerializer.serialize(request)
         )
         Logger.d(tag = "MarkAsRead") {
             "OutboxSync.tryEnqueue(UpdateLocalAppdataContent): result=$result drive=${request.driveId} fileId=${request.fileId}"
@@ -827,7 +828,7 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.ToggleReaction,
-            json = OdinSystemSerializer.serialize(request)
+            json = OutboxSerializer.serialize(request)
         ),
         sendNow,
     )
@@ -850,7 +851,7 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.SetReactions,
-            json = OdinSystemSerializer.serialize(request)
+            json = OutboxSerializer.serialize(request)
         ),
         sendNow,
     )
@@ -870,7 +871,7 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.SendReadReceiptByFileIds,
-            json = OdinSystemSerializer.serialize(request)
+            json = OutboxSerializer.serialize(request)
         )
         Logger.d(tag = "MarkAsRead") {
             "OutboxSync.tryEnqueue(SendReadReceiptByFileIds): result=$result drive=${request.driveId}"
@@ -970,6 +971,7 @@ class OutboxSync(
      * contributor to the cacheDir backlog seen on a real device.
      */
     private fun cleanupPayloadsForDroppedRow(outboxRecord: Outbox) {
+        // Lenient: the row is being dropped and cleanup should still find a stale row's temp files.
         val json = outboxRecord.json.decodeToString()
         val payloads = when (outboxRecord.uploadType) {
             DriveOutboxUploader.UploadNewFile ->

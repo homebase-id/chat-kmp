@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -54,7 +55,6 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.services.collectContext
-import id.homebase.chat.widget.video.formatDurationLabel
 import id.homebase.common.widget.VideoInfoOverlay
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
@@ -438,7 +438,7 @@ fun MediaItem(
                         )
                         if (displayDurationMs != null) {
                             Text(
-                                text = formatDurationLabel(displayDurationMs),
+                                text = formatHms(displayDurationMs, showHours = false),
                                 color = Color.White,
                                 fontSize = 10.sp,
                                 modifier = Modifier
@@ -510,7 +510,7 @@ fun MediaItem(
                         )
                         if (noIvDurationMs != null) {
                             Text(
-                                text = formatDurationLabel(noIvDurationMs),
+                                text = formatHms(noIvDurationMs, showHours = false),
                                 color = Color.White,
                                 fontSize = 10.sp,
                                 modifier = Modifier

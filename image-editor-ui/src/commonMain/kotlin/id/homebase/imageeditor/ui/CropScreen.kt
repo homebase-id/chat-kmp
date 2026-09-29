@@ -132,19 +132,10 @@ fun CropScreen(
                     onZoomImage = { scale, cx, cy -> viewModel.zoomMainImage(scale, cx to cy) },
                     onCommitImage = { viewModel.commitMainImageGesture() },
                 )
-                // Animate viewLocal smoothly so the post-release reflow after a
-                // thumb drag commit doesn't read as a "snap-zoom". Hit-test must
-                // use the *animated* (= visible) snapshot, otherwise during the
-                // 250 ms reflow the visible corner sits at the interpolated
-                // viewLocal while the hit zone is at the target — a touch on the
-                // visible corner can miss the 36 dp radius and the drag is
-                // mis-classified as an image transform. The drag handler itself
-                // reads the live `model.hierarchy.*.localMatrix` (not the
-                // snapshot), so using the animated copy here only affects which
-                // corners are hittable, not the math that follows.
+                // Hit-test the target matrices (as Signal does); only `draw` carries the discrete-edit animation.
                 val rawSnapshot = viewModel.matrixSnapshot
-                val animatedSnapshot = rememberAnimatedSnapshot(rawSnapshot)
-                val snapshotState = rememberUpdatedState(animatedSnapshot)
+                val animated = rememberAnimatedSnapshot(rawSnapshot)
+                val snapshotState = rememberUpdatedState(animated.hit)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -154,11 +145,11 @@ fun CropScreen(
                 ) {
                     CropImageCanvas(
                         bitmap = viewModel.previewBitmap,
-                        snapshot = animatedSnapshot,
+                        snapshot = animated.draw,
                         modifier = Modifier.fillMaxSize(),
                     )
                     CropOverlay(
-                        snapshot = animatedSnapshot,
+                        snapshot = animated.draw,
                         showGrid = gridState.value,
                         modifier = Modifier
                             .fillMaxSize()

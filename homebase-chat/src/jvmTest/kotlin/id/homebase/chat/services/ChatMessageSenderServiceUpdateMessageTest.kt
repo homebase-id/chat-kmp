@@ -14,6 +14,7 @@ import id.homebase.api.common.BatchResult
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OutboxDecodeException
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.Outbox
 import id.homebase.chat.data.MessageUiModel
@@ -23,6 +24,7 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
@@ -411,6 +413,83 @@ class ChatMessageSenderServiceUpdateMessageTest {
             assertTrue(reparsed.isValid(), "re-parsed Poll descriptor must be valid")
             assertTrue(reparsed.closed, "coalesced descriptor must be closed")
             assertEquals(descriptor.options, reparsed.options)
+        }
+    }
+
+    @Test
+    fun `updateMessage on a stale queued create fails with OutboxDecodeException and enqueues no UpdateFile`() = runTest {
+        val messageLookup = SeedableMessageLookup()
+
+        ChatMessageSenderServiceTestFixture().use { fixture ->
+            val service = fixture.build(
+                messageLookup = { _: DatabaseManager -> messageLookup },
+            )
+            messageLookup.backFilesWith(fixture)
+
+            val conversationId = fixture.seedConversation(others = listOf("bob.test"))
+            val messageId = Uuid.random()
+            val versionTag = Uuid.random()
+            val keyHeader = KeyHeader.newRandom16()
+            val descriptor = PollDescriptor(question = "Best day?", options = listOf("Monday", "Tuesday"))
+
+            service.sendNewTypedMessage(
+                messageUniqueId = messageId,
+                conversationId = conversationId,
+                content = MessageContent.Poll(descriptor),
+                previousMessageUniqueId = null,
+            )
+
+            val pending = fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, messageId)
+            assertNotNull(pending, "the create must still be queued")
+            fixture.dbm.outbox.deleteBy(fixture.chatDriveId, messageId)
+            fixture.dbm.outbox.insert(
+                driveId = fixture.chatDriveId,
+                uniqueId = messageId,
+                dependencyUniqueId = null,
+                priority = 0,
+                uploadType = DriveOutboxUploader.UploadNewFile,
+                json = """{"driveId":"${fixture.chatDriveId}","fieldRemovedInThisRelease":1}""".encodeToByteArray(),
+                filePaths = null,
+            )
+
+            messageLookup.seed(
+                MessageUiModel(
+                    id = messageId,
+                    globalTransitId = null,
+                    fileId = Uuid.random(),
+                    conversationId = conversationId,
+                    content = descriptor.summaryLine(),
+                    userDate = Instant.fromEpochMilliseconds(1_000L),
+                    modified = null,
+                    created = Instant.fromEpochMilliseconds(1_000L),
+                    originalAuthor = OdinId(fixture.testDomain),
+                    sender = OdinId(fixture.testDomain),
+                    displayName = fixture.testDomain,
+                    isDeleted = false,
+                    isPendingSend = true,
+                    versionTag = versionTag,
+                    messageAppData = MessageAppData(),
+                    reactionPreview = null,
+                    previewThumbnail = null,
+                    payloads = persistentListOf(),
+                    keyHeader = keyHeader,
+                    hasMore = false,
+                    messageContent = MessageContent.Poll(descriptor),
+                )
+            )
+
+            assertFailsWith<OutboxDecodeException> {
+                service.updateMessage(
+                    messageId = messageId,
+                    versionTag = versionTag,
+                    content = OdinSystemSerializer.serialize(descriptor.copy(closed = true)),
+                )
+            }
+
+            val row = fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, messageId)
+            assertNotNull(row, "the stale create must stay queued so the drain drops it visibly")
+            assertEquals(DriveOutboxUploader.UploadNewFile, row.uploadType)
+            assertEquals(1L, fixture.dbm.outbox.count(), "no UpdateFile may be enqueued")
         }
     }
 

@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -51,6 +52,15 @@ class UploadMaterializeTest {
         assertTrue(a != b, "two attachments must not collide on one temp path")
         assertEquals(listOf<Byte>(1), fs.readFileBytes(a).toList())
         assertEquals(listOf<Byte>(2), fs.readFileBytes(b).toList())
+    }
+
+    @Test
+    fun isUnderDirMatchesOnlyRealDescendants() {
+        assertTrue(isUnderDir("/cache", "/cache/upload-temp/a.jpg"))
+        assertTrue(isUnderDir("/cache/", "/cache/a.jpg"))
+        assertFalse(isUnderDir("/cache", "/cache-other/a.jpg"))
+        assertFalse(isUnderDir("/cache", "/cache"))
+        assertFalse(isUnderDir("/cache", "content://media/external/images/media/1"))
     }
 
     @Test

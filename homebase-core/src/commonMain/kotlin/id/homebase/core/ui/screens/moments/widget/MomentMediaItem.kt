@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments.widget
 
+import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -445,7 +446,7 @@ fun MomentMediaItem(
                     )
                     if (displayDurationMs != null) {
                         Text(
-                            text = formatDurationLabel(displayDurationMs),
+                            text = formatHms(displayDurationMs, showHours = false),
                             color = Color.White,
                             fontSize = 10.sp,
                             modifier = Modifier
@@ -544,13 +545,6 @@ internal fun VideoPreloadEffect(
             onPreloading(p < 1f)
         }
     }
-}
-
-internal fun formatDurationLabel(ms: Long): String {
-    val totalSec = ms / 1000
-    val m = totalSec / 60
-    val s = totalSec % 60
-    return "$m:${s.toString().padStart(2, '0')}"
 }
 
 @Composable

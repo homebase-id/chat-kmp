@@ -11,6 +11,8 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.uploadTempDirectory
 import id.homebase.core.audio.AudioSession
 import io.github.vinceglb.filekit.PlatformFile
+import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.update
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -302,6 +304,14 @@ internal class IosCameraEngine(private val outputDir: String, private val record
     }
 
     private fun photoModeFormat(device: AVCaptureDevice): AVCaptureDeviceFormat? {
+        val id = device.uniqueID
+        photoFormatCache.value[id]?.let { return it.format }
+        val chosen = choosePhotoModeFormatFor(device)
+        photoFormatCache.update { it + (id to ChosenPhotoFormat(chosen)) }
+        return chosen
+    }
+
+    private fun choosePhotoModeFormatFor(device: AVCaptureDevice): AVCaptureDeviceFormat? {
         // 10-bit formats can't be recorded as H.264.
         val formats = device.formats.filterIsInstance<AVCaptureDeviceFormat>()
             .filter { CMFormatDescriptionGetMediaSubType(it.formatDescription) in EIGHT_BIT_420 }
@@ -725,3 +735,8 @@ private val FlashMode.avMode: AVCaptureFlashMode
         FlashMode.Auto -> AVCaptureFlashModeAuto
         FlashMode.On -> AVCaptureFlashModeOn
     }
+
+private class ChosenPhotoFormat(val format: AVCaptureDeviceFormat?)
+
+// A device's formats never change, and walking them all costs on every open, flip and mode switch.
+private val photoFormatCache = atomic<Map<String, ChosenPhotoFormat>>(emptyMap())
