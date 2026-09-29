@@ -67,9 +67,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import coil3.ImageLoader
-import coil3.compose.AsyncImage
-import org.koin.compose.koinInject
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -91,6 +88,8 @@ import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import coil3.ImageLoader
+import coil3.compose.AsyncImage
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatHms
 import id.homebase.resources.MR
@@ -120,6 +119,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 
 internal const val CLOSE_TAG = "camera_close"
 internal const val FLASH_TAG = "camera_flash"
