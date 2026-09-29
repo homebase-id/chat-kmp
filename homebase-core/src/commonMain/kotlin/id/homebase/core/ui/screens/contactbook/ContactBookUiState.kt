@@ -119,7 +119,6 @@ sealed interface ContactBookOverlay {
         val alreadyHeldCircleIds: Set<String> = emptySet(),
         val isSubmitting: Boolean = false,
         val failed: Boolean = false,
-        val done: Boolean = false,
     ) : ContactBookOverlay
 }
 
@@ -288,6 +287,7 @@ sealed interface ContactBookUiEvent {
     data class Error(val error: ContactBookError) : ContactBookUiEvent
     /** User skipped onboarding — pop back out of the contacts tab. */
     data object CloseOnboarding : ContactBookUiEvent
+    data object ReviewCompleted : ContactBookUiEvent
 }
 
 enum class ContactBookError {

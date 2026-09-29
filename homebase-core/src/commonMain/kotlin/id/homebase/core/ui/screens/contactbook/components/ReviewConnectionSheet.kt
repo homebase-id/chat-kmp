@@ -30,6 +30,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -98,10 +100,10 @@ fun ReviewConnectionSheet(
     errorText: String?,
     onSubmit: (Set<String>) -> Unit,
     onDismiss: () -> Unit,
-    done: Boolean = false,
+    completed: Flow<Unit> = emptyFlow(),
 ) {
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true, maxWidth = 680.dp) {
-        LaunchedEffect(done) { if (done) dismiss() }
+        LaunchedEffect(completed) { completed.collect { dismiss() } }
         ReviewConnectionContent(
             displayName = displayName,
             odinId = odinId,

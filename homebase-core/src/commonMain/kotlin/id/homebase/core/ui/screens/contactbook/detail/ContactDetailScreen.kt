@@ -163,6 +163,8 @@ import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 
 @Composable
 fun ContactDetailScreen(
@@ -204,6 +206,7 @@ fun ContactDetailScreen(
                 is ContactDetailEvent.OpenConversation -> onOpenConversation(event.conversationId)
                 is ContactDetailEvent.SeeAllMedia -> onSeeAllMedia(event.conversationId)
                 ContactDetailEvent.Back -> onBack()
+                ContactDetailEvent.ReviewCompleted -> Unit
                 ContactDetailEvent.DeletedAndBack -> onDeleted()
                 ContactDetailEvent.Error -> snackbarHostState.showSnackbar(errSave)
                 ContactDetailEvent.Forbidden -> snackbarHostState.showSnackbar(errForbidden)
@@ -320,6 +323,9 @@ fun ContactDetailScreen(
         )
     }
 
+    val reviewCompleted = remember(viewModel) {
+        viewModel.events.filter { it == ContactDetailEvent.ReviewCompleted }.map { }
+    }
     uiState.review?.let { review ->
         val entry = uiState.entry
         ReviewConnectionSheet(
@@ -331,7 +337,7 @@ fun ContactDetailScreen(
             groups = uiState.reviewCircleGroups,
             alreadyHeldCircleIds = review.alreadyHeldCircleIds,
             isSubmitting = review.isSubmitting,
-            done = review.done,
+            completed = reviewCompleted,
             errorText = if (review.failed) {
                 stringResource(MR.string.contact_review_failed)
             } else null,
