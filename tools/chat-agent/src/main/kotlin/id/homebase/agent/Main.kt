@@ -4,7 +4,7 @@ import kotlin.system.exitProcess
 import kotlinx.coroutines.runBlocking
 
 private const val USAGE =
-    "usage: chat-agent login --profile <p> [--identity <domain>] | read --profile <p> [--limit <n>] | send --profile <p> <text> | watch --profile <p>"
+    "usage: chat-agent login --profile <p> [--identity <domain>] | read --profile <p> [--limit <n>] | send --profile <p> <text> | watch --profile <p> | mcp --profile <p>"
 
 fun main(args: Array<String>) {
     val command = args.firstOrNull()
@@ -12,7 +12,7 @@ fun main(args: Array<String>) {
     val options = rest.chunked(2).associate { it[0] to it.getOrNull(1) }
     val sendText = rest.filterIndexed { i, _ -> i !in profileArgIndexes(rest) }.joinToString(" ")
     val profile = options["--profile"]
-    if (command !in setOf("login", "read", "send", "watch") || profile == null) {
+    if (command !in setOf("login", "read", "send", "watch", "mcp") || profile == null) {
         System.err.println(USAGE)
         exitProcess(2)
     }
@@ -23,6 +23,7 @@ fun main(args: Array<String>) {
                 "login" -> login(options["--identity"] ?: prompt("Homebase identity (e.g. me.homebase.id): "))
                 "send" -> send(profile, sendText)
                 "watch" -> watch(profile)
+                "mcp" -> mcp(profile)
                 else -> read(profile, options["--limit"]?.toIntOrNull() ?: 20)
             }
         }

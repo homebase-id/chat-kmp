@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "homebase-chat": {
+      "command": "/Users/biswa/Documents/GitHub/chat-kmp-agent/tools/chat-agent/build/install/chat-agent/bin/chat-agent",
+      "args": ["mcp", "--profile", "me"],
+      "env": {
+        "JAVA_HOME": "/path/to/jdk-21"
+      }
+    }
+  }
+}

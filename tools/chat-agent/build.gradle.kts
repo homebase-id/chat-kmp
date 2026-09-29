@@ -22,6 +22,8 @@ dependencies {
     implementation(project(":homebase-api"))
     implementation(project(":homebase-chat"))
     implementation(libs.ktor.client.core)
+    implementation(libs.mcp.kotlin.sdk.server)
+    implementation(libs.kotlinx.io.core)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.kotlin.test)

@@ -69,6 +69,7 @@ kotlinx-datetime = "0.7.1"
 kotlin-immutable-collections = "0.4.0"
 kotlinx-io = "0.9.0"
 ktor = "3.4.3"
+mcp-kotlin-sdk = "0.14.0"
 kermit = "2.1.0"
 cryptography = "0.5.0"
 robolectric = "4.16.1"
@@ -151,6 +152,7 @@ androidx-media3-exoplayer = { module = "androidx.media3:media3-exoplayer", versi
 androidx-media3-exoplayer-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "androidx-media3" }
 androidx-media3-ui = { module = "androidx.media3:media3-ui", version.ref = "androidx-media3" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+mcp-kotlin-sdk-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp-kotlin-sdk" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
 ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
