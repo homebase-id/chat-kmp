@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.haptics.rememberHaptics
+import id.homebase.core.permissions.PermissionType
+import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.camera_permission_body
@@ -273,7 +275,10 @@ private fun CameraMessage(
 @Composable
 private fun rememberNewestGalleryThumbnailUri(): String? {
     val manager = koinInject<PlatformGalleryManager>()
-    return produceState<String?>(null, manager) {
-        value = runCatching { manager.fetchGalleryImages(1) }.getOrNull()?.firstOrNull()?.thumbnailUri
+    val permissions = createPermissionsManager { _, _, _ -> }
+    return produceState<String?>(null, manager, permissions) {
+        val canRead = permissions.isPermissionGranted(PermissionType.GALLERY) ||
+            permissions.isPermissionGranted(PermissionType.GALLERY_LIMITED)
+        if (canRead) value = runCatching { manager.fetchGalleryImages(1) }.getOrNull()?.firstOrNull()?.thumbnailUri
     }.value
 }
