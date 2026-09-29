@@ -1886,7 +1886,6 @@
     <string name="contactbook_circle_new">New</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
     <string name="contactbook_circle_disabled">Disabled</string>
-    <string name="contactbook_circle_name_disabled">%1$s (disabled)</string>
     <string name="contactbook_circle_enabled">Circle enabled</string>
     <string name="contactbook_circle_enabled_hint">Disabling keeps the members but stops their access.</string>
     <string name="contactbook_circle_members_count">%1$d members</string>
@@ -1996,11 +1995,8 @@
     <string name="contactbook_detail_connect">Send connection request</string>
     <string name="contactbook_detail_not_connected">Not connected</string>
     <string name="contactbook_detail_pending">Connection request pending</string>
-    <string name="contactbook_detail_request_incoming">Wants to connect with you</string>
     <string name="contactbook_detail_request_outgoing">Connection request sent</string>
-    <string name="contactbook_detail_accept">Accept</string>
     <string name="contactbook_detail_reject">Reject</string>
-    <string name="contactbook_detail_add_to_circles">Add to circles (optional)</string>
     <string name="contactbook_detail_cancel_request">Cancel request</string>
     <string name="contactbook_detail_blocked">Blocked</string>
     <string name="contactbook_detail_recent_media">Recent media</string>

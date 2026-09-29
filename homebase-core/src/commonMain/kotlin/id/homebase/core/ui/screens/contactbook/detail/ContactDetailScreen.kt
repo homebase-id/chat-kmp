@@ -439,17 +439,12 @@ private fun ContactDetailContent(
                     // needs synced ext_data — none exist before connecting). Show a self-contained
                     // public-profile card to inform Accept/Reject instead of the placeholder tabs
                     // (#921). Once accepted, this same screen flips to the full detail below.
-                    uiState.isPendingIncoming -> PendingRequestProfile(
+                    uiState.isPendingIncoming && uiState.requestReview != null -> PendingRequestProfile(
                         entry = entry,
-                        assignableCircles = uiState.assignableCircles,
                         review = uiState.requestReview,
                         reviewCircleGroups = uiState.reviewCircleGroups,
-                        onAccept = { selectedCircleIds ->
-                            onAction(ContactDetailAction.AcceptRequestClicked(selectedCircleIds))
-                        },
                         onReviewSubmit = { ids -> onAction(ContactDetailAction.RequestReviewSubmitted(ids)) },
                         onReject = { onAction(ContactDetailAction.RejectRequestClicked) },
-                        actionInProgress = uiState.actionInProgress,
                         onAvatarClick = onAvatarClick,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
@@ -713,7 +708,7 @@ private fun DetailHeader(
     val blocked = status == ConnectionStatus.Blocked
     val pending = status == ConnectionStatus.None
     // No incoming-request state here: a pending incoming request takes over the whole body with
-    // [PendingRequestProfile] (which owns Accept/Reject plus the circle picker), so this header
+    // [PendingRequestProfile] (the review, whose submit accepts), so this header
     // only ever renders once that request is gone — accepted, rejected, or never there.
     val requestOutgoing = uiState.requestDirection == RequestDirection.OUTGOING
     // Has a Homebase identity but no active connection, pending request, or block.

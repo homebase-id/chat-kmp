@@ -2,10 +2,8 @@ package id.homebase.core.ui.screens.contactbook
 
 import id.homebase.api.client.connections.CircleGrantOn
 import id.homebase.api.client.connections.RedactedCircleDefinition
-import id.homebase.chat.services.convo.contact.CircleMembershipState
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
-import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 
 /**
  * True for a circle whose owning app enrols members itself, rather than one the user curates.
@@ -24,28 +22,3 @@ fun isLegacySystemCircleId(id: String): Boolean =
 
 /** Whether a circle is shown as a user circle, enabled or not. */
 fun RedactedCircleDefinition.isUserCircle(): Boolean = isPersonalKind()
-
-/**
- * Every circle the signed-in user could add a contact to — independent of any contact's
- * membership. Unnamed circles are excluded; disabled ones are kept and flagged so the picker can
- * show them unselectable. The result is deduped by id and sorted A–Z.
- *
- * This is [isPersonalKind], not the narrower "no enrolment of its own": a review circle is
- * chosen by the owner, and accepting an incoming request *is* a review, so it belongs in the
- * picker on that surface. Only ambient circles are withheld — hand-managing one means nothing
- * when the app re-enrols the member anyway.
- *
- * Feeds the accept-with-circles picker on both incoming-request surfaces (contact detail's
- * [id.homebase.core.ui.screens.contactbook.detail.PendingRequestProfile] and the Add Contact
- * flow), so both offer the same list.
- */
-fun CircleMembershipState.assignableCircles(): List<ContactCircleUi> =
-    circles
-        .map { it.circle }
-        .filter { it.isUserCircle() }
-        .filter { it.name.isNotBlank() }
-        .map {
-            ContactCircleUi(it.id, it.name, pending = false, emoji = it.emoji, disabled = it.disabled)
-        }
-        .distinctBy { it.id.lowercase() }
-        .sortedBy { it.name.lowercase() }

@@ -12,12 +12,10 @@ import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
 import id.homebase.core.config.EMERGENCY_LOCATION_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
-import id.homebase.core.ui.screens.contactbook.assignableCircles
 import id.homebase.core.ui.screens.contactbook.isAppDefaultCircle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -31,20 +29,13 @@ class AssignableCirclesTest {
         grantOn: CircleGrantOn = CircleGrantOn.None,
         designation: CircleDesignation = CircleDesignation.Personal,
         appId: Uuid? = null,
-        disabled: Boolean = false,
-        emoji: String? = null,
     ) = RedactedCircleDefinition(
         id = id,
         name = name,
-        disabled = disabled,
         grantOn = grantOn,
         designation = designation,
         appId = appId,
-        emoji = emoji,
     )
-
-    private fun state(vararg defs: RedactedCircleDefinition) =
-        CircleMembershipState(isLoaded = true, circles = defs.map { CircleWithMembers(circle = it) })
 
     /**
      * The reason the legacy ids survive the move to GrantOn: a server below odin-core #1688 reports
@@ -63,60 +54,15 @@ class AssignableCirclesTest {
         assertTrue(chat.isAppDefaultCircle())
     }
 
-    /** App ownership alone must not hide a circle — Friends and Family are contacts-app-owned. */
+    /** App ownership alone must not make a circle an app default — Friends and Family are contacts-app-owned. */
     @Test
-    fun appOwnedRelationshipCirclesStayAssignable() {
+    fun appOwnedRelationshipCirclesAreNotAppDefaults() {
         val friends = circle(
             id = "3d594614f445f6b00014e9b77730b833",
             name = "Friends",
             appId = Uuid.random(),
         )
         assertFalse(friends.isAppDefaultCircle())
-        assertEquals(listOf("Friends"), state(friends).assignableCircles().map { it.name })
-    }
-
-    @Test
-    fun audienceAndVendorCirclesAreNeverAssignableHere() {
-        val subscribers = circle("aa", "Subscribers", designation = CircleDesignation.Audience)
-        val bank = circle("bb", "Bank", designation = CircleDesignation.Vendor)
-        val family = circle("cc", "Family")
-
-        assertEquals(listOf("Family"), state(subscribers, bank, family).assignableCircles().map { it.name })
-    }
-
-    @Test
-    fun unnamedCirclesAreExcluded() {
-        val blank = circle("ee", "  ")
-        val keep = circle("ff", "Buddies")
-
-        assertEquals(listOf("Buddies"), state(blank, keep).assignableCircles().map { it.name })
-    }
-
-    @Test
-    fun aDisabledCircleIsListedAndFlagged() {
-        val circles = state(circle("dd", "Retired", disabled = true), circle("ff", "Buddies"))
-
-        val ui = circles.assignableCircles().associateBy { it.name }
-        assertTrue(ui.getValue("Retired").disabled)
-        assertFalse(ui.getValue("Buddies").disabled)
-    }
-
-    /**
-     * A ZWJ sequence is a single user-perceived glyph made of several codepoints. It has to reach
-     * the UI byte-identical — any truncation on the way splits it into unrelated people.
-     */
-    @Test
-    fun aZwjEmojiReachesTheUiIntact() {
-        val family = "\uD83E\uDDD1\u200D\uD83E\uDDD1\u200D\uD83E\uDDD2\u200D\uD83E\uDDD2"
-        val ui = state(circle("gg", "Family", emoji = family)).assignableCircles().single()
-
-        assertEquals(family, ui.emoji)
-        assertEquals("Family", ui.name)
-    }
-
-    @Test
-    fun aCircleWithoutAnEmojiCarriesNull() {
-        assertNull(state(circle("hh", "Buddies")).assignableCircles().single().emoji)
     }
 }
 

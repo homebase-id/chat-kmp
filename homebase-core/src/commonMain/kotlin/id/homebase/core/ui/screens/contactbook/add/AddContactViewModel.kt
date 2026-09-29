@@ -23,7 +23,6 @@ import id.homebase.core.ui.screens.contactbook.ConnectionRequestFailure
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
-import id.homebase.core.ui.screens.contactbook.assignableCircles
 import id.homebase.core.ui.screens.contactbook.connectionRequestFailure
 import id.homebase.core.ui.screens.contactbook.isTerminal
 import id.homebase.core.ui.screens.contactbook.isPendingIncomingRequest
@@ -78,9 +77,8 @@ class AddContactViewModel(
     )
 
     /**
-     * Public state, with [AddContactUiState.relation], [AddContactUiState.alreadySaved] and
-     * [AddContactUiState.assignableCircles] folded in live from the connection map, the circle
-     * definitions, the pending incoming/outgoing request lists, and the saved contacts. This is
+     * Public state, with [AddContactUiState.relation] and [AddContactUiState.alreadySaved]
+     * folded in live from the connection map, the circle definitions, the pending incoming/outgoing request lists, and the saved contacts. This is
      * what lets the resolved-identity card offer exactly the applicable action (send / accept /
      * reject / cancel / nothing) and avoid offering to save a contact twice.
      */
@@ -124,7 +122,6 @@ class AddContactViewModel(
             s.copy(
                 relation = relation,
                 alreadySaved = alreadySaved,
-                assignableCircles = circ.assignableCircles(),
                 // This fold re-runs on every keystroke in the identity field; the groups are read
                 // only while a request is actually under review.
                 reviewCircleGroups =
@@ -182,12 +179,6 @@ class AddContactViewModel(
                 _state.update { it.copy(mode = AddContactMode.BY_IDENTITY) }
             AddContactAction.SaveClicked -> save()
             AddContactAction.MessageClicked -> openConversation()
-            is AddContactAction.AcceptRequestClicked -> {
-                val circleUuids = action.circleIds.toCircleUuids()
-                handleRequestAction(AddContactEvent.RequestAccepted) {
-                    connectionRequestService.acceptIncomingRequest(it, circleUuids)
-                }
-            }
             is AddContactAction.ReviewSubmitted -> acceptReviewedRequest(action.circleIds)
             AddContactAction.RejectRequestClicked -> handleRequestAction(
                 AddContactEvent.RequestRejected,

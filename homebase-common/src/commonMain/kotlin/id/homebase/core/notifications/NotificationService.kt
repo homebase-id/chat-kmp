@@ -660,7 +660,7 @@ class NotificationService(
                 }
 
                 // An incoming connection request is reviewable in-app (contact detail shows the
-                // requester's public profile with Accept/Reject + the circle picker), so it opens
+                // requester's public profile as the connection review), so it opens
                 // there instead of bouncing to the owner web console like the owner app's other
                 // notifications. Sits ahead of the companion branch, which OWNER_APP_ID would
                 // otherwise claim; a payload with no sender leaves this null and falls through to

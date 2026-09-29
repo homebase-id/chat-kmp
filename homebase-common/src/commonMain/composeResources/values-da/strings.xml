@@ -1597,9 +1597,7 @@
     <string name="contactbook_detail_connect">Send forbindelsesanmodning</string>
     <string name="contactbook_detail_not_connected">Ikke forbundet</string>
     <string name="contactbook_detail_pending">Forbindelsesanmodning afventer</string>
-    <string name="contactbook_detail_request_incoming">Vil gerne forbindes med dig</string>
     <string name="contactbook_detail_request_outgoing">Forbindelsesanmodning sendt</string>
-    <string name="contactbook_detail_accept">Acceptér</string>
     <string name="contactbook_detail_reject">Afvis</string>
     <string name="contactbook_detail_cancel_request">Annullér anmodning</string>
     <string name="contactbook_detail_blocked">Blokeret</string>

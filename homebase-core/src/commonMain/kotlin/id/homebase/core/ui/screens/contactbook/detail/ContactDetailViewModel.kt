@@ -43,7 +43,6 @@ import id.homebase.core.ui.screens.contactbook.ConnectionRequestFailure
 import id.homebase.core.ui.screens.contactbook.connectionRequestFailure
 import id.homebase.core.ui.screens.contactbook.isTerminal
 import id.homebase.core.ui.screens.contactbook.toCircleUuids
-import id.homebase.core.ui.screens.contactbook.assignableCircles
 import id.homebase.core.ui.screens.contactbook.CircleAccessState
 import id.homebase.core.ui.screens.contactbook.ContactState
 import id.homebase.core.ui.screens.contactbook.circleAccessState
@@ -66,7 +65,6 @@ import id.homebase.core.ui.screens.contactbook.saveContactEdit
 import id.homebase.core.ui.screens.contactbook.withOverride
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -343,10 +341,6 @@ class ContactDetailViewModel(
                     .filter { it.name.isNotBlank() || it.accessState == CircleAccessState.AwaitingApp }
                     .distinctBy { it.id.lowercase() }
                     .sortedBy { it.name.lowercase() }
-                // Every user-defined circle the user could add a contact to — independent of this
-                // contact's membership. Same system-circle exclusion as the chips above; feeds the
-                // pending-request circle picker (#921 Part B).
-                val assignableCircles = circ.assignableCircles()
                 val requestUnderReview = incomingRequest.takeIf { pendingIncoming }
                 _uiState.update {
                     it.copy(
@@ -361,7 +355,6 @@ class ContactDetailViewModel(
                         reviewCircleGroups = circ.reviewCircleGroups(),
                         circles = circleItems,
                         connectionStatuses = conn.statusByDomain(),
-                        assignableCircles = assignableCircles,
                         isLoading = false,
                         isSelf = isSelf,
                         requestDirection = requestDirection,
@@ -508,12 +501,6 @@ class ContactDetailViewModel(
             ContactDetailAction.BlockClicked -> _uiState.update { it.copy(confirm = ContactDetailConfirm.BLOCK) }
             ContactDetailAction.DisconnectClicked ->
                 _uiState.update { it.copy(confirm = ContactDetailConfirm.DISCONNECT) }
-            is ContactDetailAction.AcceptRequestClicked -> {
-                val circleUuids = action.circleIds.toCircleUuids()
-                handleRequestAction(event = ContactDetailEvent.RequestAccepted) {
-                    connectionRequestService.acceptIncomingRequest(it, circleUuids)
-                }
-            }
             ContactDetailAction.RejectRequestClicked -> handleRequestAction(
                 event = ContactDetailEvent.RequestRejected,
             ) { connectionRequestService.rejectIncomingRequest(it) }
