@@ -69,8 +69,8 @@ data class ConnectionState(
  * Owner circles (including system circles) with their members, fetched alongside the
  * connection map on every [ConnectionService.refresh]. Powers circle-membership reads:
  * the contact-list "Confirmed" / "Introduced" pills (via the two system-circle ids) and
- * the contact-detail "circles this person is in" list. Not cached — it repopulates on the
- * next refresh, so on a cold start consumers fall back until the first refresh lands.
+ * the contact-detail "circles this person is in" list. Persisted by [ConnectionCacheRepository]
+ * and hydrated on a cold start, so offline it shows the last-known memberships.
  */
 data class CircleMembershipState(
     val isLoaded: Boolean = false,
@@ -249,6 +249,12 @@ class ConnectionService(
 
     private suspend fun hydrateFromCache() {
         try {
+            cache.hydrateCircles()?.let { cached ->
+                _circles.update { current ->
+                    if (current.isLoaded) current
+                    else CircleMembershipState(isLoaded = true, circles = cached)
+                }
+            }
             val hydrated = cache.hydrateConnections() ?: return
             _connections.update { current ->
                 // Cache hydration is a non-authoritative fallback: only apply it if we
@@ -292,6 +298,8 @@ class ConnectionService(
                         "ConnectionService circles: " +
                             circles.joinToString { "${it.circle.id}(${it.circle.name})=${it.members.size}" }
                     }
+                    runCatching { cache.persistCircles(circles) }
+                        .onFailure { Logger.w(it) { "ConnectionService: circle cache persist failed" } }
                 }
                 runCatching {
                     cache.persistConnections(
