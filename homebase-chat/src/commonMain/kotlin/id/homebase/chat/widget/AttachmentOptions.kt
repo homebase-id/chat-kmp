@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.core.util.formatHms
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -234,7 +235,7 @@ fun AttachmentGallery(
                                     val duration = galleryImage.durationMs
                                     if (duration != null && duration > 0) {
                                         Text(
-                                            text = formatDuration(duration),
+                                            text = formatHms(duration, padMinutes = true),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = Color.White,
                                             modifier = Modifier
@@ -437,18 +438,6 @@ fun AttachmentOptions(actions: ImmutableList<AttachmentAction>, onPicked: () -> 
                 )
             }
         }
-    }
-}
-
-private fun formatDuration(durationMs: Long): String {
-    val totalSeconds = durationMs / 1000
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    return if (hours > 0) {
-        "$hours:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
-    } else {
-        "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
     }
 }
 

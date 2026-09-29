@@ -18,4 +18,11 @@ class DurationFormatTest {
     fun negativeClampsToZero() {
         assertEquals("0:00", formatHms(-5))
     }
+
+    @Test
+    fun padMinutesZeroPadsMinutes() {
+        assertEquals("00:00", formatHms(0, padMinutes = true))
+        assertEquals("05:07", formatHms(307_000, padMinutes = true))
+        assertEquals("1:02:03", formatHms(3_723_000, padMinutes = true))
+    }
 }
