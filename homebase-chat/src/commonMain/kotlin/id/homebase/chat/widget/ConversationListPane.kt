@@ -106,6 +106,8 @@ import id.homebase.resources.chat_filter_by_unread_clear_button
 import id.homebase.resources.chat_filter_by_unread_description
 import id.homebase.resources.chat_new_conversation
 import id.homebase.resources.chat_options
+import id.homebase.resources.action_retry
+import id.homebase.resources.chat_initial_sync_failed
 import id.homebase.resources.chat_search_empty_description
 import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_search_result_empty
@@ -543,7 +545,26 @@ fun ConversationListPane(
                                 }
                             }
 
-                            is ConversationListContentState.Empty -> {
+                            is ConversationListContentState.Empty -> if (uiState.initialSyncFailed) {
+                                item {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        Text(
+                                            text = stringResource(MR.string.chat_initial_sync_failed),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.padding(horizontal = 24.dp),
+                                        )
+                                        TextButton(
+                                            onClick = { onUiAction(ConversationListUiAction.RetryInitialSync) },
+                                        ) {
+                                            Text(text = stringResource(MR.string.action_retry))
+                                        }
+                                    }
+                                }
+                            } else {
                                 item {
                                     Row(
                                         modifier = Modifier.fillMaxWidth().padding(top = 24.dp),

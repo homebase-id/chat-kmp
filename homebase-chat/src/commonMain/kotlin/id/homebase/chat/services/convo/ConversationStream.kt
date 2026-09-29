@@ -30,6 +30,7 @@ import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.share.ShareableConversation
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.util.initials
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -44,7 +45,9 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -89,6 +92,8 @@ class ConversationStream(
     private val _shareableConversations = MutableStateFlow<List<ShareableConversation>>(emptyList())
     private var started = false
     private var shareCacheJob: Job? = null
+
+    private val initialLoad = InitialLoadGate()
 
     /**
      * Conversation ids the user deleted in this app session. The file is still
@@ -281,6 +286,7 @@ class ConversationStream(
                     is BackendEvent.DriveEvent.Stopped -> {
                         if (event.driveId != chatDrive) return@collect
                         Logger.d("ConversationStream: Stopped(totalCount=${event.totalCount})")
+                        noteChatSyncRound(event.result, reloadFollows = event.totalCount > 0)
                         // Silent-DriveSync contract: the chat-drive DriveSync just
                         // landed N files in DriveMainIndex with no per-batch
                         // BatchReceived emits. Reload the conversation list from DB
@@ -339,10 +345,13 @@ class ConversationStream(
                                     if (shouldRecount) {
                                         requestUnreadEnrichment("DriveSyncStopped")
                                     }
+                                } catch (e: CancellationException) {
+                                    throw e
                                 } catch (e: Exception) {
                                     Logger.e(e) {
                                         "ConversationStream: post-Stopped reload FAILED: ${e.message}"
                                     }
+                                    failInitialLoad()
                                 }
                             }
                         }
@@ -650,7 +659,10 @@ class ConversationStream(
 
         // Sort by descending timestamp (adjust based on your UI needs)
         val sortedList = _conversations.value.items.sortedByDescending { it.latestMessageTimestamp }
-        _conversations.value = _conversations.value.copy(dataReady = true, items = sortedList)
+        _conversations.value = _conversations.value.copy(
+            dataReady = _conversations.value.dataReady || sortedList.isNotEmpty(),
+            items = sortedList,
+        )
 
         // Diagnostic for the asymmetric-badge investigation (plan
         // snazzy-frolicking-crown). End-of-batch snapshot of every
@@ -933,11 +945,8 @@ class ConversationStream(
 
         val basic = basicWithSource.map { it.first }
 
-        _conversations.value = ConversationsData(
-            dataReady = true,
-            items = basic,
-            enrichment = EnrichmentState(),
-        )
+        _conversations.value = initialLoad.loaded(basic, _conversations.value.dataReady)
+        _conversations.update(initialLoad::settle)
 
         Logger.i(tag = "ConvListPerf") {
             "loadBasicConversations end-to-end=${Clock.System.now().toEpochMilliseconds() - startedAt}ms " +
@@ -1400,6 +1409,7 @@ class ConversationStream(
      */
     fun reset() {
         started = false
+        initialLoad.reset()
         _conversations.value = ConversationsData(dataReady = false)
         _shareableConversations.value = emptyList()
         deletedIds.clear()
@@ -1410,19 +1420,7 @@ class ConversationStream(
         if (started) return
         started = true
         Logger.d("ConversationStream: start() — loading full conversation list from DB")
-        scope.launch {
-            // MANDATORY — flips dataReady=true for the UI.
-            loadBasicConversations()
-
-            // ENRICHMENT — three passes run sequentially. All three go through
-            // the single-threaded DB dispatcher anyway, so there's no benefit
-            // to parallelism and sequencing keeps the log trace readable.
-            // Ordering is deliberate: last-messages first (also drives the sort),
-            // then admins (group-settings only), then unread counts.
-            enrichWithLastMessages()
-            enrichWithAdmins()
-            enrichAllConversationsWithUnreadCounts(trigger = "ColdLoad")
-        }
+        scope.launch { runInitialLoad() }
 
         // Reactively update share cache when conversations or contacts change,
         // so the iOS share extension always has resolved display names.
@@ -1442,6 +1440,38 @@ class ConversationStream(
                     }
             }
         }
+    }
+
+    private suspend fun runInitialLoad() {
+        runGuardedInitialLoad(onFailure = ::failInitialLoad) {
+            // MANDATORY — flips dataReady=true for the UI once rows or a finished sync exist.
+            loadBasicConversations()
+
+            // ENRICHMENT — three passes run sequentially. All three go through
+            // the single-threaded DB dispatcher anyway, so there's no benefit
+            // to parallelism and sequencing keeps the log trace readable.
+            // Ordering is deliberate: last-messages first (also drives the sort),
+            // then admins (group-settings only), then unread counts.
+            enrichWithLastMessages()
+            enrichWithAdmins()
+            enrichAllConversationsWithUnreadCounts(trigger = "ColdLoad")
+        }
+    }
+
+    fun retryInitialLoad() {
+        if (!started) return
+        _conversations.update(initialLoad::retry)
+        scope.launch { runInitialLoad() }
+    }
+
+    private fun noteChatSyncRound(result: BackendEvent.DriveResult, reloadFollows: Boolean) {
+        initialLoad.syncRoundFinished(result is BackendEvent.DriveResult.Completed)
+        if (!reloadFollows) _conversations.update(initialLoad::settle)
+    }
+
+    private fun failInitialLoad() {
+        initialLoad.loadFailed()
+        _conversations.update(initialLoad::settle)
     }
 
     override fun getConversationById(conversationId: Uuid): ConversationUiModel? {
@@ -1604,6 +1634,7 @@ data class ConversationsData(
     val dataReady: Boolean = true,
     val items: List<ConversationUiModel> = emptyList(),
     val enrichment: EnrichmentState = EnrichmentState(),
+    val initialSyncFailed: Boolean = false,
 )
 
 /**
@@ -1631,3 +1662,62 @@ data class EnrichmentState(
     val hasUnreadCounts: Boolean = false,
 )
 
+
+internal suspend fun runGuardedInitialLoad(onFailure: () -> Unit, load: suspend () -> Unit) {
+    try {
+        load()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.e(e) { "ConversationStream: initial load FAILED: ${e.message}" }
+        onFailure()
+    }
+}
+
+internal class InitialLoadGate {
+    private enum class Sync { Pending, Done, Failed }
+
+    @Volatile
+    private var sync = Sync.Pending
+
+    @Volatile
+    private var loadDone = false
+
+    fun loaded(items: List<ConversationUiModel>, wasReady: Boolean): ConversationsData {
+        val ready = items.isNotEmpty() || sync != Sync.Pending || wasReady
+        val data = ConversationsData(
+            dataReady = ready,
+            items = items,
+            initialSyncFailed = items.isEmpty() && sync == Sync.Failed,
+        )
+        loadDone = true
+        return data
+    }
+
+    fun syncRoundFinished(completed: Boolean) {
+        sync = if (completed || sync == Sync.Done) Sync.Done else Sync.Failed
+    }
+
+    fun loadFailed() {
+        if (sync != Sync.Done) sync = Sync.Failed
+        loadDone = true
+    }
+
+    fun settle(current: ConversationsData): ConversationsData {
+        if (!loadDone || sync == Sync.Pending) return current
+        return current.copy(
+            dataReady = true,
+            initialSyncFailed = current.items.isEmpty() && sync == Sync.Failed,
+        )
+    }
+
+    fun retry(current: ConversationsData): ConversationsData {
+        sync = Sync.Pending
+        return if (current.items.isEmpty()) current.copy(dataReady = false, initialSyncFailed = false) else current
+    }
+
+    fun reset() {
+        sync = Sync.Pending
+        loadDone = false
+    }
+}
