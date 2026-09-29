@@ -4,6 +4,7 @@ import id.homebase.api.client.ClientException
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.upload.StagedPayloadMissingException
+import id.homebase.api.serialization.OutboxDecodeException
 
 /**
  * The single classification point for outbox upload failures: returns a
@@ -21,6 +22,7 @@ import id.homebase.api.client.drives.upload.StagedPayloadMissingException
  */
 internal fun classifyPermanentFailure(e: Throwable): String? {
     if (e is NotFoundException) return "404 NotFound"
+    if (e is OutboxDecodeException) return "undecodable ${e.requestType} row: ${e.cause?.message}"
     // A staged payload file is gone at drain time (#842). The source bytes no
     // longer exist locally, so no retry can succeed — drop on attempt 1 instead
     // of burning ~48h as a phantom "Network failure" (the pre-#842 symptom when

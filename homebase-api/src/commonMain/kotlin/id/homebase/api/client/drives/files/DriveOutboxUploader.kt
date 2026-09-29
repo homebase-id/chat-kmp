@@ -27,7 +27,7 @@ import id.homebase.api.client.drives.files.reactions.SetReactionsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OutboxSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxUploader
@@ -78,7 +78,7 @@ class DriveOutboxUploader(
     }
 
     private suspend fun uploadNewFile(outboxRecord: Outbox, eventBus: EventBus) {
-        val request = OdinSystemSerializer.deserialize<UploadFileRequest>(outboxRecord.json.decodeToString())
+        val request = OutboxSerializer.decode<UploadFileRequest>(outboxRecord)
         // Pre-flight: catch oversize thumbs / payload-key typos / etc.
         // before the network call so the row drops on attempt 1 via the
         // existing isPermanentFailure path instead of after a wasted
@@ -305,7 +305,7 @@ class DriveOutboxUploader(
     // endregion
 
     private suspend fun updateFile(outboxRecord: Outbox, eventBus: EventBus) {
-        val request = OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(outboxRecord.json.decodeToString())
+        val request = OutboxSerializer.decode<UpdateFileByUniqueIdRequest>(outboxRecord)
         // Pre-flight: same gate as uploadNewFile — see UploadValidation.kt.
         request.validateForUpload()
         // Whole-percent throttle — see uploadNewFile above.
@@ -331,7 +331,7 @@ class DriveOutboxUploader(
     }
 
     private suspend fun deleteFile(outboxRecord: Outbox) {
-        val request = OdinSystemSerializer.deserialize<DeleteLocalFilesByFileIdRequest>(outboxRecord.json.decodeToString())
+        val request = OutboxSerializer.decode<DeleteLocalFilesByFileIdRequest>(outboxRecord)
         if (request.hardDelete) {
             request.fileIds.forEach { fileId ->
                 fileProvider.hardDeleteFile(request.driveId, fileId, request.recipients)
@@ -342,7 +342,7 @@ class DriveOutboxUploader(
     }
 
     private suspend fun updateLocalMetadataTags(outboxRecord: Outbox) {
-        val request = OdinSystemSerializer.deserialize<UpdateLocalMetadataTagsOutboxRequest>(outboxRecord.json.decodeToString())
+        val request = OutboxSerializer.decode<UpdateLocalMetadataTagsOutboxRequest>(outboxRecord)
         val driveId = request.file.targetDrive.alias
         Logger.d(tag = "MarkAsRead") {
             "DriveOutboxUploader.updateLocalMetadataTags: outboxRow=${outboxRecord.uniqueId} drive=$driveId fileId=${request.file.fileId} uniqueId=${request.uniqueId} hasRequestVersionTag=${request.versionTag != null}"
@@ -378,7 +378,7 @@ class DriveOutboxUploader(
     }
 
     private suspend fun updateLocalMetadataContent(outboxRecord: Outbox) {
-        val request = OdinSystemSerializer.deserialize<UpdateLocalAppdataContentOutboxRequest>(outboxRecord.json.decodeToString())
+        val request = OutboxSerializer.decode<UpdateLocalAppdataContentOutboxRequest>(outboxRecord)
         Logger.d(tag = "MarkAsRead") {
             "DriveOutboxUploader.updateLocalMetadataContent: outboxRow=${outboxRecord.uniqueId} drive=${request.driveId} fileId=${request.fileId} hasIv=${request.iv != null}"
         }
@@ -409,7 +409,7 @@ class DriveOutboxUploader(
     }
 
     private suspend fun sendReadReceiptByFileIds(outboxRecord: Outbox) {
-        val request = OdinSystemSerializer.deserialize<SendReadReceiptByFileIdsOutboxRequest>(outboxRecord.json.decodeToString())
+        val request = OutboxSerializer.decode<SendReadReceiptByFileIdsOutboxRequest>(outboxRecord)
         Logger.d(tag = "MarkAsRead") {
             "DriveOutboxUploader.sendReadReceiptByFileIds: outboxRow=${outboxRecord.uniqueId} drive=${request.driveId} fileIdsCount=${request.fileIds.size}"
         }
@@ -430,7 +430,7 @@ class DriveOutboxUploader(
     }
 
     private suspend fun toggleReaction(outboxRecord: Outbox) {
-        val request = OdinSystemSerializer.deserialize<ToggleReactionOutboxRequest>(outboxRecord.json.decodeToString())
+        val request = OutboxSerializer.decode<ToggleReactionOutboxRequest>(outboxRecord)
         reactionProvider.toggleReaction(
             driveId = request.driveId,
             fileId = request.fileId,
@@ -446,7 +446,7 @@ class DriveOutboxUploader(
     private val reactionSetLocksGuard = Mutex()
 
     private suspend fun setReactions(outboxRecord: Outbox) {
-        val request = OdinSystemSerializer.deserialize<SetReactionsOutboxRequest>(outboxRecord.json.decodeToString())
+        val request = OutboxSerializer.decode<SetReactionsOutboxRequest>(outboxRecord)
         val lock = reactionSetLocksGuard.withLock {
             reactionSetLocks.getOrPut(request.fileId) { Mutex() }
         }
@@ -500,7 +500,7 @@ class DriveOutboxUploader(
         status == 400 && message?.contains("duplicate reaction", ignoreCase = true) == true
 
     private suspend fun deleteFilesByGroupId(outboxRecord: Outbox) {
-        val request = OdinSystemSerializer.deserialize<DeleteFilesByGroupIdOutboxRequest>(outboxRecord.json.decodeToString())
+        val request = OutboxSerializer.decode<DeleteFilesByGroupIdOutboxRequest>(outboxRecord)
         fileProvider.deleteFilesByGroupId(request.driveId, request.groupIds)
     }
 

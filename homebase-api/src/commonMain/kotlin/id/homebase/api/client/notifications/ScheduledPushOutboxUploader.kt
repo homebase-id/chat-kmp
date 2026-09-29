@@ -4,7 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.time.UnixTimeUtc
-import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OutboxSerializer
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxUploader
 import kotlinx.serialization.Serializable
@@ -122,9 +122,7 @@ class ScheduledPushOutboxUploader(
     }
 
     private suspend fun schedule(record: Outbox) {
-        val request = OdinSystemSerializer.deserialize<SchedulePushNotificationRequest>(
-            record.json.decodeToString(),
-        )
+        val request = OutboxSerializer.decode<SchedulePushNotificationRequest>(record)
         val tagId = request.options.tagId
         val existing = provider.list()
 
@@ -164,9 +162,7 @@ class ScheduledPushOutboxUploader(
     }
 
     private suspend fun cancel(record: Outbox) {
-        val request = OdinSystemSerializer.deserialize<CancelScheduledPushRequest>(
-            record.json.decodeToString(),
-        )
+        val request = OutboxSerializer.decode<CancelScheduledPushRequest>(record)
         val jobs = jobsToCancelForTag(provider.list(), request.tagId)
         if (jobs.isEmpty()) {
             Logger.d("$TAG: cancel tag=${request.tagId} — no matching job on server")
