@@ -34,8 +34,8 @@ enum class ContactTab {
     CIRCLES,
 }
 
-/** Pills within [ContactTab.KNOWN]. Dark launch: UNVETTED/VETTED while the review flag is off, CIRCLES/BLOCKED while on. */
-enum class ContactFilter { ALL, UNVETTED, VETTED, CIRCLES, BLOCKED }
+/** Pills within [ContactTab.KNOWN]. */
+enum class ContactFilter { ALL, CIRCLES, BLOCKED }
 
 /** Which way a pending connection request points relative to the signed-in identity. */
 enum class RequestDirection {
@@ -77,14 +77,8 @@ data class CircleMembersUi(
     val removeError: ContactBookError? = null,
     val members: List<ContactBookEntry> = emptyList(),
     val isLoading: Boolean = true,
-    /**
-     * Contacts whose grant on this circle is still a sealed deposit rather than a real [members]
-     * entry — live-read via a per-contact `/connections/status` fan-out triggered when the sheet
-     * opens (there is no bulk "list pending" endpoint), never cached across app restarts.
-     */
+    /** Contacts whose grant on this circle is still a sealed deposit rather than a real [members] entry. */
     val pendingMembers: List<ContactBookEntry> = emptyList(),
-    /** True while main's pending lookup is in flight; only set while the review flag is off. */
-    val pendingChecking: Boolean = false,
     /** uniqueIds currently being removed — drives a per-row spinner in place of the remove "X"
      *  so a tap has visible feedback while the call is in flight. */
     val removingMemberIds: Set<Uuid> = emptySet(),
@@ -185,13 +179,9 @@ data class ContactBookUiState(
     val newContacts: List<ContactBookEntry> = emptyList(),
     /** Known tab, All pill: already searched and sorted. */
     val knownContacts: List<ContactBookEntry> = emptyList(),
-    /** Flag off, Unvetted pill: connected but not `vetted`. */
-    val unvetted: List<ContactBookEntry> = emptyList(),
-    /** Flag off, Vetted pill: connected and `vetted`. */
-    val vetted: List<ContactBookEntry> = emptyList(),
     /** Known tab, Circles pill: in at least one personal circle. */
     val circleContacts: List<ContactBookEntry> = emptyList(),
-    /** Known tab, Blocked pill; with the review flag on these are left out of All. */
+    /** Known tab, Blocked pill; left out of All. */
     val blockedContacts: List<ContactBookEntry> = emptyList(),
     /** By lowercased domain, for circle rosters; a plain block keeps a member's circle grants. */
     val connectionStatuses: Map<String, ConnectionStatus> = emptyMap(),
@@ -199,8 +189,6 @@ data class ContactBookUiState(
     val contactStates: Map<String, ContactState> = emptyMap(),
     /** True until the circle memberships the three states need have loaded. */
     val statesLoading: Boolean = false,
-    /** Dark launch: the review's entry points are hidden until the dev flag is on. */
-    val reviewEnabled: Boolean = false,
     /** How many contacts qualify for one of this app's circles but are not in it. */
     val enrollmentCandidateCount: Int = 0,
     /** Pending connection requests (incoming + outgoing), newest first. Rendered as a section at

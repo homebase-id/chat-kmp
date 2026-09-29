@@ -226,8 +226,6 @@ fun CirclesSection(
     circles: List<ContactCircleUi>,
     isConnected: Boolean,
     onCircleClicked: (String) -> Unit,
-    /** Dark launch: off keeps main's chip layout. */
-    reviewEnabled: Boolean = false,
 ) {
     Spacer(modifier = Modifier.height(20.dp))
     Text(
@@ -243,7 +241,7 @@ fun CirclesSection(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             circles.forEach { circle ->
-                CircleChip(circle, reviewEnabled = reviewEnabled, onClick = { onCircleClicked(circle.id) })
+                CircleChip(circle, onClick = { onCircleClicked(circle.id) })
             }
         }
 
@@ -330,7 +328,7 @@ fun AccessRevokedBanner() {
 /** Tappable pill showing a circle name, with a "Pending" mark when this contact's grant on it
  *  is still a sealed deposit rather than a real membership. */
 @Composable
-private fun CircleChip(circle: ContactCircleUi, reviewEnabled: Boolean, onClick: () -> Unit) {
+private fun CircleChip(circle: ContactCircleUi, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.secondaryContainer,
@@ -340,12 +338,12 @@ private fun CircleChip(circle: ContactCircleUi, reviewEnabled: Boolean, onClick:
         Row(
             // A fixed height, because an emoji glyph is taller than a line of text: without it
             // the chips that have one stand proud of the ones that don't, and nothing in a row
-            // of pills lines up. Flag off keeps main's layout (no emoji, no fixed height).
+            // of pills lines up.
             modifier = Modifier
-                .then(if (reviewEnabled) Modifier.heightIn(min = 32.dp) else Modifier)
+                .heightIn(min = 32.dp)
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = if (reviewEnabled) Alignment.CenterVertically else Alignment.Top,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             CircleLabel(
                 emoji = circle.emoji,

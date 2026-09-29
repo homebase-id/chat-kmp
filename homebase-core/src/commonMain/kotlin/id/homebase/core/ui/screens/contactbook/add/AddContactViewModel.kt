@@ -19,7 +19,6 @@ import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ConnectionState
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.connections.RecipientResolution
-import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.ui.screens.contactbook.ConnectionRequestFailure
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
@@ -64,7 +63,6 @@ class AddContactViewModel(
     private val connectionService: ConnectionService,
     private val connectionRequestService: ConnectionRequestService,
     private val conversationService: ConversationService,
-    private val developerPreferences: DeveloperPreferences,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AddContactUiState())
@@ -122,12 +120,11 @@ class AddContactViewModel(
             }
             val alreadySaved = domain != null &&
                 contacts.any { it.content.odinId?.lowercase() == domain }
-            val reviewEnabled = developerPreferences.connectionReviewEnabled.value
-            val requestUnderReview = incomingRequest.takeIf { reviewEnabled && pendingIncoming }
+            val requestUnderReview = incomingRequest.takeIf { pendingIncoming }
             s.copy(
                 relation = relation,
                 alreadySaved = alreadySaved,
-                assignableCircles = circ.assignableCircles(reviewEnabled),
+                assignableCircles = circ.assignableCircles(),
                 // This fold re-runs on every keystroke in the identity field; the groups are read
                 // only while a request is actually under review.
                 reviewCircleGroups =

@@ -22,9 +22,8 @@ fun isLegacySystemCircleId(id: String): Boolean =
     id.equals(CONFIRMED_CONNECTIONS_CIRCLE_ID, ignoreCase = true) ||
         id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true)
 
-/** Whether a circle is shown as a user circle, enabled or not. Dark launch: flag off keeps main's rule — every circle except the two legacy system ones. */
-fun RedactedCircleDefinition.isUserCircle(reviewEnabled: Boolean): Boolean =
-    if (reviewEnabled) isPersonalKind() else !isLegacySystemCircleId(id)
+/** Whether a circle is shown as a user circle, enabled or not. */
+fun RedactedCircleDefinition.isUserCircle(): Boolean = isPersonalKind()
 
 /**
  * Every circle the signed-in user could add a contact to — independent of any contact's
@@ -40,13 +39,13 @@ fun RedactedCircleDefinition.isUserCircle(reviewEnabled: Boolean): Boolean =
  * [id.homebase.core.ui.screens.contactbook.detail.PendingRequestProfile] and the Add Contact
  * flow), so both offer the same list.
  */
-fun CircleMembershipState.assignableCircles(reviewEnabled: Boolean): List<ContactCircleUi> =
+fun CircleMembershipState.assignableCircles(): List<ContactCircleUi> =
     circles
         .map { it.circle }
-        .filter { it.isUserCircle(reviewEnabled) }
+        .filter { it.isUserCircle() }
         .filter { it.name.isNotBlank() }
         .map {
-            ContactCircleUi(it.id, it.name, pending = false, emoji = it.emoji.takeIf { reviewEnabled }, disabled = it.disabled)
+            ContactCircleUi(it.id, it.name, pending = false, emoji = it.emoji, disabled = it.disabled)
         }
         .distinctBy { it.id.lowercase() }
         .sortedBy { it.name.lowercase() }

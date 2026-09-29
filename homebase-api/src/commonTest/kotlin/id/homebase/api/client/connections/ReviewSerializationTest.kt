@@ -46,8 +46,6 @@ class ReviewSerializationTest {
             .deserialize<RedactedIdentityConnectionRegistration>("{$base,\"vetted\":true}")
 
         assertNull(reg.reviewedAt)
-        @Suppress("DEPRECATION")
-        assertTrue(reg.vetted)
     }
 
     /** An empty selection is the "chat only" outcome, and has to reach the server as `[]`. */

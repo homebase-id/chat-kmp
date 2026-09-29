@@ -61,7 +61,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -73,9 +72,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.common.OdinId
@@ -237,15 +233,6 @@ fun ContactDetailScreen(
         }
     }
 
-    // Flag off: main's pending circles are a live read, so a resume has to re-check them.
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshPendingCircles()
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
 
     // The contact's photo opened full-screen. Kept out of [uiState.fullScreenMedia]:
     // that one is a chat attachment, this is a profile image. Null = closed.
@@ -513,7 +500,7 @@ private fun ContactDetailContent(
                                         when (tab) {
                                             ContactDetailTab.DETAILS -> {
                                                 if (uiState.isAccessRevoked) AccessRevokedBanner()
-                                                if (uiState.needsReview && uiState.reviewEnabled) {
+                                                if (uiState.needsReview) {
                                                     NeedsReviewBanner(
                                                         onReview = {
                                                             onAction(ContactDetailAction.ReviewClicked)
@@ -538,7 +525,6 @@ private fun ContactDetailContent(
                                                     CirclesSection(
                                                         circles = uiState.circles,
                                                         isConnected = uiState.isConnected,
-                                                        reviewEnabled = uiState.reviewEnabled,
                                                         onCircleClicked = {
                                                             onAction(ContactDetailAction.CircleClicked(it))
                                                         },
@@ -661,7 +647,7 @@ private fun ManagementMenu(
                 leadingIcon = { Icon(Icons.Outlined.Sync, contentDescription = null) },
                 onClick = { open = false; onAction(ContactDetailAction.SyncClicked) },
             )
-            if (uiState.isConnected && !uiState.needsReview && uiState.reviewEnabled) {
+            if (uiState.isConnected && !uiState.needsReview) {
                 DropdownMenuItem(
                     text = { Text(stringResource(MR.string.contact_unreview_action)) },
                     leadingIcon = { Icon(Icons.Outlined.WavingHand, contentDescription = null) },

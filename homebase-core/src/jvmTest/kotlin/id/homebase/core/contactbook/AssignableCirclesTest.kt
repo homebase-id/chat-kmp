@@ -72,7 +72,7 @@ class AssignableCirclesTest {
             appId = Uuid.random(),
         )
         assertFalse(friends.isAppDefaultCircle())
-        assertEquals(listOf("Friends"), state(friends).assignableCircles(reviewEnabled = true).map { it.name })
+        assertEquals(listOf("Friends"), state(friends).assignableCircles().map { it.name })
     }
 
     @Test
@@ -81,7 +81,7 @@ class AssignableCirclesTest {
         val bank = circle("bb", "Bank", designation = CircleDesignation.Vendor)
         val family = circle("cc", "Family")
 
-        assertEquals(listOf("Family"), state(subscribers, bank, family).assignableCircles(reviewEnabled = true).map { it.name })
+        assertEquals(listOf("Family"), state(subscribers, bank, family).assignableCircles().map { it.name })
     }
 
     @Test
@@ -89,18 +89,16 @@ class AssignableCirclesTest {
         val blank = circle("ee", "  ")
         val keep = circle("ff", "Buddies")
 
-        assertEquals(listOf("Buddies"), state(blank, keep).assignableCircles(reviewEnabled = true).map { it.name })
+        assertEquals(listOf("Buddies"), state(blank, keep).assignableCircles().map { it.name })
     }
 
     @Test
     fun aDisabledCircleIsListedAndFlagged() {
         val circles = state(circle("dd", "Retired", disabled = true), circle("ff", "Buddies"))
 
-        for (reviewEnabled in listOf(true, false)) {
-            val ui = circles.assignableCircles(reviewEnabled).associateBy { it.name }
-            assertTrue(ui.getValue("Retired").disabled)
-            assertFalse(ui.getValue("Buddies").disabled)
-        }
+        val ui = circles.assignableCircles().associateBy { it.name }
+        assertTrue(ui.getValue("Retired").disabled)
+        assertFalse(ui.getValue("Buddies").disabled)
     }
 
     /**
@@ -110,7 +108,7 @@ class AssignableCirclesTest {
     @Test
     fun aZwjEmojiReachesTheUiIntact() {
         val family = "\uD83E\uDDD1\u200D\uD83E\uDDD1\u200D\uD83E\uDDD2\u200D\uD83E\uDDD2"
-        val ui = state(circle("gg", "Family", emoji = family)).assignableCircles(reviewEnabled = true).single()
+        val ui = state(circle("gg", "Family", emoji = family)).assignableCircles().single()
 
         assertEquals(family, ui.emoji)
         assertEquals("Family", ui.name)
@@ -118,25 +116,7 @@ class AssignableCirclesTest {
 
     @Test
     fun aCircleWithoutAnEmojiCarriesNull() {
-        assertNull(state(circle("hh", "Buddies")).assignableCircles(reviewEnabled = true).single().emoji)
-    }
-
-    /** Dark launch: with the review off, main's rule — only the two legacy system circles are withheld. */
-    @Test
-    fun withTheReviewOffEveryNonSystemCircleIsAssignable() {
-        val circles = state(
-            circle("aa", "Chat", grantOn = CircleGrantOn.Connect),
-            circle("bb", "Subscribers", designation = CircleDesignation.Audience),
-            circle("cc", "Family"),
-            circle("dd", "Retired", disabled = true),
-            circle(AUTO_CONNECTIONS_CIRCLE_ID, "Auto Connections"),
-            circle(CONFIRMED_CONNECTIONS_CIRCLE_ID, "Confirmed"),
-        )
-
-        assertEquals(
-            listOf("Chat", "Family", "Retired", "Subscribers"),
-            circles.assignableCircles(reviewEnabled = false).map { it.name },
-        )
+        assertNull(state(circle("hh", "Buddies")).assignableCircles().single().emoji)
     }
 }
 

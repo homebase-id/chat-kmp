@@ -69,10 +69,9 @@ import id.homebase.resources.location_emergency_add_none_eligible
 import id.homebase.resources.location_emergency_add_succeeded
 import id.homebase.resources.location_emergency_add_title
 import id.homebase.resources.location_emergency_add_unreviewed_reason
-import id.homebase.resources.location_emergency_add_unvetted_reason
 import id.homebase.resources.menu_back
 import id.homebase.resources.remove
-import id.homebase.core.ui.screens.contactbook.canJoinCircles
+import id.homebase.core.ui.screens.contactbook.isReviewed
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
@@ -141,10 +140,7 @@ private fun EmergencyContactPickerUi(
     searchTextState: TextFieldState,
     onUiAction: (EmergencyContactPickerUiAction) -> Unit,
 ) {
-    val ineligibleReason = stringResource(
-        if (uiState.reviewEnabled) MR.string.location_emergency_add_unreviewed_reason
-        else MR.string.location_emergency_add_unvetted_reason
-    )
+    val ineligibleReason = stringResource(MR.string.location_emergency_add_unreviewed_reason)
     Scaffold(
         modifier = Modifier.imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -272,7 +268,7 @@ private fun EmergencyContactPickerUi(
                         }
                     }
                     items(group.contacts, key = { it.odinId.domainName }) { contact ->
-                        val eligible = contact.connection?.canJoinCircles(uiState.reviewEnabled) == true
+                        val eligible = contact.connection?.isReviewed() == true
                         ContactItem(
                             name = contact.name,
                             subTitle = contact.odinId.domainName,

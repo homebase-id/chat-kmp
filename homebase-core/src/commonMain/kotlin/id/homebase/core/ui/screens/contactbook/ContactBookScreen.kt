@@ -271,7 +271,7 @@ fun ContactBookScreen(
         ) {
             // The search query (driven from the top-bar search field) filters both the
             // Contacts and Circles tabs.
-            val tabs = if (uiState.reviewEnabled) ContactTab.entries else ContactTab.entries - ContactTab.NEW
+            val tabs = ContactTab.entries
             PrimaryTabRow(selectedTabIndex = tabs.indexOf(uiState.selectedTab).coerceAtLeast(0)) {
                 tabs.forEach { tab ->
                     val waiting = uiState.newContacts.size + uiState.incomingRequestCount
@@ -327,7 +327,6 @@ fun ContactBookScreen(
                         loading = uiState.circlesLoading,
                         onAction = viewModel::onAction,
                         candidateCount = uiState.enrollmentCandidateCount,
-                        reviewEnabled = uiState.reviewEnabled,
                         listState = circlesListState,
                     )
                 }
