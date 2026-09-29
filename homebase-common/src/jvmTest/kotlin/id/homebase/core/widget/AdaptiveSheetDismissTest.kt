@@ -22,11 +22,12 @@ import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-// Compact size forces the bottom-sheet branch; the wide branch is a plain Dialog with no slide.
+// Compact size forces the bottom-sheet branch; a width past the 600dp medium breakpoint forces the wide Dialog.
 @OptIn(ExperimentalTestApi::class)
 class AdaptiveSheetDismissTest {
 
     private val compactPhone = Size(400f, 800f)
+    private val wideDesktop = Size(1000f, 800f)
     private val body = "sheetBody"
     private val close = "Close"
 
@@ -111,5 +112,53 @@ class AdaptiveSheetDismissTest {
             waitForIdle()
 
             assertEquals(1, dismissals)
+        }
+
+    @Test
+    fun `wide dismiss runs the exit before calling onDismiss once`() =
+        runSkikoComposeUiTest(size = wideDesktop) {
+            var dismissals = 0
+            showSheet(onDismiss = { dismissals++ })
+
+            mainClock.autoAdvance = false
+            onNodeWithText(close).performClick()
+            mainClock.advanceTimeByFrame()
+            mainClock.advanceTimeBy(30)
+
+            onNodeWithTag(body).assertExists()
+            assertEquals(0, dismissals)
+
+            mainClock.autoAdvance = true
+            waitForIdle()
+
+            assertEquals(1, dismissals)
+            onNodeWithTag(body).assertDoesNotExist()
+        }
+
+    @Test
+    fun `wide double dismiss dismisses once`() =
+        runSkikoComposeUiTest(size = wideDesktop) {
+            var dismissals = 0
+            showSheet(onDismiss = { dismissals++ }, closeWith = { dismiss(); dismiss() })
+
+            onNodeWithText(close).performClick()
+            waitForIdle()
+
+            assertEquals(1, dismissals)
+        }
+
+    @Test
+    fun `wide dismiss with an action runs it instead of onDismiss`() =
+        runSkikoComposeUiTest(size = wideDesktop) {
+            var dismissals = 0
+            var sent = 0
+            showSheet(onDismiss = { dismissals++ }, closeWith = { hide -> dismiss { sent++; hide() } })
+
+            onNodeWithText(close).performClick()
+            waitForIdle()
+
+            assertEquals(1, sent)
+            assertEquals(0, dismissals)
+            onNodeWithText(close).assertDoesNotExist()
         }
 }

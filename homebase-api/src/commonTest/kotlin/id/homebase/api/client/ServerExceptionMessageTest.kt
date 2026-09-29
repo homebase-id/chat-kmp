@@ -18,6 +18,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ServerExceptionMessageTest {
 
@@ -68,5 +70,91 @@ class ServerExceptionMessageTest {
         val e = assertFailsWith<ServerException> { provider.follow(request) }
 
         assertEquals("Server error (status=502)", e.message)
+    }
+
+    private val cid = "9c0b1703-d648-4027-b993-7ab0a54eca99"
+
+    private fun problemJson(status: Int, title: String, errorCode: String) =
+        """{"type":"https://tools.ietf.org/html/rfc7231","title":"$title","status":$status,"correlationId":"$cid","errorCode":"$errorCode"}"""
+
+    @Test
+    fun clientError_400_titleLeadsAndCarriesCorrelationId() = runTest {
+        val provider = providerRespondingWith(
+            HttpStatusCode.BadRequest,
+            problemJson(400, "Missing version tag", "missingVersionTag"),
+        )
+
+        val e = assertFailsWith<ClientException> { provider.follow(request) }
+
+        assertEquals(cid, e.correlationId)
+        assertEquals(
+            "Missing version tag (status=400, errorCode=missingVersionTag, correlationId=$cid)",
+            e.message,
+        )
+        assertTrue(e.message!!.startsWith("Missing version tag"))
+    }
+
+    @Test
+    fun forbidden_403_carriesCorrelationId() = runTest {
+        val provider = providerRespondingWith(
+            HttpStatusCode.Forbidden,
+            problemJson(403, "Forbidden", "unhandledScenario"),
+        )
+
+        val e = assertFailsWith<ForbiddenException> { provider.follow(request) }
+
+        assertEquals(cid, e.correlationId)
+        assertEquals("Forbidden (status=403, errorCode=unhandledScenario, correlationId=$cid)", e.message)
+    }
+
+    @Test
+    fun notFound_404_carriesCorrelationId() = runTest {
+        val provider = providerRespondingWith(
+            HttpStatusCode.NotFound,
+            problemJson(404, "Not Found", "unhandledScenario"),
+        )
+
+        val e = assertFailsWith<NotFoundException> { provider.follow(request) }
+
+        assertEquals(cid, e.correlationId)
+        assertEquals("Not found (status=404, errorCode=unhandledScenario, correlationId=$cid)", e.message)
+    }
+
+    @Test
+    fun unauthorized_401_carriesCorrelationId() = runTest {
+        val provider = providerRespondingWith(
+            HttpStatusCode.Unauthorized,
+            problemJson(401, "Unauthorized", "unhandledScenario"),
+        )
+
+        val e = assertFailsWith<UnauthorizedException> { provider.follow(request) }
+
+        assertEquals(cid, e.correlationId)
+        assertTrue(e.message!!.contains("correlationId=$cid"))
+    }
+
+    @Test
+    fun notFound_emptyBody_hasStatusOnly() = runTest {
+        val provider = providerRespondingWith(HttpStatusCode.NotFound, "")
+
+        val e = assertFailsWith<NotFoundException> { provider.follow(request) }
+
+        assertNull(e.correlationId)
+        assertEquals("Not found (status=404)", e.message)
+    }
+
+    @Test
+    fun forbidden_unparsableBody_hasStatusOnly() = runTest {
+        val provider = providerRespondingWith(HttpStatusCode.Forbidden, "<html>nope</html>")
+
+        val e = assertFailsWith<ForbiddenException> { provider.follow(request) }
+
+        assertNull(e.correlationId)
+        assertEquals("Forbidden (status=403)", e.message)
+    }
+
+    @Test
+    fun networkException_messageUnchanged() {
+        assertEquals("Network failure: boom", NetworkException(RuntimeException("boom")).message)
     }
 }

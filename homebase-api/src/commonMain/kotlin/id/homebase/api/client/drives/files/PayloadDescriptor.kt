@@ -2,6 +2,7 @@ package id.homebase.api.client.drives.files
 
 import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
+import id.homebase.api.HomebaseProtocol
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoMetadata
@@ -23,6 +24,9 @@ data class PayloadDescriptor(
     val uid: Long? = null
     // Add fields as needed
 ) {
+    fun isInternalDescriptor(): Boolean =
+        key.startsWith(HomebaseProtocol.PayloadDescriptorKeyPrefix)
+
     fun keyEquals(otherKey: String): Boolean {
         return key.equals(otherKey, ignoreCase = true)
     }
@@ -136,6 +140,9 @@ data class PayloadDescriptor(
         }
     }
 }
+
+fun List<PayloadDescriptor>.withoutInternalDescriptors(): List<PayloadDescriptor> =
+    filterNot { it.isInternalDescriptor() }
 
 sealed interface DescriptorContent {
     data object Empty : DescriptorContent

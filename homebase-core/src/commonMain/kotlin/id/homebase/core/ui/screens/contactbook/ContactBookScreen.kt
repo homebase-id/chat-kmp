@@ -82,6 +82,8 @@ import id.homebase.core.widget.rememberTabSlideFade
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -105,6 +107,7 @@ fun ContactBookScreen(
                 is ContactBookUiEvent.Error ->
                     snackbarHostState.showSnackbar(getString(event.error.messageRes()))
                 ContactBookUiEvent.CloseOnboarding -> { /* handled in AppNavHost */ }
+                ContactBookUiEvent.ReviewCompleted -> Unit
             }
         }
     }
@@ -332,6 +335,9 @@ fun ContactBookScreen(
         }
     }
 
+    val reviewCompleted = remember(viewModel) {
+        viewModel.events.filter { it == ContactBookUiEvent.ReviewCompleted }.map { }
+    }
     when (val overlay = uiState.overlay) {
         is ContactBookOverlay.Edit -> ContactEditSheet(
             editing = overlay.entry,
@@ -353,6 +359,7 @@ fun ContactBookScreen(
             groups = uiState.reviewCircleGroups,
             alreadyHeldCircleIds = overlay.alreadyHeldCircleIds,
             isSubmitting = overlay.isSubmitting,
+            completed = reviewCompleted,
             errorText = if (overlay.failed) stringResource(MR.string.contact_review_failed) else null,
             onSubmit = { ids ->
                 viewModel.onAction(ContactBookUiAction.ReviewSubmitted(overlay.entry, ids))

@@ -19,19 +19,27 @@ import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.systemFileSystem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import io.ktor.client.HttpClient
 import io.ktor.http.Headers
-import kotlin.collections.mutableMapOf
 import kotlin.uuid.Uuid
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import okio.ByteString.Companion.encodeUtf8
 import okio.Path.Companion.toPath
 import okio.buffer
@@ -94,12 +102,13 @@ class DriveFileProviderCached(
     private val payloadSemaphore = Semaphore(1)
     private val thumbnailSemaphore = Semaphore(30)
 
-    // TODO: unbounded growth — keyLocks gains one entry per unique cacheKey
-    //  ever touched and never drops any. Over a long session this leaks
-    //  memory. Same shape in PublicProfileProviderCached. Fix with a
-    //  weak-valued map or a periodic prune keyed on last-use timestamp.
-    private val keyLocks = mutableMapOf<String, Mutex>()
-    private val lock = Mutex()
+    private val fetchScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val inFlight = HashMap<String, Deferred<ByteApiResponse>>()
+    private val inFlightMutex = Mutex()
+
+    // Bumped by clearCaches under inFlightMutex; a fetch only writes its result if the generation
+    // it started under is still current, so a download finishing after logout cannot repopulate.
+    @Volatile private var generation = 0
 
     // Immutable set — always replaced, never mutated in-place.
     // @Volatile ensures lock-free reads always see the latest reference.
@@ -319,15 +328,20 @@ class DriveFileProviderCached(
             cache.openSnapshot(cacheKey.toDiskKey())?.use { snap ->
                 readBytesResponse(snap.data.toString())
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e(tag = logTag, throwable = e) { "cache-read FAILED key=$cacheKey" }
             null
         }
     }
 
-    // Peek, lock, re-peek, fetch, store. Shared by own-drive and peer reads so both get the
-    // same 404 memo, single-flight lock and concurrency cap; a peer read differs only in its
-    // cache key and in which network call [fetch] makes.
+    internal var beforeCacheWrite: (() -> Unit)? = null
+
+    internal suspend fun inFlightCount(): Int = inFlightMutex.withLock { inFlight.size }
+
+    // One in-flight fetch per cache key, run on fetchScope so a cancelled caller only abandons its
+    // await. The same fetch also owns the cache write, gated by the generation it started under.
     private suspend fun readThrough(
             cache: DiskCache,
             cacheKey: String,
@@ -335,26 +349,60 @@ class DriveFileProviderCached(
             logTag: String,
             fetch: suspend () -> ByteApiResponse
     ): ByteApiResponse {
-        if (cacheKey in notFoundCache) return ByteApiResponse.EMPTY_404
-        readCachedOrLog(cache, cacheKey, logTag)?.let { return it }
+        while (true) {
+            if (cacheKey in notFoundCache) return ByteApiResponse.EMPTY_404
+            readCachedOrLog(cache, cacheKey, logTag)?.let { return it }
 
-        val mutex: Mutex
-        lock.withLock { mutex = keyLocks.getOrPut(cacheKey) { Mutex() } }
+            val startedGeneration: Int
+            val deferred = inFlightMutex.withLock {
+                startedGeneration = generation
+                inFlight[cacheKey] ?: fetchScope.async(start = CoroutineStart.LAZY) {
+                    fetchAndStore(cache, cacheKey, semaphore, logTag, startedGeneration, fetch)
+                }.also { inFlight[cacheKey] = it }
+            }
+            deferred.start()
+            try {
+                return deferred.await()
+            } catch (e: CancellationException) {
+                if (!currentCoroutineContext().isActive || generation == startedGeneration) throw e
+            }
+        }
+    }
 
-        return mutex.withLock {
-            if (cacheKey in notFoundCache) return@withLock ByteApiResponse.EMPTY_404
-            readCachedOrLog(cache, cacheKey, logTag)?.let { return@withLock it }
+    private suspend fun fetchAndStore(
+            cache: DiskCache,
+            cacheKey: String,
+            semaphore: Semaphore,
+            logTag: String,
+            startedGeneration: Int,
+            fetch: suspend () -> ByteApiResponse
+    ): ByteApiResponse {
+        val self = currentCoroutineContext()[Job]
+        try {
+            if (cacheKey in notFoundCache) return ByteApiResponse.EMPTY_404
+            readCachedOrLog(cache, cacheKey, logTag)?.let { return it }
 
-            semaphore.withPermit {
+            return semaphore.withPermit {
                 try {
                     val result = fetch()
                     check(result.status in 200..299) {
                         "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
                     }
-                    writeToDiskCache(cache, cacheKey, logTag, result)
+                    // clearCaches bumps generation before clearing disk: a write landing before the
+                    // clear is wiped by it, one landing after is caught by this re-check.
+                    if (generation == startedGeneration) {
+                        beforeCacheWrite?.invoke()
+                        writeToDiskCache(cache, cacheKey, logTag, result)
+                        if (generation != startedGeneration) cache.remove(cacheKey.toDiskKey())
+                    }
                     result
                 } catch (e: NotFoundException) {
-                    notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
+                    if (generation == startedGeneration) {
+                        notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
+                        if (generation != startedGeneration) {
+                            notFoundCacheMutex.withLock { notFoundCache = notFoundCache - cacheKey }
+                        }
+                    }
                     throw e
                 } catch (e: CancellationException) {
                     throw e
@@ -364,6 +412,10 @@ class DriveFileProviderCached(
                     }
                     throw e
                 }
+            }
+        } finally {
+            withContext(NonCancellable) {
+                inFlightMutex.withLock { if (inFlight[cacheKey] === self) inFlight.remove(cacheKey) }
             }
         }
     }
@@ -411,6 +463,8 @@ class DriveFileProviderCached(
         val payloadEncryptedHeader = raw.headers["payloadencrypted"]
         val decryptedBytes = try {
             delegate.decryptBytes(keyHeader, raw.headers, raw.bytes)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // Single most likely NPE site when the cache is poisoned with a
             // non-2xx response from the pre-61ebe154 code path. Keep context
@@ -458,8 +512,11 @@ class DriveFileProviderCached(
         try {
             writeBytesResponse(editor.data.toString(), value)
             editor.commit()
+        } catch (e: CancellationException) {
+            editor.abortQuietly()
+            throw e
         } catch (e: Exception) {
-            try { editor.abort() } catch (_: Exception) {}
+            editor.abortQuietly()
             Logger.e(tag = logTag, throwable = e) { "cache-write FAILED key=$cacheKey" }
         }
     }
@@ -643,7 +700,7 @@ class DriveFileProviderCached(
                     editor.commit()
                     true
                 } catch (e: Exception) {
-                    try { editor.abort() } catch (_: Exception) {}
+                    editor.abortQuietly()
                     throw e
                 }
             } ?: false
@@ -658,6 +715,8 @@ class DriveFileProviderCached(
             // The old key can never be read again (the local record now carries
             // the new fileId) — free its LRU budget instead of waiting for eviction.
             cache.remove(oldKey.toDiskKey())
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.w(tag = logTag, throwable = e) { "cache-rekey FAILED old=$oldKey new=$newKey" }
         }
@@ -691,20 +750,31 @@ class DriveFileProviderCached(
                     .joinToString(":")
 
     suspend fun clearCaches() {
+        inFlightMutex.withLock {
+            generation++
+            fetchScope.coroutineContext.cancelChildren()
+            inFlight.clear()
+        }
         // Coil's DiskCache.clear() is documented as thread-safe; it serialises
         // internally against in-flight readers/writers.
         try {
             payloadDiskCache.clear()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "payload cache clear failed" }
         }
         try {
             thumbDiskCache.clear()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "thumb cache clear failed" }
         }
         try {
             hlsChunkDiskCache.clear()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "hls chunk cache clear failed" }
         }
@@ -720,22 +790,32 @@ class DriveFileProviderCached(
         val out = ArrayList<CacheStats>(2)
         try {
             out.add(CacheStats(id = "drive_payloads", sizeBytes = payloadDiskCache.size, maxBytes = payloadDiskCache.maxSize))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "drive_payloads stats unavailable" }
             out.add(CacheStats(id = "drive_payloads", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
         }
         try {
             out.add(CacheStats(id = "drive_thumbnails", sizeBytes = thumbDiskCache.size, maxBytes = thumbDiskCache.maxSize))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "drive_thumbnails stats unavailable" }
             out.add(CacheStats(id = "drive_thumbnails", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
         }
         try {
             out.add(CacheStats(id = "hls_chunks", sizeBytes = hlsChunkDiskCache.size, maxBytes = hlsChunkDiskCache.maxSize))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "hls_chunks stats unavailable" }
             out.add(CacheStats(id = "hls_chunks", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
         }
         return out
     }
+}
+
+private fun DiskCache.Editor.abortQuietly() {
+    try { abort() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
 }

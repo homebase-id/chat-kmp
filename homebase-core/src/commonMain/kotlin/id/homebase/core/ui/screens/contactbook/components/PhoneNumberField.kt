@@ -4,7 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -113,7 +114,7 @@ private fun CountryPickerSheet(
     onSelect: (Country) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AdaptiveSheet(onDismiss = onDismiss) {
+    AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -137,11 +138,18 @@ private fun CountryPickerSheet(
                         it.dialCode.startsWith(q.removePrefix("+"))
                 }
             }
-            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
+            val motion = MaterialTheme.motionScheme
+            LazyColumn(modifier = Modifier.fillMaxWidth().height(440.dp)) {
                 items(filtered, key = { it.iso }) { c ->
                     val dial = "+${c.dialCode}"
                     ListItem(
-                        modifier = Modifier.clickable { dismiss { onSelect(c) } },
+                        modifier = Modifier
+                            .animateItem(
+                                fadeInSpec = motion.defaultEffectsSpec(),
+                                placementSpec = motion.defaultSpatialSpec(),
+                                fadeOutSpec = motion.fastEffectsSpec(),
+                            )
+                            .clickable { dismiss { onSelect(c) } },
                         leadingContent = { Text(c.flag) },
                         headlineContent = { Text(c.name) },
                         trailingContent = { Text(dial) },

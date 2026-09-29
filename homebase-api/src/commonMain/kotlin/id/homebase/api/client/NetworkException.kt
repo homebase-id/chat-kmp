@@ -17,7 +17,7 @@ class NetworkException(
     override val cause: Throwable,
 ) : OdinApiException(
     status = 0,
-    message = "Network failure: ${cause.message ?: cause::class.simpleName ?: "unknown"}",
+    title = "Network failure: ${cause.message ?: cause::class.simpleName ?: "unknown"}",
 )
 
 /**

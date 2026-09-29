@@ -60,15 +60,24 @@ object CacheAudit {
     const val UPLOAD_TEMP_DIR_NAME: String = "upload-temp"
     const val OUTBOX_TEMP_DIR_NAME: String = "outbox-temp"
 
-    // Allowlist: the OS and SDKs namespace their data in directories here. Loose files stay
-    // sweepable because some of our writers use user-supplied names at the cache root.
-    fun isOwnedDirectory(name: String): Boolean =
-        name in OWNED_DIR_NAMES || OWNED_DIR_PREFIXES.any { name.startsWith(it) }
+    // A loose root file is ours only if it carries a fixed prefix our pre-hb-scratch writers used.
+    // Legacy pass, like the dir lists below: can go after a couple of releases. User-named downloads can't be matched.
+    fun isLegacyLooseFile(name: String): Boolean = LEGACY_LOOSE_FILE_PREFIXES.any { name.startsWith(it) }
 
-    private val OWNED_DIR_NAMES = KNOWN_CACHE_DIRS + setOf(
+    private val LEGACY_LOOSE_FILE_PREFIXES = listOf(
+        "compressed_", "input_", "transcode_", "thumb_", "thumb0001-", "ffmpeg-segmented-", "vts_", "hbvid_",
+        "resolved_", "vault_upload_", "hlsdl_", "share_", "hbautosave_", "waveform-",
+    )
+
+    fun isOwnedDirectory(name: String): Boolean =
+        name == AppCacheDirs.SCRATCH_DIR_NAME || name in LEGACY_OWNED_DIR_NAMES ||
+            LEGACY_OWNED_DIR_PREFIXES.any { name.startsWith(it) }
+
+    // Pre-hb-scratch scratch dirs, swept so upgraded installs don't leak them. Can go after a couple of releases.
+    private val LEGACY_OWNED_DIR_NAMES = KNOWN_CACHE_DIRS + setOf(
         UPLOAD_TEMP_DIR_NAME, OUTBOX_TEMP_DIR_NAME, SHARE_OUTBOUND_DIR_NAME, ORPHAN_COIL_DIR_NAME, "share_temp",
     )
-    private val OWNED_DIR_PREFIXES = listOf("homebase-", "hls_", "hbvid_", "vts_")
+    private val LEGACY_OWNED_DIR_PREFIXES = listOf("homebase-", AppCacheDirs.HLS_DIR_PREFIX, "hbvid_", "vts_")
 
     /** A single top-level entry of the cache directory. */
     data class Entry(
@@ -93,7 +102,7 @@ object CacheAudit {
          * Sweeper-eligible — this is what `sweepUntracked` actually deletes.
          */
         val untrackedBytes: Long,
-        /** Bytes in [Entry.foreign] directories (never swept). */
+        /** Bytes in [Entry.foreign] entries: non-owned directories and all loose files (never swept). */
         val foreignBytes: Long,
         val totalBytes: Long,
     )
@@ -129,7 +138,7 @@ object CacheAudit {
                         isDirectory = isDir,
                         sizeBytes = size,
                         known = name in KNOWN_CACHE_DIRS,
-                        foreign = isDir && !isOwnedDirectory(name),
+                        foreign = !(if (isDir) isOwnedDirectory(name) else isLegacyLooseFile(name)),
                         label = classify(name),
                     )
                 )
@@ -204,6 +213,7 @@ object CacheAudit {
         name == "Crash Reports" -> "Android system: crash reporter"
         name == "com.crashlytics.data" -> "Crashlytics pending crash reports"
         name == "com.apple.dyld" -> "iOS dyld closure cache"
+        name == AppCacheDirs.SCRATCH_DIR_NAME -> "app-owned scratch (media temps, exports, HLS work — swept every startup)"
         name == "hbvid_preload" -> "legacy video preload dir"
         name.startsWith("hbvid_res_") -> "streamed MP4 playback temp (deleted on player dispose; swept as backstop)"
         name.startsWith("hbvid_") -> "decrypted video playback scratch"
@@ -213,7 +223,7 @@ object CacheAudit {
         name == "homebase-payloads" || name == "homebase-thumbs" ||
             name == "homebase-public-profiles" || name == "homebase-public-images" ->
             "legacy kache dir (pre-v2)"
-        name.startsWith("hls_") -> "FFmpeg HLS segment dir (video send)"
+        name.startsWith(AppCacheDirs.HLS_DIR_PREFIX) -> "FFmpeg HLS segment dir (video send)"
         name.startsWith("compressed_") -> "FFmpeg compressed video"
         name.startsWith("ffmpeg-segmented-") -> "FFmpeg segment output"
         name.startsWith("input_hlsdl_") -> "HLS download intermediate"

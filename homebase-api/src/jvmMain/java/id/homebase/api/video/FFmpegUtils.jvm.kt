@@ -1,6 +1,7 @@
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.JvmFileSystemUtil
 import java.io.BufferedReader
 import java.io.File
@@ -15,7 +16,11 @@ actual object FFmpegUtils {
     // FFmpeg scratch (compressed_/input_/hls_/thumb_) lands in the app cache dir, not
     // java.io.tmpdir (#844 PR4) — so the desktop Storage screen counts it and the CacheSweeper
     // reclaims it (as untracked scratch, unlike the KEEP-protected hb-temp upload payloads).
-    private val scratchDirPath: String get() = JvmFileSystemUtil.getCacheDirectory().apply { mkdirs() }.absolutePath
+    private val scratchDirPath: String
+        get() = AppCacheDirs.scratchDir(JvmFileSystemUtil.getCacheDirectory().absolutePath, AppCacheDirs.MEDIA_WORK)
+
+    private val hlsScratchDirPath: String
+        get() = AppCacheDirs.scratchDir(JvmFileSystemUtil.getCacheDirectory().absolutePath, AppCacheDirs.HLS)
 
     @Volatile private var cachedFfmpegVersion: String? = null
     @Volatile private var ffmpegVersionProbed: Boolean = false
@@ -254,8 +259,8 @@ actual object FFmpegUtils {
             }
 
             val outputDir = File(
-                scratchDirPath,
-                "hls_${UUID.randomUUID()}"
+                hlsScratchDirPath,
+                "${AppCacheDirs.HLS_DIR_PREFIX}${UUID.randomUUID()}"
             ).apply { mkdirs() }
 
             try {
@@ -289,8 +294,8 @@ actual object FFmpegUtils {
             }
 
             val outputDir = File(
-                scratchDirPath,
-                "hls_${UUID.randomUUID()}"
+                hlsScratchDirPath,
+                "${AppCacheDirs.HLS_DIR_PREFIX}${UUID.randomUUID()}"
             ).apply { mkdirs() }
 
             try {

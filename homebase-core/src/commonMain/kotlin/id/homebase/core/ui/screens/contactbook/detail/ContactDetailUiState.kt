@@ -239,6 +239,7 @@ sealed interface ContactDetailEvent {
      * query's only match, and a plain back must NOT clear an in-progress search (#876).
      */
     data object DeletedAndBack : ContactDetailEvent
+    data object ReviewCompleted : ContactDetailEvent
     data object Error : ContactDetailEvent
     /** 403 — app lacks manage-contacts permission. */
     data object Forbidden : ContactDetailEvent

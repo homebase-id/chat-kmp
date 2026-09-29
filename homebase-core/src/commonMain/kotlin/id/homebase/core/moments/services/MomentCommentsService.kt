@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.withoutInternalDescriptors
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.eventbus.BackendEvent
@@ -235,7 +236,7 @@ class MomentCommentsService(
             fileId = file.fileId,
             driveId = file.driveId,
             keyHeader = file.keyHeader,
-            payloads = file.fileMetadata.payloads.orEmpty(),
+            payloads = file.fileMetadata.payloads.orEmpty().withoutInternalDescriptors(),
             previewThumbnail = appData.previewThumbnail,
             versionTag = file.fileMetadata.versionTag,
             reactionPreview = file.fileMetadata.reactionPreview,

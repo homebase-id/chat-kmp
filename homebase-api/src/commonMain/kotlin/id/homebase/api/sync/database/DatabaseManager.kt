@@ -234,6 +234,7 @@ class DatabaseManager(
             "AppNotifications",
             "AutoSavedMedia",
             "ChatReadCount",
+            "CircleMembershipCache",
             "ConnectionCache",
             "DriveLocalTagIndex",
             "DriveMainIndex",
@@ -368,6 +369,9 @@ class DatabaseManager(
     }
     val connectionCache: ConnectionCacheWrapper by lazy {
         ConnectionCacheWrapper(driver, connectionCacheAdapter, this)
+    }
+    val circleMembershipCache: CircleMembershipCacheWrapper by lazy {
+        CircleMembershipCacheWrapper(driver, this)
     }
 
     // Reads run on [readDispatcher], NOT the single write [dispatcher], so a read

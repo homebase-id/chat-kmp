@@ -16,6 +16,7 @@ import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxReque
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.drives.upload.cleanupHlsScratch
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.systemFileSystem
 import okio.FileSystem
@@ -1041,7 +1042,7 @@ class OutboxSync(
                 // delete() fails on a non-empty dir, so they'd leak forever. Recursive-
                 // delete them (age-gated on the dir's own mtime, same idle precondition).
                 // Any OTHER directory shape is unexpected here: skip it, never guess.
-                if (f.name.startsWith("hls_") &&
+                if (f.name.startsWith(AppCacheDirs.HLS_DIR_PREFIX) &&
                     safeDeleteRecursively(outboxTempDir, f.name, fileSystem)
                 ) reaped++
             } else {

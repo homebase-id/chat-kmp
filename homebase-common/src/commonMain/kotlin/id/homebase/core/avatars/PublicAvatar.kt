@@ -1,6 +1,7 @@
 package id.homebase.core.avatars
 
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -9,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -95,8 +97,12 @@ fun PublicAvatar(
 
         val state by painter.state.collectAsStateWithLifecycle()
 
-        when (state) {
-            is AsyncImagePainter.State.Success -> {
+        Crossfade(
+            targetState = state is AsyncImagePainter.State.Success,
+            animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+            label = "publicAvatar",
+        ) { loaded ->
+            if (loaded) {
                 SubcomposeAsyncImageContent(
                     modifier = if (imageClick != null) {
                         Modifier.fillMaxSize().clickable(onClick = imageClick)
@@ -104,12 +110,7 @@ fun PublicAvatar(
                         Modifier
                     }
                 )
-            }
-
-            // Initials, not a spinner, while loading: a list of rows would otherwise run one spinner per avatar.
-            is AsyncImagePainter.State.Loading,
-            is AsyncImagePainter.State.Empty,
-            is AsyncImagePainter.State.Error -> {
+            } else {
                 FallbackAvatar(
                     initials = initials,
                     // FallbackAvatar applies options.onClick itself; an image-gated

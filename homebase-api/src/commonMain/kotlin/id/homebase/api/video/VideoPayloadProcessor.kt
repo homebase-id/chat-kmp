@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.files.WholePercentProgressGate
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.crypto.AesCbc
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.withResolvedFile
 import id.homebase.api.image.createThumbnails
@@ -252,7 +253,7 @@ class VideoPayloadProcessor(
                 // Every FFmpegUtils actual writes into its own hls_<uuid>/ dir; promoting
                 // anything else wholesale (e.g. a shared scratch root) would drag sibling
                 // files along — fail loudly instead.
-                check(scratchHlsDir.name.startsWith("hls_")) {
+                check(scratchHlsDir.name.startsWith(AppCacheDirs.HLS_DIR_PREFIX)) {
                     "expected an hls_<uuid> segment dir, got $scratchHlsDir"
                 }
                 val stagedHlsDir =

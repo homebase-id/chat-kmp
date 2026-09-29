@@ -1,11 +1,13 @@
 package id.homebase.chat.services.convo
 
+import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -404,6 +406,40 @@ class ConversationServiceLastReadDebounceTest {
                     initialUpdatedMs,
                     fixture.getConversationFile(convoId)!!.fileMetadata.updated.milliseconds,
                 )
+                assertEquals(initialOutboxRows, fixture.outboxRowCount())
+            }
+        } finally { serviceScope.cancel() }
+    }
+
+    @Test
+    fun flushOnLocalOnlyPlaceholderStampsLocallyClearsDirtyAndEnqueuesNothing() = runBlocking {
+        val serviceScope = newServiceScope()
+        try {
+            ConversationServiceTestFixture().use { fixture ->
+                val service = fixture.build(scope = serviceScope)
+                val convoId = Uuid.random()
+                fixture.optimisticWriter.writeLocalOnlyConversationPlaceholder(
+                    driveId = fixture.chatDriveId,
+                    conversationId = convoId,
+                    participants = listOf(OdinId(fixture.testDomain), OdinId("alice.test")),
+                    isGroup = false,
+                )
+                val initialOutboxRows = fixture.outboxRowCount()
+                fixture.participantLookup.setLastRead(
+                    convoId,
+                    Instant.fromEpochMilliseconds(5_000L),
+                    latestMessageTimestamp = Instant.fromEpochMilliseconds(10_000L),
+                    dirty = true,
+                )
+
+                service.flushLastReadNow()
+
+                assertTrue(
+                    fixture.getConversationFile(convoId)!!
+                        .fileMetadata.localAppData?.content?.contains("\"lastReadTime\":5000") == true,
+                    "local row must carry lastRead even though nothing is sent",
+                )
+                assertTrue(fixture.participantLookup.getDirtyConversationIds().isEmpty())
                 assertEquals(initialOutboxRows, fixture.outboxRowCount())
             }
         } finally { serviceScope.cancel() }

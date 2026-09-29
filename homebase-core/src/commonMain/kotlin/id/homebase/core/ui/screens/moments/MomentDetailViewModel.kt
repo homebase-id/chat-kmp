@@ -8,6 +8,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.coroutines.ioDispatcher
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoCompressionService
@@ -792,7 +793,7 @@ class MomentDetailViewModel(
                     val fullName = resolveDownloadFileName(
                         payload.filename(), payloadKey, payload.contentType,
                     )
-                    val filePath = "${fileOperationsProvider.getCacheDirectory()}/$fullName"
+                    val filePath = "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$fullName"
                     val success = withContext(ioDispatcher) {
                         driveFileProvider.streamPayloadDecryptedToPath(
                             driveId = moment.driveId,
@@ -874,7 +875,7 @@ class MomentDetailViewModel(
         metadata: VideoMetadata,
         suggestedBaseName: String?,
     ): Pair<String, String>? {
-        val cacheDir = fileOperationsProvider.getCacheDirectory()
+        val cacheDir = AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.MEDIA_WORK)
         val uid = Uuid.random().toString().take(8)
         val tsFileName = "input_hlsdl_${uid}.ts"
         val tsPath = "$cacheDir/$tsFileName"

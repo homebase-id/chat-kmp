@@ -5,6 +5,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.coroutines.ioDispatcher
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoCompressionService
@@ -116,11 +117,8 @@ internal class MediaDownloadHandler(
     fun handleShareMessage(action: ConversationListUiAction.ShareMessage) {
         val message = action.message
         val filteredPayloads = message.payloads?.filter {
-            !listOf(
-                ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-                ChatProtocol.DefaultPayloadKey,
-                ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
-            ).contains(it.key)
+            !listOf(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB, ChatProtocol.DefaultPayloadKey).contains(it.key) &&
+                !it.isInternalDescriptor()
         }
         val hasMedia = !filteredPayloads.isNullOrEmpty()
         if (hasMedia) {
@@ -160,7 +158,7 @@ internal class MediaDownloadHandler(
                     payload.filename(), payload.key, payload.contentType
                 )
                 val filePath =
-                    "${fileOperationsProvider.getCacheDirectory()}/$fullName"
+                    "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$fullName"
 
                 val success = withContext(ioDispatcher) {
                     driveFileProvider.streamPayloadDecryptedToPath(
@@ -224,7 +222,7 @@ internal class MediaDownloadHandler(
                         action.payload.filename(), action.payloadKey, action.payload.contentType
                     )
                     val filePath =
-                        "${fileOperationsProvider.getCacheDirectory()}/$fullName"
+                        "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$fullName"
 
                     val success = withContext(ioDispatcher) {
                         driveFileProvider.streamPayloadDecryptedToPath(
@@ -271,12 +269,12 @@ internal class MediaDownloadHandler(
 
                 val rawName = payload.filename() ?: payload.key
                 val filePath = if (rawName.contains('.')) {
-                    "${fileOperationsProvider.getCacheDirectory()}/$rawName"
+                    "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$rawName"
                 } else {
                     val extension = payload.contentType?.let { extensionForMimeType(it) }
                         ?: payload.contentType?.substringAfter("/")
                         ?: "bin"
-                    "${fileOperationsProvider.getCacheDirectory()}/$rawName.$extension"
+                    "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$rawName.$extension"
                 }
 
                 val success = driveFileProvider.streamPayloadDecryptedToPath(
@@ -544,7 +542,7 @@ internal class MediaDownloadHandler(
         metadata: VideoMetadata,
         suggestedBaseName: String?,
     ): Pair<String, String>? {
-        val cacheDir = fileOperationsProvider.getCacheDirectory()
+        val cacheDir = AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.MEDIA_WORK)
         val uid = Uuid.random().toString().take(8)
         val tsFileName = "input_hlsdl_${uid}.ts"
         val tsPath = "$cacheDir/$tsFileName"

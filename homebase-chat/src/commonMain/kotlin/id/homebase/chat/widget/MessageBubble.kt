@@ -46,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -209,6 +210,8 @@ fun SentMessageBubble(
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     val popupTransition = updateTransition(popupMode, label = "messagePopup")
+    val handback = rememberBubbleHandback()
+    SideEffect { handback.active = popupTransition.shownMode == MessagePopupMode.All }
     var showEmojiPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -285,6 +288,7 @@ fun SentMessageBubble(
                 if (popupTransition.shownMode != MessagePopupMode.None && !message.isDeleted) {
                     SentMessagePopup(
                         transition = popupTransition,
+                        handback = handback,
                         message = message,
                         userDefaultReactions = userDefaultReactions,
                         dismissMenu = { popupMode = MessagePopupMode.None },
@@ -351,21 +355,23 @@ fun SentMessageBubble(
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 Box(
-                    modifier = if (isMobile()) {
-                        Modifier.combinedClickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {},
-                            onLongClick = {
-                                if (onMessageInfo != null) {
-                                    popupMode = MessagePopupMode.All
-                                }
-                            },
-                            // Only reaches the padding around the bubble and the typed kinds
-                            // that paint their own surface; MessageBubbleRaw owns the rest.
-                            onDoubleClick = openReactionBar,
-                        )
-                    } else Modifier,
+                    modifier = Modifier.handbackSource(handback).then(
+                        if (isMobile()) {
+                            Modifier.combinedClickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {},
+                                onLongClick = {
+                                    if (onMessageInfo != null) {
+                                        popupMode = MessagePopupMode.All
+                                    }
+                                },
+                                // Only reaches the padding around the bubble and the typed kinds
+                                // that paint their own surface; MessageBubbleRaw owns the rest.
+                                onDoubleClick = openReactionBar,
+                            )
+                        } else Modifier,
+                    ),
                 ) {
                     MessageBubbleRaw(
                         modifier = Modifier
@@ -532,6 +538,8 @@ fun ReceivedMessageBubble(
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     val popupTransition = updateTransition(popupMode, label = "messagePopup")
+    val handback = rememberBubbleHandback()
+    SideEffect { handback.active = popupTransition.shownMode == MessagePopupMode.All }
     var showEmojiPicker by remember { mutableStateOf(false) }
     var showBlockConfirm by remember { mutableStateOf(false) }
     var showReportConfirm by remember { mutableStateOf(false) }
@@ -539,11 +547,8 @@ fun ReceivedMessageBubble(
     val isHovered by interactionSource.collectIsHoveredAsState()
     var bubbleWidthPx by remember { mutableIntStateOf(0) }
     val filteredPayloads = message.payloads?.filter {
-        !listOf(
-            ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-            ChatProtocol.DefaultPayloadKey,
-            ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
-        ).contains(it.key)
+        !listOf(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB, ChatProtocol.DefaultPayloadKey).contains(it.key) &&
+            !it.isInternalDescriptor()
     }
     val hasMedia = !filteredPayloads.isNullOrEmpty()
     val mediaOnly = !message.content.hasContent() && hasMedia
@@ -629,7 +634,7 @@ fun ReceivedMessageBubble(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Box {
+                    Box(Modifier.handbackSource(handback)) {
                         MessageBubbleRaw(
                             modifier = Modifier
                                 .bottomInset(animateReactionPillInset(message.reactionPreview != null))
@@ -744,6 +749,7 @@ fun ReceivedMessageBubble(
                 if (popupTransition.shownMode != MessagePopupMode.None && !message.isDeleted) {
                     ReceivedMessagePopup(
                         transition = popupTransition,
+                        handback = handback,
                         message = message,
                         userDefaultReactions = userDefaultReactions,
                         dismissMenu = { popupMode = MessagePopupMode.None },

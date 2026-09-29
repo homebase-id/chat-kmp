@@ -44,6 +44,7 @@ data class ConversationListUiState(
     val connectionStatus: AppConnectionStatus = AppConnectionStatus.Connecting,
     val driveIsSyncing: Boolean = false,
     val hasDriveError: Boolean = false,
+    val initialSyncFailed: Boolean = false,
     /**
      * Deadline of the chat-list top-bar sharing pin, else null: the later of my outgoing shares
      * (#816) and anyone sharing their live location with me (#1012, quantized live-relay

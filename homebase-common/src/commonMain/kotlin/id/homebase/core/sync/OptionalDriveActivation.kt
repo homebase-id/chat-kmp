@@ -1,5 +1,6 @@
 package id.homebase.core.sync
 
+import id.homebase.api.sync.DriveState
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.LabeledDrive
@@ -40,6 +41,9 @@ class OptionalDriveActivation(
      */
     fun isActivated(drive: LabeledDrive): Boolean =
         driveSyncManager.driveStatuses.value.containsKey(drive.drive.alias)
+
+    fun syncState(drive: LabeledDrive): DriveState? =
+        driveSyncManager.driveStatuses.value[drive.drive.alias]?.state
 
     /** Reactive form of [isActivated] for ViewModels / UI. */
     fun isActivatedFlow(drive: LabeledDrive): Flow<Boolean> =

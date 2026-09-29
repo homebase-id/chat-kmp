@@ -1,0 +1,18 @@
+-- Offline-first cache of the owner's circles with their members, one JSON row per logged-in
+-- identity. Written on every successful ConnectionService refresh so "Who can locate you" and
+-- the contact circle pills render the last-known memberships when the network is unavailable.
+CREATE TABLE IF NOT EXISTS CircleMembershipCache(
+   identityId TEXT NOT NULL PRIMARY KEY,
+   circlesJson TEXT NOT NULL,
+   lastRefresh INTEGER NOT NULL
+);
+
+upsert:
+INSERT INTO CircleMembershipCache(identityId, circlesJson, lastRefresh)
+VALUES (?, ?, ?)
+ON CONFLICT(identityId) DO UPDATE
+SET circlesJson = excluded.circlesJson, lastRefresh = excluded.lastRefresh;
+
+selectJsonByIdentity:
+SELECT circlesJson FROM CircleMembershipCache
+WHERE identityId = ?;

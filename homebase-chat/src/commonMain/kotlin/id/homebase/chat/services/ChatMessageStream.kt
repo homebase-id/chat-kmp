@@ -55,6 +55,9 @@ class ChatMessageStream(
     /** Set by ConversationStream to let us skip messages for left conversations. */
     var isConversationLeft: (Uuid) -> Boolean = { false }
 
+    // Test seam: the Stopped refresh runs on a real dispatcher, so advanceUntilIdle() is no barrier for it.
+    internal var onPostSyncRefreshComplete: () -> Unit = {}
+
     /**
      * Auto-pin hook (#887). Wired at construction in DI to
      * [id.homebase.chat.services.ChatMessageActionService.pinMessage]; a settable
@@ -556,33 +559,37 @@ class ChatMessageStream(
      * preserved.
      */
     private suspend fun refreshCachedWindows() {
-        // Conversations mid-initial-load have no window to walk yet; flag them so
-        // loadConversation re-reads instead of caching its pre-write snapshot.
-        paginatedState.markAllInitialLoadsDirty()
-        val snapshot = paginatedState.windows.value
-        if (snapshot.isEmpty()) return
-        for ((conversationId, window) in snapshot) {
-            if (window.hasNewerMessages) {
-                Logger.d("ChatMessageStream: refreshCachedWindows skip convo=$conversationId (paged into history)")
-                continue
+        try {
+            // Conversations mid-initial-load have no window to walk yet; flag them so
+            // loadConversation re-reads instead of caching its pre-write snapshot.
+            paginatedState.markAllInitialLoadsDirty()
+            val snapshot = paginatedState.windows.value
+            if (snapshot.isEmpty()) return
+            for ((conversationId, window) in snapshot) {
+                if (window.hasNewerMessages) {
+                    Logger.d("ChatMessageStream: refreshCachedWindows skip convo=$conversationId (paged into history)")
+                    continue
+                }
+                try {
+                    val result = fetchMessages(
+                        conversationId = conversationId,
+                        limit = PaginatedConversationState.PAGE_SIZE,
+                    )
+                    if (result.records.isEmpty()) continue
+                    paginatedState.upsert(conversationId, result.records)
+                    // Auto-pin here too, not only on live BatchReceived: an own-send
+                    // confirmed while the WS was down (offline / backgrounded) syncs in via
+                    // silent DriveSync (this path), and must still pin. Safe against
+                    // re-pinning a dismissed message because the gate is now the durable
+                    // AutoPinDismissedTag, not the per-session in-memory set.
+                    autoPinNewTypedMessages(result.records)
+                    refreshPinnedFor(conversationId)
+                } catch (t: Throwable) {
+                    Logger.e(t) { "ChatMessageStream: refreshCachedWindows convo=$conversationId failed: ${t.message}" }
+                }
             }
-            try {
-                val result = fetchMessages(
-                    conversationId = conversationId,
-                    limit = PaginatedConversationState.PAGE_SIZE,
-                )
-                if (result.records.isEmpty()) continue
-                paginatedState.upsert(conversationId, result.records)
-                // Auto-pin here too, not only on live BatchReceived: an own-send
-                // confirmed while the WS was down (offline / backgrounded) syncs in via
-                // silent DriveSync (this path), and must still pin. Safe against
-                // re-pinning a dismissed message because the gate is now the durable
-                // AutoPinDismissedTag, not the per-session in-memory set.
-                autoPinNewTypedMessages(result.records)
-                refreshPinnedFor(conversationId)
-            } catch (t: Throwable) {
-                Logger.e(t) { "ChatMessageStream: refreshCachedWindows convo=$conversationId failed: ${t.message}" }
-            }
+        } finally {
+            onPostSyncRefreshComplete()
         }
     }
 
