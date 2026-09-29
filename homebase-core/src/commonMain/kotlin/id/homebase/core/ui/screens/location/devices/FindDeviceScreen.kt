@@ -1,5 +1,10 @@
 package id.homebase.core.ui.screens.location.devices
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -122,28 +127,35 @@ fun FindDeviceScreen(
                     .padding(innerPadding),
             ) {
                 val lastFix = uiState.device?.lastFix
-                if (lastFix != null) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = stringResource(
-                                MR.string.location_find_last_seen,
-                                formatTimestamp(Instant.fromEpochMilliseconds(lastFix.t)),
-                            ),
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f),
-                        )
-                        lastFix.bat?.let { battery ->
+                val motion = MaterialTheme.motionScheme
+                AnimatedVisibility(
+                    visible = lastFix != null,
+                    enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                    exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                ) {
+                    if (lastFix != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Text(
-                                text = stringResource(MR.string.location_find_battery, "$battery%"),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                text = stringResource(
+                                    MR.string.location_find_last_seen,
+                                    formatTimestamp(Instant.fromEpochMilliseconds(lastFix.t)),
+                                ),
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f),
                             )
+                            lastFix.bat?.let { battery ->
+                                Text(
+                                    text = stringResource(MR.string.location_find_battery, "$battery%"),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
