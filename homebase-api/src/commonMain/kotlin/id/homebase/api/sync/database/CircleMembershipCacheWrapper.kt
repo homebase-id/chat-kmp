@@ -18,10 +18,4 @@ class CircleMembershipCacheWrapper(
             delegate.upsert(identityId, circlesJson, lastRefresh)
         }
     }
-
-    suspend fun deleteAllRows() {
-        databaseManager.withWrite {
-            delegate.deleteAllRows()
-        }
-    }
 }

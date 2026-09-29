@@ -16,6 +16,3 @@ SET circlesJson = excluded.circlesJson, lastRefresh = excluded.lastRefresh;
 selectJsonByIdentity:
 SELECT circlesJson FROM CircleMembershipCache
 WHERE identityId = ?;
-
-deleteAllRows:
-DELETE FROM CircleMembershipCache;
