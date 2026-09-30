@@ -98,6 +98,7 @@ class ProfileCardViewModelTest {
         private val attributes: List<ProfileAttribute>,
         private val defaults: suspend () -> CardSiteDefaults = { CardSiteDefaults(design = CardDesign.POSTER) },
         private val posts: suspend () -> List<CardPostEntry> = { emptyList() },
+        private val cardRepository: CardRepository? = null,
     ) : ProfileCardSource {
         override val accessGranted = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         val imageRequests = mutableListOf<String>()
@@ -142,6 +143,10 @@ class ProfileCardViewModelTest {
         val publishedDesigns = mutableListOf<String>()
         var onPublishDesign: suspend (String) -> CardDesignPublish = { CardDesignPublish.Published }
         var siteDefaultLoads = 0
+
+        override suspend fun savePublicCard(design: String) {
+            cardRepository?.savePublic(design)
+        }
 
         override suspend fun missingDesignAccess(odinId: OdinId): MissingPermissionsResult? {
             if (!designAccessMissing) return null
@@ -321,6 +326,80 @@ class ProfileCardViewModelTest {
 
         assertEquals(CardDesign.COLLAGE, vm.uiState.value.design)
         assertEquals(CardDesign.COLLAGE, host.rendered.last().design)
+    }
+
+    private class CardStore(var attributes: List<ProfileAttribute> = emptyList()) : CardAttributeStore {
+        val writes = mutableListOf<JsonObject>()
+        var failWith: Exception? = null
+        override suspend fun load() = attributes
+        override suspend fun save(data: JsonObject, visibility: ProfileVisibility, id: Uuid?, versionTag: Uuid?, priority: Int) {
+            failWith?.let { throw it }
+            writes += data
+        }
+    }
+
+    private fun cardAttribute(design: String) = ProfileAttribute(
+        id = Uuid.random(),
+        type = ProfileAttributeTypes.PROFILE_CARD,
+        versionTag = Uuid.random(),
+        visibility = ProfileVisibility.ANONYMOUS,
+        data = JsonObject(mapOf("design" to JsonPrimitive(design))),
+    )
+
+    @Test
+    fun aStoredPublicCardBeatsTheLocalAndSiteDesign() = runTest(dispatcher) {
+        val host = FakeHost()
+        val vm = viewModel(host, FakeSource(profile + cardAttribute(CardDesign.DOSSIER)))
+
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.savedDesign)
+        assertEquals(CardDesign.DOSSIER, host.rendered.single().design)
+    }
+
+    @Test
+    fun anUnknownStoredDesignFallsBackToTheSiteDesign() = runTest(dispatcher) {
+        val vm = viewModel(FakeHost(), FakeSource(profile + cardAttribute("hologram")))
+
+        assertEquals(CardDesign.POSTER, vm.uiState.value.savedDesign)
+    }
+
+    @Test
+    fun savingOnASupportingServerWritesTheCardAndPublishesTheHomePageDesign() = runTest(dispatcher) {
+        val store = CardStore()
+        val source = FakeSource(profile, cardRepository = CardRepository(store))
+        val vm = viewModel(FakeHost(), source)
+        vm.onDesignSelected(CardDesign.COLLAGE)
+
+        val event = async { vm.events.first() }
+        vm.onSaveDesign()
+        event.await()
+
+        assertEquals(JsonPrimitive("collage"), store.writes.single()["design"])
+        assertEquals(listOf(CardDesign.COLLAGE), source.savedDesigns)
+        assertEquals(listOf(CardDesign.COLLAGE), source.publishedDesigns)
+    }
+
+    @Test
+    fun onAnUnsupportedServerOnlyTheOldPathRunsAndNoErrorShows() = runTest(dispatcher) {
+        val store = CardStore().apply {
+            failWith = id.homebase.api.client.ClientException(
+                status = 400,
+                message = "Unknown profile attribute type",
+                correlationId = null,
+                problem = id.homebase.api.client.ProblemDetails(title = "Unknown profile attribute type"),
+            )
+        }
+        val source = FakeSource(profile, cardRepository = CardRepository(store))
+        val vm = viewModel(FakeHost(), source)
+        vm.onDesignSelected(CardDesign.COLLAGE)
+
+        val event = async { vm.events.first() }
+        vm.onSaveDesign()
+
+        assertEquals(ProfileCardEvent.DesignSaved, event.await())
+        assertTrue(store.writes.isEmpty())
+        assertEquals(listOf(CardDesign.COLLAGE), source.publishedDesigns)
+        assertFalse(vm.uiState.value.loadFailed)
+        assertEquals(CardDesign.COLLAGE, vm.uiState.value.savedDesign)
     }
 
     private suspend fun TestScope.saveCollectingEvents(

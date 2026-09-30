@@ -73,6 +73,7 @@ data class SaveProfileAttributeRequest(
     @Serializable(with = UuidSerializer::class) val expectedVersionTag: Uuid? = null,
     val visibility: String,
     val data: JsonObject,
+    val priority: Int? = null,
 )
 
 /**

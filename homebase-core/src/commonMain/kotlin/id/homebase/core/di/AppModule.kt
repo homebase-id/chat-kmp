@@ -108,6 +108,8 @@ import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactService
 import id.homebase.core.ui.screens.card.CardPreferences
+import id.homebase.core.ui.screens.card.CardRepository
+import id.homebase.core.ui.screens.card.ProfileRepositoryCardStore
 import id.homebase.core.ui.screens.card.CardTapShare
 import id.homebase.core.ui.screens.card.DefaultProfileCardSource
 import id.homebase.core.ui.screens.card.ProfileCardSource
@@ -855,6 +857,7 @@ val appModule = module {
     singleOf(::HomebaseImageLoader)
     factoryOf(::DefaultProfileCardSource) bind ProfileCardSource::class
     singleOf(::CardPreferences)
+    single { CardRepository(ProfileRepositoryCardStore(get())) }
     singleOf(::CardTapShare)
     singleOf(::ChatMessageActionService)
     singleOf(::DiceRollPreferences)

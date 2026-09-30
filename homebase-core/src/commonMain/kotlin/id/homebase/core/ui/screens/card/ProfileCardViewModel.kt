@@ -108,6 +108,8 @@ interface ProfileCardSource {
     suspend fun writeShareImage(png: ByteArray): String
     suspend fun savedDesign(): String?
     suspend fun saveDesign(design: String)
+    /** Writes the public card attribute; a no-op on a server that doesn't know the type. */
+    suspend fun savePublicCard(design: String)
     /** The request for writing the design to the home page, or null when the app may or it can't tell. */
     suspend fun missingDesignAccess(odinId: OdinId): MissingPermissionsResult?
     suspend fun publishDesign(design: String): CardDesignPublish
@@ -125,6 +127,7 @@ class DefaultProfileCardSource(
     private val securityContextProvider: SecurityContextProvider,
     private val eventBus: EventBus,
     private val cardPreferences: CardPreferences,
+    private val cardRepository: CardRepository,
 ) : ProfileCardSource {
     // The bus replays its last event, which may be an older return; only one after subscribing counts.
     override val accessGranted: Flow<Unit> = flow {
@@ -165,6 +168,10 @@ class DefaultProfileCardSource(
     override suspend fun savedDesign(): String? = cardPreferences.design.value
 
     override suspend fun saveDesign(design: String) = cardPreferences.setDesign(design)
+
+    override suspend fun savePublicCard(design: String) {
+        cardRepository.savePublic(design)
+    }
 
     override suspend fun missingDesignAccess(odinId: OdinId): MissingPermissionsResult? {
         val context = securityContextProvider.getSecurityContext() ?: return null
@@ -305,6 +312,7 @@ class ProfileCardViewModel(
         _uiState.update { it.copy(isSavingDesign = true) }
         viewModelScope.launch {
             val saved = attempt("saving card design $design") { source.saveDesign(design) } != null
+            if (saved) attempt("saving the public card $design") { source.savePublicCard(design) }
             _uiState.update {
                 if (saved) it.copy(isSavingDesign = false, savedDesign = design, previewDesign = null)
                 else it.copy(isSavingDesign = false)
@@ -489,7 +497,8 @@ class ProfileCardViewModel(
         val photo = attributes.visiblePhoto(ProfileVisibility.ANONYMOUS)?.photoImageData()
         content = CardContent(odinId, attributes, defaults, photo)
         photo?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE) }
-        val saved = storedDesign ?: defaults.design
+        val cardDesign = attributes.profileCards().publicCard()?.design?.takeIf { it in CardDesign.all }
+        val saved = cardDesign ?: storedDesign ?: defaults.design
         _uiState.update { it.copy(loadFailed = false, savedDesign = saved) }
         loadPosts(odinId)
         render()
