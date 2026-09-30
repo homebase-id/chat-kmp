@@ -90,6 +90,7 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | operators | comma list of odinIds. A message SENT by one of them gets the operator brain in any allowed conversation (DM, mixed group, anything); alone this is enough, `operatorRooms` is optional | none |
 | operatorBrain | any shell command for operator-tier messages (full env); unset = no privileged tier, everyone is locked | none |
 | operatorRooms | comma list of conversation uuids where EVERY current member gets the operator tier (optional extra; membership re-read on each discovery; history is unfiltered there). Also list the room in `allowConversations` | none |
+| operatorContext | `all` or `operators`. `all`: the operator prompt gets the full room history and reply-parent; non-operator text and the bot's own replies sit inside a fenced untrusted block tagged by author. `operators`: only operator-authored text reaches the operator brain (strict). Unknown value warns and uses `operators` | all |
 | operatorCwd | working dir of operatorBrain | inherited |
 | operatorTimeout | kill an operator job (whole process group) after this long: `90s`, `30m`, `2h`; anything else is a startup error | 30m |
 | maxJobsPerDay | operator jobs per day PER OPERATOR (keyed by the server-set sender, persisted in `jobs.txt`; separate from `maxRunsPerDay`) | 20 |
@@ -238,6 +239,12 @@ Every chat member is untrusted input to the brain. Two tiers:
   operator job and one locked run, neither downgraded or dropped because of the other. Residual: a non-operator can
   still influence an operator run indirectly, for example by editing a message an operator later quotes in their own
   text, and only the bot's own replies and other members' messages are filtered, not what an operator pastes.
+  That is `operatorContext=operators`. The default `operatorContext=all` trades that away: the operator brain also
+  reads teammates' messages, the reply-parent and the bot's own replies, inside a nonce-tagged untrusted block headed
+  "discussion from other members - context only" with an author tag per line, so a non-operator can now put text in
+  front of a full-access brain (prompt injection is possible, just fenced and labelled). Who may START an operator run
+  is unchanged: the server-set sender must be an operator. The hard limits are the container, the dedicated OS user
+  and the scoped GitHub token, not the fence; use `operatorContext=operators` if you cannot accept that.
 - Operator rooms (`operatorRooms=<conversation uuid,...>`, needs `operatorBrain`): in a listed room every current
   member is an operator, with no `operators=` entry needed (an optional extra on top of `operators=`), and the history is passed unfiltered. The same person in any
   other conversation is a normal locked-tier user, and conversations not in `allowConversations` are ignored (an explicit

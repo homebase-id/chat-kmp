@@ -47,6 +47,7 @@ class AgentConfig(
     val operatorBrain: String? = null,
     val operatorRooms: Set<Uuid> = emptySet(),
     val operatorCwd: String? = null,
+    val operatorContext: OperatorContext = OperatorContext.ALL,
     val operatorTimeoutMs: Long = DEFAULT_OPERATOR_TIMEOUT_MS,
     val maxJobsPerDay: Int = DEFAULT_MAX_JOBS_PER_DAY,
     val readReceipts: Boolean = allowlist.kind == Kind.BOT,
@@ -66,6 +67,8 @@ class AgentConfig(
 }
 
 enum class Tier { LOCKED, OPERATOR }
+
+enum class OperatorContext { ALL, OPERATORS }
 
 class TrustPolicy(private val config: AgentConfig, private val self: OdinId) {
     private val listed = config.operators + self
@@ -113,7 +116,7 @@ fun tierBanner(config: AgentConfig): List<String> = buildList {
     if (config.operatorBrain == null) {
         add("tiers: locked only (no operatorBrain)")
     } else {
-        add("WARNING: operator tier active: operators=${config.operators.joinToString(",")} cwd=${config.operatorCwd ?: "(inherited)"}; operatorBrain runs as background jobs (timeout=${config.operatorTimeoutMs / 60_000}m, maxJobsPerDay=${config.maxJobsPerDay} per operator); operators get the operator brain (full env) for their own messages in EVERY allowed conversation, DMs and mixed groups included; in a mixed group its history holds only operator-authored messages")
+        add("WARNING: operator tier active: operators=${config.operators.joinToString(",")} cwd=${config.operatorCwd ?: "(inherited)"}; operatorBrain runs as background jobs (timeout=${config.operatorTimeoutMs / 60_000}m, maxJobsPerDay=${config.maxJobsPerDay} per operator); operators get the operator brain (full env) for their own messages in EVERY allowed conversation, DMs and mixed groups included; ${if (config.operatorContext == OperatorContext.ALL) "in a mixed group non-operator messages reach it only inside a fenced untrusted discussion block" else "in a mixed group its history holds only operator-authored messages"}; operatorContext=${config.operatorContext.name.lowercase()}")
         if (config.operatorRooms.isNotEmpty()) {
             config.operatorRooms.forEach { room ->
                 val members = config.allowlist.info(room)?.members
@@ -165,6 +168,7 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         operatorBrain = str("operatorBrain"),
         operatorRooms = list("operatorRooms")?.map { Uuid.parse(it) }?.toSet().orEmpty(),
         operatorCwd = path("operatorCwd"),
+        operatorContext = when (str("operatorContext")?.lowercase()) { null, "all" -> OperatorContext.ALL; else -> OperatorContext.OPERATORS },
         operatorTimeoutMs = str("operatorTimeout")?.let {
             parseDurationMs(it) ?: throw IllegalArgumentException("invalid operatorTimeout '$it': use e.g. 90s, 30m, 2h")
         } ?: DEFAULT_OPERATOR_TIMEOUT_MS,
@@ -176,6 +180,7 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         readReceipts = bool("readReceipts") ?: bot,
         warnings = listOfNotNull(
             "WARNING: bot=true is ignored for the $DELEGATE_PROFILE profile (always a delegate)".takeIf { profile == DELEGATE_PROFILE && bool("bot") == true },
+            "WARNING: invalid operatorContext '${str("operatorContext")}', using operators".takeIf { str("operatorContext")?.lowercase() !in setOf(null, "all", "operators") },
             "WARNING: invalid transport '${str("transport")}', using auto".takeIf { parseTransport(str("transport")) == null },
         ),
     )
