@@ -2347,6 +2347,17 @@
     <string name="profile_card_option_block_order">Section order</string>
     <string name="profile_card_option_move_up">Move %1$s up</string>
     <string name="profile_card_option_move_down">Move %1$s down</string>
+    <string name="profile_card_option_drag">Drag to reorder %1$s</string>
+    <string name="profile_card_tool_accent">Colour</string>
+    <string name="profile_card_tool_display_font">Heading</string>
+    <string name="profile_card_tool_text_font">Body</string>
+    <string name="profile_card_tool_portrait_shape">Portrait</string>
+    <string name="profile_card_tool_socials_style">Links</string>
+    <string name="profile_card_tool_block_order">Order</string>
+    <string name="profile_card_font_sample">Aa</string>
+    <string name="profile_card_change_design">Change design</string>
+    <string name="profile_card_change_design_short">Design</string>
+    <string name="profile_card_audience_editing">Card audience: %1$s</string>
     <string name="profile_card_font_montserrat">Montserrat</string>
     <string name="profile_card_font_montserrat_alt">Montserrat Alt</string>
     <string name="profile_card_font_newsreader">Newsreader</string>

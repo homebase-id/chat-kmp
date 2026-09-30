@@ -16,6 +16,7 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.clickable
@@ -35,6 +36,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
@@ -47,6 +50,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
@@ -95,10 +100,11 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import id.homebase.core.localization.TranslationUtil
-import id.homebase.core.ui.screens.profile.LoadFailedState
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.resources.MR
+import id.homebase.resources.profile_edit_load_failed
+import id.homebase.resources.profile_edit_retry
 import id.homebase.resources.close
 import id.homebase.resources.file_saved_to
 import id.homebase.resources.profile_card_audience_circle
@@ -594,14 +600,11 @@ internal fun CardSurface(
 
     Box(modifier = modifier.drawBehind { drawRect(backdrop()) }) {
         if (uiState.loadFailed) {
-            // A tonal plate keeps the message legible on any design's backdrop.
-            Surface(
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.align(Alignment.Center).padding(32.dp),
-            ) {
-                LoadFailedState(modifier = Modifier, onRetry = onRetry)
-            }
+            CardErrorPlate(
+                message = MR.string.profile_edit_load_failed,
+                onRetry = onRetry,
+                modifier = Modifier.align(Alignment.Center),
+            )
             return@Box
         }
         // An unsupported server's /card is its public site, which desktop and web would float over the message.
@@ -631,7 +634,7 @@ internal fun CardSurface(
             exit = fadeOut(motion.slowEffectsSpec()),
             modifier = Modifier.fillMaxSize(),
         ) {
-            CardPlaceholder(failed = failed, unsupported = uiState.cardUnsupported, backdrop = backdrop)
+            CardPlaceholder(failed = failed, unsupported = uiState.cardUnsupported, backdrop = backdrop, onRetry = onRetry)
         }
     }
 }
@@ -673,29 +676,59 @@ internal fun designLabel(design: String): StringResource = when (design) {
 }
 
 @Composable
-private fun CardPlaceholder(failed: Boolean, unsupported: Boolean, backdrop: () -> Color) {
-    val message = when {
-        unsupported -> MR.string.profile_card_unsupported
-        failed -> MR.string.profile_card_error
-        else -> null
-    }
+private fun CardPlaceholder(failed: Boolean, unsupported: Boolean, backdrop: () -> Color, onRetry: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize().drawBehind { drawRect(backdrop()) }, contentAlignment = Alignment.Center) {
-        if (message != null) {
-            Surface(
+        when {
+            unsupported -> Surface(
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.padding(32.dp),
+                modifier = Modifier.padding(24.dp),
             ) {
                 Text(
-                    text = stringResource(message),
+                    text = stringResource(MR.string.profile_card_unsupported),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(24.dp),
                 )
             }
-        } else {
-            ContainedLoadingIndicator()
+            failed -> CardErrorPlate(message = MR.string.profile_card_error, onRetry = onRetry)
+            else -> ContainedLoadingIndicator()
+        }
+    }
+}
+
+// One plate for both preview failures, in the error roles so it reads as an error on any design's colours.
+@Composable
+private fun CardErrorPlate(message: StringResource, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        modifier = modifier.padding(16.dp),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp),
+        ) {
+            Icon(Icons.Outlined.ErrorOutline, contentDescription = null, modifier = Modifier.size(28.dp))
+            Text(
+                text = stringResource(message),
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+            )
+            Button(
+                onClick = onRetry,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                ),
+            ) {
+                Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                Text(stringResource(MR.string.profile_edit_retry))
+            }
         }
     }
 }

@@ -441,7 +441,13 @@ class ProfileCardViewModel(
         load()
     }
 
-    fun onRetry() = load()
+    fun onRetry() {
+        if (_uiState.value.cardFailed) {
+            _uiState.update { it.copy(cardFailed = false) }
+            lastRendered?.let { payload -> _host.value?.render(payload) }
+        }
+        load()
+    }
 
     fun onShareClicked() {
         val host = _host.value
