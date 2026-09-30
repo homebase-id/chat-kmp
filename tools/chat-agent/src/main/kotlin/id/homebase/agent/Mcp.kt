@@ -12,6 +12,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
+import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -41,6 +42,8 @@ interface AgentBackend {
     val allowlist: Allowlist
     suspend fun messages(conversationId: Uuid, limit: Int, beforeMs: Long? = null): List<ChatMsg>
     suspend fun send(conversationId: Uuid, text: String, replyTo: ReplyPreview? = null): Uuid
+    val filesDir: File? get() = null
+    suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String): Uuid = error("sending files is not supported")
 }
 
 class ToolReply(val text: String, val isError: Boolean = false)
@@ -148,6 +151,16 @@ suspend fun toolSendMessage(backend: AgentBackend, args: JsonObject?): ToolReply
     ToolReply("sent ${backend.send(conversationId, tagged(if (backend.allowlist.delegate) BOT_PREFIX else "", text), reply)}")
 }
 
+suspend fun toolSendFile(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
+    val conversationId = conversationArg(args, backend.allowlist) ?: return@guarded BAD_CONVERSATION
+    backend.allowlist.requireSend(conversationId)
+    val root = backend.filesDir ?: return@guarded ToolReply("refused: no mcpFilesDir is configured, file sending is disabled", true)
+    val path = stringArg(args, "path") ?: return@guarded ToolReply("path is empty", true)
+    val file = loadInside(root, path)
+    val caption = stringArg(args, "caption").orEmpty()
+    ToolReply("sent ${backend.sendFile(conversationId, file, if (backend.allowlist.delegate) tagged(BOT_PREFIX, caption).trim() else caption)}")
+}
+
 class SessionBackend(private val profile: String, private val scope: Uuid? = null, private val readOnly: Boolean = false) : AgentBackend {
     private var session: Session? = null
     private var cachedAllowlist: Allowlist? = null
@@ -161,7 +174,9 @@ class SessionBackend(private val profile: String, private val scope: Uuid? = nul
     suspend fun load() {
         if (cachedAllowlist != null && System.nanoTime() - loadedAt < ALLOWLIST_TTL_NANOS) return
         val session = open()
-        cachedAllowlist = loadConfig(profile, session.identity).allowlist.also {
+        val config = loadConfig(profile, session.identity)
+        filesDir = config.mcpFilesDir
+        cachedAllowlist = config.allowlist.also {
             refreshAllowlist(session, it)
             if (!it.memberMode) it.learn(discoverConversations(session))
             it.scope = scope
@@ -175,6 +190,12 @@ class SessionBackend(private val profile: String, private val scope: Uuid? = nul
 
     override suspend fun send(conversationId: Uuid, text: String, replyTo: ReplyPreview?) =
         sendToConversation(open(), allowlist, conversationId, text, replyTo)
+
+    override var filesDir: File? = null
+        private set
+
+    override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String) =
+        sendToConversation(open(), allowlist, conversationId, caption, files = listOf(file))
 }
 
 private suspend fun ready(backend: SessionBackend, block: suspend () -> ToolReply): CallToolResult {
@@ -254,6 +275,19 @@ suspend fun mcp(profile: String, scope: Uuid? = null, readOnly: Boolean = false)
             required = listOf("conversationId", "text"),
         ),
     ) { request -> ready(backend) { toolSendMessage(backend, request.arguments) } }
+
+    if (!readOnly) server.addTool(
+        name = "send_file",
+        description = "Send a file from the configured files directory to an allowed conversation.",
+        inputSchema = ToolSchema(
+            properties = buildJsonObject {
+                put("conversationId", conversationProp)
+                put("path", prop("string", "File inside the files directory (max 10 MB)"))
+                put("caption", prop("string", "Optional text"))
+            },
+            required = listOf("conversationId", "path"),
+        ),
+    ) { request -> ready(backend) { toolSendFile(backend, request.arguments) } }
 
     val transport = StdioServerTransport(exitOnEof(System.`in`).asSource().buffered(), protocolOut.asSink().buffered())
     val closed = CompletableDeferred<Unit>()

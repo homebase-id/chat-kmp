@@ -41,7 +41,7 @@ private const val MESSAGE_CODEPOINTS = 1000
 const val REPLY_CODEPOINTS = 1500
 
 sealed interface BrainOutcome {
-    class Output(val stdout: String) : BrainOutcome
+    class Output(val stdout: String, val files: List<OutFile> = emptyList()) : BrainOutcome
     class Failed(val reason: String) : BrainOutcome
 }
 
@@ -61,6 +61,12 @@ fun sanitizeReply(raw: String): String {
         if (next == text) return text
         text = next
     }
+}
+
+fun withAttachments(output: BrainOutcome.Output, root: File?): BrainOutcome.Output {
+    val attached = collectAttachments(output.stdout, root)
+    attached.skipped.forEach { System.err.println("attachment skipped: $it") }
+    return if (attached.files.isEmpty() && attached.skipped.isEmpty()) output else BrainOutcome.Output(attached.text, attached.files)
 }
 
 private val LOCKED_ENV_KEYS = listOf("PATH", "HOME", "USER", "LANG")
@@ -84,7 +90,8 @@ suspend fun runBrain(
             if (vision) streamJsonInput(prompt, attachments) else prompt,
             timeoutMs, tier, scratch ?: operatorCwd?.let(::File), env,
         )
-        return if (vision && outcome is BrainOutcome.Output) parseStreamResult(outcome.stdout) else outcome
+        val parsed = if (vision && outcome is BrainOutcome.Output) parseStreamResult(outcome.stdout) else outcome
+        return if (parsed is BrainOutcome.Output) withAttachments(parsed, scratch ?: operatorCwd?.let(::File)) else parsed
     } finally {
         scratch?.deleteRecursively()
         if (attachDir != null && attachDir !== scratch) attachDir.deleteRecursively()
@@ -290,6 +297,7 @@ class WatchProcessor(
     private val away: AwayFlag = AwayFlag(null),
     private val jobs: JobRunner? = null,
     private val loader: AttachmentLoader? = null,
+    private val replyFiles: suspend (Uuid, String, List<OutFile>) -> Unit = { conversation, text, _ -> reply(conversation, text) },
 ) {
     private val mutex = Mutex()
     private val seen = HashSet<Uuid>()
@@ -341,9 +349,9 @@ class WatchProcessor(
 
     private fun isOperator(msg: ChatMsg) = (msg.sender ?: OdinId(identity)) in config.operators + OdinId(identity)
 
-    private suspend fun safeReply(conversation: Uuid, text: String) {
+    private suspend fun safeReply(conversation: Uuid, text: String, files: List<OutFile> = emptyList()) {
         try {
-            reply(conversation, text)
+            if (files.isEmpty()) reply(conversation, text) else replyFiles(conversation, text, files)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -377,11 +385,12 @@ class WatchProcessor(
             log("job history error: ${e.message}")
             return done("failed")
         }
+        var produced = emptyList<OutFile>()
         runner.submit(
             conversation, authors,
             announce = { safeReply(conversation, it) },
-            deliver = { safeReply(conversation, it) },
-            work = { brain(prompt, Tier.OPERATOR, attachments) },
+            deliver = { safeReply(conversation, it, produced) },
+            work = { brain(prompt, Tier.OPERATOR, attachments).also { produced = (it as? BrainOutcome.Output)?.files.orEmpty() } },
         )
         done("job")
     }
@@ -465,15 +474,16 @@ class WatchProcessor(
             } catch (e: Exception) {
                 BrainOutcome.Failed(e.message ?: e.toString())
             }
+            val files = (outcome as? BrainOutcome.Output)?.files.orEmpty()
             val text = brainReply(outcome, config.replyPrefix)
-                ?: return done("silent")
+                ?: if (files.isNotEmpty()) config.replyPrefix else return done("silent")
             val failed = outcome is BrainOutcome.Failed
             val attempt = (sorted.maxOf { attempts[it.id] ?: 0 }) + 1
             val settled = try {
                 if (failed && attempt < MAX_ATTEMPTS) {
                     false
                 } else {
-                    reply(conversation, text)
+                    if (files.isEmpty()) reply(conversation, text) else replyFiles(conversation, text, files)
                     true
                 }
             } catch (e: CancellationException) {
@@ -551,6 +561,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     var lastSeen = stateFile.takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull()
         ?: System.currentTimeMillis()
     val timings = PollTimings()
+    val previews = if (config.linkPreviews) serverLinkPreviews(session) else null
     val processor = WatchProcessor(
         config = config,
         identity = session.identity.toString(),
@@ -569,7 +580,10 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
             }
         },
         reply = { conversation, text ->
-            timings.time("send") { sendToConversation(session, config.allowlist, conversation, text) }
+            timings.time("send") { sendToConversation(session, config.allowlist, conversation, text, previews = previews) }
+        },
+        replyFiles = { conversation, text, files ->
+            timings.time("send") { sendToConversation(session, config.allowlist, conversation, text, files = files) }
         },
         log = ::log,
     )

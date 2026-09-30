@@ -36,6 +36,8 @@ class AgentConfig(
     val maxJobsPerDay: Int = DEFAULT_MAX_JOBS_PER_DAY,
     val readReceipts: Boolean = bot,
     val transcribe: String? = null,
+    val linkPreviews: Boolean = false,
+    val mcpFilesDir: File? = null,
 ) {
     val plainVoice get() = bot && !allowlist.delegate
     val replyPrefix get() = if (plainVoice) "" else BOT_PREFIX
@@ -101,6 +103,8 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         operatorTimeoutMs = values["operatorTimeout"]?.let(::parseDurationMs) ?: DEFAULT_OPERATOR_TIMEOUT_MS,
         maxJobsPerDay = values["maxJobsPerDay"]?.toIntOrNull() ?: DEFAULT_MAX_JOBS_PER_DAY,
         transcribe = values["transcribe"]?.takeIf { it.isNotEmpty() },
+        linkPreviews = values["linkPreviews"]?.equals("true", ignoreCase = true) ?: bot,
+        mcpFilesDir = values["mcpFilesDir"]?.takeIf { it.isNotEmpty() }?.let { File(it.replaceFirst(Regex("^~"), System.getProperty("user.home"))) },
         readReceipts = values["readReceipts"]?.let { it.equals("true", ignoreCase = true) } ?: bot,
         allowlist = Allowlist(conversations, authors, memberMode, anyMember, groupSend = bot && !delegate && ownerKey != owner, delegate = delegate),
     )

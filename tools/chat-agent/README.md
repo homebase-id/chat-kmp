@@ -67,6 +67,8 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | maxRunsPerHour | brain runs per author per hour | 20 |
 | maxRunsPerDay | brain runs per day, total | 100 |
 | readReceipts | true/false; bot only (ignored for `me`) | true for bot |
+| linkPreviews | true/false; preview card for the first URL in a reply, built by your identity server (`/links/extract`, as the app does); this machine never fetches the URL; failure sends without a preview | true for bot |
+| mcpFilesDir | directory the MCP `send_file` tool may send from (no default: tool refuses) | none |
 
 Brain output `NO_REPLY` or empty means stay silent. Over a cap: no run, no reply,
 `skip: rate limited` in the log. Triggers from one conversation in one poll share one run.
@@ -77,9 +79,9 @@ A failed run is retried once on the next poll, then `failed: ...` is sent (prefi
     login [--identity <domain>]
     read [--conversation <id>] [--limit n]
     conversations
-    send [--conversation <id>] <text>
+    send [--conversation <id>] [--file <path>] [text]
     watch            # polls every 10s
-    mcp              # stdio MCP server: list_conversations, read_messages, send_message
+    mcp              # stdio MCP server: list_conversations, read_messages, send_message, send_file
 
 ## MCP config
 
