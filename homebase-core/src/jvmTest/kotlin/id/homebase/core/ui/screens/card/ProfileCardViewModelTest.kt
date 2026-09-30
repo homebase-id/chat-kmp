@@ -25,6 +25,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -1018,6 +1019,39 @@ class ProfileCardViewModelTest {
         val data = wire.putBodies.single().jsonObject["data"]!!.jsonObject
         assertEquals(JsonPrimitive("poster"), data["design"])
         assertEquals(surviving, data["overrides"])
+
+        vm.onDesignSelected(CardDesign.DOSSIER)
+        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (host.rendered.last().design != CardDesign.DOSSIER) delay(10) } }
+        val back = Json.parseToJsonElement(host.rendered.last().toJson()).jsonObject
+        assertEquals(CardDesign.DOSSIER, host.rendered.last().design)
+        assertEquals(surviving, back["overrides"])
+        assertNull(vm.uiState.value.overrides.palette)
+        assertNull(vm.uiState.value.overrides.portraits)
+    }
+
+    @Test
+    fun anUnswitchedCardSendsItsStoredOverridesUnchangedAndAPreviewSwitchPrunesThem() = runTest(dispatcher) {
+        val stored = cardAttribute(
+            ProfileCard(
+                Uuid.NIL, Uuid.NIL, CardAudience.Public, CardDesign.BOARD,
+                CardOverrides(
+                    palette = CardPalette(ground = "#101010"),
+                    portraits = listOf(CardPortrait(shape = "circle", tilt = 2.5)),
+                ),
+            ),
+            ProfileVisibility.ANONYMOUS,
+        )
+        val host = FakeHost()
+        val vm = viewModel(host, FakeSource(profile + stored))
+        val expected = Json.parseToJsonElement("""{"palette":{"ground":"#101010"},"portraits":[{"shape":"circle","tilt":2.5}]}""")
+        assertEquals(CardDesign.BOARD, host.rendered.last().design)
+        assertEquals(expected, Json.parseToJsonElement(host.rendered.last().toJson()).jsonObject["overrides"])
+
+        vm.onDesignSelected(CardDesign.POSTER)
+
+        assertEquals(CardDesign.POSTER, host.rendered.last().design)
+        val pruned = Json.parseToJsonElement(host.rendered.last().toJson()).jsonObject["overrides"]
+        assertNotEquals(expected, pruned)
     }
 
     @Test

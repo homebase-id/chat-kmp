@@ -52,7 +52,7 @@ fun buildCardPayload(
     return CardPayload(
         design = design,
         audience = audience.toPayload(),
-        overrides = overrides.prunedFor(design).takeUnless { it.isEmpty() },
+        overrides = overrides.takeUnless { it.isEmpty() },
         data = CardData(
             odinId = odinId,
             firstName = text(ProfileField.GIVEN_NAME),

@@ -347,7 +347,18 @@ class ProfileCardViewModel(
                 writeCard(design)
             }
             _uiState.update {
-                if (saved) it.copy(isSavingDesign = false, savedDesign = design, previewDesign = null)
+                if (saved) it.copy(
+                    isSavingDesign = false,
+                    savedDesign = design,
+                    previewDesign = null,
+                    cards = it.cards.map { card ->
+                        if (card.audience != CardAudience.Public) card
+                        else card.copy(
+                            design = design,
+                            overrides = if (card.design != design) card.overrides.prunedFor(design) else card.overrides,
+                        )
+                    },
+                )
                 else it.copy(isSavingDesign = false)
             }
             if (saved) {
@@ -589,6 +600,8 @@ class ProfileCardViewModel(
 
     private suspend fun payloadFor(design: String, audience: CardAudience): CardPayload? {
         val content = content ?: return null
+        val card = _uiState.value.cards.firstOrNull { it.audience == audience }
+        val stored = card?.overrides ?: CardOverrides.EMPTY
         return buildCardPayload(
             odinId = content.odinId.domainName,
             attributes = content.attributes,
@@ -598,7 +611,7 @@ class ProfileCardViewModel(
             tagLine = content.siteDefaults.tagLine,
             posts = posts,
             audience = audience,
-            overrides = _uiState.value.cards.firstOrNull { it.audience == audience }?.overrides ?: CardOverrides.EMPTY,
+            overrides = if (card != null && card.design != design) stored.prunedFor(design) else stored,
         )
     }
 
