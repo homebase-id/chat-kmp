@@ -117,7 +117,7 @@ suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>?, limit:
             ChatMsg(
                 id = metadata.appData.uniqueId ?: file.fileId,
                 conversationId = conversationId,
-                author = metadata.originalAuthor ?: metadata.senderOdinId ?: owner,
+                author = metadata.senderOdinId ?: metadata.originalAuthor ?: owner,
                 text = text,
                 userDate = metadata.appData.userDate ?: metadata.created.milliseconds,
                 previewThumbnail = metadata.appData.previewThumbnail,

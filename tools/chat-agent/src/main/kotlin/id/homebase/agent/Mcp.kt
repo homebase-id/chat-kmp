@@ -148,7 +148,7 @@ suspend fun toolSendMessage(backend: AgentBackend, args: JsonObject?): ToolReply
     ToolReply("sent ${backend.send(conversationId, "$BOT_PREFIX $text", reply)}")
 }
 
-class SessionBackend(private val profile: String) : AgentBackend {
+class SessionBackend(private val profile: String, private val scope: Uuid? = null, private val readOnly: Boolean = false) : AgentBackend {
     private var session: Session? = null
     private var cachedAllowlist: Allowlist? = null
     private var loadedAt = 0L
@@ -164,6 +164,8 @@ class SessionBackend(private val profile: String) : AgentBackend {
         cachedAllowlist = loadConfig(profile, session.identity).allowlist.also {
             refreshAllowlist(session, it)
             if (!it.memberMode) it.learn(discoverConversations(session))
+            it.scope = scope
+            it.readOnly = readOnly
         }
         loadedAt = System.nanoTime()
     }
@@ -183,11 +185,11 @@ private suspend fun ready(backend: SessionBackend, block: suspend () -> ToolRepl
     return CallToolResult(content = listOf(TextContent(reply.text)), isError = reply.isError)
 }
 
-suspend fun mcp(profile: String) {
+suspend fun mcp(profile: String, scope: Uuid? = null, readOnly: Boolean = false) {
     val protocolOut = System.out
     System.setOut(System.err)
 
-    val backend = SessionBackend(profile)
+    val backend = SessionBackend(profile, scope, readOnly)
     val server = Server(
         Implementation(name = "chat-agent", version = "1.0.0"),
         ServerOptions(capabilities = ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false))),
@@ -240,7 +242,7 @@ suspend fun mcp(profile: String) {
         ),
     ) { request -> ready(backend) { toolSearchMessages(backend, request.arguments) } }
 
-    server.addTool(
+    if (!readOnly) server.addTool(
         name = "send_message",
         description = "Send a text message, prefixed with the robot emoji, to an allowed conversation.",
         inputSchema = ToolSchema(

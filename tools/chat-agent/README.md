@@ -42,7 +42,10 @@ that. Rate caps (`maxRunsPerHour` per author, `maxRunsPerDay`) apply to 1:1 trig
 | key | meaning | default |
 |---|---|---|
 | nickname | `@nick` anywhere or first word | quagmire |
-| brain | shell command; prompt on stdin, stdout is the reply | `claude -p --model haiku --max-turns 3` |
+| brain | shell command; prompt on stdin, stdout is the reply. Default is the locked claude (no tools, no MCP, no settings) | locked `claude -p --model haiku ...` |
+| operators | comma list of odinIds trusted for the operator tier | none |
+| operatorBrain | any shell command for operator rooms (full env); unset = no privileged tier | none |
+| operatorCwd | working dir of operatorBrain | inherited |
 | bot | true for a bot identity | false |
 | owner | odinId allowed to summon the bot | none |
 | allowConversations | `self`, `member` (not for `me`), or comma list of uuids | `self` (bot: `member`) |
@@ -88,3 +91,26 @@ See `mcp-config.example.json`; for Claude Code:
       <key>KeepAlive</key><true/>
       <key>RunAtLoad</key><true/>
     </dict></plist>
+
+## Security
+
+Every chat member is untrusted input to the brain. Two tiers:
+
+- Locked (default, everyone): `brain` runs in a fresh empty temp dir (deleted after) with env limited to
+  PATH, HOME, USER, LANG. The default command is `claude -p` with `--tools ""`, `--strict-mcp-config`,
+  `--setting-sources ""`, `--max-turns 1`, `--disable-slash-commands` and a fixed system prompt; chat text
+  is passed inside `<untrusted_*>` blocks. Replies have any leading robot emoji or spoofed
+  "X's AI assistant:" stripped before the real prefix is added. `watch` logs a WARNING at startup if `brain`
+  is not the locked default. Profile dir is 700, files inside 600.
+- Operator (opt-in): `operators=` + `operatorBrain=`. `operatorBrain` runs in `operatorCwd` with the full
+  environment, only when every trigger author is an operator (or this identity) AND every other member of the
+  conversation is an operator (a DM, an all-operator group, or note-to-self). One non-operator member, or a
+  non-operator trigger coalesced into the same run, keeps the whole run locked. History given to the operator
+  brain contains only operator/own messages. Identity is the server-set `senderOdinId`, never `originalAuthor`.
+- MCP: `mcp --conversation <id>` restricts every tool to one conversation; `--read-only` removes
+  `send_message` and refuses sends. Use both when handing MCP to a brain.
+
+Residual risks: web pages or tool output fetched by the operator brain can still inject into it; a locked
+brain can still be talked into a bad reply text (replies are visible to the conversation); the operator
+tier trusts the operators' identities and their servers; a compromised operator account owns the machine
+running operatorBrain, so use a dedicated one.

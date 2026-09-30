@@ -84,7 +84,7 @@ class WatchTest {
         val processor = WatchProcessor(
             config, "owner.example.com", store,
             history = { emptyList() },
-            brain = { brainRuns++; prompts += it; outcomes.removeFirstOrNull() ?: outcome },
+            brain = { p, _ -> brainRuns++; prompts += p; outcomes.removeFirstOrNull() ?: outcome },
             reply = { c, t -> if (sendFailures > 0) { sendFailures--; error("boom") }; replyTargets += c; replies += t },
             log = { logs += it },
             limiter = limiter ?: RunLimiter(null, config.maxRunsPerHour, config.maxRunsPerDay),

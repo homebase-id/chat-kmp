@@ -16,6 +16,9 @@ class Allowlist(
         require(!(delegate && memberMode)) { "member mode is not permitted for the me profile; list conversation uuids explicitly" }
     }
 
+    var scope: Uuid? = null
+    var readOnly = false
+
     private var known: Map<Uuid, ConversationInfo> = emptyMap()
     private val derived = HashMap<Uuid, ConversationInfo>()
 
@@ -29,7 +32,10 @@ class Allowlist(
 
     private fun lookup(id: Uuid): ConversationInfo? = known[id] ?: derived[id]
 
-    fun allowedConversationIds(): Set<Uuid> = if (memberMode) conversationIds + known.keys + derived.keys else conversationIds
+    fun allowedConversationIds(): Set<Uuid> =
+        (if (memberMode) conversationIds + known.keys + derived.keys else conversationIds).let { all ->
+            scope?.let { s -> all.filterTo(HashSet()) { it == s } } ?: all
+        }
 
     fun title(id: Uuid): String? =
         if (id == ChatProtocol.ConversationWithYourselfId) NOTE_TO_SELF_TITLE else lookup(id)?.title
@@ -39,7 +45,8 @@ class Allowlist(
 
     fun isDirect(id: Uuid): Boolean = id != ChatProtocol.ConversationWithYourselfId && memberCount(id) == 2
 
-    fun allowsConversation(id: Uuid): Boolean = id in conversationIds || (memberMode && lookup(id) != null)
+    fun allowsConversation(id: Uuid): Boolean =
+        (scope == null || id == scope) && (id in conversationIds || (memberMode && lookup(id) != null))
 
     fun allowsAuthor(author: OdinId?): Boolean = author != null && author in authors
 
@@ -54,7 +61,7 @@ class Allowlist(
 
     fun info(id: Uuid): ConversationInfo? = lookup(id)
 
-    fun allowsSend(id: Uuid): Boolean = when {
+    fun allowsSend(id: Uuid): Boolean = !readOnly && when {
         id == ChatProtocol.ConversationWithYourselfId -> allowsConversation(id)
         delegate -> isExplicitGroup(id) && lookup(id) != null
         else -> allowsConversation(id) && groupSend && lookup(id) != null

@@ -35,7 +35,7 @@ class DirectChatTest {
         val p = WatchProcessor(
             config, "bot.example.com", ProcessedStore(null),
             history = { emptyList() },
-            brain = { prompts += it; BrainOutcome.Output("pong") },
+            brain = { p, _ -> prompts += p; BrainOutcome.Output("pong") },
             reply = { _, t -> replies += t },
             log = {},
         )

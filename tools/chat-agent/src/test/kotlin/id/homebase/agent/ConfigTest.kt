@@ -54,7 +54,7 @@ class ConfigTest {
     fun configDefaultsAndOverrides() {
         val d = parseConfig("", owner)
         assertEquals("quagmire", d.nickname)
-        assertEquals("claude -p --model haiku --max-turns 3", d.brain)
+        assertEquals(DEFAULT_BRAIN, d.brain)
         assertFalse(d.bot)
         assertEquals(setOf(self), d.allowlist.conversationIds)
         assertEquals(setOf(owner), d.allowlist.authors)
