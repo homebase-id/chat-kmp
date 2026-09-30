@@ -56,6 +56,7 @@ class ProfileProvider(
         expectedVersionTag: Uuid?,
         visibility: ProfileVisibility,
         data: JsonObject,
+        priority: Int? = null,
     ): ProfileWriteResult {
         val creds = requireCreds()
 
@@ -69,6 +70,7 @@ class ProfileProvider(
                     expectedVersionTag = expectedVersionTag,
                     visibility = visibility.wireValue,
                     data = data,
+                    priority = priority,
                 )
             ),
             secret = creds.secret,

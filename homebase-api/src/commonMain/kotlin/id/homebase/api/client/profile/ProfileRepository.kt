@@ -92,6 +92,7 @@ class ProfileRepository(
         knownId: Uuid? = null,
         knownVersionTag: Uuid? = null,
         maxAttempts: Int = 3,
+        priority: Int? = null,
     ): ProfileWriteResponse {
         require(maxAttempts >= 1) { "maxAttempts must be >= 1" }
 
@@ -105,6 +106,7 @@ class ProfileRepository(
                 expectedVersionTag = versionTag,
                 visibility = visibility,
                 data = data,
+                priority = priority,
             )
             when (result) {
                 is ProfileWriteResult.Ok -> return result.body
