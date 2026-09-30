@@ -309,13 +309,43 @@ class ChatToolsTest {
 
     @Test
     fun lockedToolsParsingWarnsOnUnknownValues() {
-        val config = parseConfig("lockedTools=chat, search ,Fetch", owner)
+        val config = parseConfig("lockedTools=chat, search ,Fetch, bash, web", owner)
         assertTrue(config.lockedChat)
-        assertEquals(setOf("chat"), config.lockedTools)
-        assertEquals(2, config.warnings.count { it.contains("unknown lockedTools value") })
+        assertEquals(setOf("chat", "search", "fetch"), config.lockedTools)
+        assertEquals(listOf("bash", "web"), config.warnings.filter { it.contains("unknown lockedTools value") }.map { it.substringAfter("'").substringBefore("'") })
         assertFalse(parseConfig("", owner).lockedChat)
         assertTrue(chatToolCommandNames().split(" ").all { it.startsWith("mcp__chat__") })
         assertFalse(chatToolCommandNames().contains("edit") || chatToolCommandNames().contains("delete"))
+    }
+
+    @Test
+    fun lockedWebToolCommandLines() {
+        fun cmd(tools: String) = parseConfig("lockedTools=$tools", owner).brain.command
+        val common = listOf("--strict-mcp-config", "--setting-sources \"\"", "--disable-slash-commands", "--max-turns 6")
+        val search = cmd("search")
+        assertTrue(search.contains("--tools \"WebSearch\" ") && search.contains("--allowedTools \"WebSearch\" ") && common.all { it in search })
+        assertFalse(search.contains("--mcp-config") || search.contains("WebFetch") || search.contains("mcp__chat__"))
+        val fetch = cmd("fetch")
+        assertTrue(fetch.contains("--tools \"WebFetch\" ") && fetch.contains("--allowedTools \"WebFetch\" ") && !fetch.contains("WebSearch"))
+        val both = cmd("search,fetch")
+        assertTrue(both.contains("--tools \"WebSearch,WebFetch\" ") && both.contains("--allowedTools \"WebSearch WebFetch\" "))
+        val mixed = cmd("chat,search")
+        assertTrue(mixed.contains("--tools \"WebSearch\" ") && mixed.contains("--mcp-config {mcp}") && mixed.contains("--allowedTools \"${chatToolCommandNames()} WebSearch\" ") && common.all { it in mixed })
+        assertEquals(DEFAULT_BRAIN, cmd(""))
+        assertTrue(parseConfig("lockedTools=search", owner).brain.streamJson)
+        listOf("Bash", "Read", "Edit", "Write").forEach { assertFalse(it in mixed || it in both) }
+    }
+
+    @Test
+    fun lockedWebToolsWarnOnCustomBrainAndBanner() {
+        val custom = parseConfig("lockedTools=search,fetch\nbrain=echo hi", owner)
+        assertEquals(1, custom.warnings.count { it.contains("search/fetch only shape the default claude brain") })
+        assertTrue(parseConfig("lockedTools=search", owner).warnings.none { it.contains("only shape") })
+        val lines = tierBanner(AgentConfig(allowlist = Allowlist.default(owner), lockedTools = setOf("search", "fetch")))
+        assertTrue(lines.any { it.startsWith("lockedTools=search:") && "WebSearch" in it })
+        assertTrue(lines.any { it.startsWith("WARNING: lockedTools=fetch:") && "localhost" in it && "LAN" in it && "tailnet" in it })
+        assertTrue(lines.any { it == "locked tier: granted tools: fetch, search" })
+        assertTrue(tierBanner(AgentConfig(allowlist = Allowlist.default(owner))).none { "lockedTools=fetch" in it || "lockedTools=search" in it })
     }
 
     @Test
@@ -436,5 +466,13 @@ class ChatToolsTest {
         delay(200)
         assertEquals(listOf("job says hi"), backend.sent.toList())
         assertFalse(h.replies.any { it.contains("done (no output)") }, h.replies.toString())
+    }
+
+    @Test
+    fun chatPlusWebPromptNamesBothToolKinds() {
+        val both = lockedBrainCommand(setOf("chat", "search"))
+        assertTrue("and web search/fetch" in both && "read and web tools return" in both)
+        assertTrue(LOCKED_CHAT_SYSTEM_PROMPT in lockedBrainCommand(setOf("chat")))
+        assertEquals(DEFAULT_BRAIN, lockedBrainCommand(setOf("bash")))
     }
 }

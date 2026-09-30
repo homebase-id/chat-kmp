@@ -237,6 +237,11 @@ Every chat member is untrusted input to the brain. Two tiers:
   `lockedTools=chat` (see "Chat tools for the brain"): then ANY member who can trigger the bot can make it read the whole
   conversation, send messages, files from `mcpFilesDir`, polls, events, locations and contacts, vote and react, up to 5 tool calls per run, with no edit or delete and no video or voice notes;
   the same prompt-injection risk as any tool-using model, so leave it off in rooms you do not trust.
+  `lockedTools=search` runs on Anthropic's side (no request leaves this machine). `lockedTools=fetch` does NOT: WebFetch
+  makes the HTTP request from this machine, so a stranger's prompt can reach the LAN, the tailnet and other private
+  addresses (the tool refuses `localhost` and dotless names itself, but a dotted name or IP that resolves to a private
+  address was reached in testing). Enable `fetch` only where the container's network blocks private ranges; `watch`
+  prints a WARNING at startup when it is on.
   The tool endpoint is loopback-only with a per-run token (256-bit, constant-time compare, revoked when the run ends).
 - Operator (opt-in): `operators=` + `operatorBrain=` (`operators` alone is enough). The tier follows the SENDER: a
   message whose server-set `senderOdinId` (never `originalAuthor`, never a null sender outside note-to-self) is a
@@ -328,6 +333,11 @@ input; other codecs may not play on every receiver.
 With `lockedTools=chat` the default locked claude command gains `--mcp-config {mcp}` and `--allowedTools` limited to the
 `mcp__chat__*` tools above (still `--tools ""`, `--strict-mcp-config`, no settings, scrubbed env, temp cwd) and
 `--max-turns 6`, with a system prompt that mentions the tools. Without it the command line is unchanged.
+
+`lockedTools` also takes `search` (Claude Code's WebSearch) and `fetch` (WebFetch), alone or combined (`lockedTools=chat,search`).
+The command then uses `--tools "WebSearch,WebFetch"` (only the granted ones) and a matching `--allowedTools`, so they run
+without a permission prompt; Bash, Read, Edit and Write stay unavailable. Our 5-call cap only counts chat tools; web
+calls are not served by our MCP server and are bounded only by `--max-turns 6`. Custom `brain` commands ignore both values.
 
 The operator brain gets, in the job's environment, `CHAT_AGENT_MCP_URL`, `CHAT_AGENT_MCP_TOKEN` and
 `CHAT_AGENT_MCP_CONFIG` (a ready `--mcp-config` JSON for this run), and `{mcp}` in `operatorBrain` expands to that path.
