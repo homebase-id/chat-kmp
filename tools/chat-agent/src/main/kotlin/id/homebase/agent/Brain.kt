@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 const val BRAIN_TIMEOUT_MS = 120_000L
 const val NO_REPLY = "NO_REPLY"
 const val REPLY_CODEPOINTS = 1500
+const val MAX_TEXT_BYTES = 200_000
 const val FAILURE_CODEPOINTS = 120
 
 sealed interface BrainOutcome {
@@ -20,10 +21,24 @@ sealed interface BrainOutcome {
 
 fun failureLine(reason: String) = sanitizeReply(reason).oneLine(FAILURE_CODEPOINTS)
 
-fun brainReply(outcome: BrainOutcome, prefix: String = BOT_PREFIX): String? = when (outcome) {
+fun capTextBytes(text: String, maxBytes: Int = MAX_TEXT_BYTES): String {
+    if (text.encodeToByteArray().size <= maxBytes) return text
+    var end = 0
+    var used = 0
+    while (end < text.length) {
+        val next = text.offsetByCodePoints(end, 1)
+        val size = text.substring(end, next).encodeToByteArray().size
+        if (used + size > maxBytes) break
+        used += size
+        end = next
+    }
+    return text.substring(0, end).trimEnd() + "\n\n…(truncated: over ${maxBytes / 1000} KB)"
+}
+
+fun brainReply(outcome: BrainOutcome, prefix: String = BOT_PREFIX, operator: Boolean = false): String? = when (outcome) {
     is BrainOutcome.Failed -> tagged(prefix, "failed: ${failureLine(outcome.reason)}")
     is BrainOutcome.Output -> sanitizeReply(outcome.stdout).let {
-        if (it.isEmpty() || it == NO_REPLY) null else tagged(prefix, it.truncateToCodePoints(REPLY_CODEPOINTS))
+        if (it.isEmpty() || it == NO_REPLY) null else tagged(prefix, if (operator) capTextBytes(it) else it.truncateToCodePoints(REPLY_CODEPOINTS))
     }
 }
 

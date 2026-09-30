@@ -60,6 +60,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     val jobs = config.operatorBrain?.let {
         JobRunner(CoroutineScope(SupervisorJob(coroutineContext.job)), JobLedger(File(dir, "jobs.txt"), config.maxJobsPerDay), ::log, prefix = config.replyPrefix, journal = File(dir, "jobs-pending.txt"))
     }
+    val fetcher = sessionFetcher(session)
     val processor = WatchProcessor(
         config = config,
         identity = session.identity.toString(),
@@ -68,7 +69,8 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         away = AwayFlag(File(dir, "away")),
         jobs = jobs,
         history = { timings.time("history") { fetchMessages(session, it, HISTORY_LIMIT + 1) } },
-        loader = AttachmentLoader(sessionFetcher(session), config.transcribe?.let(::shellTranscriber), ::log),
+        loader = AttachmentLoader(fetcher, config.transcribe?.let(::shellTranscriber), ::log),
+        fetcher = fetcher,
         brain = { prompt, tier, attachments ->
             timings.time("brain") {
                 if (tier == Tier.OPERATOR) runBrain(Brain(config.operatorBrain!!), prompt, config.operatorTimeoutMs, tier = tier, operatorCwd = config.operatorCwd, attachments = attachments)

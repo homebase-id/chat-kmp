@@ -18,6 +18,10 @@ import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.ReplyPreview
+import id.homebase.chat.services.chat.ChatMessageSizer
+import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.upload.PayloadBundle
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.video.VideoPayloadProcessor
 import id.homebase.upload.PayloadBundleEncryptionService
@@ -29,17 +33,28 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonPrimitive
 
-fun buildMessageContent(text: String, replyPreview: ReplyPreview? = null, allowBlank: Boolean = false): String {
+class BuiltMessage(val header: String, val payloadJson: ByteArray?)
+
+// mirrors ChatMessageSenderService.buildMessageContentAndBundle: too big for the header -> preview in header, full text in the dflt_key payload
+fun buildMessage(text: String, replyPreview: ReplyPreview? = null, allowBlank: Boolean = false): BuiltMessage {
     require(allowBlank || text.isNotBlank()) { "message text is empty" }
-    val content = OdinSystemSerializer.serialize(
-        MessageAppData(replyPreview = replyPreview, message = JsonPrimitive(text), deliveryStatus = ChatDeliveryStatus.Sent.value, version = 1)
-    )
-    val size = content.encodeToByteArray().size
-    require(size <= HomebaseProtocol.MaxHeaderContentBytes) {
-        "message too large: $size bytes serialized, limit is ${HomebaseProtocol.MaxHeaderContentBytes}"
-    }
-    return content
+    val data = MessageAppData(replyPreview = replyPreview, message = JsonPrimitive(text), deliveryStatus = ChatDeliveryStatus.Sent.value, version = ChatProtocol.MessageVersionNumberOne)
+    val full = OdinSystemSerializer.serialize(data)
+    if (ChatMessageSizer.shouldEmbedInHeader(full)) return BuiltMessage(full, null)
+    val header = OdinSystemSerializer.serialize(data.copy(message = JsonPrimitive(ChatMessageSizer.preview(data.getMessage()))))
+    val size = header.encodeToByteArray().size
+    require(size <= HomebaseProtocol.MaxHeaderContentBytes) { "message preview too large: $size bytes serialized, limit is ${HomebaseProtocol.MaxHeaderContentBytes}" }
+    return BuiltMessage(header, ChatMessageSizer.payloadBytes(data))
 }
+
+fun buildMessageContent(text: String, replyPreview: ReplyPreview? = null, allowBlank: Boolean = false): String =
+    buildMessage(text, replyPreview, allowBlank).header
+
+suspend fun textPayload(json: ByteArray, fileOps: FileOperationsProvider): PayloadFile =
+    PayloadFile(key = ChatProtocol.DefaultPayloadKey, filePath = fileOps.writeBytesToTempFile(bytes = json, prefix = "chat_msg", suffix = ".json"), contentType = "application/json")
+
+fun withTextPayload(bundle: PayloadBundle?, payload: PayloadFile): PayloadBundle =
+    (bundle ?: PayloadBundle(emptyList(), emptyList(), emptyList())).let { it.copy(payloads = it.payloads + payload) }
 
 fun conversationRecipients(conversation: ConversationInfo, self: OdinId): List<OdinId> =
     if (conversation.id == ChatProtocol.ConversationWithYourselfId) emptyList()
@@ -55,6 +70,7 @@ suspend fun buildMessageMetadata(
     replyPreview: ReplyPreview? = null,
     previewThumbnail: EmbeddedThumb? = null,
     allowBlank: Boolean = false,
+    content: String = buildMessageContent(text, replyPreview, allowBlank),
 ): UploadFileMetadata {
     return UploadFileMetadata(
             allowDistribution = distribute,
@@ -65,7 +81,7 @@ suspend fun buildMessageMetadata(
                 fileType = ChatProtocol.MessageFileType,
                 dataType = 0,
                 userDate = nowMs,
-                content = buildMessageContent(text, replyPreview, allowBlank),
+                content = content,
                 previewThumbnail = previewThumbnail,
             ),
         ).encryptContent(keyHeader)
@@ -136,15 +152,19 @@ suspend fun sendToConversation(
     val text = allowlist.disclosure(conversation.id, text, session.identity)
     val keyHeader = KeyHeader.newRandom16()
     val fileOps = JvmFileOperationsProvider()
+    val built = buildMessage(text, replyPreview, allowBlank = files.isNotEmpty())
     val staged = outgoingBundle(text, files, fileOps, previews)
+    val textFile = built.payloadJson?.let { textPayload(it, fileOps) }
     try {
-        val encrypted = staged?.let { payloadEncryptor(fileOps).encryptBundle(messageId, it.bundle, keyHeader.aesKey, CoroutineScope(currentCoroutineContext())) }
+        val bundle = if (textFile != null) withTextPayload(staged?.bundle, textFile) else staged?.bundle
+        val encrypted = bundle?.let { payloadEncryptor(fileOps).encryptBundle(messageId, it, keyHeader.aesKey, CoroutineScope(currentCoroutineContext())) }
         val metadata = buildMessageMetadata(
             conversation.id, messageId, text, Clock.System.now().toEpochMilliseconds(), keyHeader,
             distribute = recipients.isNotEmpty(),
             replyPreview = replyPreview,
             previewThumbnail = staged?.bundle?.previewThumbs?.minByOrNull { it.pixelWidth },
             allowBlank = files.isNotEmpty(),
+            content = built.header,
         )
         DriveUploadProvider(session.http, session.credentials, fileOps)
             .uploadFile(
@@ -158,6 +178,7 @@ suspend fun sendToConversation(
                 )
             )
     } finally {
+        textFile?.let { runCatching { File(it.filePath).delete() } }
         staged?.let { s ->
             s.bundle.payloads.forEach { runCatching { File(it.filePath).delete() } }
             s.cleanup()

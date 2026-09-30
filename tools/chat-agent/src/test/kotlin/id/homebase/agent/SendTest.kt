@@ -104,9 +104,10 @@ class SendTest {
     }
 
     @Test
-    fun oversizedTextRejectedNotTruncated() {
-        val e = assertFailsWith<IllegalArgumentException> { buildMessageContent("x".repeat(8000)) }
-        assertTrue(e.message!!.contains("too large"))
+    fun oversizedTextGoesToPayloadInsteadOfFailing() {
+        val built = buildMessage("x".repeat(8000))
+        assertTrue(built.payloadJson != null)
+        assertTrue(built.header.encodeToByteArray().size <= 7000)
     }
 
     @Test

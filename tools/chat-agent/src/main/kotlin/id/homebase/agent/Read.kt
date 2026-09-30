@@ -21,6 +21,8 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.youauth.CredentialStorage
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
+import id.homebase.chat.services.ChatMessagePayload
+import kotlinx.coroutines.CancellationException
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.util.truncateToCodePoints
@@ -34,6 +36,7 @@ import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 const val REPLY_QUOTE_CODEPOINTS = 80
+const val LONG_MARKER = "…(long)"
 const val REQUEST_TIMEOUT_MS = 30_000L
 
 fun HttpClient.withRequestTimeout(ms: Long): HttpClient = config {
@@ -74,8 +77,11 @@ class ChatMsg(
     val sender: OdinId? = null,
     val fileId: Uuid? = null,
     val label: String? = null,
+    val expanded: Boolean = false,
 ) {
-    fun copy(id: Uuid) = ChatMsg(id, conversationId, author, text, userDate, previewThumbnail, payloads, dataType, rawContent, sender, fileId, label)
+    fun copy(id: Uuid) = ChatMsg(id, conversationId, author, text, userDate, previewThumbnail, payloads, dataType, rawContent, sender, fileId, label, expanded)
+    fun withFullText(full: String) = ChatMsg(id, conversationId, author, full, userDate, previewThumbnail, payloads, dataType, rawContent, sender, fileId, null, true)
+    val isLong: Boolean get() = payloads?.any { it.key == ChatProtocol.DefaultPayloadKey } == true
     val display: String get() = label ?: text
     val replyContext: JsonElement?
         get() = (MessageContentParser.parse(dataType, rawContent) as? MessageContent.Event)?.descriptor
@@ -123,7 +129,8 @@ suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>?, limit:
             val text = runCatching {
                 OdinSystemSerializer.deserialize<MessageAppData>(metadata.appData.content.orEmpty()).getMessage()
             }.getOrDefault("[unreadable message]")
-            val label = messageDisplay(text, metadata.appData.dataType, metadata.appData.content, metadata.payloads).takeIf { it != text }
+            val long = metadata.payloads?.any { it.key == ChatProtocol.DefaultPayloadKey } == true
+            val label = messageDisplay(text, metadata.appData.dataType, metadata.appData.content, metadata.payloads).let { if (long) "$it $LONG_MARKER" else it }.takeIf { it != text }
             ChatMsg(
                 id = metadata.appData.uniqueId ?: file.fileId,
                 conversationId = conversationId,
@@ -143,14 +150,39 @@ suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>?, limit:
         .sortedBy { it.userDate }
 }
 
-suspend fun read(profile: String, limit: Int, conversation: Uuid? = null) {
+suspend fun read(profile: String, limit: Int, conversation: Uuid? = null, full: String? = null) {
     val session = openSession(profile)
     val allowlist = loadConfig(profile, session.identity).allowlist
     val conversationId = conversation ?: ChatProtocol.ConversationWithYourselfId
     refreshAllowlist(session, allowlist)
     allowlist.requireConversation(conversationId)
 
-    fetchMessages(session, conversationId, limit)
-        .filter { allowlist.allowsAuthor(it.author, conversationId) }
-        .forEach { println("${Instant.fromEpochMilliseconds(it.userDate)} ${it.author}: ${it.display}") }
+    val messages = fetchMessages(session, conversationId, limit).filter { allowlist.allowsAuthor(it.author, conversationId) }
+    if (full != null) {
+        val msg = messages.singleOrNull { it.id.toString().startsWith(full.lowercase()) } ?: error("no single message matches '$full' in the last $limit")
+        println(expandLongText(msg, sessionFetcher(session)).text)
+        return
+    }
+    messages.forEach { println("${Instant.fromEpochMilliseconds(it.userDate)} ${it.author}: ${it.display}") }
+}
+
+const val LONG_FETCH_BYTES = 600_000L
+
+fun parseLongText(bytes: ByteArray): String? = runCatching {
+    OdinSystemSerializer.deserialize<ChatMessagePayload>(bytes.decodeToString()).message
+}.getOrNull()
+
+suspend fun expandLongText(msg: ChatMsg, fetcher: PayloadFetcher): ChatMsg {
+    val fileId = msg.fileId
+    if (!msg.isLong || msg.expanded || fileId == null) return msg
+    val bytes = try {
+        fetcher.fetch(fileId, ChatProtocol.DefaultPayloadKey, LONG_FETCH_BYTES)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        System.err.println("long message fetch error: ${e.message}")
+        null
+    } ?: return msg
+    val full = parseLongText(bytes) ?: return msg
+    return msg.withFullText(capTextBytes(full))
 }

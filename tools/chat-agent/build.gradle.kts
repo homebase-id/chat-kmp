@@ -55,7 +55,7 @@ tasks.withType<AbstractCopyTask>().configureEach { duplicatesStrategy = Duplicat
 val unusedJarPatterns = listOf(
     "-desktop-\\d", "^skiko-", "^coil-", "^multiplatform-markdown-renderer", "^reorderable-", "^filekit-", "^vlcj", "^dbus-java",
     "^nucleus\\.", "^kmpnotifier-", "^koin-compose", "^image-editor-ui", "^kotlinx-coroutines-swing", "^jbr-api", "^pdfbox", "^fontbox",
-    "^jna-platform", "^markdown-jvm", "^sqlite-jdbc", "^sqlite-driver", "^jdbc-driver", "^sqldelight", "^jna-\\d", "^homebase-common-jvm", "^homebase-notifshared",
+    "^jna-platform", "^sqlite-jdbc", "^sqlite-driver", "^jdbc-driver", "^sqldelight", "^jna-\\d", "^homebase-common-jvm", "^homebase-notifshared",
 )
 
 val chatJarName = "homebase-chat-jvm.jar"

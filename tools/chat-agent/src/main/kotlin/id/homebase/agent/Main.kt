@@ -7,9 +7,9 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.runBlocking
 
 private const val USAGE =
-    "usage: chat-agent login --profile <p> [--identity <domain>] [--no-browser] [--callback-port <n>] | read --profile <p> [--conversation <id>] [--limit <n>] | conversations --profile <p> | send --profile <p> [--conversation <id>] [--file <path>] [text] | watch --profile <p> | mcp --profile <p> [--conversation <id>] [--read-only] | brain-test --profile <p>  (global: --verbose, --version)"
+    "usage: chat-agent login --profile <p> [--identity <domain>] [--no-browser] [--callback-port <n>] | read --profile <p> [--conversation <id>] [--limit <n>] [--full <message id prefix>] | conversations --profile <p> | send --profile <p> [--conversation <id>] [--file <path>] [text] | watch --profile <p> | mcp --profile <p> [--conversation <id>] [--read-only] | brain-test --profile <p>  (global: --verbose, --version)"
 
-private val VALUE_FLAGS = setOf("--profile", "--conversation", "--limit", "--identity", "--file", "--callback-port")
+private val VALUE_FLAGS = setOf("--profile", "--conversation", "--limit", "--identity", "--file", "--callback-port", "--full")
 private const val VERBOSE = "--verbose"
 private const val READ_ONLY = "--read-only"
 private const val ATTACH_LATEST = "--attach-latest-image"
@@ -64,6 +64,7 @@ fun main(args: Array<String>) {
                     profile,
                     options["--limit"]?.toIntOrNull() ?: 20,
                     options["--conversation"]?.let { Uuid.parse(it) },
+                    options["--full"],
                 )
             }
         }

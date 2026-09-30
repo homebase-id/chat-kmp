@@ -21,6 +21,7 @@ class WatchProcessor(
     private val away: AwayFlag = AwayFlag(null),
     private val jobs: JobRunner? = null,
     private val loader: AttachmentLoader? = null,
+    private val fetcher: PayloadFetcher? = null,
 ) {
     private val self = OdinId(identity)
     private val trust = TrustPolicy(config, self)
@@ -104,8 +105,11 @@ class WatchProcessor(
         val omitted = if (tier != Tier.OPERATOR) emptySet() else sorted.filter { t ->
             replyParentId(t.rawContent)?.let { it !in ids && it !in keptIds && it in fetchedIds } == true
         }.map { it.id }.toSet()
+        val parents = sorted.mapNotNull { replyParentId(it.rawContent) }.toSet()
+        val fullTriggers = sorted.map { expand(it) }
+        val fullPast = past.map { if (it.id in parents) expand(it) else it }
         val attachments = loadAttachments(sorted, past)
-        return Prepared(buildPrompt(sorted, past, awayMode, header(conversation), context(conversation), attachments = attachments, omittedParents = omitted), attachments)
+        return Prepared(buildPrompt(fullTriggers, fullPast, awayMode, header(conversation), context(conversation), attachments = attachments, omittedParents = omitted), attachments)
     }
 
     private suspend fun submitJob(
@@ -148,6 +152,8 @@ class WatchProcessor(
             emptyList()
         }
     }
+
+    private suspend fun expand(msg: ChatMsg) = fetcher?.let { expandLongText(msg, it) } ?: msg
 
     private fun isOwn(msg: ChatMsg) = msg.author?.toString() == identity
 
@@ -214,7 +220,7 @@ class WatchProcessor(
                 BrainOutcome.Failed(e.message ?: e.toString())
             }
             val files = (outcome as? BrainOutcome.Output)?.files.orEmpty()
-            val text = brainReply(outcome, config.replyPrefix)
+            val text = brainReply(outcome, config.replyPrefix, operator = tier == Tier.OPERATOR)
                 ?: if (files.isNotEmpty()) config.replyPrefix else return done(sorted, "silent")
             val failed = outcome is BrainOutcome.Failed
             val attempt = (sorted.maxOf { attempts[it.id] ?: 0 }) + 1

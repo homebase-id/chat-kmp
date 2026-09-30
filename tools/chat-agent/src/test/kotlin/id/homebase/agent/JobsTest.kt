@@ -165,15 +165,9 @@ class JobsTest {
     }
 
     @Test
-    fun finalReplyKeepsTheTail() {
-        assertEquals("…defg", tailTruncate("abcdefg", 5).let { it })
-        assertEquals("abc", tailTruncate("abc", 5))
-        val long = "x".repeat(5000) + "THE END"
-        val text = jobText(3, BrainOutcome.Output(long), "")
-        assertTrue(text.startsWith("…") && text.endsWith("THE END"))
-        assertTrue(text.codePointCount(0, text.length) <= REPLY_CODEPOINTS + 3)
-        val emoji = "😀".repeat(2000)
-        assertTrue(jobText(1, BrainOutcome.Output(emoji)).none { Character.isLowSurrogate(it) && false })
+    fun finalReplyIsNotTruncatedBelowTheHardCap() {
+        val long = "x".repeat(50_000) + "THE END"
+        assertTrue(jobText(3, BrainOutcome.Output(long), "").endsWith("THE END"))
         assertEquals("job 2 failed: boom", jobText(2, BrainOutcome.Failed("boom"), ""))
         assertEquals("job 2 done (no output)", jobText(2, BrainOutcome.Output("  "), ""))
     }

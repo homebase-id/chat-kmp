@@ -115,6 +115,14 @@ text-like files (<= 2 MB) are inlined; other files and voice notes are labels. C
 `$CHAT_AGENT_ATTACHMENTS`. Outgoing images longer than 1600 px are scaled to 1600 px and EXIF rotation is baked in
 (smaller upright images go out byte for byte).
 
+Long messages work like the app's: when the serialized message does not fit the 7000-byte header budget
+(`ChatMessageSizer.shouldEmbedInHeader`), the header carries a 400-codepoint plain preview and the full text goes in an
+encrypted `dflt_key` JSON payload (`{"message": ...}`), next to any attachments or link preview; the app shows it with
+"read more". Locked-brain replies stay capped at 1500 characters; operator replies and job results are capped at 200 KB.
+Reading: a message sent long shows its preview plus `…(long)` in `read` and MCP `read_messages`; for trigger messages and
+the replied-to parent the watcher fetches the full payload (capped) so the brain sees the whole text. Only the preview is
+matched for the trigger nickname. History lines keep the preview.
+
 Brain output `NO_REPLY` or empty means stay silent. Over a cap: no run, no reply,
 `skip: rate limited` in the log. Triggers from one conversation in one poll share one run.
 A failed run is retried once on the next poll, then `failed: ...` is sent (prefixed with `🤖 ` for `me`).
@@ -254,7 +262,7 @@ Every chat member is untrusted input to the brain. Two tiers:
 With `operatorBrain` set, an operator-tier trigger does not run inline. It becomes a background job so
 `watch` keeps answering locked-tier messages meanwhile. The agent replies at once with `🤖 on it (job n)`
 (or `🤖 queued behind job m (job n)`); one job runs at a time, the rest wait in order. When the job ends the
-conversation gets the brain output (truncated to 1500 characters, keeping the END) or
+conversation gets the brain output (capped at 200 KB of text, tail cut with a marker) or
 `🤖 job n failed: ...`. The job is killed with all its child processes after `operatorTimeout`.
 Operators (in a conversation that passes the allowlist) can send `@<nick> status` (running job, queue) and
 `@<nick> cancel` (or `@<nick> cancel <n>`); from anyone else these are ordinary chat text. A job can be cancelled only from

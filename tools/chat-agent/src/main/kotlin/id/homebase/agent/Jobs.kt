@@ -195,16 +195,10 @@ class JobLedger(
     }
 }
 
-fun tailTruncate(text: String, maxCodePoints: Int): String {
-    if (text.codePointCount(0, text.length) <= maxCodePoints) return text
-    val start = text.offsetByCodePoints(text.length, -(maxCodePoints - 1))
-    return "…" + text.substring(start)
-}
-
 fun jobText(id: Int, outcome: BrainOutcome, prefix: String = BOT_PREFIX): String = when (outcome) {
     is BrainOutcome.Failed -> tagged(prefix, "job $id failed: ${failureLine(outcome.reason)}")
     is BrainOutcome.Output -> sanitizeReply(outcome.stdout).let {
-        if (it.isEmpty() || it == NO_REPLY) tagged(prefix, "job $id done (no output)") else tagged(prefix, tailTruncate(it, REPLY_CODEPOINTS))
+        if (it.isEmpty() || it == NO_REPLY) tagged(prefix, "job $id done (no output)") else tagged(prefix, capTextBytes(it))
     }
 }
 

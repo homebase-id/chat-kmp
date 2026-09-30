@@ -6,6 +6,8 @@ import java.security.SecureRandom
 const val HISTORY_LIMIT = 10
 private const val MESSAGE_CODEPOINTS = 1000
 
+private fun ChatMsg.shown() = if (expanded) text else display.truncateToCodePoints(MESSAGE_CODEPOINTS)
+
 private fun newNonce() = SecureRandom().let { r -> ByteArray(12).also(r::nextBytes).joinToString("") { "%02x".format(it) } }
 
 fun buildPrompt(
@@ -41,13 +43,13 @@ fun buildPrompt(
     val ids = triggers.map { it.id }.toSet()
     appendLine("<$h> (recent messages, oldest first)")
     history.filter { it.id !in ids }.takeLast(HISTORY_LIMIT).forEach {
-        appendLine("[${it.author}] ${clean(it.display.truncateToCodePoints(MESSAGE_CODEPOINTS))}")
+        appendLine("[${it.author}] ${clean(it.shown())}")
     }
     appendLine("</$h>")
     appendLine()
     appendLine("<$t> (${if (triggers.size == 1) "the message" else "the messages, oldest first"} that addressed you)")
     triggers.forEach { trigger ->
-        appendLine("[${trigger.author}] ${clean(trigger.display.truncateToCodePoints(MESSAGE_CODEPOINTS))}")
+        appendLine("[${trigger.author}] ${clean(trigger.shown())}")
         if (trigger.id in omittedParents) appendLine("[replied-to message from a non-operator omitted]")
         attachments.withIndex().filter { !it.value.parent && it.value.msgId == trigger.id }.forEach { (i, a) ->
             describeAttachment(i + 1, a, ::clean).forEach(::appendLine)
