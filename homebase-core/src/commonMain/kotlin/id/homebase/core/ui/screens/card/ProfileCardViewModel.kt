@@ -82,17 +82,22 @@ data class ProfileCardUiState(
     val isSwitchingDesign: Boolean = false,
     val cards: List<ProfileCard> = emptyList(),
     val selectedAudience: CardAudience = CardAudience.Public,
+    val previewOverrides: CardOverrides? = null,
 ) {
     val selectedCard: ProfileCard? get() = cards.firstOrNull { it.audience == selectedAudience }
     private val circleCard: ProfileCard? get() = selectedCard?.takeIf { it.audience is CardAudience.Circle }
     val design: String get() = previewDesign ?: circleCard?.design ?: savedDesign
-    val overrides: CardOverrides get() = selectedCard?.overrides ?: CardOverrides.EMPTY
+    val savedOverrides: CardOverrides get() = selectedCard?.overrides ?: CardOverrides.EMPTY
+    val overrides: CardOverrides get() = previewOverrides ?: savedOverrides
+    val hasUnsavedChanges: Boolean
+        get() = (previewDesign != null && previewDesign != savedDesign) ||
+            (previewOverrides != null && previewOverrides != savedOverrides)
     val canSwitchCard: Boolean get() = cards.size > 1
     val isCircleSelected: Boolean get() = selectedAudience is CardAudience.Circle
     val cardTopArgb: Int? get() = edges[design]?.topArgb
     val cardBottomArgb: Int? get() = edges[design]?.bottomArgb
     val canShare: Boolean get() = isCardReady && !isExporting
-    val canSaveDesign: Boolean get() = !isCircleSelected && previewDesign != null && previewDesign != savedDesign && !isSavingDesign
+    val canSaveDesign: Boolean get() = !isCircleSelected && hasUnsavedChanges && !isSavingDesign
 }
 
 sealed interface ProfileCardEvent {
@@ -116,7 +121,7 @@ interface ProfileCardSource {
     suspend fun savedDesign(): String?
     suspend fun saveDesign(design: String)
     /** Writes the public card attribute; a no-op on a server that doesn't know the type. */
-    suspend fun savePublicCard(design: String)
+    suspend fun savePublicCard(design: String, overrides: CardOverrides?)
     /** The request for writing the design to the home page, or null when the app may or it can't tell. */
     suspend fun missingDesignAccess(odinId: OdinId): MissingPermissionsResult?
     suspend fun publishDesign(design: String): CardDesignPublish
@@ -176,8 +181,8 @@ class DefaultProfileCardSource(
 
     override suspend fun saveDesign(design: String) = cardPreferences.setDesign(design)
 
-    override suspend fun savePublicCard(design: String) {
-        cardRepository.savePublic(design)
+    override suspend fun savePublicCard(design: String, overrides: CardOverrides?) {
+        cardRepository.savePublic(design, overrides)
     }
 
     override suspend fun missingDesignAccess(odinId: OdinId): MissingPermissionsResult? {
@@ -262,6 +267,7 @@ class ProfileCardViewModel(
     private var designAccess: MissingPermissionsResult? = null
     private var unpublishedDesign: String? = null
     private var unsavedCardDesign: String? = null
+    private var unsavedCardOverrides: CardOverrides? = null
     private var cardJob: Job? = null
     private var publishJob: Job? = null
     private var shownBefore = false
@@ -297,12 +303,32 @@ class ProfileCardViewModel(
 
     fun onDesignSelected(design: String) {
         if (_uiState.value.isCircleSelected || design == _uiState.value.design) return
-        _uiState.update { it.copy(previewDesign = design) }
+        _uiState.update {
+            val edited = it.overrides
+            it.copy(
+                previewDesign = design,
+                previewOverrides = if (edited.isEmpty() && it.previewOverrides == null) null else edited.prunedFor(design),
+            )
+        }
         designSwitchJob?.cancel()
         designSwitchJob = viewModelScope.launch {
             coverOutgoingDesign()
             render()
         }
+    }
+
+    fun onOptionSelected(option: CardOption, value: String?) = editOverrides { it.with(option, value) }
+
+    fun onBlockOrderChanged(kinds: List<String>?) = editOverrides { it.withBlockOrder(kinds) }
+
+    private fun editOverrides(edit: (CardOverrides) -> CardOverrides) {
+        val state = _uiState.value
+        if (state.isCircleSelected || state.isSavingDesign) return
+        val spec = CardDesignSpecs.of(state.design) ?: return
+        val edited = edit(state.overrides).prunedFor(state.design)
+        if (edited == state.overrides || spec.options.isEmpty()) return
+        _uiState.update { it.copy(previewOverrides = edited) }
+        render()
     }
 
     private suspend fun coverOutgoingDesign() {
@@ -322,7 +348,7 @@ class ProfileCardViewModel(
         if (audience == state.selectedAudience || state.cards.none { it.audience == audience }) return
         designSwitchJob?.cancel()
         _cover.value = null
-        _uiState.update { it.copy(selectedAudience = audience, previewDesign = null) }
+        _uiState.update { it.copy(selectedAudience = audience, previewDesign = null, previewOverrides = null) }
         designSwitchJob = viewModelScope.launch {
             if (!_uiState.value.isExporting) coverOutgoingDesign()
             render()
@@ -330,39 +356,43 @@ class ProfileCardViewModel(
     }
 
     fun onPreviewDiscarded() {
-        if (_uiState.value.previewDesign == null) return
-        _uiState.update { it.copy(previewDesign = null) }
+        if (_uiState.value.previewDesign == null && _uiState.value.previewOverrides == null) return
+        _uiState.update { it.copy(previewDesign = null, previewOverrides = null) }
         render()
     }
 
     fun onSaveDesign() {
         val state = _uiState.value
         if (!state.canSaveDesign) return
-        val design = state.previewDesign ?: return
+        val design = state.design
+        val overrides = state.overrides.takeIf { state.previewOverrides != null }
+        val designChanged = design != state.savedDesign
         _uiState.update { it.copy(isSavingDesign = true) }
         viewModelScope.launch {
             val saved = attempt("saving card design $design") { source.saveDesign(design) } != null
             if (saved) {
                 unsavedCardDesign = design
-                writeCard(design)
+                unsavedCardOverrides = overrides
+                writeCard(design, overrides)
             }
             _uiState.update {
                 if (saved) it.copy(
                     isSavingDesign = false,
                     savedDesign = design,
                     previewDesign = null,
+                    previewOverrides = null,
                     cards = it.cards.map { card ->
                         if (card.audience != CardAudience.Public) card
                         else card.copy(
                             design = design,
-                            overrides = if (card.design != design) card.overrides.prunedFor(design) else card.overrides,
+                            overrides = overrides ?: if (card.design != design) card.overrides.prunedFor(design) else card.overrides,
                         )
                     },
                 )
                 else it.copy(isSavingDesign = false)
             }
-            if (saved) {
-                render()
+            if (saved) render()
+            if (saved && designChanged) {
                 unpublishedDesign = design
                 val access = designAccess
                 if (access == null) publishDesign(design)
@@ -373,11 +403,14 @@ class ProfileCardViewModel(
     }
 
     // Off the save path: offline it would hang the spinner. Until it lands the local design wins on reload, and a reload retries it.
-    private fun writeCard(design: String) {
+    private fun writeCard(design: String, overrides: CardOverrides?) {
         cardJob?.cancel()
         cardJob = viewModelScope.launch {
-            attempt("saving the public card $design") { source.savePublicCard(design) } ?: return@launch
-            if (unsavedCardDesign == design) unsavedCardDesign = null
+            attempt("saving the public card $design") { source.savePublicCard(design, overrides) } ?: return@launch
+            if (unsavedCardDesign == design && unsavedCardOverrides == overrides) {
+                unsavedCardDesign = null
+                unsavedCardOverrides = null
+            }
         }
     }
 
@@ -561,8 +594,11 @@ class ProfileCardViewModel(
         val cardDesign = stored.publicCard()?.design?.takeIf { it in CardDesign.all }
         val pending = unsavedCardDesign
         val saved = pending ?: cardDesign ?: storedDesign ?: defaults.design
-        if (pending != null && cardJob?.isActive != true) writeCard(pending)
-        val cards = listOf(stored.publicCard() ?: ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, saved)) +
+        if (pending != null && cardJob?.isActive != true) writeCard(pending, unsavedCardOverrides)
+        val pendingOverrides = unsavedCardOverrides.takeIf { pending != null }
+        val publicCard = (stored.publicCard() ?: ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, saved))
+            .let { card -> if (pendingOverrides != null) card.copy(overrides = pendingOverrides) else card }
+        val cards = listOf(publicCard) +
             stored.filter { it.audience is CardAudience.Circle && it.design in CardDesign.all }.sortedBy { it.priority }
         _uiState.update {
             val selected = it.selectedAudience.takeIf { audience -> cards.any { card -> card.audience == audience } }
@@ -601,7 +637,7 @@ class ProfileCardViewModel(
     private suspend fun payloadFor(design: String, audience: CardAudience): CardPayload? {
         val content = content ?: return null
         val card = _uiState.value.cards.firstOrNull { it.audience == audience }
-        val stored = card?.overrides ?: CardOverrides.EMPTY
+        val stored = _uiState.value.previewOverrides.takeIf { audience == CardAudience.Public } ?: card?.overrides ?: CardOverrides.EMPTY
         return buildCardPayload(
             odinId = content.odinId.domainName,
             attributes = content.attributes,

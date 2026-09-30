@@ -159,9 +159,9 @@ class ProfileCardViewModelTest {
 
         val cardWrites = MutableStateFlow(0)
 
-        override suspend fun savePublicCard(design: String) {
+        override suspend fun savePublicCard(design: String, overrides: CardOverrides?) {
             try {
-                cardRepository?.savePublic(design)
+                cardRepository?.savePublic(design, overrides)
             } finally {
                 cardWrites.update { it + 1 }
             }
@@ -1295,5 +1295,126 @@ class ProfileCardViewModelTest {
 
         vm.onDesignSelected(CardDesign.DOSSIER)
         assertEquals(CardDesign.DOSSIER, vm.uiState.value.previewDesign)
+    }
+
+    private fun boardVm(store: CardStore = CardStore(listOf(cardAttribute(CardDesign.BOARD)))): Triple<ProfileCardViewModel, FakeHost, CardStore> {
+        val host = FakeHost()
+        val source = FakeSource(profile + store.attributes, cardRepository = CardRepository(store))
+        return Triple(viewModel(host, source), host, store)
+    }
+
+    @Test
+    fun selectingAnOptionUpdatesThePreviewAndRendersIt() = runTest(dispatcher) {
+        val (vm, host, _) = boardVm()
+
+        vm.onOptionSelected(CardOption.ACCENT, "#F26B5B")
+        vm.onOptionSelected(CardOption.DISPLAY_FONT, "caveat")
+
+        assertEquals("#F26B5B", vm.uiState.value.overrides.palette?.accent)
+        assertEquals("caveat", vm.uiState.value.overrides.type?.display)
+        assertTrue(vm.uiState.value.canSaveDesign)
+        assertEquals("#F26B5B", host.rendered.last().overrides?.palette?.accent)
+        assertEquals("caveat", host.rendered.last().overrides?.type?.display)
+    }
+
+    @Test
+    fun anOptionTheDesignDoesNotExposeIsIgnored() = runTest(dispatcher) {
+        val (vm, host, _) = boardVm(CardStore(listOf(cardAttribute(CardDesign.POSTER))))
+        val rendered = host.rendered.size
+
+        vm.onOptionSelected(CardOption.ACCENT, "#F26B5B")
+
+        assertNull(vm.uiState.value.previewOverrides)
+        assertFalse(vm.uiState.value.canSaveDesign)
+        assertEquals(rendered, host.rendered.size)
+    }
+
+    @Test
+    fun switchingDesignPrunesOptionsTheNewDesignLacks() = runTest(dispatcher) {
+        val (vm, host, _) = boardVm()
+        vm.onOptionSelected(CardOption.ACCENT, "#F26B5B")
+        vm.onOptionSelected(CardOption.DISPLAY_FONT, "caveat")
+
+        vm.onDesignSelected(CardDesign.POSTER)
+
+        assertNull(vm.uiState.value.overrides.palette)
+        assertEquals("caveat", vm.uiState.value.overrides.type?.display)
+        assertNull(host.rendered.last().overrides?.palette)
+        assertEquals(CardDesign.POSTER, host.rendered.last().design)
+    }
+
+    @Test
+    fun savePassesTheDesignAndOverridesToTheCardWrite() = runTest(dispatcher) {
+        val (vm, _, store) = boardVm()
+        vm.onDesignSelected(CardDesign.DOSSIER)
+        vm.onOptionSelected(CardOption.ACCENT, "#8B7CF6")
+        vm.onOptionSelected(CardOption.PORTRAIT_SHAPE, "rounded")
+        vm.onBlockOrderChanged(listOf("posts", "chat", "links", "moments"))
+
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        val written = store.writes.single()
+        assertEquals(JsonPrimitive("dossier"), written["design"])
+        val overrides = CardOverrides.fromJson(written["overrides"]!!.jsonObject)
+        assertEquals("#8B7CF6", overrides.palette?.accent)
+        assertEquals("rounded", overrides.portraits?.first()?.shape)
+        assertEquals(listOf("posts", "chat", "links", "moments"), overrides.blocks?.map { it.kind })
+        assertEquals("#8B7CF6", vm.uiState.value.savedOverrides.palette?.accent)
+        assertNull(vm.uiState.value.previewOverrides)
+        assertFalse(vm.uiState.value.hasUnsavedChanges)
+    }
+
+    @Test
+    fun anOverridesOnlySaveWritesTheCardWithoutRepublishingTheDesign() = runTest(dispatcher) {
+        val store = CardStore(listOf(cardAttribute(CardDesign.BOARD)))
+        val source = FakeSource(profile + store.attributes, cardRepository = CardRepository(store))
+        val vm = viewModel(FakeHost(), source)
+        val publishedBefore = source.publishedDesigns.size
+        vm.onOptionSelected(CardOption.TEXT_FONT, "newsreader")
+
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        assertEquals(JsonPrimitive("board"), store.writes.single()["design"])
+        assertEquals(publishedBefore, source.publishedDesigns.size)
+    }
+
+    @Test
+    fun discardingRestoresTheSavedCardAndItsRender() = runTest(dispatcher) {
+        val (vm, host, _) = boardVm()
+        vm.onOptionSelected(CardOption.ACCENT, "#F26B5B")
+        vm.onDesignSelected(CardDesign.DOSSIER)
+        assertTrue(vm.uiState.value.hasUnsavedChanges)
+
+        vm.onPreviewDiscarded()
+
+        assertFalse(vm.uiState.value.hasUnsavedChanges)
+        assertEquals(CardDesign.BOARD, vm.uiState.value.design)
+        assertTrue(vm.uiState.value.overrides.isEmpty())
+        assertEquals(CardDesign.BOARD, host.rendered.last().design)
+        assertNull(host.rendered.last().overrides?.palette)
+    }
+
+    @Test
+    fun resettingAnOptionToDefaultClearsItFromTheCard() = runTest(dispatcher) {
+        val (vm, _, _) = boardVm()
+        vm.onOptionSelected(CardOption.ACCENT, "#F26B5B")
+
+        vm.onOptionSelected(CardOption.ACCENT, null)
+
+        assertNull(vm.uiState.value.overrides.palette)
+        assertFalse(vm.uiState.value.canSaveDesign)
+    }
+
+    @Test
+    fun blockOrderFillsInMissingKindsInDefaultOrder() {
+        val overrides = CardOverrides.EMPTY.withBlockOrder(listOf("posts", "links"))
+        assertEquals(listOf("posts", "links", "chat", "moments"), overrides.blockOrder())
+    }
+
+    @Test
+    fun everyDesignTheEditorListsHasASpecSoStepTwoNeverRendersBlank() {
+        CardDesign.all.forEach { assertNotNull(CardDesignSpecs.of(it), it) }
     }
 }

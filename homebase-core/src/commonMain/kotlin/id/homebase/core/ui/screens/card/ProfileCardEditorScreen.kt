@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalComposeUiApi::class)
 
 package id.homebase.core.ui.screens.card
 
@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -42,10 +43,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,6 +61,12 @@ import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.profile_card_design_save_failed
+import id.homebase.resources.profile_card_discard_confirm
+import id.homebase.resources.profile_card_discard_keep
+import id.homebase.resources.profile_card_discard_message
+import id.homebase.resources.profile_card_discard_title
+import id.homebase.resources.profile_card_step_customise
+import id.homebase.resources.profile_card_step_customise_title
 import id.homebase.resources.profile_card_edit_profile
 import id.homebase.resources.profile_card_editor_title
 import id.homebase.resources.profile_card_error
@@ -85,6 +97,19 @@ fun ProfileCardEditorScreen(
     val leave = {
         viewModel.onPreviewDiscarded()
         onBack()
+    }
+    var step by rememberSaveable { mutableStateOf(EditorStep.Design) }
+    var confirmDiscard by remember { mutableStateOf(false) }
+    val requestBack = {
+        when {
+            step == EditorStep.Customise -> step = EditorStep.Design
+            uiState.hasUnsavedChanges && !uiState.isSavingDesign -> confirmDiscard = true
+            else -> leave()
+        }
+    }
+    @Suppress("DEPRECATION") BackHandler { requestBack() }
+    if (confirmDiscard) {
+        DiscardDialog(onKeep = { confirmDiscard = false }, onDiscard = { confirmDiscard = false; leave() })
     }
 
     LaunchedEffect(viewModel) {
@@ -133,10 +158,15 @@ fun ProfileCardEditorScreen(
                 Spacer(Modifier.height(PREVIEW_PANEL_GAP))
                 EditorPanel(
                     design = uiState.design,
+                    overrides = uiState.overrides,
+                    step = step,
+                    onStep = { step = it },
                     isSaving = uiState.isSavingDesign,
                     canSave = uiState.canSaveDesign,
-                    onBack = leave,
+                    onBack = requestBack,
                     onSelect = viewModel::onDesignSelected,
+                    onOption = viewModel::onOptionSelected,
+                    onBlockOrder = viewModel::onBlockOrderChanged,
                     onSave = viewModel::onSaveDesign,
                     onEditProfile = onEditProfile,
                 )
@@ -148,10 +178,15 @@ fun ProfileCardEditorScreen(
 @Composable
 private fun EditorPanel(
     design: String,
+    overrides: CardOverrides,
+    step: EditorStep,
+    onStep: (EditorStep) -> Unit,
     isSaving: Boolean,
     canSave: Boolean,
     onBack: () -> Unit,
     onSelect: (String) -> Unit,
+    onOption: (CardOption, String?) -> Unit,
+    onBlockOrder: (List<String>) -> Unit,
     onSave: () -> Unit,
     onEditProfile: () -> Unit,
 ) {
@@ -173,17 +208,35 @@ private fun EditorPanel(
                     )
                 }
                 Text(
-                    text = stringResource(MR.string.profile_card_editor_title),
+                    text = when (step) {
+                        EditorStep.Design -> stringResource(MR.string.profile_card_editor_title)
+                        EditorStep.Customise -> stringResource(MR.string.profile_card_step_customise_title, stringResource(designLabel(design)))
+                    },
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(start = 4.dp),
                 )
             }
-            DesignPicker(selected = design, enabled = !isSaving, onSelect = onSelect, modifier = Modifier.fillMaxWidth())
+            when (step) {
+                EditorStep.Design ->
+                    DesignPicker(selected = design, enabled = !isSaving, onSelect = onSelect, modifier = Modifier.fillMaxWidth())
+                EditorStep.Customise -> CardOptionsPanel(
+                    design = design,
+                    overrides = overrides,
+                    enabled = !isSaving,
+                    onOption = onOption,
+                    onBlockOrder = onBlockOrder,
+                )
+            }
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onEditProfile) {
                     Text(stringResource(MR.string.profile_card_edit_profile))
                 }
                 Spacer(Modifier.weight(1f))
+                if (step == EditorStep.Design) {
+                    TextButton(onClick = { onStep(EditorStep.Customise) }, enabled = !isSaving) {
+                        Text(stringResource(MR.string.profile_card_step_customise))
+                    }
+                }
                 Button(onClick = onSave, enabled = canSave) {
                     val fade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
                     val labelAlpha = animateFloatAsState(if (isSaving) 0f else 1f, fade)
@@ -227,4 +280,17 @@ private fun DesignPicker(
             }
         }
     }
+}
+
+private enum class EditorStep { Design, Customise }
+
+@Composable
+private fun DiscardDialog(onKeep: () -> Unit, onDiscard: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onKeep,
+        title = { Text(stringResource(MR.string.profile_card_discard_title)) },
+        text = { Text(stringResource(MR.string.profile_card_discard_message)) },
+        confirmButton = { TextButton(onClick = onDiscard) { Text(stringResource(MR.string.profile_card_discard_confirm)) } },
+        dismissButton = { TextButton(onClick = onKeep) { Text(stringResource(MR.string.profile_card_discard_keep)) } },
+    )
 }
