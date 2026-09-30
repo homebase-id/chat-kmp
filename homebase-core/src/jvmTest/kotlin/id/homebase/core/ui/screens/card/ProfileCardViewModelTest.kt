@@ -37,7 +37,10 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -47,6 +50,9 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 @OptIn(ExperimentalCoroutinesApi::class, ExperimentalEncodingApi::class)
 class ProfileCardViewModelTest {
@@ -366,33 +372,35 @@ class ProfileCardViewModelTest {
         assertEquals(CardDesign.POSTER, vm.uiState.value.savedDesign)
     }
 
+    private suspend fun CardWireHarness.awaitPuts(n: Int) = withContext(Dispatchers.Default) {
+        withTimeout(10.seconds) { while (puts < n) delay(10) }
+    }
+
     @Test
     fun savingOnASupportingServerWritesTheCardAndPublishesTheHomePageDesign() = runTest(dispatcher) {
-        val store = CardStore()
-        val source = FakeSource(profile, cardRepository = CardRepository(store))
+        val wire = CardWireHarness()
+        val source = FakeSource(profile, cardRepository = wire.cardRepository())
         val vm = viewModel(FakeHost(), source)
         vm.onDesignSelected(CardDesign.COLLAGE)
 
         val event = async { vm.events.first() }
         vm.onSaveDesign()
         event.await()
+        wire.awaitPuts(1)
 
-        assertEquals(JsonPrimitive("collage"), store.writes.single()["design"])
+        val body = wire.putBodies.single().jsonObject
+        assertEquals(ProfileAttributeTypes.PROFILE_CARD, body["type"]?.jsonPrimitive?.content)
+        assertEquals("anonymous", body["visibility"]?.jsonPrimitive?.content)
+        assertEquals(1000, body["priority"]?.jsonPrimitive?.int)
+        assertEquals(JsonPrimitive("collage"), body["data"]!!.jsonObject["design"])
         assertEquals(listOf(CardDesign.COLLAGE), source.savedDesigns)
         assertEquals(listOf(CardDesign.COLLAGE), source.publishedDesigns)
     }
 
     @Test
     fun onAnUnsupportedServerOnlyTheOldPathRunsAndNoErrorShows() = runTest(dispatcher) {
-        val store = CardStore().apply {
-            failWith = id.homebase.api.client.ClientException(
-                status = 400,
-                message = "Unknown profile attribute type 9832dc5dd4ba12dd60acb853e7588f49",
-                correlationId = null,
-                problem = id.homebase.api.client.ProblemDetails(title = "Unknown profile attribute type 9832dc5dd4ba12dd60acb853e7588f49"),
-            )
-        }
-        val source = FakeSource(profile, cardRepository = CardRepository(store))
+        val wire = CardWireHarness { CardWireHarness.Reply.Problem(400, CardWireHarness.UNKNOWN_CARD_TYPE_400) }
+        val source = FakeSource(profile, cardRepository = wire.cardRepository())
         val vm = viewModel(FakeHost(), source)
         vm.onDesignSelected(CardDesign.COLLAGE)
 
@@ -400,17 +408,18 @@ class ProfileCardViewModelTest {
         vm.onSaveDesign()
 
         assertEquals(ProfileCardEvent.DesignSaved, event.await())
-        assertTrue(store.writes.isEmpty())
         assertEquals(listOf(CardDesign.COLLAGE), source.publishedDesigns)
         assertFalse(vm.uiState.value.loadFailed)
         assertEquals(CardDesign.COLLAGE, vm.uiState.value.savedDesign)
-        assertEquals(1, store.saveCalls)
+        wire.awaitPuts(1)
+        assertEquals(1, wire.puts)
 
         vm.onDesignSelected(CardDesign.POSTER)
         val second = async { vm.events.first() }
         vm.onSaveDesign()
         assertEquals(ProfileCardEvent.DesignSaved, second.await())
-        assertEquals(1, store.saveCalls, "the unsupported answer must be remembered, not retried")
+        withContext(Dispatchers.Default) { delay(300) }
+        assertEquals(1, wire.puts, "the unsupported answer must be remembered, not retried")
         assertEquals(listOf(CardDesign.COLLAGE, CardDesign.POSTER), source.publishedDesigns)
     }
 
