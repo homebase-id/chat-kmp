@@ -33,38 +33,15 @@ class CardContractGoldenTest {
     private val friendsCircle = "33333333333343338333333333333333"
     private val familyCircle = "44444444444443338444444444444444"
 
-    private val overrides = buildJsonObject {
-        put("palette", buildJsonObject {
-            put("ground", "#112233")
-            put("ink", "#F0F0F0")
-            put("muted", "#99AABB")
-            put("accent", "#ABCDEF")
-            put("surface", "#223344")
-            put("surfaceInk", "#FFFFFF")
-        })
-        put("type", buildJsonObject {
-            put("display", "caveat")
-            put("text", "newsreader")
-            put("label", "space-mono")
-            put("displayCase", "upper")
-        })
-        put("portraits", buildJsonArray {
-            add(buildJsonObject {
-                put("source", "photo")
-                put("shape", "square")
-                put("ring", 2)
-                put("shadow", "soft")
-                put("tilt", 5)
-                put("tape", true)
-                put("mono", true)
-            })
-        })
-        put("blocks", buildJsonArray {
-            add(buildJsonObject { put("kind", "posts"); put("presentation", "row") })
-            add(buildJsonObject { put("kind", "links"); put("presentation", "button") })
-        })
-        put("socials", "handles")
-    }
+    private val overrides = CardOverrides(
+        palette = CardPalette(
+            ground = "#112233", ink = "#F0F0F0", muted = "#99AABB", accent = "#ABCDEF", surface = "#223344", surfaceInk = "#FFFFFF",
+        ),
+        type = CardTypeface(display = "caveat", text = "newsreader", label = "space-mono", displayCase = "upper"),
+        portraits = listOf(CardPortrait("photo", "square", ring = 2, shadow = "soft", tilt = 5, tape = true, mono = true)),
+        blocks = listOf(CardBlock("posts", "row"), CardBlock("links", "button")),
+        socials = "handles",
+    )
 
     private suspend fun captured(block: suspend (CardWireHarness) -> Unit): JsonElement {
         val wire = CardWireHarness()
@@ -101,7 +78,7 @@ class CardContractGoldenTest {
         versionTag = Uuid.random(),
         audience = CardAudience.Circle(id, label),
         design = design,
-        overrides = if (priority == 0) overrides else JsonObject(emptyMap()),
+        overrides = if (priority == 0) overrides else CardOverrides.EMPTY,
         priority = priority,
     )
 

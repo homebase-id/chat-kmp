@@ -912,7 +912,7 @@ class ProfileCardViewModelTest {
         ProfileVisibility.ANONYMOUS,
     )
 
-    private fun circleCardAttribute(id: String, label: String, design: String, priority: Int, overrides: JsonObject = JsonObject(emptyMap())) =
+    private fun circleCardAttribute(id: String, label: String, design: String, priority: Int, overrides: CardOverrides = CardOverrides.EMPTY) =
         cardAttribute(
             ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Circle(id, label), design, overrides, priority),
             ProfileVisibility.CONNECTED,
@@ -944,7 +944,7 @@ class ProfileCardViewModelTest {
     fun switchingCardChangesAudienceDesignAndOverrides() = runTest(dispatcher) {
         val host = FakeHost()
         val friends = CardAudience.Circle("c1", "Friends")
-        val overrides = JsonObject(mapOf("accent" to JsonPrimitive("#ff0000")))
+        val overrides = CardOverrides(palette = CardPalette(accent = "#ff0000"))
         val vm = viewModel(
             host,
             FakeSource(profile + publicCardAttribute + circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0, overrides)),
@@ -963,6 +963,8 @@ class ProfileCardViewModelTest {
         assertEquals(CardDesign.DOSSIER, payload.design)
         assertEquals("circle", payload.audience?.kind)
         assertEquals("Friends", payload.audience?.label)
+        assertEquals(overrides, payload.overrides)
+        assertTrue(payload.toJson().contains(""""overrides":{"palette":{"accent":"#ff0000"}}"""))
         assertTrue(payload.toJson().contains(""""audience":{"kind":"circle","label":"Friends"}"""))
 
         vm.onCardSelected(CardAudience.Public)
@@ -970,6 +972,7 @@ class ProfileCardViewModelTest {
         assertEquals(CardDesign.BOARD, vm.uiState.value.design)
         assertTrue(vm.uiState.value.overrides.isEmpty())
         assertEquals("public", host.rendered.last().audience?.kind)
+        assertNull(host.rendered.last().overrides)
     }
 
     @Test

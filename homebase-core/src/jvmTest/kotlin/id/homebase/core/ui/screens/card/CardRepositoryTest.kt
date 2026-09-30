@@ -62,13 +62,13 @@ class CardRepositoryTest {
     @Test
     fun publicCardRoundTripsWithUnknownExtraKeys() {
         val data = Json.parseToJsonElement(
-            """{"design":"poster","overrides":{"accent":"#fff"},"future":{"a":1}}""",
+            """{"design":"poster","overrides":{"socials":"bar"},"future":{"a":1}}""",
         ) as JsonObject
         val card = ProfileCard.from(attribute(data))!!
 
         assertEquals(CardAudience.Public, card.audience)
         assertEquals("poster", card.design)
-        assertEquals(JsonPrimitive("#fff"), card.overrides["accent"])
+        assertEquals(CardOverrides(socials = "bar"), card.overrides)
         assertEquals(data, card.toData())
     }
 
@@ -110,7 +110,7 @@ class CardRepositoryTest {
     @Test
     fun aLaterSaveEditsTheExistingCardKeepingItsOverridesAndExtras() = runTest {
         val existing = attribute(
-            Json.parseToJsonElement("""{"design":"board","overrides":{"accent":"#000"},"future":1}""") as JsonObject,
+            Json.parseToJsonElement("""{"design":"board","overrides":{"socials":"bar"},"future":1}""") as JsonObject,
         )
         val store = FakeStore(listOf(existing))
         CardRepository(store).savePublic(CardDesign.COLLAGE)
@@ -119,8 +119,24 @@ class CardRepositoryTest {
         assertEquals(existing.id, write.id)
         assertEquals(existing.versionTag, write.versionTag)
         assertEquals(
-            Json.parseToJsonElement("""{"future":1,"design":"collage","overrides":{"accent":"#000"}}"""),
+            Json.parseToJsonElement("""{"future":1,"design":"collage","overrides":{"socials":"bar"}}"""),
             write.data,
+        )
+    }
+
+    @Test
+    fun switchingTheDesignDropsOverridesTheNewDesignDoesNotExpose() = runTest {
+        val existing = attribute(
+            Json.parseToJsonElement(
+                """{"design":"dossier","overrides":{"palette":{"accent":"#ABCDEF"},"socials":"bar","portraits":[{"shape":"circle"}]}}""",
+            ) as JsonObject,
+        )
+        val store = FakeStore(listOf(existing))
+        CardRepository(store).savePublic(CardDesign.POSTER)
+
+        assertEquals(
+            Json.parseToJsonElement("""{"design":"poster","overrides":{"socials":"bar"}}"""),
+            store.writes.single().data,
         )
     }
 

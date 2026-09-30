@@ -45,12 +45,14 @@ fun buildCardPayload(
     tagLine: String?,
     posts: List<CardPost> = emptyList(),
     audience: CardAudience = CardAudience.Public,
+    overrides: CardOverrides = CardOverrides.EMPTY,
 ): CardPayload {
     val values = attributes.visibleValues(ProfileVisibility.ANONYMOUS)
     fun text(field: ProfileField) = values[field]?.trim()?.ifEmpty { null }
     return CardPayload(
         design = design,
         audience = audience.toPayload(),
+        overrides = overrides.prunedFor(design).takeUnless { it.isEmpty() },
         data = CardData(
             odinId = odinId,
             firstName = text(ProfileField.GIVEN_NAME),
