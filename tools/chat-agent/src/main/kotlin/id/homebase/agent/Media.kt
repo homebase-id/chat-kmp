@@ -48,6 +48,7 @@ const val KEYFRAME_VIDEO_MAX_BYTES = 10_000_000L
 const val INLINE_TEXT_CODEPOINTS = 8000
 private const val CIPHER_PADDING = 16L
 const val TRANSCRIBE_TIMEOUT_MS = 60_000L
+const val TRANSCRIBE_ERR_CHARS = 300
 private const val LABEL_CODEPOINTS = 120
 
 private val VIEWABLE_IMAGES = setOf("image/png", "image/jpeg", "image/gif", "image/webp")
@@ -221,7 +222,7 @@ class AttachmentLoader(
                     continue
                 }
                 if (p.key == ChatProtocol.PAYLOAD_KEY_LINKS || p.key == ChatProtocol.PAYLOAD_KEY_LOCATION) continue
-                if (p.isAudio() && transcribe == null) continue
+                if (p.isAudio() && transcribe == null) { log("voice note left as a label: transcribe= is not set"); continue }
                 out += loadOne(msg.id, parent, fileId, p, out.size + 1)
             }
         }
@@ -288,7 +289,9 @@ class AttachmentLoader(
         } ?: return skipped("not downloaded: payload missing")
         if (bytes.size > cap) return skipped("not downloaded: over ${formatSize(cap)} cap")
         if (p.isAudio()) {
+            val started = System.currentTimeMillis()
             val transcript = transcribe?.invoke(bytes, fileName)
+            if (transcript != null) log("voice $fileName ($type, ${bytes.size} B): transcribed ${transcript.length} chars in ${System.currentTimeMillis() - started} ms")
             return Attachment(msgId, parent, fileName, type, bytes.size.toLong(), text = transcript, note = if (transcript == null) "transcription failed" else "voice transcript")
         }
         val text = if (isTextLike(type, rawName)) bytes.decodeToString().truncateToCodePoints(INLINE_TEXT_CODEPOINTS) else null
@@ -352,21 +355,27 @@ fun writeAttachments(dir: File, attachments: List<Attachment>): List<File> =
         }
     }
 
-fun shellTranscriber(command: String): suspend (ByteArray, String) -> String? = { bytes, name ->
+fun shellTranscriber(command: String, log: (String) -> Unit = {}): suspend (ByteArray, String) -> String? = { bytes, name ->
     withContext(Dispatchers.IO) {
         val dir = tempDir("voice")
         try {
             val file = File(dir, safeName(name)).also { it.writeBytes(bytes) }
             val process = ProcessBuilder("sh", "-c", "$command \"\$1\"", "transcribe", file.absolutePath).redirectErrorStream(false).start()
             process.outputStream.close()
-            process.errorStream.close()
             val out = CompletableFuture.supplyAsync { process.inputStream.readBytes().decodeToString() }
+            val err = CompletableFuture.supplyAsync { process.errorStream.readBytes().decodeToString() }
+            fun errTail() = runCatching { err.get(2, TimeUnit.SECONDS) }.getOrDefault("").trim().takeLast(TRANSCRIBE_ERR_CHARS).replace('\n', ' ')
             if (!process.waitFor(TRANSCRIBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
                 process.destroyForcibly()
+                log("transcribe failed for $name: timed out after ${TRANSCRIBE_TIMEOUT_MS / 1000}s")
                 return@withContext null
             }
-            if (process.exitValue() != 0) return@withContext null
+            if (process.exitValue() != 0) {
+                log("transcribe failed for $name: exit ${process.exitValue()}: ${errTail()}")
+                return@withContext null
+            }
             out.get(2, TimeUnit.SECONDS).trim().takeIf { it.isNotEmpty() }?.truncateToCodePoints(INLINE_TEXT_CODEPOINTS)
+                ?: null.also { log("transcribe failed for $name: empty output: ${errTail()}") }
         } finally {
             dir.deleteRecursively()
         }

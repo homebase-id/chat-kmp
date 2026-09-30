@@ -173,6 +173,9 @@ class MediaTest {
         val out = shellTranscriber("cat")(("spoken words").encodeToByteArray(), "v.aac")
         assertEquals("spoken words", out)
         assertNull(shellTranscriber("false")(byteArrayOf(1), "v.aac"))
+        val logged = mutableListOf<String>()
+        assertNull(shellTranscriber("echo boom >&2; exit 3; :", logged::add)(byteArrayOf(1), "v.webm"))
+        assertTrue(logged.single().contains("exit 3") && logged.single().contains("boom"), logged.toString())
     }
 
     @Test

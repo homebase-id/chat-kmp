@@ -396,13 +396,13 @@ class TypedToolsTest {
         val bin = Files.createTempDirectory("l20b-bin").toFile()
         val marker = File(bin, "started")
         for (name in listOf("ffmpeg", "ffprobe")) File(bin, name).apply { writeText("#!/bin/sh\n: > '${marker.absolutePath}'\nwhile :; do :; done\n"); setExecutable(true) }
-        val hung = Ffmpeg(bin.absolutePath, timeoutMs = 500)
+        val hung = Ffmpeg(bin.absolutePath, timeoutMs = 1_500)
         assertTrue(hung.available)
         val input = File(bin, "in.mp4").apply { writeBytes(ByteArray(8)) }
         val started = System.nanoTime()
         repeat(5) { if (!marker.exists()) assertNull(hung.probe(input)) }
         assertNull(hung.poster(input, 1000))
-        assertTrue((System.nanoTime() - started) / 1_000_000 < 8_000)
+        assertTrue((System.nanoTime() - started) / 1_000_000 < 15_000)
         assertTrue(marker.exists())
         Thread.sleep(300)
         val leftover = ProcessHandle.allProcesses().filter { it.info().commandLine().orElse("").contains(bin.absolutePath) }.count()

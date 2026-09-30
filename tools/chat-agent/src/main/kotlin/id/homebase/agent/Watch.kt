@@ -73,7 +73,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         away = AwayFlag(File(dir, "away")),
         jobs = jobs,
         history = { timings.time("history") { fetchMessages(session, it, maxOf(HISTORY_LIMIT, config.lockedHistory) + 1) } },
-        loader = AttachmentLoader(fetcher, config.transcribe?.let(::shellTranscriber), ::log, DEFAULT_FFMPEG.takeIf { config.videoFrames }),
+        loader = AttachmentLoader(fetcher, config.transcribe?.let { shellTranscriber(it, ::log) }, ::log, DEFAULT_FFMPEG.takeIf { config.videoFrames }),
         fetcher = fetcher,
         leaseFor = chatTools?.let { tools -> { conversation, tier, sender -> tools.lease(conversation, tier, sender) } },
         schedules = schedules,
@@ -115,7 +115,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     toolServer?.let { log("chat tools on 127.0.0.1:${it.port} (per-run bearer token, loopback only)") }
     jobs?.recoverDropped { conversation, text -> sendToConversation(session, config.allowlist, conversation, text) }
     schedules?.let { log("schedules: ${it.activeCount()} active, timezone ${config.zone}") }
-    log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} readReceipts=${config.sendsReceipts} transport=${config.transport.name.lowercase()} lastSeen=${cursor.position}")
+    log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} readReceipts=${config.sendsReceipts} transport=${config.transport.name.lowercase()} transcribe=${if (config.transcribe != null) "on" else "off"} lastSeen=${cursor.position}")
     var poll = 0
     val waker = PollWaker()
     try {

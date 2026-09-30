@@ -165,6 +165,10 @@ The apps record voice notes as MPEG-4/AAC `.m4a` (Android `MediaRecorder` 48 kHz
 stereo; `AndroidAudioRecorder.kt:26-30`, `IOSAudioRecorder.kt:33-35` in homebase-common). `scripts/transcribe.sh` converts
 with ffmpeg to 16 kHz mono wav and runs whisper.cpp (multilingual `base` model by default), printing the transcript.
 It refuses audio longer than 5 minutes and stops whisper after about 55 s; the agent then keeps the `[voice m:ss]` label.
+Browser recordings (web app, e.g. `chat_web0`, usually WebM/Opus or Ogg) work too: ffmpeg detects the format from the
+content, not the name. Every voice note logs either `voice <file> (...): transcribed N chars in X ms`, `transcribe failed
+for <file>: <exit code / timeout / empty>: <stderr tail>`, or `voice note left as a label: transcribe= is not set`; the
+startup line shows `transcribe=on|off`.
 
 Arch / CachyOS:
 
