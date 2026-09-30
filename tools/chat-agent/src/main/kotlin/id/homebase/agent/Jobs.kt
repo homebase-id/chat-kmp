@@ -206,8 +206,8 @@ fun jobCommand(text: String, nickname: String): Pair<String, Int?>? {
     val parts = text.trim().split(WHITESPACE)
     if (parts.size !in 2..3 || !parts[0].equals("@$nickname", ignoreCase = true)) return null
     val verb = parts[1].lowercase()
-    if (verb != "status" && verb != "cancel") return null
+    if (verb != "status" && verb != "cancel" && verb != "new") return null
     if (parts.size == 2) return verb to null
-    if (verb == "status") return null
+    if (verb != "cancel") return null
     return parts[2].toIntOrNull()?.let { verb to it }
 }

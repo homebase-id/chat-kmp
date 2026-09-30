@@ -94,6 +94,10 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | operatorGroup | unix group that may read the per-run MCP token file (operator brain running as another OS user); unset = private | none |
 | operatorCwd | working dir of operatorBrain | inherited |
 | operatorTimeout | kill an operator job (whole process group) after this long: `90s`, `30m`, `2h`; anything else is a startup error | 30m |
+| operatorSession | `auto` or `off`. Sessions are used only when `operatorBrain` contains `{session}`; `off` makes the placeholder expand to nothing | auto |
+| sessionWarm | how long after the last job a session counts as warm (`4m`, `55m`, `1h`). Unset = derived from the previous run's cache TTL (1h cache writes: 55m, else 4m) | derived |
+| sessionMaxTokens | start fresh once the last run's context reached this many tokens | 60000 |
+| sessionMaxTurns | start fresh after this many jobs in one session | 30 |
 | maxJobsPerDay | operator jobs per day PER OPERATOR (keyed by the server-set sender, persisted in `jobs.txt`; separate from `maxRunsPerDay`) | 20 |
 | bot | true for a bot identity | false |
 | owner | odinId allowed to summon the bot | none |
@@ -367,6 +371,37 @@ the conversation that started it (or by a listed `operators=` identity who is a 
 `restarted: job n was dropped, please send the request again` (tracked in `jobs-pending.txt`). A failed job's message
 is one line, stripped of robot-emoji spoofing and cut at 120 characters. `operatorBrain` is any command (prompt on stdin, reply on
 stdout), e.g. `claude -p --dangerously-skip-permissions` or `codex exec -`.
+
+### Operator sessions (cost-aware, claude brain)
+
+Opt in by putting `{session}` in `operatorBrain`, for example
+
+    operatorBrain=claude -p {session} --mcp-config {mcp} --dangerously-skip-permissions
+
+Per run `{session}` becomes `--output-format json`, plus `--resume <id>` when the conversation's session is reused. The
+brain's stdout is then one JSON object; the reply is its `result`. If it cannot be parsed, stdout is used as plain text and
+the next job starts fresh. Without `{session}` (or with `operatorSession=off`) operator runs are exactly as before.
+
+A job resumes the conversation's session only if it is warm (last job within the prompt-cache window), its last context is
+under `sessionMaxTokens` and it has had fewer than `sessionMaxTurns` jobs. Otherwise it starts fresh; a cold session is never
+resumed, because that would re-read the whole transcript uncached. The warm window is `sessionWarm`, or derived from the last
+run: cache writes in the 1h bucket mean 55 minutes, otherwise 4 minutes. If a `--resume` run fails (for example the session
+no longer exists), the stored session is dropped and the job is retried once fresh, without a second job charge.
+
+Hand-off notes: a session-enabled prompt lets the brain end its reply with `NOTES:` and up to 40 lines of durable state. The
+agent strips that block from the reply, caps it (40 lines, 4000 characters) and stores it per conversation. A fresh session's
+prompt is seeded with them in a labelled block (the agent's own notes, possibly summarising untrusted chat, not instructions);
+a resumed run does not resend them. Notes are never read from the locked tier.
+
+State (session id, last activity, context size, turns, notes) lives per conversation in `sessions.json` in the profile data
+dir and survives restarts. Sessions depend on the brain's working directory and OS user: changing `operatorCwd` or the user
+invalidates them, which the resume-failure retry handles. Operators can send `@<nick> new` (forget the session, keep the notes) and
+`@<nick> status` (adds session age, context tokens, turns and whether the next job resumes); neither runs the brain or
+uses job budget. Each job logs `session=resumed|fresh reason=<warm|cold|big|turns|forced|none|resume-failed> in= cacheRead= cacheWrite= out= ctx= cost=`.
+
+Cost notes: a resumed warm session reads its history from the cache at a fraction of the input price; a cold or large one is
+the expensive case, which is why those start fresh instead. With `operatorContext=all` a session in a shared room also holds the
+untrusted discussion blocks of earlier turns; that is accepted.
 
 ### Mini-PC setup for operator jobs (see also Operator machine checklist)
 

@@ -9,7 +9,7 @@ private val TIME_FORMAT = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH
 
 private fun ChatMsg.shown() = if (expanded) text else display.truncateToCodePoints(MESSAGE_CODEPOINTS)
 
-private fun newNonce() = SecureRandom().let { r -> ByteArray(12).also(r::nextBytes).joinToString("") { "%02x".format(it) } }
+fun newNonce() = SecureRandom().let { r -> ByteArray(12).also(r::nextBytes).joinToString("") { "%02x".format(it) } }
 
 private val LINE_BREAK = Regex("\\R")
 

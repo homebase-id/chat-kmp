@@ -75,6 +75,10 @@ class AgentConfig(
     val operatorContext: OperatorContext = OperatorContext.ALL,
     val operatorTimeoutMs: Long = DEFAULT_OPERATOR_TIMEOUT_MS,
     val maxJobsPerDay: Int = DEFAULT_MAX_JOBS_PER_DAY,
+    val operatorSession: Boolean = true,
+    val sessionWarmMs: Long? = null,
+    val sessionMaxTokens: Int = DEFAULT_SESSION_MAX_TOKENS,
+    val sessionMaxTurns: Int = DEFAULT_SESSION_MAX_TURNS,
     val lockedHistory: Int = HISTORY_LIMIT,
     val lockedTools: Set<String> = emptySet(),
     val readReceipts: Boolean = allowlist.kind == Kind.BOT,
@@ -87,6 +91,7 @@ class AgentConfig(
 ) {
     val nick = Nickname(nickname)
     val bot get() = allowlist.kind == Kind.BOT
+    val sessions get() = operatorSession && operatorBrain?.contains(SESSION_PLACEHOLDER) == true
     val lockedChat get() = "chat" in lockedTools
     val replyPrefix get() = if (bot) "" else BOT_PREFIX
     val sendsReceipts get() = readReceipts && bot
@@ -157,6 +162,10 @@ fun tierBanner(config: AgentConfig): List<String> = buildList {
             add("WARNING: group membership grants machine access: every current member of an operator room can run operatorBrain here (full env, unfiltered history); membership is re-read each discovery")
         }
     }
+    if (config.operatorBrain != null) add(
+        if (config.sessions) "operator sessions: on (warm=${config.sessionWarmMs?.let { "${it / 1000}s" } ?: "from cache ttl"}, maxTokens=${config.sessionMaxTokens}, maxTurns=${config.sessionMaxTurns}); changing operatorCwd or the brain's OS user invalidates them"
+        else "operator sessions: off (${if (config.operatorBrain.contains(SESSION_PLACEHOLDER)) "operatorSession=off" else "no $SESSION_PLACEHOLDER in operatorBrain"})",
+    )
     if (config.operatorBrain != null) add("operator tools (per-run loopback MCP, this conversation only): ${chatToolNames(Tier.OPERATOR).joinToString(", ")}; edit_message and delete_message touch only this identity's own messages")
     if (config.videoFrames) add(if (DEFAULT_FFMPEG.available) "WARNING: videoFrames=true: untrusted video from chat is decoded by ffmpeg in this process's user (it can read the credentials); leave it off unless you accept that" else "videoFrames=true but ffmpeg/ffprobe are not on PATH, so only thumbnails are read")
     if ("search" in config.lockedTools) add("lockedTools=search: the brain may use Claude Code's WebSearch (runs on Anthropic's side; web calls are bounded by --max-turns $LOCKED_CHAT_MAX_TURNS, not by the $LOCKED_TOOL_CALL_CAP-call chat cap)")
@@ -215,6 +224,12 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
             parseDurationMs(it) ?: throw IllegalArgumentException("invalid operatorTimeout '$it': use e.g. 90s, 30m, 2h")
         } ?: DEFAULT_OPERATOR_TIMEOUT_MS,
         maxJobsPerDay = int("maxJobsPerDay", DEFAULT_MAX_JOBS_PER_DAY),
+        operatorSession = !str("operatorSession").equals("off", ignoreCase = true),
+        sessionWarmMs = str("sessionWarm")?.let {
+            parseDurationMs(it) ?: throw IllegalArgumentException("invalid sessionWarm '$it': use e.g. 4m, 55m, 1h")
+        },
+        sessionMaxTokens = int("sessionMaxTokens", DEFAULT_SESSION_MAX_TOKENS),
+        sessionMaxTurns = int("sessionMaxTurns", DEFAULT_SESSION_MAX_TURNS),
         lockedHistory = int("lockedHistory", HISTORY_LIMIT).coerceIn(1, MAX_LOCKED_HISTORY),
         lockedTools = lockedTools,
         transcribe = str("transcribe"),

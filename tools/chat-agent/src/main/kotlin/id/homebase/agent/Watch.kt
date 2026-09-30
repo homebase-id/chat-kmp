@@ -74,9 +74,10 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         loader = AttachmentLoader(fetcher, config.transcribe?.let(::shellTranscriber), ::log, DEFAULT_FFMPEG.takeIf { config.videoFrames }),
         fetcher = fetcher,
         leaseFor = chatTools?.let { tools -> { conversation, tier, sender -> tools.lease(conversation, tier, sender) } },
-        brain = { prompt, tier, attachments, lease ->
+        sessions = if (config.sessions) SessionStore(File(dir, "sessions.json"), config.sessionMaxTokens, config.sessionMaxTurns, config.sessionWarmMs) else null,
+        brain = { prompt, tier, attachments, lease, session ->
             timings.time("brain") {
-                if (tier == Tier.OPERATOR) runBrain(Brain(config.operatorBrain!!), prompt, config.operatorTimeoutMs, tier = tier, operatorCwd = config.operatorCwd, attachments = attachments, lease = lease, mcpGroup = config.operatorGroup)
+                if (tier == Tier.OPERATOR) runBrain(Brain(config.operatorBrain!!), prompt, config.operatorTimeoutMs, tier = tier, operatorCwd = config.operatorCwd, attachments = attachments, lease = lease, mcpGroup = config.operatorGroup, sessionFlags = session)
                 else runBrain(config.brain, prompt, attachments = attachments, lease = lease)
             }
         },

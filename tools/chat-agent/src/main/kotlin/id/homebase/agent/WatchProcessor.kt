@@ -14,7 +14,7 @@ class WatchProcessor(
     private val identity: String,
     private val store: ProcessedStore,
     private val history: suspend (Uuid) -> List<ChatMsg>,
-    private val brain: suspend (String, Tier, List<Attachment>, ToolLease?) -> BrainOutcome,
+    private val brain: suspend (String, Tier, List<Attachment>, ToolLease?, String?) -> BrainOutcome,
     private val send: suspend (Uuid, String, List<OutFile>) -> Unit,
     private val log: (String) -> Unit,
     private val limiter: RunLimiter = RunLimiter(null, config.maxRunsPerHour, config.maxRunsPerDay),
@@ -23,6 +23,7 @@ class WatchProcessor(
     private val loader: AttachmentLoader? = null,
     private val fetcher: PayloadFetcher? = null,
     private val leaseFor: ((Uuid, Tier, OdinId?) -> ToolLease?)? = null,
+    private val sessions: SessionStore? = null,
 ) {
     private val self = OdinId(identity)
     private val trust = TrustPolicy(config, self)
@@ -44,7 +45,7 @@ class WatchProcessor(
             if (isAwayCommand(msg)) { toggleAway(msg, results); continue }
             val skip = precheck(msg)
             if (skip != null) { finish(msg.id, skip, results); continue }
-            val command = jobs?.let { jobCommand(msg.text, config.nickname) }
+            val command = jobs?.let { jobCommand(msg.text, config.nickname) }?.takeIf { it.first != "new" || sessions != null }
             if (command != null && trust.isOperator(msg.sender, msg.conversationId, allow.info(msg.conversationId)?.members)) {
                 runJobCommand(jobs, msg, command, results)
                 continue
@@ -89,9 +90,13 @@ class WatchProcessor(
         }
 
     private suspend fun runJobCommand(runner: JobRunner, msg: ChatMsg, command: Pair<String, Int?>, results: MutableMap<Uuid, String>) {
-        val text = if (command.first == "status") runner.status(effectiveSender(msg).toString()) else runner.cancel(command.second) { jobConversation ->
-            jobConversation == msg.conversationId ||
-                (trust.isListed(msg.sender) && allow.info(jobConversation)?.members?.contains(effectiveSender(msg)) == true)
+        val text = when (command.first) {
+            "status" -> runner.status(effectiveSender(msg).toString()) + (sessions?.let { "\n" + it.status(msg.conversationId) }.orEmpty())
+            "new" -> { sessions!!.forget(msg.conversationId); tagged(config.replyPrefix, "session forgotten, notes kept; the next job starts fresh") }
+            else -> runner.cancel(command.second) { jobConversation ->
+                jobConversation == msg.conversationId ||
+                    (trust.isListed(msg.sender) && allow.info(jobConversation)?.members?.contains(effectiveSender(msg)) == true)
+            }
         }
         safeReply(msg.conversationId, text)
         store.add(msg.id)
@@ -143,7 +148,7 @@ class WatchProcessor(
             work = {
                 val lease = leaseFor?.invoke(conversation, Tier.OPERATOR, effectiveSender(sorted.last()))
                 try {
-                    brain(prepared.prompt, Tier.OPERATOR, prepared.attachments, lease).also {
+                    runOperator(conversation, prepared, lease).also {
                         produced = (it as? BrainOutcome.Output)?.files.orEmpty()
                         quiet = (lease?.sent ?: 0) > 0 && it is BrainOutcome.Output && produced.isEmpty() && isSilent(it.stdout)
                     }
@@ -153,6 +158,22 @@ class WatchProcessor(
             },
         )
         done("job")
+    }
+
+    private suspend fun runOperator(conversation: Uuid, prepared: Prepared, lease: ToolLease?): BrainOutcome {
+        val store = sessions ?: return brain(prepared.prompt, Tier.OPERATOR, prepared.attachments, lease, null)
+        val nonce = newNonce()
+        suspend fun attempt(plan: SessionStore.Plan) = brain(store.seeded(plan, prepared.prompt, nonce), Tier.OPERATOR, prepared.attachments, lease, plan.flags)
+        var plan = store.plan(conversation)
+        var outcome = attempt(plan)
+        if (plan.decision.resumeId != null && outcome is BrainOutcome.Failed && !outcome.reason.startsWith("timeout")) {
+            log("$conversation resume failed (${outcome.reason}), retrying fresh")
+            store.drop(conversation)
+            plan = store.plan(conversation, resumeFailed = true)
+            outcome = attempt(plan)
+        }
+        store.record(conversation, plan, outcome)?.let { log("$conversation $it") }
+        return outcome
     }
 
     private suspend fun loadAttachments(triggers: List<ChatMsg>, history: List<ChatMsg>): List<Attachment> {
@@ -236,7 +257,7 @@ class WatchProcessor(
                 val prepared = preparePrompt(sorted, conversation, history(conversation), tier, awayMode)
                 val lease = leaseFor?.invoke(conversation, tier, effectiveSender(sorted.last()))
                 try {
-                    brain(prepared.prompt, tier, prepared.attachments, lease)
+                    brain(prepared.prompt, tier, prepared.attachments, lease, null)
                 } finally {
                     toolSent = (lease?.sent ?: 0) > 0
                     lease?.close()

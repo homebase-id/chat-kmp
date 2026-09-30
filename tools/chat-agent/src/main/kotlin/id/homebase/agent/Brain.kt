@@ -18,7 +18,7 @@ const val MAX_TEXT_BYTES = 200_000
 const val FAILURE_CODEPOINTS = 120
 
 sealed interface BrainOutcome {
-    class Output(val stdout: String, val files: List<OutFile> = emptyList()) : BrainOutcome
+    class Output(val stdout: String, val files: List<OutFile> = emptyList(), val session: SessionUsage? = null) : BrainOutcome
     class Failed(val reason: String) : BrainOutcome
 }
 
@@ -59,7 +59,7 @@ fun sanitizeReply(raw: String): String {
 fun withAttachments(output: BrainOutcome.Output, root: File?): BrainOutcome.Output {
     val attached = collectAttachments(output.stdout, root)
     attached.skipped.forEach { System.err.println("attachment skipped: $it") }
-    return if (attached.files.isEmpty() && attached.skipped.isEmpty()) output else BrainOutcome.Output(attached.text, attached.files)
+    return if (attached.files.isEmpty() && attached.skipped.isEmpty()) output else BrainOutcome.Output(attached.text, attached.files, output.session)
 }
 
 const val MCP_PLACEHOLDER = "{mcp}"
@@ -106,6 +106,7 @@ suspend fun runBrain(
     attachments: List<Attachment> = emptyList(),
     lease: ToolLease? = null,
     mcpGroup: String? = null,
+    sessionFlags: String? = null,
 ): BrainOutcome {
     val scratch = if (tier == Tier.LOCKED) tempDir("brain") else null
     val attachDir = scratch ?: attachments.takeIf { a -> a.any { it.bytes != null } }?.let { tempDir("attach") }
@@ -117,13 +118,18 @@ suspend fun runBrain(
         val env = (if (files.isEmpty()) emptyMap() else mapOf("CHAT_AGENT_ATTACHMENTS" to files.joinToString("\n") { it.absolutePath })) +
             (if (lease != null && mcpConfig != null) mcpEnvironment(lease, mcpConfig) else emptyMap())
         val vision = brain.streamJson && attachments.any { it.modelBlock }
-        val command = mcpConfig?.let { brain.command.replace(MCP_PLACEHOLDER, shellWord(it.absolutePath)) } ?: brain.command
+        val withMcp = mcpConfig?.let { brain.command.replace(MCP_PLACEHOLDER, shellWord(it.absolutePath)) } ?: brain.command
+        val command = if (tier == Tier.OPERATOR) withMcp.replace(SESSION_PLACEHOLDER, sessionFlags.orEmpty()) else withMcp
         val outcome = runBrainProcess(
             if (vision) "$command $STREAM_JSON_FLAGS" else command,
             if (vision) streamJsonInput(prompt, attachments) else prompt,
             timeoutMs, tier, cwd, env,
         )
-        val parsed = if (vision && outcome is BrainOutcome.Output) parseStreamResult(outcome.stdout) else outcome
+        val parsed = when {
+            vision && outcome is BrainOutcome.Output -> parseStreamResult(outcome.stdout)
+            sessionFlags != null && tier == Tier.OPERATOR && outcome is BrainOutcome.Output -> parseSessionOutput(outcome.stdout) ?: outcome
+            else -> outcome
+        }
         return if (parsed is BrainOutcome.Output) withAttachments(parsed, cwd) else parsed
     } finally {
         mcpDir?.deleteRecursively()
