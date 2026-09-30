@@ -1148,4 +1148,71 @@ class ProfileCardViewModelTest {
         assertEquals(CardDesign.DOSSIER, duringExport.last().design)
         assertEquals(friends, vm.uiState.value.selectedAudience)
     }
+
+    @Test
+    fun aPostsLoadLandingMidExportNeverRendersTheCircleCardIntoTheSharedImage() = runTest(dispatcher) {
+        val host = FakeHost()
+        val gate = CompletableDeferred<Unit>()
+        var loads = 0
+        val source = FakeSource(
+            profile + publicCardAttribute + circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0),
+            posts = {
+                if (++loads == 1) gate.await()
+                listOf(cardPost("p1"))
+            },
+        )
+        val vm = viewModel(host, source)
+        host.send(CardEvent.Ready(layout = CardDesign.BOARD, ms = 1))
+        vm.onCardSelected(friends)
+        host.send(CardEvent.Ready(layout = CardDesign.DOSSIER, ms = 1))
+
+        val atExport = mutableListOf<CardPayload>()
+        host.onExport = {
+            atExport += host.rendered.last()
+            host.send(CardEvent.Png(pngBase64(), 4, 6))
+        }
+        val renderedBefore = host.rendered.size
+        val event = async { vm.events.first() }
+        vm.onShareClicked()
+        assertTrue(vm.uiState.value.isExporting)
+
+        gate.complete(Unit)
+        host.send(CardEvent.Ready(layout = CardDesign.BOARD, ms = 1))
+        advanceUntilIdle()
+
+        assertIs<ProfileCardEvent.ShareImage>(event.await())
+        assertEquals("public", atExport.single().audience?.kind)
+        assertEquals(listOf("public", "circle"), host.rendered.drop(renderedBefore).map { it.audience?.kind })
+        assertEquals(listOf("p1"), host.rendered.last().data.posts.map { it.id })
+        assertEquals(friends, vm.uiState.value.selectedAudience)
+    }
+
+    @Test
+    fun editTappedMidExportEndsOnThePublicCardSoTheEditorIsUsable() = runTest(dispatcher) {
+        val host = FakeHost()
+        val source = FakeSource(profile + publicCardAttribute + circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0))
+        val vm = viewModel(host, source)
+        host.send(CardEvent.Ready(layout = CardDesign.BOARD, ms = 1))
+        vm.onCardSelected(friends)
+        host.send(CardEvent.Ready(layout = CardDesign.DOSSIER, ms = 1))
+
+        val atExport = mutableListOf<CardPayload>()
+        host.onExport = {
+            atExport += host.rendered.last()
+            host.send(CardEvent.Png(pngBase64(), 4, 6))
+        }
+        val event = async { vm.events.first() }
+        vm.onShareClicked()
+        vm.onEditClicked()
+        host.send(CardEvent.Ready(layout = CardDesign.BOARD, ms = 1))
+        advanceUntilIdle()
+
+        assertIs<ProfileCardEvent.ShareImage>(event.await())
+        assertEquals("public", atExport.single().audience?.kind)
+        assertEquals(CardAudience.Public, vm.uiState.value.selectedAudience)
+        assertEquals("public", host.rendered.last().audience?.kind)
+
+        vm.onDesignSelected(CardDesign.DOSSIER)
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.previewDesign)
+    }
 }

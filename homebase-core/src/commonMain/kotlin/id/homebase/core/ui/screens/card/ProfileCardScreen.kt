@@ -511,7 +511,7 @@ internal fun AudienceBadge(uiState: ProfileCardUiState, onSelect: (CardAudience)
     var expanded by remember { mutableStateOf(false) }
     val selected = uiState.selectedAudience
     val label = audienceLabel(selected)
-    val description = if (uiState.canSwitchCard) {
+    val description = if (uiState.canSwitchCard && !uiState.isExporting) {
         stringResource(MR.string.profile_card_audience_switch, label)
     } else {
         stringResource(MR.string.profile_card_audience_description, label)
