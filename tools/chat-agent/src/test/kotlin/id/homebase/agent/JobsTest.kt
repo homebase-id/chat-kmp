@@ -182,4 +182,18 @@ class JobsTest {
         assertEquals(7_200_000L, parseDurationMs("2h"))
         assertEquals(null, parseDurationMs("soon"))
     }
+
+    @Test
+    fun ackIsPostedOnlyWhenTheJobOutlivesTheDelay() = runBlocking<Unit> {
+        val texts = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val runner = JobRunner(CoroutineScope(Dispatchers.Default), JobLedger(null, 5), prefix = "", ackDelayMs = 300)
+        val gate = CompletableDeferred<Unit>()
+        runner.submit(dm, setOf("op"), { texts += it }, { texts += it }) { BrainOutcome.Output("quick") }
+        runner.submit(dm, setOf("op"), { texts += it }, { texts += it }) { gate.await(); BrainOutcome.Output("slow") }
+        until("slow ack") { "on it (job 2)" in texts }
+        assertEquals(listOf("quick"), texts.filter { it == "quick" })
+        assertFalse(texts.any { it.contains("(job 1)") }, texts.toString())
+        gate.complete(Unit)
+        until("slow reply") { "slow" in texts }
+    }
 }

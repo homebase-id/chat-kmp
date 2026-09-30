@@ -3,8 +3,11 @@ package id.homebase.agent
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
+
+const val JOB_ACK_DELAY_MS = 60_000L
 
 class JobRunner(
     private val scope: CoroutineScope,
@@ -13,6 +16,7 @@ class JobRunner(
     private val now: () -> Long = System::currentTimeMillis,
     private val prefix: String = BOT_PREFIX,
     private val journal: File? = null,
+    private val ackDelayMs: Long = 0,
 ) {
     private class Job(val id: Int, val conversation: Uuid, val operators: Set<String>, val work: suspend () -> BrainOutcome, val deliver: suspend (String) -> Unit) {
         var ready = false
@@ -44,10 +48,26 @@ class JobRunner(
                 job to (if (ahead == null) tagged(prefix, "on it (job ${job.id})") else tagged(prefix, "queued behind job ${ahead.id} (job ${job.id})"))
             }
         }
-        try {
-            announce(ack)
-        } finally {
-            if (job != null) synchronized(lock) { job.ready = true; startNext() }
+        if (job == null || ackDelayMs <= 0) {
+            try {
+                announce(ack)
+            } finally {
+                if (job != null) synchronized(lock) { job.ready = true; startNext() }
+            }
+        } else {
+            synchronized(lock) { job.ready = true; startNext() }
+            // Quick jobs answer without an ack; only a slow or queued job says so.
+            scope.launch {
+                delay(ackDelayMs)
+                val late = synchronized(lock) {
+                    when {
+                        running === job -> tagged(prefix, "on it (job ${job.id})")
+                        job in queue -> tagged(prefix, "queued behind job ${running?.id ?: queue.first().id} (job ${job.id})")
+                        else -> null
+                    }
+                }
+                late?.let { announce(it) }
+            }
         }
         if (job != null) log("$conversation job ${job.id} accepted")
         return ack

@@ -59,7 +59,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     val timings = PollTimings()
     val previews = config.previewsFor(session)
     val jobs = config.operatorBrain?.let {
-        JobRunner(CoroutineScope(SupervisorJob(coroutineContext.job)), JobLedger(File(dir, "jobs.txt"), config.maxJobsPerDay), ::log, prefix = config.replyPrefix, journal = File(dir, "jobs-pending.txt"))
+        JobRunner(CoroutineScope(SupervisorJob(coroutineContext.job)), JobLedger(File(dir, "jobs.txt"), config.maxJobsPerDay), ::log, prefix = config.replyPrefix, journal = File(dir, "jobs-pending.txt"), ackDelayMs = JOB_ACK_DELAY_MS)
     }
     val fetcher = sessionFetcher(session)
     val toolServer = if (config.operatorBrain != null || config.lockedChat) ChatToolServer(::log).start() else null

@@ -362,8 +362,8 @@ skip) and are not repeated by the final output: if the run already sent somethin
 ## Operator jobs
 
 With `operatorBrain` set, an operator-tier trigger does not run inline. It becomes a background job so
-`watch` keeps answering locked-tier messages meanwhile. The agent replies at once with `🤖 on it (job n)`
-(or `🤖 queued behind job m (job n)`); one job runs at a time, the rest wait in order. When the job ends the
+`watch` keeps answering locked-tier messages meanwhile. Only if the job is still running or waiting after a minute does the agent post `🤖 on it (job n)`
+(or `🤖 queued behind job m (job n)`), so quick answers arrive alone; scheduled jobs never post it; one job runs at a time, the rest wait in order. When the job ends the
 conversation gets the brain output (capped at 200 KB of text, tail cut with a marker) or
 `🤖 job n failed: ...`. The job is killed with all its child processes after `operatorTimeout`.
 Operators (in a conversation that passes the allowlist) can send `@<nick> status` (running job, queue) and
