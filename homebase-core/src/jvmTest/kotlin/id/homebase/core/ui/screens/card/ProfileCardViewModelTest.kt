@@ -330,10 +330,12 @@ class ProfileCardViewModelTest {
 
     private class CardStore(var attributes: List<ProfileAttribute> = emptyList()) : CardAttributeStore {
         val writes = mutableListOf<JsonObject>()
+        var saveCalls = 0
         var failWith: Exception? = null
         var gate: CompletableDeferred<Unit>? = null
         override suspend fun load() = attributes
         override suspend fun save(data: JsonObject, visibility: ProfileVisibility, id: Uuid?, versionTag: Uuid?, priority: Int) {
+            saveCalls++
             gate?.await()
             failWith?.let { throw it }
             writes += data
@@ -385,9 +387,9 @@ class ProfileCardViewModelTest {
         val store = CardStore().apply {
             failWith = id.homebase.api.client.ClientException(
                 status = 400,
-                message = "Unknown profile attribute type",
+                message = "Unknown profile attribute type 9832dc5dd4ba12dd60acb853e7588f49",
                 correlationId = null,
-                problem = id.homebase.api.client.ProblemDetails(title = "Unknown profile attribute type"),
+                problem = id.homebase.api.client.ProblemDetails(title = "Unknown profile attribute type 9832dc5dd4ba12dd60acb853e7588f49"),
             )
         }
         val source = FakeSource(profile, cardRepository = CardRepository(store))
@@ -402,6 +404,14 @@ class ProfileCardViewModelTest {
         assertEquals(listOf(CardDesign.COLLAGE), source.publishedDesigns)
         assertFalse(vm.uiState.value.loadFailed)
         assertEquals(CardDesign.COLLAGE, vm.uiState.value.savedDesign)
+        assertEquals(1, store.saveCalls)
+
+        vm.onDesignSelected(CardDesign.POSTER)
+        val second = async { vm.events.first() }
+        vm.onSaveDesign()
+        assertEquals(ProfileCardEvent.DesignSaved, second.await())
+        assertEquals(1, store.saveCalls, "the unsupported answer must be remembered, not retried")
+        assertEquals(listOf(CardDesign.COLLAGE, CardDesign.POSTER), source.publishedDesigns)
     }
 
     @Test

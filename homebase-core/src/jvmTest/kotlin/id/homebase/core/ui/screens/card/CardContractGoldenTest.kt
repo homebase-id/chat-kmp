@@ -4,7 +4,6 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
-import id.homebase.api.client.profile.SaveProfileAttributeRequest
 import id.homebase.api.serialization.OdinSystemSerializer
 import java.io.File
 import kotlin.test.Test
@@ -12,7 +11,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -68,22 +66,13 @@ class CardContractGoldenTest {
         put("socials", "handles")
     }
 
-    private fun request(
-        card: ProfileCard,
-        visibility: ProfileVisibility,
-        edit: Boolean = false,
-    ): JsonElement = OdinSystemSerializer.json.parseToJsonElement(
-        OdinSystemSerializer.json.encodeToString(
-            SaveProfileAttributeRequest(
-                type = ProfileAttributeTypes.PROFILE_CARD,
-                id = if (edit) card.id else null,
-                expectedVersionTag = if (edit) card.versionTag else null,
-                visibility = visibility.wireValue,
-                data = card.toData(),
-                priority = card.priority,
-            ),
-        ),
-    )
+    private suspend fun captured(block: suspend (CardWireHarness) -> Unit): JsonElement {
+        val wire = CardWireHarness()
+        block(wire)
+        return wire.putBodies.single()
+    }
+
+    private suspend fun store(wire: CardWireHarness) = ProfileRepositoryCardStore(wire.profileRepository())
 
     private fun golden(name: String, actual: JsonElement) {
         val text = pretty.encodeToString(JsonElement.serializer(), actual) + "\n"
@@ -117,36 +106,23 @@ class CardContractGoldenTest {
     )
 
     @Test
-    fun savePublicCardCreate() {
-        golden("save-public-card.json", request(publicCard, ProfileVisibility.ANONYMOUS))
+    fun savePublicCardCreate() = runTest {
+        golden("save-public-card.json", captured { CardRepository(store(it)).savePublic("board", overrides) })
     }
 
     @Test
-    fun savePublicCardEdit() {
-        golden("save-public-card-edit.json", request(publicCard, ProfileVisibility.ANONYMOUS, edit = true))
+    fun savePublicCardEdit() = runTest {
+        golden("save-public-card-edit.json", captured {
+            store(it).save(publicCard.toData(), ProfileVisibility.ANONYMOUS, publicId, publicTag, publicCard.priority)
+        })
     }
 
     @Test
-    fun saveCircleCard() {
-        golden("save-circle-card.json", request(circleCard(friendsCircle, "Friends", "dossier", 0), ProfileVisibility.CONNECTED))
-    }
-
-    @Test
-    fun savePublicThroughTheRepositoryWritesTheSameDataAndPriority() = runTest {
-        class Store : CardAttributeStore {
-            var data: JsonObject? = null
-            var priority: Int? = null
-            var visibility: ProfileVisibility? = null
-            override suspend fun load() = emptyList<ProfileAttribute>()
-            override suspend fun save(data: JsonObject, visibility: ProfileVisibility, id: Uuid?, versionTag: Uuid?, priority: Int) {
-                this.data = data; this.visibility = visibility; this.priority = priority
-            }
-        }
-        val store = Store()
-        CardRepository(store).savePublic("board", overrides)
-        assertEquals(publicCard.copy(extra = JsonObject(emptyMap())).toData(), store.data)
-        assertEquals(PUBLIC_CARD_PRIORITY, store.priority)
-        assertEquals(ProfileVisibility.ANONYMOUS, store.visibility)
+    fun saveCircleCard() = runTest {
+        val card = circleCard(friendsCircle, "Friends", "dossier", 0)
+        golden("save-circle-card.json", captured {
+            store(it).save(card.toData(), ProfileVisibility.CONNECTED, null, null, card.priority)
+        })
     }
 
     @Test

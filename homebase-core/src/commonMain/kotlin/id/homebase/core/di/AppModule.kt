@@ -717,6 +717,7 @@ val appModule = module {
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
                 get<CardPreferences>().reset()
+                get<CardRepository>().reset()
                 get<ContactRepository>().apply { reset(); start() }
                 // Hydrate the saved-stickers tray for the new identity (mirror Vault).
                 get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }

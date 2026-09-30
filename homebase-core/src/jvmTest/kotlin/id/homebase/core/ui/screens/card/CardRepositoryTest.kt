@@ -54,9 +54,9 @@ class CardRepositoryTest {
 
     private fun unknownType() = ClientException(
         status = 400,
-        message = "Unknown profile attribute type",
+        message = "Unknown profile attribute type 9832dc5dd4ba12dd60acb853e7588f49",
         correlationId = null,
-        problem = ProblemDetails(status = 400, title = "Unknown profile attribute type"),
+        problem = ProblemDetails(status = 400, title = "Unknown profile attribute type 9832dc5dd4ba12dd60acb853e7588f49"),
     )
 
     @Test

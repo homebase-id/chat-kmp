@@ -36,8 +36,12 @@ class ProfileRepositoryCardStore(private val repository: ProfileRepository) : Ca
 }
 
 class CardRepository(private val store: CardAttributeStore) {
-    // Older servers reject the type outright; the answer won't change until the app restarts.
+    // Older servers reject the type outright; the answer is per identity, so reset() clears it on logout.
     private var typeUnsupported = false
+
+    fun reset() {
+        typeUnsupported = false
+    }
 
     suspend fun cards(): List<ProfileCard> = store.load().profileCards()
 
@@ -66,4 +70,7 @@ class CardRepository(private val store: CardAttributeStore) {
 }
 
 private fun ClientException.isUnknownCardType() =
-    message?.contains("Unknown profile attribute type", ignoreCase = true) == true
+    message.orEmpty().let {
+        it.contains("Unknown profile attribute type", ignoreCase = true) &&
+            it.contains(ProfileAttributeTypes.PROFILE_CARD, ignoreCase = true)
+    }
