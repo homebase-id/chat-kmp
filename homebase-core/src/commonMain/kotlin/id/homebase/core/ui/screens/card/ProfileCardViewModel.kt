@@ -314,7 +314,7 @@ class ProfileCardViewModel(
 
     fun onCardSelected(audience: CardAudience) {
         val state = _uiState.value
-        if (audience == state.selectedAudience || state.cards.none { it.audience == audience }) return
+        if (state.isExporting || audience == state.selectedAudience || state.cards.none { it.audience == audience }) return
         designSwitchJob?.cancel()
         _cover.value = null
         _uiState.update { it.copy(selectedAudience = audience, previewDesign = null) }
