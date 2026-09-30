@@ -46,11 +46,13 @@ class CardRepository(private val store: CardAttributeStore) {
     suspend fun cards(): List<ProfileCard> = store.load().profileCards()
 
     /** A null [overrides] keeps the stored ones. Returns false, without an error, when the server doesn't know the card type. */
-    suspend fun savePublic(design: String, overrides: JsonObject? = null): Boolean {
+    suspend fun savePublic(design: String, overrides: CardOverrides? = null): Boolean {
         if (typeUnsupported) return false
         val existing = cards().publicCard()
-        val card = existing?.copy(design = design, overrides = overrides ?: existing.overrides)
-            ?: ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, design, overrides ?: JsonObject(emptyMap()))
+        val card = existing?.let {
+            val kept = overrides ?: it.overrides
+            it.copy(design = design, overrides = if (it.design != design) kept.prunedFor(design) else kept)
+        } ?: ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, design, overrides ?: CardOverrides.EMPTY)
         try {
             store.save(
                 data = card.toData(),

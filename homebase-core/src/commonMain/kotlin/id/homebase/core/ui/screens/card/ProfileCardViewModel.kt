@@ -61,7 +61,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.json.JsonObject
 
 private const val TAG = "ProfileCard"
 
@@ -87,7 +86,7 @@ data class ProfileCardUiState(
     val selectedCard: ProfileCard? get() = cards.firstOrNull { it.audience == selectedAudience }
     private val circleCard: ProfileCard? get() = selectedCard?.takeIf { it.audience is CardAudience.Circle }
     val design: String get() = previewDesign ?: circleCard?.design ?: savedDesign
-    val overrides: JsonObject get() = selectedCard?.overrides ?: JsonObject(emptyMap())
+    val overrides: CardOverrides get() = selectedCard?.overrides ?: CardOverrides.EMPTY
     val canSwitchCard: Boolean get() = cards.size > 1
     val isCircleSelected: Boolean get() = selectedAudience is CardAudience.Circle
     val cardTopArgb: Int? get() = edges[design]?.topArgb
@@ -599,6 +598,7 @@ class ProfileCardViewModel(
             tagLine = content.siteDefaults.tagLine,
             posts = posts,
             audience = audience,
+            overrides = _uiState.value.cards.firstOrNull { it.audience == audience }?.overrides ?: CardOverrides.EMPTY,
         )
     }
 

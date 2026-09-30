@@ -22,7 +22,7 @@ class CardWireTest {
     @Test
     fun savingThePublicCardPutsTheContractBody() = runTest {
         val wire = CardWireHarness()
-        val overrides = buildJsonObject { put("accent", "#abcdef") }
+        val overrides = CardOverrides(palette = CardPalette(accent = "#abcdef"))
 
         assertTrue(wire.cardRepository().savePublic("board", overrides))
 
@@ -33,7 +33,7 @@ class CardWireTest {
         assertEquals(1000, body["priority"]?.jsonPrimitive?.int)
         val data = body["data"]!!.jsonObject
         assertEquals(JsonPrimitive("board"), data["design"])
-        assertEquals(overrides, data["overrides"])
+        assertEquals(overrides.toJson(), data["overrides"])
         assertFalse("label" in data)
         assertFalse("id" in body)
     }

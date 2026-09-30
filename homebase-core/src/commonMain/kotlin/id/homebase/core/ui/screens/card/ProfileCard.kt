@@ -23,7 +23,7 @@ data class ProfileCard(
     val versionTag: Uuid,
     val audience: CardAudience,
     val design: String,
-    val overrides: JsonObject = JsonObject(emptyMap()),
+    val overrides: CardOverrides = CardOverrides.EMPTY,
     val priority: Int = PUBLIC_CARD_PRIORITY,
     val extra: JsonObject = JsonObject(emptyMap()),
 ) {
@@ -31,7 +31,7 @@ data class ProfileCard(
         buildMap {
             putAll(extra)
             put(KEY_DESIGN, JsonPrimitive(design))
-            if (overrides.isNotEmpty()) put(KEY_OVERRIDES, overrides)
+            if (!overrides.isEmpty()) put(KEY_OVERRIDES, overrides.toJson())
             if (audience is CardAudience.Circle) put(ProfileAttributeTypes.KEY_LABEL, JsonPrimitive(audience.label))
         },
     )
@@ -54,7 +54,7 @@ data class ProfileCard(
                 versionTag = attribute.versionTag,
                 audience = audience,
                 design = design,
-                overrides = attribute.data[KEY_OVERRIDES] as? JsonObject ?: JsonObject(emptyMap()),
+                overrides = (attribute.data[KEY_OVERRIDES] as? JsonObject)?.let(CardOverrides::fromJson) ?: CardOverrides.EMPTY,
                 priority = attribute.priority,
                 extra = JsonObject(attribute.data.filterKeys { it !in known }),
             )

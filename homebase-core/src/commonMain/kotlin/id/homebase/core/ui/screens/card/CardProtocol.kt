@@ -29,6 +29,7 @@ data class CardPayload(
     val design: String,
     val data: CardData,
     val audience: CardAudiencePayload? = null,
+    val overrides: CardOverrides? = null,
 )
 
 @Serializable
