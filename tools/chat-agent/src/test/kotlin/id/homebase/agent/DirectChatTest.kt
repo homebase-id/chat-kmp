@@ -115,8 +115,10 @@ class DirectChatTest {
         h.p.handle(msg(dm, alice, "hi"))
         h.p.handle(msg(group, alice, "@quagmire hi"))
         val direct = h.prompts[0]
-        assertTrue(direct.startsWith("You are Glen, a dry-witted assistant.\nYou are bot.example.com, replying in a private chat with alice.example.com."))
-        assertTrue(h.prompts[1].contains("replying in the conversation \"Team\""))
+        assertTrue(direct.startsWith("You are Glen, a dry-witted assistant.\nYou are bot.example.com, replying in a private chat."))
+        assertTrue(direct.contains("members: alice.example.com"))
+        assertTrue(h.prompts[1].startsWith("You are Glen, a dry-witted assistant.\nYou are bot.example.com, replying in a group conversation."))
+        assertTrue(h.prompts[1].contains("title: Team"))
         assertNotNull(config("x y").persona)
         Unit
     }

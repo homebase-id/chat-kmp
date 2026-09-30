@@ -16,6 +16,8 @@ const val DEFAULT_BRAIN =
     "claude -p --model haiku --tools \"\" --strict-mcp-config --setting-sources \"\" --max-turns 1 --disable-slash-commands --system-prompt '$LOCKED_SYSTEM_PROMPT'"
 const val DEFAULT_MAX_RUNS_PER_HOUR = 20
 const val DEFAULT_MAX_RUNS_PER_DAY = 100
+const val DEFAULT_OPERATOR_TIMEOUT_MS = 30 * 60_000L
+const val DEFAULT_MAX_JOBS_PER_DAY = 20
 
 class AgentConfig(
     val nickname: String = DEFAULT_NICKNAME,
@@ -28,6 +30,8 @@ class AgentConfig(
     val operators: Set<OdinId> = emptySet(),
     val operatorBrain: String? = null,
     val operatorCwd: String? = null,
+    val operatorTimeoutMs: Long = DEFAULT_OPERATOR_TIMEOUT_MS,
+    val maxJobsPerDay: Int = DEFAULT_MAX_JOBS_PER_DAY,
 )
 
 enum class Tier { LOCKED, OPERATOR }
@@ -52,7 +56,7 @@ fun tierBanner(config: AgentConfig): List<String> = buildList {
     if (config.operatorBrain == null) {
         add("tiers: locked only (no operatorBrain)")
     } else {
-        add("WARNING: operator tier active: operators=${config.operators.joinToString(",")} cwd=${config.operatorCwd ?: "(inherited)"}; operatorBrain runs with full env in operator rooms")
+        add("WARNING: operator tier active: operators=${config.operators.joinToString(",")} cwd=${config.operatorCwd ?: "(inherited)"}; operatorBrain runs as background jobs (timeout=${config.operatorTimeoutMs / 60_000}m, maxJobsPerDay=${config.maxJobsPerDay}) with full env in operator rooms")
     }
 }
 
@@ -86,8 +90,16 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         operators = list("operators")?.map { OdinId(it) }?.toSet().orEmpty(),
         operatorBrain = values["operatorBrain"]?.takeIf { it.isNotEmpty() },
         operatorCwd = values["operatorCwd"]?.takeIf { it.isNotEmpty() }?.let { it.replaceFirst(Regex("^~"), System.getProperty("user.home")) },
+        operatorTimeoutMs = values["operatorTimeout"]?.let(::parseDurationMs) ?: DEFAULT_OPERATOR_TIMEOUT_MS,
+        maxJobsPerDay = values["maxJobsPerDay"]?.toIntOrNull() ?: DEFAULT_MAX_JOBS_PER_DAY,
         allowlist = Allowlist(conversations, authors, memberMode, anyMember, groupSend = bot && !delegate && ownerKey != owner, delegate = delegate),
     )
+}
+
+fun parseDurationMs(text: String): Long? {
+    val m = Regex("(\\d+)\\s*([smh]?)").matchEntire(text.trim().lowercase()) ?: return null
+    val n = m.groupValues[1].toLongOrNull()?.takeIf { it > 0 } ?: return null
+    return n * when (m.groupValues[2]) { "m" -> 60_000L; "h" -> 3_600_000L; else -> 1_000L }
 }
 
 private fun persona(values: Map<String, String>): String? =

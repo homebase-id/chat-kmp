@@ -46,6 +46,8 @@ that. Rate caps (`maxRunsPerHour` per author, `maxRunsPerDay`) apply to 1:1 trig
 | operators | comma list of odinIds trusted for the operator tier | none |
 | operatorBrain | any shell command for operator rooms (full env); unset = no privileged tier | none |
 | operatorCwd | working dir of operatorBrain | inherited |
+| operatorTimeout | kill an operator job (whole process tree) after this long: `90s`, `30m`, `2h` | 30m |
+| maxJobsPerDay | operator jobs per day (separate from `maxRunsPerDay`) | 20 |
 | bot | true for a bot identity | false |
 | owner | odinId allowed to summon the bot | none |
 | allowConversations | `self`, `member` (not for `me`), or comma list of uuids | `self` (bot: `member`) |
@@ -99,7 +101,7 @@ Every chat member is untrusted input to the brain. Two tiers:
 - Locked (default, everyone): `brain` runs in a fresh empty temp dir (deleted after) with env limited to
   PATH, HOME, USER, LANG. The default command is `claude -p` with `--tools ""`, `--strict-mcp-config`,
   `--setting-sources ""`, `--max-turns 1`, `--disable-slash-commands` and a fixed system prompt; chat text
-  is passed inside `<untrusted_*>` blocks. Replies have any leading robot emoji or spoofed
+  and conversation title/members are passed inside `<untrusted_*_<random nonce>>` blocks (fresh nonce per prompt, so chat text cannot close a block). Replies have any leading robot emoji or spoofed
   "X's AI assistant:" stripped before the real prefix is added. `watch` logs a WARNING at startup if `brain`
   is not the locked default. Profile dir is 700, files inside 600.
 - Operator (opt-in): `operators=` + `operatorBrain=`. `operatorBrain` runs in `operatorCwd` with the full
@@ -109,6 +111,29 @@ Every chat member is untrusted input to the brain. Two tiers:
   brain contains only operator/own messages. Identity is the server-set `senderOdinId`, never `originalAuthor`.
 - MCP: `mcp --conversation <id>` restricts every tool to one conversation; `--read-only` removes
   `send_message` and refuses sends. Use both when handing MCP to a brain.
+
+## Operator jobs
+
+With `operatorBrain` set, an operator-tier trigger does not run inline. It becomes a background job so
+`watch` keeps answering locked-tier messages meanwhile. The agent replies at once with `🤖 on it (job n)`
+(or `🤖 queued behind job m (job n)`); one job runs at a time, the rest wait in order. When the job ends the
+conversation gets the brain output (truncated to 1500 characters, keeping the END) or
+`🤖 job n failed: ...`. The job is killed with all its child processes after `operatorTimeout`.
+Operators (in a conversation that passes the allowlist) can send `@<nick> status` (running job, queue) and
+`@<nick> cancel` (or `@<nick> cancel <n>`); from anyone else these are ordinary chat text. Over
+`maxJobsPerDay` the agent answers `🤖 daily job limit reached`. Jobs do not count against `maxRunsPerHour` /
+`maxRunsPerDay`. Queued jobs are lost on restart. `operatorBrain` is any command (prompt on stdin, reply on
+stdout), e.g. `claude -p --dangerously-skip-permissions` or `codex exec -`.
+
+### Mini-PC setup for operator jobs
+
+- Create a dedicated OS user (no sudo, no personal files, nothing else logged in) and run `chat-agent watch`
+  as that user, e.g. as its launchd/systemd service. A job runs with that user's full environment.
+- Sign the CLI the job uses into that user once (`gh auth login`, `claude` login, git identity/signing key)
+  so a job can push branches and open PRs with a scoped token; prefer a fine-grained token limited to the
+  repos the agent may touch.
+- Clone the repos into a working directory owned by that user and set `operatorCwd=` to it (`~` expands).
+- Keep `operators=` to identities you would give shell access to, and keep `operatorTimeout` tight.
 
 Residual risks: web pages or tool output fetched by the operator brain can still inject into it; a locked
 brain can still be talked into a bad reply text (replies are visible to the conversation); the operator
