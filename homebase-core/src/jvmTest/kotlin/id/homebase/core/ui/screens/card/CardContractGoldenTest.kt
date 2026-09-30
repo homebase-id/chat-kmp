@@ -157,4 +157,28 @@ class CardContractGoldenTest {
         )
         golden("render-payload.json", OdinSystemSerializer.json.parseToJsonElement(payload.toJson()))
     }
+
+    private fun builtPayload(audience: CardAudience, design: String, overrides: CardOverrides) =
+        OdinSystemSerializer.json.parseToJsonElement(
+            buildCardPayload(
+                odinId = "frodo.dotyou.cloud",
+                attributes = emptyList(),
+                design = design,
+                photoSrc = "data:image/png;base64,iVBORw0KGgo=",
+                headerSrc = null,
+                tagLine = "Ring bearer",
+                audience = audience,
+                overrides = overrides,
+            ).toJson(),
+        )
+
+    @Test
+    fun renderPayloadPublicFromTheRealBuilder() {
+        golden("render-payload-public.json", builtPayload(CardAudience.Public, "board", overrides))
+    }
+
+    @Test
+    fun renderPayloadCircleFromTheRealBuilder() {
+        golden("render-payload-circle.json", builtPayload(CardAudience.Circle(friendsCircle, "Friends"), "dossier", overrides))
+    }
 }
