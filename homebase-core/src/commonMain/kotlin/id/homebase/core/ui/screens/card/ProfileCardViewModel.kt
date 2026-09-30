@@ -255,6 +255,7 @@ class ProfileCardViewModel(
     private val readyCount = MutableStateFlow(0)
     private var coverStale = false
     private var lastRendered: CardPayload? = null
+    private var renderDeferredByExport = false
     private val imageSrcs = mutableMapOf<ImageKey, Deferred<String?>>()
     private val failedImages = mutableSetOf<ImageKey>()
     private var posts: List<CardPost> = emptyList()
@@ -293,7 +294,7 @@ class ProfileCardViewModel(
     }
 
     // Circle cards are edited by their own flow; the design editor only ever writes the public card.
-    fun onEditClicked() = onCardSelected(CardAudience.Public)
+    fun onEditClicked() = selectAudience(CardAudience.Public)
 
     fun onDesignSelected(design: String) {
         if (_uiState.value.isCircleSelected || design == _uiState.value.design) return
@@ -313,13 +314,18 @@ class ProfileCardViewModel(
     }
 
     fun onCardSelected(audience: CardAudience) {
+        if (_uiState.value.isExporting) return
+        selectAudience(audience)
+    }
+
+    private fun selectAudience(audience: CardAudience) {
         val state = _uiState.value
-        if (state.isExporting || audience == state.selectedAudience || state.cards.none { it.audience == audience }) return
+        if (audience == state.selectedAudience || state.cards.none { it.audience == audience }) return
         designSwitchJob?.cancel()
         _cover.value = null
         _uiState.update { it.copy(selectedAudience = audience, previewDesign = null) }
         designSwitchJob = viewModelScope.launch {
-            coverOutgoingDesign()
+            if (!_uiState.value.isExporting) coverOutgoingDesign()
             render()
         }
     }
@@ -420,8 +426,9 @@ class ProfileCardViewModel(
                     else -> Unit
                 }
             } finally {
-                if (publicPayload != null) lastRendered?.let(host::render)
                 _uiState.update { it.copy(isExporting = false) }
+                if (publicPayload != null || renderDeferredByExport) lastRendered?.let(host::render)
+                renderDeferredByExport = false
             }
         }
     }
@@ -576,7 +583,7 @@ class ProfileCardViewModel(
             val payload = payloadFor(state.design, state.selectedAudience) ?: return@launch
             if (payload != lastRendered) {
                 lastRendered = payload
-                _host.value?.render(payload)
+                if (_uiState.value.isExporting) renderDeferredByExport = true else _host.value?.render(payload)
             }
         }
     }
