@@ -9,7 +9,6 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.EccKeySize
 import id.homebase.api.crypto.generateEccKeyPair
 import id.homebase.api.crypto.publicKeyToJwkBase64Url
-import id.homebase.api.decodeUrl
 import id.homebase.api.generateUuidBytes
 import id.homebase.api.generateUuidString
 import id.homebase.api.youauth.AppAuthorizationParams
@@ -20,7 +19,7 @@ import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.TargetDriveAccessRequest
 import id.homebase.api.youauth.YouAuthProvider
 import id.homebase.api.youauth.YouAuthorizationParams
-import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeout
 
 // homebase-common (AppConfig.kt) isn't headless; mirror of its circle ids.
@@ -47,10 +46,14 @@ private val agentPermissions =
         AppPermissionType.ReceiveDataFromOtherIdentitiesOnMyBehalf,
     )
 
-suspend fun login(identityDomain: String) {
+suspend fun login(identityDomain: String, noBrowser: Boolean = false, callbackPort: Int = 0) {
     val identity = OdinId(identityDomain)
-    val callback = CompletableDeferred<String>()
-    LocalCallbackServer.start(onCallbackUrl = { callback.complete(it) })
+    val inputs = Channel<String>(Channel.UNLIMITED)
+    val port = LocalCallbackServer.start(onCallbackUrl = { inputs.trySend(it) }, preferredPort = callbackPort)
+    if (callbackPort > 0 && port != callbackPort) {
+        LocalCallbackServer.stop()
+        error("could not listen on --callback-port $callbackPort (in use?)")
+    }
 
     val password = SecureByteArray(generateUuidBytes())
     val keyPair = generateEccKeyPair(password, EccKeySize.P384, 1)
@@ -82,28 +85,29 @@ suspend fun login(identityDomain: String) {
         )
     val url = "https://$identity/api/owner/v1/youauth/authorize?${authRequest.toQueryString()}"
 
-    println("Open this URL in your browser to approve the Chat Agent app:\n$url")
-    runCatching { ProcessBuilder("open", url).start() }
+    println("Open this on any device to approve the Chat Agent app:\n$url\n")
+    terminalQr(url)?.let { println(it) }
+    println("If the page fails to load after you approve, copy its address and paste it here:")
+    browserOpener(System.getProperty("os.name"), System.getenv(), noBrowser)?.let { opener ->
+        runCatching { ProcessBuilder(opener, url).redirectErrorStream(true).start() }
+    }
+    val reader = Thread { pumpLines(System.`in`.bufferedReader()) { inputs.trySend(it) } }
+    reader.isDaemon = true
+    reader.start()
 
-    val callbackUrl = try {
-        withTimeout(5 * 60_000L) { callback.await() }
+    val params = try {
+        withTimeout(5 * 60_000L) { awaitCallback(inputs, state, identity.toString()) { System.err.println("error: $it\nPaste the callback address again:") } }
     } finally {
         LocalCallbackServer.stop()
     }
-
-    val params = callbackUrl.substringAfter("?", "").split("&").associate {
-        val parts = it.split("=", limit = 2)
-        parts[0] to decodeUrl(parts.getOrElse(1) { "" })
-    }
-    check(params["state"] == state) { "callback state mismatch" }
     val result =
         YouAuthProvider(HttpClientProvider.create(), identity)
             .finalizeAuthentication(
-                identity = OdinId(params["identity"].orEmpty()),
+                identity = OdinId(params.identity),
                 keyPair = keyPair,
                 password = password,
-                publicKey = params["public_key"].orEmpty(),
-                salt = params["salt"].orEmpty(),
+                publicKey = params.publicKey,
+                salt = params.salt,
             )
     CredentialStorage.saveCredentials(
         result.identity,

@@ -28,6 +28,29 @@ from the machine), so copying a profile dir to another machine works; do that on
     chat-agent login --profile me  --identity you.homebase.id    # delegate: acts as the owner
     chat-agent login --profile bot --identity bot.homebase.id    # bot: its own identity
 
+### Logging in on a headless machine or in a container
+
+The browser that approves the app does not have to be on the same machine.
+
+    chat-agent login --profile bot --identity bot.homebase.id --no-browser
+
+1. The command prints the authorize URL (and a terminal QR if `qrencode` is on PATH). Open it on any device and approve.
+2. The browser is redirected to `http://localhost:<port>/authorization-code-callback?...`, which fails to load there.
+   Copy that address from the address bar and paste it into the terminal (the query string alone also works).
+   Nothing in it is secret; the private key never leaves the agent process.
+3. A wrong or garbled paste prints an error and asks again. The HTTP callback and the paste race; the first valid one wins.
+
+The browser is opened automatically only on macOS (`open`) and on Linux with `DISPLAY`/`WAYLAND_DISPLAY` set (`xdg-open`);
+`--no-browser` never tries.
+
+Alternative: pin the callback port and tunnel it, so the approving browser's redirect reaches the agent directly:
+
+    chat-agent login --profile bot --identity bot.homebase.id --callback-port 8765 --no-browser
+    ssh -L 8765:localhost:8765 user@headless-box      # from the machine with the browser
+
+In a container, use `docker run -it` / `podman run -it` (the paste needs a TTY on stdin), or publish the port with
+`-p 8765:8765` and pass `--callback-port 8765`.
+
 `me` triggers on the nickname, and (only while away) on a plain @owner mention. It sends to
 note-to-self, and to conversations explicitly listed by uuid in `allowConversations`;
 `allowConversations=member` is refused for `me`. Any member of a listed group may summon it
@@ -183,6 +206,8 @@ measured on the target). For better accuracy use `small` (about 470 MB, several 
     </dict></plist>
 
 ## Security
+
+Login: the callback server (homebase-api LocalCallbackServer) listens on all interfaces while `login` runs; the `state` check protects it, and a callback for a different identity than `--identity` is rejected.
 
 Every chat member is untrusted input to the brain. Two tiers:
 
