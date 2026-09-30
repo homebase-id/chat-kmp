@@ -2334,6 +2334,8 @@
     <string name="profile_card_design_save_failed">Couldn't save the card design.</string>
     <string name="profile_card_step_customise">Customise</string>
     <string name="profile_card_step_customise_title">Customise %1$s</string>
+    <string name="profile_card_step_count">Step %1$d of %2$d</string>
+    <string name="profile_card_step_design_title">Choose a design</string>
     <string name="profile_card_options_empty">This design has nothing to adjust. Go back to pick another design, or save it as it is.</string>
     <string name="profile_card_option_default">Default</string>
     <string name="profile_card_option_accent">Accent colour</string>
