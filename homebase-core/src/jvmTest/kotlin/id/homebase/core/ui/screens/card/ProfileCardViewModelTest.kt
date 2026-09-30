@@ -79,8 +79,11 @@ class ProfileCardViewModelTest {
         var onExport: () -> Unit = {}
         var disposed = false
 
+        var onRender: (CardPayload) -> Unit = {}
+
         override fun render(payload: CardPayload) {
             rendered += payload
+            onRender(payload)
         }
 
         override fun exportPng() = onExport()
@@ -103,7 +106,7 @@ class ProfileCardViewModelTest {
     }
 
     private class FakeSource(
-        private val attributes: List<ProfileAttribute>,
+        var attributes: List<ProfileAttribute>,
         private val defaults: suspend () -> CardSiteDefaults = { CardSiteDefaults(design = CardDesign.POSTER) },
         private val posts: suspend () -> List<CardPostEntry> = { emptyList() },
         private val cardRepository: CardRepository? = null,
@@ -979,5 +982,133 @@ class ProfileCardViewModelTest {
 
         assertEquals(CardAudience.Public, vm.uiState.value.selectedAudience)
         assertEquals(renders, host.rendered.size)
+    }
+
+    private val friends = CardAudience.Circle("c1", "Friends")
+
+    @Test
+    fun circleCardsListAfterPublicInPriorityOrderWhateverTheAttributeOrder() = runTest(dispatcher) {
+        val vm = viewModel(
+            FakeHost(),
+            FakeSource(
+                profile + circleCardAttribute("c3", "Third", CardDesign.POSTER, 2) + publicCardAttribute +
+                    circleCardAttribute("c1", "First", CardDesign.DOSSIER, 0) + circleCardAttribute("c2", "Second", CardDesign.COLLAGE, 1),
+            ),
+        )
+
+        assertEquals(
+            listOf<CardAudience>(CardAudience.Public, CardAudience.Circle("c1", "First"), CardAudience.Circle("c2", "Second"), CardAudience.Circle("c3", "Third")),
+            vm.uiState.value.cards.map { it.audience },
+        )
+    }
+
+    @Test
+    fun aCircleCardWithAnUnknownDesignIsLeftOut() = runTest(dispatcher) {
+        val vm = viewModel(
+            FakeHost(),
+            FakeSource(profile + publicCardAttribute + circleCardAttribute("c1", "Friends", "hologram", 0) + circleCardAttribute("c2", "Family", CardDesign.POSTER, 1)),
+        )
+
+        assertEquals(listOf<CardAudience>(CardAudience.Public, CardAudience.Circle("c2", "Family")), vm.uiState.value.cards.map { it.audience })
+    }
+
+    @Test
+    fun aReloadKeepsTheSelectedCircleCardWhileItStillExists() = runTest(dispatcher) {
+        val host = FakeHost()
+        val source = FakeSource(profile + publicCardAttribute + circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0))
+        val vm = viewModel(host, source)
+        vm.onCardSelected(friends)
+
+        vm.onScreenShown()
+        advanceUntilIdle()
+
+        assertEquals(friends, vm.uiState.value.selectedAudience)
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
+        assertEquals("circle", host.rendered.last().audience?.kind)
+    }
+
+    @Test
+    fun aReloadAfterTheSelectedCircleCardVanishedFallsBackToPublic() = runTest(dispatcher) {
+        val host = FakeHost()
+        val source = FakeSource(profile + publicCardAttribute + circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0))
+        val vm = viewModel(host, source)
+        vm.onCardSelected(friends)
+        assertEquals("circle", host.rendered.last().audience?.kind)
+
+        source.attributes = profile + publicCardAttribute
+        vm.onScreenShown()
+        advanceUntilIdle()
+
+        assertEquals(CardAudience.Public, vm.uiState.value.selectedAudience)
+        assertEquals(CardDesign.BOARD, vm.uiState.value.design)
+        assertEquals(CardDesign.BOARD, host.rendered.last().design)
+        assertEquals("public", host.rendered.last().audience?.kind)
+    }
+
+    @Test
+    fun editingWithACircleCardSelectedNeverWritesThePublicCard() = runTest(dispatcher) {
+        val host = FakeHost()
+        val source = FakeSource(profile + publicCardAttribute + circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0))
+        val vm = viewModel(host, source)
+        vm.onCardSelected(friends)
+
+        vm.onDesignSelected(CardDesign.POSTER)
+        assertNull(vm.uiState.value.previewDesign)
+        assertFalse(vm.uiState.value.canSaveDesign)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        assertTrue(source.savedDesigns.isEmpty())
+        assertTrue(source.publishedDesigns.isEmpty())
+        assertEquals(0, source.cardWrites.value)
+        assertEquals(CardDesign.BOARD, vm.uiState.value.savedDesign)
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
+    }
+
+    @Test
+    fun enteringTheEditorSwitchesToThePublicCardSoASaveWritesIt() = runTest(dispatcher) {
+        val host = FakeHost()
+        val source = FakeSource(profile + publicCardAttribute + circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0))
+        val vm = viewModel(host, source)
+        vm.onCardSelected(friends)
+
+        vm.onEditClicked()
+        assertEquals(CardAudience.Public, vm.uiState.value.selectedAudience)
+        assertEquals(CardDesign.BOARD, vm.uiState.value.design)
+        vm.onDesignSelected(CardDesign.POSTER)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        assertEquals(listOf(CardDesign.POSTER), source.savedDesigns)
+        assertEquals(listOf(CardDesign.POSTER), source.publishedDesigns)
+    }
+
+    @Test
+    fun exportingWithACircleCardSelectedSharesThePublicRenderAndRestoresTheSelection() = runTest(dispatcher) {
+        val host = FakeHost()
+        val source = FakeSource(profile + publicCardAttribute + circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0))
+        val vm = viewModel(host, source)
+        host.send(CardEvent.Ready(layout = CardDesign.BOARD, ms = 1))
+        vm.onCardSelected(friends)
+        host.send(CardEvent.Ready(layout = CardDesign.DOSSIER, ms = 1))
+        assertEquals("circle", host.rendered.last().audience?.kind)
+
+        val atExport = mutableListOf<CardPayload>()
+        host.onRender = { host.send(CardEvent.Ready(layout = it.design, ms = 1)) }
+        host.onExport = {
+            atExport += host.rendered.last()
+            host.send(CardEvent.Png(pngBase64(), 4, 6))
+        }
+        val event = async { vm.events.first() }
+        vm.onShareClicked()
+        advanceUntilIdle()
+
+        assertIs<ProfileCardEvent.ShareImage>(event.await())
+        val exported = atExport.single()
+        assertEquals(CardDesign.BOARD, exported.design)
+        assertEquals("public", exported.audience?.kind)
+        assertEquals("circle", host.rendered.last().audience?.kind)
+        assertEquals(CardDesign.DOSSIER, host.rendered.last().design)
+        assertEquals(friends, vm.uiState.value.selectedAudience)
     }
 }

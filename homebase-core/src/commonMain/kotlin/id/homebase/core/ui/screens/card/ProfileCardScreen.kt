@@ -87,6 +87,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -130,6 +131,7 @@ private val TOP_BAND_HEIGHT = 56.dp
 private val BAND_FADE_HEIGHT = 16.dp
 // The floating toolbar plus its vertical margins.
 private val TOOLBAR_BAND_HEIGHT = 88.dp
+private val AUDIENCE_BADGE_MAX_WIDTH = 132.dp
 private val MAX_SHEET_PULL = 32.dp
 private val DISMISS_DRAG_DISTANCE = 96.dp
 private const val DISMISS_FLING_VELOCITY = 1500f
@@ -315,49 +317,70 @@ fun ProfileCardScreen(
                     handleDrag = if (bands.top) Modifier else dismissDrag,
                     modifier = Modifier.align(Alignment.TopCenter),
                 )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .semantics {
-                            isTraversalGroup = true
-                            traversalIndex = -1f
-                        }
-                        .navigationBarsPadding()
-                        .height(TOOLBAR_BAND_HEIGHT),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (uiState.isCircleSelected) {
-                        CardChromePill(modifier = Modifier.align(Alignment.TopCenter)) {
-                            Text(
-                                text = stringResource(MR.string.profile_card_share_public_note),
-                                style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            )
-                        }
-                    }
-                    HorizontalFloatingToolbar(
-                        expanded = true,
-                        colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
-                            toolbarContainerColor = chromePillColor(),
-                            toolbarContentColor = MaterialTheme.colorScheme.onSurface,
-                        ),
-                    ) {
-                        ShareAction(
-                            isExporting = uiState.isExporting,
-                            enabled = uiState.canShare,
-                            saveInsteadOfShare = saveInsteadOfShare,
-                            onClick = viewModel::onShareClicked,
-                        )
-                        nfc?.let { CardNfcAction(it) }
-                        IconButton(onClick = onEdit) {
-                            Icon(
-                                imageVector = Icons.Outlined.Edit,
-                                contentDescription = stringResource(MR.string.profile_card_edit),
-                            )
-                        }
-                    }
-                }
+                CardBottomChrome(
+                    showPublicNote = uiState.isCircleSelected,
+                    isExporting = uiState.isExporting,
+                    canShare = uiState.canShare,
+                    saveInsteadOfShare = saveInsteadOfShare,
+                    onShare = viewModel::onShareClicked,
+                    onEdit = { viewModel.onEditClicked(); onEdit() },
+                    extraActions = { nfc?.let { CardNfcAction(it) } },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun BoxScope.CardBottomChrome(
+    showPublicNote: Boolean,
+    isExporting: Boolean,
+    canShare: Boolean,
+    saveInsteadOfShare: Boolean,
+    onShare: () -> Unit,
+    onEdit: () -> Unit,
+    extraActions: @Composable () -> Unit,
+) {
+    if (showPublicNote) {
+        SharePublicNote(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = TOOLBAR_BAND_HEIGHT + 4.dp),
+        )
+    }
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .semantics {
+                isTraversalGroup = true
+                traversalIndex = -1f
+            }
+            .navigationBarsPadding()
+            .height(TOOLBAR_BAND_HEIGHT),
+        contentAlignment = Alignment.Center,
+    ) {
+        HorizontalFloatingToolbar(
+            expanded = true,
+            colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
+                toolbarContainerColor = chromePillColor(),
+                toolbarContentColor = MaterialTheme.colorScheme.onSurface,
+            ),
+        ) {
+            ShareAction(
+                isExporting = isExporting,
+                enabled = canShare,
+                saveInsteadOfShare = saveInsteadOfShare,
+                onClick = onShare,
+            )
+            extraActions()
+            IconButton(onClick = onEdit) {
+                Icon(
+                    imageVector = Icons.Outlined.Edit,
+                    contentDescription = stringResource(MR.string.profile_card_edit),
+                )
             }
         }
     }
@@ -464,6 +487,17 @@ private fun SheetTopChrome(
 }
 
 @Composable
+private fun SharePublicNote(modifier: Modifier = Modifier) {
+    CardChromePill(modifier = modifier) {
+        Text(
+            text = stringResource(MR.string.profile_card_share_public_note),
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+        )
+    }
+}
+
+@Composable
 private fun audienceLabel(audience: CardAudience): String = when (audience) {
     CardAudience.Public -> stringResource(MR.string.profile_card_audience_public)
     is CardAudience.Circle -> audience.label.trim().ifEmpty { stringResource(MR.string.profile_card_audience_circle) }
@@ -473,7 +507,7 @@ private fun audienceIcon(audience: CardAudience) =
     if (audience is CardAudience.Circle) Icons.Outlined.Groups else Icons.Outlined.Public
 
 @Composable
-private fun AudienceBadge(uiState: ProfileCardUiState, onSelect: (CardAudience) -> Unit, modifier: Modifier = Modifier) {
+internal fun AudienceBadge(uiState: ProfileCardUiState, onSelect: (CardAudience) -> Unit, modifier: Modifier = Modifier) {
     var expanded by remember { mutableStateOf(false) }
     val selected = uiState.selectedAudience
     val label = audienceLabel(selected)
@@ -483,12 +517,12 @@ private fun AudienceBadge(uiState: ProfileCardUiState, onSelect: (CardAudience) 
         stringResource(MR.string.profile_card_audience_description, label)
     }
     Box(modifier = modifier) {
-        CardChromePill(
-            modifier = Modifier.semantics { contentDescription = description },
-        ) {
+        CardChromePill {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = (if (uiState.canSwitchCard) Modifier.clickable(role = Role.Button) { expanded = true } else Modifier)
+                    .clearAndSetSemantics { contentDescription = description }
+                    .widthIn(max = AUDIENCE_BADGE_MAX_WIDTH)
                     .minimumInteractiveComponentSize()
                     .padding(horizontal = 12.dp),
             ) {
@@ -497,6 +531,7 @@ private fun AudienceBadge(uiState: ProfileCardUiState, onSelect: (CardAudience) 
                     text = label,
                     style = MaterialTheme.typography.labelLarge,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(start = 6.dp),
                 )
             }
