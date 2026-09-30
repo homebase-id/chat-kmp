@@ -23,6 +23,8 @@ object CardDesignSpecs {
     val SOCIALS_STYLES = listOf("glyphs", "bar", "wordmark", "handles")
     val BLOCK_KINDS = listOf("chat", "links", "moments", "posts")
 
+    private val ALL_OPTIONS = CardOption.entries.toSet()
+
     // Rule: an option is listed when the design's card or page draws it with the preset's defaults (poster draws no portrait and no accent).
     private val specs = listOf(
         CardDesignSpec(
@@ -31,26 +33,17 @@ object CardDesignSpecs {
         ),
         CardDesignSpec(
             CardDesign.BOARD,
-            setOf(
-                CardOption.ACCENT, CardOption.DISPLAY_FONT, CardOption.TEXT_FONT,
-                CardOption.PORTRAIT_SHAPE, CardOption.SOCIALS_STYLE, CardOption.BLOCK_ORDER,
-            ),
+            ALL_OPTIONS,
             portraitSlots = 1,
         ),
         CardDesignSpec(
             CardDesign.COLLAGE,
-            setOf(
-                CardOption.ACCENT, CardOption.DISPLAY_FONT, CardOption.TEXT_FONT,
-                CardOption.PORTRAIT_SHAPE, CardOption.SOCIALS_STYLE, CardOption.BLOCK_ORDER,
-            ),
+            ALL_OPTIONS,
             portraitSlots = 2,
         ),
         CardDesignSpec(
             CardDesign.DOSSIER,
-            setOf(
-                CardOption.ACCENT, CardOption.DISPLAY_FONT, CardOption.TEXT_FONT,
-                CardOption.PORTRAIT_SHAPE, CardOption.SOCIALS_STYLE, CardOption.BLOCK_ORDER,
-            ),
+            ALL_OPTIONS,
             portraitSlots = 1,
         ),
     ).associateBy { it.design }

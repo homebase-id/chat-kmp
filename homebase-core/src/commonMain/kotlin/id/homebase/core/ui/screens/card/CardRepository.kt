@@ -72,21 +72,13 @@ class CardRepository(private val store: CardAttributeStore) {
             val kept = overrides ?: it.overrides
             it.copy(design = design, overrides = if (it.design != design) kept.prunedFor(design) else kept)
         } ?: ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, design, overrides ?: CardOverrides.EMPTY)
-        try {
-            store.save(
-                data = card.toData(),
-                visibility = ProfileVisibility.ANONYMOUS,
-                id = existing?.id,
-                versionTag = existing?.versionTag,
-                priority = PUBLIC_CARD_PRIORITY,
-            )
-        } catch (e: ClientException) {
-            if (!e.isUnknownCardType()) throw e
-            Logger.i(tag = "CardRepository") { "server has no profile_card type; keeping the home page design only" }
-            typeUnsupported = true
-            return false
-        }
-        return true
+        return saveOrUnsupported(
+            data = card.toData(),
+            visibility = ProfileVisibility.ANONYMOUS,
+            id = existing?.id,
+            versionTag = existing?.versionTag,
+            priority = PUBLIC_CARD_PRIORITY,
+        )
     }
 
     suspend fun saveCircle(card: ProfileCard): Boolean {
@@ -131,18 +123,29 @@ class CardRepository(private val store: CardAttributeStore) {
             false
         }
 
-    private suspend fun writeCircle(card: ProfileCard, circle: CardAudience.Circle): Boolean {
+    private suspend fun writeCircle(card: ProfileCard, circle: CardAudience.Circle): Boolean =
+        saveOrUnsupported(
+            data = card.toData(),
+            visibility = ProfileVisibility.CONNECTED,
+            id = card.id.takeIf { it != Uuid.NIL },
+            versionTag = card.versionTag.takeIf { it != Uuid.NIL },
+            priority = card.priority,
+            circleIds = listOf(circle.id),
+        )
+
+    private suspend fun saveOrUnsupported(
+        data: JsonObject,
+        visibility: ProfileVisibility,
+        id: Uuid?,
+        versionTag: Uuid?,
+        priority: Int,
+        circleIds: List<String> = emptyList(),
+    ): Boolean {
         try {
-            store.save(
-                data = card.toData(),
-                visibility = ProfileVisibility.CONNECTED,
-                id = card.id.takeIf { it != Uuid.NIL },
-                versionTag = card.versionTag.takeIf { it != Uuid.NIL },
-                priority = card.priority,
-                circleIds = listOf(circle.id),
-            )
+            store.save(data, visibility, id, versionTag, priority, circleIds)
         } catch (e: ClientException) {
             if (!e.isUnknownCardType()) throw e
+            Logger.i(tag = "CardRepository") { "server has no profile_card type; keeping the home page design only" }
             typeUnsupported = true
             return false
         }
