@@ -1020,8 +1020,8 @@ class ProfileCardViewModelTest {
         assertEquals(JsonPrimitive("poster"), data["design"])
         assertEquals(surviving, data["overrides"])
 
-        vm.onDesignSelected(CardDesign.DOSSIER)
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (host.rendered.last().design != CardDesign.DOSSIER) delay(10) } }
+        // awaitPuts hands the body back on a Default worker inside the unconfined event loop, which queues a nested launch until the body suspends; a fresh withContext runs it inline.
+        withContext(Dispatchers.Default) { vm.onDesignSelected(CardDesign.DOSSIER) }
         val back = Json.parseToJsonElement(host.rendered.last().toJson()).jsonObject
         assertEquals(CardDesign.DOSSIER, host.rendered.last().design)
         assertEquals(surviving, back["overrides"])
@@ -1050,8 +1050,7 @@ class ProfileCardViewModelTest {
         vm.onDesignSelected(CardDesign.POSTER)
 
         assertEquals(CardDesign.POSTER, host.rendered.last().design)
-        val pruned = Json.parseToJsonElement(host.rendered.last().toJson()).jsonObject["overrides"]
-        assertNotEquals(expected, pruned)
+        assertNull(Json.parseToJsonElement(host.rendered.last().toJson()).jsonObject["overrides"])
     }
 
     @Test
