@@ -43,8 +43,10 @@ data class ProfileCard(
             val circles = attribute.acl.circleIdList.orEmpty()
             val audience = if (attribute.visibility == ProfileVisibility.CONNECTED && circles.size == 1) {
                 CardAudience.Circle(circles.single(), attribute.string(ProfileAttributeTypes.KEY_LABEL).orEmpty())
-            } else {
+            } else if (attribute.visibility == ProfileVisibility.ANONYMOUS) {
                 CardAudience.Public
+            } else {
+                return null
             }
             val known = setOf(KEY_DESIGN, KEY_OVERRIDES, ProfileAttributeTypes.KEY_LABEL)
             return ProfileCard(

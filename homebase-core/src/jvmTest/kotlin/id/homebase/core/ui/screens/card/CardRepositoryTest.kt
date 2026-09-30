@@ -160,4 +160,22 @@ class CardRepositoryTest {
         try { CardRepository(store).savePublic(CardDesign.POSTER) } catch (e: ClientException) { thrown = e }
         assertNotNull(thrown)
     }
+
+    @Test
+    fun aConnectedCardWithNoCirclesOrSeveralIsNotACard() {
+        val data = buildJsonObject { put("design", "board") }
+        val none = attribute(data, ProfileVisibility.CONNECTED, circles = emptyList())
+        val two = attribute(data, ProfileVisibility.CONNECTED, circles = listOf("a", "b"))
+
+        assertTrue(listOf(none, two).profileCards().isEmpty())
+        assertNull(listOf(none, two).profileCards().publicCard())
+    }
+
+    @Test
+    fun anAuthenticatedCardIsNotThePublicCard() {
+        val data = buildJsonObject { put("design", "board") }
+        val cards = listOf(attribute(data, ProfileVisibility.AUTHENTICATED)).profileCards()
+
+        assertNull(cards.publicCard())
+    }
 }

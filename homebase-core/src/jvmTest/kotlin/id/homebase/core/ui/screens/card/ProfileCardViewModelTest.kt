@@ -331,8 +331,10 @@ class ProfileCardViewModelTest {
     private class CardStore(var attributes: List<ProfileAttribute> = emptyList()) : CardAttributeStore {
         val writes = mutableListOf<JsonObject>()
         var failWith: Exception? = null
+        var gate: CompletableDeferred<Unit>? = null
         override suspend fun load() = attributes
         override suspend fun save(data: JsonObject, visibility: ProfileVisibility, id: Uuid?, versionTag: Uuid?, priority: Int) {
+            gate?.await()
             failWith?.let { throw it }
             writes += data
         }
@@ -400,6 +402,45 @@ class ProfileCardViewModelTest {
         assertEquals(listOf(CardDesign.COLLAGE), source.publishedDesigns)
         assertFalse(vm.uiState.value.loadFailed)
         assertEquals(CardDesign.COLLAGE, vm.uiState.value.savedDesign)
+    }
+
+    @Test
+    fun aFailedCardWriteDoesNotRevertTheLocallySavedDesignOnReload() = runTest(dispatcher) {
+        val existing = cardAttribute(CardDesign.BOARD)
+        val store = CardStore(listOf(existing)).apply { failWith = RuntimeException("offline") }
+        val source = FakeSource(profile + existing, cardRepository = CardRepository(store))
+        val vm = viewModel(FakeHost(), source)
+        vm.onDesignSelected(CardDesign.COLLAGE)
+
+        val event = async { vm.events.first() }
+        vm.onSaveDesign()
+        assertEquals(ProfileCardEvent.DesignSaved, event.await())
+        vm.onRetry()
+
+        assertEquals(CardDesign.COLLAGE, vm.uiState.value.savedDesign)
+        store.failWith = null
+        vm.onRetry()
+        assertEquals(CardDesign.COLLAGE, vm.uiState.value.savedDesign)
+        assertEquals(JsonPrimitive("collage"), store.writes.single()["design"])
+    }
+
+    @Test
+    fun theCardWriteDoesNotBlockTheLocalSave() = runTest(dispatcher) {
+        val store = CardStore().apply { gate = CompletableDeferred() }
+        val source = FakeSource(profile, cardRepository = CardRepository(store))
+        val vm = viewModel(FakeHost(), source)
+        vm.onDesignSelected(CardDesign.COLLAGE)
+
+        val event = async { vm.events.first() }
+        vm.onSaveDesign()
+
+        assertEquals(ProfileCardEvent.DesignSaved, event.await())
+        assertFalse(vm.uiState.value.isSavingDesign)
+        assertEquals(CardDesign.COLLAGE, vm.uiState.value.savedDesign)
+        assertEquals(listOf(CardDesign.COLLAGE), source.publishedDesigns)
+        assertTrue(store.writes.isEmpty())
+        store.gate!!.complete(Unit)
+        assertEquals(1, store.writes.size)
     }
 
     private suspend fun TestScope.saveCollectingEvents(

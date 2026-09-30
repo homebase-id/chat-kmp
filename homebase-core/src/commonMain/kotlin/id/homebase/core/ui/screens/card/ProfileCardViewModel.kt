@@ -253,6 +253,8 @@ class ProfileCardViewModel(
     private var postsFresh = false
     private var designAccess: MissingPermissionsResult? = null
     private var unpublishedDesign: String? = null
+    private var unsavedCardDesign: String? = null
+    private var cardJob: Job? = null
     private var publishJob: Job? = null
     private var shownBefore = false
     private var hostJob: Job? = null
@@ -312,7 +314,10 @@ class ProfileCardViewModel(
         _uiState.update { it.copy(isSavingDesign = true) }
         viewModelScope.launch {
             val saved = attempt("saving card design $design") { source.saveDesign(design) } != null
-            if (saved) attempt("saving the public card $design") { source.savePublicCard(design) }
+            if (saved) {
+                unsavedCardDesign = design
+                writeCard(design)
+            }
             _uiState.update {
                 if (saved) it.copy(isSavingDesign = false, savedDesign = design, previewDesign = null)
                 else it.copy(isSavingDesign = false)
@@ -325,6 +330,15 @@ class ProfileCardViewModel(
                 else _events.tryEmit(ProfileCardEvent.OpenLink(access.buildExtendPermissionUrl()))
             }
             _events.tryEmit(if (saved) ProfileCardEvent.DesignSaved else ProfileCardEvent.DesignSaveFailed)
+        }
+    }
+
+    // Off the save path: offline it would hang the spinner. Until it lands the local design wins on reload, and a reload retries it.
+    private fun writeCard(design: String) {
+        cardJob?.cancel()
+        cardJob = viewModelScope.launch {
+            attempt("saving the public card $design") { source.savePublicCard(design) } ?: return@launch
+            if (unsavedCardDesign == design) unsavedCardDesign = null
         }
     }
 
@@ -498,7 +512,9 @@ class ProfileCardViewModel(
         content = CardContent(odinId, attributes, defaults, photo)
         photo?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE) }
         val cardDesign = attributes.profileCards().publicCard()?.design?.takeIf { it in CardDesign.all }
-        val saved = cardDesign ?: storedDesign ?: defaults.design
+        val pending = unsavedCardDesign
+        val saved = pending ?: cardDesign ?: storedDesign ?: defaults.design
+        if (pending != null && cardJob?.isActive != true) writeCard(pending)
         _uiState.update { it.copy(loadFailed = false, savedDesign = saved) }
         loadPosts(odinId)
         render()
