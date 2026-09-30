@@ -18,6 +18,18 @@ class ConfigTest {
     private val bob = OdinId("bob.example.com")
 
     @Test
+    fun lockedHistoryDefaultsAndClamps() {
+        assertEquals(10, parseConfig("", owner).lockedHistory)
+        assertTrue(parseConfig("", owner).warnings.none { "lockedHistory" in it })
+        assertEquals(25, parseConfig("lockedHistory=25", owner).lockedHistory)
+        val high = parseConfig("lockedHistory=99", owner)
+        assertEquals(30, high.lockedHistory)
+        assertTrue(high.warnings.any { "lockedHistory=99" in it })
+        assertEquals(1, parseConfig("lockedHistory=0", owner).lockedHistory)
+        assertTrue(parseConfig("lockedHistory=abc", owner).warnings.any { "lockedHistory" in it })
+    }
+
+    @Test
     fun botDefaultsToMemberMode() {
         val cfg = parseConfig("bot=true", me)
         assertTrue(cfg.allowlist.memberMode)

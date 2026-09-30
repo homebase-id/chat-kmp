@@ -1,6 +1,9 @@
 package id.homebase.agent
 
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ReactionEntry
+import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatProtocol
 import java.io.File
@@ -26,15 +29,41 @@ class MediaTest {
         ChatMsg(id, conv, owner, text, 1L, payloads = payloads, dataType = dataType, rawContent = raw, fileId = fileId,
             label = messageDisplay(text, dataType, raw, payloads).takeIf { it != text })
 
+    private fun reactions(vararg pairs: Pair<String, Int>) = ReactionSummary(reactions = pairs.withIndex().associate { (i, e) -> "k$i" to ReactionEntry("k$i", e.second, """{"emoji":"${e.first}"}""") })
+
     @Test
     fun typedKindsRenderOneLine() {
-        val poll = messageDisplay("x", ChatProtocol.ChatPollMessageDataType, """{"question":"Lunch?","options":["a","b"]}""", null)
-        assertEquals("[poll: Lunch?]", poll)
-        val event = messageDisplay("x", ChatProtocol.ChatEventMessageDataType, """{"title":"Party","startUtcMs":1790000000000,"timezone":"UTC"}""", null)
-        assertTrue(event.startsWith("[event: Party"), event)
-        assertEquals("[contact: Ann Lee]", messageDisplay("x", ChatProtocol.ChatContactCardMessageDataType, """{"displayName":"Ann Lee"}""", null))
-        assertEquals("[unknown: type 999]", messageDisplay("x", 999, "{}", null))
+        val poll = messageDisplay("x", ChatProtocol.ChatPollMessageDataType, """{"question":"Lunch?","options":["a","b"],"allowMultiple":true}""", null, reactions("_p0" to 3, "_p1" to 1))
+        assertEquals("[poll: Lunch? | a (3), b (1) [multiple choice]]", poll)
+        val event = messageDisplay("x", ChatProtocol.ChatEventMessageDataType, """{"title":"Party","startUtcMs":1790000000000,"timezone":"UTC","locationText":"Bob's place"}""", null)
+        assertEquals("[event: Party | 2026-09-21T14:13:20Z | at Bob's place]", event)
+        assertEquals("[contact: Ann Lee | +15551234 | ann@example.com]", messageDisplay("x", ChatProtocol.ChatContactCardMessageDataType, """{"displayName":"Ann Lee","phones":["+15551234"],"emails":["ann@example.com"]}""", null))
+        assertEquals("[location: 12.5,-3.25 Cafe]", messageDisplay("x", ChatProtocol.ChatLocationMessageDataType, """{"lat":12.5,"lon":-3.25,"address":"Cafe","hasImage":false}""", null))
+        assertEquals("[unsupported message kind 999]", messageDisplay("x", 999, "{}", null))
         assertEquals("hello", messageDisplay("hello", 0, null, null))
+    }
+
+    @Test
+    fun reactionsAreCompactAndVoteCodesHidden() {
+        assertEquals("hi [reactions: 👍×2 ❤️×1]", messageDisplay("hi", 0, null, null, reactions("❤️" to 1, "👍" to 2, "_p0" to 5)))
+        assertEquals("hi", messageDisplay("hi", 0, null, null, reactions("_p0" to 5)))
+    }
+
+    @Test
+    fun videoThumbnailReachesTheBrainAsAnImage() = runBlocking<Unit> {
+        val video = PayloadDescriptor(
+            key = "pfl0000001", contentType = "video/mp4", bytesWritten = 5000, descriptorContent = """{"mimeType":"video/mp4","duration":12000,"isSegmented":false}""",
+            thumbnails = listOf(ThumbnailDescriptor(pixelWidth = 320, pixelHeight = 180, contentType = "image/jpeg", bytesWritten = 9), ThumbnailDescriptor(pixelWidth = 20, pixelHeight = 10, contentType = "image/jpeg", bytesWritten = 2)),
+        )
+        val asked = mutableListOf<Pair<Int, Int>>()
+        val fetcher = object : PayloadFetcher {
+            override suspend fun fetch(fileId: Uuid, key: String, maxBytes: Long): ByteArray? = error("video bytes must not be downloaded")
+            override suspend fun thumb(fileId: Uuid, key: String, width: Int, height: Int, maxBytes: Long): ByteArray? { asked += width to height; return byteArrayOf(1, 2, 3) }
+        }
+        val out = AttachmentLoader(fetcher).load(listOf(msg(payloads = listOf(video)) to false))
+        assertEquals(listOf(320 to 180), asked)
+        assertTrue(out.single().viewableImage)
+        assertEquals("video thumbnail", out.single().note)
     }
 
     @Test

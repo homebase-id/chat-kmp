@@ -7,12 +7,16 @@ import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.PayloadTooLargeException
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.url
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.poll.PollVote
 import id.homebase.chat.services.MessageAppData
+import id.homebase.chat.services.decodeReactionCode
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
@@ -56,18 +60,40 @@ fun formatSize(bytes: Long): String = when {
 
 private fun clock(totalSeconds: Long) = "${totalSeconds / 60}:${"%02d".format(totalSeconds % 60)}"
 
-private fun typedLabel(dataType: Int?, rawContent: String?): String? {
+private const val TYPED_LABEL_CODEPOINTS = 600
+private const val MAX_REACTION_KINDS = 8
+private const val MAX_CONTACT_VALUES = 3
+
+fun reactionsLabel(summary: ReactionSummary?): String? {
+    val counts = summary?.reactions?.values.orEmpty()
+        .mapNotNull { e -> decodeReactionCode(e.reactionContent)?.takeIf { it.isNotBlank() && !it.startsWith("_") }?.let { it to e.count } }
+        .groupBy({ it.first }, { it.second }).mapValues { it.value.sum() }
+    return counts.entries.sortedByDescending { it.value }.take(MAX_REACTION_KINDS)
+        .joinToString(" ") { "${it.key.oneLine(16)}×${it.value}" }.ifEmpty { null }
+}
+
+private fun typedLabel(dataType: Int?, rawContent: String?, reactions: ReactionSummary?): String? {
     val content = MessageContentParser.parse(dataType, rawContent) ?: return null
     val (kind, body) = when (content) {
-        is MessageContent.Event -> "event" to listOfNotNull(content.displayLabel, content.descriptor?.let { Instant.fromEpochMilliseconds(it.startUtcMs).toString() }).joinToString(" ")
+        is MessageContent.Event -> "event" to (content.descriptor?.let { d ->
+            listOfNotNull(d.title.oneLine(NAME_CODEPOINTS), Instant.fromEpochMilliseconds(d.startUtcMs).toString(), d.locationText?.takeIf { it.isNotBlank() }?.let { "at ${it.oneLine(NAME_CODEPOINTS)}" }).joinToString(" | ")
+        } ?: content.displayLabel)
         is MessageContent.DiceRoll -> "dice" to content.displayLabel
         is MessageContent.Groodle -> "groodle" to content.displayLabel
-        is MessageContent.Poll -> "poll" to content.displayLabel
-        is MessageContent.ContactCard -> "contact" to content.displayLabel
-        is MessageContent.Location -> "location" to content.displayLabel
-        is MessageContent.Unknown -> "unknown" to "type ${content.dataType}"
+        is MessageContent.Poll -> "poll" to (content.descriptor?.let { d ->
+            val votes = PollVote.counts(reactions, d.options.size)
+            val options = d.options.withIndex().joinToString(", ") { (i, o) -> "${o.oneLine(40)} (${votes[i]})" }
+            listOf(d.question.oneLine(140), options + if (d.allowMultiple) " [multiple choice]" else "", if (d.closed) "[closed]" else "").filter { it.isNotEmpty() }.joinToString(" | ")
+        } ?: content.displayLabel)
+        is MessageContent.ContactCard -> "contact" to (content.descriptor?.let { d ->
+            listOfNotNull(d.summaryLine().oneLine(NAME_CODEPOINTS), d.organization.takeIf { it.isNotBlank() }?.oneLine(NAME_CODEPOINTS), d.phones.take(MAX_CONTACT_VALUES).takeIf { it.isNotEmpty() }?.joinToString(", ") { it.oneLine(40) }, d.emails.take(MAX_CONTACT_VALUES).takeIf { it.isNotEmpty() }?.joinToString(", ") { it.oneLine(60) }, d.odinId.takeIf { it.isNotBlank() }?.oneLine(60)).joinToString(" | ")
+        } ?: content.displayLabel)
+        is MessageContent.Location -> "location" to (content.descriptor?.let { d ->
+            "${d.lat},${d.lon}" + listOfNotNull(d.caption, d.address).firstOrNull { it.isNotBlank() }?.let { " ${it.oneLine(NAME_CODEPOINTS)}" }.orEmpty()
+        } ?: content.displayLabel)
+        is MessageContent.Unknown -> return "[unsupported message kind ${content.dataType}]"
     }
-    return "[$kind: ${body.oneLine(LABEL_CODEPOINTS)}]"
+    return "[$kind: ${body.oneLine(TYPED_LABEL_CODEPOINTS)}]"
 }
 
 private fun linkLabels(p: PayloadDescriptor): List<String> {
@@ -93,14 +119,14 @@ fun payloadLabels(payloads: List<PayloadDescriptor>?): List<String> = payloads.m
     }
 }
 
-fun messageDisplay(text: String, dataType: Int?, rawContent: String?, payloads: List<PayloadDescriptor>?): String {
-    typedLabel(dataType, rawContent)?.let { return it }
+fun messageDisplay(text: String, dataType: Int?, rawContent: String?, payloads: List<PayloadDescriptor>?, reactions: ReactionSummary? = null): String {
     val labels = payloadLabels(payloads).joinToString(" ")
-    return when {
+    val base = typedLabel(dataType, rawContent, reactions) ?: when {
         labels.isEmpty() -> text
         text.isBlank() -> labels
         else -> "$text $labels"
     }
+    return reactionsLabel(reactions)?.let { "$base [reactions: $it]" } ?: base
 }
 
 fun replyParentId(rawContent: String?): Uuid? = runCatching {
@@ -132,13 +158,20 @@ fun pdfPageCount(bytes: ByteArray): Int = PDF_PAGE_OBJECT.findAll(String(bytes, 
 
 fun interface PayloadFetcher {
     suspend fun fetch(fileId: Uuid, key: String, maxBytes: Long): ByteArray?
+
+    suspend fun thumb(fileId: Uuid, key: String, width: Int, height: Int, maxBytes: Long): ByteArray? = null
 }
 
 private class PayloadProvider(private val session: Session) : OdinApiProviderBase(session.http, session.credentials) {
-    suspend fun get(fileId: Uuid, key: String, maxBytes: Long): ByteApiResponse {
+    suspend fun get(fileId: Uuid, key: String, maxBytes: Long, thumb: Pair<Int, Int>? = null): ByteApiResponse {
         val creds = requireCreds()
-        val url = apiUrl(creds.domain, "/drives/${SystemDriveConstants.chatDrive.alias}/files/$fileId/payload/$key")
-        val response = requestBytes(maxBytes) { session.http.get(url) { bearerAuth(creds.accessToken) } }
+        val endpoint = apiUrl(creds.domain, "/drives/${SystemDriveConstants.chatDrive.alias}/files/$fileId/payload/$key${if (thumb != null) "/thumb" else ""}")
+        val response = requestBytes(maxBytes) {
+            session.http.get(endpoint) {
+                bearerAuth(creds.accessToken)
+                thumb?.let { (w, h) -> url { parameters.append("width", w.toString()); parameters.append("height", h.toString()) } }
+            }
+        }
         if (response.status != 200 && response.status != 206) throwForFailure(response)
         return response
     }
@@ -147,14 +180,19 @@ private class PayloadProvider(private val session: Session) : OdinApiProviderBas
 // DriveFileProvider.decryptBytes needs the coil-backed DriveFileProviderCached, absent from the trimmed classpath.
 fun sessionFetcher(session: Session): PayloadFetcher {
     val provider = PayloadProvider(session)
-    return PayloadFetcher { fileId, key, maxBytes ->
-        val response = provider.get(fileId, key, maxBytes + CIPHER_PADDING)
-        if (response.status == 404) return@PayloadFetcher null
+    suspend fun load(fileId: Uuid, key: String, maxBytes: Long, thumb: Pair<Int, Int>?): ByteArray? {
+        val response = provider.get(fileId, key, maxBytes + CIPHER_PADDING, thumb)
+        if (response.status == 404) return null
         val encrypted = response.headers["payloadencrypted"]?.equals("true", ignoreCase = true) == true
-        if (!encrypted) return@PayloadFetcher response.bytes
+        if (!encrypted) return response.bytes
         val header = response.headers["sharedsecretencryptedheader64"] ?: error("payload has no key header")
         val secret = session.credentials.getActiveCredentials()?.sharedSecret ?: error("no shared secret")
-        EncryptedKeyHeader.fromBase64(header).decryptAesToKeyHeader(secret).decrypt(response.bytes)
+        return EncryptedKeyHeader.fromBase64(header).decryptAesToKeyHeader(secret).decrypt(response.bytes)
+    }
+    return object : PayloadFetcher {
+        override suspend fun fetch(fileId: Uuid, key: String, maxBytes: Long) = load(fileId, key, maxBytes, null)
+
+        override suspend fun thumb(fileId: Uuid, key: String, width: Int, height: Int, maxBytes: Long) = load(fileId, key, maxBytes, width to height)
     }
 }
 
@@ -174,12 +212,30 @@ class AttachmentLoader(
             if (MessageContentParser.parse(msg.dataType, msg.rawContent) != null) continue
             for (p in msg.payloads.mediaPayloads()) {
                 if (out.size >= MAX_ATTACHMENTS) return out
-                if (p.key == ChatProtocol.PAYLOAD_KEY_LINKS || p.key == ChatProtocol.PAYLOAD_KEY_LOCATION || p.isVideo()) continue
+                if (p.isVideo()) {
+                    loadVideoThumb(msg.id, parent, fileId, p, out.size + 1)?.let { out += it }
+                    continue
+                }
+                if (p.key == ChatProtocol.PAYLOAD_KEY_LINKS || p.key == ChatProtocol.PAYLOAD_KEY_LOCATION) continue
                 if (p.isAudio() && transcribe == null) continue
                 out += loadOne(msg.id, parent, fileId, p, out.size + 1)
             }
         }
         return out
+    }
+
+    private suspend fun loadVideoThumb(msgId: Uuid, parent: Boolean, fileId: Uuid, p: PayloadDescriptor, index: Int): Attachment? {
+        val thumb = p.thumbnails.orEmpty().filter { (it.bytesWritten ?: 0L) <= IMAGE_MAX_BYTES && (it.pixelWidth ?: 0) > 0 && (it.pixelHeight ?: 0) > 0 }.maxByOrNull { it.pixelWidth ?: 0 } ?: return null
+        val bytes = try {
+            fetcher.thumb(fileId, p.key, thumb.pixelWidth!!, thumb.pixelHeight!!, IMAGE_MAX_BYTES)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("video thumbnail error: ${e.message}")
+            null
+        } ?: return null
+        val type = thumb.contentType?.takeIf { it in VIEWABLE_IMAGES } ?: "image/jpeg"
+        return Attachment(msgId, parent, safeName("$index-video-thumbnail.${extensionFor(type)}"), type, bytes.size.toLong(), bytes = bytes, note = "video thumbnail")
     }
 
     private suspend fun loadOne(msgId: Uuid, parent: Boolean, fileId: Uuid, p: PayloadDescriptor, index: Int): Attachment {

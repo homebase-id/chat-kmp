@@ -59,6 +59,21 @@ class SenderTierTest {
     }
 
     @Test
+    fun lockedPromptCarriesEveryMembersHistoryUpToLockedHistory() = runBlocking<Unit> {
+        val hist = (1..12).map { msg(listOf(op1, op2, rando, self)[it % 4], "line $it") }
+        val allowed = cfg()
+        val h = TestHarness(AgentConfig(allowlist = allowed.allowlist, operators = allowed.operators, operatorBrain = "full", lockedHistory = 12), identity = self.toString(), history = hist)
+        h.handle(trigger(rando))
+        val p = h.prompts.single()
+        assertEquals(listOf(Tier.LOCKED), h.tiers)
+        assertTrue((1..12).all { "line $it\n" in p })
+        val d = TestHarness(allowed, identity = self.toString(), history = hist)
+        d.handle(trigger(rando))
+        assertFalse("line 1\n" in d.prompts.single() || "line 2\n" in d.prompts.single())
+        assertTrue(listOf(op1, op2, rando, self).all { "[$it] line" in p })
+    }
+
+    @Test
     fun mixedPollRunsTwiceOneEachTier() = runBlocking<Unit> {
         val h = TestHarness(cfg(), identity = self.toString())
         val results = h.handleAll(listOf(trigger(op1), trigger(rando), trigger(op2)))

@@ -20,6 +20,7 @@ const val DEFAULT_MAX_RUNS_PER_HOUR = 20
 const val DEFAULT_MAX_RUNS_PER_DAY = 100
 const val DEFAULT_OPERATOR_TIMEOUT_MS = 30 * 60_000L
 const val DEFAULT_MAX_JOBS_PER_DAY = 20
+const val MAX_LOCKED_HISTORY = 30
 
 class Brain(val command: String, val streamJson: Boolean = command == DEFAULT_BRAIN) {
     companion object {
@@ -50,6 +51,7 @@ class AgentConfig(
     val operatorContext: OperatorContext = OperatorContext.ALL,
     val operatorTimeoutMs: Long = DEFAULT_OPERATOR_TIMEOUT_MS,
     val maxJobsPerDay: Int = DEFAULT_MAX_JOBS_PER_DAY,
+    val lockedHistory: Int = HISTORY_LIMIT,
     val readReceipts: Boolean = allowlist.kind == Kind.BOT,
     val transcribe: String? = null,
     val linkPreviews: Boolean = false,
@@ -173,6 +175,7 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
             parseDurationMs(it) ?: throw IllegalArgumentException("invalid operatorTimeout '$it': use e.g. 90s, 30m, 2h")
         } ?: DEFAULT_OPERATOR_TIMEOUT_MS,
         maxJobsPerDay = int("maxJobsPerDay", DEFAULT_MAX_JOBS_PER_DAY),
+        lockedHistory = int("lockedHistory", HISTORY_LIMIT).coerceIn(1, MAX_LOCKED_HISTORY),
         transcribe = str("transcribe"),
         linkPreviews = bool("linkPreviews") ?: bot,
         mcpFilesDir = path("mcpFilesDir")?.let(::File),
@@ -181,6 +184,7 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         warnings = listOfNotNull(
             "WARNING: bot=true is ignored for the $DELEGATE_PROFILE profile (always a delegate)".takeIf { profile == DELEGATE_PROFILE && bool("bot") == true },
             "WARNING: invalid operatorContext '${str("operatorContext")}', using operators".takeIf { str("operatorContext")?.lowercase() !in setOf(null, "all", "operators") },
+            "WARNING: lockedHistory=${values["lockedHistory"]} is not in 1..$MAX_LOCKED_HISTORY, using ${int("lockedHistory", HISTORY_LIMIT).coerceIn(1, MAX_LOCKED_HISTORY)}".takeIf { values.containsKey("lockedHistory") && int("lockedHistory", -1) !in 1..MAX_LOCKED_HISTORY },
             "WARNING: invalid transport '${str("transport")}', using auto".takeIf { parseTransport(str("transport")) == null },
         ),
     )

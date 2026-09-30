@@ -25,6 +25,7 @@ fun buildPrompt(
     discussion: List<ChatMsg> = emptyList(),
     discussionHeading: String = "",
     timed: Boolean = false,
+    historyLimit: Int = HISTORY_LIMIT,
 ): String = buildString {
     val h = "untrusted_history_$nonce"
     val t = "untrusted_triggers_$nonce"
@@ -57,7 +58,7 @@ fun buildPrompt(
         appendLine()
     }
     appendLine("<$h> (recent messages, oldest first)")
-    history.filter { it.id !in ids }.takeLast(HISTORY_LIMIT).forEach {
+    history.filter { it.id !in ids }.takeLast(historyLimit).forEach {
         appendLine("${stamp(it)}[${it.author}] ${clean(it.shown())}")
     }
     appendLine("</$h>")

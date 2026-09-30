@@ -130,7 +130,7 @@ suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>?, limit:
                 OdinSystemSerializer.deserialize<MessageAppData>(metadata.appData.content.orEmpty()).getMessage()
             }.getOrDefault("[unreadable message]")
             val long = metadata.payloads?.any { it.key == ChatProtocol.DefaultPayloadKey } == true
-            val label = messageDisplay(text, metadata.appData.dataType, metadata.appData.content, metadata.payloads).let { if (long) "$it $LONG_MARKER" else it }.takeIf { it != text }
+            val label = messageDisplay(text, metadata.appData.dataType, metadata.appData.content, metadata.payloads, metadata.reactionPreview).let { if (long) "$it $LONG_MARKER" else it }.takeIf { it != text }
             ChatMsg(
                 id = metadata.appData.uniqueId ?: file.fileId,
                 conversationId = conversationId,
