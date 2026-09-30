@@ -59,11 +59,6 @@ fun AccessControlList?.isVisibleTo(viewer: ProfileVisibility): Boolean {
         circles.any { it.replace("-", "").equals(CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE, ignoreCase = true) }
 }
 
-/**
- * Whether a member of [circleId] can read a file with this ACL. Unlike [isVisibleTo] a circle
- * list that names [circleId] (or the confirmed-connections circle every member also holds) counts;
- * owner-only, unknown groups and identity-limited files do not.
- */
 fun AccessControlList?.isVisibleToCircle(circleId: String): Boolean {
     if (this == null || !odinIdList.isNullOrEmpty()) return false
     when (requiredSecurityGroup?.lowercase()) {

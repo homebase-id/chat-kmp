@@ -109,7 +109,6 @@ data class ProfileCardUiState(
     val canSaveDesign: Boolean get() = hasUnsavedChanges && !isSavingDesign && !isCardBusy
 }
 
-/** The circles an owner can still start a card for; [loading] until the list arrives. */
 data class CirclePicker(
     val circles: List<ContactCircleUi> = emptyList(),
     val loading: Boolean = true,
@@ -140,11 +139,9 @@ interface ProfileCardSource {
     suspend fun saveDesign(design: String)
     /** Writes the public card attribute; a no-op on a server that doesn't know the type. */
     suspend fun savePublicCard(design: String, overrides: CardOverrides?)
-    /** False once the server is known not to keep circle cards. */
     val supportsCircleCards: Boolean
     suspend fun circles(): List<ContactCircleUi>
     suspend fun addCircleCard(circle: CardAudience.Circle, design: String, overrides: CardOverrides): AddCircleCardResult
-    /** False on a server that doesn't know the card type. */
     suspend fun saveCircleCard(card: ProfileCard): Boolean
     suspend fun deleteCircleCard(card: ProfileCard): Boolean
     /** The request for writing the design to the home page, or null when the app may or it can't tell. */
@@ -792,7 +789,7 @@ class ProfileCardViewModel(
         val photo = if (audience == CardAudience.Public) content.photo
         else content.attributes.visiblePhoto(audience.aclFilter())?.photoImageData()
         val card = _uiState.value.cards.firstOrNull { it.audience == audience }
-        val stored = _uiState.value.previewOverrides.takeIf { audience == CardAudience.Public } ?: card?.overrides ?: CardOverrides.EMPTY
+        val stored = _uiState.value.previewOverrides.takeIf { audience == _uiState.value.selectedAudience } ?: card?.overrides ?: CardOverrides.EMPTY
         return buildCardPayload(
             odinId = content.odinId.domainName,
             attributes = content.attributes,

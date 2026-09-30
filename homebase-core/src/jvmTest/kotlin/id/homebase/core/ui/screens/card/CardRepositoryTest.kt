@@ -8,6 +8,7 @@ import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -55,6 +56,8 @@ class CardRepositoryTest {
         // Mimics a server that keeps what it was sent: a write lands as a stored attribute.
         var keepWrites = false
         var dropCircleIds = false
+        var deleteResult: Boolean? = null
+        var deleteThrows: Exception? = null
 
         override suspend fun load() = attributes
 
@@ -76,6 +79,8 @@ class CardRepositoryTest {
         }
 
         override suspend fun delete(id: Uuid, versionTag: Uuid): Boolean {
+            deleteThrows?.let { throw it }
+            deleteResult?.let { return it }
             deleted += id
             attributes = attributes.filter { it.id != id }
             return true
@@ -272,6 +277,33 @@ class CardRepositoryTest {
         assertFalse(repo.supportsCircleCards)
         assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY))
         assertEquals(1, store.writes.size)
+    }
+
+    @Test
+    fun aFailedCleanupDeleteFailsTheAddAndRetriesTheCleanupOnTheNextOne() = runTest {
+        val store = FakeStore(listOf(attribute(buildJsonObject { put("design", "board") })))
+            .apply { keepWrites = true; dropCircleIds = true; deleteResult = false }
+        val repo = CardRepository(store)
+
+        assertFailsWith<IllegalStateException> { repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY) }
+        assertTrue(repo.supportsCircleCards)
+        assertEquals(2, store.attributes.size)
+
+        store.deleteResult = null
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY))
+        assertFalse(repo.supportsCircleCards)
+        assertEquals(1, store.attributes.size)
+        assertEquals(ProfileVisibility.ANONYMOUS, store.attributes.single().visibility)
+    }
+
+    @Test
+    fun aThrowingCleanupDeleteFailsTheAddToo() = runTest {
+        val store = FakeStore(listOf(attribute(buildJsonObject { put("design", "board") })))
+            .apply { keepWrites = true; dropCircleIds = true; deleteThrows = IllegalStateException("offline") }
+        val repo = CardRepository(store)
+
+        assertFailsWith<IllegalStateException> { repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY) }
+        assertTrue(repo.supportsCircleCards)
     }
 
     @Test

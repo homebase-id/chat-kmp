@@ -74,7 +74,6 @@ data class SaveProfileAttributeRequest(
     val visibility: String,
     val data: JsonObject,
     val priority: Int? = null,
-    /** Narrows a [ProfileVisibility.CONNECTED] attribute to these circles; omitted when empty. */
     val circleIds: List<String>? = null,
 )
 
