@@ -1,6 +1,8 @@
 package id.homebase.agent
 
+import id.homebase.api.common.OdinId
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.ChatProtocol
 import java.io.File
 import java.time.Instant
@@ -89,7 +91,11 @@ class ProcessedStore(private val file: File?, private val cap: Int = PROCESSED_C
     val size get() = ids.size
 }
 
-fun buildPrompt(triggers: List<ChatMsg>, history: List<ChatMsg>, awayMode: Boolean = false): String = buildString {
+fun buildPrompt(triggers: List<ChatMsg>, history: List<ChatMsg>, awayMode: Boolean = false, header: String? = null): String = buildString {
+    if (header != null) {
+        appendLine(header)
+        appendLine()
+    }
     if (awayMode) {
         appendLine("The owner of this account is away. You are replying on their behalf as their AI assistant. Reply briefly, do not make commitments or promises for them, and if no reply is appropriate answer exactly $NO_REPLY.")
         appendLine()
@@ -184,6 +190,18 @@ class WatchProcessor(
         log("$id $result")
     }
 
+    private fun header(conversation: Uuid): String? {
+        val allow = config.allowlist
+        if (config.persona == null && !config.bot) return null
+        val where = if (allow.isDirect(conversation)) {
+            val peer = allow.info(conversation)?.members?.filter { it.toString() != identity }?.joinToString(", ").orEmpty()
+            "a private chat with $peer"
+        } else {
+            "the conversation \"${allow.title(conversation) ?: conversation}\""
+        }
+        return listOfNotNull(config.persona, "You are $identity, replying in $where.").joinToString("\n")
+    }
+
     private fun isOwn(msg: ChatMsg) = msg.author?.toString() == identity
 
     private fun isAwayCommand(msg: ChatMsg) =
@@ -207,9 +225,10 @@ class WatchProcessor(
     private fun precheck(msg: ChatMsg): String? {
         if (!config.allowlist.allowsConversation(msg.conversationId)) return "skip: conversation not allowed"
         if (config.allowlist.delegate && msg.conversationId != ChatProtocol.ConversationWithYourselfId && isOwn(msg)) return "skip: own message"
+        if (config.bot && isOwn(msg)) return "skip: own message"
         if (!config.allowlist.allowsAuthor(msg.author, msg.conversationId)) return "skip: author not allowed"
         val awayMention = config.allowlist.delegate && away.on && msg.conversationId != ChatProtocol.ConversationWithYourselfId
-        if (!shouldTrigger(msg.text, config.nickname, config.bot, identity, awayMention)) return "skip: no trigger"
+        if (!shouldTrigger(msg.text, config.nickname, config.bot, identity, awayMention, direct = config.allowlist.isDirect(msg.conversationId))) return "skip: no trigger"
         if (msg.id in store) return "skip: already processed"
         if (!config.allowlist.allowsSend(msg.conversationId)) return "skip: send not permitted in this conversation"
         return null
@@ -224,7 +243,7 @@ class WatchProcessor(
             if (!limiter.allows(authors)) return done("skip: rate limited")
             limiter.record(authors)
             val outcome = try {
-                brain(buildPrompt(sorted, history(conversation), awayMode = away.on && config.allowlist.delegate && conversation != ChatProtocol.ConversationWithYourselfId))
+                brain(buildPrompt(sorted, history(conversation), awayMode = away.on && config.allowlist.delegate && conversation != ChatProtocol.ConversationWithYourselfId, header = header(conversation)))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -255,6 +274,24 @@ class WatchProcessor(
             }
         }
     }
+}
+
+fun deriveDirectChats(self: OdinId, msgs: List<ChatMsg>, allowlist: Allowlist): List<ChatMsg> {
+    val already = allowlist.allowedConversationIds()
+    return msgs.filter { msg ->
+        val peer = (msg.sender ?: msg.author)?.takeIf { it != self } ?: return@filter false
+        if (msg.conversationId in already) return@filter false
+        if (!XorIdUtil.isOneToOneWithSender(self, peer, msg.conversationId)) return@filter false
+        allowlist.learnDerived(ConversationInfo(msg.conversationId, peer.toString(), listOf(self, peer)))
+        true
+    }
+}
+
+suspend fun pollMessages(session: Session, allowlist: Allowlist): List<ChatMsg> {
+    val known = fetchMessages(session, allowlist.allowedConversationIds().toList(), POLL_WINDOW)
+    if (!allowlist.memberMode) return known
+    val unknown = deriveDirectChats(session.identity, fetchMessages(session, null, POLL_WINDOW), allowlist)
+    return (known + unknown).distinctBy { it.id }
 }
 
 const val SLOW_POLL_MS = 5_000L
@@ -319,7 +356,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
             timings.reset()
             try {
                 refreshAllowlist(session, config.allowlist, rediscover = poll++ % REDISCOVER_EVERY == 0, timings = timings)
-                val fresh = timings.time("query") { fetchMessages(session, config.allowlist.allowedConversationIds().toList(), POLL_WINDOW) }
+                val fresh = timings.time("query") { pollMessages(session, config.allowlist) }
                     .filter { it.userDate >= lastSeen }
                     .sortedBy { it.userDate }
                 if (verbose) log("poll: fresh=${fresh.size} maxUserDate=${fresh.maxOfOrNull { it.userDate }}")

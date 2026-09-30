@@ -30,8 +30,12 @@ owner's behalf; the brain may answer NO_REPLY.
 Disclosure: every message `me` sends into a non-note-to-self conversation (watch, `send`, MCP)
 starts with `🤖 <owner>'s AI assistant: `. Note-to-self and `bot` replies start with `🤖 `.
 
-`bot` may also be summoned by an @mention of its identity and replies in
-allowlisted conversations it is a member of.
+`bot` is a standalone identity: it replies in allowlisted conversations it is a member of. In a
+group it needs an @mention of its identity or the nickname. In a 1:1 chat (two members) every
+message from an allowed author triggers it, no mention needed. A 1:1 from someone new is picked
+up even before any conversation file exists: the id is derived from the two odinIds (as the app
+does) and kept in memory. By default anyone may summon it; `owner=` / `allowAuthors=` restrict
+that. Rate caps (`maxRunsPerHour` per author, `maxRunsPerDay`) apply to 1:1 triggers too.
 
 ## agent.conf (`<profile dir>/agent.conf`, `key=value`, `#` comments)
 
@@ -43,6 +47,8 @@ allowlisted conversations it is a member of.
 | owner | odinId allowed to summon the bot | none |
 | allowConversations | `self`, `member` (not for `me`), or comma list of uuids | `self` (bot: `member`) |
 | allowAuthors | comma list of odinIds who may summon | owner (bot: any member) |
+| persona | one line prepended to every brain prompt, followed by a line with the bot's odinId and where it is replying | none |
+| personaFile | path to a persona text file (used when `persona` unset; `~` expands) | none |
 | maxRunsPerHour | brain runs per author per hour | 20 |
 | maxRunsPerDay | brain runs per day, total | 100 |
 

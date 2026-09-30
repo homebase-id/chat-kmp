@@ -17,38 +17,47 @@ class Allowlist(
     }
 
     private var known: Map<Uuid, ConversationInfo> = emptyMap()
+    private val derived = HashMap<Uuid, ConversationInfo>()
 
     fun learn(conversations: List<ConversationInfo>) {
         known = conversations.associateBy { it.id }
     }
 
-    fun allowedConversationIds(): Set<Uuid> = if (memberMode) conversationIds + known.keys else conversationIds
+    fun learnDerived(conversation: ConversationInfo) {
+        derived[conversation.id] = conversation
+    }
+
+    private fun lookup(id: Uuid): ConversationInfo? = known[id] ?: derived[id]
+
+    fun allowedConversationIds(): Set<Uuid> = if (memberMode) conversationIds + known.keys + derived.keys else conversationIds
 
     fun title(id: Uuid): String? =
-        if (id == ChatProtocol.ConversationWithYourselfId) NOTE_TO_SELF_TITLE else known[id]?.title
+        if (id == ChatProtocol.ConversationWithYourselfId) NOTE_TO_SELF_TITLE else lookup(id)?.title
 
     fun memberCount(id: Uuid): Int? =
-        if (id == ChatProtocol.ConversationWithYourselfId) 1 else known[id]?.members?.size
+        if (id == ChatProtocol.ConversationWithYourselfId) 1 else lookup(id)?.members?.size
 
-    fun allowsConversation(id: Uuid): Boolean = id in conversationIds || (memberMode && id in known)
+    fun isDirect(id: Uuid): Boolean = id != ChatProtocol.ConversationWithYourselfId && memberCount(id) == 2
+
+    fun allowsConversation(id: Uuid): Boolean = id in conversationIds || (memberMode && lookup(id) != null)
 
     fun allowsAuthor(author: OdinId?): Boolean = author != null && author in authors
 
     fun allowsAuthor(author: OdinId?, conversationId: Uuid): Boolean =
         allowsAuthor(author) ||
             ((authorsAnyMember || (delegate && isExplicitGroup(conversationId))) &&
-                author != null && known[conversationId]?.members?.contains(author) == true)
+                author != null && lookup(conversationId)?.members?.contains(author) == true)
 
     fun isExplicitGroup(id: Uuid) = id != ChatProtocol.ConversationWithYourselfId && id in conversationIds
 
     val hasExplicitGroups get() = conversationIds.any { it != ChatProtocol.ConversationWithYourselfId }
 
-    fun info(id: Uuid): ConversationInfo? = known[id]
+    fun info(id: Uuid): ConversationInfo? = lookup(id)
 
     fun allowsSend(id: Uuid): Boolean = when {
         id == ChatProtocol.ConversationWithYourselfId -> allowsConversation(id)
-        delegate -> isExplicitGroup(id) && id in known
-        else -> allowsConversation(id) && groupSend && id in known
+        delegate -> isExplicitGroup(id) && lookup(id) != null
+        else -> allowsConversation(id) && groupSend && lookup(id) != null
     }
 
     fun disclosure(id: Uuid, text: String, owner: OdinId): String =

@@ -66,6 +66,7 @@ class ChatMsg(
     val payloads: List<PayloadDescriptor>? = null,
     val dataType: Int? = null,
     val rawContent: String? = null,
+    val sender: OdinId? = null,
 ) {
     val replyContext: JsonElement?
         get() = (MessageContentParser.parse(dataType, rawContent) as? MessageContent.Event)?.descriptor
@@ -83,8 +84,8 @@ fun ChatMsg.toReplyPreview() = ReplyPreview(
 suspend fun fetchMessages(session: Session, conversationId: Uuid, limit: Int, beforeMs: Long? = null): List<ChatMsg> =
     fetchMessages(session, listOf(conversationId), limit, beforeMs)
 
-suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>, limit: Int, beforeMs: Long? = null): List<ChatMsg> {
-    if (conversationIds.isEmpty()) return emptyList()
+suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>?, limit: Int, beforeMs: Long? = null): List<ChatMsg> {
+    if (conversationIds?.isEmpty() == true) return emptyList()
     // The owner's own files carry neither originalAuthor nor senderOdinId.
     val owner = session.credentials.getActiveDomain()
     val response =
@@ -123,6 +124,7 @@ suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>, limit: 
                 payloads = metadata.payloads,
                 dataType = metadata.appData.dataType,
                 rawContent = metadata.appData.content,
+                sender = metadata.senderOdinId,
             )
         }
         .filter { beforeMs == null || it.userDate < beforeMs }

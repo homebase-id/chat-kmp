@@ -21,6 +21,7 @@ class AgentConfig(
     val maxRunsPerHour: Int = DEFAULT_MAX_RUNS_PER_HOUR,
     val maxRunsPerDay: Int = DEFAULT_MAX_RUNS_PER_DAY,
     val allowlist: Allowlist,
+    val persona: String? = null,
 )
 
 fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig {
@@ -49,9 +50,16 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         bot = bot,
         maxRunsPerHour = values["maxRunsPerHour"]?.toIntOrNull() ?: DEFAULT_MAX_RUNS_PER_HOUR,
         maxRunsPerDay = values["maxRunsPerDay"]?.toIntOrNull() ?: DEFAULT_MAX_RUNS_PER_DAY,
+        persona = persona(values),
         allowlist = Allowlist(conversations, authors, memberMode, anyMember, groupSend = bot && !delegate && ownerKey != owner, delegate = delegate),
     )
 }
+
+private fun persona(values: Map<String, String>): String? =
+    (values["persona"]?.takeIf { it.isNotEmpty() }
+        ?: values["personaFile"]?.takeIf { it.isNotEmpty() }?.let {
+            File(it.replaceFirst(Regex("^~"), System.getProperty("user.home"))).readText()
+        })?.trim()?.lineSequence()?.joinToString(" ") { it.trim() }?.takeIf { it.isNotEmpty() }
 
 private const val WORD_CHARS = "[\\p{L}\\p{N}_]"
 
@@ -63,8 +71,9 @@ fun matchesNickname(text: String, nickname: String): Boolean {
     return anywhere.containsMatchIn(text) || firstWord.containsMatchIn(text)
 }
 
-fun shouldTrigger(text: String, nickname: String, bot: Boolean, identity: String, awayMention: Boolean = false): Boolean {
+fun shouldTrigger(text: String, nickname: String, bot: Boolean, identity: String, awayMention: Boolean = false, direct: Boolean = false): Boolean {
     if (text.trimStart().startsWith(BOT_PREFIX)) return false
+    if (direct && bot) return true
     if (matchesNickname(text, nickname)) return true
     return (bot || awayMention) && mentionsIdentity(text, identity)
 }
