@@ -1,6 +1,8 @@
 package id.homebase.core.ui.screens.card
 
+import id.homebase.api.client.ClientException
 import id.homebase.api.client.CryptoHelper
+import id.homebase.api.client.ProblemDetails
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.query.DriveQueryProvider
@@ -122,11 +124,11 @@ class CardWireHarness(
                 val body = OdinSystemSerializer.json.parseToJsonElement(plain)
                 recorded += body
                 val scoped = body.jsonObject["circleIds"] != null
+                val putNumber = putCount.incrementAndGet()
                 val reply = if (circleCards && scoped && body.jsonObject["visibility"]?.jsonPrimitive?.content != "connected") {
-                    putCount.incrementAndGet()
                     Reply.Problem(400, CIRCLES_NEED_CONNECTED_400)
                 } else {
-                    putReply(putCount.incrementAndGet())
+                    putReply(putNumber)
                 }
                 when (reply) {
                     Reply.Ok -> {
@@ -179,6 +181,13 @@ class CardWireHarness(
             """{"title":"Unknown profile attribute type 5c1bfc6b6a0b4ed88b1c1f5a5b4e0f3a","status":400,"errorCode":"argumentError"}"""
     }
 }
+
+internal fun circlesNeedConnected() = ClientException(
+    status = 400,
+    message = "CircleIds can only be set when visibility is Connected",
+    correlationId = null,
+    problem = ProblemDetails(status = 400, title = "CircleIds can only be set when visibility is Connected"),
+)
 
 fun inMemoryCardPreferences(driver: SqlDriver = newInMemoryJdbcDriver()) =
     CardPreferences(DatabaseManager({ driver }, dispatcher = Dispatchers.Unconfined, readDispatcher = Dispatchers.Unconfined))

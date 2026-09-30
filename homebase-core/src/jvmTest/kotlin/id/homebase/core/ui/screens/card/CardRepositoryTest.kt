@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.card
 
 import id.homebase.api.client.ClientException
+import id.homebase.core.feed.newInMemoryJdbcDriver
 import id.homebase.api.client.ProblemDetails
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
@@ -21,13 +22,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-
-private fun circlesNeedConnected() = ClientException(
-    status = 400,
-    message = "CircleIds can only be set when visibility is Connected",
-    correlationId = null,
-    problem = ProblemDetails(status = 400, title = "CircleIds can only be set when visibility is Connected"),
-)
 
 class CardRepositoryTest {
 
@@ -306,7 +300,7 @@ class CardRepositoryTest {
 
     @Test
     fun theUnsupportedAnswerOutlivesTheRepository() = runTest {
-        val driver = id.homebase.core.feed.newInMemoryJdbcDriver()
+        val driver = newInMemoryJdbcDriver()
         val store = FakeStore(listOf(attribute(buildJsonObject { put("design", "board") })))
             .apply { keepWrites = true; dropCircleIds = true }
         CardRepository(store, inMemoryCardPreferences(driver)).addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY)
