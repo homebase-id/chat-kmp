@@ -280,16 +280,16 @@ class CardRepositoryTest {
     }
 
     @Test
-    fun aFailedCleanupDeleteFailsTheAddAndRetriesTheCleanupOnTheNextOne() = runTest {
+    fun aThrowingCleanupDeleteFailsTheAddAndRetriesTheCleanupOnTheNextOne() = runTest {
         val store = FakeStore(listOf(attribute(buildJsonObject { put("design", "board") })))
-            .apply { keepWrites = true; dropCircleIds = true; deleteResult = false }
+            .apply { keepWrites = true; dropCircleIds = true; deleteThrows = IllegalStateException("offline") }
         val repo = CardRepository(store)
 
         assertFailsWith<IllegalStateException> { repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY) }
         assertTrue(repo.supportsCircleCards)
         assertEquals(2, store.attributes.size)
 
-        store.deleteResult = null
+        store.deleteThrows = null
         assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY))
         assertFalse(repo.supportsCircleCards)
         assertEquals(1, store.attributes.size)
@@ -297,13 +297,13 @@ class CardRepositoryTest {
     }
 
     @Test
-    fun aThrowingCleanupDeleteFailsTheAddToo() = runTest {
+    fun aStrayCardAlreadyGoneOnTheServerCountsAsRemoved() = runTest {
         val store = FakeStore(listOf(attribute(buildJsonObject { put("design", "board") })))
-            .apply { keepWrites = true; dropCircleIds = true; deleteThrows = IllegalStateException("offline") }
+            .apply { keepWrites = true; dropCircleIds = true; deleteResult = false }
         val repo = CardRepository(store)
 
-        assertFailsWith<IllegalStateException> { repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY) }
-        assertTrue(repo.supportsCircleCards)
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY))
+        assertFalse(repo.supportsCircleCards)
     }
 
     @Test

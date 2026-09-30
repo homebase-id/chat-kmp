@@ -123,7 +123,7 @@ class ProfileCardViewModelTest {
         var postLoads = 0
 
         override suspend fun odinId() = OdinId("frodo.dotyou.cloud")
-        var liveCards: (() -> List<ProfileAttribute>)? = null
+        var liveCards: (suspend () -> List<ProfileAttribute>)? = null
         override suspend fun attributes() = attributes + liveCards?.invoke().orEmpty()
 
         var circleList: List<ContactCircleUi> = emptyList()
@@ -1256,6 +1256,7 @@ class ProfileCardViewModelTest {
         val deleted = mutableListOf<Uuid>()
         var dropCircleIds = false
         var deleteResult = true
+        var deleteThrows: Exception? = null
         var failWith: Exception? = null
 
         override suspend fun load() = attributes
@@ -1278,8 +1279,9 @@ class ProfileCardViewModelTest {
         }
 
         override suspend fun delete(id: Uuid, versionTag: Uuid): Boolean {
+            deleteThrows?.let { throw it }
             deleted += id
-            if (deleteResult) attributes = attributes.filter { it.id != id }
+            attributes = attributes.filter { it.id != id }
             return deleteResult
         }
     }
@@ -1468,8 +1470,9 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun theFailedDeleteOfACircleCardKeepsItAndReports() = runTest(dispatcher) {
-        val store = ServerStore(listOf(publicCardAttribute, circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0))).apply { deleteResult = false }
+    fun aThrowingDeleteOfACircleCardKeepsItAndReports() = runTest(dispatcher) {
+        val store = ServerStore(listOf(publicCardAttribute, circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0)))
+            .apply { deleteThrows = IllegalStateException("offline") }
         val (vm, _, _) = circleVm(store)
         vm.onCardSelected(friends)
         val event = async { vm.events.first() }
@@ -1480,6 +1483,130 @@ class ProfileCardViewModelTest {
         assertEquals(ProfileCardEvent.CircleCardFailed, event.await())
         assertEquals(friends, vm.uiState.value.selectedAudience)
         assertEquals(2, vm.uiState.value.cards.size)
+        assertFalse(vm.uiState.value.isCardBusy)
+    }
+
+    @Test
+    fun deletingACardTheServerNoLongerHasDropsItInsteadOfReportingAnError() = runTest(dispatcher) {
+        val store = ServerStore(listOf(publicCardAttribute, circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0))).apply { deleteResult = false }
+        val (vm, _, host) = circleVm(store)
+        vm.onCardSelected(friends)
+
+        vm.onDeleteCardConfirmed()
+        advanceUntilIdle()
+
+        assertEquals(CardAudience.Public, vm.uiState.value.selectedAudience)
+        assertEquals(listOf<CardAudience>(CardAudience.Public), vm.uiState.value.cards.map { it.audience })
+        assertEquals("public", host.rendered.last().audience?.kind)
+    }
+
+    private suspend fun awaitUntil(condition: () -> Boolean) = withContext(Dispatchers.Default) {
+        withTimeout(10.seconds) { while (!condition()) delay(10) }
+    }
+
+    private suspend fun wireCircleVm(
+        wire: CardWireHarness,
+        seeded: List<ProfileAttribute>,
+        host: FakeHost = FakeHost(),
+    ): Pair<ProfileCardViewModel, FakeHost> {
+        seeded.forEach { wire.seed(it.id, it.versionTag, it.type, it.visibility.wireValue, it.data, it.priority, it.acl.circleIdList) }
+        val profileRepository = wire.profileRepository()
+        val source = FakeSource(profile, cardRepository = CardRepository(ProfileRepositoryCardStore(profileRepository))).apply {
+            liveCards = { profileRepository.loadAttributes() }
+            circleList = listOf(friendsCircle, family)
+        }
+        return viewModel(host, source) to host
+    }
+
+    @Test
+    fun addingACircleCardOverTheWireSendsCircleIdsAndReadsTheCardBack() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val (vm, host) = wireCircleVm(wire, listOf(publicCardAttribute))
+
+        vm.onAddCardClicked()
+        vm.onCircleChosen("c1")
+        awaitUntil { vm.uiState.value.selectedAudience == CardAudience.Circle("c1", "Friends") && !vm.uiState.value.isCardBusy }
+
+        val put = wire.putBodies.single().jsonObject
+        assertEquals(JsonPrimitive("connected"), put["visibility"])
+        assertEquals(Json.parseToJsonElement("""["c1"]"""), put["circleIds"])
+        assertEquals(JsonPrimitive(0), put["priority"])
+        assertEquals(JsonPrimitive("Friends"), put["data"]!!.jsonObject["label"])
+        assertEquals(2, vm.uiState.value.cards.size)
+        assertEquals(2, wire.storedIds.size)
+        assertTrue(vm.uiState.value.canAddCircleCard)
+        assertEquals("circle", host.rendered.last().audience?.kind)
+    }
+
+    @Test
+    fun editingACircleCardOverTheWireEditsThatAttributeInPlace() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val circle = circleCardAttribute("c1", "Friends", CardDesign.BOARD, 2)
+        val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute, circle))
+        awaitUntil { vm.uiState.value.cards.size == 2 }
+        vm.onCardSelected(friends)
+        vm.onDesignSelected(CardDesign.POSTER)
+
+        vm.onSaveDesign()
+        wire.awaitPuts(1)
+
+        val put = wire.putBodies.single().jsonObject
+        assertEquals(JsonPrimitive(circle.id.toString()), put["id"])
+        assertEquals(JsonPrimitive(circle.versionTag.toString()), put["expectedVersionTag"])
+        assertEquals(Json.parseToJsonElement("""["c1"]"""), put["circleIds"])
+        assertEquals(JsonPrimitive(2), put["priority"])
+        assertEquals(JsonPrimitive(CardDesign.POSTER), put["data"]!!.jsonObject["design"])
+        assertEquals(2, wire.storedIds.size)
+    }
+
+    @Test
+    fun deletingACircleCardOverTheWireSendsTheDeleteAndFallsBackToPublic() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val circle = circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0)
+        val (vm, host) = wireCircleVm(wire, listOf(publicCardAttribute, circle))
+        awaitUntil { vm.uiState.value.cards.size == 2 }
+        vm.onCardSelected(friends)
+
+        vm.onDeleteCardConfirmed()
+        awaitUntil { vm.uiState.value.cards.size == 1 && !vm.uiState.value.isCardBusy }
+
+        assertEquals(listOf(circle.id.toString()), wire.deletedIds.toList())
+        assertEquals(listOf(publicCardAttribute.id.toString()), wire.storedIds)
+        assertEquals(CardAudience.Public, vm.uiState.value.selectedAudience)
+        assertEquals("public", host.rendered.last().audience?.kind)
+    }
+
+    @Test
+    fun aWire404OnDeleteDropsTheCardWithoutAnError() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val circle = circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0)
+        val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute, circle))
+        awaitUntil { vm.uiState.value.cards.size == 2 }
+        vm.onCardSelected(friends)
+        // Another device deleted the card after this one loaded it.
+        wire.removeForTest(circle.id)
+
+        vm.onDeleteCardConfirmed()
+        awaitUntil { vm.uiState.value.cards.size == 1 && !vm.uiState.value.isCardBusy }
+
+        assertEquals(1, wire.deletes)
+        assertEquals(CardAudience.Public, vm.uiState.value.selectedAudience)
+    }
+
+    @Test
+    fun aWire500OnDeleteKeepsTheCardAndReports() = runTest(dispatcher) {
+        val wire = CardWireHarness(deleteReply = { CardWireHarness.Reply.Problem(500, """{"title":"boom","status":500}""") })
+        val circle = circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0)
+        val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute, circle))
+        awaitUntil { vm.uiState.value.cards.size == 2 }
+        vm.onCardSelected(friends)
+        val event = async { vm.events.first() }
+
+        vm.onDeleteCardConfirmed()
+
+        assertEquals(ProfileCardEvent.CircleCardFailed, withContext(Dispatchers.Default) { withTimeout(10.seconds) { event.await() } })
+        assertEquals(2, vm.uiState.value.cards.size)
+        assertEquals(friends, vm.uiState.value.selectedAudience)
     }
 
     @Test
