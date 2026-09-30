@@ -1,8 +1,11 @@
 package id.homebase.core.ui.screens.card
 
+import id.homebase.api.client.drives.isVisibleToCircle
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.core.ui.screens.profile.AclFilter
+import id.homebase.core.ui.screens.profile.aclFilter
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -15,6 +18,11 @@ private const val KEY_OVERRIDES = "overrides"
 sealed interface CardAudience {
     data object Public : CardAudience
     data class Circle(val id: String, val label: String) : CardAudience
+}
+
+internal fun CardAudience.aclFilter(): AclFilter = when (this) {
+    CardAudience.Public -> ProfileVisibility.ANONYMOUS.aclFilter()
+    is CardAudience.Circle -> { acl -> acl.isVisibleToCircle(id) }
 }
 
 /** [design] stays a raw string so a design this build doesn't know survives a read-modify-write; [extra] keeps unknown `data` keys for the same reason. */

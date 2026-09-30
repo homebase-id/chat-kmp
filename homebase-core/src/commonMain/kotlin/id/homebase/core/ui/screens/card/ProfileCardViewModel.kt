@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.drives.QueryBatchRequest
@@ -29,6 +30,8 @@ import id.homebase.api.youauth.PermissionExtensionManager
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
+import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
+import id.homebase.core.ui.screens.contactbook.isUserCircle
 import id.homebase.core.ui.screens.profile.photoImageData
 import id.homebase.core.ui.screens.profile.visiblePhoto
 import kotlin.coroutines.cancellation.CancellationException
@@ -83,22 +86,35 @@ data class ProfileCardUiState(
     val cards: List<ProfileCard> = emptyList(),
     val selectedAudience: CardAudience = CardAudience.Public,
     val previewOverrides: CardOverrides? = null,
+    val circleCardsSupported: Boolean = true,
+    val circlePicker: CirclePicker? = null,
+    val isCardBusy: Boolean = false,
 ) {
     val selectedCard: ProfileCard? get() = cards.firstOrNull { it.audience == selectedAudience }
     private val circleCard: ProfileCard? get() = selectedCard?.takeIf { it.audience is CardAudience.Circle }
-    val design: String get() = previewDesign ?: circleCard?.design ?: savedDesign
+    private val baseDesign: String get() = circleCard?.design ?: savedDesign
+    val design: String get() = previewDesign ?: baseDesign
     val savedOverrides: CardOverrides get() = selectedCard?.overrides ?: CardOverrides.EMPTY
     val overrides: CardOverrides get() = previewOverrides ?: savedOverrides
     val hasUnsavedChanges: Boolean
-        get() = (previewDesign != null && previewDesign != savedDesign) ||
+        get() = (previewDesign != null && previewDesign != baseDesign) ||
             (previewOverrides != null && previewOverrides != savedOverrides)
     val canSwitchCard: Boolean get() = cards.size > 1
+    val canAddCircleCard: Boolean get() = circleCardsSupported && !isExporting && !isCardBusy
+    val hasCardMenu: Boolean get() = !isExporting && (canSwitchCard || canAddCircleCard)
     val isCircleSelected: Boolean get() = selectedAudience is CardAudience.Circle
     val cardTopArgb: Int? get() = edges[design]?.topArgb
     val cardBottomArgb: Int? get() = edges[design]?.bottomArgb
     val canShare: Boolean get() = isCardReady && !isExporting
-    val canSaveDesign: Boolean get() = !isCircleSelected && hasUnsavedChanges && !isSavingDesign
+    val canSaveDesign: Boolean get() = hasUnsavedChanges && !isSavingDesign && !isCardBusy
 }
+
+/** The circles an owner can still start a card for; [loading] until the list arrives. */
+data class CirclePicker(
+    val circles: List<ContactCircleUi> = emptyList(),
+    val loading: Boolean = true,
+    val failed: Boolean = false,
+)
 
 sealed interface ProfileCardEvent {
     data class ShareImage(val path: String, val fileName: String) : ProfileCardEvent
@@ -107,6 +123,8 @@ sealed interface ProfileCardEvent {
     data object ShareFailed : ProfileCardEvent
     data object DesignSaved : ProfileCardEvent
     data object DesignSaveFailed : ProfileCardEvent
+    data object CircleCardFailed : ProfileCardEvent
+    data object CircleCardsUnsupported : ProfileCardEvent
 }
 
 interface ProfileCardSource {
@@ -122,6 +140,13 @@ interface ProfileCardSource {
     suspend fun saveDesign(design: String)
     /** Writes the public card attribute; a no-op on a server that doesn't know the type. */
     suspend fun savePublicCard(design: String, overrides: CardOverrides?)
+    /** False once the server is known not to keep circle cards. */
+    val supportsCircleCards: Boolean
+    suspend fun circles(): List<ContactCircleUi>
+    suspend fun addCircleCard(circle: CardAudience.Circle, design: String, overrides: CardOverrides): AddCircleCardResult
+    /** False on a server that doesn't know the card type. */
+    suspend fun saveCircleCard(card: ProfileCard): Boolean
+    suspend fun deleteCircleCard(card: ProfileCard): Boolean
     /** The request for writing the design to the home page, or null when the app may or it can't tell. */
     suspend fun missingDesignAccess(odinId: OdinId): MissingPermissionsResult?
     suspend fun publishDesign(design: String): CardDesignPublish
@@ -140,6 +165,7 @@ class DefaultProfileCardSource(
     private val eventBus: EventBus,
     private val cardPreferences: CardPreferences,
     private val cardRepository: CardRepository,
+    private val connectionProvider: ConnectionNetworkProvider,
 ) : ProfileCardSource {
     // The bus replays its last event, which may be an older return; only one after subscribing counts.
     override val accessGranted: Flow<Unit> = flow {
@@ -184,6 +210,23 @@ class DefaultProfileCardSource(
     override suspend fun savePublicCard(design: String, overrides: CardOverrides?) {
         cardRepository.savePublic(design, overrides)
     }
+
+    override val supportsCircleCards: Boolean get() = cardRepository.supportsCircleCards
+
+    override suspend fun circles(): List<ContactCircleUi> =
+        connectionProvider.getCirclesWithMembers(includeSystemCircle = false)
+            .map { it.circle }
+            .filter { it.isUserCircle(reviewEnabled = false) && !it.disabled && it.name.isNotBlank() }
+            .map { ContactCircleUi(it.id, it.name, pending = false, emoji = null) }
+            .distinctBy { it.id.lowercase() }
+            .sortedBy { it.name.lowercase() }
+
+    override suspend fun addCircleCard(circle: CardAudience.Circle, design: String, overrides: CardOverrides) =
+        cardRepository.addCircle(circle, design, overrides)
+
+    override suspend fun saveCircleCard(card: ProfileCard) = cardRepository.saveCircle(card)
+
+    override suspend fun deleteCircleCard(card: ProfileCard) = cardRepository.delete(card)
 
     override suspend fun missingDesignAccess(odinId: OdinId): MissingPermissionsResult? {
         val context = securityContextProvider.getSecurityContext() ?: return null
@@ -298,11 +341,8 @@ class ProfileCardViewModel(
         }
     }
 
-    // Circle cards are edited by their own flow; the design editor only ever writes the public card.
-    fun onEditClicked() = selectAudience(CardAudience.Public)
-
     fun onDesignSelected(design: String) {
-        if (_uiState.value.isCircleSelected || design == _uiState.value.design) return
+        if (design == _uiState.value.design) return
         _uiState.update {
             val edited = it.overrides
             it.copy(
@@ -323,7 +363,7 @@ class ProfileCardViewModel(
 
     private fun editOverrides(edit: (CardOverrides) -> CardOverrides) {
         val state = _uiState.value
-        if (state.isCircleSelected || state.isSavingDesign) return
+        if (state.isSavingDesign) return
         val spec = CardDesignSpecs.of(state.design) ?: return
         val edited = edit(state.overrides).prunedFor(state.design)
         if (edited == state.overrides || spec.options.isEmpty()) return
@@ -364,6 +404,7 @@ class ProfileCardViewModel(
     fun onSaveDesign() {
         val state = _uiState.value
         if (!state.canSaveDesign) return
+        if (state.isCircleSelected) return saveCircleCard(state)
         val design = state.design
         val overrides = state.overrides.takeIf { state.previewOverrides != null }
         val designChanged = design != state.savedDesign
@@ -399,6 +440,107 @@ class ProfileCardViewModel(
                 else _events.tryEmit(ProfileCardEvent.OpenLink(access.buildExtendPermissionUrl()))
             }
             _events.tryEmit(if (saved) ProfileCardEvent.DesignSaved else ProfileCardEvent.DesignSaveFailed)
+        }
+    }
+
+    private fun saveCircleCard(state: ProfileCardUiState) {
+        val card = state.selectedCard ?: return
+        val overrides = state.overrides.takeIf { state.previewOverrides != null }
+        val updated = card.copy(
+            design = state.design,
+            overrides = overrides ?: if (card.design != state.design) card.overrides.prunedFor(state.design) else card.overrides,
+        )
+        _uiState.update { it.copy(isSavingDesign = true) }
+        viewModelScope.launch {
+            val saved = attempt("saving the ${card.audience} card") { source.saveCircleCard(updated) } == true
+            _uiState.update {
+                if (saved) it.copy(
+                    isSavingDesign = false,
+                    previewDesign = null,
+                    previewOverrides = null,
+                    circleCardsSupported = source.supportsCircleCards,
+                    cards = it.cards.map { c -> if (c.audience == updated.audience) updated else c },
+                )
+                else it.copy(isSavingDesign = false, circleCardsSupported = source.supportsCircleCards)
+            }
+            if (saved) {
+                render()
+                load()
+            }
+            _events.tryEmit(if (saved) ProfileCardEvent.DesignSaved else ProfileCardEvent.DesignSaveFailed)
+        }
+    }
+
+    fun onAddCardClicked() {
+        if (!_uiState.value.canAddCircleCard) return
+        _uiState.update { it.copy(circlePicker = CirclePicker()) }
+        viewModelScope.launch {
+            val circles = attempt("listing circles") { source.circles() }
+            _uiState.update { state ->
+                if (state.circlePicker == null) return@update state
+                val taken = state.cards.mapNotNull { (it.audience as? CardAudience.Circle)?.id }
+                state.copy(
+                    circlePicker = if (circles == null) CirclePicker(loading = false, failed = true)
+                    else CirclePicker(circles.filter { c -> taken.none { it.sameCircleId(c.id) } }, loading = false),
+                )
+            }
+        }
+    }
+
+    fun onAddCardDismissed() = _uiState.update { it.copy(circlePicker = null) }
+
+    fun onCircleChosen(circleId: String) {
+        val state = _uiState.value
+        val circle = state.circlePicker?.circles?.firstOrNull { it.id == circleId } ?: return
+        if (!state.canAddCircleCard) return
+        val base = state.cards.firstOrNull { it.audience == CardAudience.Public }
+        val audience = CardAudience.Circle(circle.id, circle.name)
+        _uiState.update { it.copy(circlePicker = null, isCardBusy = true) }
+        viewModelScope.launch {
+            val result = attempt("adding a card for ${circle.name}") {
+                source.addCircleCard(audience, base?.design ?: state.savedDesign, base?.overrides ?: CardOverrides.EMPTY)
+            }
+            when (result) {
+                is AddCircleCardResult.Added -> {
+                    _uiState.update {
+                        it.copy(
+                            isCardBusy = false,
+                            cards = (it.cards + result.card).sortedCards(),
+                            circleCardsSupported = source.supportsCircleCards,
+                        )
+                    }
+                    selectAudience(result.card.audience)
+                    load()
+                }
+                AddCircleCardResult.Unsupported -> {
+                    _uiState.update { it.copy(isCardBusy = false, circleCardsSupported = false) }
+                    _events.tryEmit(ProfileCardEvent.CircleCardsUnsupported)
+                }
+                null -> {
+                    _uiState.update { it.copy(isCardBusy = false) }
+                    _events.tryEmit(ProfileCardEvent.CircleCardFailed)
+                }
+            }
+        }
+    }
+
+    fun onDeleteCardConfirmed() {
+        val state = _uiState.value
+        val card = state.selectedCard?.takeIf { it.audience is CardAudience.Circle } ?: return
+        if (state.isCardBusy || state.isExporting) return
+        _uiState.update { it.copy(isCardBusy = true) }
+        viewModelScope.launch {
+            val deleted = attempt("deleting the ${card.audience} card") { source.deleteCircleCard(card) } == true
+            _uiState.update {
+                if (deleted) it.copy(isCardBusy = false, cards = it.cards - card, selectedAudience = CardAudience.Public, previewDesign = null, previewOverrides = null)
+                else it.copy(isCardBusy = false)
+            }
+            if (deleted) {
+                render()
+                load()
+            } else {
+                _events.tryEmit(ProfileCardEvent.CircleCardFailed)
+            }
         }
     }
 
@@ -604,11 +746,16 @@ class ProfileCardViewModel(
         val pendingOverrides = unsavedCardOverrides.takeIf { pending != null }
         val publicCard = (stored.publicCard() ?: ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, saved))
             .let { card -> if (pendingOverrides != null) card.copy(overrides = pendingOverrides) else card }
-        val cards = listOf(publicCard) +
-            stored.filter { it.audience is CardAudience.Circle && it.design in CardDesign.all }.sortedBy { it.priority }
+        val cards = (listOf(publicCard) + stored.filter { it.audience is CardAudience.Circle && it.design in CardDesign.all }).sortedCards()
         _uiState.update {
             val selected = it.selectedAudience.takeIf { audience -> cards.any { card -> card.audience == audience } }
-            it.copy(loadFailed = false, savedDesign = saved, cards = cards, selectedAudience = selected ?: CardAudience.Public)
+            it.copy(
+                loadFailed = false,
+                savedDesign = saved,
+                cards = cards,
+                selectedAudience = selected ?: CardAudience.Public,
+                circleCardsSupported = source.supportsCircleCards,
+            )
         }
         loadPosts(odinId)
         render()
@@ -642,13 +789,15 @@ class ProfileCardViewModel(
 
     private suspend fun payloadFor(design: String, audience: CardAudience): CardPayload? {
         val content = content ?: return null
+        val photo = if (audience == CardAudience.Public) content.photo
+        else content.attributes.visiblePhoto(audience.aclFilter())?.photoImageData()
         val card = _uiState.value.cards.firstOrNull { it.audience == audience }
         val stored = _uiState.value.previewOverrides.takeIf { audience == CardAudience.Public } ?: card?.overrides ?: CardOverrides.EMPTY
         return buildCardPayload(
             odinId = content.odinId.domainName,
             attributes = content.attributes,
             design = design,
-            photoSrc = content.photo?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE).await() },
+            photoSrc = photo?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE).await() },
             headerSrc = content.siteDefaults.header?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE).await() },
             tagLine = content.siteDefaults.tagLine,
             posts = posts,
@@ -689,6 +838,9 @@ class ProfileCardViewModel(
         null
     }
 }
+
+private fun List<ProfileCard>.sortedCards() =
+    sortedWith(compareBy<ProfileCard> { it.audience !is CardAudience.Public }.thenBy { it.priority })
 
 @OptIn(ExperimentalEncodingApi::class)
 internal fun decodeCardPng(base64: String): ByteArray? {

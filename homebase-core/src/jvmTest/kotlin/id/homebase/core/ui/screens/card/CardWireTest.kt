@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -36,6 +37,7 @@ class CardWireTest {
         assertEquals(overrides.toJson(), data["overrides"])
         assertFalse("label" in data)
         assertFalse("id" in body)
+        assertFalse("circleIds" in body)
     }
 
     @Test
@@ -72,5 +74,26 @@ class CardWireTest {
         assertFailsWith<ClientException> { repo.savePublic("board") }
         assertFailsWith<ClientException> { repo.savePublic("board") }
         assertEquals(2, wire.puts, "a different 400 must not be remembered as an unsupported server")
+    }
+
+    @Test
+    fun savingACircleCardPutsItConnectedWithExactlyOneCircleAndItsLabel() = runTest {
+        val wire = CardWireHarness()
+        val card = ProfileCard(
+            id = kotlin.uuid.Uuid.NIL,
+            versionTag = kotlin.uuid.Uuid.NIL,
+            audience = CardAudience.Circle("c-friends", "Friends"),
+            design = "poster",
+            priority = 3,
+        )
+
+        assertTrue(wire.cardRepository().saveCircle(card))
+
+        val body = wire.putBodies.single().jsonObject
+        assertEquals(ProfileVisibility.CONNECTED.wireValue, body["visibility"]?.jsonPrimitive?.content)
+        assertEquals(3, body["priority"]?.jsonPrimitive?.int)
+        assertEquals(listOf("c-friends"), body["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(JsonPrimitive("Friends"), body["data"]!!.jsonObject["label"])
+        assertFalse("id" in body)
     }
 }

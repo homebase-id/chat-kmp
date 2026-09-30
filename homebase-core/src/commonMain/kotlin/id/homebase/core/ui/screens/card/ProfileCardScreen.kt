@@ -41,6 +41,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.filled.Close
@@ -55,7 +57,9 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -105,12 +109,27 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import id.homebase.core.localization.TranslationUtil
+import id.homebase.core.ui.screens.contactbook.components.CirclePickerChips
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.resources.MR
 import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_edit_retry
 import id.homebase.resources.close
+import id.homebase.resources.cancel
+import id.homebase.resources.delete
+import id.homebase.resources.profile_card_add_circle_card
+import id.homebase.resources.profile_card_add_circle_title
+import id.homebase.resources.profile_card_add_circle_hint
+import id.homebase.resources.profile_card_add_circle_pick
+import id.homebase.resources.profile_card_add_circle_confirm
+import id.homebase.resources.profile_card_add_circle_none
+import id.homebase.resources.profile_card_add_circle_load_failed
+import id.homebase.resources.profile_card_delete_card
+import id.homebase.resources.profile_card_delete_title
+import id.homebase.resources.profile_card_delete_message
+import id.homebase.resources.profile_card_circle_failed
+import id.homebase.resources.profile_card_circle_unsupported
 import id.homebase.resources.file_saved_to
 import id.homebase.resources.profile_card_audience_circle
 import id.homebase.resources.profile_card_audience_description
@@ -196,6 +215,8 @@ fun ProfileCardScreen(
     val nfc = rememberCardNfc()
     val errCard = stringResource(MR.string.profile_card_error)
     val errShare = stringResource(MR.string.profile_card_share_failed)
+    val errCircle = stringResource(MR.string.profile_card_circle_failed)
+    val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
 
     LaunchedEffect(viewModel) { viewModel.onScreenShown() }
 
@@ -227,6 +248,8 @@ fun ProfileCardScreen(
                 }
                 ProfileCardEvent.CardFailed -> launch { snackbarHostState.showSnackbar(errCard) }
                 ProfileCardEvent.ShareFailed -> launch { snackbarHostState.showSnackbar(errShare) }
+                ProfileCardEvent.CircleCardFailed -> launch { snackbarHostState.showSnackbar(errCircle) }
+                ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
                 ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed -> Unit
             }
         }
@@ -325,6 +348,12 @@ fun ProfileCardScreen(
                 SheetTopChrome(
                     uiState = uiState,
                     onSelectCard = viewModel::onCardSelected,
+                    circleActions = CircleCardActions(
+                        onAdd = viewModel::onAddCardClicked,
+                        onPick = viewModel::onCircleChosen,
+                        onDismissPicker = viewModel::onAddCardDismissed,
+                        onDelete = viewModel::onDeleteCardConfirmed,
+                    ),
                     onClose = leave,
                     // Over a band the whole strip drags; floating over the card only the handle does, so the card keeps its taps.
                     bandDrag = if (bands.top) dismissDrag else Modifier,
@@ -337,7 +366,7 @@ fun ProfileCardScreen(
                     canShare = uiState.canShare,
                     saveInsteadOfShare = saveInsteadOfShare,
                     onShare = viewModel::onShareClicked,
-                    onEdit = { viewModel.onEditClicked(); onEdit() },
+                    onEdit = onEdit,
                     extraActions = { nfc?.let { CardNfcAction(it) } },
                 )
             }
@@ -453,6 +482,7 @@ private fun CardBandsLayout(
 private fun SheetTopChrome(
     uiState: ProfileCardUiState,
     onSelectCard: (CardAudience) -> Unit,
+    circleActions: CircleCardActions,
     onClose: () -> Unit,
     bandDrag: Modifier,
     handleDrag: Modifier,
@@ -490,6 +520,7 @@ private fun SheetTopChrome(
         AudienceBadge(
             uiState = uiState,
             onSelect = onSelectCard,
+            circleActions = circleActions,
             modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
         )
         CardChromePill(modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp)) {
@@ -520,12 +551,26 @@ internal fun audienceLabel(audience: CardAudience): String = when (audience) {
 internal fun audienceIcon(audience: CardAudience) =
     if (audience is CardAudience.Circle) Icons.Outlined.Groups else Icons.Outlined.Public
 
+internal class CircleCardActions(
+    val onAdd: () -> Unit,
+    val onPick: (String) -> Unit,
+    val onDismissPicker: () -> Unit,
+    val onDelete: () -> Unit,
+)
+
 @Composable
-internal fun AudienceBadge(uiState: ProfileCardUiState, onSelect: (CardAudience) -> Unit, modifier: Modifier = Modifier) {
+internal fun AudienceBadge(
+    uiState: ProfileCardUiState,
+    onSelect: (CardAudience) -> Unit,
+    circleActions: CircleCardActions,
+    modifier: Modifier = Modifier,
+) {
     var expanded by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     val selected = uiState.selectedAudience
     val label = audienceLabel(selected)
-    val description = if (uiState.canSwitchCard && !uiState.isExporting) {
+    val hasMenu = uiState.hasCardMenu
+    val description = if (hasMenu) {
         stringResource(MR.string.profile_card_audience_switch, label)
     } else {
         stringResource(MR.string.profile_card_audience_description, label)
@@ -534,7 +579,7 @@ internal fun AudienceBadge(uiState: ProfileCardUiState, onSelect: (CardAudience)
         CardChromePill {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = (if (uiState.canSwitchCard && !uiState.isExporting) Modifier.clickable(role = Role.Button) { expanded = true } else Modifier)
+                modifier = (if (hasMenu) Modifier.clickable(role = Role.Button) { expanded = true } else Modifier)
                     .clearAndSetSemantics { contentDescription = description }
                     .widthIn(max = AUDIENCE_BADGE_MAX_WIDTH)
                     .minimumInteractiveComponentSize()
@@ -561,8 +606,83 @@ internal fun AudienceBadge(uiState: ProfileCardUiState, onSelect: (CardAudience)
                     },
                 )
             }
+            if (uiState.canAddCircleCard) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.profile_card_add_circle_card)) },
+                    leadingIcon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        circleActions.onAdd()
+                    },
+                )
+            }
+            if (uiState.isCircleSelected && !uiState.isCardBusy) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.profile_card_delete_card)) },
+                    leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        confirmDelete = true
+                    },
+                )
+            }
         }
     }
+    uiState.circlePicker?.let { picker ->
+        CirclePickerDialog(picker = picker, onPick = circleActions.onPick, onDismiss = circleActions.onDismissPicker)
+    }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(stringResource(MR.string.profile_card_delete_title, label)) },
+            text = { Text(stringResource(MR.string.profile_card_delete_message)) },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; circleActions.onDelete() }) {
+                    Text(stringResource(MR.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text(stringResource(MR.string.cancel)) }
+            },
+        )
+    }
+}
+
+@Composable
+private fun CirclePickerDialog(picker: CirclePicker, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    var chosen by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(MR.string.profile_card_add_circle_title)) },
+        text = {
+            when {
+                picker.loading -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { LoadingIndicator() }
+                picker.failed -> Text(stringResource(MR.string.profile_card_add_circle_load_failed))
+                picker.circles.isEmpty() -> Text(stringResource(MR.string.profile_card_add_circle_none))
+                else -> Column {
+                    Text(
+                        stringResource(MR.string.profile_card_add_circle_hint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(bottom = 12.dp),
+                    )
+                    CirclePickerChips(
+                        circles = picker.circles,
+                        selectedIds = setOfNotNull(chosen),
+                        onToggle = { chosen = it },
+                        enabled = true,
+                        centered = false,
+                        label = stringResource(MR.string.profile_card_add_circle_pick),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { chosen?.let(onPick) }, enabled = chosen != null) {
+                Text(stringResource(MR.string.profile_card_add_circle_confirm))
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) } },
+    )
 }
 
 @Composable

@@ -57,6 +57,7 @@ class ProfileProvider(
         visibility: ProfileVisibility,
         data: JsonObject,
         priority: Int? = null,
+        circleIds: List<String> = emptyList(),
     ): ProfileWriteResult {
         val creds = requireCreds()
 
@@ -71,6 +72,7 @@ class ProfileProvider(
                     visibility = visibility.wireValue,
                     data = data,
                     priority = priority,
+                    circleIds = circleIds.takeIf { it.isNotEmpty() },
                 )
             ),
             secret = creds.secret,

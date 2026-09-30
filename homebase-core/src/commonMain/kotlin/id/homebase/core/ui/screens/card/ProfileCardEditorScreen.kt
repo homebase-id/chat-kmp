@@ -181,7 +181,8 @@ fun ProfileCardEditorScreen(
                 ProfileCardEvent.DesignSaved -> onBack()
                 ProfileCardEvent.DesignSaveFailed -> launch { snackbarHostState.showSnackbar(errSave) }
                 ProfileCardEvent.CardFailed -> launch { snackbarHostState.showSnackbar(errCard) }
-                is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed -> Unit
+                is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed,
+                ProfileCardEvent.CircleCardFailed, ProfileCardEvent.CircleCardsUnsupported -> Unit
             }
         }
     }

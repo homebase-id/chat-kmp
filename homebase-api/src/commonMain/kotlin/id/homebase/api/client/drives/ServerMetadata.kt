@@ -59,6 +59,27 @@ fun AccessControlList?.isVisibleTo(viewer: ProfileVisibility): Boolean {
         circles.any { it.replace("-", "").equals(CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE, ignoreCase = true) }
 }
 
+/**
+ * Whether a member of [circleId] can read a file with this ACL. Unlike [isVisibleTo] a circle
+ * list that names [circleId] (or the confirmed-connections circle every member also holds) counts;
+ * owner-only, unknown groups and identity-limited files do not.
+ */
+fun AccessControlList?.isVisibleToCircle(circleId: String): Boolean {
+    if (this == null || !odinIdList.isNullOrEmpty()) return false
+    when (requiredSecurityGroup?.lowercase()) {
+        "anonymous", "authenticated" -> return true
+        "connected", "autoconnected" -> Unit
+        else -> return false
+    }
+    val circles = circleIdList.orEmpty()
+    if (circles.isEmpty()) return true
+    val wanted = circleId.replace("-", "")
+    return circles.any {
+        val id = it.replace("-", "")
+        id.equals(wanted, ignoreCase = true) || id.equals(CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE, ignoreCase = true)
+    }
+}
+
 private fun securityRank(group: String?): Int = when (group?.lowercase()) {
     "owner" -> 1
     "autoconnected" -> 2
