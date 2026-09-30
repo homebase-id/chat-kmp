@@ -24,7 +24,7 @@ class McpTest {
             lastLimit = limit
             return msgs
         }
-        override suspend fun send(text: String): Uuid {
+        override suspend fun send(conversationId: Uuid, text: String): Uuid {
             sent += text
             return Uuid.random()
         }

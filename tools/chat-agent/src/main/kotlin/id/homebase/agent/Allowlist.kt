@@ -9,6 +9,7 @@ class Allowlist(
     val authors: Set<OdinId>,
     val memberMode: Boolean = false,
     val authorsAnyMember: Boolean = false,
+    val groupSend: Boolean = false,
 ) {
     private var known: Map<Uuid, ConversationInfo> = emptyMap()
 
@@ -28,6 +29,18 @@ class Allowlist(
     fun allowsAuthor(author: OdinId?, conversationId: Uuid): Boolean =
         allowsAuthor(author) ||
             (authorsAnyMember && author != null && known[conversationId]?.members?.contains(author) == true)
+
+    fun info(id: Uuid): ConversationInfo? = known[id]
+
+    fun allowsSend(id: Uuid): Boolean =
+        allowsConversation(id) && (id == ChatProtocol.ConversationWithYourselfId || (groupSend && id in known))
+
+    fun requireSend(id: Uuid) {
+        requireConversation(id)
+        require(id == ChatProtocol.ConversationWithYourselfId || groupSend) {
+            "this profile may only send to note-to-self"
+        }
+    }
 
     fun requireConversation(id: Uuid) =
         require(allowsConversation(id)) { "conversation $id is not on the allowlist" }

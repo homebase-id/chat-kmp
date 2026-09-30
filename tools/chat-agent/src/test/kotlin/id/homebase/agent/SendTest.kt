@@ -17,10 +17,20 @@ import kotlin.uuid.Uuid
 class SendTest {
     private val allowlist = Allowlist.default(OdinId("owner.example.com"))
 
+    private val owner = OdinId("owner.example.com")
+    private val bob = OdinId("bob.example.com")
+    private val bot = OdinId("bot.example.com")
+    private val group = Uuid.random()
+    private val groupInfo = ConversationInfo(group, "Team", listOf(owner, bob, bot))
+
+    private fun botAllowlist() =
+        Allowlist(setOf(ChatProtocol.ConversationWithYourselfId), setOf(owner), memberMode = true, groupSend = true)
+            .also { it.learn(listOf(groupInfo)) }
+
     @Test
     fun selfConversationMetadataIsEncryptedLocalMarkdown() = runBlocking {
         val kh = KeyHeader.newRandom16()
-        val m = buildSelfMessageMetadata(allowlist, ChatProtocol.ConversationWithYourselfId, Uuid.random(), "hi", 1L, kh)
+        val m = buildMessageMetadata(allowlist, ChatProtocol.ConversationWithYourselfId, Uuid.random(), "hi", 1L, kh, distribute = false)
         val plain = buildMessageContent("hi")
         assertNotEquals(plain, m.appData.content)
         assertEquals(plain, kh.decrypt(Base64.decode(m.appData.content!!)).decodeToString())
@@ -32,9 +42,71 @@ class SendTest {
     }
 
     @Test
+    fun groupMetadataIsEncryptedDistributedAndGroupedByConversation() = runBlocking {
+        val kh = KeyHeader.newRandom16()
+        val id = Uuid.random()
+        val m = buildMessageMetadata(botAllowlist(), group, id, "hi", 7L, kh, distribute = true)
+        assertTrue(m.isEncrypted)
+        assertTrue(m.allowDistribution)
+        assertEquals(group, m.appData.groupId)
+        assertEquals(id, m.appData.uniqueId)
+        assertEquals(7L, m.appData.userDate)
+        assertEquals(0, m.appData.dataType)
+        assertEquals(buildMessageContent("hi"), kh.decrypt(Base64.decode(m.appData.content!!)).decodeToString())
+    }
+
+    @Test
+    fun recipientsAreMembersMinusSelf() {
+        assertEquals(listOf(owner, bob), conversationRecipients(groupInfo, bot))
+        assertEquals(emptyList(), conversationRecipients(noteToSelf(owner), owner))
+    }
+
+    @Test
+    fun groupTransitCarriesRecipientsAndNotification() {
+        val t = conversationTransitOptions(group, Uuid.random(), listOf(owner, bob), "Team")
+        assertEquals(listOf(owner, bob), t.recipients)
+        assertEquals(SendContents.All, t.sendContents)
+        assertEquals(true, t.useAppNotification)
+        assertTrue(t.appNotificationOptions!!.unEncryptedMessage!!.endsWith("in Team"))
+    }
+
+    @Test
+    fun delegateProfileNeverSendsToGroup() = runBlocking<Unit> {
+        val me = Allowlist(setOf(ChatProtocol.ConversationWithYourselfId, group), setOf(owner), memberMode = true)
+        me.learn(listOf(groupInfo))
+        assertTrue(me.allowsConversation(group))
+        assertFalse(me.allowsSend(group))
+        assertFailsWith<IllegalArgumentException> { me.requireSend(group) }
+        assertFailsWith<IllegalArgumentException> {
+            buildMessageMetadata(me, group, Uuid.random(), "hi", 1L, KeyHeader.newRandom16(), distribute = true)
+        }
+        assertTrue(me.allowsSend(ChatProtocol.ConversationWithYourselfId))
+        assertFalse(parseConfig("allowConversations=member", owner).allowlist.groupSend)
+        assertTrue(parseConfig("bot=true", owner).allowlist.groupSend)
+    }
+
+    @Test
+    fun meProfileCannotEnableGroupSendViaConfig() = runBlocking<Unit> {
+        val me = parseConfig("bot=true\nallowConversations=member", owner, "me").allowlist
+        me.learn(listOf(groupInfo))
+        assertFalse(me.groupSend)
+        assertFailsWith<IllegalArgumentException> { me.requireSend(group) }
+        val ownerBot = parseConfig("bot=true\nowner=owner.example.com", owner, "bot").allowlist
+        assertFalse(ownerBot.groupSend)
+        assertTrue(parseConfig("bot=true\nowner=owner.example.com", bot, "bot").allowlist.groupSend)
+    }
+
+    @Test
+    fun botRefusesUnlistedConversation() = runBlocking<Unit> {
+        assertFailsWith<IllegalArgumentException> {
+            buildMessageMetadata(botAllowlist(), Uuid.random(), Uuid.random(), "hi", 1L, KeyHeader.newRandom16(), distribute = true)
+        }
+    }
+
+    @Test
     fun otherConversationRefused() = runBlocking<Unit> {
         assertFailsWith<IllegalArgumentException> {
-            buildSelfMessageMetadata(allowlist, Uuid.random(), Uuid.random(), "hi", 1L, KeyHeader.newRandom16())
+            buildMessageMetadata(allowlist, Uuid.random(), Uuid.random(), "hi", 1L, KeyHeader.newRandom16(), distribute = false)
         }
     }
 
@@ -50,8 +122,8 @@ class SendTest {
     }
 
     @Test
-    fun transitMatchesAppSelfSend() {
-        val t = selfTransitOptions(ChatProtocol.ConversationWithYourselfId, Uuid.random())
+    fun selfTransitMatchesApp() {
+        val t = conversationTransitOptions(ChatProtocol.ConversationWithYourselfId, Uuid.random(), emptyList(), null)
         assertEquals(emptyList(), t.recipients)
         assertEquals(SendContents.All, t.sendContents)
         assertEquals(false, t.useAppNotification)

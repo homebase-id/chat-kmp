@@ -86,24 +86,39 @@ class ConversationsTest {
         assertEquals(1, logs.size)
     }
 
-    @Test
-    fun groupTriggerSkippedUntilL6() = runBlocking {
-        val group = Uuid.random()
-        val allow = parseConfig("bot=true", me).allowlist.also {
+    private fun groupProcessor(bot: Boolean, replies: MutableList<Pair<Uuid, String>>, group: Uuid, brainRuns: IntArray): WatchProcessor {
+        val allow = parseConfig(if (bot) "bot=true" else "allowConversations=member", me).allowlist.also {
             it.learn(listOf(ConversationInfo(group, "Team", listOf(alice, me))))
         }
-        var brainRuns = 0
-        val processor = WatchProcessor(
-            config = AgentConfig(bot = true, allowlist = allow),
+        return WatchProcessor(
+            config = AgentConfig(bot = bot, allowlist = allow),
             identity = me.toString(),
             store = ProcessedStore(null),
             history = { emptyList() },
-            brain = { brainRuns++; BrainOutcome.Output("x") },
-            reply = { _, _ -> },
+            brain = { brainRuns[0]++; BrainOutcome.Output("pong") },
+            reply = { c, t -> replies += c to t },
             log = {},
         )
+    }
+
+    @Test
+    fun botRepliesIntoTriggeringGroup() = runBlocking {
+        val group = Uuid.random()
+        val replies = mutableListOf<Pair<Uuid, String>>()
+        val runs = intArrayOf(0)
         val m = ChatMsg(Uuid.random(), group, alice, "@quagmire hi", 1L)
-        assertEquals("skip: group reply not supported yet (L6)", processor.handle(m))
-        assertEquals(0, brainRuns)
+        assertEquals("replied", groupProcessor(true, replies, group, runs).handle(m))
+        assertEquals(listOf(group to "$BOT_PREFIX pong"), replies)
+    }
+
+    @Test
+    fun delegateNeverRepliesIntoGroupEvenIfConfigured() = runBlocking {
+        val group = Uuid.random()
+        val replies = mutableListOf<Pair<Uuid, String>>()
+        val runs = intArrayOf(0)
+        val m = ChatMsg(Uuid.random(), group, me, "@quagmire hi", 1L)
+        assertEquals("skip: send not permitted in this conversation", groupProcessor(false, replies, group, runs).handle(m))
+        assertEquals(0, runs[0])
+        assertTrue(replies.isEmpty())
     }
 }

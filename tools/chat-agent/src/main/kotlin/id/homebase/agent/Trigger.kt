@@ -5,6 +5,7 @@ import id.homebase.api.util.mentionsIdentity
 import id.homebase.chat.services.ChatProtocol
 import kotlin.uuid.Uuid
 
+const val DELEGATE_PROFILE = "me"
 const val BOT_PREFIX = "🤖"
 
 class AgentConfig(
@@ -14,7 +15,7 @@ class AgentConfig(
     val allowlist: Allowlist,
 )
 
-fun parseConfig(text: String, owner: OdinId): AgentConfig {
+fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig {
     val values = text.lineSequence()
         .map { it.trim() }
         .filter { it.isNotEmpty() && !it.startsWith("#") && '=' in it }
@@ -36,7 +37,7 @@ fun parseConfig(text: String, owner: OdinId): AgentConfig {
         nickname = values["nickname"]?.takeIf { it.isNotEmpty() } ?: "quagmire",
         brain = values["brain"]?.takeIf { it.isNotEmpty() } ?: "claude -p --model haiku --max-turns 3",
         bot = bot,
-        allowlist = Allowlist(conversations, authors, memberMode, anyMember),
+        allowlist = Allowlist(conversations, authors, memberMode, anyMember, groupSend = bot && profile != DELEGATE_PROFILE && ownerKey != owner),
     )
 }
 

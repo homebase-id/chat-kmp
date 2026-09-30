@@ -11,6 +11,7 @@ import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.common.OdinId
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatDeliveryStatus
@@ -32,17 +33,22 @@ fun buildMessageContent(text: String): String {
     return content
 }
 
-suspend fun buildSelfMessageMetadata(
+fun conversationRecipients(conversation: ConversationInfo, self: OdinId): List<OdinId> =
+    if (conversation.id == ChatProtocol.ConversationWithYourselfId) emptyList()
+    else conversation.members.filter { it != self }
+
+suspend fun buildMessageMetadata(
     allowlist: Allowlist,
     conversationId: Uuid,
     messageId: Uuid,
     text: String,
     nowMs: Long,
     keyHeader: KeyHeader,
+    distribute: Boolean,
 ): UploadFileMetadata {
-    allowlist.requireConversation(conversationId)
+    allowlist.requireSend(conversationId)
     return UploadFileMetadata(
-            allowDistribution = false,
+            allowDistribution = distribute,
             isEncrypted = true,
             appData = UploadAppFileMetaData(
                 uniqueId = messageId,
@@ -55,26 +61,47 @@ suspend fun buildSelfMessageMetadata(
         ).encryptContent(keyHeader)
 }
 
-fun selfTransitOptions(conversationId: Uuid, messageId: Uuid) = TransitOptions(
-    recipients = emptyList(),
+fun conversationTransitOptions(
+    conversationId: Uuid,
+    messageId: Uuid,
+    recipients: List<OdinId>,
+    groupName: String?,
+) = TransitOptions(
+    recipients = recipients,
     sendContents = SendContents.All,
-    useAppNotification = false,
+    useAppNotification = recipients.isNotEmpty(),
     appNotificationOptions = PushNotificationOptions(
         appId = ChatProtocol.ChatAppId.toString(),
         typeId = conversationId.toString(),
         tagId = messageId.toString(),
         silent = false,
-        unEncryptedMessage = "You have a new message",
+        unEncryptedMessage = if (recipients.size > 1) {
+            "You have a new message in ${groupName?.takeIf { it.isNotBlank() } ?: "a group chat"}"
+        } else {
+            "You have a new message"
+        },
     ),
 )
 
-suspend fun sendToSelf(session: Session, text: String): Uuid {
-    val allowlist = Allowlist.default(session.identity)
+fun noteToSelf(self: OdinId) = ConversationInfo(ChatProtocol.ConversationWithYourselfId, NOTE_TO_SELF_TITLE, listOf(self))
+
+suspend fun resolveConversation(session: Session, allowlist: Allowlist, id: Uuid): ConversationInfo {
+    allowlist.requireSend(id)
+    if (id == ChatProtocol.ConversationWithYourselfId) return noteToSelf(session.identity)
+    allowlist.info(id) ?: allowlist.learn(discoverConversations(session.credentials))
+    return allowlist.info(id) ?: error("conversation $id not found among this identity's conversations")
+}
+
+suspend fun sendToConversation(session: Session, allowlist: Allowlist, conversation: ConversationInfo, text: String): Uuid {
+    val recipients = conversationRecipients(conversation, session.identity)
+    require(recipients.isNotEmpty() || conversation.id == ChatProtocol.ConversationWithYourselfId) {
+        "no recipients resolved for conversation ${conversation.id}"
+    }
     val messageId = Uuid.random()
-    val conversationId = ChatProtocol.ConversationWithYourselfId
     val keyHeader = KeyHeader.newRandom16()
-    val metadata = buildSelfMessageMetadata(
-        allowlist, conversationId, messageId, text, Clock.System.now().toEpochMilliseconds(), keyHeader
+    val metadata = buildMessageMetadata(
+        allowlist, conversation.id, messageId, text, Clock.System.now().toEpochMilliseconds(), keyHeader,
+        distribute = recipients.isNotEmpty(),
     )
     DriveUploadProvider(HttpClientProvider.create(), session.credentials, JvmFileOperationsProvider())
         .uploadFile(
@@ -82,12 +109,21 @@ suspend fun sendToSelf(session: Session, text: String): Uuid {
                 driveId = SystemDriveConstants.chatDrive.alias,
                 keyHeader = keyHeader,
                 metadata = metadata,
-                transitOptions = selfTransitOptions(conversationId, messageId),
+                transitOptions = conversationTransitOptions(conversation.id, messageId, recipients, conversation.title),
             )
         )
     return messageId
 }
 
-suspend fun send(profile: String, text: String) {
-    println("sent ${sendToSelf(openSession(profile), text)}")
+suspend fun sendToConversation(session: Session, allowlist: Allowlist, conversationId: Uuid, text: String): Uuid =
+    sendToConversation(session, allowlist, resolveConversation(session, allowlist, conversationId), text)
+
+suspend fun send(profile: String, text: String, conversation: Uuid? = null) {
+    val session = openSession(profile)
+    val allowlist = loadConfig(profile, session.identity).allowlist
+    val id = conversation ?: ChatProtocol.ConversationWithYourselfId
+    require(id == ChatProtocol.ConversationWithYourselfId || allowlist.groupSend) { "this profile may only send to note-to-self" }
+    refreshAllowlist(session.credentials, allowlist)
+    allowlist.requireSend(id)
+    println("sent ${sendToConversation(session, allowlist, id, text)}")
 }

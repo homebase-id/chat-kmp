@@ -5,7 +5,6 @@ import java.io.File
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
-import id.homebase.chat.services.ChatProtocol
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -118,7 +117,7 @@ class WatchProcessor(
         if (!config.allowlist.allowsAuthor(msg.author, msg.conversationId)) return "skip: author not allowed"
         if (!shouldTrigger(msg.text, config.nickname, config.bot, identity)) return "skip: no trigger"
         if (msg.id in store) return "skip: already processed"
-        if (msg.conversationId != ChatProtocol.ConversationWithYourselfId) return "skip: group reply not supported yet (L6)"
+        if (!config.allowlist.allowsSend(msg.conversationId)) return "skip: send not permitted in this conversation"
         store.add(msg.id)
         return mutex.withLock {
             val prompt = buildPrompt(msg, history(msg.conversationId))
@@ -150,10 +149,7 @@ suspend fun watch(profile: String) {
         history = { fetchMessages(session.credentials, it, HISTORY_LIMIT + 1) },
         brain = { runBrain(config.brain, it) },
         reply = { conversation, text ->
-            check(conversation == ChatProtocol.ConversationWithYourselfId) {
-                "replies are only supported in note-to-self"
-            }
-            sendToSelf(session, text)
+            sendToConversation(session, config.allowlist, conversation, text)
         },
         log = ::log,
     )

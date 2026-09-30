@@ -33,7 +33,7 @@ private const val MCP_TEXT_CODEPOINTS = 1000
 interface AgentBackend {
     val allowlist: Allowlist
     suspend fun messages(conversationId: Uuid, limit: Int): List<ChatMsg>
-    suspend fun send(text: String): Uuid
+    suspend fun send(conversationId: Uuid, text: String): Uuid
 }
 
 class ToolReply(val text: String, val isError: Boolean = false)
@@ -75,10 +75,10 @@ suspend fun toolReadMessages(backend: AgentBackend, args: JsonObject?): ToolRepl
 
 suspend fun toolSendMessage(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
     val conversationId = parseConversation(args) ?: return@guarded ToolReply("conversationId must be a UUID", true)
-    backend.allowlist.requireConversation(conversationId)
+    backend.allowlist.requireSend(conversationId)
     val text = args?.get("text")?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
     if (text.isEmpty()) return@guarded ToolReply("text is empty", true)
-    ToolReply("sent ${backend.send("$BOT_PREFIX $text")}")
+    ToolReply("sent ${backend.send(conversationId, "$BOT_PREFIX $text")}")
 }
 
 class SessionBackend(private val profile: String) : AgentBackend {
@@ -98,7 +98,8 @@ class SessionBackend(private val profile: String) : AgentBackend {
     override suspend fun messages(conversationId: Uuid, limit: Int) =
         fetchMessages(open().credentials, conversationId, limit)
 
-    override suspend fun send(text: String) = sendToSelf(open(), text)
+    override suspend fun send(conversationId: Uuid, text: String) =
+        sendToConversation(open(), allowlist, conversationId, text)
 }
 
 private fun CallToolResult.Companion.of(reply: ToolReply) =

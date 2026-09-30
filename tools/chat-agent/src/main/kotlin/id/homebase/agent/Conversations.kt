@@ -82,7 +82,7 @@ suspend fun refreshAllowlist(credentials: CredentialsManager, allowlist: Allowli
 
 fun loadConfig(profile: String, owner: OdinId): AgentConfig =
     java.io.File(Profile.dataDir(profile), "agent.conf").let {
-        parseConfig(it.takeIf { f -> f.exists() }?.readText().orEmpty(), owner)
+        parseConfig(it.takeIf { f -> f.exists() }?.readText().orEmpty(), owner, profile)
     }
 
 suspend fun conversations(profile: String) {

@@ -5,13 +5,13 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.runBlocking
 
 private const val USAGE =
-    "usage: chat-agent login --profile <p> [--identity <domain>] | read --profile <p> [--conversation <id>] [--limit <n>] | conversations --profile <p> | send --profile <p> <text> | watch --profile <p> | mcp --profile <p>"
+    "usage: chat-agent login --profile <p> [--identity <domain>] | read --profile <p> [--conversation <id>] [--limit <n>] | conversations --profile <p> | send --profile <p> [--conversation <id>] <text> | watch --profile <p> | mcp --profile <p>"
 
 fun main(args: Array<String>) {
     val command = args.firstOrNull()
     val rest = args.drop(1)
     val options = rest.chunked(2).associate { it[0] to it.getOrNull(1) }
-    val sendText = rest.filterIndexed { i, _ -> i !in profileArgIndexes(rest) }.joinToString(" ")
+    val sendText = rest.filterIndexed { i, _ -> i !in flagIndexes(rest, "--profile", "--conversation") }.joinToString(" ")
     val profile = options["--profile"]
     if (command !in setOf("login", "read", "conversations", "send", "watch", "mcp") || profile == null) {
         System.err.println(USAGE)
@@ -22,7 +22,7 @@ fun main(args: Array<String>) {
         runBlocking {
             when (command) {
                 "login" -> login(options["--identity"] ?: prompt("Homebase identity (e.g. me.homebase.id): "))
-                "send" -> send(profile, sendText)
+                "send" -> send(profile, sendText, options["--conversation"]?.let { Uuid.parse(it) })
                 "watch" -> watch(profile)
                 "mcp" -> mcp(profile)
                 "conversations" -> conversations(profile)
@@ -45,5 +45,5 @@ private fun prompt(question: String): String {
     return readlnOrNull()?.trim().orEmpty().ifEmpty { error("identity required") }
 }
 
-private fun profileArgIndexes(args: List<String>): Set<Int> =
-    args.indexOf("--profile").let { if (it < 0) emptySet() else setOf(it, it + 1) }
+private fun flagIndexes(args: List<String>, vararg flags: String): Set<Int> =
+    flags.flatMap { f -> args.indexOf(f).let { if (it < 0) emptyList() else listOf(it, it + 1) } }.toSet()
