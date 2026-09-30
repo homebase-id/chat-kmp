@@ -340,6 +340,7 @@ fun ContactDetailScreen(
             onMemberClick = { viewModel.onAction(ContactDetailAction.CircleMemberClicked(it)) },
             onAddMemberClick = {},
             onRemoveMemberClick = {},
+            onEnabledChange = { viewModel.onAction(ContactDetailAction.CircleEnabledChanged(detail.circleId, it)) },
         )
     }
 

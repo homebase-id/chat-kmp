@@ -1500,6 +1500,13 @@
     <string name="contactbook_circles_empty">Du har ingen kredse endnu.</string>
     <string name="contactbook_circle_members_empty">Denne kreds har ingen medlemmer.</string>
     <string name="contactbook_circle_members_count">%1$d medlemmer</string>
+    <string name="contactbook_circle_disabled">Deaktiveret</string>
+    <string name="contactbook_circle_enabled_hint">Deaktivering beholder medlemmerne, men fjerner deres adgang.</string>
+    <string name="contactbook_circle_menu">Kredsindstillinger</string>
+    <string name="contactbook_circle_disable">Deaktiver kreds</string>
+    <string name="contactbook_circle_enable">Aktivér kreds</string>
+    <string name="contactbook_circle_disable_confirm_title">Deaktiver %1$s?</string>
+    <string name="contactbook_circle_disable_confirm">Deaktiver</string>
     <string name="contactbook_tab_known">Kontakter</string>
     <string name="contactbook_tab_new">Nye</string>
     <string name="contactbook_filter_circles">Kredse</string>

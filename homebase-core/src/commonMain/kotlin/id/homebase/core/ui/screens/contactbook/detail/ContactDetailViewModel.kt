@@ -2,7 +2,10 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
+import id.homebase.core.ui.screens.contactbook.launchCircleToggle
 import id.homebase.core.ui.screens.contactbook.resolveCircleMemberEntries
+import id.homebase.core.ui.screens.contactbook.toggleBlockedReason
+import id.homebase.core.ui.screens.contactbook.withCircle
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -351,6 +354,9 @@ class ContactDetailViewModel(
                             ) == ContactState.New,
                         reviewCircleGroups = circ.reviewCircleGroups(),
                         circles = circleItems,
+                        circleDetail = it.circleDetail?.let { open ->
+                            open.withCircle(circ.circles.firstOrNull { c -> c.circle.id.equals(open.circleId, ignoreCase = true) }?.circle)
+                        },
                         connectionStatuses = conn.statusByDomain(),
                         isLoading = false,
                         isSelf = isSelf,
@@ -440,6 +446,7 @@ class ContactDetailViewModel(
                     circleEmoji = match.circle.emoji,
                     manageable = false,
                     disabled = match.circle.disabled,
+                    toggleBlockedReason = match.circle.toggleBlockedReason(),
                     members = members,
                     pendingMembers = pending,
                     isLoading = false,
@@ -452,6 +459,13 @@ class ContactDetailViewModel(
                     viewerContactId = viewerEntry?.uniqueId,
                 ),
             )
+        }
+    }
+
+    private fun onCircleEnabledChanged(circleId: String, enabled: Boolean) {
+        if (_uiState.value.circleDetail?.togglingEnabled == true) return
+        viewModelScope.launchCircleToggle(connectionService, circleId, enabled) { f ->
+            _uiState.update { s -> s.copy(circleDetail = s.circleDetail?.let { if (it.circleId == circleId) f(it) else it }) }
         }
     }
 
@@ -532,6 +546,7 @@ class ContactDetailViewModel(
             ContactDetailAction.UnreviewConfirmed -> submitUnreview()
             is ContactDetailAction.CircleClicked -> onCircleClicked(action.circleId)
             ContactDetailAction.CircleDetailDismiss -> onCircleDetailDismiss()
+            is ContactDetailAction.CircleEnabledChanged -> onCircleEnabledChanged(action.circleId, action.enabled)
             is ContactDetailAction.CircleMemberClicked -> _events.tryEmit(
                 ContactDetailEvent.OpenOtherContact(action.entry.uniqueId.toString(), action.entry.odinId)
             )

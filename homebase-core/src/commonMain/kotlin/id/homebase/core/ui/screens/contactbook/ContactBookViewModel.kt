@@ -183,6 +183,7 @@ class ContactBookViewModel(
                         pendingMembers = resolveCircleMemberEntries(pendingDomains, entries.value).sortedBy { m -> m.sortKey },
                         drives = resolveCircleDrives(match.circle),
                         disabled = match.circle.disabled,
+                        toggleBlockedReason = match.circle.toggleBlockedReason(),
                     )
                 }
             }
@@ -602,7 +603,7 @@ class ContactBookViewModel(
             circleEmoji = circle.circle.emoji,
             manageable = manageable,
             disabled = circle.circle.disabled,
-            offersEnableToggle = circle.circle.offersEnableToggle(),
+            toggleBlockedReason = circle.circle.toggleBlockedReason(),
             members = members,
             pendingMembers = pending,
             isLoading = false,
@@ -623,20 +624,8 @@ class ContactBookViewModel(
 
     private fun handleCircleEnabledChanged(circleIdRaw: String, enabled: Boolean) {
         if (_circleMembers.value?.togglingEnabled == true) return
-        fun update(f: (CircleMembersUi) -> CircleMembersUi) =
+        viewModelScope.launchCircleToggle(connectionService, circleIdRaw, enabled) { f ->
             _circleMembers.update { if (it?.circleId == circleIdRaw) f(it) else it }
-        update { it.copy(togglingEnabled = true, toggleError = null) }
-        viewModelScope.launch {
-            try {
-                connectionService.setCircleEnabled(Uuid.parseHex(circleIdRaw), enabled)
-            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.w(e, "ContactBookViewModel") { "setCircleEnabled($enabled) failed for $circleIdRaw" }
-                update { it.copy(toggleError = e.toCircleToggleError()) }
-            } finally {
-                update { it.copy(togglingEnabled = false) }
-            }
         }
     }
 
