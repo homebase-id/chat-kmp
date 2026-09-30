@@ -1420,6 +1420,20 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun anOptionChangeOnACircleCardRendersBeforeSave() = runTest(dispatcher) {
+        val store = ServerStore(listOf(publicCardAttribute, circleCardAttribute("c1", "Friends", CardDesign.POSTER, 0)))
+        val (vm, _, host) = circleVm(store)
+        vm.onCardSelected(friends)
+        advanceUntilIdle()
+
+        vm.onOptionSelected(CardOption.SOCIALS_STYLE, "bar")
+        advanceUntilIdle()
+
+        assertTrue(store.saves.isEmpty())
+        assertEquals("bar", host.rendered.last().overrides?.socials)
+    }
+
+    @Test
     fun aFailedCircleCardSaveKeepsThePreview() = runTest(dispatcher) {
         val store = ServerStore(listOf(publicCardAttribute, circleCardAttribute("c1", "Friends", CardDesign.BOARD, 0)))
         val (vm, _, _) = circleVm(store)
