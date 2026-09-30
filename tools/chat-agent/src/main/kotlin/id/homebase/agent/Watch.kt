@@ -71,6 +71,19 @@ fun withAttachments(output: BrainOutcome.Output, root: File?): BrainOutcome.Outp
 
 private val LOCKED_ENV_KEYS = listOf("PATH", "HOME", "USER", "LANG")
 
+// Own process group so a double-forked daemon dies with the brain; macOS has no setsid(1), perl is the fallback.
+private const val GROUP_LAUNCHER =
+    "if command -v setsid >/dev/null 2>&1; then exec setsid sh -c \"\$1\"; " +
+        "elif command -v perl >/dev/null 2>&1; then exec perl -e 'use POSIX; setpgid(0,0); exec @ARGV' sh -c \"\$1\"; " +
+        "else exec sh -c \"\$1\"; fi"
+
+private fun killGroup(pid: Long) {
+    runCatching {
+        ProcessBuilder("sh", "-c", "kill -KILL -- -$pid").redirectErrorStream(true).start().apply { outputStream.close() }
+            .also { it.inputStream.readBytes(); it.waitFor(2, TimeUnit.SECONDS) }
+    }
+}
+
 suspend fun runBrain(
     command: String,
     prompt: String,
@@ -84,7 +97,7 @@ suspend fun runBrain(
     try {
         val files = attachDir?.let { writeAttachments(it, attachments) }.orEmpty()
         val env = if (files.isEmpty()) emptyMap() else mapOf("CHAT_AGENT_ATTACHMENTS" to files.joinToString("\n") { it.absolutePath })
-        val vision = command == DEFAULT_BRAIN && attachments.any { it.viewableImage }
+        val vision = command == DEFAULT_BRAIN && attachments.any { it.modelBlock }
         val outcome = runBrainProcess(
             if (vision) "$command $STREAM_JSON_FLAGS" else command,
             if (vision) streamJsonInput(prompt, attachments) else prompt,
@@ -101,7 +114,7 @@ suspend fun runBrain(
 private suspend fun runBrainProcess(command: String, prompt: String, timeoutMs: Long, tier: Tier, cwd: File?, extraEnv: Map<String, String>): BrainOutcome =
     withContext(Dispatchers.IO) {
         val process = try {
-            ProcessBuilder("sh", "-c", command).apply {
+            ProcessBuilder("sh", "-c", GROUP_LAUNCHER, "chat-agent-brain", command).apply {
                 cwd?.let { directory(it) }
                 if (tier == Tier.LOCKED) {
                     val keep = LOCKED_ENV_KEYS.mapNotNull { k -> System.getenv(k)?.let { k to it } }
@@ -122,8 +135,10 @@ private suspend fun runBrainProcess(command: String, prompt: String, timeoutMs: 
                 return@withContext BrainOutcome.Failed("timeout after ${timeoutMs / 1000}s")
             }
         } finally {
+            val descendants = process.descendants().toList()
+            killGroup(process.pid())
             if (process.isAlive) {
-                process.descendants().forEach { it.destroyForcibly() }
+                descendants.forEach { it.destroyForcibly() }
                 process.destroyForcibly()
             }
         }
@@ -347,7 +362,10 @@ class WatchProcessor(
         return "title: ${allow.title(conversation) ?: conversation}\nmembers: $members"
     }
 
-    private fun isOperator(msg: ChatMsg) = (msg.sender ?: OdinId(identity)) in config.operators + OdinId(identity)
+    private fun isOperator(msg: ChatMsg) =
+        isOperatorSender(config, OdinId(identity), msg.sender, msg.conversationId, config.allowlist.info(msg.conversationId)?.members)
+
+    private fun isListedOperator(msg: ChatMsg) = (msg.sender ?: OdinId(identity)) in config.operators + OdinId(identity)
 
     private suspend fun safeReply(conversation: Uuid, text: String, files: List<OutFile> = emptyList()) {
         try {
@@ -360,7 +378,10 @@ class WatchProcessor(
     }
 
     private suspend fun runJobCommand(runner: JobRunner, msg: ChatMsg, command: Pair<String, Int?>, results: MutableMap<Uuid, String>) {
-        val text = if (command.first == "status") runner.status() else runner.cancel(command.second)
+        val text = if (command.first == "status") runner.status() else runner.cancel(command.second) { jobConversation ->
+            jobConversation == msg.conversationId ||
+                (isListedOperator(msg) && config.allowlist.info(jobConversation)?.members?.contains(msg.sender ?: OdinId(identity)) == true)
+        }
         safeReply(msg.conversationId, text)
         store.add(msg.id)
         finish(msg.id, "job ${command.first}", results)
@@ -376,7 +397,7 @@ class WatchProcessor(
     ) {
         var attachments = emptyList<Attachment>()
         val prompt = try {
-            val past = operatorHistory(history(conversation), config, self)
+            val past = operatorHistory(history(conversation), config, self, conversation)
             attachments = loadAttachments(sorted, past)
             buildPrompt(sorted, past, header = header(conversation), context = context(conversation), attachments = attachments)
         } catch (e: CancellationException) {
@@ -452,6 +473,7 @@ class WatchProcessor(
             config, self, config.allowlist.info(conversation)?.members,
             conversation == ChatProtocol.ConversationWithYourselfId,
             sorted.map { it.sender ?: self }.toSet(),
+            conversation,
         )
         fun done(result: String) = sorted.forEach { store.add(it.id); finish(it.id, result, results) }
         if (tier == Tier.OPERATOR && jobs != null) return submitJob(jobs, sorted, conversation, authors, self, ::done)
@@ -466,7 +488,7 @@ class WatchProcessor(
             if (!limiter.allows(authors)) return done("skip: rate limited")
             limiter.record(authors)
             val outcome = try {
-                val past = fetched.getOrThrow().let { if (tier == Tier.OPERATOR) operatorHistory(it, config, self) else it }
+                val past = fetched.getOrThrow().let { if (tier == Tier.OPERATOR) operatorHistory(it, config, self, conversation) else it }
                 val attachments = loadAttachments(sorted, past)
                 brain(buildPrompt(sorted, past, awayMode = away.on && config.allowlist.delegate && conversation != ChatProtocol.ConversationWithYourselfId, header = header(conversation), context = context(conversation), attachments = attachments), tier, attachments)
             } catch (e: CancellationException) {
@@ -562,15 +584,16 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         ?: System.currentTimeMillis()
     val timings = PollTimings()
     val previews = if (config.linkPreviews) serverLinkPreviews(session) else null
+    val jobs = config.operatorBrain?.let {
+        JobRunner(CoroutineScope(SupervisorJob(coroutineContext.job)), RunLimiter(File(dir, "jobs.txt"), Int.MAX_VALUE, config.maxJobsPerDay), ::log, prefix = config.replyPrefix, journal = File(dir, "jobs-pending.txt"))
+    }
     val processor = WatchProcessor(
         config = config,
         identity = session.identity.toString(),
         store = store,
         limiter = RunLimiter(File(dir, "runs.txt"), config.maxRunsPerHour, config.maxRunsPerDay),
         away = AwayFlag(File(dir, "away")),
-        jobs = config.operatorBrain?.let {
-            JobRunner(CoroutineScope(SupervisorJob(coroutineContext.job)), RunLimiter(File(dir, "jobs.txt"), Int.MAX_VALUE, config.maxJobsPerDay), ::log, prefix = config.replyPrefix)
-        },
+        jobs = jobs,
         history = { timings.time("history") { fetchMessages(session, it, HISTORY_LIMIT + 1) } },
         loader = AttachmentLoader(sessionFetcher(session), config.transcribe?.let(::shellTranscriber), ::log),
         brain = { prompt, tier, attachments ->
@@ -603,7 +626,9 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         runBlocking { job.join() }
         log("stopped")
     })
+    runCatching { refreshAllowlist(session, config.allowlist) }.onFailure { log("startup discovery error: ${it.message}") }
     tierBanner(config).forEach(::log)
+    jobs?.recoverDropped { conversation, text -> sendToConversation(session, config.allowlist, conversation, text) }
     log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} readReceipts=${config.sendsReceipts} transport=poll/${POLL_INTERVAL_MS}ms lastSeen=$lastSeen")
     var poll = 0
     try {
@@ -644,7 +669,7 @@ suspend fun brainTest(profile: String, files: List<String> = emptyList(), latest
     val attachments = ArrayList<Attachment>()
     files.forEach { path ->
         val f = File(path)
-        val type = if (f.extension.lowercase() in setOf("jpg", "jpeg")) "image/jpeg" else if (f.extension.lowercase() == "png") "image/png" else "text/plain"
+        val type = when (f.extension.lowercase()) { "jpg", "jpeg" -> "image/jpeg"; "png" -> "image/png"; "pdf" -> "application/pdf"; else -> "text/plain" }
         val bytes = f.readBytes()
         attachments += Attachment(trigger.id, false, "${attachments.size + 1}-${f.name}", type, bytes.size.toLong(), bytes, if (type == "text/plain") bytes.decodeToString().truncateToCodePoints(INLINE_TEXT_CODEPOINTS) else null)
     }

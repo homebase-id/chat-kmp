@@ -1,0 +1,16 @@
+# ~/.config/systemd/user/chat-agent@.service   (instance = profile: chat-agent@bot.service)
+[Unit]
+Description=Homebase chat agent (profile %i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=%h/chat-agent/bin/chat-agent watch --profile %i
+Environment=JAVA_HOME=/usr/lib/jvm/java-21-openjdk
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+UMask=0077
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -7,7 +7,7 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.runBlocking
 
 private const val USAGE =
-    "usage: chat-agent login --profile <p> [--identity <domain>] | read --profile <p> [--conversation <id>] [--limit <n>] | conversations --profile <p> | send --profile <p> [--conversation <id>] [--file <path>] [text] | watch --profile <p> | mcp --profile <p> [--conversation <id>] [--read-only] | brain-test --profile <p>  (global: --verbose)"
+    "usage: chat-agent login --profile <p> [--identity <domain>] | read --profile <p> [--conversation <id>] [--limit <n>] | conversations --profile <p> | send --profile <p> [--conversation <id>] [--file <path>] [text] | watch --profile <p> | mcp --profile <p> [--conversation <id>] [--read-only] | brain-test --profile <p>  (global: --verbose, --version)"
 
 private val VALUE_FLAGS = setOf("--profile", "--conversation", "--limit", "--identity", "--attach", "--file")
 private const val VERBOSE = "--verbose"
@@ -15,6 +15,10 @@ private const val READ_ONLY = "--read-only"
 private const val ATTACH_LATEST = "--attach-latest-image"
 
 fun main(args: Array<String>) {
+    if (args.contains("--version")) {
+        println(versionLine())
+        return
+    }
     val options = mutableMapOf<String, String>()
     val positional = mutableListOf<String>()
     var verbose = false

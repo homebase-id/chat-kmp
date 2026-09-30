@@ -31,6 +31,7 @@ class AgentConfig(
     val persona: String? = null,
     val operators: Set<OdinId> = emptySet(),
     val operatorBrain: String? = null,
+    val operatorRooms: Set<Uuid> = emptySet(),
     val operatorCwd: String? = null,
     val operatorTimeoutMs: Long = DEFAULT_OPERATOR_TIMEOUT_MS,
     val maxJobsPerDay: Int = DEFAULT_MAX_JOBS_PER_DAY,
@@ -47,8 +48,14 @@ class AgentConfig(
 enum class Tier { LOCKED, OPERATOR }
 
 // senders must be server-set (FileMetadata.senderOdinId, or self when null), never originalAuthor.
-fun decideTier(config: AgentConfig, self: OdinId, members: List<OdinId>?, noteToSelf: Boolean, senders: Set<OdinId>): Tier {
-    if (config.operatorBrain == null || config.operators.isEmpty()) return Tier.LOCKED
+fun decideTier(config: AgentConfig, self: OdinId, members: List<OdinId>?, noteToSelf: Boolean, senders: Set<OdinId>, conversation: Uuid? = null): Tier {
+    if (config.operatorBrain == null) return Tier.LOCKED
+    if (conversation != null && conversation in config.operatorRooms) {
+        if (members == null) return Tier.LOCKED
+        val room = members.toSet() + self
+        return if (senders.all { it in room }) Tier.OPERATOR else Tier.LOCKED
+    }
+    if (config.operators.isEmpty()) return Tier.LOCKED
     val trusted = config.operators + self
     if (!senders.all { it in trusted }) return Tier.LOCKED
     if (noteToSelf) return Tier.OPERATOR
@@ -56,7 +63,14 @@ fun decideTier(config: AgentConfig, self: OdinId, members: List<OdinId>?, noteTo
     return if (others.isNotEmpty() && others.all { it in config.operators }) Tier.OPERATOR else Tier.LOCKED
 }
 
-fun operatorHistory(history: List<ChatMsg>, config: AgentConfig, self: OdinId): List<ChatMsg> {
+fun isOperatorSender(config: AgentConfig, self: OdinId, sender: OdinId?, conversation: Uuid, members: List<OdinId>?): Boolean {
+    val who = sender ?: self
+    if (who in config.operators + self) return true
+    return conversation in config.operatorRooms && members?.contains(who) == true
+}
+
+fun operatorHistory(history: List<ChatMsg>, config: AgentConfig, self: OdinId, conversation: Uuid? = null): List<ChatMsg> {
+    if (conversation != null && conversation in config.operatorRooms) return history
     val trusted = config.operators + self
     return history.filter { (it.sender ?: self) in trusted }
 }
@@ -67,6 +81,14 @@ fun tierBanner(config: AgentConfig): List<String> = buildList {
         add("tiers: locked only (no operatorBrain)")
     } else {
         add("WARNING: operator tier active: operators=${config.operators.joinToString(",")} cwd=${config.operatorCwd ?: "(inherited)"}; operatorBrain runs as background jobs (timeout=${config.operatorTimeoutMs / 60_000}m, maxJobsPerDay=${config.maxJobsPerDay}) with full env in operator rooms")
+        if (config.operatorRooms.isNotEmpty()) {
+            config.operatorRooms.forEach { room ->
+                val members = config.allowlist.info(room)?.members
+                val listed = if (room in config.allowlist.conversationIds) "" else " NOT on allowConversations, ignored"
+                add("operator room $room (${config.allowlist.title(room) ?: "not discovered"}): ${members?.size ?: "?"} members${members?.let { ": " + it.joinToString(",") }.orEmpty()}$listed")
+            }
+            add("WARNING: group membership grants machine access: every current member of an operator room can run operatorBrain here (full env, unfiltered history); membership is re-read each discovery")
+        }
     }
 }
 
@@ -99,8 +121,11 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         persona = persona(values),
         operators = list("operators")?.map { OdinId(it) }?.toSet().orEmpty(),
         operatorBrain = values["operatorBrain"]?.takeIf { it.isNotEmpty() },
+        operatorRooms = list("operatorRooms")?.map { Uuid.parse(it) }?.toSet().orEmpty(),
         operatorCwd = values["operatorCwd"]?.takeIf { it.isNotEmpty() }?.let { it.replaceFirst(Regex("^~"), System.getProperty("user.home")) },
-        operatorTimeoutMs = values["operatorTimeout"]?.let(::parseDurationMs) ?: DEFAULT_OPERATOR_TIMEOUT_MS,
+        operatorTimeoutMs = values["operatorTimeout"]?.takeIf { it.isNotEmpty() }?.let {
+            parseDurationMs(it) ?: throw IllegalArgumentException("invalid operatorTimeout '$it': use e.g. 90s, 30m, 2h")
+        } ?: DEFAULT_OPERATOR_TIMEOUT_MS,
         maxJobsPerDay = values["maxJobsPerDay"]?.toIntOrNull() ?: DEFAULT_MAX_JOBS_PER_DAY,
         transcribe = values["transcribe"]?.takeIf { it.isNotEmpty() },
         linkPreviews = values["linkPreviews"]?.equals("true", ignoreCase = true) ?: bot,

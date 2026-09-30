@@ -17,7 +17,9 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import javax.imageio.IIOImage
 import javax.imageio.ImageIO
 import javax.imageio.ImageWriteParam
@@ -67,16 +69,29 @@ fun resolveInside(root: File, relative: String): File {
     return candidate.toFile()
 }
 
-fun loadOutFile(file: File, maxBytes: Long = MAX_OUT_BYTES): OutFile {
-    val size = file.length()
-    require(size > 0) { "${file.name} is empty" }
-    require(size <= maxBytes) { "${file.name} is ${formatSize(size)}, limit is ${formatSize(maxBytes)}" }
-    val bytes = file.inputStream().use { it.readNBytes(maxBytes.toInt() + 1) }
-    require(bytes.size <= maxBytes) { "${file.name} is over the size limit" }
-    return OutFile(file.name, bytes)
+private fun readCapped(open: () -> InputStream, name: String, maxBytes: Long): OutFile {
+    val bytes = open().use { it.readNBytes(maxBytes.toInt() + 1) }
+    require(bytes.isNotEmpty()) { "$name is empty" }
+    require(bytes.size <= maxBytes) { "$name is over the size limit of ${formatSize(maxBytes)}" }
+    return OutFile(name, bytes)
 }
 
-fun loadInside(root: File, relative: String): OutFile = loadOutFile(resolveInside(root, relative))
+fun loadOutFile(file: File, maxBytes: Long = MAX_OUT_BYTES): OutFile = readCapped({ file.inputStream() }, file.name, maxBytes)
+
+// Opened once, no-follow, and the path is re-resolved after the open: a swap between check and open is caught; only swap-and-restore inside that window remains.
+fun loadInside(root: File, relative: String, maxBytes: Long = MAX_OUT_BYTES): OutFile {
+    val path = resolveInside(root, relative).toPath()
+    return readCapped({
+        val input = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)
+        try {
+            require(path.toRealPath() == path) { "$relative changed while it was being opened" }
+        } catch (t: Throwable) {
+            input.close()
+            throw if (t is java.io.IOException) IllegalArgumentException("$relative changed while it was being opened") else t
+        }
+        input
+    }, path.fileName.toString(), maxBytes)
+}
 
 class Attached(val text: String, val files: List<OutFile>, val skipped: List<String>)
 
@@ -178,13 +193,83 @@ fun encodeThumb(src: BufferedImage, maxDimension: Int, quality: Int, maxBytes: I
     return encodePng(img).takeIf { it.size <= maxBytes }?.let { EncodedThumb(img.width, img.height, PNG, it) }
 }
 
+const val STANDARD_IMAGE_DIMENSION = 1600
+
+private fun u16(b: ByteArray, o: Int) = ((b[o].toInt() and 0xFF) shl 8) or (b[o + 1].toInt() and 0xFF)
+
+fun exifOrientation(jpeg: ByteArray): Int {
+    if (jpeg.size < 4 || u16(jpeg, 0) != 0xFFD8) return 1
+    var i = 2
+    while (i + 4 <= jpeg.size && jpeg[i] == 0xFF.toByte()) {
+        val marker = jpeg[i + 1].toInt() and 0xFF
+        if (marker == 0xDA || marker == 0xD9) return 1
+        val len = u16(jpeg, i + 2)
+        val end = minOf(i + 2 + len, jpeg.size)
+        if (marker == 0xE1 && end - i >= 18 && String(jpeg, i + 4, 6, Charsets.ISO_8859_1) == "Exif\u0000\u0000") {
+            val tiff = i + 10
+            val little = jpeg[tiff] == 'I'.code.toByte()
+            fun r16(o: Int) = if (little) (jpeg[o].toInt() and 0xFF) or ((jpeg[o + 1].toInt() and 0xFF) shl 8) else u16(jpeg, o)
+            fun r32(o: Int) = if (little) r16(o) or (r16(o + 2) shl 16) else (r16(o) shl 16) or r16(o + 2)
+            if (tiff + 8 > end) return 1
+            val ifd = tiff + r32(tiff + 4)
+            if (ifd < tiff || ifd + 2 > end) return 1
+            for (k in 0 until r16(ifd)) {
+                val entry = ifd + 2 + 12 * k
+                if (entry + 12 > end) break
+                if (r16(entry) == 0x0112) return r16(entry + 8).takeIf { it in 1..8 } ?: 1
+            }
+        }
+        i += 2 + len
+    }
+    return 1
+}
+
+fun orient(src: BufferedImage, orientation: Int): BufferedImage {
+    if (orientation !in 2..8) return src
+    val w = src.width
+    val h = src.height
+    val swap = orientation >= 5
+    val out = BufferedImage(if (swap) h else w, if (swap) w else h, if (src.colorModel.hasAlpha()) BufferedImage.TYPE_INT_ARGB else BufferedImage.TYPE_INT_RGB)
+    for (dy in 0 until out.height) for (dx in 0 until out.width) {
+        val (sx, sy) = when (orientation) {
+            2 -> (w - 1 - dx) to dy
+            3 -> (w - 1 - dx) to (h - 1 - dy)
+            4 -> dx to (h - 1 - dy)
+            5 -> dy to dx
+            6 -> dy to (h - 1 - dx)
+            7 -> (w - 1 - dy) to (h - 1 - dx)
+            else -> (w - 1 - dy) to dx
+        }
+        out.setRGB(dx, dy, src.getRGB(sx, sy))
+    }
+    return out
+}
+
+class PreparedImage(val bytes: ByteArray, val decoded: DecodedImage)
+
+// Mirrors the app's STANDARD variant (long side <= 1600) and bakes EXIF rotation; images already small and upright go out byte-for-byte.
+fun prepareImage(bytes: ByteArray, decoded: DecodedImage): PreparedImage {
+    val unchanged = PreparedImage(bytes, decoded)
+    if (decoded.contentType == GIF) return unchanged
+    val orientation = if (decoded.contentType == JPEG) exifOrientation(bytes) else 1
+    val big = maxOf(decoded.image.width, decoded.image.height) > STANDARD_IMAGE_DIMENSION
+    if (orientation == 1 && !big) return unchanged
+    val alpha = decoded.image.colorModel.hasAlpha()
+    var image = if (big) scaled(decoded.image, STANDARD_IMAGE_DIMENSION, alpha) else decoded.image
+    image = orient(image, orientation)
+    val encoded = if (decoded.contentType == PNG) encodePng(image) else encodeJpeg(image, 0.85f)
+    if (orientation == 1 && encoded.size >= bytes.size) return unchanged
+    return PreparedImage(encoded, DecodedImage(image, decoded.contentType))
+}
+
+fun tinyThumb(src: BufferedImage): EmbeddedThumb? =
+    encodeThumb(src, TINY_DIMENSION, 76, TINY_MAX_BYTES)?.let { EmbeddedThumb(it.width, it.height, it.contentType, Base64.encode(it.bytes)) }
+
 class ImageThumbs(val preview: EmbeddedThumb?, val thumbnails: List<ThumbnailFile>)
 
 fun imageThumbs(decoded: DecodedImage, payloadKey: String): ImageThumbs {
     val src = decoded.image
-    val tiny = encodeThumb(src, TINY_DIMENSION, 76, TINY_MAX_BYTES)?.let {
-        EmbeddedThumb(it.width, it.height, it.contentType, Base64.encode(it.bytes))
-    }
+    val tiny = tinyThumb(src)
     if (decoded.contentType == GIF) return ImageThumbs(tiny, emptyList())
     val plan = getRevisedThumbs(ImageSize(src.width, src.height), standardThumbSizes)
     val thumbs = plan.mapNotNull { instr ->
@@ -203,15 +288,16 @@ class StagedBundle(val bundle: PayloadBundle, private val dir: File) {
     }
 }
 
-// Not built here (the app does): 1600px STANDARD re-encode of the primary image, webp thumbs, PDF page previews, EXIF-orientation baking.
+// Not built here (the app does): webp thumbs, PDF page previews.
 suspend fun buildOutgoingBundle(files: List<OutFile>, fileOps: FileOperationsProvider): StagedBundle {
     val dir = Files.createTempDirectory("chat-agent-out").toFile()
     try {
         val parts = files.mapIndexed { index, file ->
             val key = payloadKeyFor(index)
             val safeName = file.name.replace(Regex("[\\p{Cntrl}/\\\\]+"), "_").truncateToCodePoints(OUT_NAME_CODEPOINTS)
-            val staged = File(dir, "$index.bin").also { it.writeBytes(file.bytes) }
-            val decoded = decodeImage(file.bytes)
+            val prepared = decodeImage(file.bytes)?.let { prepareImage(file.bytes, it) }
+            val staged = File(dir, "$index.bin").also { it.writeBytes(prepared?.bytes ?: file.bytes) }
+            val decoded = prepared?.decoded
             if (decoded != null) {
                 val thumbs = imageThumbs(decoded, key)
                 PayloadBundle(

@@ -5,6 +5,7 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import java.io.File
 
 class JobRunner(
     private val scope: CoroutineScope,
@@ -12,8 +13,9 @@ class JobRunner(
     private val log: (String) -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
     private val prefix: String = BOT_PREFIX,
+    private val journal: File? = null,
 ) {
-    private class Job(val id: Int, val authors: Set<String>, val work: suspend () -> BrainOutcome, val deliver: suspend (String) -> Unit) {
+    private class Job(val id: Int, val conversation: Uuid, val authors: Set<String>, val work: suspend () -> BrainOutcome, val deliver: suspend (String) -> Unit) {
         var ready = false
         var startedAt = 0L
         var coroutine: kotlinx.coroutines.Job? = null
@@ -36,9 +38,10 @@ class JobRunner(
                 null to tagged(prefix, "daily job limit reached")
             } else {
                 limiter.record(authors)
-                val job = Job(nextId++, authors, work, deliver)
+                val job = Job(nextId++, conversation, authors, work, deliver)
                 val ahead = queue.lastOrNull() ?: running
                 queue.addLast(job)
+                writeJournal()
                 job to (if (ahead == null) tagged(prefix, "on it (job ${job.id})") else tagged(prefix, "queued behind job ${ahead.id} (job ${job.id})"))
             }
         }
@@ -51,11 +54,35 @@ class JobRunner(
         return ack
     }
 
+    suspend fun recoverDropped(announce: suspend (Uuid, String) -> Unit) {
+        val dropped = journal?.takeIf { it.exists() }?.readLines().orEmpty().mapNotNull {
+            val (id, conversation) = it.split('\t').takeIf { p -> p.size == 2 } ?: return@mapNotNull null
+            runCatching { conversation.let(Uuid::parse) to id }.getOrNull()
+        }
+        journal?.delete()
+        for ((conversation, id) in dropped) {
+            try {
+                announce(conversation, tagged(prefix, "restarted: job $id was dropped, please send the request again"))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log("dropped-job notice error: ${e.message}")
+            }
+        }
+    }
+
+    private fun writeJournal() {
+        val f = journal ?: return
+        val live = listOfNotNull(running) + queue
+        if (live.isEmpty()) f.delete() else f.writeText(live.joinToString("\n", postfix = "\n") { "${it.id}\t${it.conversation}" })
+    }
+
     private fun startNext() {
         if (running != null) return
         val job = queue.firstOrNull()?.takeIf { it.ready } ?: return
         queue.removeFirst()
         running = job
+        writeJournal()
         job.startedAt = now()
         job.coroutine = scope.launch {
             val text = try {
@@ -63,7 +90,7 @@ class JobRunner(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                tagged(prefix, "job ${job.id} failed: ${e.message}")
+                tagged(prefix, "job ${job.id} failed: ${sanitizeReply(e.message ?: e.toString()).oneLine().truncateToCodePoints(FAILURE_CODEPOINTS)}")
             }
             try {
                 job.deliver(text)
@@ -74,7 +101,7 @@ class JobRunner(
             }
         }.also {
             it.invokeOnCompletion {
-                synchronized(lock) { if (running === job) running = null; startNext() }
+                synchronized(lock) { if (running === job) running = null; writeJournal(); startNext() }
             }
         }
     }
@@ -86,16 +113,23 @@ class JobRunner(
         tagged(prefix, "job ${r.id} running for ${minutes}m$waiting")
     }
 
-    fun cancel(id: Int?): String = synchronized(lock) {
+    fun cancel(id: Int?, mayCancel: (Uuid) -> Boolean = { true }): String = synchronized(lock) {
         val target = id ?: running?.id ?: queue.firstOrNull()?.id ?: return tagged(prefix, "no jobs")
-        val r = running
-        if (r != null && r.id == target) {
-            r.coroutine?.cancel()
-            return tagged(prefix, "cancelled job $target")
+        val job = listOfNotNull(running).plus(queue).firstOrNull { it.id == target } ?: return tagged(prefix, "no such job $target")
+        if (!mayCancel(job.conversation)) return tagged(prefix, "job $target was started in another conversation")
+        if (running === job) {
+            job.coroutine?.cancel()
+        } else {
+            queue.remove(job)
+            writeJournal()
         }
-        if (queue.removeAll { it.id == target }) tagged(prefix, "cancelled job $target") else tagged(prefix, "no such job $target")
+        tagged(prefix, "cancelled job $target")
     }
 }
+
+private const val FAILURE_CODEPOINTS = 120
+
+private fun String.oneLine() = replace(Regex("\\s+"), " ").trim()
 
 fun tailTruncate(text: String, maxCodePoints: Int): String {
     if (text.codePointCount(0, text.length) <= maxCodePoints) return text
@@ -104,7 +138,7 @@ fun tailTruncate(text: String, maxCodePoints: Int): String {
 }
 
 fun jobText(id: Int, outcome: BrainOutcome, prefix: String = BOT_PREFIX): String = when (outcome) {
-    is BrainOutcome.Failed -> tagged(prefix, "job $id failed: ${outcome.reason.truncateToCodePoints(120)}")
+    is BrainOutcome.Failed -> tagged(prefix, "job $id failed: ${sanitizeReply(outcome.reason).oneLine().truncateToCodePoints(FAILURE_CODEPOINTS)}")
     is BrainOutcome.Output -> sanitizeReply(outcome.stdout).let {
         if (it.isEmpty() || it == NO_REPLY) tagged(prefix, "job $id done (no output)") else tagged(prefix, tailTruncate(it, REPLY_CODEPOINTS))
     }

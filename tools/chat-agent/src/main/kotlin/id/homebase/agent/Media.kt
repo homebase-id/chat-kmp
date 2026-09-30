@@ -37,6 +37,8 @@ import kotlinx.serialization.json.put
 const val MAX_ATTACHMENTS = 4
 const val IMAGE_MAX_BYTES = 3_500_000L
 const val FILE_MAX_BYTES = 2_000_000L
+const val PDF_MAX_BYTES = 3_500_000L
+const val PDF_MAX_PAGES = 20
 const val VOICE_MAX_BYTES = 10_000_000L
 const val INLINE_TEXT_CODEPOINTS = 8000
 private const val CIPHER_PADDING = 16L
@@ -119,7 +121,17 @@ class Attachment(
     val note: String? = null,
 ) {
     val viewableImage get() = bytes != null && contentType in VIEWABLE_IMAGES
+    val viewablePdf get() = bytes != null && contentType == PDF_TYPE && note == null
+    val modelBlock get() = viewableImage || viewablePdf
 }
+
+private const val PDF_TYPE = "application/pdf"
+private val PDF_PAGE_OBJECT = Regex("/Type\\s*/Page(?![a-zA-Z])")
+
+fun looksLikePdf(bytes: ByteArray) = bytes.size > 5 && String(bytes, 0, 5, Charsets.ISO_8859_1) == "%PDF-"
+
+// Counts uncompressed page objects; PDFs with object streams count 0 and are let through (size cap still applies).
+fun pdfPageCount(bytes: ByteArray): Int = PDF_PAGE_OBJECT.findAll(String(bytes, Charsets.ISO_8859_1)).count()
 
 fun interface PayloadFetcher {
     suspend fun fetch(fileId: Uuid, key: String, maxBytes: Long): ByteArray?
@@ -205,6 +217,7 @@ class AttachmentLoader(
         val fileName = safeName("$index-${if ('.' in rawName) rawName else "$rawName.${extensionFor(type)}"}")
         val size = p.bytesWritten ?: 0L
         val cap = when {
+            type == PDF_TYPE -> PDF_MAX_BYTES
             p.isImage() -> IMAGE_MAX_BYTES
             p.isAudio() -> VOICE_MAX_BYTES
             else -> FILE_MAX_BYTES
@@ -227,7 +240,13 @@ class AttachmentLoader(
             return Attachment(msgId, parent, fileName, type, bytes.size.toLong(), text = transcript, note = if (transcript == null) "transcription failed" else "voice transcript")
         }
         val text = if (isTextLike(type, rawName)) bytes.decodeToString().truncateToCodePoints(INLINE_TEXT_CODEPOINTS) else null
-        val note = if (p.isImage() && type !in VIEWABLE_IMAGES) "image format not viewable" else null
+        val pages = if (type == PDF_TYPE) pdfPageCount(bytes) else 0
+        val note = when {
+            p.isImage() && type !in VIEWABLE_IMAGES -> "image format not viewable"
+            type == PDF_TYPE && !looksLikePdf(bytes) -> "not a valid PDF"
+            pages > PDF_MAX_PAGES -> "not shown to the model: $pages pages, limit $PDF_MAX_PAGES"
+            else -> null
+        }
         return Attachment(msgId, parent, fileName, type, bytes.size.toLong(), bytes = bytes, text = text, note = note)
     }
 }
@@ -244,9 +263,9 @@ fun streamJsonInput(prompt: String, attachments: List<Attachment>): String {
         put("message", buildJsonObject {
             put("role", "user")
             put("content", buildJsonArray {
-                attachments.filter { it.viewableImage }.forEach { a ->
+                attachments.filter { it.modelBlock }.forEach { a ->
                     add(buildJsonObject {
-                        put("type", "image")
+                        put("type", if (a.viewablePdf) "document" else "image")
                         put("source", buildJsonObject {
                             put("type", "base64")
                             put("media_type", a.contentType)

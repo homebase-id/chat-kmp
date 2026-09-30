@@ -71,7 +71,7 @@ class MediaTest {
         assertTrue(loaded.all { it.viewableImage })
 
         val big = p("pfl0000009", "image/png", descriptor = "", size = IMAGE_MAX_BYTES + 1)
-        val bigFile = p("pfl0000008", "application/pdf", "a.pdf", size = FILE_MAX_BYTES + 1)
+        val bigFile = p("pfl0000008", "application/pdf", "a.pdf", size = PDF_MAX_BYTES + 1)
         val f2 = Fetch(emptyMap())
         val skipped = AttachmentLoader(f2).load(listOf(msg(payloads = listOf(big, bigFile)) to false))
         assertEquals(2, skipped.size)

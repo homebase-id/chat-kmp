@@ -20,7 +20,6 @@ import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.video.VideoPayloadProcessor
-import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
 import id.homebase.upload.PayloadBundleEncryptionService
 import java.io.File
 import java.nio.file.Files
@@ -109,12 +108,7 @@ suspend fun outgoingBundle(text: String, files: List<OutFile>, previews: LinkPre
         null
     } ?: return null
     val dir = Files.createTempDirectory("chat-agent-out").toFile()
-    val bundle = try {
-        LinkPreviewPayloadBuilder.build(preview, fileOps)
-    } catch (e: Throwable) {
-        if (e is kotlinx.coroutines.CancellationException) throw e
-        LinkPreviewPayloadBuilder.build(preview.copy(imageUrl = null, imageWidth = null, imageHeight = null), fileOps)
-    }
+    val bundle = buildLinkPreviewBundle(preview, fileOps)
     return StagedBundle(bundle, dir)
 }
 

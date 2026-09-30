@@ -28,6 +28,20 @@ object Profile {
         }
     }
 
-    fun dataDir(name: String): File =
-        File(System.getProperty("user.home"), "Library/Application Support/HomebaseChatAgent/$name")
+    fun dataDir(
+        name: String,
+        osName: String = System.getProperty("os.name"),
+        home: String = System.getProperty("user.home"),
+        env: Map<String, String> = System.getenv(),
+    ): File = File(baseDir(osName, home, env), name)
+
+    fun baseDir(osName: String, home: String, env: Map<String, String>): File {
+        env["CHAT_AGENT_HOME"]?.takeIf { it.isNotBlank() }?.let { return File(it) }
+        val os = osName.lowercase()
+        return when {
+            "mac" in os -> File(home, "Library/Application Support/HomebaseChatAgent")
+            "win" in os -> File(env["APPDATA"]?.takeIf { it.isNotBlank() } ?: File(home, "AppData/Roaming").path, "HomebaseChatAgent")
+            else -> File(env["XDG_DATA_HOME"]?.takeIf { it.isNotBlank() } ?: File(home, ".local/share").path, "homebase-chat-agent")
+        }
+    }
 }

@@ -9,8 +9,19 @@ summoned (nickname, or its own identity for a bot). Runs a "brain" command per t
     ./gradlew :chat-agent:installDist
     tools/chat-agent/build/install/chat-agent/bin/chat-agent <command> ...
 
-Data lives in `~/Library/Application Support/HomebaseChatAgent/<profile>/`
-(credentials, `agent.conf`, `processed.txt`, `runs.txt`, `logs/agent.log`).
+`chat-agent --version` prints the git sha and build date.
+
+Data lives in `<base>/<profile>/` (credentials, `agent.conf`, `processed.txt`, `runs.txt`, `logs/agent.log`):
+
+| OS | base |
+|---|---|
+| macOS | `~/Library/Application Support/HomebaseChatAgent` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/homebase-chat-agent` |
+| Windows | `%APPDATA%\HomebaseChatAgent` |
+| any | `$CHAT_AGENT_HOME` overrides the base |
+
+Credentials are AES-GCM encrypted with a key stored next to them (fixed keystore password, nothing derived
+from the machine), so copying a profile dir to another machine works; do that only over a channel you trust.
 
 ## Login
 
@@ -55,8 +66,9 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | brain | shell command; prompt on stdin, stdout is the reply. Default is the locked claude (no tools, no MCP, no settings) | locked `claude -p --model haiku ...` |
 | operators | comma list of odinIds trusted for the operator tier | none |
 | operatorBrain | any shell command for operator rooms (full env); unset = no privileged tier | none |
+| operatorRooms | comma list of conversation uuids where EVERY current member gets the operator tier (membership re-read on each discovery; history is unfiltered there). Also list the room in `allowConversations` | none |
 | operatorCwd | working dir of operatorBrain | inherited |
-| operatorTimeout | kill an operator job (whole process tree) after this long: `90s`, `30m`, `2h` | 30m |
+| operatorTimeout | kill an operator job (whole process group) after this long: `90s`, `30m`, `2h`; anything else is a startup error | 30m |
 | maxJobsPerDay | operator jobs per day (separate from `maxRunsPerDay`) | 20 |
 | bot | true for a bot identity | false |
 | owner | odinId allowed to summon the bot | none |
@@ -68,7 +80,17 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | maxRunsPerDay | brain runs per day, total | 100 |
 | readReceipts | true/false; bot only (ignored for `me`) | true for bot |
 | linkPreviews | true/false; preview card for the first URL in a reply, built by your identity server (`/links/extract`, as the app does); this machine never fetches the URL; failure sends without a preview | true for bot |
+| transcribe | command run as `<cmd> "<audio file>"`, transcript on stdout, 60 s limit; unset = voice notes stay a label (see Voice notes) | none |
 | mcpFilesDir | directory the MCP `send_file` tool may send from (no default: tool refuses) | none |
+
+A custom `brain` / `operatorBrain` inherits `HOME` (operator tier: the full environment), so tools such as `claude`, `gh` and
+`git` find their logins under that user's home; the locked default also keeps `HOME` for the claude login.
+
+Attachments: images (PNG/JPEG/GIF/WebP, <= 3.5 MB) and PDFs (<= 3.5 MB, <= 20 pages when the page objects are countable)
+reach the locked default brain as image / `document` blocks (`claude -p --input-format stream-json`, still `--tools ""`);
+text-like files (<= 2 MB) are inlined; other files and voice notes are labels. Custom brains get the files as paths in
+`$CHAT_AGENT_ATTACHMENTS`. Outgoing images longer than 1600 px are scaled to 1600 px and EXIF rotation is baked in
+(smaller upright images go out byte for byte).
 
 Brain output `NO_REPLY` or empty means stay silent. Over a cap: no run, no reply,
 `skip: rate limited` in the log. Triggers from one conversation in one poll share one run.
@@ -88,6 +110,51 @@ A failed run is retried once on the next poll, then `failed: ...` is sent (prefi
 See `mcp-config.example.json`; for Claude Code:
 
     claude mcp add chat-agent -- /path/to/chat-agent/bin/chat-agent mcp --profile me
+
+## Voice notes (speech to text)
+
+The apps record voice notes as MPEG-4/AAC `.m4a` (Android `MediaRecorder` 48 kHz mono, iOS `AVAudioRecorder` 44.1 kHz
+stereo; `AndroidAudioRecorder.kt:26-30`, `IOSAudioRecorder.kt:33-35` in homebase-common). `scripts/transcribe.sh` converts
+with ffmpeg to 16 kHz mono wav and runs whisper.cpp (multilingual `base` model by default), printing the transcript.
+It refuses audio longer than 5 minutes and stops whisper after about 55 s; the agent then keeps the `[voice m:ss]` label.
+
+Arch / CachyOS:
+
+    sudo pacman -S ffmpeg
+    paru -S whisper.cpp                     # AUR (or build https://github.com/ggml-org/whisper.cpp); binary is whisper-cli
+    mkdir -p ~/.local/share/whisper.cpp
+    curl -L -o ~/.local/share/whisper.cpp/ggml-base.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
+    echo "transcribe=$HOME/chat-agent/scripts/transcribe.sh" >> ~/.local/share/homebase-chat-agent/bot/agent.conf
+
+`base` is about 140 MB and, on a laptop-class CPU, transcribes a minute of speech in roughly 5 to 15 seconds (estimate, not
+measured on the target). For better accuracy use `small` (about 470 MB, several times slower): download `ggml-small.bin` and set
+`WHISPER_MODEL=~/.local/share/whisper.cpp/ggml-small.bin` (systemd unit: add an `Environment=` line). Other knobs:
+`WHISPER_BIN`, `WHISPER_THREADS`, `WHISPER_LANG`, `TRANSCRIBE_MAX_SECONDS`. The transcript is untrusted chat text like any other.
+
+## Deploy (Linux box, systemd)
+
+1. Build the tarball on the dev machine (JDK 21): `./gradlew :chat-agent:distTar` produces
+   `tools/chat-agent/build/distributions/chat-agent.tar.gz` (about 30 MB; only a JDK 21 is needed on the box, no Gradle).
+   Alternative: `git pull` this branch on the box and run `./gradlew :chat-agent:installDist` there.
+2. Send it: `tailscale file cp tools/chat-agent/build/distributions/chat-agent.tar.gz <box>:` then on the box
+   `tailscale file get ~/Downloads && tar -xzf ~/Downloads/chat-agent.tar.gz -C ~` (gives `~/chat-agent/`).
+3. Install JDK 21: `sudo pacman -S jdk21-openjdk`. Check `~/chat-agent/bin/chat-agent --version`.
+4. Log in on the box (it has a screen; the browser opens there): `~/chat-agent/bin/chat-agent login --profile bot --identity <bot domain>`.
+5. Write `~/.local/share/homebase-chat-agent/bot/agent.conf` (keys above; target config in Security > Operator rooms).
+   Check with `chat-agent conversations --profile bot`, and once by hand with `chat-agent watch --profile bot`.
+6. Service: `mkdir -p ~/.config/systemd/user && cp ~/chat-agent/deploy/chat-agent@.service ~/.config/systemd/user/`, adjust `JAVA_HOME` and the
+   `ExecStart` path, then `systemctl --user daemon-reload && systemctl --user enable --now chat-agent@bot.service`;
+   `loginctl enable-linger $USER` so it starts at boot without a login. Logs: `journalctl --user -u chat-agent@bot -f`
+   and `<data dir>/bot/logs/agent.log`.
+
+## Operator machine checklist
+
+- A dedicated OS user with no sudo, no personal files and no other logins; run the service as that user only.
+- Log the tools the operator brain uses into that user once (`gh auth login` with a fine-grained token limited to the repos
+  the agent may touch, `claude` login, git identity), and nothing else.
+- Clone those repos under that user and set `operatorCwd=` to the directory.
+- Keep `operators=` and the members of every `operatorRooms` group to people you would give a shell to; keep `operatorTimeout` tight.
+- `chat-agent --version` after each update; profile dirs are 700, files 600.
 
 ## launchd
 
@@ -122,6 +189,22 @@ Every chat member is untrusted input to the brain. Two tiers:
   conversation is an operator (a DM, an all-operator group, or note-to-self). One non-operator member, or a
   non-operator trigger coalesced into the same run, keeps the whole run locked. History given to the operator
   brain contains only operator/own messages. Identity is the server-set `senderOdinId`, never `originalAuthor`.
+- Operator rooms (`operatorRooms=<conversation uuid,...>`, needs `operatorBrain`): in a listed room every current
+  member is an operator, with no `operators=` entry needed, and the history is passed unfiltered. The same person in any
+  other conversation is a normal locked-tier user, and conversations not in `allowConversations` are ignored (an explicit
+  list turns member mode off, so unknown DMs are not derived). `watch` prints each room with its member count at startup
+  plus `WARNING: group membership grants machine access`: whoever can add people to that group can run commands on this
+  machine. Removing someone from the group revokes access at the next discovery (about a minute).
+  Target config for a shared team machine:
+
+      bot=true
+      allowConversations=<team group id>,<owner DM id>
+      operators=<owner odinId>
+      operatorRooms=<team group id>
+      operatorBrain=claude -p --dangerously-skip-permissions
+      operatorCwd=~/work
+
+  Everyone in the team group gets the operator brain; the owner alone can use the DM; every other chat is ignored.
 - MCP: `mcp --conversation <id>` restricts every tool to one conversation; `--read-only` removes
   `send_message` and refuses sends. Use both when handing MCP to a brain.
 
@@ -133,12 +216,15 @@ With `operatorBrain` set, an operator-tier trigger does not run inline. It becom
 conversation gets the brain output (truncated to 1500 characters, keeping the END) or
 `🤖 job n failed: ...`. The job is killed with all its child processes after `operatorTimeout`.
 Operators (in a conversation that passes the allowlist) can send `@<nick> status` (running job, queue) and
-`@<nick> cancel` (or `@<nick> cancel <n>`); from anyone else these are ordinary chat text. Over
+`@<nick> cancel` (or `@<nick> cancel <n>`); from anyone else these are ordinary chat text. A job can be cancelled only from
+the conversation that started it (or by a listed `operators=` identity who is a member of that conversation). Over
 `maxJobsPerDay` the agent answers `🤖 daily job limit reached`. Jobs do not count against `maxRunsPerHour` /
-`maxRunsPerDay`. Queued jobs are lost on restart. `operatorBrain` is any command (prompt on stdin, reply on
+`maxRunsPerDay`. Queued and running jobs are not restarted after a restart of `watch`: each affected conversation gets
+`restarted: job n was dropped, please send the request again` (tracked in `jobs-pending.txt`). A failed job's message
+is one line, stripped of robot-emoji spoofing and cut at 120 characters. `operatorBrain` is any command (prompt on stdin, reply on
 stdout), e.g. `claude -p --dangerously-skip-permissions` or `codex exec -`.
 
-### Mini-PC setup for operator jobs
+### Mini-PC setup for operator jobs (see also Operator machine checklist)
 
 - Create a dedicated OS user (no sudo, no personal files, nothing else logged in) and run `chat-agent watch`
   as that user, e.g. as its launchd/systemd service. A job runs with that user's full environment.
