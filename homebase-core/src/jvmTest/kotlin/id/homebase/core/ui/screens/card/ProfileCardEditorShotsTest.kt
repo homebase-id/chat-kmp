@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.platform.LocalDensity
@@ -18,10 +19,10 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
@@ -67,23 +68,25 @@ class ProfileCardEditorShotsTest {
         previewOverrides = CardOverrides(palette = CardPalette(accent = "#F26B5B"), socials = "bar", type = CardTypeface(display = "newsreader")),
     )
 
-    private fun tab(label: String): ComposeUiTest.() -> Unit = {
-        // Scrolling the tab row animates; frames must run for it to finish.
-        mainClock.autoAdvance = true
-        onAllNodesWithText(label)[0].performScrollTo().performClick()
-        waitForIdle()
-        mainClock.autoAdvance = false
+    private fun tool(description: String): ComposeUiTest.() -> Unit = {
+        // A mouse click, then the pointer leaves, so no hover highlight is left on whatever ends up under it.
+        onNodeWithContentDescription(description).performMouseInput {
+            click()
+            moveTo(Offset(-PARK_PX, -PARK_PX))
+        }
+        mainClock.advanceTimeBy(SETTLE_MS)
     }
 
     private val shots = listOf(
         Shot("01-design-public", base),
         Shot("02-design-unsaved", base.copy(previewDesign = CardDesign.POSTER)),
         Shot("03-design-saving", base.copy(previewDesign = CardDesign.COLLAGE, isSavingDesign = true)),
+        Shot("03b-customise-saving", edited.copy(isSavingDesign = true), EditorStep.Customise),
         Shot("04-customise-accent", edited, EditorStep.Customise),
-        Shot("05-customise-heading-font", edited, EditorStep.Customise, act = tab("Heading font")),
-        Shot("06-customise-portrait", edited, EditorStep.Customise, act = tab("Portrait shape")),
-        Shot("07-customise-socials", edited, EditorStep.Customise, act = tab("Social links style")),
-        Shot("08-customise-order", edited, EditorStep.Customise, act = tab("Section order")),
+        Shot("05-customise-heading-font", edited, EditorStep.Customise, act = tool("Heading font")),
+        Shot("06-customise-portrait", edited, EditorStep.Customise, act = tool("Portrait shape")),
+        Shot("07-customise-socials", edited, EditorStep.Customise, act = tool("Social links style")),
+        Shot("08-customise-order", edited, EditorStep.Customise, act = tool("Section order")),
         Shot("09-customise-poster", base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise),
         Shot("10-customise-empty", base.copy(previewDesign = "zine"), EditorStep.Customise),
         Shot("11-circle-card", base.copy(cards = listOf(public, card(friends)), selectedAudience = friends)),
@@ -93,9 +96,14 @@ class ProfileCardEditorShotsTest {
         Shot("15-preview-card-failed", base.copy(cardFailed = true), preview = Preview.CardFailed),
         Shot("16-font-scale-design", base.copy(previewDesign = CardDesign.POSTER), fontScale = 1.6f),
         Shot("17-font-scale-customise", edited, EditorStep.Customise, fontScale = 1.6f),
-        Shot("18-rtl-customise", edited, EditorStep.Customise, rtl = true, act = tab("Portrait shape")),
+        Shot("17b-font-scale-fonts", edited, EditorStep.Customise, fontScale = 1.6f, act = tool("Heading font")),
+        Shot("18-rtl-customise", edited, EditorStep.Customise, rtl = true, act = tool("Portrait shape")),
+        Shot("18b-rtl-design", base, rtl = true),
         Shot("19-wide-design", base, widthDp = 900, heightDp = 820),
-        Shot("20-small-phone-customise", edited, EditorStep.Customise, widthDp = 360, heightDp = 640, act = tab("Section order")),
+        Shot("19b-wide-customise", edited, EditorStep.Customise, widthDp = 900, heightDp = 820, act = tool("Section order")),
+        Shot("20-small-phone-customise", edited, EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Section order")),
+        Shot("21-small-phone-design", base.copy(previewDesign = CardDesign.DOSSIER), widthDp = 360, heightDp = 640),
+        Shot("22-small-phone-fonts", edited, EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Body font")),
     )
 
     @Test
@@ -163,5 +171,6 @@ class ProfileCardEditorShotsTest {
         const val PHONE_W = 412
         const val PHONE_H = 892
         const val SETTLE_MS = 1_500L
+        const val PARK_PX = 100_000f
     }
 }
