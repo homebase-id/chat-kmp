@@ -28,12 +28,6 @@ internal fun List<ProfileAttribute>.visibleAttribute(
         .sortedWith(mostRestrictiveThenPriority)
         .firstOrNull { attribute -> keys.any { !attribute.string(it).isNullOrBlank() } }
 
-internal fun List<ProfileAttribute>.visibleAttribute(
-    type: String,
-    tier: ProfileVisibility,
-    keys: Collection<String>,
-): ProfileAttribute? = visibleAttribute(type, tier.aclFilter(), keys)
-
 internal fun List<ProfileAttribute>.visibleValues(canSee: AclFilter): Map<ProfileField, String> =
     ProfileEditViewModel.TYPE_FIELDS.flatMap { (type, fields) ->
         val attribute = visibleAttribute(type, canSee, fields.map { it.second })
@@ -58,6 +52,3 @@ internal fun List<ProfileAttribute>.visibleBio(tier: ProfileVisibility): String?
 internal fun List<ProfileAttribute>.visibleLinks(canSee: AclFilter): List<ProfileAttribute> =
     filter { it.type == ProfileAttributeTypes.LINK && canSee(it.acl) }
         .sortedWith(compareBy<ProfileAttribute> { it.priority }.thenBy(aclMostRestrictiveFirst) { it.acl })
-
-internal fun List<ProfileAttribute>.visibleLinks(tier: ProfileVisibility): List<ProfileAttribute> =
-    visibleLinks(tier.aclFilter())
