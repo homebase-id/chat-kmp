@@ -23,6 +23,8 @@ dependencies {
     implementation(project(":homebase-chat"))
     implementation(libs.ktor.client.core)
     implementation(libs.mcp.kotlin.sdk.server)
+    implementation(libs.kermit)
+    runtimeOnly(libs.slf4j.nop)
     implementation(libs.kotlinx.io.core)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)

@@ -10,6 +10,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -18,6 +19,7 @@ import kotlin.coroutines.coroutineContext
 
 const val BRAIN_TIMEOUT_MS = 120_000L
 const val NO_REPLY = "NO_REPLY"
+private const val MAX_ATTEMPTS = 2
 private const val PROCESSED_CAP = 1000
 private const val POLL_INTERVAL_MS = 10_000L
 private const val POLL_WINDOW = 50
@@ -49,10 +51,15 @@ suspend fun runBrain(command: String, prompt: String, timeoutMs: Long = BRAIN_TI
         Thread {
             runCatching { process.outputStream.use { it.write(prompt.encodeToByteArray()) } }
         }.apply { isDaemon = true }.start()
-        if (!process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
-            process.descendants().forEach { it.destroyForcibly() }
-            process.destroyForcibly()
-            return@withContext BrainOutcome.Failed("timeout after ${timeoutMs / 1000}s")
+        try {
+            if (!runInterruptible { process.waitFor(timeoutMs, TimeUnit.MILLISECONDS) }) {
+                return@withContext BrainOutcome.Failed("timeout after ${timeoutMs / 1000}s")
+            }
+        } finally {
+            if (process.isAlive) {
+                process.descendants().forEach { it.destroyForcibly() }
+                process.destroyForcibly()
+            }
         }
         val code = process.exitValue()
         if (code != 0) {
@@ -80,16 +87,53 @@ class ProcessedStore(private val file: File?, private val cap: Int = PROCESSED_C
     val size get() = ids.size
 }
 
-fun buildPrompt(trigger: ChatMsg, history: List<ChatMsg>): String = buildString {
+fun buildPrompt(triggers: List<ChatMsg>, history: List<ChatMsg>): String = buildString {
+    val ids = triggers.map { it.id }.toSet()
     appendLine("Recent messages in this conversation (oldest first):")
-    history.filter { it.id != trigger.id }.takeLast(HISTORY_LIMIT).forEach {
+    history.filter { it.id !in ids }.takeLast(HISTORY_LIMIT).forEach {
         appendLine("[${it.author}] ${it.text.truncateToCodePoints(MESSAGE_CODEPOINTS)}")
     }
     appendLine()
-    appendLine("You were addressed by [${trigger.author}] with this message:")
-    appendLine(trigger.text.truncateToCodePoints(MESSAGE_CODEPOINTS))
+    appendLine("You were addressed in ${if (triggers.size == 1) "this message" else "these messages (oldest first)"}:")
+    triggers.forEach { appendLine("[${it.author}] ${it.text.truncateToCodePoints(MESSAGE_CODEPOINTS)}") }
     appendLine()
-    append("Reply concisely. If no reply is needed, output exactly $NO_REPLY.")
+    append("Reply concisely${if (triggers.size > 1) " with one reply covering all of them" else ""}. If no reply is needed, output exactly $NO_REPLY.")
+}
+
+class RunLimiter(
+    private val file: File?,
+    private val perHour: Int,
+    private val perDay: Int,
+    private val now: () -> Long = System::currentTimeMillis,
+) {
+    private class Run(val at: Long, val authors: Set<String>)
+
+    private val runs = ArrayList<Run>()
+
+    init {
+        val cutoff = now() - DAY_MS
+        file?.takeIf { it.exists() }?.readLines()?.forEach {
+            val at = it.substringBefore('\t').toLongOrNull() ?: return@forEach
+            if (at >= cutoff) runs += Run(at, it.substringAfter('\t', "").split(',').toSet())
+        }
+    }
+
+    fun allows(authors: Set<String>): Boolean {
+        val t = now()
+        runs.removeAll { it.at < t - DAY_MS }
+        if (runs.size >= perDay) return false
+        return authors.all { a -> runs.count { it.at >= t - HOUR_MS && a in it.authors } < perHour }
+    }
+
+    fun record(authors: Set<String>) {
+        runs += Run(now(), authors)
+        file?.writeText(runs.joinToString("\n", postfix = "\n") { "${it.at}\t${it.authors.joinToString(",")}" })
+    }
+
+    private companion object {
+        const val HOUR_MS = 3_600_000L
+        const val DAY_MS = 86_400_000L
+    }
 }
 
 class WatchProcessor(
@@ -100,30 +144,80 @@ class WatchProcessor(
     private val brain: suspend (String) -> BrainOutcome,
     private val reply: suspend (Uuid, String) -> Unit,
     private val log: (String) -> Unit,
+    private val limiter: RunLimiter = RunLimiter(null, config.maxRunsPerHour, config.maxRunsPerDay),
 ) {
     private val mutex = Mutex()
     private val seen = HashSet<Uuid>()
 
-    suspend fun handle(msg: ChatMsg): String {
-        if (msg.id in seen) return "seen"
-        val result = decide(msg)
-        seen.add(msg.id)
-        log("${msg.id} $result")
-        return result
+    // ponytail: attempts and pending retries live in memory; a restart just retries from the processed file.
+    private val attempts = HashMap<Uuid, Int>()
+    private val pending = LinkedHashMap<Uuid, ChatMsg>()
+
+    suspend fun handle(msg: ChatMsg): String = handleAll(listOf(msg))[msg.id] ?: "seen"
+
+    suspend fun handleAll(msgs: List<ChatMsg>): Map<Uuid, String> {
+        val results = LinkedHashMap<Uuid, String>()
+        val eligible = ArrayList<ChatMsg>()
+        for (msg in (pending.values + msgs).distinctBy { it.id }) {
+            if (msg.id in seen && msg.id !in pending) { results[msg.id] = "seen"; continue }
+            val skip = precheck(msg)
+            if (skip != null) { finish(msg.id, skip, results); continue }
+            eligible += msg
+        }
+        for (group in eligible.groupBy { it.conversationId }.values) run(group, results)
+        return results
     }
 
-    private suspend fun decide(msg: ChatMsg): String {
+    private fun finish(id: Uuid, result: String, results: MutableMap<Uuid, String>) {
+        seen.add(id)
+        pending.remove(id)
+        attempts.remove(id)
+        results[id] = result
+        log("$id $result")
+    }
+
+    private fun precheck(msg: ChatMsg): String? {
         if (!config.allowlist.allowsConversation(msg.conversationId)) return "skip: conversation not allowed"
         if (!config.allowlist.allowsAuthor(msg.author, msg.conversationId)) return "skip: author not allowed"
         if (!shouldTrigger(msg.text, config.nickname, config.bot, identity)) return "skip: no trigger"
         if (msg.id in store) return "skip: already processed"
         if (!config.allowlist.allowsSend(msg.conversationId)) return "skip: send not permitted in this conversation"
-        store.add(msg.id)
-        return mutex.withLock {
-            val prompt = buildPrompt(msg, history(msg.conversationId))
-            val text = brainReply(brain(prompt)) ?: return@withLock "silent"
-            reply(msg.conversationId, text)
-            "replied"
+        return null
+    }
+
+    private suspend fun run(group: List<ChatMsg>, results: MutableMap<Uuid, String>) {
+        val sorted = group.sortedBy { it.userDate }
+        val conversation = sorted.first().conversationId
+        val authors = sorted.map { it.author.toString() }.toSet()
+        fun done(result: String) = sorted.forEach { store.add(it.id); finish(it.id, result, results) }
+        mutex.withLock {
+            if (!limiter.allows(authors)) return done("skip: rate limited")
+            limiter.record(authors)
+            val outcome = try {
+                brain(buildPrompt(sorted, history(conversation)))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                BrainOutcome.Failed(e.message ?: e.toString())
+            }
+            val text = brainReply(outcome)
+                ?: return done("silent")
+            val failed = outcome is BrainOutcome.Failed
+            val attempt = (sorted.maxOf { attempts[it.id] ?: 0 }) + 1
+            val sent = try {
+                if (failed && attempt < MAX_ATTEMPTS) null else reply(conversation, text).let { true }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log("send error: ${e.message}")
+                if (attempt < MAX_ATTEMPTS) null else true
+            }
+            if (sent == null) {
+                sorted.forEach { attempts[it.id] = attempt; pending[it.id] = it; results[it.id] = "retry" }
+                log("${sorted.first().id} retry after attempt $attempt: ${(outcome as? BrainOutcome.Failed)?.reason ?: "send failed"}")
+            } else {
+                done(if (failed) "failed" else "replied")
+            }
         }
     }
 }
@@ -146,6 +240,7 @@ suspend fun watch(profile: String) {
         config = config,
         identity = session.identity.toString(),
         store = store,
+        limiter = RunLimiter(File(dir, "runs.txt"), config.maxRunsPerHour, config.maxRunsPerDay),
         history = { fetchMessages(session.credentials, it, HISTORY_LIMIT + 1) },
         brain = { runBrain(config.brain, it) },
         reply = { conversation, text ->
@@ -170,13 +265,11 @@ suspend fun watch(profile: String) {
                     .flatMap { fetchMessages(session.credentials, it, POLL_WINDOW) }
                     .filter { it.userDate >= lastSeen }
                     .sortedBy { it.userDate }
-                for (msg in fresh) {
-                    if (msg.userDate > lastSeen) {
-                        lastSeen = msg.userDate
-                        stateFile.writeText(lastSeen.toString())
-                    }
-                    processor.handle(msg)
+                fresh.lastOrNull()?.takeIf { it.userDate > lastSeen }?.let {
+                    lastSeen = it.userDate
+                    stateFile.writeText(lastSeen.toString())
                 }
+                processor.handleAll(fresh)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

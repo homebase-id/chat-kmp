@@ -1,15 +1,19 @@
 package id.homebase.agent
 
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 import kotlin.system.exitProcess
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.runBlocking
 
 private const val USAGE =
-    "usage: chat-agent login --profile <p> [--identity <domain>] | read --profile <p> [--conversation <id>] [--limit <n>] | conversations --profile <p> | send --profile <p> [--conversation <id>] <text> | watch --profile <p> | mcp --profile <p>"
+    "usage: chat-agent login --profile <p> [--identity <domain>] | read --profile <p> [--conversation <id>] [--limit <n>] | conversations --profile <p> | send --profile <p> [--conversation <id>] <text> | watch --profile <p> | mcp --profile <p>  (global: --verbose)"
 
 fun main(args: Array<String>) {
     val command = args.firstOrNull()
-    val rest = args.drop(1)
+    val verbose = "--verbose" in args
+    val rest = args.drop(1).filter { it != "--verbose" }
+    Logger.setMinSeverity(if (verbose) Severity.Verbose else Severity.Warn)
     val options = rest.chunked(2).associate { it[0] to it.getOrNull(1) }
     val sendText = rest.filterIndexed { i, _ -> i !in flagIndexes(rest, "--profile", "--conversation") }.joinToString(" ")
     val profile = options["--profile"]

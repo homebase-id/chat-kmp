@@ -12,6 +12,8 @@ class AgentConfig(
     val nickname: String = "quagmire",
     val brain: String = "claude -p --model haiku --max-turns 3",
     val bot: Boolean = false,
+    val maxRunsPerHour: Int = 20,
+    val maxRunsPerDay: Int = 100,
     val allowlist: Allowlist,
 )
 
@@ -37,6 +39,8 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         nickname = values["nickname"]?.takeIf { it.isNotEmpty() } ?: "quagmire",
         brain = values["brain"]?.takeIf { it.isNotEmpty() } ?: "claude -p --model haiku --max-turns 3",
         bot = bot,
+        maxRunsPerHour = values["maxRunsPerHour"]?.toIntOrNull() ?: 20,
+        maxRunsPerDay = values["maxRunsPerDay"]?.toIntOrNull() ?: 100,
         allowlist = Allowlist(conversations, authors, memberMode, anyMember, groupSend = bot && profile != DELEGATE_PROFILE && ownerKey != owner),
     )
 }
