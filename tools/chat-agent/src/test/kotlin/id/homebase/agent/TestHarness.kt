@@ -16,6 +16,7 @@ class TestHarness(
     jobs: JobRunner? = null,
     loader: AttachmentLoader? = null,
     brainFn: (suspend (String, Tier, List<Attachment>) -> BrainOutcome)? = null,
+    leaseFor: ((Uuid, Tier, id.homebase.api.common.OdinId?) -> ToolLease?)? = null,
 ) {
     val sends = CopyOnWriteArrayList<Triple<Uuid, String, List<OutFile>>>()
     val logs = CopyOnWriteArrayList<String>()
@@ -30,7 +31,7 @@ class TestHarness(
     val processor = WatchProcessor(
         config, identity, store,
         history = { history },
-        brain = { prompt, tier, files ->
+        brain = { prompt, tier, files, _ ->
             brainRuns++
             prompts += prompt
             tiers += tier
@@ -46,6 +47,7 @@ class TestHarness(
         away = away,
         jobs = jobs,
         loader = loader,
+        leaseFor = leaseFor,
     )
 
     suspend fun handle(msg: ChatMsg): String = processor.handleAll(listOf(msg))[msg.id] ?: "seen"

@@ -23,3 +23,28 @@ suspend fun brainTest(profile: String, latestImage: Boolean = false) {
     println(brainReply(outcome) ?: "(silent)")
     System.err.println("temp dirs before=$before after=${leftovers()}")
 }
+
+// live round-trip through the same tool functions the watcher serves: send, react, edit, delete; note-to-self on `me` only
+suspend fun toolsCheck(profile: String) {
+    require(profile == DELEGATE_PROFILE) { "tools-check runs only on the $DELEGATE_PROFILE profile" }
+    val session = openSession(profile)
+    val config = loadConfig(profile, session.identity)
+    val conversation = ChatProtocol.ConversationWithYourselfId
+    val backend = WatcherBackend(session, config, config.allowlist.copy(conversation, false), null) { it }
+    fun args(vararg pairs: Pair<String, String>) = scopedArguments(kotlinx.serialization.json.JsonObject(pairs.associate { it.first to kotlinx.serialization.json.JsonPrimitive(it.second) }), conversation)
+    suspend fun step(label: String, block: suspend () -> ToolReply): ToolReply {
+        var reply = block()
+        repeat(6) { if (reply.isError && "not found" in reply.text) { kotlinx.coroutines.delay(1500); reply = block() } }
+        println("$label: ${reply.text}")
+        return reply
+    }
+    val sent = step("send") { toolSendMessage(backend, args("text" to "tools-check")) }
+    val id = sent.text.removePrefix("sent ").take(8)
+    step("react") { toolReact(backend, args("messageId" to id, "emoji" to "👍"), add = true) }
+    step("edit") { toolEditMessage(backend, args("messageId" to id, "text" to "tools-check edited")) }
+    kotlinx.coroutines.delay(2000)
+    println("read: " + toolReadMessages(backend, args("limit" to "3")).text)
+    step("delete") { toolDeleteMessage(backend, args("messageId" to id)) }
+    kotlinx.coroutines.delay(2000)
+    println("read: " + toolReadMessages(backend, args("limit" to "3")).text)
+}

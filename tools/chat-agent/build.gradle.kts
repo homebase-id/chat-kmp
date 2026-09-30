@@ -25,6 +25,8 @@ dependencies {
     implementation(project(":homebase-chat"))
     implementation(libs.ktor.client.core)
     implementation(libs.mcp.kotlin.sdk.server)
+    implementation(libs.ktor.server.core)
+    implementation(libs.ktor.server.cio)
     implementation(libs.kermit)
     runtimeOnly(libs.slf4j.nop)
     implementation(libs.kotlinx.io.core)

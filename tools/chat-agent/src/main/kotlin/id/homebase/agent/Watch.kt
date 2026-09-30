@@ -61,6 +61,8 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         JobRunner(CoroutineScope(SupervisorJob(coroutineContext.job)), JobLedger(File(dir, "jobs.txt"), config.maxJobsPerDay), ::log, prefix = config.replyPrefix, journal = File(dir, "jobs-pending.txt"))
     }
     val fetcher = sessionFetcher(session)
+    val toolServer = if (config.operatorBrain != null || config.lockedChat) ChatToolServer(::log).start() else null
+    val chatTools = toolServer?.let { ChatTools(it, config, session, previews) }
     val processor = WatchProcessor(
         config = config,
         identity = session.identity.toString(),
@@ -71,10 +73,11 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         history = { timings.time("history") { fetchMessages(session, it, maxOf(HISTORY_LIMIT, config.lockedHistory) + 1) } },
         loader = AttachmentLoader(fetcher, config.transcribe?.let(::shellTranscriber), ::log),
         fetcher = fetcher,
-        brain = { prompt, tier, attachments ->
+        leaseFor = chatTools?.let { tools -> { conversation, tier, sender -> tools.lease(conversation, tier, sender) } },
+        brain = { prompt, tier, attachments, lease ->
             timings.time("brain") {
-                if (tier == Tier.OPERATOR) runBrain(Brain(config.operatorBrain!!), prompt, config.operatorTimeoutMs, tier = tier, operatorCwd = config.operatorCwd, attachments = attachments)
-                else runBrain(config.brain, prompt, attachments = attachments)
+                if (tier == Tier.OPERATOR) runBrain(Brain(config.operatorBrain!!), prompt, config.operatorTimeoutMs, tier = tier, operatorCwd = config.operatorCwd, attachments = attachments, lease = lease, mcpGroup = config.operatorGroup)
+                else runBrain(config.brain, prompt, attachments = attachments, lease = lease)
             }
         },
         send = { conversation, text, files ->
@@ -101,6 +104,11 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     })
     runCatching { refreshAllowlist(session, config.allowlist) }.onFailure { log("startup discovery error: ${it.message}") }
     (config.warnings + tierBanner(config)).forEach(::log)
+    config.operatorGroup?.let { g ->
+        runCatching { java.nio.file.FileSystems.getDefault().userPrincipalLookupService.lookupPrincipalByGroupName(g) }
+            .onFailure { log("WARNING: operatorGroup '$g' does not exist; operator MCP token files stay private (700/600), a brain running as another OS user cannot read them") }
+    }
+    toolServer?.let { log("chat tools on 127.0.0.1:${it.port} (per-run bearer token, loopback only)") }
     jobs?.recoverDropped { conversation, text -> sendToConversation(session, config.allowlist, conversation, text) }
     log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} readReceipts=${config.sendsReceipts} transport=${config.transport.name.lowercase()} lastSeen=${cursor.position}")
     var poll = 0
@@ -132,5 +140,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
       }
     } catch (e: CancellationException) {
         log("stopping")
+    } finally {
+        toolServer?.close()
     }
 }

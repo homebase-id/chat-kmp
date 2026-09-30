@@ -2,6 +2,9 @@ package id.homebase.agent
 
 import id.homebase.api.util.truncateToCodePoints
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFileAttributeView
+import java.nio.file.attribute.PosixFilePermissions
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +62,26 @@ fun withAttachments(output: BrainOutcome.Output, root: File?): BrainOutcome.Outp
     return if (attached.files.isEmpty() && attached.skipped.isEmpty()) output else BrainOutcome.Output(attached.text, attached.files)
 }
 
+const val MCP_PLACEHOLDER = "{mcp}"
+
+private val SHELL_SAFE = Regex("[A-Za-z0-9_@%+=:,./-]+")
+
+private fun shellWord(path: String) = if (SHELL_SAFE.matches(path)) path else "'" + path.replace("'", "'\\''") + "'"
+
+// private by default: {mcp} puts this path in argv for every local user to see; operatorGroup is the only way to share it, never world-readable
+private fun writeMcpConfig(dir: File, lease: ToolLease, group: String?): File {
+    val file = File(dir, "mcp.json")
+    file.writeText(lease.configJson())
+    val shared = group != null && runCatching {
+        val principal = dir.toPath().fileSystem.userPrincipalLookupService.lookupPrincipalByGroupName(group)
+        for (path in listOf(dir.toPath(), file.toPath())) Files.getFileAttributeView(path, PosixFileAttributeView::class.java).setGroup(principal)
+    }.onFailure { System.err.println("WARNING: operatorGroup '$group' unusable (${it.message}); the MCP token file stays private to the watcher user") }.isSuccess
+    val perms = if (shared) "rwxr-x---" to "rw-r-----" else "rwx------" to "rw-------"
+    Files.setPosixFilePermissions(dir.toPath(), PosixFilePermissions.fromString(perms.first))
+    Files.setPosixFilePermissions(file.toPath(), PosixFilePermissions.fromString(perms.second))
+    return file
+}
+
 private val LOCKED_ENV_KEYS = listOf("PATH", "HOME", "USER", "LANG")
 
 // own process group so a double-forked daemon dies with the brain (perl fallback: no setsid on macOS)
@@ -81,22 +104,29 @@ suspend fun runBrain(
     tier: Tier = Tier.LOCKED,
     operatorCwd: String? = null,
     attachments: List<Attachment> = emptyList(),
+    lease: ToolLease? = null,
+    mcpGroup: String? = null,
 ): BrainOutcome {
     val scratch = if (tier == Tier.LOCKED) tempDir("brain") else null
     val attachDir = scratch ?: attachments.takeIf { a -> a.any { it.bytes != null } }?.let { tempDir("attach") }
     val cwd = scratch ?: operatorCwd?.let(::File)
+    val mcpDir = lease?.let { tempDir("mcp") }
     try {
         val files = attachDir?.let { writeAttachments(it, attachments) }.orEmpty()
-        val env = if (files.isEmpty()) emptyMap() else mapOf("CHAT_AGENT_ATTACHMENTS" to files.joinToString("\n") { it.absolutePath })
+        val mcpConfig = lease?.let { writeMcpConfig(mcpDir!!, it, mcpGroup.takeIf { tier == Tier.OPERATOR }) }
+        val env = (if (files.isEmpty()) emptyMap() else mapOf("CHAT_AGENT_ATTACHMENTS" to files.joinToString("\n") { it.absolutePath })) +
+            (if (lease != null && mcpConfig != null) mcpEnvironment(lease, mcpConfig) else emptyMap())
         val vision = brain.streamJson && attachments.any { it.modelBlock }
+        val command = mcpConfig?.let { brain.command.replace(MCP_PLACEHOLDER, shellWord(it.absolutePath)) } ?: brain.command
         val outcome = runBrainProcess(
-            if (vision) "${brain.command} $STREAM_JSON_FLAGS" else brain.command,
+            if (vision) "$command $STREAM_JSON_FLAGS" else command,
             if (vision) streamJsonInput(prompt, attachments) else prompt,
             timeoutMs, tier, cwd, env,
         )
         val parsed = if (vision && outcome is BrainOutcome.Output) parseStreamResult(outcome.stdout) else outcome
         return if (parsed is BrainOutcome.Output) withAttachments(parsed, cwd) else parsed
     } finally {
+        mcpDir?.deleteRecursively()
         scratch?.deleteRecursively()
         if (attachDir != null && attachDir !== scratch) attachDir.deleteRecursively()
     }

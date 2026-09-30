@@ -42,7 +42,7 @@ fun main(args: Array<String>) {
     val sendText = positional.drop(1).joinToString(" ")
     Logger.setMinSeverity(if (verbose) Severity.Verbose else Severity.Warn)
     val profile = options["--profile"]
-    if (command !in setOf("login", "read", "conversations", "send", "watch", "mcp", "brain-test") || profile == null) {
+    if (command !in setOf("login", "read", "conversations", "send", "watch", "mcp", "brain-test", "tools-check") || profile == null) {
         System.err.println(USAGE)
         exitProcess(2)
     }
@@ -58,6 +58,7 @@ fun main(args: Array<String>) {
                 "send" -> send(profile, sendText, options["--conversation"]?.let { Uuid.parse(it) }, options["--file"])
                 "watch" -> watch(profile, verbose)
                 "brain-test" -> brainTest(profile, attachLatest)
+                "tools-check" -> toolsCheck(profile)
                 "mcp" -> mcp(profile, options["--conversation"]?.let { Uuid.parse(it) }, readOnly)
                 "conversations" -> conversations(profile)
                 else -> read(

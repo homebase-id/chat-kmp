@@ -14,7 +14,7 @@ class WatchProcessor(
     private val identity: String,
     private val store: ProcessedStore,
     private val history: suspend (Uuid) -> List<ChatMsg>,
-    private val brain: suspend (String, Tier, List<Attachment>) -> BrainOutcome,
+    private val brain: suspend (String, Tier, List<Attachment>, ToolLease?) -> BrainOutcome,
     private val send: suspend (Uuid, String, List<OutFile>) -> Unit,
     private val log: (String) -> Unit,
     private val limiter: RunLimiter = RunLimiter(null, config.maxRunsPerHour, config.maxRunsPerDay),
@@ -22,6 +22,7 @@ class WatchProcessor(
     private val jobs: JobRunner? = null,
     private val loader: AttachmentLoader? = null,
     private val fetcher: PayloadFetcher? = null,
+    private val leaseFor: ((Uuid, Tier, OdinId?) -> ToolLease?)? = null,
 ) {
     private val self = OdinId(identity)
     private val trust = TrustPolicy(config, self)
@@ -134,11 +135,22 @@ class WatchProcessor(
             return done("failed")
         }
         var produced = emptyList<OutFile>()
+        var quiet = false
         runner.submit(
             conversation, operators,
             announce = { safeReply(conversation, it) },
-            deliver = { safeReply(conversation, it, produced) },
-            work = { brain(prepared.prompt, Tier.OPERATOR, prepared.attachments).also { produced = (it as? BrainOutcome.Output)?.files.orEmpty() } },
+            deliver = { if (!quiet) safeReply(conversation, it, produced) },
+            work = {
+                val lease = leaseFor?.invoke(conversation, Tier.OPERATOR, effectiveSender(sorted.last()))
+                try {
+                    brain(prepared.prompt, Tier.OPERATOR, prepared.attachments, lease).also {
+                        produced = (it as? BrainOutcome.Output)?.files.orEmpty()
+                        quiet = (lease?.sent ?: 0) > 0 && it is BrainOutcome.Output && produced.isEmpty() && isSilent(it.stdout)
+                    }
+                } finally {
+                    lease?.close()
+                }
+            },
         )
         done("job")
     }
@@ -160,6 +172,8 @@ class WatchProcessor(
     }
 
     private suspend fun expand(msg: ChatMsg) = fetcher?.let { expandLongText(msg, it) } ?: msg
+
+    private fun isSilent(stdout: String) = sanitizeReply(stdout).let { it.isEmpty() || it == NO_REPLY }
 
     private fun isOwn(msg: ChatMsg) = msg.author?.toString() == identity
 
@@ -216,21 +230,29 @@ class WatchProcessor(
         mutex.withLock {
             if (!limiter.allows(authors)) return done(sorted, "skip: rate limited")
             limiter.record(authors)
+            var toolSent = false
             val outcome = try {
                 val awayMode = away.on && allow.delegate && !isNoteToSelf(conversation)
                 val prepared = preparePrompt(sorted, conversation, history(conversation), tier, awayMode)
-                brain(prepared.prompt, tier, prepared.attachments)
+                val lease = leaseFor?.invoke(conversation, tier, effectiveSender(sorted.last()))
+                try {
+                    brain(prepared.prompt, tier, prepared.attachments, lease)
+                } finally {
+                    toolSent = (lease?.sent ?: 0) > 0
+                    lease?.close()
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 BrainOutcome.Failed(e.message ?: e.toString())
             }
+            if (tier == Tier.LOCKED && toolSent && outcome is BrainOutcome.Output) return done(sorted, "silent")
             val files = (outcome as? BrainOutcome.Output)?.files.orEmpty()
             val text = brainReply(outcome, config.replyPrefix, operator = tier == Tier.OPERATOR)
                 ?: if (files.isNotEmpty()) config.replyPrefix else return done(sorted, "silent")
             val failed = outcome is BrainOutcome.Failed
             val attempt = (sorted.maxOf { attempts[it.id] ?: 0 }) + 1
-            val settled = if (failed && attempt < MAX_ATTEMPTS) false else safeReply(conversation, text, files) || attempt >= MAX_ATTEMPTS
+            val settled = if (failed && attempt < MAX_ATTEMPTS && !toolSent) false else safeReply(conversation, text, files) || attempt >= MAX_ATTEMPTS
             if (!settled) {
                 sorted.forEach { attempts[it.id] = attempt; pending[it.id] = it; results[it.id] = "retry" }
                 log("${sorted.first().id} retry after attempt $attempt: ${(outcome as? BrainOutcome.Failed)?.reason ?: "send failed"}")

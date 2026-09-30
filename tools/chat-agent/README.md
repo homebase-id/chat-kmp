@@ -91,6 +91,7 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | operatorBrain | any shell command for operator-tier messages (full env); unset = no privileged tier, everyone is locked | none |
 | operatorRooms | comma list of conversation uuids where EVERY current member gets the operator tier (optional extra; membership re-read on each discovery; history is unfiltered there). Also list the room in `allowConversations` | none |
 | operatorContext | `all` or `operators`. `all`: the operator prompt gets the full room history and reply-parent; non-operator text and the bot's own replies sit inside a fenced untrusted block tagged by author. `operators`: only operator-authored text reaches the operator brain (strict). Unknown value warns and uses `operators` | all |
+| operatorGroup | unix group that may read the per-run MCP token file (operator brain running as another OS user); unset = private | none |
 | operatorCwd | working dir of operatorBrain | inherited |
 | operatorTimeout | kill an operator job (whole process group) after this long: `90s`, `30m`, `2h`; anything else is a startup error | 30m |
 | maxJobsPerDay | operator jobs per day PER OPERATOR (keyed by the server-set sender, persisted in `jobs.txt`; separate from `maxRunsPerDay`) | 20 |
@@ -105,6 +106,7 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | readReceipts | true/false; bot only (ignored for `me`) | true for bot |
 | linkPreviews | true/false; preview card for the first URL in a reply, built by your identity server (`/links/extract`, as the app does); this machine never fetches the URL; failure sends without a preview | true for bot |
 | transcribe | command run as `<cmd> "<audio file>"`, transcript on stdout, 60 s limit; unset = voice notes stay a label (see Voice notes) | none |
+| lockedTools | comma list, default empty. `chat` gives the locked brain the chat tools below (claude default brain only; a custom `brain` gets the env vars and `{mcp}`). Unknown values warn and are ignored | none |
 | mcpFilesDir | directory the MCP `send_file` tool may send from (no default: tool refuses) | none |
 
 A custom `brain` / `operatorBrain` inherits `HOME` (operator tier: the full environment), so tools such as `claude`, `gh` and
@@ -225,7 +227,11 @@ Every chat member is untrusted input to the brain. Two tiers:
   `--setting-sources ""`, `--max-turns 1`, `--disable-slash-commands` and a fixed system prompt; chat text
   and conversation title/members are passed inside `<untrusted_*_<random nonce>>` blocks (fresh nonce per prompt, so chat text cannot close a block). Replies have any leading robot emoji or spoofed
   "X's AI assistant:" stripped before the real prefix is added. `watch` logs a WARNING at startup if `brain`
-  is not the locked default. Profile dir is 700, files inside 600.
+  is not the locked default. Profile dir is 700, files inside 600. The locked brain has no tools unless the owner sets
+  `lockedTools=chat` (see "Chat tools for the brain"): then ANY member who can trigger the bot can make it read the whole
+  conversation, send messages or files from `mcpFilesDir`, and react, up to 5 tool calls per run, with no edit or delete;
+  the same prompt-injection risk as any tool-using model, so leave it off in rooms you do not trust.
+  The tool endpoint is loopback-only with a per-run token (256-bit, constant-time compare, revoked when the run ends).
 - Operator (opt-in): `operators=` + `operatorBrain=` (`operators` alone is enough). The tier follows the SENDER: a
   message whose server-set `senderOdinId` (never `originalAuthor`, never a null sender outside note-to-self) is a
   listed operator gets `operatorBrain` (full env, `operatorCwd`) in any allowed conversation, DMs and mixed groups
@@ -262,7 +268,45 @@ Every chat member is untrusted input to the brain. Two tiers:
 
   Everyone in the team group gets the operator brain; the owner alone can use the DM; every other chat is ignored.
 - MCP: `mcp --conversation <id>` restricts every tool to one conversation; `--read-only` removes
-  `send_message` and refuses sends. Use both when handing MCP to a brain.
+  `send_message` and refuses sends. Use both when handing MCP to a brain. For the brains `watch` runs, use the per-run
+  endpoint instead (next section): it needs no credentials on the brain's side.
+
+## Chat tools for the brain
+
+While `watch` runs a brain it can serve that run a tiny MCP endpoint (streamable HTTP, `127.0.0.1` only, random port,
+started only when `operatorBrain` or `lockedTools=chat` is set). Each run gets its own random 256-bit bearer token; the
+token is revoked, and the config file deleted, when the run ends, times out or is cancelled. It is per-run and
+loopback-only, but any local process that can read the config file can use it until then, so treat the run as trusted
+as far as the tools go. The brain never sees the identity's credentials: the watcher makes every call.
+
+Scope is fixed server-side from the token: the conversation that triggered the run, its tier and its sender. A
+`conversationId` argument is ignored (the tools do not even list it). Tools: `read_messages`, `search_messages`,
+`get_conversation`, `send_message` (with `replyToId`), `send_file` (only when `mcpFilesDir` is set), `react`,
+`unreact` (emoji on a message here), and, operator tier only, `edit_message` (short text messages) and `delete_message`
+(for everyone), both limited to messages this identity sent. Sends go through the normal gate, disclosure prefix and
+size caps. Read results are labelled with the author and wrapped in an `<untrusted_chat_...>` block; treat them as data.
+
+| tier | tools | reads |
+|---|---|---|
+| operator | all of the above | `operatorContext=all`: whole room; `operators`: operator-authored only in rooms that are not fully trusted |
+| locked | none, unless `lockedTools=chat`: read, `send_message`, `send_file`, `react`, `unreact`; never edit or delete; at most 5 tool calls per run (the 6th errors) | whole room |
+
+With `lockedTools=chat` the default locked claude command gains `--mcp-config {mcp}` and `--allowedTools` limited to the
+`mcp__chat__*` tools above (still `--tools ""`, `--strict-mcp-config`, no settings, scrubbed env, temp cwd) and
+`--max-turns 6`, with a system prompt that mentions the tools. Without it the command line is unchanged.
+
+The operator brain gets, in the job's environment, `CHAT_AGENT_MCP_URL`, `CHAT_AGENT_MCP_TOKEN` and
+`CHAT_AGENT_MCP_CONFIG` (a ready `--mcp-config` JSON for this run), and `{mcp}` in `operatorBrain` expands to that path.
+The file lives in a per-run temp dir that is private to the watcher user (700/600), because the path and token are
+visible to local users otherwise. If the operator brain runs as a different OS user, set `operatorGroup=<unix group>`:
+the dir becomes 750 and the file 640 with that group, so both users must be members of it. If the group does not exist
+or chgrp fails, `watch` warns and the files stay private; they are never world-readable. Example:
+
+    operatorBrain=claude -p --mcp-config {mcp} --dangerously-skip-permissions
+
+Messages the brain sends through the tools do not re-trigger the bot (the robot-emoji prefix, or the bot's own-message
+skip) and are not repeated by the final output: if the run already sent something through a tool, an empty or
+`NO_REPLY` output stays silent (for a job: no `done (no output)` line). `watch` logs every tool call.
 
 ## Operator jobs
 

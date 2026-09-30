@@ -168,10 +168,13 @@ class LockdownTest {
 
     @Test
     fun bannerWarnsOnNonDefaultBrainAndOperatorTier() {
-        assertEquals(listOf("tiers: locked only (no operatorBrain)"), tierBanner(cfg(brain = null)))
+        assertEquals(listOf("tiers: locked only (no operatorBrain)", "locked tier: no tools (lockedTools is empty)"), tierBanner(cfg(brain = null)))
         val custom = AgentConfig(brain = Brain("echo hi"), allowlist = Allowlist.default(op1), operators = setOf(op1), operatorBrain = "x")
         val lines = tierBanner(custom)
-        assertTrue(lines.size == 2 && lines.all { it.startsWith("WARNING") })
+        assertEquals(2, lines.count { it.startsWith("WARNING") })
+        assertTrue(lines.any { it.startsWith("operator tools") && "delete_message" in it })
+        assertTrue(lines.any { it == "locked tier: no tools (lockedTools is empty)" })
+        assertTrue(tierBanner(AgentConfig(allowlist = Allowlist.default(op1), lockedTools = setOf("chat"))).any { it.startsWith("WARNING: lockedTools=chat") && "no edit or delete" in it })
     }
 
     @Test

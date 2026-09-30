@@ -36,9 +36,9 @@ import kotlinx.serialization.json.JsonPrimitive
 class BuiltMessage(val header: String, val payloadJson: ByteArray?)
 
 // mirrors ChatMessageSenderService.buildMessageContentAndBundle: too big for the header -> preview in header, full text in the dflt_key payload
-fun buildMessage(text: String, replyPreview: ReplyPreview? = null, allowBlank: Boolean = false): BuiltMessage {
+fun buildMessage(text: String, replyPreview: ReplyPreview? = null, allowBlank: Boolean = false, edited: Boolean = false): BuiltMessage {
     require(allowBlank || text.isNotBlank()) { "message text is empty" }
-    val data = MessageAppData(replyPreview = replyPreview, message = JsonPrimitive(text), deliveryStatus = ChatDeliveryStatus.Sent.value, version = ChatProtocol.MessageVersionNumberOne)
+    val data = MessageAppData(replyPreview = replyPreview, message = JsonPrimitive(text), deliveryStatus = ChatDeliveryStatus.Sent.value, isEdited = edited, version = ChatProtocol.MessageVersionNumberOne)
     val full = OdinSystemSerializer.serialize(data)
     if (ChatMessageSizer.shouldEmbedInHeader(full)) return BuiltMessage(full, null)
     val header = OdinSystemSerializer.serialize(data.copy(message = JsonPrimitive(ChatMessageSizer.preview(data.getMessage()))))
@@ -109,6 +109,13 @@ fun conversationTransitOptions(
     ),
 )
 
+fun conversationFor(session: Session, allowlist: Allowlist, conversationId: Uuid): ConversationInfo =
+    if (conversationId == ChatProtocol.ConversationWithYourselfId) {
+        noteToSelf(session.identity)
+    } else {
+        allowlist.info(conversationId) ?: error("conversation $conversationId not found among this identity's conversations")
+    }
+
 fun noteToSelf(self: OdinId) = ConversationInfo(ChatProtocol.ConversationWithYourselfId, NOTE_TO_SELF_TITLE, listOf(self))
 
 suspend fun outgoingBundle(text: String, files: List<OutFile>, fileOps: JvmFileOperationsProvider = JvmFileOperationsProvider(), previews: LinkPreviewSource?): StagedBundle? {
@@ -139,11 +146,7 @@ suspend fun sendToConversation(
 ): Uuid {
     allowlist.requireSend(conversationId)
     require(files.size <= MAX_OUT_FILES) { "at most $MAX_OUT_FILES files per message" }
-    val conversation = if (conversationId == ChatProtocol.ConversationWithYourselfId) {
-        noteToSelf(session.identity)
-    } else {
-        allowlist.info(conversationId) ?: error("conversation $conversationId not found among this identity's conversations")
-    }
+    val conversation = conversationFor(session, allowlist, conversationId)
     val recipients = conversationRecipients(conversation, session.identity)
     require(recipients.isNotEmpty() || conversation.id == ChatProtocol.ConversationWithYourselfId) {
         "no recipients resolved for conversation ${conversation.id}"
