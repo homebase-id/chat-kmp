@@ -1111,4 +1111,41 @@ class ProfileCardViewModelTest {
         assertEquals(CardDesign.DOSSIER, host.rendered.last().design)
         assertEquals(friends, vm.uiState.value.selectedAudience)
     }
+
+    @Test
+    fun pickingAnotherCardMidExportNeverRendersItIntoTheSharedImage() = runTest(dispatcher) {
+        val host = FakeHost()
+        val source = FakeSource(
+            profile + publicCardAttribute + circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0) +
+                circleCardAttribute("c2", "Family", CardDesign.COLLAGE, 1),
+        )
+        val vm = viewModel(host, source)
+        host.send(CardEvent.Ready(layout = CardDesign.BOARD, ms = 1))
+        vm.onCardSelected(friends)
+        host.send(CardEvent.Ready(layout = CardDesign.DOSSIER, ms = 1))
+
+        val atExport = mutableListOf<CardPayload>()
+        host.onExport = {
+            atExport += host.rendered.last()
+            host.send(CardEvent.Png(pngBase64(), 4, 6))
+        }
+        val renderedBefore = host.rendered.size
+        val event = async { vm.events.first() }
+        vm.onShareClicked()
+        assertTrue(vm.uiState.value.isExporting)
+
+        vm.onCardSelected(CardAudience.Circle("c2", "Family"))
+        assertEquals(friends, vm.uiState.value.selectedAudience)
+
+        host.send(CardEvent.Ready(layout = CardDesign.BOARD, ms = 1))
+        advanceUntilIdle()
+
+        assertIs<ProfileCardEvent.ShareImage>(event.await())
+        assertEquals("public", atExport.single().audience?.kind)
+        val duringExport = host.rendered.drop(renderedBefore)
+        assertEquals("public", duringExport.first().audience?.kind)
+        assertEquals(listOf("public", "circle"), duringExport.map { it.audience?.kind })
+        assertEquals(CardDesign.DOSSIER, duringExport.last().design)
+        assertEquals(friends, vm.uiState.value.selectedAudience)
+    }
 }

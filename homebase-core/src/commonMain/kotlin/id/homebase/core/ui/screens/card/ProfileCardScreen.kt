@@ -520,7 +520,7 @@ internal fun AudienceBadge(uiState: ProfileCardUiState, onSelect: (CardAudience)
         CardChromePill {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = (if (uiState.canSwitchCard) Modifier.clickable(role = Role.Button) { expanded = true } else Modifier)
+                modifier = (if (uiState.canSwitchCard && !uiState.isExporting) Modifier.clickable(role = Role.Button) { expanded = true } else Modifier)
                     .clearAndSetSemantics { contentDescription = description }
                     .widthIn(max = AUDIENCE_BADGE_MAX_WIDTH)
                     .minimumInteractiveComponentSize()
