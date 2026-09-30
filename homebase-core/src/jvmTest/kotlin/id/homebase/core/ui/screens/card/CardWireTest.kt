@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.card
 
 import id.homebase.api.client.ClientException
+import id.homebase.core.feed.newInMemoryJdbcDriver
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
 import kotlin.test.Test
@@ -144,7 +145,7 @@ class CardWireTest {
     @Test
     fun theUnsupportedAnswerSurvivesARelaunch() = runTest {
         val wire = CardWireHarness(circleCards = false)
-        val driver = id.homebase.core.feed.newInMemoryJdbcDriver()
+        val driver = newInMemoryJdbcDriver()
         wire.cardRepository(inMemoryCardPreferences(driver)).addCircle(friends, "poster", CardOverrides.EMPTY)
 
         val relaunched = wire.cardRepository(inMemoryCardPreferences(driver))

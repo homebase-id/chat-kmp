@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.KeyHeader
+import id.homebase.core.feed.newInMemoryJdbcDriver
 import id.homebase.api.client.ProblemDetails
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.profile.ProfileAttribute
@@ -36,6 +37,8 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -1266,7 +1269,7 @@ class ProfileCardViewModelTest {
         override suspend fun save(data: JsonObject, visibility: ProfileVisibility, id: Uuid?, versionTag: Uuid?, priority: Int, circleIds: List<String>): ProfileWriteResponse {
             failWith?.let { throw it }
             if (!dropCircleIds && circleIds.isNotEmpty() && visibility != ProfileVisibility.CONNECTED) {
-                throw ClientException(400, message = "CircleIds can only be set when visibility is Connected", correlationId = null, problem = ProblemDetails(status = 400))
+                throw circlesNeedConnected()
             }
             saves += Save(data, visibility, id, priority, circleIds)
             val written = ProfileWriteResponse(id ?: Uuid.random(), Uuid.random())
@@ -1547,19 +1550,23 @@ class ProfileCardViewModelTest {
         assertEquals("circle", host.rendered.last().audience?.kind)
     }
 
-    private suspend fun <T> awaited(deferred: kotlinx.coroutines.Deferred<T>) =
+    private suspend fun CoroutineScope.chooseCircleOverWire(vm: ProfileCardViewModel): Deferred<ProfileCardEvent> {
+        awaited(async { vm.uiState.first { it.cards.isNotEmpty() } })
+        val event = async { vm.events.first() }
+        vm.onAddCardClicked()
+        awaited(async { vm.uiState.first { it.circlePicker?.loading == false } })
+        vm.onCircleChosen("c1")
+        return event
+    }
+
+    private suspend fun <T> awaited(deferred: Deferred<T>) =
         withContext(Dispatchers.Default) { withTimeout(10.seconds) { deferred.await() } }
 
     @Test
     fun onAWireServerWithoutCircleCardsNoConnectedPutIsEverSentAndTheAddHides() = runTest(dispatcher) {
         val wire = CardWireHarness(circleCards = false)
         val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute))
-        awaited(async { vm.uiState.first { it.cards.isNotEmpty() } })
-        val event = async { vm.events.first() }
-
-        vm.onAddCardClicked()
-        awaited(async { vm.uiState.first { it.circlePicker?.loading == false } })
-        vm.onCircleChosen("c1")
+        val event = chooseCircleOverWire(vm)
 
         assertEquals(ProfileCardEvent.CircleCardsUnsupported, awaited(event))
         assertTrue(wire.putBodies.isNotEmpty())
@@ -1572,12 +1579,7 @@ class ProfileCardViewModelTest {
     fun aFailedCleanupOfTheOwnerOnlyDraftReportsUnsupportedNotFailed() = runTest(dispatcher) {
         val wire = CardWireHarness(deleteReply = { CardWireHarness.Reply.Problem(500, """{"title":"boom","status":500}""") }, circleCards = false)
         val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute))
-        awaited(async { vm.uiState.first { it.cards.isNotEmpty() } })
-        val event = async { vm.events.first() }
-
-        vm.onAddCardClicked()
-        awaited(async { vm.uiState.first { it.circlePicker?.loading == false } })
-        vm.onCircleChosen("c1")
+        val event = chooseCircleOverWire(vm)
 
         assertEquals(ProfileCardEvent.CircleCardsUnsupported, awaited(event))
         assertEquals(1, wire.deletes)
@@ -1587,13 +1589,9 @@ class ProfileCardViewModelTest {
     @Test
     fun theUnsupportedAnswerHidesTheAddOnTheNextLaunch() = runTest(dispatcher) {
         val wire = CardWireHarness(circleCards = false)
-        val driver = id.homebase.core.feed.newInMemoryJdbcDriver()
+        val driver = newInMemoryJdbcDriver()
         val (first, _) = wireCircleVm(wire, listOf(publicCardAttribute), preferences = inMemoryCardPreferences(driver))
-        awaited(async { first.uiState.first { it.cards.isNotEmpty() } })
-        val event = async { first.events.first() }
-        first.onAddCardClicked()
-        awaited(async { first.uiState.first { it.circlePicker?.loading == false } })
-        first.onCircleChosen("c1")
+        val event = chooseCircleOverWire(first)
         assertEquals(ProfileCardEvent.CircleCardsUnsupported, awaited(event))
         val puts = wire.puts
 
@@ -1673,7 +1671,7 @@ class ProfileCardViewModelTest {
 
         vm.onDeleteCardConfirmed()
 
-        assertEquals(ProfileCardEvent.CircleCardFailed, withContext(Dispatchers.Default) { withTimeout(10.seconds) { event.await() } })
+        assertEquals(ProfileCardEvent.CircleCardFailed, awaited(event))
         assertEquals(2, vm.uiState.value.cards.size)
         assertEquals(friends, vm.uiState.value.selectedAudience)
     }

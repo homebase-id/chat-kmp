@@ -89,25 +89,29 @@ class CardRepository(private val store: CardAttributeStore, private val preferen
         val stored = cards()
         val priority = (stored.filter { it.audience is CardAudience.Circle }.maxOfOrNull { it.priority } ?: -1) + 1
         val card = ProfileCard(Uuid.NIL, Uuid.NIL, circle, design, overrides.prunedFor(design), priority)
-        val draft = try {
-            writeCircle(card, circle, ProfileVisibility.OWNER) ?: return AddCircleCardResult.Unsupported
-        } catch (e: ClientException) {
-            // A server that scopes cards refuses circles on anything but Connected, which proves it scopes them.
-            if (!e.isCircleIdsNeedConnected()) throw e
-            null
-        }
-        val promoted = if (draft == null) card else {
-            val readBack = store.load().firstOrNull { it.id == draft.id } ?: error("the new circle card ${draft.id} did not read back")
-            if (readBack.acl.circleIdList?.singleOrNull()?.sameCircleId(circle.id) != true) {
-                Logger.i(tag = "CardRepository") { "server ignored circleIds; circle cards are unsupported" }
-                preferences.setCircleCardsUnsupported()
-                deleted(readBack)
-                return AddCircleCardResult.Unsupported
-            }
-            card.copy(id = readBack.id, versionTag = readBack.versionTag)
+        val promoted = when (val probe = probeOwnerOnly(card, circle)) {
+            CircleProbe.Ignored -> return AddCircleCardResult.Unsupported
+            CircleProbe.Refused -> card
+            is CircleProbe.Sticks -> card.copy(id = probe.readBack.id, versionTag = probe.readBack.versionTag)
         }
         val written = writeCircle(promoted, circle, ProfileVisibility.CONNECTED) ?: return AddCircleCardResult.Unsupported
         return AddCircleCardResult.Added(promoted.copy(id = written.id, versionTag = written.versionTag))
+    }
+
+    private suspend fun probeOwnerOnly(card: ProfileCard, circle: CardAudience.Circle): CircleProbe {
+        val draft = try {
+            writeCircle(card, circle, ProfileVisibility.OWNER) ?: return CircleProbe.Ignored
+        } catch (e: ClientException) {
+            // A server that scopes cards refuses circles on anything but Connected, which proves it scopes them.
+            if (!e.hasMessage("CircleIds can only be set when visibility is Connected")) throw e
+            return CircleProbe.Refused
+        }
+        val readBack = store.load().firstOrNull { it.id == draft.id } ?: error("the new circle card ${draft.id} did not read back")
+        if (readBack.acl.circleIdList?.singleOrNull()?.sameCircleId(circle.id) == true) return CircleProbe.Sticks(readBack)
+        Logger.i(tag = "CardRepository") { "server ignored circleIds; circle cards are unsupported" }
+        preferences.setCircleCardsUnsupported()
+        deleted(readBack)
+        return CircleProbe.Ignored
     }
 
     suspend fun delete(card: ProfileCard): Boolean {
@@ -162,11 +166,13 @@ sealed interface AddCircleCardResult {
 
 internal fun String.sameCircleId(other: String) = replace("-", "").equals(other.replace("-", ""), ignoreCase = true)
 
-private fun ClientException.isUnknownCardType() =
-    message.orEmpty().let {
-        it.contains("Unknown profile attribute type", ignoreCase = true) &&
-            it.contains(ProfileAttributeTypes.PROFILE_CARD, ignoreCase = true)
-    }
+private sealed interface CircleProbe {
+    data object Refused : CircleProbe
+    data object Ignored : CircleProbe
+    data class Sticks(val readBack: ProfileAttribute) : CircleProbe
+}
 
-private fun ClientException.isCircleIdsNeedConnected() =
-    message.orEmpty().contains("CircleIds can only be set when visibility is Connected", ignoreCase = true)
+private fun ClientException.hasMessage(fragment: String) = message.orEmpty().contains(fragment, ignoreCase = true)
+
+private fun ClientException.isUnknownCardType() =
+    hasMessage("Unknown profile attribute type") && hasMessage(ProfileAttributeTypes.PROFILE_CARD)

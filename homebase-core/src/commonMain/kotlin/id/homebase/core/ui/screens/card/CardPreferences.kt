@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.card
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseManager
+import kotlin.concurrent.Volatile
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,8 +18,9 @@ class CardPreferences(private val databaseManager: DatabaseManager) {
     private val _tapShareEnabled = MutableStateFlow(readTapShare())
     val tapShareEnabled: StateFlow<Boolean> = _tapShareEnabled.asStateFlow()
 
-    private val _circleCardsUnsupported = MutableStateFlow(readCircleCardsUnsupported())
-    val circleCardsUnsupported: Boolean get() = _circleCardsUnsupported.value
+    @Volatile
+    var circleCardsUnsupported: Boolean = readCircleCardsUnsupported()
+        private set
 
     suspend fun setDesign(design: String) {
         keyValue.upsertValue(DESIGN_KEY, design.encodeToByteArray())
@@ -32,16 +34,16 @@ class CardPreferences(private val databaseManager: DatabaseManager) {
     }
 
     suspend fun setCircleCardsUnsupported() {
-        if (_circleCardsUnsupported.value) return
+        if (circleCardsUnsupported) return
         keyValue.upsertValue(CIRCLES_UNSUPPORTED_KEY, byteArrayOf(1))
-        _circleCardsUnsupported.value = true
+        circleCardsUnsupported = true
     }
 
     // A singleton outlives logout; re-read from the next identity's database.
     fun reset() {
         _design.value = readDesign()
         _tapShareEnabled.value = readTapShare()
-        _circleCardsUnsupported.value = readCircleCardsUnsupported()
+        circleCardsUnsupported = readCircleCardsUnsupported()
     }
 
     private fun readDesign(): String? =
