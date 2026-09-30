@@ -12,12 +12,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
-private const val POLL_INTERVAL_MS = 10_000L
 private const val POLL_WINDOW = 50
 private const val REDISCOVER_EVERY = 6
 
@@ -97,13 +95,17 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         job.cancel()
         runBlocking { job.join() }
         log("stopped")
+        Runtime.getRuntime().halt(0)
     })
     runCatching { refreshAllowlist(session, config.allowlist) }.onFailure { log("startup discovery error: ${it.message}") }
     (config.warnings + tierBanner(config)).forEach(::log)
     jobs?.recoverDropped { conversation, text -> sendToConversation(session, config.allowlist, conversation, text) }
-    log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} readReceipts=${config.sendsReceipts} transport=poll/${POLL_INTERVAL_MS}ms lastSeen=${cursor.position}")
+    log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} readReceipts=${config.sendsReceipts} transport=${config.transport.name.lowercase()} lastSeen=${cursor.position}")
     var poll = 0
+    val waker = PollWaker()
     try {
+      coroutineScope {
+        startDoorbell(this, config.transport, sessionConnector(session, verbose, ::log), waker, ::log)
         while (true) {
             timings.reset()
             Profile.harden(dir)
@@ -123,8 +125,9 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
                 log("poll error: ${e.message}")
             }
             timings.slowLine()?.let(::log)
-            delay(POLL_INTERVAL_MS)
+            waker.await()
         }
+      }
     } catch (e: CancellationException) {
         log("stopping")
     }

@@ -102,8 +102,16 @@ A failed run is retried once on the next poll, then `failed: ...` is sent (prefi
     read [--conversation <id>] [--limit n]
     conversations
     send [--conversation <id>] [--file <path>] [text]
-    watch            # polls every 10s
+    watch            # websocket doorbell + poll (see Transport)
     mcp              # stdio MCP server: list_conversations, read_messages, send_message, send_file
+
+## Transport
+
+`watch` keeps polling as its only fetch path. With `transport=auto` (default, `agent.conf`) it also opens a
+websocket to `wss://<identity>/api/v2/notify/ws-token` on the chat drive; any drive/inbox notification wakes the poll
+loop within ~300 ms (bursts coalesce). While connected the idle poll is 60 s, otherwise 10 s. Reconnects back off
+1 s to 60 s. The log shows `transport: websocket connected` / `transport: poll fallback (reason)` once per change.
+`transport=poll` never opens the socket (10 s polling).
 
 ## MCP config
 

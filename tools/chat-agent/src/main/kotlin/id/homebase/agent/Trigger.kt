@@ -53,6 +53,7 @@ class AgentConfig(
     val transcribe: String? = null,
     val linkPreviews: Boolean = false,
     val mcpFilesDir: File? = null,
+    val transport: Transport = Transport.AUTO,
     val warnings: List<String> = emptyList(),
 ) {
     val nick = Nickname(nickname)
@@ -161,8 +162,12 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         transcribe = str("transcribe"),
         linkPreviews = bool("linkPreviews") ?: bot,
         mcpFilesDir = path("mcpFilesDir")?.let(::File),
+        transport = parseTransport(str("transport")) ?: Transport.AUTO,
         readReceipts = bool("readReceipts") ?: bot,
-        warnings = if (profile == DELEGATE_PROFILE && bool("bot") == true) listOf("WARNING: bot=true is ignored for the $DELEGATE_PROFILE profile (always a delegate)") else emptyList(),
+        warnings = listOfNotNull(
+            "WARNING: bot=true is ignored for the $DELEGATE_PROFILE profile (always a delegate)".takeIf { profile == DELEGATE_PROFILE && bool("bot") == true },
+            "WARNING: invalid transport '${str("transport")}', using auto".takeIf { parseTransport(str("transport")) == null },
+        ),
     )
 }
 

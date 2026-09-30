@@ -62,6 +62,8 @@ fun main(args: Array<String>) {
             }
         }
         Profile.harden(Profile.dataDir(profile))
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        exitProcess(0)
     } catch (e: Exception) {
         System.err.println("error: ${e.message}")
         exitProcess(1)
