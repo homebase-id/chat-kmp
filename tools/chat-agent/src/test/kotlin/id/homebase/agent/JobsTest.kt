@@ -41,7 +41,7 @@ class JobsTest {
             processor = WatchProcessor(
                 config, self.toString(), ProcessedStore(null),
                 history = { emptyList() },
-                brain = { p, t -> if (t == Tier.OPERATOR) { started += p; operatorWork(p) } else BrainOutcome.Output("pong") },
+                brain = { p, t, _ -> if (t == Tier.OPERATOR) { started += p; operatorWork(p) } else BrainOutcome.Output("pong") },
                 reply = { c, t -> replies += c to t },
                 log = {},
                 jobs = JobRunner(scope, RunLimiter(null, Int.MAX_VALUE, maxJobs), prefix = ""),

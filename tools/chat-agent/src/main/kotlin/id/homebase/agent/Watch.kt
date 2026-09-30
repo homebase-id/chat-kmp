@@ -71,16 +71,27 @@ suspend fun runBrain(
     timeoutMs: Long = BRAIN_TIMEOUT_MS,
     tier: Tier = Tier.LOCKED,
     operatorCwd: String? = null,
+    attachments: List<Attachment> = emptyList(),
 ): BrainOutcome {
     val scratch = if (tier == Tier.LOCKED) Files.createTempDirectory("chat-agent-brain").toFile() else null
+    val attachDir = scratch ?: attachments.takeIf { a -> a.any { it.bytes != null } }?.let { newAttachmentDir() }
     try {
-        return runBrainProcess(command, prompt, timeoutMs, tier, scratch ?: operatorCwd?.let(::File))
+        val files = attachDir?.let { writeAttachments(it, attachments) }.orEmpty()
+        val env = if (files.isEmpty()) emptyMap() else mapOf("CHAT_AGENT_ATTACHMENTS" to files.joinToString("\n") { it.absolutePath })
+        val vision = command == DEFAULT_BRAIN && attachments.any { it.viewableImage }
+        val outcome = runBrainProcess(
+            if (vision) "$command $STREAM_JSON_FLAGS" else command,
+            if (vision) streamJsonInput(prompt, attachments) else prompt,
+            timeoutMs, tier, scratch ?: operatorCwd?.let(::File), env,
+        )
+        return if (vision && outcome is BrainOutcome.Output) parseStreamResult(outcome.stdout) else outcome
     } finally {
         scratch?.deleteRecursively()
+        if (attachDir != null && attachDir !== scratch) attachDir.deleteRecursively()
     }
 }
 
-private suspend fun runBrainProcess(command: String, prompt: String, timeoutMs: Long, tier: Tier, cwd: File?): BrainOutcome =
+private suspend fun runBrainProcess(command: String, prompt: String, timeoutMs: Long, tier: Tier, cwd: File?, extraEnv: Map<String, String>): BrainOutcome =
     withContext(Dispatchers.IO) {
         val process = try {
             ProcessBuilder("sh", "-c", command).apply {
@@ -89,6 +100,7 @@ private suspend fun runBrainProcess(command: String, prompt: String, timeoutMs: 
                     val keep = LOCKED_ENV_KEYS.mapNotNull { k -> System.getenv(k)?.let { k to it } }
                     environment().apply { clear(); putAll(keep) }
                 }
+                environment().putAll(extraEnv)
             }.start()
         } catch (e: Exception) {
             return@withContext BrainOutcome.Failed("could not start: ${e.message}")
@@ -143,6 +155,7 @@ fun buildPrompt(
     header: String? = null,
     context: String? = null,
     nonce: String = newNonce(),
+    attachments: List<Attachment> = emptyList(),
 ): String = buildString {
     val h = "untrusted_history_$nonce"
     val t = "untrusted_triggers_$nonce"
@@ -167,12 +180,21 @@ fun buildPrompt(
     val ids = triggers.map { it.id }.toSet()
     appendLine("<$h> (recent messages, oldest first)")
     history.filter { it.id !in ids }.takeLast(HISTORY_LIMIT).forEach {
-        appendLine("[${it.author}] ${clean(it.text.truncateToCodePoints(MESSAGE_CODEPOINTS))}")
+        appendLine("[${it.author}] ${clean(it.display.truncateToCodePoints(MESSAGE_CODEPOINTS))}")
     }
     appendLine("</$h>")
     appendLine()
     appendLine("<$t> (${if (triggers.size == 1) "the message" else "the messages, oldest first"} that addressed you)")
-    triggers.forEach { appendLine("[${it.author}] ${clean(it.text.truncateToCodePoints(MESSAGE_CODEPOINTS))}") }
+    triggers.forEach { t ->
+        appendLine("[${t.author}] ${clean(t.display.truncateToCodePoints(MESSAGE_CODEPOINTS))}")
+        attachments.withIndex().filter { !it.value.parent && it.value.msgId == t.id }.forEach { (i, a) ->
+            describeAttachment(i + 1, a, ::clean).forEach(::appendLine)
+        }
+    }
+    attachments.withIndex().filter { it.value.parent }.takeIf { it.isNotEmpty() }?.let { parents ->
+        appendLine("(attached to the earlier message being replied to)")
+        parents.forEach { (i, a) -> describeAttachment(i + 1, a, ::clean).forEach(::appendLine) }
+    }
     appendLine("</$t>")
     appendLine()
     append("Reply concisely${if (triggers.size > 1) " with one reply covering all of them" else ""}. If no reply is needed, output exactly $NO_REPLY.")
@@ -261,12 +283,13 @@ class WatchProcessor(
     private val identity: String,
     private val store: ProcessedStore,
     private val history: suspend (Uuid) -> List<ChatMsg>,
-    private val brain: suspend (String, Tier) -> BrainOutcome,
+    private val brain: suspend (String, Tier, List<Attachment>) -> BrainOutcome,
     private val reply: suspend (Uuid, String) -> Unit,
     private val log: (String) -> Unit,
     private val limiter: RunLimiter = RunLimiter(null, config.maxRunsPerHour, config.maxRunsPerDay),
     private val away: AwayFlag = AwayFlag(null),
     private val jobs: JobRunner? = null,
+    private val loader: AttachmentLoader? = null,
 ) {
     private val mutex = Mutex()
     private val seen = HashSet<Uuid>()
@@ -343,9 +366,11 @@ class WatchProcessor(
         self: OdinId,
         done: (String) -> Unit,
     ) {
+        var attachments = emptyList<Attachment>()
         val prompt = try {
             val past = operatorHistory(history(conversation), config, self)
-            buildPrompt(sorted, past, header = header(conversation), context = context(conversation))
+            attachments = loadAttachments(sorted, past)
+            buildPrompt(sorted, past, header = header(conversation), context = context(conversation), attachments = attachments)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -356,9 +381,25 @@ class WatchProcessor(
             conversation, authors,
             announce = { safeReply(conversation, it) },
             deliver = { safeReply(conversation, it) },
-            work = { brain(prompt, Tier.OPERATOR) },
+            work = { brain(prompt, Tier.OPERATOR, attachments) },
         )
         done("job")
+    }
+
+    private suspend fun loadAttachments(triggers: List<ChatMsg>, history: List<ChatMsg>): List<Attachment> {
+        val loader = loader ?: return emptyList()
+        val ids = triggers.map { it.id }.toSet()
+        val targets = triggers.map { it to false } + triggers.mapNotNull { t ->
+            replyParentId(t.rawContent)?.takeIf { it !in ids }?.let { pid -> history.firstOrNull { it.id == pid } }
+        }.distinctBy { it.id }.map { it to true }
+        return try {
+            loader.load(targets)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("attachment error: ${e.message}")
+            emptyList()
+        }
     }
 
     private fun isOwn(msg: ChatMsg) = msg.author?.toString() == identity
@@ -417,7 +458,8 @@ class WatchProcessor(
             limiter.record(authors)
             val outcome = try {
                 val past = fetched.getOrThrow().let { if (tier == Tier.OPERATOR) operatorHistory(it, config, self) else it }
-                brain(buildPrompt(sorted, past, awayMode = away.on && config.allowlist.delegate && conversation != ChatProtocol.ConversationWithYourselfId, header = header(conversation), context = context(conversation)), tier)
+                val attachments = loadAttachments(sorted, past)
+                brain(buildPrompt(sorted, past, awayMode = away.on && config.allowlist.delegate && conversation != ChatProtocol.ConversationWithYourselfId, header = header(conversation), context = context(conversation), attachments = attachments), tier, attachments)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -519,10 +561,11 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
             JobRunner(CoroutineScope(SupervisorJob(coroutineContext.job)), RunLimiter(File(dir, "jobs.txt"), Int.MAX_VALUE, config.maxJobsPerDay), ::log, prefix = config.replyPrefix)
         },
         history = { timings.time("history") { fetchMessages(session, it, HISTORY_LIMIT + 1) } },
-        brain = { prompt, tier ->
+        loader = AttachmentLoader(sessionFetcher(session), config.transcribe?.let(::shellTranscriber), ::log),
+        brain = { prompt, tier, attachments ->
             timings.time("brain") {
-                if (tier == Tier.OPERATOR) runBrain(config.operatorBrain!!, prompt, config.operatorTimeoutMs, tier = tier, operatorCwd = config.operatorCwd)
-                else runBrain(config.brain, prompt)
+                if (tier == Tier.OPERATOR) runBrain(config.operatorBrain!!, prompt, config.operatorTimeoutMs, tier = tier, operatorCwd = config.operatorCwd, attachments = attachments)
+                else runBrain(config.brain, prompt, attachments = attachments)
             }
         },
         reply = { conversation, text ->
@@ -580,11 +623,29 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     }
 }
 
-suspend fun brainTest(profile: String) {
+suspend fun brainTest(profile: String, files: List<String> = emptyList(), latestImage: Boolean = false) {
     val text = generateSequence(::readLine).joinToString("\n")
     val now = System.currentTimeMillis()
     val trigger = ChatMsg(Uuid.random(), ChatProtocol.ConversationWithYourselfId, OdinId("attacker.example.com"), text, now)
-    val prompt = buildPrompt(listOf(trigger), emptyList())
-    val outcome = runBrain(DEFAULT_BRAIN, prompt)
+    val attachments = ArrayList<Attachment>()
+    files.forEach { path ->
+        val f = File(path)
+        val type = if (f.extension.lowercase() in setOf("jpg", "jpeg")) "image/jpeg" else if (f.extension.lowercase() == "png") "image/png" else "text/plain"
+        val bytes = f.readBytes()
+        attachments += Attachment(trigger.id, false, "${attachments.size + 1}-${f.name}", type, bytes.size.toLong(), bytes, if (type == "text/plain") bytes.decodeToString().truncateToCodePoints(INLINE_TEXT_CODEPOINTS) else null)
+    }
+    if (latestImage) {
+        val session = openSession(profile)
+        val msg = fetchMessages(session, ChatProtocol.ConversationWithYourselfId, 50)
+            .lastOrNull { m -> payloadLabels(m.payloads).any { it == "[image]" } } ?: error("no image message in note-to-self")
+        attachments += AttachmentLoader(sessionFetcher(session), null, ::println).load(listOf(msg.copy(id = trigger.id) to false))
+        System.err.println("loaded ${attachments.size} attachment(s): ${attachments.joinToString { "${it.contentType} ${formatSize(it.size)} viewable=${it.viewableImage} ${it.note.orEmpty()}" }}")
+    }
+    val tmp = File(System.getProperty("java.io.tmpdir"))
+    fun leftovers() = tmp.listFiles { f -> f.name.startsWith("chat-agent-brain") || f.name.startsWith("chat-agent-attach") }?.size ?: 0
+    val before = leftovers()
+    val prompt = buildPrompt(listOf(trigger), emptyList(), attachments = attachments)
+    val outcome = runBrain(DEFAULT_BRAIN, prompt, attachments = attachments)
     println(brainReply(outcome) ?: "(silent)")
+    System.err.println("temp dirs before=$before after=${leftovers()}")
 }

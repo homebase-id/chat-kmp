@@ -82,7 +82,7 @@ class LockdownTest {
         val p = WatchProcessor(
             config, self.toString(), ProcessedStore(null),
             history = { emptyList() },
-            brain = { _, t -> tiers += t; BrainOutcome.Output("ok") },
+            brain = { _, t, _ -> tiers += t; BrainOutcome.Output("ok") },
             reply = { _, _ -> },
             log = {},
         )
@@ -157,7 +157,7 @@ class LockdownTest {
         val p = WatchProcessor(
             config, self.toString(), ProcessedStore(null),
             history = { emptyList() },
-            brain = { prompt, _ -> prompts += prompt; BrainOutcome.Output("ok") },
+            brain = { prompt, _, _ -> prompts += prompt; BrainOutcome.Output("ok") },
             reply = { _, _ -> },
             log = {},
         )

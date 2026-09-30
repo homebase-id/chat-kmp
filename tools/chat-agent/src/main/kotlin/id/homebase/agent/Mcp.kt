@@ -50,7 +50,7 @@ private const val ID_PREFIX = 8
 
 fun formatMessageLine(msg: ChatMsg): String {
     val date = Instant.ofEpochMilli(msg.userDate).truncatedTo(ChronoUnit.MINUTES).toString().take(16)
-    val text = msg.text.replace("\r", "").replace("\n", "\\n").truncateToCodePoints(MCP_TEXT_CODEPOINTS)
+    val text = msg.display.replace("\r", "").replace("\n", "\\n").truncateToCodePoints(MCP_TEXT_CODEPOINTS)
     return "${msg.id.toString().take(ID_PREFIX)} $date ${msg.author}: $text"
 }
 
@@ -131,7 +131,7 @@ suspend fun toolSearchMessages(backend: AgentBackend, args: JsonObject?): ToolRe
     // ponytail: client-side scan of the newest LOOKUP_WINDOW messages per conversation; upgrade is a server-side search query.
     val hits = ids.flatMap { id ->
         backend.messages(id, LOOKUP_WINDOW)
-            .filter { backend.allowlist.allowsAuthor(it.author, id) && it.text.contains(query, ignoreCase = true) }
+            .filter { backend.allowlist.allowsAuthor(it.author, id) && it.display.contains(query, ignoreCase = true) }
     }.sortedBy { it.userDate }.takeLast(limit)
     val lines = hits.map { if (scoped == null) "${it.conversationId.toString().take(ID_PREFIX)} ${formatMessageLine(it)}" else formatMessageLine(it) }
     ToolReply(lines.joinToString("\n").ifEmpty { "(no matches)" })

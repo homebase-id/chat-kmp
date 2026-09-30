@@ -68,7 +68,10 @@ class ChatMsg(
     val rawContent: String? = null,
     val sender: OdinId? = null,
     val fileId: Uuid? = null,
+    val label: String? = null,
 ) {
+    fun copy(id: Uuid) = ChatMsg(id, conversationId, author, text, userDate, previewThumbnail, payloads, dataType, rawContent, sender, fileId, label)
+    val display: String get() = label ?: text
     val replyContext: JsonElement?
         get() = (MessageContentParser.parse(dataType, rawContent) as? MessageContent.Event)?.descriptor
             ?.let { ReplyContext.event(it.startUtcMs) }
@@ -115,6 +118,7 @@ suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>?, limit:
             val text = runCatching {
                 OdinSystemSerializer.deserialize<MessageAppData>(metadata.appData.content.orEmpty()).getMessage()
             }.getOrDefault("[unreadable message]")
+            val label = messageDisplay(text, metadata.appData.dataType, metadata.appData.content, metadata.payloads).takeIf { it != text }
             ChatMsg(
                 id = metadata.appData.uniqueId ?: file.fileId,
                 conversationId = conversationId,
@@ -127,6 +131,7 @@ suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>?, limit:
                 rawContent = metadata.appData.content,
                 sender = metadata.senderOdinId,
                 fileId = file.fileId,
+                label = label,
             )
         }
         .filter { beforeMs == null || it.userDate < beforeMs }
@@ -142,5 +147,5 @@ suspend fun read(profile: String, limit: Int, conversation: Uuid? = null) {
 
     fetchMessages(session, conversationId, limit)
         .filter { allowlist.allowsAuthor(it.author, conversationId) }
-        .forEach { println("${Instant.fromEpochMilliseconds(it.userDate)} ${it.author}: ${it.text}") }
+        .forEach { println("${Instant.fromEpochMilliseconds(it.userDate)} ${it.author}: ${it.display}") }
 }

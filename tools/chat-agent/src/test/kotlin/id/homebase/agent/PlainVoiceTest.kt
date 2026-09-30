@@ -29,7 +29,7 @@ class PlainVoiceTest {
         val p = WatchProcessor(
             config, identity, ProcessedStore(null),
             history = { history },
-            brain = { _, _ -> brainRuns++; BrainOutcome.Output("pong") },
+            brain = { _, _, _ -> brainRuns++; BrainOutcome.Output("pong") },
             reply = { _, t -> replies += t },
             log = {},
         )
