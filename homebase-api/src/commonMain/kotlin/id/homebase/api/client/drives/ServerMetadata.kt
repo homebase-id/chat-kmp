@@ -62,8 +62,7 @@ fun AccessControlList?.isVisibleTo(viewer: ProfileVisibility): Boolean {
 fun AccessControlList?.isVisibleToCircle(circleId: String): Boolean {
     if (this == null || !odinIdList.isNullOrEmpty()) return false
     when (requiredSecurityGroup?.lowercase()) {
-        "anonymous", "authenticated" -> return true
-        "connected", "autoconnected" -> Unit
+        "anonymous", "authenticated", "connected", "autoconnected" -> Unit
         else -> return false
     }
     val circles = circleIdList.orEmpty()
