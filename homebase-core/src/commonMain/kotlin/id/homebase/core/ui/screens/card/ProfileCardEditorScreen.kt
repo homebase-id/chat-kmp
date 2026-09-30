@@ -3,18 +3,21 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,7 +43,6 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -50,13 +52,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.ManageAccounts
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ButtonGroupDefaults
-import androidx.compose.material3.ButtonShapes
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,7 +70,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.carousel.CarouselItemScope
 import androidx.compose.material3.carousel.HorizontalUncontainedCarousel
 import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.runtime.Composable
@@ -87,26 +88,22 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.util.getUriHandler
-import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.profile_card_audience_editing
+import id.homebase.resources.profile_card_audience_overline
 import id.homebase.resources.profile_card_change_design
 import id.homebase.resources.profile_card_change_design_short
 import id.homebase.resources.profile_card_design_save_failed
@@ -124,20 +121,22 @@ import id.homebase.resources.save
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
-private const val AUDIENCE_PILL_MAX_FRACTION = 0.7f
-private val PRIMARY_ACTION_HEIGHT = 56.dp
+private val ACTION_HEIGHT = 56.dp
+private val TOP_BAR_ICON_SLOT = 56.dp
 private val COMPACT_HEIGHT = 760.dp
 private val WIDE_LAYOUT_MIN_WIDTH = 840.dp
 private val NARROW_WIDTH = 400.dp
 private val WIDE_PANEL_WIDTH = 420.dp
 private val PREVIEW_MAX_WIDTH = 440.dp
-private val DESIGN_LABEL_HEIGHT = 36.dp
+private val DESIGN_LABEL_HEIGHT = 32.dp
+private val DESIGN_TILE_MIN_WIDTH = 80.dp
 private val DESIGN_TILE_MAX_WIDTH = 128.dp
+private val DESIGN_TILE_SPACING = 8.dp
+private val DESIGN_STRIP_INSET = 20.dp
+private val CAPTION_LINE = 20.dp
+private val AUDIENCE_AVATAR = 28.dp
 private const val CARD_PREVIEW_ASPECT = CARD_THUMB_ASPECT
-private const val STACK_ACTIONS_FONT_SCALE = 1.3f
-private const val SAVING_WEIGHT = 1.15f
-private const val CHANGE_DESIGN_WEIGHT = 1.4f
-private const val MARQUEE_PAUSE_MS = 2_000
+private const val LARGE_FONT_SCALE = 1.3f
 
 @Composable
 fun ProfileCardEditorScreen(
@@ -211,6 +210,7 @@ fun ProfileCardEditorScreen(
                 modifier = Modifier.fillMaxSize(),
                 cover = designCover,
                 coverHeld = uiState.isSwitchingDesign,
+                skeleton = true,
             )
         }
     }
@@ -242,12 +242,9 @@ internal fun ProfileCardEditorContent(
             val narrow = !wide && maxWidth < NARROW_WIDTH
             val panel: @Composable (Modifier, Shape) -> Unit = { modifier, shape ->
                 EditorPanel(
-                    design = uiState.design,
-                    overrides = uiState.overrides,
+                    uiState = uiState,
                     step = step,
                     onStep = onStep,
-                    isSaving = uiState.isSavingDesign,
-                    canSave = uiState.canSaveDesign,
                     onSelect = onSelect,
                     onOption = onOption,
                     onBlockOrder = onBlockOrder,
@@ -266,16 +263,21 @@ internal fun ProfileCardEditorContent(
             ) {
                 EditorTopBar(audience = uiState.selectedAudience, onBack = onBack, onEditProfile = onEditProfile)
                 if (wide) {
+                    // One group, top-aligned: the card and its controls start on the same line.
                     Row(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
                             .navigationBarsPadding()
                             .padding(start = 24.dp, end = 24.dp, bottom = 24.dp, top = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(32.dp, Alignment.CenterHorizontally),
-                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
+                        verticalAlignment = Alignment.Top,
                     ) {
-                        CardPreviewFrame(modifier = Modifier.weight(1f, fill = false).fillMaxHeight(), content = preview)
+                        CardPreviewFrame(
+                            alignment = Alignment.TopEnd,
+                            modifier = Modifier.weight(1f, fill = false).fillMaxHeight(),
+                            content = preview,
+                        )
                         panel(Modifier.width(WIDE_PANEL_WIDTH), MaterialTheme.shapes.extraLargeIncreased)
                     }
                 } else {
@@ -295,21 +297,24 @@ internal fun ProfileCardEditorContent(
     }
 }
 
-private class PanelMetrics(val options: Dp, val toolbar: Dp, val gap: Dp, val edge: Dp) {
-    val body: Dp get() = options + gap + toolbar
-
+/** [body] is shared by both steps so the card above never resizes when the step changes. */
+private class PanelMetrics(val body: Dp, val segment: Dp, val gap: Dp, val edge: Dp) {
     companion object {
-        val Regular = PanelMetrics(options = 152.dp, toolbar = 64.dp, gap = 12.dp, edge = 16.dp)
-        val Compact = PanelMetrics(options = 128.dp, toolbar = 56.dp, gap = 8.dp, edge = 12.dp)
-        val Wide = PanelMetrics(options = 216.dp, toolbar = 64.dp, gap = 12.dp, edge = 20.dp)
+        val Regular = PanelMetrics(body = 236.dp, segment = 88.dp, gap = 12.dp, edge = 20.dp)
+        val Compact = PanelMetrics(body = 196.dp, segment = 80.dp, gap = 8.dp, edge = 14.dp)
+        val Wide = PanelMetrics(body = 264.dp, segment = 96.dp, gap = 12.dp, edge = 24.dp)
     }
 }
 
 // The card keeps its portrait proportions at any size, so it shrinks on a short screen instead of turning landscape.
 @Composable
-private fun CardPreviewFrame(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+private fun CardPreviewFrame(
+    modifier: Modifier = Modifier,
+    alignment: Alignment = Alignment.Center,
+    content: @Composable BoxScope.() -> Unit,
+) {
     val shape = MaterialTheme.shapes.extraLargeIncreased
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+    Box(modifier = modifier, contentAlignment = alignment) {
         Box(
             modifier = Modifier
                 .widthIn(max = PREVIEW_MAX_WIDTH)
@@ -324,16 +329,16 @@ private fun CardPreviewFrame(modifier: Modifier = Modifier, content: @Composable
 
 @Composable
 private fun EditorTopBar(audience: CardAudience, onBack: () -> Unit, onEditProfile: () -> Unit) {
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp)) {
+    Box(modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp)) {
         IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = stringResource(MR.string.menu_back),
             )
         }
-        AudiencePill(
+        AudienceTitle(
             audience = audience,
-            modifier = Modifier.align(Alignment.Center).widthIn(max = maxWidth * AUDIENCE_PILL_MAX_FRACTION),
+            modifier = Modifier.align(Alignment.Center).padding(horizontal = TOP_BAR_ICON_SLOT),
         )
         IconButton(onClick = onEditProfile, modifier = Modifier.align(Alignment.CenterEnd)) {
             Icon(
@@ -344,28 +349,44 @@ private fun EditorTopBar(audience: CardAudience, onBack: () -> Unit, onEditProfi
     }
 }
 
-// Read-only here: which card is being edited is decided before the editor opens. A long circle name scrolls rather than hiding its end.
+// Read-only: which card is being edited is decided before the editor opens, so it is set as a title, not a chip.
 @Composable
-private fun AudiencePill(audience: CardAudience, modifier: Modifier = Modifier) {
+private fun AudienceTitle(audience: CardAudience, modifier: Modifier = Modifier) {
     val label = audienceLabel(audience)
     val description = stringResource(MR.string.profile_card_audience_editing, label)
     val isCircle = audience is CardAudience.Circle
-    Surface(
-        shape = CircleShape,
-        color = if (isCircle) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = if (isCircle) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
+    val colors = MaterialTheme.colorScheme
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier.clearAndSetSemantics { contentDescription = description },
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.heightIn(min = 36.dp).padding(start = 12.dp, end = 16.dp),
-        ) {
-            Icon(imageVector = audienceIcon(audience), contentDescription = null, modifier = Modifier.size(18.dp))
+        Text(
+            text = stringResource(MR.string.profile_card_audience_overline),
+            style = MaterialTheme.typography.labelMedium,
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(AUDIENCE_AVATAR)
+                    .background(if (isCircle) colors.tertiaryContainer else colors.secondaryContainer, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = audienceIcon(audience),
+                    contentDescription = null,
+                    tint = if (isCircle) colors.onTertiaryContainer else colors.onSecondaryContainer,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelLargeEmphasized,
+                style = MaterialTheme.typography.titleMediumEmphasized,
+                color = if (isCircle) colors.tertiary else colors.onSurface,
                 maxLines = 1,
-                modifier = Modifier.padding(start = 8.dp).basicMarquee(repeatDelayMillis = MARQUEE_PAUSE_MS),
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 8.dp),
             )
         }
     }
@@ -373,12 +394,9 @@ private fun AudiencePill(audience: CardAudience, modifier: Modifier = Modifier) 
 
 @Composable
 private fun EditorPanel(
-    design: String,
-    overrides: CardOverrides,
+    uiState: ProfileCardUiState,
     step: EditorStep,
     onStep: (EditorStep) -> Unit,
-    isSaving: Boolean,
-    canSave: Boolean,
     onSelect: (String) -> Unit,
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
@@ -389,18 +407,35 @@ private fun EditorPanel(
     modifier: Modifier = Modifier,
 ) {
     val motion = MaterialTheme.motionScheme
+    val fontScale = LocalDensity.current.fontScale
+    val design = uiState.design
+    val isSaving = uiState.isSavingDesign
+    val hasOptions = CardDesignSpecs.of(design)?.options?.isNotEmpty() == true
+    val segment = metrics.segment * fontScale.coerceIn(1f, MAX_SEGMENT_GROWTH)
+    // Grows with the text so a large font scale shrinks the card rather than clipping the controls.
+    val optionsNeeded = CAPTION_LINE * fontScale + metrics.gap + segment + metrics.gap
+    val body = maxOf(metrics.body, optionsNeeded + metrics.gap + TOOLBAR_HEIGHT)
+    val save: @Composable () -> Unit = {
+        SaveFab(isSaving = isSaving, enabled = uiState.canSaveDesign, onClick = onSave)
+    }
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = shape,
-        shadowElevation = 6.dp,
         modifier = modifier,
     ) {
         Column(
-            modifier = Modifier.navigationBarsPadding().padding(top = metrics.edge + 4.dp, bottom = metrics.edge),
+            modifier = Modifier.navigationBarsPadding().padding(top = metrics.edge, bottom = metrics.edge),
             verticalArrangement = Arrangement.spacedBy(metrics.gap),
         ) {
-            StepHeader(step = step, design = design, modifier = Modifier.padding(horizontal = 24.dp))
-            // Both steps fill the same fixed body, so the card above never resizes when the step changes.
+            StepHeader(
+                step = step,
+                design = design,
+                narrow = narrow,
+                showChangeDesign = step == EditorStep.Customise && hasOptions,
+                changeDesignEnabled = !isSaving,
+                onChangeDesign = { onStep(EditorStep.Design) },
+                modifier = Modifier.padding(start = 24.dp, end = 16.dp),
+            )
             AnimatedContent(
                 targetState = step,
                 transitionSpec = {
@@ -408,140 +443,110 @@ private fun EditorPanel(
                     (slideInHorizontally(motion.defaultSpatialSpec()) { it / 3 * forward } + fadeIn(motion.defaultEffectsSpec()))
                         .togetherWith(slideOutHorizontally(motion.defaultSpatialSpec()) { -it / 3 * forward } + fadeOut(motion.fastEffectsSpec()))
                 },
-                modifier = Modifier.fillMaxWidth().height(metrics.body),
+                modifier = Modifier.fillMaxWidth().height(body),
                 contentAlignment = Alignment.Center,
             ) { shown ->
                 when (shown) {
-                    EditorStep.Design -> DesignCarousel(
-                        selected = design,
-                        enabled = !isSaving,
-                        onSelect = onSelect,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    EditorStep.Design -> Column(verticalArrangement = Arrangement.spacedBy(metrics.gap)) {
+                        DesignStrip(
+                            selected = design,
+                            enabled = !isSaving,
+                            onSelect = onSelect,
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                        )
+                        DesignActions(
+                            showSave = uiState.canSaveDesign || isSaving,
+                            isSaving = isSaving,
+                            canCustomise = !uiState.loadFailed,
+                            onSave = onSave,
+                            onCustomise = { onStep(EditorStep.Customise) },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        )
+                    }
                     EditorStep.Customise -> CardOptionsPanel(
                         design = design,
-                        overrides = overrides,
+                        overrides = uiState.overrides,
                         enabled = !isSaving,
                         onOption = onOption,
                         onBlockOrder = onBlockOrder,
-                        optionsHeight = metrics.options,
-                        toolbarHeight = metrics.toolbar,
+                        segmentHeight = segment,
                         gap = metrics.gap,
+                        save = save,
+                        onTryAnotherDesign = { if (!isSaving) onStep(EditorStep.Design) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
-            EditorActions(
-                step = step,
-                isSaving = isSaving,
-                canSave = canSave,
-                onStep = onStep,
-                onSave = onSave,
-                narrow = narrow,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            )
         }
     }
 }
 
+// Customise leads; Save is the quiet companion here and only becomes the primary action on the customise step.
 @Composable
-private fun EditorActions(
-    step: EditorStep,
+private fun DesignActions(
+    showSave: Boolean,
     isSaving: Boolean,
-    canSave: Boolean,
-    onStep: (EditorStep) -> Unit,
+    canCustomise: Boolean,
     onSave: () -> Unit,
-    narrow: Boolean,
+    onCustomise: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Side by side the labels would be cut at large text sizes; stacked they keep their words.
-    val stacked = LocalDensity.current.fontScale >= STACK_ACTIONS_FONT_SCALE
-    val showSave = step == EditorStep.Customise || canSave || isSaving
-    val count = if (showSave) 2 else 1
-    // While saving the other action stays in its colours but does nothing, so the screen reads busy rather than broken.
-    val secondary: @Composable (Modifier, ButtonShapes) -> Unit = { slot, shapes ->
-        when (step) {
-            EditorStep.Design -> PrimaryAction(
-                label = stringResource(MR.string.profile_card_step_customise),
-                trailingIcon = Icons.AutoMirrored.Filled.ArrowForward,
-                onClick = { if (!isSaving) onStep(EditorStep.Customise) },
-                shapes = shapes,
-                modifier = slot,
-            )
-            EditorStep.Customise -> TonalAction(
-                label = stringResource(if (narrow && !stacked) MR.string.profile_card_change_design_short else MR.string.profile_card_change_design),
-                leadingIcon = Icons.AutoMirrored.Filled.ArrowBack,
-                onClick = { if (!isSaving) onStep(EditorStep.Design) },
-                shapes = shapes,
-                modifier = slot,
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (showSave) {
+            TextButton(
+                onClick = { if (!isSaving) onSave() },
+                modifier = Modifier.heightIn(min = ACTION_HEIGHT),
+                contentPadding = PaddingValues(start = 12.dp, end = 16.dp),
+            ) {
+                SaveGlyph(isSaving = isSaving, size = ButtonDefaults.iconSizeFor(ACTION_HEIGHT))
+                Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
+                ActionLabel(stringResource(MR.string.save))
+            }
+        }
+        Button(
+            onClick = { if (!isSaving) onCustomise() },
+            enabled = canCustomise,
+            shapes = ButtonDefaults.shapes(),
+            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
+            modifier = Modifier.weight(1f).heightIn(min = ACTION_HEIGHT),
+        ) {
+            ActionLabel(stringResource(MR.string.profile_card_step_customise))
+            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
             )
         }
     }
-    val save: @Composable (Modifier, ButtonShapes) -> Unit = { slot, shapes ->
-        SaveButton(
-            isSaving = isSaving,
-            enabled = canSave || isSaving,
-            primary = step == EditorStep.Customise,
-            onClick = { if (!isSaving) onSave() },
-            shapes = shapes,
-            modifier = slot,
-        )
-    }
-    val saveWeight by animateFloatAsState(if (isSaving) SAVING_WEIGHT else 1f, MaterialTheme.motionScheme.defaultSpatialSpec())
-    if (stacked) {
-        Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            val full = Modifier.fillMaxWidth()
-            if (step == EditorStep.Design) {
-                secondary(full, ButtonDefaults.shapes())
-                if (showSave) save(full, ButtonDefaults.shapes())
-            } else {
-                save(full, ButtonDefaults.shapes())
-                secondary(full, ButtonDefaults.shapes())
-            }
-        }
-    } else {
-        Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
-            // The step's own action sits at the end, where the eye lands after the options.
-            if (step == EditorStep.Customise) {
-                secondary(Modifier.weight(CHANGE_DESIGN_WEIGHT), connectedShapes(0, count))
-                save(Modifier.weight(saveWeight), connectedShapes(1, count))
-            } else {
-                if (showSave) save(Modifier.weight(saveWeight), connectedShapes(0, count))
-                secondary(Modifier.weight(1f), connectedShapes(count - 1, count))
-            }
+}
+
+// The glyph and the indicator share one slot, so saving never changes the button's width.
+@Composable
+private fun SaveGlyph(isSaving: Boolean, size: Dp) {
+    Crossfade(isSaving, animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(), modifier = Modifier.size(size)) { saving ->
+        if (saving) {
+            LoadingIndicator(modifier = Modifier.size(size), color = LocalContentColor.current)
+        } else {
+            Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(size))
         }
     }
 }
 
 @Composable
-private fun connectedShapes(index: Int, count: Int): ButtonShapes =
-    connectedButtonShapes(index, count).let { ButtonShapes(shape = it.shape, pressedShape = it.pressedShape) }
-
-@Composable
-private fun PrimaryAction(label: String, trailingIcon: ImageVector, onClick: () -> Unit, shapes: ButtonShapes, modifier: Modifier) {
-    Button(
-        onClick = onClick,
-        shapes = shapes,
-        contentPadding = ButtonDefaults.contentPaddingFor(PRIMARY_ACTION_HEIGHT),
-        modifier = modifier.heightIn(min = PRIMARY_ACTION_HEIGHT),
+internal fun SaveFab(isSaving: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val description = stringResource(MR.string.save)
+    FilledIconButton(
+        onClick = { if (!isSaving) onClick() },
+        enabled = enabled || isSaving,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.size(SAVE_FAB_SIZE).semantics { contentDescription = description },
     ) {
-        ActionLabel(label)
-        Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(PRIMARY_ACTION_HEIGHT)))
-        Icon(trailingIcon, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(PRIMARY_ACTION_HEIGHT)))
-    }
-}
-
-@Composable
-private fun TonalAction(label: String, leadingIcon: ImageVector, onClick: () -> Unit, shapes: ButtonShapes, modifier: Modifier) {
-    FilledTonalButton(
-        onClick = onClick,
-        shapes = shapes,
-        contentPadding = PaddingValues(start = 16.dp, end = 20.dp),
-        modifier = modifier.heightIn(min = PRIMARY_ACTION_HEIGHT),
-    ) {
-        Icon(leadingIcon, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(PRIMARY_ACTION_HEIGHT)))
-        Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(PRIMARY_ACTION_HEIGHT)))
-        ActionLabel(label)
+        SaveGlyph(isSaving = isSaving, size = 28.dp)
     }
 }
 
@@ -549,159 +554,180 @@ private fun TonalAction(label: String, leadingIcon: ImageVector, onClick: () -> 
 private fun ActionLabel(label: String) {
     Text(
         text = label,
-        style = ButtonDefaults.textStyleFor(PRIMARY_ACTION_HEIGHT),
+        style = ButtonDefaults.textStyleFor(ACTION_HEIGHT),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
 }
 
 @Composable
-private fun StepHeader(step: EditorStep, design: String, modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
-    val typography = MaterialTheme.typography
-    val large = LocalDensity.current.fontScale >= STACK_ACTIONS_FONT_SCALE
-    val plain = if (large) typography.titleLarge else typography.headlineMedium
-    val emphasized = if (large) typography.titleLargeEmphasized else typography.headlineMediumEmphasized
-    val designName = stringResource(designLabel(design))
-    val designTitle = stringResource(MR.string.profile_card_step_design_title)
-    val customiseTitle = stringResource(MR.string.profile_card_step_customise_title, designName)
-    val count = stringResource(MR.string.profile_card_step_count, step.ordinal + 1, EditorStep.entries.size)
-    val (title, style) = when (step) {
-        EditorStep.Design -> AnnotatedString(designTitle) to emphasized.copy(color = colors.onSurface)
-        // The design's name carries the weight, so step two is plainly about the design just chosen.
-        EditorStep.Customise -> buildAnnotatedString {
-            append(customiseTitle)
-            val at = customiseTitle.indexOf(designName)
-            if (at >= 0) {
-                addStyle(SpanStyle(color = colors.primary, fontWeight = emphasized.fontWeight), at, at + designName.length)
-            }
-        } to plain.copy(color = colors.onSurfaceVariant)
-    }
-    val motion = MaterialTheme.motionScheme
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.clearAndSetSemantics {
-            heading()
-            contentDescription = "${title.text}, $count"
-        },
-    ) {
-        AnimatedContent(
-            targetState = title to style,
-            transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
-            contentAlignment = Alignment.CenterStart,
-            modifier = Modifier.weight(1f),
-        ) { (text, textStyle) ->
-            Text(text = text, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        StepDots(current = step)
-    }
-}
-
-// The current step's dot stretches into a pill, so progress reads without words.
-@Composable
-private fun StepDots(current: EditorStep) {
-    val motion = MaterialTheme.motionScheme
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(start = 12.dp)) {
-        EditorStep.entries.forEach { step ->
-            val active = step == current
-            val width by animateDpAsState(if (active) 24.dp else 8.dp, motion.defaultSpatialSpec())
-            val color by animateColorAsState(
-                if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                motion.defaultEffectsSpec(),
-            )
-            Box(Modifier.size(width = width, height = 8.dp).background(color, CircleShape))
-        }
-    }
-}
-
-@Composable
-private fun SaveButton(
-    isSaving: Boolean,
-    enabled: Boolean,
-    primary: Boolean,
-    onClick: () -> Unit,
-    shapes: ButtonShapes,
+private fun StepHeader(
+    step: EditorStep,
+    design: String,
+    narrow: Boolean,
+    showChangeDesign: Boolean,
+    changeDesignEnabled: Boolean,
+    onChangeDesign: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val fade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
-    val labelAlpha = animateFloatAsState(if (isSaving) 0f else 1f, fade)
-    val content: @Composable () -> Unit = {
-        Box(contentAlignment = Alignment.Center) {
-            // Keeps the button's width while the indicator shows.
-            Text(
-                text = stringResource(MR.string.save),
-                style = ButtonDefaults.textStyleFor(PRIMARY_ACTION_HEIGHT),
-                maxLines = 1,
-                modifier = Modifier.graphicsLayer { alpha = labelAlpha.value },
-            )
-            Crossfade(isSaving, animationSpec = fade) { saving ->
-                if (saving) LoadingIndicator(modifier = Modifier.size(24.dp), color = LocalContentColor.current)
+    val motion = MaterialTheme.motionScheme
+    val count = stringResource(MR.string.profile_card_step_count, step.ordinal + 1, EditorStep.entries.size)
+    val designName = stringResource(designLabel(design))
+    val title = when (step) {
+        EditorStep.Design -> stringResource(MR.string.profile_card_step_design_title)
+        EditorStep.Customise -> stringResource(MR.string.profile_card_step_customise_title, designName)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.heightIn(min = 48.dp)) {
+        AnimatedContent(
+            targetState = step,
+            transitionSpec = {
+                val forward = if (targetState.ordinal > initialState.ordinal) 1 else -1
+                (slideInVertically(motion.defaultSpatialSpec()) { it / 2 * forward } + fadeIn(motion.defaultEffectsSpec()))
+                    .togetherWith(slideOutVertically(motion.defaultSpatialSpec()) { -it / 2 * forward } + fadeOut(motion.fastEffectsSpec()))
+            },
+            contentAlignment = Alignment.CenterStart,
+            modifier = Modifier
+                .weight(1f)
+                .clearAndSetSemantics {
+                    heading()
+                    contentDescription = "$title, $count"
+                },
+        ) { shown ->
+            StepTitle(step = shown, designName = designName, narrow = narrow)
+        }
+        AnimatedVisibility(
+            visible = showChangeDesign,
+            enter = fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.fastSpatialSpec()),
+            exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec()),
+        ) {
+            val description = stringResource(MR.string.profile_card_change_design)
+            FilledTonalButton(
+                onClick = onChangeDesign,
+                enabled = changeDesignEnabled,
+                shapes = ButtonDefaults.shapes(),
+                contentPadding = PaddingValues(start = 12.dp, end = 16.dp),
+                modifier = Modifier.padding(start = 8.dp).semantics { contentDescription = description },
+            ) {
+                Icon(Icons.Outlined.SwapHoriz, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                Text(stringResource(MR.string.profile_card_change_design_short), maxLines = 1)
             }
         }
-    }
-    val sized = modifier.heightIn(min = PRIMARY_ACTION_HEIGHT)
-    val padding = ButtonDefaults.contentPaddingFor(PRIMARY_ACTION_HEIGHT)
-    if (primary) {
-        Button(onClick = onClick, enabled = enabled, shapes = shapes, contentPadding = padding, modifier = sized) { content() }
-    } else {
-        FilledTonalButton(onClick = onClick, enabled = enabled, shapes = shapes, contentPadding = padding, modifier = sized) { content() }
     }
 }
 
 @Composable
-private fun DesignCarousel(
+private fun StepTitle(step: EditorStep, designName: String, narrow: Boolean) {
+    val typography = MaterialTheme.typography
+    val large = LocalDensity.current.fontScale >= LARGE_FONT_SCALE
+    val style = when {
+        large -> typography.titleLargeEmphasized
+        narrow -> typography.headlineMediumEmphasized
+        else -> typography.headlineLargeEmphasized
+    }
+    when (step) {
+        EditorStep.Design -> Text(
+            text = stringResource(MR.string.profile_card_step_design_title),
+            style = style,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        // Step two is about the design just chosen, so its name is what the title emphasises.
+        EditorStep.Customise -> Column {
+            Text(
+                text = stringResource(MR.string.profile_card_step_customise),
+                style = typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+            Text(
+                text = designName,
+                style = style,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DesignStrip(
     selected: String,
     enabled: Boolean,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val designs = CardDesign.all
-    // Opens with the selected design in view but not flush to the edge: its neighbour before it stays on screen.
     val state = rememberCarouselState(initialItem = (designs.indexOf(selected) - 1).coerceAtLeast(0)) { designs.size }
     val scope = rememberCoroutineScope()
     val motion = MaterialTheme.motionScheme
+    val labelHeight = DESIGN_LABEL_HEIGHT * LocalDensity.current.fontScale.coerceAtLeast(1f)
     BoxWithConstraints(modifier = modifier) {
-        // Same-size cards that scroll with the last one peeking, so more designs read as "keep going".
-        HorizontalUncontainedCarousel(
-            state = state,
-            itemWidth = minOf((maxHeight - DESIGN_LABEL_HEIGHT) * CARD_THUMB_ASPECT, DESIGN_TILE_MAX_WIDTH),
-            itemSpacing = 12.dp,
-            contentPadding = PaddingValues(horizontal = 20.dp),
-            modifier = Modifier.fillMaxSize().selectableGroup(),
-        ) { index ->
+        val byHeight = (maxHeight - labelHeight) * CARD_THUMB_ASPECT
+        val count = designs.size
+        val fitAll = (maxWidth - DESIGN_STRIP_INSET * 2 - DESIGN_TILE_SPACING * (count - 1)) / count
+        // Every design in view when they fit; otherwise the next one shows half, so the strip reads as "keep going".
+        val byWidth = if (fitAll >= DESIGN_TILE_MIN_WIDTH) {
+            fitAll
+        } else {
+            val shown = ((maxWidth - DESIGN_STRIP_INSET) / (DESIGN_TILE_MIN_WIDTH + DESIGN_TILE_SPACING)).toInt().coerceAtLeast(1)
+            (maxWidth - DESIGN_STRIP_INSET - DESIGN_TILE_SPACING * shown) / (shown + 0.5f)
+        }
+        val itemWidth = minOf(byHeight, byWidth, DESIGN_TILE_MAX_WIDTH)
+        val itemHeight = itemWidth / CARD_THUMB_ASPECT + labelHeight
+        val tile: @Composable (Int, Modifier) -> Unit = { index, tileModifier ->
             val design = designs[index]
             DesignTile(
                 design = design,
                 selected = design == selected,
                 enabled = enabled,
+                labelHeight = labelHeight,
                 onClick = {
                     onSelect(design)
                     scope.launch { state.animateScrollToItem(index, motion.defaultSpatialSpec()) }
                 },
+                modifier = tileModifier,
             )
+        }
+        if (fitAll >= DESIGN_TILE_MIN_WIDTH) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(DESIGN_TILE_SPACING, Alignment.CenterHorizontally),
+                modifier = Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal = DESIGN_STRIP_INSET).selectableGroup(),
+            ) {
+                designs.indices.forEach { tile(it, Modifier.size(itemWidth, itemHeight)) }
+            }
+        } else {
+            HorizontalUncontainedCarousel(
+                state = state,
+                itemWidth = itemWidth,
+                itemSpacing = DESIGN_TILE_SPACING,
+                contentPadding = PaddingValues(horizontal = DESIGN_STRIP_INSET),
+                modifier = Modifier.align(Alignment.Center).fillMaxWidth().height(itemHeight).selectableGroup(),
+            ) { index -> tile(index, Modifier.fillMaxSize()) }
         }
     }
 }
 
 @Composable
-private fun CarouselItemScope.DesignTile(
+private fun DesignTile(
     design: String,
     selected: Boolean,
     enabled: Boolean,
+    labelHeight: Dp,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val motion = MaterialTheme.motionScheme
     val colors = MaterialTheme.colorScheme
     // Selection morphs the tile from a squarer card to a softer one, ringed in primary.
-    val corner by animateDpAsState(if (selected) 32.dp else 16.dp, motion.fastSpatialSpec())
-    val ring by animateDpAsState(if (selected) 4.dp else 1.dp, motion.fastSpatialSpec())
+    val corner by animateDpAsState(if (selected) 28.dp else 14.dp, motion.fastSpatialSpec())
+    val ring by animateDpAsState(if (selected) 3.dp else 1.dp, motion.fastSpatialSpec())
     val badge by animateFloatAsState(if (selected) 1f else 0f, motion.fastSpatialSpec())
     val shape = RoundedCornerShape(corner)
     val label = stringResource(designLabel(design))
     Column(
-        verticalArrangement = Arrangement.Center,
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = modifier
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
             .semantics { contentDescription = label },
     ) {
@@ -709,8 +735,8 @@ private fun CarouselItemScope.DesignTile(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(CARD_THUMB_ASPECT)
-                .maskClip(shape)
-                .maskBorder(BorderStroke(ring, if (selected) colors.primary else colors.outlineVariant), shape),
+                .clip(shape)
+                .border(BorderStroke(ring, if (selected) colors.primary else colors.outlineVariant), shape),
         ) {
             CardDesignThumbnail(design = design, modifier = Modifier.fillMaxSize())
             Box(
@@ -721,30 +747,26 @@ private fun CarouselItemScope.DesignTile(
                         scaleX = badge
                         scaleY = badge
                     }
-                    .padding(10.dp)
-                    .size(26.dp)
+                    .padding(8.dp)
+                    .size(22.dp)
                     .background(colors.primary, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Filled.Check, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(16.dp))
+                Icon(Icons.Filled.Check, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(14.dp))
             }
         }
-        Text(
-            text = label,
-            style = if (selected) MaterialTheme.typography.labelLargeEmphasized else MaterialTheme.typography.labelLarge,
-            color = if (selected) colors.primary else colors.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(DESIGN_LABEL_HEIGHT)
-                .wrapContentHeight()
-                .padding(horizontal = 4.dp),
-        )
+        Box(modifier = Modifier.fillMaxWidth().height(labelHeight), contentAlignment = Alignment.Center) {
+            Text(
+                text = label,
+                style = if (selected) MaterialTheme.typography.labelLargeEmphasized else MaterialTheme.typography.labelLarge,
+                color = if (selected) colors.primary else colors.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
-
 
 internal enum class EditorStep { Design, Customise }
 

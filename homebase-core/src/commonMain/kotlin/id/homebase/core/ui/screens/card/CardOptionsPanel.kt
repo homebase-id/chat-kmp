@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
 
 package id.homebase.core.ui.screens.card
 
@@ -15,28 +15,30 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.outlined.Notes
@@ -45,19 +47,22 @@ import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.DragIndicator
-import androidx.compose.material.icons.outlined.FormatColorReset
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Reorder
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.ViewStream
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FloatingToolbarDefaults
+import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialShapes
@@ -70,6 +75,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -80,6 +86,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
@@ -89,13 +96,16 @@ import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
@@ -108,6 +118,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.graphics.shapes.Morph
 import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
@@ -120,7 +131,6 @@ import id.homebase.resources.profile_card_font_caveat
 import id.homebase.resources.profile_card_font_montserrat
 import id.homebase.resources.profile_card_font_montserrat_alt
 import id.homebase.resources.profile_card_font_newsreader
-import id.homebase.resources.profile_card_font_sample
 import id.homebase.resources.profile_card_font_space_mono
 import id.homebase.resources.profile_card_option_accent
 import id.homebase.resources.profile_card_option_accent_swatch
@@ -134,6 +144,7 @@ import id.homebase.resources.profile_card_option_portrait_shape
 import id.homebase.resources.profile_card_option_socials_style
 import id.homebase.resources.profile_card_option_text_font
 import id.homebase.resources.profile_card_options_empty
+import id.homebase.resources.profile_card_options_empty_title
 import id.homebase.resources.profile_card_shape_circle
 import id.homebase.resources.profile_card_shape_ellipse
 import id.homebase.resources.profile_card_shape_rounded
@@ -142,31 +153,26 @@ import id.homebase.resources.profile_card_socials_bar
 import id.homebase.resources.profile_card_socials_glyphs
 import id.homebase.resources.profile_card_socials_handles
 import id.homebase.resources.profile_card_socials_wordmark
-import id.homebase.resources.profile_card_tool_accent
-import id.homebase.resources.profile_card_tool_block_order
-import id.homebase.resources.profile_card_tool_display_font
-import id.homebase.resources.profile_card_tool_portrait_shape
-import id.homebase.resources.profile_card_tool_socials_style
-import id.homebase.resources.profile_card_tool_text_font
+import id.homebase.resources.profile_card_try_another_design
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
-import sh.calvin.reorderable.ReorderableColumn
+import sh.calvin.reorderable.ReorderableRow
 
-private val SWATCH_SIZE = 48.dp
-private val SWATCH_TARGET = 60.dp
-private val SEGMENT_HEIGHT = 88.dp
-private val FONT_SEGMENT_MIN_WIDTH = 120.dp
-private val FONT_SAMPLE_HEIGHT = 32.dp
-private val SOCIALS_SEGMENT_MIN_WIDTH = 68.dp
-private val SHAPE_SEGMENT_MIN_WIDTH = 60.dp
+internal val TOOLBAR_HEIGHT = 64.dp
+internal val SAVE_FAB_SIZE = 56.dp
+internal const val MAX_SEGMENT_GROWTH = 1.3f
+private val SWATCH_SIZE = 44.dp
+private val SWATCH_TARGET = 56.dp
+private val FONT_SEGMENT_MIN_WIDTH = 96.dp
+private val SOCIALS_SEGMENT_MIN_WIDTH = 72.dp
+private val SHAPE_SEGMENT_MIN_WIDTH = 64.dp
 private val GLYPH_SIZE = 28.dp
-private val ORDER_ROW_HEIGHT = 48.dp
-private val TOOL_INDICATOR_WIDTH = 52.dp
-private val TOOL_INDICATOR_HEIGHT = 32.dp
+private val TOOL_SIZE = 48.dp
 private val FADE_LENGTH = 24.dp
 private val OPTION_SIDE_INSET = 16.dp
-private const val TOOL_LABELS_MAX_FONT_SCALE = 1.3f
-private const val MAX_SEGMENT_GROWTH = 1.3f
+private val CAPTION_INSET = 24.dp
+private const val REVEAL_MARGIN = 0.6f
+private val MIN_TILE_LABEL_SIZE = 9.sp
 
 /** Every control comes from the design's [CardDesignSpec]; there is no per-design screen. */
 @Composable
@@ -176,15 +182,16 @@ internal fun CardOptionsPanel(
     enabled: Boolean,
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
-    optionsHeight: Dp,
-    toolbarHeight: Dp,
+    segmentHeight: Dp,
     gap: Dp,
+    save: @Composable () -> Unit,
+    onTryAnotherDesign: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spec = CardDesignSpecs.of(design)
     val options = CardOption.entries.filter { spec != null && it in spec.options }
     if (options.isEmpty()) {
-        OptionsEmptyState(modifier = modifier.padding(horizontal = 24.dp))
+        OptionsEmptyState(design = design, save = save, onTryAnotherDesign = onTryAnotherDesign, gap = gap, modifier = modifier)
         return
     }
     var picked by rememberSaveable(design) { mutableStateOf(options.first().name) }
@@ -197,51 +204,21 @@ internal fun CardOptionsPanel(
                 (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
                     .togetherWith(fadeOut(motion.fastEffectsSpec()))
             },
-            modifier = Modifier.fillMaxWidth().height(optionsHeight),
-            contentAlignment = Alignment.Center,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentAlignment = Alignment.TopStart,
         ) { option ->
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                when (option) {
-                    CardOption.ACCENT -> SwatchGrid(overrides.valueOf(option), enabled) { onOption(option, it) }
-                    CardOption.BLOCK_ORDER -> BlockOrderList(overrides.blockOrder(), enabled, onBlockOrder)
-                    CardOption.PORTRAIT_SHAPE -> SegmentedChoices(
-                        values = listOf(null) + CardDesignSpecs.PORTRAIT_SHAPES,
-                        selected = overrides.valueOf(option),
-                        enabled = enabled,
-                        minSegmentWidth = SHAPE_SEGMENT_MIN_WIDTH,
-                        onSelect = { onOption(option, it) },
-                    ) { shape ->
-                        if (shape == null) DefaultGlyph() else ShapeGlyph(shape)
-                        SegmentLabel(stringResource(shape?.let(::shapeLabel) ?: MR.string.profile_card_option_default))
-                    }
-                    CardOption.SOCIALS_STYLE -> SegmentedChoices(
-                        values = listOf(null) + CardDesignSpecs.SOCIALS_STYLES,
-                        selected = overrides.valueOf(option),
-                        enabled = enabled,
-                        minSegmentWidth = SOCIALS_SEGMENT_MIN_WIDTH,
-                        onSelect = { onOption(option, it) },
-                    ) { style ->
-                        Icon(socialsIcon(style), contentDescription = null, modifier = Modifier.size(GLYPH_SIZE))
-                        SegmentLabel(stringResource(style?.let(::socialsLabel) ?: MR.string.profile_card_option_default))
-                    }
-                    CardOption.DISPLAY_FONT, CardOption.TEXT_FONT -> SegmentedChoices(
-                        values = listOf(null) + CardDesignSpecs.FONTS,
-                        selected = overrides.valueOf(option),
-                        enabled = enabled,
-                        minSegmentWidth = FONT_SEGMENT_MIN_WIDTH,
-                        onSelect = { onOption(option, it) },
-                    ) { font ->
-                        // Fixed so faces with tall ascenders don't push their name out of line with the rest.
-                        val sampleHeight = FONT_SAMPLE_HEIGHT * LocalDensity.current.fontScale.coerceAtLeast(1f)
-                        Box(modifier = Modifier.height(sampleHeight), contentAlignment = Alignment.Center) {
-                            Text(
-                                text = stringResource(MR.string.profile_card_font_sample),
-                                style = fontPreviewStyle(font),
-                                maxLines = 1,
-                            )
-                        }
-                        SegmentLabel(stringResource(font?.let(::fontLabel) ?: MR.string.profile_card_option_default))
-                    }
+            // The caption names the tool picked below, so every tool can stay an icon at any text size.
+            Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap, Alignment.CenterVertically)) {
+                Text(
+                    text = stringResource(optionLabel(option)),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = CAPTION_INSET),
+                )
+                Box(modifier = Modifier.fillMaxWidth().heightIn(min = segmentHeight), contentAlignment = Alignment.Center) {
+                    OptionControl(option, overrides, enabled, segmentHeight, onOption, onBlockOrder)
                 }
             }
         }
@@ -249,120 +226,199 @@ internal fun CardOptionsPanel(
             options = options,
             current = current,
             onPick = { picked = it.name },
-            modifier = Modifier.fillMaxWidth().height(toolbarHeight).padding(horizontal = OPTION_SIDE_INSET),
+            save = save,
+            modifier = Modifier.fillMaxWidth().height(TOOLBAR_HEIGHT).padding(horizontal = OPTION_SIDE_INSET),
         )
     }
 }
 
-// Categories read as tools on a floating bar rather than tabs; the selected one fills and squares off like the toggles above it.
+@Composable
+private fun OptionControl(
+    option: CardOption,
+    overrides: CardOverrides,
+    enabled: Boolean,
+    segmentHeight: Dp,
+    onOption: (CardOption, String?) -> Unit,
+    onBlockOrder: (List<String>) -> Unit,
+) {
+    when (option) {
+        CardOption.ACCENT -> SwatchRow(overrides.valueOf(option), enabled) { onOption(option, it) }
+        CardOption.BLOCK_ORDER -> BlockOrderRow(overrides.blockOrder(), enabled, segmentHeight, onBlockOrder)
+        CardOption.PORTRAIT_SHAPE -> SegmentedChoices(
+            values = listOf(null) + CardDesignSpecs.PORTRAIT_SHAPES,
+            selected = overrides.valueOf(option),
+            enabled = enabled,
+            minSegmentWidth = SHAPE_SEGMENT_MIN_WIDTH,
+            segmentHeight = segmentHeight,
+            onSelect = { onOption(option, it) },
+        ) { shape ->
+            if (shape == null) DefaultGlyph() else ShapeGlyph(shape)
+            SegmentLabel(stringResource(shape?.let(::shapeLabel) ?: MR.string.profile_card_option_default))
+        }
+        CardOption.SOCIALS_STYLE -> SegmentedChoices(
+            values = listOf(null) + CardDesignSpecs.SOCIALS_STYLES,
+            selected = overrides.valueOf(option),
+            enabled = enabled,
+            minSegmentWidth = SOCIALS_SEGMENT_MIN_WIDTH,
+            segmentHeight = segmentHeight,
+            onSelect = { onOption(option, it) },
+        ) { style ->
+            Icon(socialsIcon(style), contentDescription = null, modifier = Modifier.size(GLYPH_SIZE))
+            SegmentLabel(stringResource(style?.let(::socialsLabel) ?: MR.string.profile_card_option_default))
+        }
+        // A font picker shows each face by setting its own name in it; the name is never cut.
+        CardOption.DISPLAY_FONT, CardOption.TEXT_FONT -> SegmentedChoices(
+            values = listOf(null) + CardDesignSpecs.FONTS,
+            selected = overrides.valueOf(option),
+            enabled = enabled,
+            minSegmentWidth = FONT_SEGMENT_MIN_WIDTH,
+            segmentHeight = segmentHeight,
+            onSelect = { onOption(option, it) },
+            sidePadding = 20.dp,
+        ) { font ->
+            Text(
+                text = stringResource(font?.let(::fontLabel) ?: MR.string.profile_card_option_default),
+                style = fontPreviewStyle(font),
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
+    }
+}
+
+// The app's floating toolbar: option tools as icons that morph into a filled squircle when picked, with Save as its FAB.
 @Composable
 private fun OptionToolbar(
     options: List<CardOption>,
     current: CardOption,
     onPick: (CardOption) -> Unit,
+    save: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val showLabels = LocalDensity.current.fontScale < TOOL_LABELS_MAX_FONT_SCALE
-    Surface(
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    val scroll = rememberScrollState()
+    Row(
         modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp).selectableGroup(),
-            verticalAlignment = Alignment.CenterVertically,
+        HorizontalFloatingToolbar(
+            expanded = true,
+            colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
+                toolbarContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                toolbarContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+            contentPadding = PaddingValues(horizontal = 4.dp),
+            expandedShadowElevation = 0.dp,
+            modifier = Modifier.weight(1f, fill = false),
         ) {
-            options.forEach { option ->
-                ToolItem(
-                    icon = optionIcon(option),
-                    label = stringResource(toolLabel(option)),
-                    description = stringResource(optionLabel(option)),
-                    selected = option == current,
-                    showLabel = showLabels,
-                    onClick = { onPick(option) },
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
+            Row(
+                modifier = Modifier.fadingEdges(scroll, horizontal = true).horizontalScroll(scroll).selectableGroup(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                options.forEach { option ->
+                    ToolItem(
+                        icon = optionIcon(option),
+                        description = stringResource(optionLabel(option)),
+                        selected = option == current,
+                        onClick = { onPick(option) },
+                    )
+                }
             }
         }
+        save()
     }
 }
 
 @Composable
 private fun ToolItem(
     icon: ImageVector,
-    label: String,
     description: String,
     selected: Boolean,
-    showLabel: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     val motion = MaterialTheme.motionScheme
     val colors = MaterialTheme.colorScheme
-    val corner by animateDpAsState(if (selected) 10.dp else TOOL_INDICATOR_HEIGHT / 2, motion.fastSpatialSpec())
-    val fill by animateColorAsState(if (selected) colors.primary else colors.surfaceContainerHigh, motion.fastEffectsSpec())
-    val ink by animateColorAsState(if (selected) colors.onPrimary else colors.onSurfaceVariant, motion.fastEffectsSpec())
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-        modifier = modifier
-            .clip(MaterialTheme.shapes.large)
+    val corner by animateDpAsState(if (selected) 14.dp else TOOL_SIZE / 2, motion.fastSpatialSpec())
+    val inset by animateDpAsState(if (selected) 2.dp else 6.dp, motion.fastSpatialSpec())
+    val fill by animateColorAsState(if (selected) colors.secondary else colors.surfaceContainerHighest, motion.fastEffectsSpec())
+    val ink by animateColorAsState(if (selected) colors.onSecondary else colors.onSurfaceVariant, motion.fastEffectsSpec())
+    Box(
+        modifier = Modifier
+            .size(TOOL_SIZE)
+            .revealWhenSelected(selected)
             .selectable(selected = selected, role = Role.Tab, onClick = onClick)
-            .semantics { contentDescription = description },
+            .semantics { contentDescription = description }
+            .padding(inset)
+            .background(fill, RoundedCornerShape(corner)),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .size(width = TOOL_INDICATOR_WIDTH, height = TOOL_INDICATOR_HEIGHT)
-                .background(fill, RoundedCornerShape(corner)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(imageVector = icon, contentDescription = null, tint = ink, modifier = Modifier.size(20.dp))
-        }
-        if (showLabel) {
-            Text(
-                text = label,
-                style = if (selected) MaterialTheme.typography.labelSmallEmphasized else MaterialTheme.typography.labelSmall,
-                color = if (selected) colors.primary else colors.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 2.dp, start = 2.dp, end = 2.dp),
-            )
-        }
+        Icon(imageVector = icon, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
     }
 }
 
 @Composable
-private fun OptionsEmptyState(modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .background(MaterialTheme.colorScheme.secondaryContainer, MaterialShapes.Cookie9Sided.toShape()),
-            contentAlignment = Alignment.Center,
+private fun OptionsEmptyState(
+    design: String,
+    save: @Composable () -> Unit,
+    onTryAnotherDesign: () -> Unit,
+    gap: Dp,
+    modifier: Modifier = Modifier,
+) {
+    val name = stringResource(designLabel(design))
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
+        Row(
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = CAPTION_INSET),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Icon(
-                imageVector = Icons.Outlined.Tune,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.size(32.dp),
-            )
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .background(MaterialTheme.colorScheme.secondaryContainer, MaterialShapes.Cookie9Sided.toShape()),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Tune,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = stringResource(MR.string.profile_card_options_empty_title, name),
+                    style = MaterialTheme.typography.titleMediumEmphasized,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = stringResource(MR.string.profile_card_options_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-        Text(
-            text = stringResource(MR.string.profile_card_options_empty),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().height(TOOLBAR_HEIGHT).padding(horizontal = OPTION_SIDE_INSET),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            FilledTonalButton(
+                onClick = onTryAnotherDesign,
+                shapes = ButtonDefaults.shapes(),
+                modifier = Modifier.weight(1f).heightIn(min = SAVE_FAB_SIZE),
+            ) {
+                Icon(Icons.Outlined.SwapHoriz, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                Text(stringResource(MR.string.profile_card_try_another_design), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            save()
+        }
     }
 }
 
 /**
- * One connected group for every pick-one option, so selection always looks the same: the checked segment turns primary
- * and springs to its checked shape. Segments share a fixed height; when they don't fit, the row scrolls under faded edges.
+ * One connected group for every pick-one option: rounded ends, tight inner corners, and the checked segment springs to a
+ * full pill. Segments are at least as wide as their content; when they don't fit, the row scrolls under faded edges.
  */
 @Composable
 private fun SegmentedChoices(
@@ -370,23 +426,17 @@ private fun SegmentedChoices(
     selected: String?,
     enabled: Boolean,
     minSegmentWidth: Dp,
+    segmentHeight: Dp,
     onSelect: (String?) -> Unit,
+    sidePadding: Dp = 8.dp,
     content: @Composable ColumnScope.(String?) -> Unit,
 ) {
     val spacing = ButtonGroupDefaults.ConnectedSpaceBetween
-    // Larger text gets proportionally larger segments rather than clipped glyphs.
     val grow = LocalDensity.current.fontScale.coerceIn(1f, MAX_SEGMENT_GROWTH)
-    val segmentHeight = SEGMENT_HEIGHT * grow
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val available = maxWidth - OPTION_SIDE_INSET * 2 - spacing * (values.size - 1)
         val segmentWidth = maxOf(minSegmentWidth * grow, available / values.size)
         val scroll = rememberScrollState()
-        val density = LocalDensity.current
-        val selectedIndex = values.indexOf(selected).coerceAtLeast(0)
-        LaunchedEffect(Unit) {
-            val step = with(density) { (segmentWidth + spacing).toPx() }
-            scroll.scrollTo((step * (selectedIndex - 1)).toInt().coerceAtLeast(0))
-        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -401,8 +451,8 @@ private fun SegmentedChoices(
                     onCheckedChange = { onSelect(value) },
                     enabled = enabled,
                     shapes = connectedButtonShapes(index, values.size),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp),
-                    modifier = Modifier.width(segmentWidth).height(segmentHeight),
+                    contentPadding = PaddingValues(horizontal = sidePadding, vertical = 10.dp),
+                    modifier = Modifier.revealWhenSelected(value == selected).widthIn(min = segmentWidth).height(segmentHeight),
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -421,7 +471,7 @@ private fun SegmentLabel(text: String) {
         style = MaterialTheme.typography.labelMedium,
         textAlign = TextAlign.Center,
         maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
+        softWrap = false,
     )
 }
 
@@ -445,36 +495,50 @@ private fun fontPreviewStyle(font: String?): TextStyle {
 }
 
 @Composable
-private fun SwatchGrid(selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = OPTION_SIDE_INSET).selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        maxItemsInEachRow = 5,
+private fun SwatchRow(selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
+    val scroll = rememberScrollState()
+    val values = listOf<String?>(null) + CardDesignSpecs.ACCENT_SWATCHES
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fadingEdges(scroll, horizontal = true)
+            .horizontalScroll(scroll)
+            .padding(horizontal = OPTION_SIDE_INSET - 4.dp)
+            .selectableGroup(),
     ) {
-        Swatch(
-            fill = MaterialTheme.colorScheme.surfaceContainerHighest,
-            selected = selected == null,
-            enabled = enabled,
-            description = stringResource(MR.string.profile_card_option_default),
-            onClick = { onSelect(null) },
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.FormatColorReset,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(22.dp),
-            )
+        values.forEach { hex ->
+            if (hex == null) {
+                Swatch(
+                    fill = MaterialTheme.colorScheme.surfaceVariant,
+                    selected = selected == null,
+                    enabled = enabled,
+                    description = stringResource(MR.string.profile_card_option_default),
+                    onClick = { onSelect(null) },
+                ) { NoColourSlash() }
+            } else {
+                Swatch(
+                    fill = hexColor(hex),
+                    selected = selected.equals(hex, ignoreCase = true),
+                    enabled = enabled,
+                    description = stringResource(MR.string.profile_card_option_accent_swatch, hex),
+                    onClick = { onSelect(hex) },
+                )
+            }
         }
-        CardDesignSpecs.ACCENT_SWATCHES.forEach { hex ->
-            Swatch(
-                fill = hexColor(hex),
-                selected = selected.equals(hex, ignoreCase = true),
-                enabled = enabled,
-                description = stringResource(MR.string.profile_card_option_accent_swatch, hex),
-                onClick = { onSelect(hex) },
-            )
-        }
+    }
+}
+
+@Composable
+private fun NoColourSlash() {
+    val ink = MaterialTheme.colorScheme.onSurfaceVariant
+    Canvas(modifier = Modifier.fillMaxSize().padding(10.dp)) {
+        drawLine(
+            color = ink,
+            start = Offset(size.width, 0f),
+            end = Offset(0f, size.height),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round,
+        )
     }
 }
 
@@ -491,10 +555,12 @@ private fun Swatch(
     val morph = remember { Morph(MaterialShapes.Circle, MaterialShapes.Cookie9Sided) }
     val progress by animateFloatAsState(if (selected) 1f else 0f, motion.fastSpatialSpec())
     val ring = MaterialTheme.colorScheme.primary
+    val outline = MaterialTheme.colorScheme.outline
     val shape = MorphShape(morph, progress)
     Box(
         modifier = Modifier
             .size(SWATCH_TARGET)
+            .revealWhenSelected(selected)
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
@@ -504,8 +570,9 @@ private fun Swatch(
                 .size(SWATCH_SIZE + 8.dp)
                 .border(2.5.dp, ring.copy(alpha = progress), CircleShape)
                 .padding(4.dp)
-                .background(fill, shape)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 1f - progress), shape),
+                .clip(shape)
+                .background(fill)
+                .border(1.dp, outline.copy(alpha = 0.5f * (1f - progress)), shape),
             contentAlignment = Alignment.Center,
         ) { content() }
     }
@@ -545,51 +612,45 @@ private fun DrawScope.drawPortraitShape(shape: String, color: Color) {
     }
 }
 
-// Drag is the direct way to reorder; the arrow moves stay as accessibility actions for anyone who can't drag.
+// The card's sections as tiles in the order they appear, dragged along the row; move up/down stay as accessibility actions.
 @Composable
-private fun BlockOrderList(order: List<String>, enabled: Boolean, onChange: (List<String>) -> Unit) {
-    val scroll = rememberScrollState()
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .fadingEdges(scroll, horizontal = false)
-            .verticalScroll(scroll),
-    ) {
-        // The list must be a new immutable instance per change: ReorderableColumn keys its offsets on the instance.
-        ReorderableColumn(
+private fun BlockOrderRow(order: List<String>, enabled: Boolean, tileHeight: Dp, onChange: (List<String>) -> Unit) {
+    val spacing = ButtonGroupDefaults.ConnectedSpaceBetween
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(horizontal = OPTION_SIDE_INSET)) {
+        val tileWidth = (maxWidth - spacing * (order.size - 1)) / order.size
+        // The list must be a new immutable instance per change: ReorderableRow keys its offsets on the instance.
+        ReorderableRow(
             list = order,
             onSettle = { from, to -> if (from != to) onChange(order.toMutableList().apply { add(to, removeAt(from)) }) },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = OPTION_SIDE_INSET, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(spacing),
         ) { index, kind, dragging ->
             key(kind) {
                 ReorderableItem {
                     val name = stringResource(blockLabel(kind))
                     val moveUp = stringResource(MR.string.profile_card_option_move_up, name)
                     val moveDown = stringResource(MR.string.profile_card_option_move_down, name)
-                    val big = 20.dp
-                    val small = 4.dp
+                    val drag = stringResource(MR.string.profile_card_option_drag, name)
                     val first = index == 0
                     val last = index == order.lastIndex
-                    val shape = if (dragging) {
-                        RoundedCornerShape(big)
-                    } else {
-                        RoundedCornerShape(
-                            topStart = if (first) big else small,
-                            topEnd = if (first) big else small,
-                            bottomStart = if (last) big else small,
-                            bottomEnd = if (last) big else small,
-                        )
-                    }
-                    val elevation by animateDpAsState(if (dragging) 6.dp else 0.dp, MaterialTheme.motionScheme.fastSpatialSpec())
+                    val colors = MaterialTheme.colorScheme
+                    val motion = MaterialTheme.motionScheme
+                    val elevation by animateDpAsState(if (dragging) 6.dp else 0.dp, motion.fastSpatialSpec())
+                    val lift by animateFloatAsState(if (dragging) 1.04f else 1f, motion.fastSpatialSpec())
                     Surface(
-                        shape = shape,
-                        color = if (dragging) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = if (dragging) CircleShape else connectedButtonShapes(index, order.size).shape,
+                        color = if (dragging) colors.secondaryContainer else colors.surfaceContainerHighest,
+                        contentColor = if (dragging) colors.onSecondaryContainer else colors.onSurface,
                         shadowElevation = elevation,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .longPressDraggableHandle(enabled = enabled)
-                            .semantics {
+                            .width(tileWidth)
+                            .height(tileHeight)
+                            .graphicsLayer {
+                                scaleX = lift
+                                scaleY = lift
+                            }
+                            .draggableHandle(enabled = enabled)
+                            .clearAndSetSemantics {
+                                contentDescription = "$name, $drag"
                                 customActions = buildList {
                                     if (enabled && !first) {
                                         add(CustomAccessibilityAction(moveUp) { onChange(order.swap(index, index - 1)); true })
@@ -600,32 +661,7 @@ private fun BlockOrderList(order: List<String>, enabled: Boolean, onChange: (Lis
                                 }
                             },
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.height(ORDER_ROW_HEIGHT).padding(start = 12.dp),
-                        ) {
-                            Icon(
-                                imageVector = blockIcon(kind),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Text(
-                                text = name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f).padding(start = 16.dp),
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(ORDER_ROW_HEIGHT)
-                                    .draggableHandle(enabled = enabled),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                DragHandleIcon(name)
-                            }
-                        }
+                        BlockTile(kind = kind, name = name, position = index + 1)
                     }
                 }
             }
@@ -634,12 +670,42 @@ private fun BlockOrderList(order: List<String>, enabled: Boolean, onChange: (Lis
 }
 
 @Composable
-private fun DragHandleIcon(name: String) {
-    Icon(
-        imageVector = Icons.Outlined.DragIndicator,
-        contentDescription = stringResource(MR.string.profile_card_option_drag, name),
-        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+private fun BlockTile(kind: String, name: String, position: Int) {
+    val ordinal = position.toString()
+    Box(modifier = Modifier.fillMaxSize()) {
+        Text(
+            text = ordinal,
+            style = MaterialTheme.typography.labelLargeEmphasized,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(start = 4.dp, end = 4.dp, bottom = 10.dp),
+        ) {
+            Icon(imageVector = blockIcon(kind), contentDescription = null, modifier = Modifier.size(22.dp))
+            val style = MaterialTheme.typography.labelMedium
+            // Four tiles share the row, so a long name at a large text size steps down rather than being cut.
+            Text(
+                text = name,
+                style = style,
+                maxLines = 1,
+                autoSize = TextAutoSize.StepBased(minFontSize = MIN_TILE_LABEL_SIZE, maxFontSize = style.fontSize),
+            )
+        }
+    }
+}
+
+// Scrolls a picked item into view with some of its neighbours, both on first show and when picked.
+@Composable
+private fun Modifier.revealWhenSelected(selected: Boolean): Modifier {
+    val requester = remember { BringIntoViewRequester() }
+    var width by remember { mutableIntStateOf(0) }
+    LaunchedEffect(selected, width) {
+        if (selected && width > 0) requester.bringIntoView(Rect(-width * REVEAL_MARGIN, 0f, width * (1 + REVEAL_MARGIN), 1f))
+    }
+    return bringIntoViewRequester(requester).onSizeChanged { width = it.width }
 }
 
 // Masks content under a gradient at whichever ends can still scroll, so hidden rows read as "more this way".
@@ -683,15 +749,6 @@ private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.PORTRAIT_SHAPE -> MR.string.profile_card_option_portrait_shape
     CardOption.SOCIALS_STYLE -> MR.string.profile_card_option_socials_style
     CardOption.BLOCK_ORDER -> MR.string.profile_card_option_block_order
-}
-
-private fun toolLabel(option: CardOption): StringResource = when (option) {
-    CardOption.ACCENT -> MR.string.profile_card_tool_accent
-    CardOption.DISPLAY_FONT -> MR.string.profile_card_tool_display_font
-    CardOption.TEXT_FONT -> MR.string.profile_card_tool_text_font
-    CardOption.PORTRAIT_SHAPE -> MR.string.profile_card_tool_portrait_shape
-    CardOption.SOCIALS_STYLE -> MR.string.profile_card_tool_socials_style
-    CardOption.BLOCK_ORDER -> MR.string.profile_card_tool_block_order
 }
 
 private fun optionIcon(option: CardOption): ImageVector = when (option) {

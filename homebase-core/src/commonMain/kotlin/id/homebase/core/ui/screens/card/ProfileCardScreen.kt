@@ -5,7 +5,12 @@ package id.homebase.core.ui.screens.card
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -141,6 +146,9 @@ private val AUDIENCE_BADGE_MAX_WIDTH = 132.dp
 private val MAX_SHEET_PULL = 32.dp
 private val DISMISS_DRAG_DISTANCE = 96.dp
 private const val DISMISS_FLING_VELOCITY = 1500f
+private const val SKELETON_ALPHA_LOW = 0.35f
+private const val SKELETON_ALPHA_HIGH = 0.8f
+private const val SKELETON_PULSE_MS = 900
 
 @Composable
 fun StartCardHostWhenSettled(viewModel: ProfileCardViewModel) {
@@ -583,8 +591,13 @@ internal fun CardSurface(
     modifier: Modifier = Modifier,
     cover: ImageBitmap? = null,
     coverHeld: Boolean = false,
+    skeleton: Boolean = false,
 ) {
     val motion = MaterialTheme.motionScheme
+    // A failure sits on a neutral surface: the design's colour behind an error plate only clashes with it.
+    val neutral = MaterialTheme.colorScheme.surfaceContainerHigh
+    val failedAny = uiState.loadFailed || uiState.cardFailed
+    val ground: () -> Color = { if (failedAny) neutral else backdrop() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     // Attaching the WebView costs ~300ms of frames on a mid-range phone, which would swallow the enter transition.
     var attached by remember { mutableStateOf(false) }
@@ -598,7 +611,7 @@ internal fun CardSurface(
     }
     val live = painted && uiState.isCardReady
 
-    Box(modifier = modifier.drawBehind { drawRect(backdrop()) }) {
+    Box(modifier = modifier.drawBehind { drawRect(ground()) }) {
         if (uiState.loadFailed) {
             CardErrorPlate(
                 message = MR.string.profile_edit_load_failed,
@@ -634,7 +647,13 @@ internal fun CardSurface(
             exit = fadeOut(motion.slowEffectsSpec()),
             modifier = Modifier.fillMaxSize(),
         ) {
-            CardPlaceholder(failed = failed, unsupported = uiState.cardUnsupported, backdrop = backdrop, onRetry = onRetry)
+            CardPlaceholder(
+                failed = failed,
+                unsupported = uiState.cardUnsupported,
+                skeletonDesign = uiState.design.takeIf { skeleton },
+                backdrop = ground,
+                onRetry = onRetry,
+            )
         }
     }
 }
@@ -676,7 +695,13 @@ internal fun designLabel(design: String): StringResource = when (design) {
 }
 
 @Composable
-private fun CardPlaceholder(failed: Boolean, unsupported: Boolean, backdrop: () -> Color, onRetry: () -> Unit) {
+private fun CardPlaceholder(
+    failed: Boolean,
+    unsupported: Boolean,
+    skeletonDesign: String?,
+    backdrop: () -> Color,
+    onRetry: () -> Unit,
+) {
     Box(modifier = Modifier.fillMaxSize().drawBehind { drawRect(backdrop()) }, contentAlignment = Alignment.Center) {
         when {
             unsupported -> Surface(
@@ -693,9 +718,21 @@ private fun CardPlaceholder(failed: Boolean, unsupported: Boolean, backdrop: () 
                 )
             }
             failed -> CardErrorPlate(message = MR.string.profile_card_error, onRetry = onRetry)
+            skeletonDesign != null -> CardSkeleton(skeletonDesign)
             else -> ContainedLoadingIndicator()
         }
     }
+}
+
+// The chosen design's layout at full size, breathing, so the hero keeps its shape while the card loads.
+@Composable
+private fun CardSkeleton(design: String) {
+    val pulse by rememberInfiniteTransition().animateFloat(
+        initialValue = SKELETON_ALPHA_LOW,
+        targetValue = SKELETON_ALPHA_HIGH,
+        animationSpec = infiniteRepeatable(tween(SKELETON_PULSE_MS), RepeatMode.Reverse),
+    )
+    CardDesignThumbnail(design = design, modifier = Modifier.fillMaxSize().graphicsLayer { alpha = pulse })
 }
 
 // One plate for both preview failures, in the error roles so it reads as an error on any design's colours.

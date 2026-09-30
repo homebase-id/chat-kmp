@@ -97,6 +97,7 @@ class ProfileCardEditorShotsTest {
         Shot("16-font-scale-design", base.copy(previewDesign = CardDesign.POSTER), fontScale = 1.6f),
         Shot("17-font-scale-customise", edited, EditorStep.Customise, fontScale = 1.6f),
         Shot("17b-font-scale-fonts", edited, EditorStep.Customise, fontScale = 1.6f, act = tool("Heading font")),
+        Shot("17c-font-scale-order", edited, EditorStep.Customise, fontScale = 1.6f, act = tool("Section order")),
         Shot("18-rtl-customise", edited, EditorStep.Customise, rtl = true, act = tool("Portrait shape")),
         Shot("18b-rtl-design", base, rtl = true),
         Shot("19-wide-design", base, widthDp = 900, heightDp = 820),
@@ -149,6 +150,7 @@ class ProfileCardEditorShotsTest {
                                     onRetry = {},
                                     paintWhileAttached = {},
                                     modifier = Modifier.fillMaxSize(),
+                                    skeleton = true,
                                 )
                             }
                         }
