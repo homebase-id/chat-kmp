@@ -26,6 +26,7 @@ fun buildPrompt(
     discussionHeading: String = "",
     timed: Boolean = false,
     historyLimit: Int = HISTORY_LIMIT,
+    unprompted: Boolean = false,
 ): String = buildString {
     val h = "untrusted_history_$nonce"
     val t = "untrusted_triggers_$nonce"
@@ -63,7 +64,7 @@ fun buildPrompt(
     }
     appendLine("</$h>")
     appendLine()
-    appendLine("<$t> (${if (triggers.size == 1) "the message" else "the messages, oldest first"} that addressed you)")
+    appendLine("<$t> (${if (unprompted) "the newest ${if (triggers.size == 1) "message; it does" else "messages, oldest first; they do"} not address you" else "${if (triggers.size == 1) "the message" else "the messages, oldest first"} that addressed you"})")
     triggers.forEach { trigger ->
         appendLine("[${trigger.author}] ${clean(trigger.shown())}")
         if (trigger.id in omittedParents) appendLine("[replied-to message from a non-operator omitted]")
@@ -77,5 +78,9 @@ fun buildPrompt(
     }
     appendLine("</$t>")
     appendLine()
+    if (unprompted) {
+        append("You were not addressed directly; this room is one you only listen in. Reply only if you have something genuinely useful to add or you are clearly being spoken to; otherwise output exactly $PASS_REPLY and nothing else.")
+        return@buildString
+    }
     append("Reply concisely${if (triggers.size > 1) " with one reply covering all of them" else ""}. If no reply is needed, output exactly $NO_REPLY.")
 }

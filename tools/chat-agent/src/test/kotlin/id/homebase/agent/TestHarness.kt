@@ -19,6 +19,7 @@ class TestHarness(
     leaseFor: ((Uuid, Tier, id.homebase.api.common.OdinId?) -> ToolLease?)? = null,
     sessions: SessionStore? = null,
     schedules: ScheduleStore? = null,
+    var now: Long = 1_000_000L,
 ) {
     val sends = CopyOnWriteArrayList<Triple<Uuid, String, List<OutFile>>>()
     val logs = CopyOnWriteArrayList<String>()
@@ -54,6 +55,7 @@ class TestHarness(
         leaseFor = leaseFor,
         sessions = sessions,
         schedules = schedules,
+        clock = { now },
     )
 
     suspend fun handle(msg: ChatMsg): String = processor.handleAll(listOf(msg))[msg.id] ?: "seen"

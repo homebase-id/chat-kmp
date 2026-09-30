@@ -13,6 +13,10 @@ import kotlinx.coroutines.withContext
 
 const val BRAIN_TIMEOUT_MS = 120_000L
 const val NO_REPLY = "NO_REPLY"
+const val PASS_REPLY = "PASS"
+private val PASS_PATTERN = Regex("PASS[\\p{P}\\s]*", RegexOption.IGNORE_CASE)
+
+fun isPass(reply: String) = PASS_PATTERN.matches(reply.trim())
 const val REPLY_CODEPOINTS = 1500
 const val MAX_TEXT_BYTES = 200_000
 const val FAILURE_CODEPOINTS = 120

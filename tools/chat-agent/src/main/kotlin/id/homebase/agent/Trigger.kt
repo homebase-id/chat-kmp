@@ -43,6 +43,7 @@ const val DEFAULT_MAX_RUNS_PER_HOUR = 20
 const val DEFAULT_MAX_RUNS_PER_DAY = 100
 const val DEFAULT_OPERATOR_TIMEOUT_MS = 30 * 60_000L
 const val DEFAULT_MAX_JOBS_PER_DAY = 20
+const val DEFAULT_LISTEN_COOLDOWN_MS = 60_000L
 const val MAX_LOCKED_HISTORY = 30
 
 class Brain(val command: String, val streamJson: Boolean = command == DEFAULT_BRAIN) {
@@ -70,6 +71,8 @@ class AgentConfig(
     val operators: Set<OdinId> = emptySet(),
     val operatorBrain: String? = null,
     val operatorRooms: Set<Uuid> = emptySet(),
+    val listenRooms: Set<Uuid> = emptySet(),
+    val listenCooldownMs: Long = DEFAULT_LISTEN_COOLDOWN_MS,
     val operatorCwd: String? = null,
     val operatorGroup: String? = null,
     val operatorContext: OperatorContext = OperatorContext.ALL,
@@ -163,6 +166,10 @@ fun tierBanner(config: AgentConfig): List<String> = buildList {
             add("WARNING: group membership grants machine access: every current member of an operator room can run operatorBrain here (full env, unfiltered history); membership is re-read each discovery")
         }
     }
+    if (config.listenRooms.isNotEmpty()) {
+        add("WARNING: listenRooms: the locked brain reads every message in ${config.listenRooms.joinToString(", ")} and may reply without being tagged (at most once per ${config.listenCooldownMs / 1000}s per room, PASS stays silent); unprompted runs never get the operator tier")
+        config.listenRooms.filterNot { config.allowlist.allowsConversation(it) }.forEach { add("WARNING: listenRooms $it is not on allowConversations, ignored") }
+    }
     if (config.operatorBrain != null) add(
         if (config.sessions) "operator sessions: on (warm=${config.sessionWarmMs?.let { "${it / 1000}s" } ?: "from cache ttl"}, maxTokens=${config.sessionMaxTokens}, maxTurns=${config.sessionMaxTurns}); changing operatorCwd or the brain's OS user invalidates them"
         else "operator sessions: off (${if (config.operatorBrain.contains(SESSION_PLACEHOLDER)) "operatorSession=off" else "no $SESSION_PLACEHOLDER in operatorBrain"})",
@@ -218,6 +225,10 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         operators = list("operators")?.map { OdinId(it) }?.toSet().orEmpty(),
         operatorBrain = str("operatorBrain"),
         operatorRooms = list("operatorRooms")?.map { Uuid.parse(it) }?.toSet().orEmpty(),
+        listenRooms = if (bot) list("listenRooms")?.map { Uuid.parse(it) }?.toSet().orEmpty() else emptySet(),
+        listenCooldownMs = str("listenCooldown")?.let {
+            parseDurationMs(it) ?: throw IllegalArgumentException("invalid listenCooldown '$it': use e.g. 30s, 5m")
+        } ?: DEFAULT_LISTEN_COOLDOWN_MS,
         operatorCwd = path("operatorCwd"),
         operatorGroup = str("operatorGroup"),
         operatorContext = when (str("operatorContext")?.lowercase()) { null, "all" -> OperatorContext.ALL; else -> OperatorContext.OPERATORS },
@@ -242,6 +253,7 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         readReceipts = bool("readReceipts") ?: bot,
         warnings = listOfNotNull(
             "WARNING: bot=true is ignored for the $DELEGATE_PROFILE profile (always a delegate)".takeIf { profile == DELEGATE_PROFILE && bool("bot") == true },
+            "WARNING: listenRooms is ignored unless bot=true (never for the $DELEGATE_PROFILE profile)".takeIf { !bot && str("listenRooms") != null },
             "WARNING: invalid operatorContext '${str("operatorContext")}', using operators".takeIf { str("operatorContext")?.lowercase() !in setOf(null, "all", "operators") },
             "WARNING: lockedHistory=${values["lockedHistory"]} is not in 1..$MAX_LOCKED_HISTORY, using ${int("lockedHistory", HISTORY_LIMIT).coerceIn(1, MAX_LOCKED_HISTORY)}".takeIf { values.containsKey("lockedHistory") && int("lockedHistory", -1) !in 1..MAX_LOCKED_HISTORY },
             *list("lockedTools").orEmpty().filter { it.lowercase() !in SUPPORTED_LOCKED_TOOLS }.map { "WARNING: unknown lockedTools value '$it' ignored (supported: ${SUPPORTED_LOCKED_TOOLS.joinToString()})" }.toTypedArray(),

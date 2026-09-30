@@ -72,6 +72,19 @@ up even before any conversation file exists: the id is derived from the two odin
 does) and kept in memory. By default anyone may summon it; `owner=` / `allowAuthors=` restrict
 that. Rate caps (`maxRunsPerHour` per author, `maxRunsPerDay`) apply to 1:1 triggers too.
 
+A reply (quote) to one of the bot's own messages counts as addressing it, in any allowed conversation, just like a tag:
+same tier rules, no cooldown, no PASS. The parent is looked up in the same poll or the recent history window; if it is
+not there the reply is not treated as addressed. `me` is unaffected (a reply to the owner's message never triggers it).
+
+`listenRooms` (bot only): in the listed rooms the bot also reads messages that do not address it and may chip in. Such an
+"unprompted" run always uses the locked tier, even for an operator (tag it to get the operator brain), and the prompt tells
+the model it was not addressed and to answer exactly `PASS` unless it has something useful to add; a `PASS` reply is not
+posted (log `listen: passed in <conversation>`). At most one unprompted run per room per `listenCooldown`; messages that
+arrive during the cooldown are skipped (they still appear in the history of the next run), and a tagged message or a reply
+to the bot ignores the cooldown. If a tagged message arrives in the same poll, the untagged ones are folded into history.
+The per-author hourly and daily caps still apply, and a listed room must also be allowed by `allowConversations`.
+Ignored (with a warning) for `me` and for profiles without `bot=true`.
+
 Loop guards (the bot has no prefix to tell its messages apart): it never triggers on its own messages
 and ignores incoming messages that start with `🤖`. The per-author hourly and daily caps are the backstop
 against bot-to-bot loops.
@@ -102,6 +115,8 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | maxJobsPerDay | operator jobs per day PER OPERATOR (keyed by the server-set sender, persisted in `jobs.txt`; separate from `maxRunsPerDay`) | 20 |
 | bot | true for a bot identity | false |
 | owner | odinId allowed to summon the bot | none |
+| listenRooms | bot only: comma list of conversation uuids where untagged messages may also get a reply (locked tier, model may answer `PASS` to stay quiet); must also be allowed by `allowConversations` | none |
+| listenCooldown | minimum gap between unprompted runs in one room (`30s`, `5m`; bare number = seconds) | 60s |
 | allowConversations | `self`, `member` (not for `me`), or comma list of uuids | `self` (bot: `member`) |
 | allowAuthors | comma list of odinIds who may summon | owner (bot: any member) |
 | persona | one line prepended to every brain prompt, followed by a line with the bot's odinId and where it is replying | none |
