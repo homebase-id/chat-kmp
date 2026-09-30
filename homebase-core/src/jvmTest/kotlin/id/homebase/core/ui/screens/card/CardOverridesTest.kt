@@ -101,9 +101,11 @@ class CardOverridesTest {
             id: kotlin.uuid.Uuid?,
             versionTag: kotlin.uuid.Uuid?,
             priority: Int,
+            circleIds: List<String>,
         ) {
             written += data
         }
+        override suspend fun delete(id: kotlin.uuid.Uuid, versionTag: kotlin.uuid.Uuid) = false
     }
 
     private fun resolves(descriptor: SerialDescriptor, path: String): Boolean {

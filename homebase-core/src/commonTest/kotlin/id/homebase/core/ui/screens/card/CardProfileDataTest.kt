@@ -4,6 +4,7 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.common.OdinId
 import id.homebase.core.ui.screens.profile.ProfileEditViewModel
 import id.homebase.core.ui.screens.profile.ProfileField
 import id.homebase.core.ui.screens.profile.visiblePhoto
@@ -344,5 +345,85 @@ class CardProfileDataTest {
             data.getValue("posts").jsonArray.single(),
         )
         assertFalse("null" in json)
+    }
+
+    private val circleX = "0f2c1a8e-5b3d-4e6f-9a1b-2c3d4e5f6a7b"
+    private val circleY = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+
+    private fun circleRecord(type: String, key: String, value: String, vararg circles: String) = record(
+        type,
+        ProfileVisibility.CONNECTED,
+        mapOf(key to JsonPrimitive(value)),
+        AccessControlList("connected", circleIdList = circles.toList()),
+    )
+
+    private fun circlePayload(attributes: List<ProfileAttribute>, circle: String) = buildCardPayload(
+        odinId = odinId,
+        attributes = attributes,
+        design = CardDesign.BOARD,
+        photoSrc = null,
+        headerSrc = null,
+        tagLine = null,
+        audience = CardAudience.Circle(circle, "Circle"),
+    )
+
+    @Test
+    fun aFieldRestrictedToACircleIsInThatCirclesCardOnly() {
+        val attributes = records(ProfileVisibility.ANONYMOUS, ProfileField.STATUS to "Public status") + listOf(
+            circleRecord(ProfileAttributeTypes.TWITTER, ProfileAttributeTypes.KEY_TWITTER, "inner_circle", circleX),
+        )
+
+        assertEquals(listOf(CardSocial(type = "twitter", username = "inner_circle")), circlePayload(attributes, circleX).data.socials)
+        assertEquals(emptyList(), circlePayload(attributes, circleY).data.socials)
+        assertEquals(emptyList(), payload(attributes).data.socials)
+        assertEquals("Public status", circlePayload(attributes, circleX).data.headline)
+    }
+
+    @Test
+    fun aCircleCardPrefersTheCircleValueAndFallsBackToPublicOtherwise() {
+        val attributes = records(ProfileVisibility.ANONYMOUS, ProfileField.GIVEN_NAME to "Frodo") + records(
+            ProfileVisibility.CONNECTED,
+            ProfileField.GIVEN_NAME to "Mr. Frodo",
+        ).map { it.copy(acl = AccessControlList("connected", circleIdList = listOf(circleX))) }
+
+        assertEquals("Mr. Frodo", circlePayload(attributes, circleX).data.firstName)
+        assertEquals("Frodo", circlePayload(attributes, circleY).data.firstName)
+        assertEquals("Frodo", payload(attributes).data.firstName)
+    }
+
+    @Test
+    fun ownerOnlyAndIdentityLimitedRecordsNeverReachACircleCard() {
+        val attributes = records(ProfileVisibility.OWNER, ProfileField.STATUS to "Owner only") + record(
+            ProfileAttributeTypes.TWITTER,
+            ProfileVisibility.CONNECTED,
+            mapOf(ProfileAttributeTypes.KEY_TWITTER to JsonPrimitive("just_sam")),
+            AccessControlList("connected", odinIdList = listOf(OdinId("sam.dotyou.cloud"))),
+        )
+        val data = circlePayload(attributes, circleX).data
+        assertNull(data.headline)
+        assertEquals(emptyList(), data.socials)
+    }
+
+    @Test
+    fun aCircleCardSeesLinksAndBioForItsCircle() {
+        val attributes = listOf(
+            link("Public", "https://a.example"),
+            link("Circle", "https://b.example", ProfileVisibility.CONNECTED, acl = AccessControlList("connected", circleIdList = listOf(circleX))),
+            bio(ProfileVisibility.CONNECTED, "For friends", AccessControlList("connected", circleIdList = listOf(circleX))),
+        )
+        assertEquals(2, circlePayload(attributes, circleX).data.links.size)
+        assertEquals(1, circlePayload(attributes, circleY).data.links.size)
+        assertEquals(1, payload(attributes).data.links.size)
+        assertEquals("For friends", circlePayload(attributes, circleX).data.bio)
+        assertNull(payload(attributes).data.bio)
+    }
+
+    @Test
+    fun anExplicitPublicAudienceIsTheDefault() {
+        val attributes = records(ProfileVisibility.ANONYMOUS, ProfileField.GIVEN_NAME to "Frodo", ProfileField.TWITTER to "frodo") +
+            records(ProfileVisibility.CONNECTED, ProfileField.STATUS to "Vetted")
+        val default = payload(attributes)
+        val explicit = buildCardPayload(odinId, attributes, CardDesign.BOARD, null, null, null, audience = CardAudience.Public)
+        assertEquals(default.toJson(), explicit.toJson())
     }
 }

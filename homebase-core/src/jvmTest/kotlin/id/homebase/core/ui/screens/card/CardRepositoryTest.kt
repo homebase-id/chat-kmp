@@ -39,16 +39,46 @@ class CardRepositoryTest {
     )
 
     private class FakeStore(var attributes: List<ProfileAttribute> = emptyList()) : CardAttributeStore {
-        class Write(val data: JsonObject, val visibility: ProfileVisibility, val id: Uuid?, val versionTag: Uuid?, val priority: Int)
+        class Write(
+            val data: JsonObject,
+            val visibility: ProfileVisibility,
+            val id: Uuid?,
+            val versionTag: Uuid?,
+            val priority: Int,
+            val circleIds: List<String>,
+        )
 
         val writes = mutableListOf<Write>()
+        val deleted = mutableListOf<Uuid>()
         var failWith: Exception? = null
+
+        // Mimics a server that keeps what it was sent: a write lands as a stored attribute.
+        var keepWrites = false
+        var dropCircleIds = false
 
         override suspend fun load() = attributes
 
-        override suspend fun save(data: JsonObject, visibility: ProfileVisibility, id: Uuid?, versionTag: Uuid?, priority: Int) {
+        override suspend fun save(data: JsonObject, visibility: ProfileVisibility, id: Uuid?, versionTag: Uuid?, priority: Int, circleIds: List<String>) {
             failWith?.let { throw it }
-            writes += Write(data, visibility, id, versionTag, priority)
+            writes += Write(data, visibility, id, versionTag, priority, circleIds)
+            if (keepWrites) {
+                val stored = circleIds.takeUnless { dropCircleIds }
+                attributes = attributes.filter { it.id != id } + ProfileAttribute(
+                    id = id ?: Uuid.random(),
+                    type = ProfileAttributeTypes.PROFILE_CARD,
+                    versionTag = Uuid.random(),
+                    visibility = visibility,
+                    data = data,
+                    acl = AccessControlList(requiredSecurityGroup = visibility.wireValue, circleIdList = stored?.takeIf { it.isNotEmpty() }),
+                    priority = priority,
+                )
+            }
+        }
+
+        override suspend fun delete(id: Uuid, versionTag: Uuid): Boolean {
+            deleted += id
+            attributes = attributes.filter { it.id != id }
+            return true
         }
     }
 
@@ -193,5 +223,95 @@ class CardRepositoryTest {
         val cards = listOf(attribute(data, ProfileVisibility.AUTHENTICATED)).profileCards()
 
         assertNull(cards.publicCard())
+    }
+
+    private val friends = CardAudience.Circle("c-friends", "Friends")
+
+    @Test
+    fun addingACircleCardWritesItConnectedWithItsCircleLabelAndNextFreePriority() = runTest {
+        val store = FakeStore(
+            listOf(
+                attribute(buildJsonObject { put("design", "board") }),
+                attribute(buildJsonObject { put("design", "poster"); put("label", "Fam") }, ProfileVisibility.CONNECTED, listOf("c-fam"), 3),
+            ),
+        ).apply { keepWrites = true }
+
+        val result = CardRepository(store).addCircle(friends, CardDesign.DOSSIER, CardOverrides(socials = "bar"))
+
+        val write = store.writes.single()
+        assertEquals(ProfileVisibility.CONNECTED, write.visibility)
+        assertEquals(listOf("c-friends"), write.circleIds)
+        assertEquals(4, write.priority)
+        assertNull(write.id)
+        assertEquals(JsonPrimitive("Friends"), write.data["label"])
+        assertEquals(JsonPrimitive("dossier"), write.data["design"])
+        val added = assertIs<AddCircleCardResult.Added>(result).card
+        assertEquals(friends, added.audience)
+        assertEquals(4, added.priority)
+    }
+
+    @Test
+    fun aFirstCircleCardTakesPriorityZero() = runTest {
+        val store = FakeStore(listOf(attribute(buildJsonObject { put("design", "board") }))).apply { keepWrites = true }
+        CardRepository(store).addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY)
+        assertEquals(0, store.writes.single().priority)
+    }
+
+    @Test
+    fun aServerThatDropsCircleIdsGetsTheUnscopedCardRemovedAndIsRememberedAsUnsupported() = runTest {
+        val store = FakeStore(listOf(attribute(buildJsonObject { put("design", "board") })))
+            .apply { keepWrites = true; dropCircleIds = true }
+        val repo = CardRepository(store)
+        assertTrue(repo.supportsCircleCards)
+
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY))
+
+        assertEquals(1, store.deleted.size)
+        assertEquals(1, store.attributes.size)
+        assertEquals(ProfileVisibility.ANONYMOUS, store.attributes.single().visibility)
+        assertFalse(repo.supportsCircleCards)
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY))
+        assertEquals(1, store.writes.size)
+    }
+
+    @Test
+    fun anAddOnAServerWithoutTheCardTypeIsUnsupportedAndQuiet() = runTest {
+        val store = FakeStore().apply { failWith = unknownType() }
+        val repo = CardRepository(store)
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY))
+        assertFalse(repo.supportsCircleCards)
+    }
+
+    @Test
+    fun editingACircleCardRewritesItInPlaceWithItsCircle() = runTest {
+        val existing = attribute(buildJsonObject { put("design", "poster"); put("label", "Friends") }, ProfileVisibility.CONNECTED, listOf("c-friends"), 2)
+        val store = FakeStore(listOf(existing))
+        val card = ProfileCard.from(existing)!!.copy(design = CardDesign.COLLAGE)
+
+        assertTrue(CardRepository(store).saveCircle(card))
+
+        val write = store.writes.single()
+        assertEquals(existing.id, write.id)
+        assertEquals(existing.versionTag, write.versionTag)
+        assertEquals(2, write.priority)
+        assertEquals(listOf("c-friends"), write.circleIds)
+        assertEquals(JsonPrimitive("collage"), write.data["design"])
+        assertEquals(JsonPrimitive("Friends"), write.data["label"])
+    }
+
+    @Test
+    fun deletingACircleCardRemovesItAndThePublicCardCannotBeDeleted() = runTest {
+        val circle = attribute(buildJsonObject { put("design", "poster") }, ProfileVisibility.CONNECTED, listOf("c-friends"), 0)
+        val public = attribute(buildJsonObject { put("design", "board") })
+        val store = FakeStore(listOf(public, circle))
+        val repo = CardRepository(store)
+
+        assertTrue(repo.delete(ProfileCard.from(circle)!!))
+        assertEquals(listOf(circle.id), store.deleted)
+
+        var refused = false
+        try { repo.delete(ProfileCard.from(public)!!) } catch (e: IllegalArgumentException) { refused = true }
+        assertTrue(refused)
+        assertEquals(1, store.deleted.size)
     }
 }
