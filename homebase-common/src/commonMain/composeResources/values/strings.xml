@@ -1894,7 +1894,11 @@
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
     <string name="contactbook_circle_disabled">Disabled</string>
     <string name="contactbook_circle_name_disabled">%1$s (disabled)</string>
-    <string name="contactbook_circle_enabled">Circle enabled</string>
+    <string name="contactbook_circle_menu">Circle options</string>
+    <string name="contactbook_circle_disable">Disable circle</string>
+    <string name="contactbook_circle_enable">Enable circle</string>
+    <string name="contactbook_circle_disable_confirm_title">Disable %1$s?</string>
+    <string name="contactbook_circle_disable_confirm">Disable</string>
     <string name="contactbook_circle_enabled_hint">Disabling keeps the members but stops their access.</string>
     <string name="contactbook_circle_members_count">%1$d members</string>
     <string name="contactbook_circle_members_count_with_pending">%1$d members, %2$d pending</string>

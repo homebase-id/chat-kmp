@@ -53,6 +53,7 @@ sealed interface MomentAudienceUiAction {
     /** Open the view-only roster for a circle recipient (the "i" affordance on a circle row). */
     data class ShowCircleMembers(val id: MomentsRecipientId) : MomentAudienceUiAction
     data object DismissCircleMembers : MomentAudienceUiAction
+    data class CircleEnabledChanged(val circleId: String, val enabled: Boolean) : MomentAudienceUiAction
 }
 
 sealed interface MomentAudienceUiEvent {

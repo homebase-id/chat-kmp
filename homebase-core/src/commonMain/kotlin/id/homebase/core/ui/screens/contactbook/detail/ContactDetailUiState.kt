@@ -224,6 +224,7 @@ sealed interface ContactDetailAction {
     /** Tapped a circle chip — opens the circle-detail dialog for [circleId]. */
     data class CircleClicked(val circleId: String) : ContactDetailAction
     data object CircleDetailDismiss : ContactDetailAction
+    data class CircleEnabledChanged(val circleId: String, val enabled: Boolean) : ContactDetailAction
     /** Tapped another contact's row inside the circle-detail dialog. */
     data class CircleMemberClicked(val entry: ContactBookEntry) : ContactDetailAction
 }
