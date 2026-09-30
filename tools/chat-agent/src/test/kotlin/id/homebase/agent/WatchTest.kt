@@ -250,7 +250,7 @@ class WatchTest {
         val h = Harness(groupCfg(bot = true))
         assertEquals("replied", h.processor.handle(msg("@quagmire hi", conv = group, author = OdinId("alice.example.com"))))
         assertEquals(listOf(group), h.replyTargets)
-        assertEquals(listOf("$BOT_PREFIX pong"), h.replies)
+        assertEquals(listOf("pong"), h.replies)
     }
 
     @Test

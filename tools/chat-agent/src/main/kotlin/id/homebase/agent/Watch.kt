@@ -1,5 +1,9 @@
 package id.homebase.agent
 
+import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.files.DriveFileOperationsProvider
+import id.homebase.api.client.drives.files.SendReadReceiptResult
+import id.homebase.api.client.drives.files.SendReadReceiptResultStatus
 import id.homebase.api.common.OdinId
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.XorIdUtil
@@ -14,7 +18,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.runBlocking
@@ -39,10 +45,10 @@ sealed interface BrainOutcome {
     class Failed(val reason: String) : BrainOutcome
 }
 
-fun brainReply(outcome: BrainOutcome): String? = when (outcome) {
-    is BrainOutcome.Failed -> "$BOT_PREFIX failed: ${outcome.reason.truncateToCodePoints(120)}"
+fun brainReply(outcome: BrainOutcome, prefix: String = BOT_PREFIX): String? = when (outcome) {
+    is BrainOutcome.Failed -> tagged(prefix, "failed: ${outcome.reason.truncateToCodePoints(120)}")
     is BrainOutcome.Output -> sanitizeReply(outcome.stdout).let {
-        if (it.isEmpty() || it == NO_REPLY) null else "$BOT_PREFIX ${it.truncateToCodePoints(REPLY_CODEPOINTS)}"
+        if (it.isEmpty() || it == NO_REPLY) null else tagged(prefix, it.truncateToCodePoints(REPLY_CODEPOINTS))
     }
 }
 
@@ -170,6 +176,48 @@ fun buildPrompt(
     appendLine("</$t>")
     appendLine()
     append("Reply concisely${if (triggers.size > 1) " with one reply covering all of them" else ""}. If no reply is needed, output exactly $NO_REPLY.")
+}
+
+class ReadReceipts(
+    private val enabled: Boolean,
+    private val self: OdinId,
+    private val allowlist: Allowlist,
+    private val store: ProcessedStore,
+    private val send: suspend (List<Uuid>) -> Unit,
+    private val log: (String) -> Unit,
+) {
+    private val failed = LinkedHashMap<Uuid, Uuid>()
+
+    suspend fun mark(msgs: List<ChatMsg>) {
+        if (!enabled) return
+        val todo = LinkedHashMap<Uuid, Uuid>(failed)
+        for (m in msgs) {
+            val fileId = m.fileId ?: continue
+            if ((m.sender ?: m.author)?.let { it != self } != true) continue
+            if (m.id in store || !allowlist.allowsConversation(m.conversationId)) continue
+            todo[m.id] = fileId
+        }
+        if (todo.isEmpty()) return
+        failed.clear()
+        for (chunk in todo.entries.chunked(RECEIPT_BATCH)) {
+            try {
+                send(chunk.map { it.value })
+                chunk.forEach { store.add(it.key) }
+                log("read receipt sent for ${chunk.size} message(s)")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log("read receipt error: ${e.message}")
+                chunk.forEach { failed[it.key] = it.value }
+                while (failed.size > RECEIPT_RETRY_CAP) failed.remove(failed.keys.first())
+            }
+        }
+    }
+
+    private companion object {
+        const val RECEIPT_BATCH = 100
+        const val RECEIPT_RETRY_CAP = 200
+    }
 }
 
 class RunLimiter(
@@ -358,17 +406,24 @@ class WatchProcessor(
         fun done(result: String) = sorted.forEach { store.add(it.id); finish(it.id, result, results) }
         if (tier == Tier.OPERATOR && jobs != null) return submitJob(jobs, sorted, conversation, authors, self, ::done)
         mutex.withLock {
+            val fetched = try {
+                Result.success(history(conversation))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
             if (!limiter.allows(authors)) return done("skip: rate limited")
             limiter.record(authors)
             val outcome = try {
-                val past = history(conversation).let { if (tier == Tier.OPERATOR) operatorHistory(it, config, self) else it }
+                val past = fetched.getOrThrow().let { if (tier == Tier.OPERATOR) operatorHistory(it, config, self) else it }
                 brain(buildPrompt(sorted, past, awayMode = away.on && config.allowlist.delegate && conversation != ChatProtocol.ConversationWithYourselfId, header = header(conversation), context = context(conversation)), tier)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 BrainOutcome.Failed(e.message ?: e.toString())
             }
-            val text = brainReply(outcome)
+            val text = brainReply(outcome, config.replyPrefix)
                 ?: return done("silent")
             val failed = outcome is BrainOutcome.Failed
             val attempt = (sorted.maxOf { attempts[it.id] ?: 0 }) + 1
@@ -433,6 +488,12 @@ class PollTimings(private val now: () -> Long = System::currentTimeMillis) {
     fun reset() = phases.clear()
 }
 
+private fun logReceiptStatuses(log: (String) -> Unit, result: SendReadReceiptResult) {
+    result.results.flatMap { it.status }.filter { it.status != SendReadReceiptResultStatus.Enqueued }
+        .groupingBy { it.status }.eachCount()
+        .forEach { (status, n) -> log("read receipt not enqueued: $status x$n") }
+}
+
 suspend fun watch(profile: String, verbose: Boolean = false) {
     val session = openSession(profile)
     val dir = Profile.dataDir(profile).also { it.mkdirs() }
@@ -455,7 +516,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         limiter = RunLimiter(File(dir, "runs.txt"), config.maxRunsPerHour, config.maxRunsPerDay),
         away = AwayFlag(File(dir, "away")),
         jobs = config.operatorBrain?.let {
-            JobRunner(CoroutineScope(SupervisorJob(coroutineContext.job)), RunLimiter(File(dir, "jobs.txt"), Int.MAX_VALUE, config.maxJobsPerDay), ::log)
+            JobRunner(CoroutineScope(SupervisorJob(coroutineContext.job)), RunLimiter(File(dir, "jobs.txt"), Int.MAX_VALUE, config.maxJobsPerDay), ::log, prefix = config.replyPrefix)
         },
         history = { timings.time("history") { fetchMessages(session, it, HISTORY_LIMIT + 1) } },
         brain = { prompt, tier ->
@@ -470,6 +531,15 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         log = ::log,
     )
 
+    val receipts = ReadReceipts(
+        enabled = config.sendsReceipts,
+        self = session.identity,
+        allowlist = config.allowlist,
+        store = ProcessedStore(File(dir, "receipts.txt")),
+        send = { ids -> logReceiptStatuses(::log, DriveFileOperationsProvider(session.http, session.credentials).sendReadReceiptBatch(SystemDriveConstants.chatDrive.alias, ids)) },
+        log = ::log,
+    )
+
     val job = coroutineContext.job
     Runtime.getRuntime().addShutdownHook(Thread {
         job.cancel()
@@ -477,7 +547,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         log("stopped")
     })
     tierBanner(config).forEach(::log)
-    log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} transport=poll/${POLL_INTERVAL_MS}ms lastSeen=$lastSeen")
+    log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} readReceipts=${config.sendsReceipts} transport=poll/${POLL_INTERVAL_MS}ms lastSeen=$lastSeen")
     var poll = 0
     try {
         while (true) {
@@ -493,7 +563,10 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
                     lastSeen = it.userDate
                     stateFile.writeText(lastSeen.toString())
                 }
-                processor.handleAll(fresh)
+                coroutineScope {
+                    launch { timings.time("receipt") { receipts.mark(fresh) } }
+                    processor.handleAll(fresh)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

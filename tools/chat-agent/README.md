@@ -28,7 +28,8 @@ The agent replies `🤖 away on` / `🤖 away off` and toggles the `away` file i
 owner's behalf; the brain may answer NO_REPLY.
 
 Disclosure: every message `me` sends into a non-note-to-self conversation (watch, `send`, MCP)
-starts with `🤖 <owner>'s AI assistant: `. Note-to-self and `bot` replies start with `🤖 `.
+starts with `🤖 <owner>'s AI assistant: `. Note-to-self replies from `me` start with `🤖 `.
+The `bot` profile sends plain text (no prefix; its own identity shows who is speaking) for replies, job acks/results and failures.
 
 `bot` is a standalone identity: it replies in allowlisted conversations it is a member of. In a
 group it needs an @mention of its identity or the nickname. In a 1:1 chat (two members) every
@@ -36,6 +37,15 @@ message from an allowed author triggers it, no mention needed. A 1:1 from someon
 up even before any conversation file exists: the id is derived from the two odinIds (as the app
 does) and kept in memory. By default anyone may summon it; `owner=` / `allowAuthors=` restrict
 that. Rate caps (`maxRunsPerHour` per author, `maxRunsPerDay`) apply to 1:1 triggers too.
+
+Loop guards (the bot has no prefix to tell its messages apart): it never triggers on its own messages
+and ignores incoming messages that start with `🤖`. The per-author hourly and daily caps are the backstop
+against bot-to-bot loops.
+
+Read receipts (bot only, never `me`): each poll, peer messages the bot fetched in an allowed conversation
+are marked read the way the app does (`POST /drives/{chatDrive}/files/send-read-receipt-batch` with the
+message file ids), once per message (`receipts.txt`, bounded), best-effort in the background. Failures log
+`read receipt error` and are retried next poll; they never delay replies.
 
 ## agent.conf (`<profile dir>/agent.conf`, `key=value`, `#` comments)
 
@@ -56,10 +66,11 @@ that. Rate caps (`maxRunsPerHour` per author, `maxRunsPerDay`) apply to 1:1 trig
 | personaFile | path to a persona text file (used when `persona` unset; `~` expands) | none |
 | maxRunsPerHour | brain runs per author per hour | 20 |
 | maxRunsPerDay | brain runs per day, total | 100 |
+| readReceipts | true/false; bot only (ignored for `me`) | true for bot |
 
 Brain output `NO_REPLY` or empty means stay silent. Over a cap: no run, no reply,
 `skip: rate limited` in the log. Triggers from one conversation in one poll share one run.
-A failed run is retried once on the next poll, then `🤖 failed: ...` is sent.
+A failed run is retried once on the next poll, then `failed: ...` is sent (prefixed with `🤖 ` for `me`).
 
 ## Commands (all take `--profile <p>`; global `--verbose` shows library logs)
 

@@ -70,7 +70,7 @@ class McpTest {
     }
 
     @Test
-    fun sendRefusesNonAllowlistedAndPrefixesAllowed() = runBlocking {
+    fun sendRefusesNonAllowlistedAndSendsPlainForNonDelegate() = runBlocking {
         val b = backend()
         val refused = toolSendMessage(b, buildJsonObject {
             put("conversationId", other.toString())
@@ -84,7 +84,7 @@ class McpTest {
             put("text", "hi")
         })
         assertFalse(ok.isError)
-        assertEquals(listOf("$BOT_PREFIX hi"), b.sent)
+        assertEquals(listOf("hi"), b.sent)
     }
 
     @Test

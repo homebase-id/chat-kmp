@@ -145,7 +145,7 @@ suspend fun toolSendMessage(backend: AgentBackend, args: JsonObject?): ToolReply
         val parent = findMessage(backend.messages(conversationId, LOOKUP_WINDOW), ref)
         parent.toReplyPreview()
     }
-    ToolReply("sent ${backend.send(conversationId, "$BOT_PREFIX $text", reply)}")
+    ToolReply("sent ${backend.send(conversationId, tagged(if (backend.allowlist.delegate) BOT_PREFIX else "", text), reply)}")
 }
 
 class SessionBackend(private val profile: String, private val scope: Uuid? = null, private val readOnly: Boolean = false) : AgentBackend {

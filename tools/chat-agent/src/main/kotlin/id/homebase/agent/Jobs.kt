@@ -11,6 +11,7 @@ class JobRunner(
     private val limiter: RunLimiter,
     private val log: (String) -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
+    private val prefix: String = BOT_PREFIX,
 ) {
     private class Job(val id: Int, val authors: Set<String>, val work: suspend () -> BrainOutcome, val deliver: suspend (String) -> Unit) {
         var ready = false
@@ -32,13 +33,13 @@ class JobRunner(
     ): String {
         val (job, ack) = synchronized(lock) {
             if (!limiter.allows(authors)) {
-                null to "$BOT_PREFIX daily job limit reached"
+                null to tagged(prefix, "daily job limit reached")
             } else {
                 limiter.record(authors)
                 val job = Job(nextId++, authors, work, deliver)
                 val ahead = queue.lastOrNull() ?: running
                 queue.addLast(job)
-                job to (if (ahead == null) "$BOT_PREFIX on it (job ${job.id})" else "$BOT_PREFIX queued behind job ${ahead.id} (job ${job.id})")
+                job to (if (ahead == null) tagged(prefix, "on it (job ${job.id})") else tagged(prefix, "queued behind job ${ahead.id} (job ${job.id})"))
             }
         }
         try {
@@ -58,11 +59,11 @@ class JobRunner(
         job.startedAt = now()
         job.coroutine = scope.launch {
             val text = try {
-                jobText(job.id, job.work())
+                jobText(job.id, job.work(), prefix)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                "$BOT_PREFIX job ${job.id} failed: ${e.message}"
+                tagged(prefix, "job ${job.id} failed: ${e.message}")
             }
             try {
                 job.deliver(text)
@@ -79,20 +80,20 @@ class JobRunner(
     }
 
     fun status(): String = synchronized(lock) {
-        val r = running ?: return "$BOT_PREFIX no jobs"
+        val r = running ?: return tagged(prefix, "no jobs")
         val minutes = (now() - r.startedAt) / 60_000
         val waiting = if (queue.isEmpty()) "" else "; queued: ${queue.joinToString(", ") { it.id.toString() }}"
-        "$BOT_PREFIX job ${r.id} running for ${minutes}m$waiting"
+        tagged(prefix, "job ${r.id} running for ${minutes}m$waiting")
     }
 
     fun cancel(id: Int?): String = synchronized(lock) {
-        val target = id ?: running?.id ?: queue.firstOrNull()?.id ?: return "$BOT_PREFIX no jobs"
+        val target = id ?: running?.id ?: queue.firstOrNull()?.id ?: return tagged(prefix, "no jobs")
         val r = running
         if (r != null && r.id == target) {
             r.coroutine?.cancel()
-            return "$BOT_PREFIX cancelled job $target"
+            return tagged(prefix, "cancelled job $target")
         }
-        if (queue.removeAll { it.id == target }) "$BOT_PREFIX cancelled job $target" else "$BOT_PREFIX no such job $target"
+        if (queue.removeAll { it.id == target }) tagged(prefix, "cancelled job $target") else tagged(prefix, "no such job $target")
     }
 }
 
@@ -102,10 +103,10 @@ fun tailTruncate(text: String, maxCodePoints: Int): String {
     return "…" + text.substring(start)
 }
 
-fun jobText(id: Int, outcome: BrainOutcome): String = when (outcome) {
-    is BrainOutcome.Failed -> "$BOT_PREFIX job $id failed: ${outcome.reason.truncateToCodePoints(120)}"
+fun jobText(id: Int, outcome: BrainOutcome, prefix: String = BOT_PREFIX): String = when (outcome) {
+    is BrainOutcome.Failed -> tagged(prefix, "job $id failed: ${outcome.reason.truncateToCodePoints(120)}")
     is BrainOutcome.Output -> sanitizeReply(outcome.stdout).let {
-        if (it.isEmpty() || it == NO_REPLY) "$BOT_PREFIX job $id done (no output)" else "$BOT_PREFIX ${tailTruncate(it, REPLY_CODEPOINTS)}"
+        if (it.isEmpty() || it == NO_REPLY) tagged(prefix, "job $id done (no output)") else tagged(prefix, tailTruncate(it, REPLY_CODEPOINTS))
     }
 }
 

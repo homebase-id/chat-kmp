@@ -44,7 +44,7 @@ class JobsTest {
                 brain = { p, t -> if (t == Tier.OPERATOR) { started += p; operatorWork(p) } else BrainOutcome.Output("pong") },
                 reply = { c, t -> replies += c to t },
                 log = {},
-                jobs = JobRunner(scope, RunLimiter(null, Int.MAX_VALUE, maxJobs)),
+                jobs = JobRunner(scope, RunLimiter(null, Int.MAX_VALUE, maxJobs), prefix = ""),
             )
         }
 
@@ -69,14 +69,14 @@ class JobsTest {
         val gate = CompletableDeferred<Unit>()
         val r = rig { gate.await(); BrainOutcome.Output("all done") }
         r.say(dm, op, "@quagmire fix it")
-        assertEquals(listOf("🤖 on it (job 1)"), r.texts())
+        assertEquals(listOf("on it (job 1)"), r.texts())
         until("job started") { r.started.size == 1 }
         r.say(dm2, rando, "@quagmire hi")
         r.processor.handleAll(listOf(ChatMsg(Uuid.random(), dm, op, "@quagmire forged", 99L, sender = rando)))
-        assertEquals(listOf("🤖 on it (job 1)", "🤖 pong", "🤖 pong"), r.texts())
-        assertFalse(r.texts().contains("🤖 all done"))
+        assertEquals(listOf("on it (job 1)", "pong", "pong"), r.texts())
+        assertFalse(r.texts().contains("all done"))
         gate.complete(Unit)
-        until("final reply") { "🤖 all done" in r.texts() }
+        until("final reply") { "all done" in r.texts() }
     }
 
     @Test
@@ -85,7 +85,7 @@ class JobsTest {
         val r = rig { p -> gates[r0(p)].await(); BrainOutcome.Output("out ${r0(p)}") }
         r.say(dm, op, "@quagmire jobAAA")
         r.say(dm, op, "@quagmire jobBBB")
-        assertEquals(listOf("🤖 on it (job 1)", "🤖 queued behind job 1 (job 2)"), r.texts())
+        assertEquals(listOf("on it (job 1)", "queued behind job 1 (job 2)"), r.texts())
         until("first started") { r.started.size == 1 }
         delay(200)
         assertEquals(1, r.started.size)
@@ -93,8 +93,8 @@ class JobsTest {
         until("second started") { r.started.size == 2 }
         assertTrue(r.started[0].contains("jobAAA") && r.started[1].contains("jobBBB"))
         gates[1].complete(Unit)
-        until("both done") { r.texts().containsAll(listOf("🤖 out 0", "🤖 out 1")) }
-        assertTrue(r.texts().indexOf("🤖 out 0") < r.texts().indexOf("🤖 out 1"), r.texts().toString())
+        until("both done") { r.texts().containsAll(listOf("out 0", "out 1")) }
+        assertTrue(r.texts().indexOf("out 0") < r.texts().indexOf("out 1"), r.texts().toString())
     }
 
     private fun r0(prompt: String) = if (prompt.contains("jobAAA")) 0 else 1
@@ -121,9 +121,9 @@ class JobsTest {
         until("pid") { pidFile.length() > 0 }
         val pid = pidFile.readText().trim().toLong()
         r.say(dm, op, "@quagmire cancel")
-        assertTrue("🤖 cancelled job 1" in r.texts())
+        assertTrue("cancelled job 1" in r.texts())
         until("child dead") { !(ProcessHandle.of(pid).map { it.isAlive }.orElse(false)) }
-        until("next job ran") { "🤖 second ran" in r.texts() }
+        until("next job ran") { "second ran" in r.texts() }
         assertFalse(r.texts().any { it.contains("job 1 failed") })
         pidFile.delete()
     }
@@ -133,12 +133,12 @@ class JobsTest {
         val gate = CompletableDeferred<Unit>()
         val r = rig { gate.await(); BrainOutcome.Output("ok") }
         r.say(dm, op, "@quagmire status")
-        assertEquals("🤖 no jobs", r.texts().last())
+        assertEquals("no jobs", r.texts().last())
         r.say(dm, op, "@quagmire a")
         r.say(dm, op, "@quagmire b")
         until("started") { r.started.size == 1 }
         r.say(dm, op, "@quagmire status")
-        assertEquals("🤖 job 1 running for 0m; queued: 2", r.texts().last())
+        assertEquals("job 1 running for 0m; queued: 2", r.texts().last())
         gate.complete(Unit)
     }
 
@@ -150,9 +150,9 @@ class JobsTest {
         until("started") { r.started.size == 1 }
         r.say(dm2, rando, "@quagmire cancel")
         r.say(dm2, rando, "@quagmire status")
-        assertEquals(listOf("🤖 pong", "🤖 pong"), r.texts().drop(1))
+        assertEquals(listOf("pong", "pong"), r.texts().drop(1))
         r.say(dm, op, "@quagmire status")
-        assertTrue(r.texts().last().startsWith("🤖 job 1 running"))
+        assertTrue(r.texts().last().startsWith("job 1 running"))
         gate.complete(Unit)
     }
 
@@ -160,9 +160,9 @@ class JobsTest {
     fun maxJobsPerDayRefusesExtraJobs() = runBlocking<Unit> {
         val r = rig(maxJobs = 1) { BrainOutcome.Output("done") }
         r.say(dm, op, "@quagmire one")
-        until("first done") { "🤖 done" in r.texts() }
+        until("first done") { "done" in r.texts() }
         r.say(dm, op, "@quagmire two")
-        assertEquals("🤖 daily job limit reached", r.texts().last())
+        assertEquals("daily job limit reached", r.texts().last())
         assertEquals(1, r.started.size)
     }
 
@@ -171,13 +171,13 @@ class JobsTest {
         assertEquals("…defg", tailTruncate("abcdefg", 5).let { it })
         assertEquals("abc", tailTruncate("abc", 5))
         val long = "x".repeat(5000) + "THE END"
-        val text = jobText(3, BrainOutcome.Output(long))
-        assertTrue(text.startsWith("🤖 …") && text.endsWith("THE END"))
+        val text = jobText(3, BrainOutcome.Output(long), "")
+        assertTrue(text.startsWith("…") && text.endsWith("THE END"))
         assertTrue(text.codePointCount(0, text.length) <= REPLY_CODEPOINTS + 3)
         val emoji = "😀".repeat(2000)
         assertTrue(jobText(1, BrainOutcome.Output(emoji)).none { Character.isLowSurrogate(it) && false })
-        assertEquals("🤖 job 2 failed: boom", jobText(2, BrainOutcome.Failed("boom")))
-        assertEquals("🤖 job 2 done (no output)", jobText(2, BrainOutcome.Output("  ")))
+        assertEquals("job 2 failed: boom", jobText(2, BrainOutcome.Failed("boom"), ""))
+        assertEquals("job 2 done (no output)", jobText(2, BrainOutcome.Output("  "), ""))
     }
 
     @Test

@@ -67,6 +67,7 @@ class ChatMsg(
     val dataType: Int? = null,
     val rawContent: String? = null,
     val sender: OdinId? = null,
+    val fileId: Uuid? = null,
 ) {
     val replyContext: JsonElement?
         get() = (MessageContentParser.parse(dataType, rawContent) as? MessageContent.Event)?.descriptor
@@ -125,6 +126,7 @@ suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>?, limit:
                 dataType = metadata.appData.dataType,
                 rawContent = metadata.appData.content,
                 sender = metadata.senderOdinId,
+                fileId = file.fileId,
             )
         }
         .filter { beforeMs == null || it.userDate < beforeMs }

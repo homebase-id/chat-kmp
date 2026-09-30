@@ -70,7 +70,7 @@ class DirectChatTest {
     fun directMessageTriggersWithoutMention() = runBlocking {
         val h = harness()
         assertEquals("replied", h.p.handle(msg(dm, alice, "what time is it")))
-        assertEquals(listOf("🤖 pong"), h.replies)
+        assertEquals(listOf("pong"), h.replies)
     }
 
     @Test
