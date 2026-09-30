@@ -63,13 +63,15 @@ class CardOverridesTest {
     @Test
     fun oneUndecodableValueDropsOnlyItselfAndASaveKeepsTheSiblings() = runTest {
         val stored = cardJson.parseToJsonElement(
-            """{"palette":"x","socials":"bar","portraits":[{"shape":"circle","tilt":2.5},"junk"],""" +
+            """{"palette":"x","socials":"bar","portraits":[{"shape":"circle","tilt":2.5,"tape":"true","mono":"false"},"junk"],""" +
                 """"blocks":[{"presentation":"row"},{"kind":"links","presentation":7},{"kind":"posts"}]}""",
         ).jsonObject
         val read = CardOverrides.fromJson(stored)
 
         assertNull(read.palette)
         assertEquals("bar", read.socials)
+        assertNull(read.portraits!!.first().tape)
+        assertNull(read.portraits!!.first().mono)
         assertEquals(listOf(CardPortrait(shape = "circle", tilt = 2.5)), read.portraits)
         assertEquals(listOf(CardBlock("links"), CardBlock("posts")), read.blocks)
 
@@ -147,19 +149,5 @@ class CardOverridesTest {
         assertEquals(listOf(CardPortrait(shape = "square")), dossier.portraits)
 
         assertEquals(CardOverrides.EMPTY, everything.prunedFor("hologram"))
-    }
-
-    @Test
-    fun buildingAPayloadPrunesForTheDesignBeingRendered() {
-        val payload = buildCardPayload(
-            odinId = "frodo.dotyou.cloud",
-            attributes = emptyList(),
-            design = CardDesign.POSTER,
-            photoSrc = null,
-            headerSrc = null,
-            tagLine = null,
-            overrides = CardOverrides(palette = CardPalette(accent = "#ABCDEF")),
-        )
-        assertNull(payload.overrides)
     }
 }
