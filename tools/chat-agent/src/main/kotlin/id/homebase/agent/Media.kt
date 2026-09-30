@@ -44,6 +44,7 @@ const val FILE_MAX_BYTES = 2_000_000L
 const val PDF_MAX_BYTES = 3_500_000L
 const val PDF_MAX_PAGES = 20
 const val VOICE_MAX_BYTES = 10_000_000L
+const val KEYFRAME_VIDEO_MAX_BYTES = 10_000_000L
 const val INLINE_TEXT_CODEPOINTS = 8000
 private const val CIPHER_PADDING = 16L
 const val TRANSCRIBE_TIMEOUT_MS = 60_000L
@@ -204,6 +205,7 @@ class AttachmentLoader(
     private val fetcher: PayloadFetcher,
     private val transcribe: (suspend (ByteArray, String) -> String?)? = null,
     private val log: (String) -> Unit = {},
+    private val ffmpeg: Ffmpeg? = null,
 ) {
     suspend fun load(messages: List<Pair<ChatMsg, Boolean>>): List<Attachment> {
         val out = ArrayList<Attachment>()
@@ -213,6 +215,8 @@ class AttachmentLoader(
             for (p in msg.payloads.mediaPayloads()) {
                 if (out.size >= MAX_ATTACHMENTS) return out
                 if (p.isVideo()) {
+                    val frames = loadKeyframes(msg.id, parent, fileId, p, out.size + 1, MAX_ATTACHMENTS - out.size)
+                    if (frames.isNotEmpty()) { out += frames; continue }
                     loadVideoThumb(msg.id, parent, fileId, p, out.size + 1)?.let { out += it }
                     continue
                 }
@@ -222,6 +226,27 @@ class AttachmentLoader(
             }
         }
         return out
+    }
+
+    private suspend fun loadKeyframes(msgId: Uuid, parent: Boolean, fileId: Uuid, p: PayloadDescriptor, index: Int, room: Int): List<Attachment> {
+        val tool = ffmpeg?.takeIf { it.available } ?: return emptyList()
+        val durationMs = (p.descriptorInfo() as? DescriptorContent.VideoFile)?.durationMs ?: return emptyList()
+        if (p.contentType != "video/mp4" || (p.bytesWritten ?: Long.MAX_VALUE) > KEYFRAME_VIDEO_MAX_BYTES) return emptyList()
+        val dir = tempDir("frames")
+        try {
+            val bytes = fetcher.fetch(fileId, p.key, KEYFRAME_VIDEO_MAX_BYTES) ?: return emptyList()
+            val source = File(dir, "in.mp4").also { it.writeBytes(bytes) }
+            return tool.keyframes(source, durationMs, minOf(KEYFRAMES_MAX, room)).filter { it.size <= IMAGE_MAX_BYTES }.mapIndexed { i, jpeg ->
+                Attachment(msgId, parent, safeName("$index-video-frame-${i + 1}.jpg"), "image/jpeg", jpeg.size.toLong(), bytes = jpeg, note = "video frame ${i + 1}")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("video keyframes error: ${e.message}")
+            return emptyList()
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 
     private suspend fun loadVideoThumb(msgId: Uuid, parent: Boolean, fileId: Uuid, p: PayloadDescriptor, index: Int): Attachment? {

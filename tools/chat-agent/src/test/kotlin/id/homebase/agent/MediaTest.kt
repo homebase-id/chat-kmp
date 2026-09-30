@@ -67,6 +67,28 @@ class MediaTest {
     }
 
     @Test
+    fun videoKeyframesOnlyRunFfmpegWhenEnabled() = runBlocking<Unit> {
+        val bin = java.nio.file.Files.createTempDirectory("l20b-frames").toFile()
+        val jpeg = java.io.File(bin, "f.jpg").also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_RGB), "jpg", it) }
+        val log = java.io.File(bin, "calls")
+        for (name in listOf("ffmpeg", "ffprobe")) java.io.File(bin, name).apply { writeText("#!/bin/sh\necho x >> '${log.absolutePath}'\n/bin/cat '${jpeg.absolutePath}'\n"); setExecutable(true) }
+        val video = PayloadDescriptor(key = "pfl0000001", contentType = "video/mp4", bytesWritten = 5000, descriptorContent = """{"mimeType":"video/mp4","duration":12000,"isSegmented":false}""")
+        val fetcher = object : PayloadFetcher {
+            override suspend fun fetch(fileId: Uuid, key: String, maxBytes: Long): ByteArray? = ByteArray(16)
+        }
+        val tool = Ffmpeg(bin.absolutePath)
+        val config = parseConfig("", owner)
+        assertFalse(config.videoFrames)
+        assertTrue(parseConfig("videoFrames=true", owner).videoFrames)
+        val off = AttachmentLoader(fetcher, ffmpeg = tool.takeIf { config.videoFrames }).load(listOf(msg(payloads = listOf(video)) to false))
+        assertTrue(off.isEmpty() && !log.exists())
+        val on = AttachmentLoader(fetcher, ffmpeg = tool).load(listOf(msg(payloads = listOf(video)) to false))
+        assertEquals(KEYFRAMES_MAX, on.size)
+        assertTrue(on.all { it.note!!.startsWith("video frame") && it.viewableImage })
+        assertEquals(KEYFRAMES_MAX, log.readLines().size)
+    }
+
+    @Test
     fun mediaOnlyLabels() {
         assertEquals("[image]", messageDisplay("", null, null, listOf(p("pfl0000001", "image/jpeg", descriptor = ""))))
         assertEquals("[voice 0:07]", messageDisplay("", null, null, listOf(p("pfl0000001", "audio/aac", descriptor = """{"name":"v","lengthSeconds":7}"""))))

@@ -48,3 +48,27 @@ suspend fun toolsCheck(profile: String) {
     kotlinx.coroutines.delay(2000)
     println("read: " + toolReadMessages(backend, args("limit" to "3")).text)
 }
+
+// one poll (then a vote), location, event and contact in note-to-self on `me`; left in place for the owner to look at
+suspend fun toolsCheckTyped(profile: String, voteOnly: String? = null) {
+    require(profile == DELEGATE_PROFILE) { "tools-check runs only on the $DELEGATE_PROFILE profile" }
+    val session = openSession(profile)
+    val config = loadConfig(profile, session.identity)
+    val conversation = ChatProtocol.ConversationWithYourselfId
+    val backend = WatcherBackend(session, config, config.allowlist.copy(conversation, false), null) { it }
+    fun args(vararg pairs: Pair<String, kotlinx.serialization.json.JsonElement>) = scopedArguments(kotlinx.serialization.json.JsonObject(mapOf(*pairs)), conversation)
+    fun text(value: String) = kotlinx.serialization.json.JsonPrimitive(value)
+    fun list(vararg values: String) = kotlinx.serialization.json.JsonArray(values.map(::text))
+    val pollId = voteOnly ?: toolSendPoll(backend, args("question" to text("tools-check: which one?"), "options" to list("first", "second", "third")))
+        .also { println("poll: ${it.text}") }.text.removePrefix("sent poll ").take(8)
+    var vote = ToolReply("not found", true)
+    repeat(8) { if (vote.isError && "not found" in vote.text) { kotlinx.coroutines.delay(1500); vote = toolVotePoll(backend, args("messageId" to text(pollId), "option" to text("2"))) } }
+    println("vote: ${vote.text}")
+    println("vote again: ${toolVotePoll(backend, args("messageId" to text(pollId), "option" to text("2"))).text}")
+    if (voteOnly != null) return println("read: " + toolReadMessages(backend, args("limit" to kotlinx.serialization.json.JsonPrimitive(6))).text)
+    println("location: ${toolSendLocation(backend, args("lat" to kotlinx.serialization.json.JsonPrimitive(52.5163), "lon" to kotlinx.serialization.json.JsonPrimitive(13.3777), "label" to text("tools-check: Brandenburg Gate"))).text}")
+    println("event: ${toolSendEvent(backend, args("title" to text("tools-check event"), "start" to text("2026-12-01T18:00"), "timezone" to text("Europe/Berlin"), "place" to text("Somewhere"), "description" to text("Sent by the chat-agent tools check"))).text}")
+    println("contact: ${toolSendContact(backend, args("name" to text("Ada Lovelace"), "phones" to list("+14155550123"), "emails" to list("ada@example.com"), "organization" to text("Analytical Engines"))).text}")
+    kotlinx.coroutines.delay(3000)
+    println("read: " + toolReadMessages(backend, args("limit" to kotlinx.serialization.json.JsonPrimitive(6))).text)
+}

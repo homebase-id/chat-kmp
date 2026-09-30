@@ -19,6 +19,8 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.chat.ChatMessageSizer
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.upload.PayloadBundle
@@ -47,6 +49,13 @@ fun buildMessage(text: String, replyPreview: ReplyPreview? = null, allowBlank: B
     return BuiltMessage(header, ChatMessageSizer.payloadBytes(data))
 }
 
+fun typedHeader(content: MessageContent): BuiltMessage {
+    val header = MessageContentParser.serialize(content)
+    val size = header.encodeToByteArray().size
+    require(size <= HomebaseProtocol.MaxHeaderContentBytes) { "message too large: $size bytes, limit is ${HomebaseProtocol.MaxHeaderContentBytes}" }
+    return BuiltMessage(header, null)
+}
+
 fun buildMessageContent(text: String, replyPreview: ReplyPreview? = null, allowBlank: Boolean = false): String =
     buildMessage(text, replyPreview, allowBlank).header
 
@@ -71,6 +80,7 @@ suspend fun buildMessageMetadata(
     previewThumbnail: EmbeddedThumb? = null,
     allowBlank: Boolean = false,
     content: String = buildMessageContent(text, replyPreview, allowBlank),
+    dataType: Int = 0,
 ): UploadFileMetadata {
     return UploadFileMetadata(
             allowDistribution = distribute,
@@ -79,7 +89,7 @@ suspend fun buildMessageMetadata(
                 uniqueId = messageId,
                 groupId = conversationId,
                 fileType = ChatProtocol.MessageFileType,
-                dataType = 0,
+                dataType = dataType,
                 userDate = nowMs,
                 content = content,
                 previewThumbnail = previewThumbnail,
@@ -143,6 +153,8 @@ suspend fun sendToConversation(
     replyPreview: ReplyPreview? = null,
     files: List<OutFile> = emptyList(),
     previews: LinkPreviewSource? = null,
+    typed: MessageContent? = null,
+    media: (suspend (KeyHeader, JvmFileOperationsProvider) -> StagedBundle)? = null,
 ): Uuid {
     allowlist.requireSend(conversationId)
     require(files.size <= MAX_OUT_FILES) { "at most $MAX_OUT_FILES files per message" }
@@ -152,22 +164,25 @@ suspend fun sendToConversation(
         "no recipients resolved for conversation ${conversation.id}"
     }
     val messageId = Uuid.random()
-    val text = allowlist.disclosure(conversation.id, text, session.identity)
+    val text = if (typed != null) text else allowlist.disclosure(conversation.id, text, session.identity)
     val keyHeader = KeyHeader.newRandom16()
     val fileOps = JvmFileOperationsProvider()
-    val built = buildMessage(text, replyPreview, allowBlank = files.isNotEmpty())
-    val staged = outgoingBundle(text, files, fileOps, previews)
+    val hasMedia = files.isNotEmpty() || media != null
+    val built = typed?.let { typedHeader(it) } ?: buildMessage(text, replyPreview, allowBlank = hasMedia)
+    val staged = media?.invoke(keyHeader, fileOps) ?: outgoingBundle(text, files, fileOps, previews)
     val textFile = built.payloadJson?.let { textPayload(it, fileOps) }
     try {
+        require(built.payloadJson == null || staged?.preEncrypted != true) { "caption too long for a video message" }
         val bundle = if (textFile != null) withTextPayload(staged?.bundle, textFile) else staged?.bundle
-        val encrypted = bundle?.let { payloadEncryptor(fileOps).encryptBundle(messageId, it, keyHeader.aesKey, CoroutineScope(currentCoroutineContext())) }
+        val encrypted = bundle?.let { if (staged?.preEncrypted == true) it else payloadEncryptor(fileOps).encryptBundle(messageId, it, keyHeader.aesKey, CoroutineScope(currentCoroutineContext())) }
         val metadata = buildMessageMetadata(
             conversation.id, messageId, text, Clock.System.now().toEpochMilliseconds(), keyHeader,
             distribute = recipients.isNotEmpty(),
             replyPreview = replyPreview,
             previewThumbnail = staged?.bundle?.previewThumbs?.minByOrNull { it.pixelWidth },
-            allowBlank = files.isNotEmpty(),
+            allowBlank = hasMedia,
             content = built.header,
+            dataType = typed?.let { MessageContentParser.dataTypeFor(it) } ?: 0,
         )
         DriveUploadProvider(session.http, session.credentials, fileOps)
             .uploadFile(

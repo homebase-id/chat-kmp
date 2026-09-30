@@ -2,7 +2,9 @@ package id.homebase.agent
 
 import id.homebase.api.common.OdinId
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.ReplyPreview
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
@@ -53,12 +55,20 @@ interface AgentBackend {
     suspend fun react(conversationId: Uuid, message: ChatMsg, emoji: String, add: Boolean): Unit = error("reactions are not supported")
     suspend fun edit(conversationId: Uuid, message: ChatMsg, text: String): Unit = error("editing is not supported")
     suspend fun delete(conversationId: Uuid, message: ChatMsg): Unit = error("deleting is not supported")
+    fun disclose(conversationId: Uuid, text: String): String = text
+    val ffmpeg: Ffmpeg get() = DEFAULT_FFMPEG
+    suspend fun sendTyped(conversationId: Uuid, content: MessageContent): Uuid = error("typed messages are not supported")
+    suspend fun vote(conversationId: Uuid, message: ChatMsg, option: Int, poll: PollDescriptor): Boolean = error("voting is not supported")
+    suspend fun sendVideo(conversationId: Uuid, video: OutVideo, caption: String): Uuid = error("sending video is not supported")
+    suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String): Uuid = error("sending voice notes is not supported")
 }
+
+val DEFAULT_FFMPEG by lazy { Ffmpeg() }
 
 class ToolReply(val text: String, val isError: Boolean = false)
 
-private const val LOOKUP_WINDOW = 200
-private const val ID_PREFIX = 8
+internal const val LOOKUP_WINDOW = 200
+internal const val ID_PREFIX = 8
 private val LINE_BREAK = Regex("\\R")
 
 fun formatMessageLine(msg: ChatMsg): String {
@@ -67,10 +77,10 @@ fun formatMessageLine(msg: ChatMsg): String {
     return "${msg.id.toString().take(ID_PREFIX)} $date ${msg.author}: $text"
 }
 
-private fun stringArg(args: JsonObject?, name: String): String? =
+internal fun stringArg(args: JsonObject?, name: String): String? =
     args?.get(name)?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
 
-private fun conversationArg(args: JsonObject?, allowlist: Allowlist): Uuid? {
+internal fun conversationArg(args: JsonObject?, allowlist: Allowlist): Uuid? {
     val raw = stringArg(args, "conversationId")?.lowercase() ?: return null
     runCatching { Uuid.parse(raw) }.getOrNull()?.let { return it }
     return allowlist.allowedConversationIds().singleOrNull { it.toString().startsWith(raw) }
@@ -101,7 +111,7 @@ suspend fun guarded(block: suspend () -> ToolReply): ToolReply =
         ToolReply("error: ${e.message}", isError = true)
     }
 
-private val BAD_CONVERSATION = ToolReply("conversationId must be an allowed conversation id (uuid or prefix)", true)
+internal val BAD_CONVERSATION = ToolReply("conversationId must be an allowed conversation id (uuid or prefix)", true)
 
 private fun Allowlist.line(id: Uuid): String =
     "$id ${title(id) ?: "conversation"}" + (memberCount(id)?.let { " ($it members)" } ?: "")
@@ -219,11 +229,11 @@ private fun prop(type: String, description: String) = buildJsonObject {
     put("description", description)
 }
 
-private val CONVERSATION_PROP = prop("string", "Conversation id or 8-char prefix")
-private val MESSAGE_PROP = prop("string", "Message id (at least 8 characters)")
+internal val CONVERSATION_PROP = prop("string", "Conversation id or 8-char prefix")
+internal val MESSAGE_PROP = prop("string", "Message id (at least 8 characters)")
 private val EMOJI_PROP = prop("string", "One emoji")
 
-val CHAT_TOOLS: List<ToolDef> = listOf(
+private val BASE_TOOLS: List<ToolDef> = listOf(
     ToolDef("list_conversations", "List readable conversations: id, title, member count.", buildJsonObject {}, scoped = false) { b, _ -> toolListConversations(b) },
     ToolDef("get_conversation", "Show a conversation's title, members and whether sending is allowed.", buildJsonObject { put("conversationId", CONVERSATION_PROP) }, listOf("conversationId")) { b, a -> toolGetConversation(b, a) },
     ToolDef(
@@ -272,6 +282,8 @@ val CHAT_TOOLS: List<ToolDef> = listOf(
     ToolDef("delete_message", "Delete one of your own messages for everyone.", buildJsonObject { put("messageId", MESSAGE_PROP) }, listOf("messageId"), stdio = false, write = true) { b, a -> toolDeleteMessage(b, a) },
 )
 
+val CHAT_TOOLS: List<ToolDef> = BASE_TOOLS + typedTools()
+
 fun isValidReaction(emoji: String) = emoji.isNotBlank() && emoji.length <= 8 && !emoji.startsWith("_")
 
 private suspend fun ownMessage(backend: AgentBackend, args: JsonObject?, verb: String): Pair<Uuid, ChatMsg>? {
@@ -313,8 +325,10 @@ private suspend fun ready(backend: SessionBackend, block: suspend () -> ToolRepl
         block()
     }
 
+private val FILE_TOOLS = MEDIA_SEND_TOOLS + "send_file"
+
 fun scopedTools(names: Set<String>, filesDir: File?): List<ToolDef> =
-    CHAT_TOOLS.filter { it.scoped && it.name in names && (it.name != "send_file" || filesDir != null) }.map {
+    CHAT_TOOLS.filter { it.scoped && it.name in names && (it.name !in FILE_TOOLS || filesDir != null) }.map {
         ToolDef(it.name, it.description, JsonObject(it.properties - "conversationId"), it.required - "conversationId", run = it.run)
     }
 

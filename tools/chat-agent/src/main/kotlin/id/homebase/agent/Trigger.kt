@@ -61,6 +61,7 @@ class AgentConfig(
     val lockedTools: Set<String> = emptySet(),
     val readReceipts: Boolean = allowlist.kind == Kind.BOT,
     val transcribe: String? = null,
+    val videoFrames: Boolean = false,
     val linkPreviews: Boolean = false,
     val mcpFilesDir: File? = null,
     val transport: Transport = Transport.AUTO,
@@ -140,8 +141,9 @@ fun tierBanner(config: AgentConfig): List<String> = buildList {
         }
     }
     if (config.operatorBrain != null) add("operator tools (per-run loopback MCP, this conversation only): ${chatToolNames(Tier.OPERATOR).joinToString(", ")}; edit_message and delete_message touch only this identity's own messages")
+    if (config.videoFrames) add(if (DEFAULT_FFMPEG.available) "WARNING: videoFrames=true: untrusted video from chat is decoded by ffmpeg in this process's user (it can read the credentials); leave it off unless you accept that" else "videoFrames=true but ffmpeg/ffprobe are not on PATH, so only thumbnails are read")
     add(
-        if (config.lockedChat) "WARNING: lockedTools=chat: ANY member who tags the bot can make it read this whole conversation, send messages or files, and react (max $LOCKED_TOOL_CALL_CAP tool calls per run; tools: ${chatToolNames(Tier.LOCKED).joinToString(", ")}); no edit or delete"
+        if (config.lockedChat) "WARNING: lockedTools=chat: ANY member who tags the bot can make it read this whole conversation, send messages, files, polls, events, locations or contacts, vote and react (max $LOCKED_TOOL_CALL_CAP tool calls per run; tools: ${chatToolNames(Tier.LOCKED).joinToString(", ")}); no edit or delete"
         else "locked tier: no tools (lockedTools is empty)",
     )
 }
@@ -196,6 +198,7 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         lockedHistory = int("lockedHistory", HISTORY_LIMIT).coerceIn(1, MAX_LOCKED_HISTORY),
         lockedTools = lockedTools,
         transcribe = str("transcribe"),
+        videoFrames = bool("videoFrames") == true,
         linkPreviews = bool("linkPreviews") ?: bot,
         mcpFilesDir = path("mcpFilesDir")?.let(::File),
         transport = parseTransport(str("transport")) ?: Transport.AUTO,

@@ -18,9 +18,13 @@ import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
+import id.homebase.api.common.OdinId
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.poll.PollDescriptor
+import id.homebase.chat.poll.PollVote
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.decodeReactionCode
 import id.homebase.chat.services.MessageAppData
 import kotlin.uuid.Uuid
 
@@ -37,6 +41,34 @@ suspend fun reactToMessage(session: Session, allowlist: Allowlist, conversationI
     val provider = DriveFileGroupReactionProvider(session.http, session.credentials)
     if (add) provider.addReaction(chatDrive, fileIdOf(message), reactionJson(emoji), recipients)
     else provider.deleteReaction(chatDrive, fileIdOf(message), reactionJson(emoji), recipients)
+}
+
+private const val REACTION_PAGES = 20
+
+private suspend fun ownReactionCodes(provider: DriveFileGroupReactionProvider, fileId: Uuid, self: OdinId): List<String> {
+    val codes = ArrayList<String>()
+    var cursor: Int? = null
+    var pages = 0
+    do {
+        val page = provider.listReactions(chatDrive, fileId, cursor, 100)
+        page.reactions.filter { it.odinId == self }.mapNotNullTo(codes) { decodeReactionCode(it.reactionContent) }
+        cursor = page.cursor
+    } while (cursor != null && ++pages < REACTION_PAGES)
+    return codes
+}
+
+suspend fun voteOnPoll(session: Session, allowlist: Allowlist, conversationId: Uuid, message: ChatMsg, option: Int, poll: PollDescriptor): Boolean {
+    allowlist.requireSend(conversationId)
+    val fileId = fileIdOf(message)
+    val provider = DriveFileGroupReactionProvider(session.http, session.credentials)
+    val count = poll.options.size
+    val own = PollVote.ownVotes(ownReactionCodes(provider, fileId, session.identity), count)
+    if (option in own && (poll.allowMultiple || own == setOf(option))) return false
+    val change = PollVote.change(option, own, count, poll.allowMultiple)
+    val recipients = conversationRecipients(conversationFor(session, allowlist, conversationId), session.identity)
+    change.remove.filter { PollVote.optionOf(it) in own }.forEach { provider.deleteReaction(chatDrive, fileId, reactionJson(it), recipients) }
+    change.add.filter { PollVote.optionOf(it) !in own }.forEach { provider.addReaction(chatDrive, fileId, reactionJson(it), recipients) }
+    return true
 }
 
 suspend fun deleteOwnMessage(session: Session, allowlist: Allowlist, conversationId: Uuid, message: ChatMsg) {

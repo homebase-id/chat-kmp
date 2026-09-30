@@ -56,6 +56,13 @@ class ChatToolsTest {
         val reactions = CopyOnWriteArrayList<String>()
         val edits = CopyOnWriteArrayList<String>()
         val deletes = CopyOnWriteArrayList<Uuid>()
+        val typed = CopyOnWriteArrayList<id.homebase.chat.services.content.MessageContent>()
+        val videos = CopyOnWriteArrayList<String>()
+        override val ffmpeg = Ffmpeg("/nonexistent-dir-for-l20b")
+        override suspend fun sendTyped(conversationId: Uuid, content: id.homebase.chat.services.content.MessageContent): Uuid { typed += content; return Uuid.random() }
+        override suspend fun sendVideo(conversationId: Uuid, video: OutVideo, caption: String): Uuid { videos += video.name; return Uuid.random() }
+        override suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String): Uuid { videos += voice.name; return Uuid.random() }
+        override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String): Uuid { videos += file.name; return Uuid.random() }
         override suspend fun messages(conversationId: Uuid, limit: Int, beforeMs: Long?): List<ChatMsg> {
             readFrom += conversationId
             return msgs
@@ -107,7 +114,7 @@ class ChatToolsTest {
         val lease = lease(b, Tier.OPERATOR, timeoutMs = 1_000)
         assertEquals(401, call(null, "read_messages").first)
         assertEquals(401, call("nope", "read_messages").first)
-        assertEquals(401, call(lease.token.dropLast(1) + "0", "read_messages").first)
+        assertEquals(401, call(lease.token.dropLast(1) + if (lease.token.last() == '0') "1" else "0", "read_messages").first)
         assertEquals(0, b.readFrom.size)
         assertEquals(200, call(lease.token, "read_messages").first)
         assertEquals(1, b.readFrom.size)
@@ -156,10 +163,36 @@ class ChatToolsTest {
     fun toolListPerTierAndConversationIdIsNotInTheSchema() {
         val operator = rpc(lease(fake(), Tier.OPERATOR).token, "tools/list").second!!
         fun names(r: JsonObject) = r["result"]!!.jsonObject["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
-        assertEquals(setOf("read_messages", "search_messages", "get_conversation", "send_message", "react", "unreact", "edit_message", "delete_message"), names(operator))
+        val typed = setOf("send_poll", "vote_poll", "send_event", "send_location", "send_contact")
+        assertEquals(setOf("read_messages", "search_messages", "get_conversation", "send_message", "react", "unreact", "edit_message", "delete_message") + typed, names(operator))
         val locked = rpc(lease(fake(), Tier.LOCKED).token, "tools/list").second!!
-        assertEquals(setOf("read_messages", "search_messages", "get_conversation", "send_message", "react", "unreact"), names(locked))
+        assertEquals(setOf("read_messages", "search_messages", "get_conversation", "send_message", "react", "unreact") + typed, names(locked))
         assertFalse(locked.toString().contains("conversationId"))
+    }
+
+    @Test
+    fun lockedTierGetsTypedSendsButNeverVideoOrVoiceAndTheCapStillApplies() {
+        val root = java.nio.file.Files.createTempDirectory("l20b-tier").toFile()
+        File(root, "a.mp4").writeBytes(ByteArray(64))
+        File(root, "a.m4a").writeBytes(ByteArray(64))
+        fun names(tier: Tier): Set<String> = rpc(lease(Fake(Allowlist.default(owner).copy(self, false), emptyList(), root), tier).token, "tools/list").second!!["result"]!!.jsonObject["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
+        assertTrue(setOf("send_video", "send_voice", "send_file").all { it in names(Tier.OPERATOR) })
+        assertTrue(setOf("send_poll", "vote_poll", "send_event", "send_location", "send_contact", "send_file").all { it in names(Tier.LOCKED) })
+        assertTrue(names(Tier.LOCKED).none { it == "send_video" || it == "send_voice" })
+        assertEquals(setOf("send_video", "send_voice"), names(Tier.OPERATOR) - names(Tier.LOCKED) - setOf("edit_message", "delete_message"))
+        val b = Fake(Allowlist.default(owner).copy(self, false), emptyList(), root)
+        val locked = lease(b, Tier.LOCKED, cap = LOCKED_TOOL_CALL_CAP)
+        assertTrue(call(locked.token, "send_video", buildJsonObject { put("path", "a.mp4") }).second.isError())
+        assertTrue(call(locked.token, "send_voice", buildJsonObject { put("path", "a.m4a") }).second.isError())
+        assertTrue(b.videos.isEmpty())
+        val poll = buildJsonObject { put("question", "q"); put("options", kotlinx.serialization.json.buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive("a")); add(kotlinx.serialization.json.JsonPrimitive("b")) }) }
+        repeat(LOCKED_TOOL_CALL_CAP) { assertFalse(call(locked.token, "send_poll", poll).second.isError(), "call ${it + 1}") }
+        assertTrue(call(locked.token, "send_poll", poll).second.isError())
+        assertEquals(LOCKED_TOOL_CALL_CAP, b.typed.size)
+        assertEquals(LOCKED_TOOL_CALL_CAP, locked.sent)
+        val operator = lease(b, Tier.OPERATOR)
+        assertFalse(call(operator.token, "send_video", buildJsonObject { put("path", "a.mp4") }).second.isError())
+        assertEquals(listOf("a.mp4"), b.videos.toList())
     }
 
     @Test

@@ -58,7 +58,7 @@ fun main(args: Array<String>) {
                 "send" -> send(profile, sendText, options["--conversation"]?.let { Uuid.parse(it) }, options["--file"])
                 "watch" -> watch(profile, verbose)
                 "brain-test" -> brainTest(profile, attachLatest)
-                "tools-check" -> toolsCheck(profile)
+                "tools-check" -> if (sendText.startsWith("typed")) toolsCheckTyped(profile, sendText.removePrefix("typed").trim().ifEmpty { null }) else toolsCheck(profile)
                 "mcp" -> mcp(profile, options["--conversation"]?.let { Uuid.parse(it) }, readOnly)
                 "conversations" -> conversations(profile)
                 else -> read(

@@ -105,6 +105,7 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | maxRunsPerDay | brain runs per day, total | 100 |
 | readReceipts | true/false; bot only (ignored for `me`) | true for bot |
 | linkPreviews | true/false; preview card for the first URL in a reply, built by your identity server (`/links/extract`, as the app does); this machine never fetches the URL; failure sends without a preview | true for bot |
+| videoFrames | `true` lets the brain see up to 4 keyframes of a video it reads (needs `ffmpeg` and `ffprobe` on PATH); see Security | false |
 | transcribe | command run as `<cmd> "<audio file>"`, transcript on stdout, 60 s limit; unset = voice notes stay a label (see Voice notes) | none |
 | lockedTools | comma list, default empty. `chat` gives the locked brain the chat tools below (claude default brain only; a custom `brain` gets the env vars and `{mcp}`). Unknown values warn and are ignored | none |
 | mcpFilesDir | directory the MCP `send_file` tool may send from (no default: tool refuses) | none |
@@ -218,6 +219,11 @@ measured on the target). For better accuracy use `small` (about 470 MB, several 
 
 ## Security
 
+- `videoFrames` (default `false`): when `true` and `ffmpeg` is on `PATH`, video sent by chat members is decoded by ffmpeg in the
+  process that owns the identity credentials, so a parser bug in ffmpeg becomes a credential risk. Off, the brain only gets the
+  sender's thumbnail. Turning it on prints a startup `WARNING`. `send_video`/`send_voice` also run ffmpeg/ffprobe, but only
+  on files from `mcpFilesDir` that the operator tier chose.
+
 Login: the callback server (homebase-api LocalCallbackServer) listens on all interfaces while `login` runs; the `state` check protects it, and a callback for a different identity than `--identity` is rejected.
 
 Every chat member is untrusted input to the brain. Two tiers:
@@ -229,7 +235,7 @@ Every chat member is untrusted input to the brain. Two tiers:
   "X's AI assistant:" stripped before the real prefix is added. `watch` logs a WARNING at startup if `brain`
   is not the locked default. Profile dir is 700, files inside 600. The locked brain has no tools unless the owner sets
   `lockedTools=chat` (see "Chat tools for the brain"): then ANY member who can trigger the bot can make it read the whole
-  conversation, send messages or files from `mcpFilesDir`, and react, up to 5 tool calls per run, with no edit or delete;
+  conversation, send messages, files from `mcpFilesDir`, polls, events, locations and contacts, vote and react, up to 5 tool calls per run, with no edit or delete and no video or voice notes;
   the same prompt-injection risk as any tool-using model, so leave it off in rooms you do not trust.
   The tool endpoint is loopback-only with a per-run token (256-bit, constant-time compare, revoked when the run ends).
 - Operator (opt-in): `operators=` + `operatorBrain=` (`operators` alone is enough). The tier follows the SENDER: a
@@ -286,10 +292,38 @@ Scope is fixed server-side from the token: the conversation that triggered the r
 (for everyone), both limited to messages this identity sent. Sends go through the normal gate, disclosure prefix and
 size caps. Read results are labelled with the author and wrapped in an `<untrusted_chat_...>` block; treat them as data.
 
+Typed messages, each built with the app's own descriptor classes and serialized by its `MessageContentParser`, so the
+app renders them as its own:
+
+| tool | arguments | notes |
+|---|---|---|
+| `send_poll` | `question` (max 140 chars), `options` (2 to 10, max 80 chars each), `allowMultiple` | too many or empty options are refused |
+| `vote_poll` | `messageId`, `option` (1-based number or the option text) | votes the way the app does (reaction `_p<i>`); single-choice replaces the earlier vote; refuses closed polls; repeating a vote is a no-op |
+| `send_event` | `title` (max 80), `start`, `end`, `timezone`, `place` (max 120), `description` (max 280) | no cover photo; `start`/`end` are ISO date-times (`2026-10-01T18:00` in `timezone`, default UTC, or with `Z`/offset); default end is start + 1 h |
+| `send_location` | `lat`, `lon`, `label` | static only, never live sharing; out-of-range coordinates are refused |
+| `send_contact` | `name`, `phones` (E.164, `+1 (415) 555-0123` is normalized), `emails`, `organization` | malformed phones or emails are refused, max 10 of each |
+| `send_video` | `path`, `caption` | `.mp4` up to 5 MB from `mcpFilesDir`; real video message with thumbnail and duration |
+| `send_voice` | `path`, `caption` | audio file (m4a, mp3, wav, ogg, aac, opus, up to 10 MB) from `mcpFilesDir` as a voice note |
+
+On a disclosed send (the `me` profile outside note-to-self) the "AI assistant" disclosure goes into a field recipients
+always see, and your own text gives way to it: the poll question, the event title, the location caption, the contact's
+organization line (a card has no other free text, so saving the contact keeps that line), and the caption of a video or
+voice note. A vote carries no text, so it shows only as the owner's vote, like `react`.
+
+`send_video` and `send_voice` need `mcpFilesDir` and the same path confinement as `send_file` (no `..`, no symlink out).
+They use `ffmpeg` and `ffprobe` from `PATH`, each call bounded to 20 s and killed at the limit, with the input always an
+absolute path behind `-i`. Without both binaries `send_video` says so and sends the file as a plain file (no thumbnail
+or duration), a video over 5 MB (it would need HLS segmenting) goes the same way, and `send_voice` still sends but
+with an unknown duration. With `videoFrames=true` and `ffmpeg` on `PATH`, a video the brain reads (a trigger or reply parent, an `.mp4` up to
+10 MB) is shown to it as up to 4 keyframes (512 px wide) instead of only the poster thumbnail. Default off (see Security).
+Every ffmpeg/ffprobe call uses `-protocol_whitelist file,pipe` and `-nostdin` (ffmpeg), and forces the `mp4` demuxer for
+video so the format is not sniffed from the file. The mp4 is sent as it is, never re-encoded, so H.264/AAC is the safe
+input; other codecs may not play on every receiver.
+
 | tier | tools | reads |
 |---|---|---|
 | operator | all of the above | `operatorContext=all`: whole room; `operators`: operator-authored only in rooms that are not fully trusted |
-| locked | none, unless `lockedTools=chat`: read, `send_message`, `send_file`, `react`, `unreact`; never edit or delete; at most 5 tool calls per run (the 6th errors) | whole room |
+| locked | none, unless `lockedTools=chat`: read, `send_message`, `send_file`, `react`, `unreact`, `send_poll`, `vote_poll`, `send_event`, `send_location`, `send_contact`; never edit, delete, `send_video` or `send_voice` (they read local files and run ffmpeg); at most 5 tool calls per run (the 6th errors) | whole room |
 
 With `lockedTools=chat` the default locked claude command gains `--mcp-config {mcp}` and `--allowedTools` limited to the
 `mcp__chat__*` tools above (still `--tools ""`, `--strict-mcp-config`, no settings, scrubbed env, temp cwd) and

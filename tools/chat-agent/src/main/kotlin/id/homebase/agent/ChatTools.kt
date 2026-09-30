@@ -1,7 +1,9 @@
 package id.homebase.agent
 
 import id.homebase.api.common.OdinId
+import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.content.MessageContent
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
@@ -31,12 +33,12 @@ const val MCP_SERVER_NAME = "chat"
 const val LOCKED_TOOL_CALL_CAP = 5
 private const val LEASE_GRACE_MS = 60_000L
 private const val UNTRUSTED_TAG = "untrusted_chat"
-private val SENDING_TOOLS = setOf("send_message", "send_file")
+private val SENDING_TOOLS = setOf("send_message", "send_file") + TYPED_SEND_TOOLS + MEDIA_SEND_TOOLS
 private val LEASE_KEY = AttributeKey<ToolRun>("chat-agent-run")
 
 private val READ_TOOLS = setOf("read_messages", "search_messages", "get_conversation")
-private val LOCKED_TOOLS = READ_TOOLS + setOf("send_message", "send_file", "react", "unreact")
-private val OPERATOR_TOOLS = LOCKED_TOOLS + setOf("edit_message", "delete_message")
+private val LOCKED_TOOLS = READ_TOOLS + setOf("send_message", "send_file", "react", "unreact", "vote_poll") + TYPED_SEND_TOOLS
+private val OPERATOR_TOOLS = LOCKED_TOOLS + setOf("edit_message", "delete_message") + MEDIA_SEND_TOOLS
 
 fun chatToolNames(tier: Tier): Set<String> = if (tier == Tier.OPERATOR) OPERATOR_TOOLS else LOCKED_TOOLS
 
@@ -168,6 +170,20 @@ class WatcherBackend(
 
     override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String) =
         sendToConversation(session, allowlist, conversationId, caption, files = listOf(file))
+
+    override fun disclose(conversationId: Uuid, text: String) = allowlist.disclosure(conversationId, text, session.identity)
+
+    override suspend fun sendTyped(conversationId: Uuid, content: MessageContent) =
+        sendToConversation(session, allowlist, conversationId, "", typed = content)
+
+    override suspend fun vote(conversationId: Uuid, message: ChatMsg, option: Int, poll: PollDescriptor) =
+        voteOnPoll(session, allowlist, conversationId, message, option, poll)
+
+    override suspend fun sendVideo(conversationId: Uuid, video: OutVideo, caption: String) =
+        sendToConversation(session, allowlist, conversationId, caption, media = { key, ops -> stageVideo(video, key, ops) })
+
+    override suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String) =
+        sendToConversation(session, allowlist, conversationId, caption, media = { _, _ -> stageVoice(voice) })
 
     override fun visible(messages: List<ChatMsg>, conversationId: Uuid) = visibleTo(messages)
 

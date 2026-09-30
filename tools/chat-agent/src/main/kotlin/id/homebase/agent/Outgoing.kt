@@ -240,7 +240,7 @@ fun imageThumbs(decoded: DecodedImage, payloadKey: String): ImageThumbs {
 
 fun payloadKeyFor(index: Int) = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
 
-class StagedBundle(val bundle: PayloadBundle, private val dir: File? = null) {
+class StagedBundle(val bundle: PayloadBundle, private val dir: File? = null, val preEncrypted: Boolean = false) {
     fun cleanup() {
         dir?.deleteRecursively()
     }
