@@ -17,6 +17,9 @@ class CardPreferences(private val databaseManager: DatabaseManager) {
     private val _tapShareEnabled = MutableStateFlow(readTapShare())
     val tapShareEnabled: StateFlow<Boolean> = _tapShareEnabled.asStateFlow()
 
+    private val _circleCardsUnsupported = MutableStateFlow(readCircleCardsUnsupported())
+    val circleCardsUnsupported: Boolean get() = _circleCardsUnsupported.value
+
     suspend fun setDesign(design: String) {
         keyValue.upsertValue(DESIGN_KEY, design.encodeToByteArray())
         _design.value = design
@@ -28,16 +31,25 @@ class CardPreferences(private val databaseManager: DatabaseManager) {
         _tapShareEnabled.value = enabled
     }
 
+    suspend fun setCircleCardsUnsupported() {
+        if (_circleCardsUnsupported.value) return
+        keyValue.upsertValue(CIRCLES_UNSUPPORTED_KEY, byteArrayOf(1))
+        _circleCardsUnsupported.value = true
+    }
+
     // A singleton outlives logout; re-read from the next identity's database.
     fun reset() {
         _design.value = readDesign()
         _tapShareEnabled.value = readTapShare()
+        _circleCardsUnsupported.value = readCircleCardsUnsupported()
     }
 
     private fun readDesign(): String? =
         read(DESIGN_KEY, "design")?.decodeToString()?.takeIf { it in CardDesign.all }
 
     private fun readTapShare(): Boolean = read(TAP_SHARE_KEY, "tap-share")?.firstOrNull()?.let { it.toInt() != 0 } ?: false
+
+    private fun readCircleCardsUnsupported(): Boolean = read(CIRCLES_UNSUPPORTED_KEY, "circle-card support") != null
 
     // Bootstrap-only sync read, as in DiceRollPreferences: commonMain has no runBlocking on wasmJs.
     private fun read(key: Uuid, what: String): ByteArray? =
@@ -48,5 +60,6 @@ class CardPreferences(private val databaseManager: DatabaseManager) {
     companion object {
         val DESIGN_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0b01")
         val TAP_SHARE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0b02")
+        val CIRCLES_UNSUPPORTED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0b03")
     }
 }

@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.card
 
+import id.homebase.api.client.profile.ProfileWriteResponse
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -76,7 +77,7 @@ class CardOverridesTest {
         assertEquals(listOf(CardBlock("links"), CardBlock("posts")), read.blocks)
 
         val store = FakeStore(stored)
-        assertTrue(CardRepository(store).savePublic(CardDesign.BOARD))
+        assertTrue(CardRepository(store, inMemoryCardPreferences()).savePublic(CardDesign.BOARD))
         val kept = store.written.single()["overrides"]!!.jsonObject
         assertEquals("bar", kept["socials"]!!.jsonPrimitive.content)
         assertEquals(
@@ -102,8 +103,9 @@ class CardOverridesTest {
             versionTag: kotlin.uuid.Uuid?,
             priority: Int,
             circleIds: List<String>,
-        ) {
+        ): ProfileWriteResponse {
             written += data
+            return ProfileWriteResponse(id ?: kotlin.uuid.Uuid.random(), kotlin.uuid.Uuid.random())
         }
         override suspend fun delete(id: kotlin.uuid.Uuid, versionTag: kotlin.uuid.Uuid) = false
     }

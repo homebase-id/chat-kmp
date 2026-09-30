@@ -84,7 +84,7 @@ class CardContractGoldenTest {
 
     @Test
     fun savePublicCardCreate() = runTest {
-        golden("save-public-card.json", captured { CardRepository(store(it)).savePublic("board", overrides) })
+        golden("save-public-card.json", captured { it.cardRepository().savePublic("board", overrides) })
     }
 
     @Test
