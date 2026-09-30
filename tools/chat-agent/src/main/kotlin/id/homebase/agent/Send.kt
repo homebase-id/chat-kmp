@@ -1,7 +1,6 @@
 package id.homebase.agent
 
 import id.homebase.api.HomebaseProtocol
-import id.homebase.api.client.HttpClientProvider
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.upload.DriveUploadProvider
@@ -38,7 +37,6 @@ fun conversationRecipients(conversation: ConversationInfo, self: OdinId): List<O
     else conversation.members.filter { it != self }
 
 suspend fun buildMessageMetadata(
-    allowlist: Allowlist,
     conversationId: Uuid,
     messageId: Uuid,
     text: String,
@@ -46,7 +44,6 @@ suspend fun buildMessageMetadata(
     keyHeader: KeyHeader,
     distribute: Boolean,
 ): UploadFileMetadata {
-    allowlist.requireSend(conversationId)
     return UploadFileMetadata(
             allowDistribution = distribute,
             isEncrypted = true,
@@ -85,14 +82,13 @@ fun conversationTransitOptions(
 
 fun noteToSelf(self: OdinId) = ConversationInfo(ChatProtocol.ConversationWithYourselfId, NOTE_TO_SELF_TITLE, listOf(self))
 
-suspend fun resolveConversation(session: Session, allowlist: Allowlist, id: Uuid): ConversationInfo {
-    allowlist.requireSend(id)
-    if (id == ChatProtocol.ConversationWithYourselfId) return noteToSelf(session.identity)
-    allowlist.info(id) ?: allowlist.learn(discoverConversations(session.credentials))
-    return allowlist.info(id) ?: error("conversation $id not found among this identity's conversations")
-}
-
-suspend fun sendToConversation(session: Session, allowlist: Allowlist, conversation: ConversationInfo, text: String): Uuid {
+suspend fun sendToConversation(session: Session, allowlist: Allowlist, conversationId: Uuid, text: String): Uuid {
+    allowlist.requireSend(conversationId)
+    val conversation = if (conversationId == ChatProtocol.ConversationWithYourselfId) {
+        noteToSelf(session.identity)
+    } else {
+        allowlist.info(conversationId) ?: error("conversation $conversationId not found among this identity's conversations")
+    }
     val recipients = conversationRecipients(conversation, session.identity)
     require(recipients.isNotEmpty() || conversation.id == ChatProtocol.ConversationWithYourselfId) {
         "no recipients resolved for conversation ${conversation.id}"
@@ -100,10 +96,10 @@ suspend fun sendToConversation(session: Session, allowlist: Allowlist, conversat
     val messageId = Uuid.random()
     val keyHeader = KeyHeader.newRandom16()
     val metadata = buildMessageMetadata(
-        allowlist, conversation.id, messageId, text, Clock.System.now().toEpochMilliseconds(), keyHeader,
+        conversation.id, messageId, text, Clock.System.now().toEpochMilliseconds(), keyHeader,
         distribute = recipients.isNotEmpty(),
     )
-    DriveUploadProvider(HttpClientProvider.create(), session.credentials, JvmFileOperationsProvider())
+    DriveUploadProvider(session.http, session.credentials, JvmFileOperationsProvider())
         .uploadFile(
             UploadFileRequest(
                 driveId = SystemDriveConstants.chatDrive.alias,
@@ -115,15 +111,11 @@ suspend fun sendToConversation(session: Session, allowlist: Allowlist, conversat
     return messageId
 }
 
-suspend fun sendToConversation(session: Session, allowlist: Allowlist, conversationId: Uuid, text: String): Uuid =
-    sendToConversation(session, allowlist, resolveConversation(session, allowlist, conversationId), text)
-
 suspend fun send(profile: String, text: String, conversation: Uuid? = null) {
     val session = openSession(profile)
     val allowlist = loadConfig(profile, session.identity).allowlist
     val id = conversation ?: ChatProtocol.ConversationWithYourselfId
     require(id == ChatProtocol.ConversationWithYourselfId || allowlist.groupSend) { "this profile may only send to note-to-self" }
-    refreshAllowlist(session.credentials, allowlist)
-    allowlist.requireSend(id)
+    refreshAllowlist(session, allowlist)
     println("sent ${sendToConversation(session, allowlist, id, text)}")
 }

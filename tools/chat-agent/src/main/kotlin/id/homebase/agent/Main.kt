@@ -9,13 +9,26 @@ import kotlinx.coroutines.runBlocking
 private const val USAGE =
     "usage: chat-agent login --profile <p> [--identity <domain>] | read --profile <p> [--conversation <id>] [--limit <n>] | conversations --profile <p> | send --profile <p> [--conversation <id>] <text> | watch --profile <p> | mcp --profile <p>  (global: --verbose)"
 
+private val VALUE_FLAGS = setOf("--profile", "--conversation", "--limit", "--identity")
+private const val VERBOSE = "--verbose"
+
 fun main(args: Array<String>) {
-    val command = args.firstOrNull()
-    val verbose = "--verbose" in args
-    val rest = args.drop(1).filter { it != "--verbose" }
+    val options = mutableMapOf<String, String>()
+    val positional = mutableListOf<String>()
+    var verbose = false
+    var i = 0
+    while (i < args.size) {
+        val arg = args[i]
+        when {
+            arg == VERBOSE -> verbose = true
+            arg in VALUE_FLAGS && i + 1 < args.size -> options[arg] = args[++i]
+            else -> positional += arg
+        }
+        i++
+    }
+    val command = positional.firstOrNull()
+    val sendText = positional.drop(1).joinToString(" ")
     Logger.setMinSeverity(if (verbose) Severity.Verbose else Severity.Warn)
-    val options = rest.chunked(2).associate { it[0] to it.getOrNull(1) }
-    val sendText = rest.filterIndexed { i, _ -> i !in flagIndexes(rest, "--profile", "--conversation") }.joinToString(" ")
     val profile = options["--profile"]
     if (command !in setOf("login", "read", "conversations", "send", "watch", "mcp") || profile == null) {
         System.err.println(USAGE)
@@ -48,6 +61,3 @@ private fun prompt(question: String): String {
     print(question)
     return readlnOrNull()?.trim().orEmpty().ifEmpty { error("identity required") }
 }
-
-private fun flagIndexes(args: List<String>, vararg flags: String): Set<Int> =
-    flags.flatMap { f -> args.indexOf(f).let { if (it < 0) emptyList() else listOf(it, it + 1) } }.toSet()

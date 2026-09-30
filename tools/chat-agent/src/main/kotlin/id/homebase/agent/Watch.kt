@@ -23,6 +23,7 @@ private const val MAX_ATTEMPTS = 2
 private const val PROCESSED_CAP = 1000
 private const val POLL_INTERVAL_MS = 10_000L
 private const val POLL_WINDOW = 50
+private const val REDISCOVER_EVERY = 6
 private const val HISTORY_LIMIT = 10
 private const val MESSAGE_CODEPOINTS = 1000
 private const val REPLY_CODEPOINTS = 1500
@@ -204,15 +205,20 @@ class WatchProcessor(
                 ?: return done("silent")
             val failed = outcome is BrainOutcome.Failed
             val attempt = (sorted.maxOf { attempts[it.id] ?: 0 }) + 1
-            val sent = try {
-                if (failed && attempt < MAX_ATTEMPTS) null else reply(conversation, text).let { true }
+            val settled = try {
+                if (failed && attempt < MAX_ATTEMPTS) {
+                    false
+                } else {
+                    reply(conversation, text)
+                    true
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 log("send error: ${e.message}")
-                if (attempt < MAX_ATTEMPTS) null else true
+                attempt >= MAX_ATTEMPTS
             }
-            if (sent == null) {
+            if (!settled) {
                 sorted.forEach { attempts[it.id] = attempt; pending[it.id] = it; results[it.id] = "retry" }
                 log("${sorted.first().id} retry after attempt $attempt: ${(outcome as? BrainOutcome.Failed)?.reason ?: "send failed"}")
             } else {
@@ -241,7 +247,7 @@ suspend fun watch(profile: String) {
         identity = session.identity.toString(),
         store = store,
         limiter = RunLimiter(File(dir, "runs.txt"), config.maxRunsPerHour, config.maxRunsPerDay),
-        history = { fetchMessages(session.credentials, it, HISTORY_LIMIT + 1) },
+        history = { fetchMessages(session, it, HISTORY_LIMIT + 1) },
         brain = { runBrain(config.brain, it) },
         reply = { conversation, text ->
             sendToConversation(session, config.allowlist, conversation, text)
@@ -256,13 +262,12 @@ suspend fun watch(profile: String) {
         log("stopped")
     })
     log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} transport=poll/${POLL_INTERVAL_MS}ms lastSeen=$lastSeen")
+    var poll = 0
     try {
         while (true) {
             try {
-                // ponytail: rediscover every poll; cache for N polls if the query ever hurts.
-                refreshAllowlist(session.credentials, config.allowlist)
-                val fresh = config.allowlist.allowedConversationIds()
-                    .flatMap { fetchMessages(session.credentials, it, POLL_WINDOW) }
+                refreshAllowlist(session, config.allowlist, rediscover = poll++ % REDISCOVER_EVERY == 0)
+                val fresh = fetchMessages(session, config.allowlist.allowedConversationIds().toList(), POLL_WINDOW)
                     .filter { it.userDate >= lastSeen }
                     .sortedBy { it.userDate }
                 fresh.lastOrNull()?.takeIf { it.userDate > lastSeen }?.let {

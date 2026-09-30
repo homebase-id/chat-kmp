@@ -30,7 +30,7 @@ class SendTest {
     @Test
     fun selfConversationMetadataIsEncryptedLocalMarkdown() = runBlocking {
         val kh = KeyHeader.newRandom16()
-        val m = buildMessageMetadata(allowlist, ChatProtocol.ConversationWithYourselfId, Uuid.random(), "hi", 1L, kh, distribute = false)
+        val m = buildMessageMetadata(ChatProtocol.ConversationWithYourselfId, Uuid.random(), "hi", 1L, kh, distribute = false)
         val plain = buildMessageContent("hi")
         assertNotEquals(plain, m.appData.content)
         assertEquals(plain, kh.decrypt(Base64.decode(m.appData.content!!)).decodeToString())
@@ -45,7 +45,7 @@ class SendTest {
     fun groupMetadataIsEncryptedDistributedAndGroupedByConversation() = runBlocking {
         val kh = KeyHeader.newRandom16()
         val id = Uuid.random()
-        val m = buildMessageMetadata(botAllowlist(), group, id, "hi", 7L, kh, distribute = true)
+        val m = buildMessageMetadata(group, id, "hi", 7L, kh, distribute = true)
         assertTrue(m.isEncrypted)
         assertTrue(m.allowDistribution)
         assertEquals(group, m.appData.groupId)
@@ -77,9 +77,6 @@ class SendTest {
         assertTrue(me.allowsConversation(group))
         assertFalse(me.allowsSend(group))
         assertFailsWith<IllegalArgumentException> { me.requireSend(group) }
-        assertFailsWith<IllegalArgumentException> {
-            buildMessageMetadata(me, group, Uuid.random(), "hi", 1L, KeyHeader.newRandom16(), distribute = true)
-        }
         assertTrue(me.allowsSend(ChatProtocol.ConversationWithYourselfId))
         assertFalse(parseConfig("allowConversations=member", owner).allowlist.groupSend)
         assertTrue(parseConfig("bot=true", owner).allowlist.groupSend)
@@ -98,16 +95,13 @@ class SendTest {
 
     @Test
     fun botRefusesUnlistedConversation() = runBlocking<Unit> {
-        assertFailsWith<IllegalArgumentException> {
-            buildMessageMetadata(botAllowlist(), Uuid.random(), Uuid.random(), "hi", 1L, KeyHeader.newRandom16(), distribute = true)
-        }
+        assertFailsWith<IllegalArgumentException> { botAllowlist().requireSend(Uuid.random()) }
+        botAllowlist().requireSend(group)
     }
 
     @Test
     fun otherConversationRefused() = runBlocking<Unit> {
-        assertFailsWith<IllegalArgumentException> {
-            buildMessageMetadata(allowlist, Uuid.random(), Uuid.random(), "hi", 1L, KeyHeader.newRandom16(), distribute = false)
-        }
+        assertFailsWith<IllegalArgumentException> { allowlist.requireSend(Uuid.random()) }
     }
 
     @Test

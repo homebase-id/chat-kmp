@@ -35,12 +35,8 @@ class Allowlist(
     fun allowsSend(id: Uuid): Boolean =
         allowsConversation(id) && (id == ChatProtocol.ConversationWithYourselfId || (groupSend && id in known))
 
-    fun requireSend(id: Uuid) {
-        requireConversation(id)
-        require(id == ChatProtocol.ConversationWithYourselfId || groupSend) {
-            "this profile may only send to note-to-self"
-        }
-    }
+    fun requireSend(id: Uuid) =
+        require(allowsSend(id)) { "sending to conversation $id is not permitted for this profile" }
 
     fun requireConversation(id: Uuid) =
         require(allowsConversation(id)) { "conversation $id is not on the allowlist" }

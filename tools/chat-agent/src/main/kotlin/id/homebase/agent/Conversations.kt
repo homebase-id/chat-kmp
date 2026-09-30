@@ -1,6 +1,5 @@
 package id.homebase.agent
 
-import id.homebase.api.client.HttpClientProvider
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileState
@@ -31,9 +30,9 @@ fun parseConversation(id: Uuid, content: String, self: OdinId): ConversationInfo
     return ConversationInfo(id, title, members)
 }
 
-suspend fun discoverConversations(credentials: CredentialsManager): List<ConversationInfo> {
-    val self = credentials.requireActiveDomain()
-    val response = DriveQueryProvider(HttpClientProvider.create(), credentials).queryBatch(
+suspend fun discoverConversations(session: Session): List<ConversationInfo> {
+    val self = session.credentials.requireActiveDomain()
+    val response = DriveQueryProvider(session.http, session.credentials).queryBatch(
         driveId = SystemDriveConstants.chatDrive.alias,
         request = QueryBatchRequest(
             queryParams = FileQueryParams(
@@ -53,8 +52,8 @@ suspend fun discoverConversations(credentials: CredentialsManager): List<Convers
     }
 }
 
-private class InboxProvider(credentials: CredentialsManager) :
-    OdinApiProviderBase(HttpClientProvider.create(), credentials) {
+private class InboxProvider(session: Session) :
+    OdinApiProviderBase(session.http, session.credentials) {
     suspend fun process() {
         val creds = requireCreds()
         val drive = SystemDriveConstants.chatDrive.alias
@@ -64,9 +63,9 @@ private class InboxProvider(credentials: CredentialsManager) :
     }
 }
 
-suspend fun processInbox(credentials: CredentialsManager) {
+suspend fun processInbox(session: Session) {
     try {
-        InboxProvider(credentials).process()
+        InboxProvider(session).process()
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -74,10 +73,10 @@ suspend fun processInbox(credentials: CredentialsManager) {
     }
 }
 
-suspend fun refreshAllowlist(credentials: CredentialsManager, allowlist: Allowlist) {
+suspend fun refreshAllowlist(session: Session, allowlist: Allowlist, rediscover: Boolean = true) {
     if (!allowlist.memberMode) return
-    processInbox(credentials)
-    allowlist.learn(discoverConversations(credentials))
+    processInbox(session)
+    if (rediscover) allowlist.learn(discoverConversations(session))
 }
 
 fun loadConfig(profile: String, owner: OdinId): AgentConfig =
@@ -88,8 +87,8 @@ fun loadConfig(profile: String, owner: OdinId): AgentConfig =
 suspend fun conversations(profile: String) {
     val session = openSession(profile)
     val config = loadConfig(profile, session.identity)
-    processInbox(session.credentials)
-    val discovered = discoverConversations(session.credentials)
+    processInbox(session)
+    val discovered = discoverConversations(session)
     config.allowlist.learn(discovered)
     discovered.filter { config.allowlist.allowsConversation(it.id) }.forEach {
         println("${it.id}\t${it.title}\t${it.members.joinToString(",")}")

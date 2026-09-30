@@ -1,6 +1,7 @@
 package id.homebase.agent
 
 import id.homebase.api.client.HttpClientProvider
+import io.ktor.client.HttpClient
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
@@ -22,7 +23,7 @@ import kotlin.uuid.Uuid
 class NotLoggedInException(profile: String) :
     Exception("not logged in for profile '$profile', run: chat-agent login --profile $profile")
 
-class Session(val identity: OdinId, val credentials: CredentialsManager)
+class Session(val identity: OdinId, val credentials: CredentialsManager, val http: HttpClient)
 
 suspend fun openSession(profile: String): Session {
     val stored = CredentialStorage.getCredentials() ?: throw NotLoggedInException(profile)
@@ -30,7 +31,7 @@ suspend fun openSession(profile: String): Session {
     credentials.setActiveCredentials(
         ApiCredentials.create(stored.identity, stored.clientAuthToken, stored.sharedSecret)
     )
-    return Session(stored.identity, credentials)
+    return Session(stored.identity, credentials, HttpClientProvider.create())
 }
 
 class ChatMsg(
@@ -41,17 +42,21 @@ class ChatMsg(
     val userDate: Long,
 )
 
-suspend fun fetchMessages(credentials: CredentialsManager, conversationId: Uuid, limit: Int): List<ChatMsg> {
+suspend fun fetchMessages(session: Session, conversationId: Uuid, limit: Int): List<ChatMsg> =
+    fetchMessages(session, listOf(conversationId), limit)
+
+suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>, limit: Int): List<ChatMsg> {
+    if (conversationIds.isEmpty()) return emptyList()
     // The owner's own files carry neither originalAuthor nor senderOdinId.
-    val owner = credentials.getActiveDomain()
+    val owner = session.credentials.getActiveDomain()
     val response =
-        DriveQueryProvider(HttpClientProvider.create(), credentials)
+        DriveQueryProvider(session.http, session.credentials)
             .queryBatch(
                 driveId = SystemDriveConstants.chatDrive.alias,
                 request = QueryBatchRequest(
                     queryParams = FileQueryParams(
                         fileType = listOf(ChatProtocol.MessageFileType),
-                        groupId = listOf(conversationId),
+                        groupId = conversationIds,
                         fileState = listOf(FileState.Active),
                     ),
                     resultOptionsRequest = QueryBatchResultOptionsRequest(
@@ -63,8 +68,9 @@ suspend fun fetchMessages(credentials: CredentialsManager, conversationId: Uuid,
                 ),
             )
     return response.searchResults
-        .map { file ->
+        .mapNotNull { file ->
             val metadata = file.fileMetadata
+            val conversationId = metadata.appData.groupId ?: return@mapNotNull null
             val text = runCatching {
                 OdinSystemSerializer.deserialize<MessageAppData>(metadata.appData.content.orEmpty()).getMessage()
             }.getOrDefault("[unreadable message]")
@@ -83,10 +89,10 @@ suspend fun read(profile: String, limit: Int, conversation: Uuid? = null) {
     val session = openSession(profile)
     val allowlist = loadConfig(profile, session.identity).allowlist
     val conversationId = conversation ?: ChatProtocol.ConversationWithYourselfId
-    refreshAllowlist(session.credentials, allowlist)
+    refreshAllowlist(session, allowlist)
     allowlist.requireConversation(conversationId)
 
-    fetchMessages(session.credentials, conversationId, limit)
+    fetchMessages(session, conversationId, limit)
         .filter { allowlist.allowsAuthor(it.author, conversationId) }
         .forEach { println("${Instant.fromEpochMilliseconds(it.userDate)} ${it.author}: ${it.text}") }
 }

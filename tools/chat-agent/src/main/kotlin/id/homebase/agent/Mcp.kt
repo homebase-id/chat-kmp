@@ -29,6 +29,7 @@ import kotlinx.serialization.json.put
 const val MCP_MAX_READ = 50
 const val MCP_DEFAULT_READ = 20
 private const val MCP_TEXT_CODEPOINTS = 1000
+private const val ALLOWLIST_TTL_NANOS = 60_000_000_000L
 
 interface AgentBackend {
     val allowlist: Allowlist
@@ -44,7 +45,7 @@ fun formatMessageLine(msg: ChatMsg): String {
     return "$date ${msg.author}: $text"
 }
 
-private fun parseConversation(args: JsonObject?): Uuid? =
+private fun conversationArg(args: JsonObject?): Uuid? =
     args?.get("conversationId")?.jsonPrimitive?.contentOrNull?.let { runCatching { Uuid.parse(it) }.getOrNull() }
 
 private suspend fun guarded(block: suspend () -> ToolReply): ToolReply =
@@ -52,6 +53,8 @@ private suspend fun guarded(block: suspend () -> ToolReply): ToolReply =
         block()
     } catch (e: IllegalArgumentException) {
         ToolReply("refused: ${e.message}", isError = true)
+    } catch (e: NotLoggedInException) {
+        ToolReply("not logged in: ${e.message}", isError = true)
     } catch (e: Exception) {
         ToolReply("error: ${e.message}", isError = true)
     }
@@ -64,7 +67,7 @@ suspend fun toolListConversations(backend: AgentBackend): ToolReply = guarded {
 }
 
 suspend fun toolReadMessages(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
-    val conversationId = parseConversation(args) ?: return@guarded ToolReply("conversationId must be a UUID", true)
+    val conversationId = conversationArg(args) ?: return@guarded ToolReply("conversationId must be a UUID", true)
     backend.allowlist.requireConversation(conversationId)
     val limit = (args?.get("limit")?.jsonPrimitive?.intOrNull ?: MCP_DEFAULT_READ).coerceIn(1, MCP_MAX_READ)
     val lines = backend.messages(conversationId, limit)
@@ -74,7 +77,7 @@ suspend fun toolReadMessages(backend: AgentBackend, args: JsonObject?): ToolRepl
 }
 
 suspend fun toolSendMessage(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
-    val conversationId = parseConversation(args) ?: return@guarded ToolReply("conversationId must be a UUID", true)
+    val conversationId = conversationArg(args) ?: return@guarded ToolReply("conversationId must be a UUID", true)
     backend.allowlist.requireSend(conversationId)
     val text = args?.get("text")?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
     if (text.isEmpty()) return@guarded ToolReply("text is empty", true)
@@ -84,6 +87,7 @@ suspend fun toolSendMessage(backend: AgentBackend, args: JsonObject?): ToolReply
 class SessionBackend(private val profile: String) : AgentBackend {
     private var session: Session? = null
     private var cachedAllowlist: Allowlist? = null
+    private var loadedAt = 0L
 
     private suspend fun open(): Session = session ?: openSession(profile).also { session = it }
 
@@ -91,31 +95,26 @@ class SessionBackend(private val profile: String) : AgentBackend {
         get() = cachedAllowlist ?: error("allowlist not loaded")
 
     suspend fun load() {
+        if (cachedAllowlist != null && System.nanoTime() - loadedAt < ALLOWLIST_TTL_NANOS) return
         val session = open()
-        cachedAllowlist = loadConfig(profile, session.identity).allowlist.also { refreshAllowlist(session.credentials, it) }
+        cachedAllowlist = loadConfig(profile, session.identity).allowlist.also { refreshAllowlist(session, it) }
+        loadedAt = System.nanoTime()
     }
 
     override suspend fun messages(conversationId: Uuid, limit: Int) =
-        fetchMessages(open().credentials, conversationId, limit)
+        fetchMessages(open(), conversationId, limit)
 
     override suspend fun send(conversationId: Uuid, text: String) =
         sendToConversation(open(), allowlist, conversationId, text)
 }
 
-private fun CallToolResult.Companion.of(reply: ToolReply) =
-    CallToolResult(content = listOf(TextContent(reply.text)), isError = reply.isError)
-
-private suspend fun ready(backend: SessionBackend, block: suspend () -> ToolReply): CallToolResult =
-    CallToolResult.of(
-        try {
-            backend.load()
-            block()
-        } catch (e: NotLoggedInException) {
-            ToolReply("not logged in: ${e.message}", true)
-        } catch (e: Exception) {
-            ToolReply("error: ${e.message}", true)
-        }
-    )
+private suspend fun ready(backend: SessionBackend, block: suspend () -> ToolReply): CallToolResult {
+    val reply = guarded {
+        backend.load()
+        block()
+    }
+    return CallToolResult(content = listOf(TextContent(reply.text)), isError = reply.isError)
+}
 
 suspend fun mcp(profile: String) {
     val protocolOut = System.out

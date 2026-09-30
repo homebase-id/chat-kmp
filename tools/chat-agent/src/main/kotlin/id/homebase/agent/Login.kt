@@ -23,6 +23,7 @@ import id.homebase.api.youauth.YouAuthorizationParams
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeout
 
+// homebase-common (AppConfig.kt) isn't headless; mirror of its circle ids.
 private const val CONFIRMED_CONNECTIONS_CIRCLE_ID = "bb2683fa402aff866e771a6495765a15"
 private const val AUTO_CONNECTIONS_CIRCLE_ID = "9e22b42952f74d2580e11250b651d343"
 

@@ -63,26 +63,6 @@ class WatchTest {
         assertFalse(trig("🤖 @owner.example.com", bot = true))
     }
 
-    @Test
-    fun configDefaultsAndOverrides() {
-        val d = parseConfig("", owner)
-        assertEquals("quagmire", d.nickname)
-        assertEquals("claude -p --model haiku --max-turns 3", d.brain)
-        assertFalse(d.bot)
-        assertEquals(setOf(self), d.allowlist.conversationIds)
-        assertEquals(setOf(owner), d.allowlist.authors)
-        val other = Uuid.random()
-        val c = parseConfig(
-            "# c\nnickname=zed\nbrain=echo hi | cat\nbot=true\nallowConversations=self, $other\nallowAuthors=a.example.com",
-            owner,
-        )
-        assertEquals("zed", c.nickname)
-        assertEquals("echo hi | cat", c.brain)
-        assertTrue(c.bot)
-        assertEquals(setOf(self, other), c.allowlist.conversationIds)
-        assertEquals(setOf(OdinId("a.example.com")), c.allowlist.authors)
-    }
-
     private fun msg(text: String, conv: Uuid = self, author: OdinId? = owner, id: Uuid = Uuid.random()) =
         ChatMsg(id, conv, author, text, 1L)
 
@@ -95,14 +75,16 @@ class WatchTest {
         var sendFailures: Int = 0,
     ) {
         val replies = mutableListOf<String>()
+        val replyTargets = mutableListOf<Uuid>()
+        val logs = mutableListOf<String>()
         var brainRuns = 0
         val prompts = mutableListOf<String>()
         val processor = WatchProcessor(
             config, "owner.example.com", store,
             history = { emptyList() },
             brain = { brainRuns++; prompts += it; outcomes.removeFirstOrNull() ?: outcome },
-            reply = { _, t -> if (sendFailures > 0) { sendFailures--; error("boom") }; replies += t },
-            log = {},
+            reply = { c, t -> if (sendFailures > 0) { sendFailures--; error("boom") }; replyTargets += c; replies += t },
+            log = { logs += it },
             limiter = limiter ?: RunLimiter(null, config.maxRunsPerHour, config.maxRunsPerDay),
         )
     }
@@ -240,5 +222,51 @@ class WatchTest {
         val m2 = msg("@quagmire y")
         assertEquals("retry", s.processor.handle(m2))
         assertEquals("replied", s.processor.handleAll(emptyList())[m2.id])
+    }
+
+    private val group = Uuid.random()
+
+    private fun groupCfg(bot: Boolean) = AgentConfig(
+        bot = bot,
+        allowlist = parseConfig(if (bot) "bot=true" else "allowConversations=member", owner).allowlist.also {
+            it.learn(listOf(ConversationInfo(group, "Team", listOf(OdinId("alice.example.com"), owner))))
+        },
+    )
+
+    @Test
+    fun seenMessageLoggedOnce() = runBlocking {
+        val h = Harness(cfg(), outcome = BrainOutcome.Output("NO_REPLY"))
+        val m = msg("hello")
+        assertEquals("skip: no trigger", h.processor.handle(m))
+        assertEquals("seen", h.processor.handle(m))
+        assertEquals(1, h.logs.size)
+    }
+
+    @Test
+    fun botRepliesIntoTriggeringGroup() = runBlocking {
+        val h = Harness(groupCfg(bot = true))
+        assertEquals("replied", h.processor.handle(msg("@quagmire hi", conv = group, author = OdinId("alice.example.com"))))
+        assertEquals(listOf(group), h.replyTargets)
+        assertEquals(listOf("$BOT_PREFIX pong"), h.replies)
+    }
+
+    @Test
+    fun delegateNeverRepliesIntoGroupEvenIfConfigured() = runBlocking {
+        val h = Harness(groupCfg(bot = false))
+        assertEquals("skip: send not permitted in this conversation", h.processor.handle(msg("@quagmire hi", conv = group)))
+        assertEquals(0, h.brainRuns)
+        assertTrue(h.replies.isEmpty())
+    }
+
+    @Test
+    fun messageArrivingAfterFirstPollIsHandled() = runBlocking {
+        val h = Harness(cfg())
+        val old = ChatMsg(Uuid.random(), self, owner, "hello", 1L)
+        assertEquals("skip: no trigger", h.processor.handleAll(listOf(old))[old.id])
+        val late = ChatMsg(Uuid.random(), self, owner, "@quagmire ping", 2L)
+        val second = h.processor.handleAll(listOf(old, late))
+        assertEquals("seen", second[old.id])
+        assertEquals("replied", second[late.id])
+        assertEquals(listOf("🤖 pong"), h.replies)
     }
 }

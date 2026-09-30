@@ -8,12 +8,17 @@ import kotlin.uuid.Uuid
 const val DELEGATE_PROFILE = "me"
 const val BOT_PREFIX = "🤖"
 
+const val DEFAULT_NICKNAME = "quagmire"
+const val DEFAULT_BRAIN = "claude -p --model haiku --max-turns 3"
+const val DEFAULT_MAX_RUNS_PER_HOUR = 20
+const val DEFAULT_MAX_RUNS_PER_DAY = 100
+
 class AgentConfig(
-    val nickname: String = "quagmire",
-    val brain: String = "claude -p --model haiku --max-turns 3",
+    val nickname: String = DEFAULT_NICKNAME,
+    val brain: String = DEFAULT_BRAIN,
     val bot: Boolean = false,
-    val maxRunsPerHour: Int = 20,
-    val maxRunsPerDay: Int = 100,
+    val maxRunsPerHour: Int = DEFAULT_MAX_RUNS_PER_HOUR,
+    val maxRunsPerDay: Int = DEFAULT_MAX_RUNS_PER_DAY,
     val allowlist: Allowlist,
 )
 
@@ -36,11 +41,11 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
     val anyMember = bot && explicitAuthors == null && ownerKey == null
     val authors = explicitAuthors ?: ownerKey?.let { setOf(it) } ?: if (bot) emptySet() else setOf(owner)
     return AgentConfig(
-        nickname = values["nickname"]?.takeIf { it.isNotEmpty() } ?: "quagmire",
-        brain = values["brain"]?.takeIf { it.isNotEmpty() } ?: "claude -p --model haiku --max-turns 3",
+        nickname = values["nickname"]?.takeIf { it.isNotEmpty() } ?: DEFAULT_NICKNAME,
+        brain = values["brain"]?.takeIf { it.isNotEmpty() } ?: DEFAULT_BRAIN,
         bot = bot,
-        maxRunsPerHour = values["maxRunsPerHour"]?.toIntOrNull() ?: 20,
-        maxRunsPerDay = values["maxRunsPerDay"]?.toIntOrNull() ?: 100,
+        maxRunsPerHour = values["maxRunsPerHour"]?.toIntOrNull() ?: DEFAULT_MAX_RUNS_PER_HOUR,
+        maxRunsPerDay = values["maxRunsPerDay"]?.toIntOrNull() ?: DEFAULT_MAX_RUNS_PER_DAY,
         allowlist = Allowlist(conversations, authors, memberMode, anyMember, groupSend = bot && profile != DELEGATE_PROFILE && ownerKey != owner),
     )
 }
