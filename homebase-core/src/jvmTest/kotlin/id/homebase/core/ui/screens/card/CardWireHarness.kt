@@ -26,9 +26,10 @@ class CardWireHarness(private val putReply: (Int) -> Reply = { Reply.Ok }) {
         class Problem(val status: Int, val json: String) : Reply
     }
 
-    val putBodies = mutableListOf<JsonElement>()
-    var puts = 0
-        private set
+    private val recorded = java.util.concurrent.CopyOnWriteArrayList<JsonElement>()
+    val putBodies: List<JsonElement> get() = recorded.toList()
+    private val putCount = java.util.concurrent.atomic.AtomicInteger()
+    val puts: Int get() = putCount.get()
 
     private val secret = SecureByteArray("0123456789abcdef".encodeToByteArray())
 
@@ -37,9 +38,8 @@ class CardWireHarness(private val putReply: (Int) -> Reply = { Reply.Ok }) {
         when {
             request.method == HttpMethod.Put && request.url.encodedPath.endsWith("/profile/attributes") -> {
                 val plain = CryptoHelper.decryptContentAsString((request.body as TextContent).text, secret.unsafeBytes)
-                putBodies += OdinSystemSerializer.json.parseToJsonElement(plain)
-                puts++
-                when (val reply = putReply(puts)) {
+                recorded += OdinSystemSerializer.json.parseToJsonElement(plain)
+                when (val reply = putReply(putCount.incrementAndGet())) {
                     Reply.Ok -> respond(
                         """{"id":"11111111-1111-4111-8111-111111111111","versionTag":"22222222-2222-4222-8222-222222222222"}""",
                         HttpStatusCode.OK,

@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -150,8 +151,14 @@ class ProfileCardViewModelTest {
         var onPublishDesign: suspend (String) -> CardDesignPublish = { CardDesignPublish.Published }
         var siteDefaultLoads = 0
 
+        val cardWrites = MutableStateFlow(0)
+
         override suspend fun savePublicCard(design: String) {
-            cardRepository?.savePublic(design)
+            try {
+                cardRepository?.savePublic(design)
+            } finally {
+                cardWrites.update { it + 1 }
+            }
         }
 
         override suspend fun missingDesignAccess(odinId: OdinId): MissingPermissionsResult? {
@@ -376,6 +383,10 @@ class ProfileCardViewModelTest {
         withTimeout(10.seconds) { while (puts < n) delay(10) }
     }
 
+    private suspend fun FakeSource.awaitCardWrites(n: Int) = withContext(Dispatchers.Default) {
+        withTimeout(10.seconds) { cardWrites.first { it >= n } }
+    }
+
     @Test
     fun savingOnASupportingServerWritesTheCardAndPublishesTheHomePageDesign() = runTest(dispatcher) {
         val wire = CardWireHarness()
@@ -411,14 +422,14 @@ class ProfileCardViewModelTest {
         assertEquals(listOf(CardDesign.COLLAGE), source.publishedDesigns)
         assertFalse(vm.uiState.value.loadFailed)
         assertEquals(CardDesign.COLLAGE, vm.uiState.value.savedDesign)
-        wire.awaitPuts(1)
+        source.awaitCardWrites(1)
         assertEquals(1, wire.puts)
 
         vm.onDesignSelected(CardDesign.POSTER)
         val second = async { vm.events.first() }
         vm.onSaveDesign()
         assertEquals(ProfileCardEvent.DesignSaved, second.await())
-        withContext(Dispatchers.Default) { delay(300) }
+        source.awaitCardWrites(2)
         assertEquals(1, wire.puts, "the unsupported answer must be remembered, not retried")
         assertEquals(listOf(CardDesign.COLLAGE, CardDesign.POSTER), source.publishedDesigns)
     }
