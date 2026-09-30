@@ -1,9 +1,16 @@
 package id.homebase.core.ui.screens.card
 
-import kotlinx.serialization.SerializationException
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
 
 /** Mirrors `CardOverrides` in odin-js `cards/overrides.ts`; property order matches the shared golden fixtures. */
 @Serializable
@@ -21,20 +28,52 @@ data class CardOverrides(
     companion object {
         val EMPTY = CardOverrides()
 
-        private val lenient = Json {
-            ignoreUnknownKeys = true
-            coerceInputValues = true
-        }
-
-        // A stored value this build cannot decode reads as empty, so the next save rewrites it without the unreadable part.
+        // Mirrors the web's applyOverrides: an undecodable value drops only itself, never its siblings.
         fun fromJson(json: JsonObject): CardOverrides =
-            try {
-                lenient.decodeFromJsonElement(serializer(), json)
-            } catch (e: SerializationException) {
-                EMPTY
-            } catch (e: IllegalArgumentException) {
-                EMPTY
-            }
+            CardOverrides(
+                palette = json.field("palette") { o ->
+                    CardPalette(
+                        ground = o.text("ground"), ink = o.text("ink"), muted = o.text("muted"),
+                        accent = o.text("accent"), surface = o.text("surface"), surfaceInk = o.text("surfaceInk"),
+                    )
+                },
+                type = json.field("type") { o ->
+                    CardTypeface(
+                        display = o.text("display"), text = o.text("text"),
+                        label = o.text("label"), displayCase = o.text("displayCase"),
+                    )
+                },
+                portraits = (json["portraits"] as? JsonArray)?.mapNotNull { el ->
+                    (el as? JsonObject)?.let { o ->
+                        CardPortrait(
+                            source = o.text("source"), shape = o.text("shape"), ring = o.number("ring"),
+                            shadow = o.text("shadow"), tilt = o.number("tilt"), tape = o.flag("tape"), mono = o.flag("mono"),
+                        )
+                    }
+                },
+                blocks = (json["blocks"] as? JsonArray)?.mapNotNull { el ->
+                    val o = el as? JsonObject
+                    o?.text("kind")?.let { CardBlock(it, o.text("presentation")) }
+                },
+                socials = json.text("socials"),
+            )
+
+        private fun <T> JsonObject.field(key: String, read: (JsonObject) -> T): T? =
+            (this[key] as? JsonObject)?.let(read)
+
+        private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        private fun JsonObject.flag(key: String): Boolean? = (this[key] as? JsonPrimitive)?.booleanOrNull
+        private fun JsonObject.number(key: String): Double? = (this[key] as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull
+    }
+}
+
+/** A JSON number the web treats as a plain `number`; whole values stay integers on the wire so a read-save round trip is byte-stable. */
+object CardNumberSerializer : KSerializer<Double> {
+    override val descriptor = PrimitiveSerialDescriptor("CardNumber", PrimitiveKind.DOUBLE)
+    override fun deserialize(decoder: Decoder): Double = decoder.decodeDouble()
+    override fun serialize(encoder: Encoder, value: Double) {
+        val whole = value.toLong()
+        if (whole.toDouble() == value) encoder.encodeLong(whole) else encoder.encodeDouble(value)
     }
 }
 
@@ -60,9 +99,9 @@ data class CardTypeface(
 data class CardPortrait(
     val source: String? = null,
     val shape: String? = null,
-    val ring: Int? = null,
+    @Serializable(with = CardNumberSerializer::class) val ring: Double? = null,
     val shadow: String? = null,
-    val tilt: Int? = null,
+    @Serializable(with = CardNumberSerializer::class) val tilt: Double? = null,
     val tape: Boolean? = null,
     val mono: Boolean? = null,
 )

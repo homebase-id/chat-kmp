@@ -38,7 +38,7 @@ class CardContractGoldenTest {
             ground = "#112233", ink = "#F0F0F0", muted = "#99AABB", accent = "#ABCDEF", surface = "#223344", surfaceInk = "#FFFFFF",
         ),
         type = CardTypeface(display = "caveat", text = "newsreader", label = "space-mono", displayCase = "upper"),
-        portraits = listOf(CardPortrait("photo", "square", ring = 2, shadow = "soft", tilt = 5, tape = true, mono = true)),
+        portraits = listOf(CardPortrait("photo", "square", ring = 2.0, shadow = "soft", tilt = 5.0, tape = true, mono = true)),
         blocks = listOf(CardBlock("posts", "row"), CardBlock("links", "button")),
         socials = "handles",
     )
