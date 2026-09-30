@@ -121,7 +121,7 @@ class WatchTest {
         val h = Harness(cfg())
         val m = msg("@quagmire hi")
         assertEquals("replied", h.processor.handle(m))
-        assertEquals("skip: already processed", h.processor.handle(m))
+        assertEquals("seen", h.processor.handle(m))
         assertEquals(listOf("🤖 pong"), h.replies)
         assertEquals(1, h.brainRuns)
     }

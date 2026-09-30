@@ -20,15 +20,23 @@ fun parseConfig(text: String, owner: OdinId): AgentConfig {
         .filter { it.isNotEmpty() && !it.startsWith("#") && '=' in it }
         .associate { it.substringBefore('=').trim() to it.substringAfter('=').trim() }
     fun list(key: String) = values[key]?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
-    val conversations = list("allowConversations")?.map {
+    val bot = values["bot"].equals("true", ignoreCase = true)
+    val conversationKeys = list("allowConversations")
+        ?: if (bot) listOf("member") else listOf("self")
+    val memberMode = conversationKeys.any { it.equals("member", ignoreCase = true) }
+    val conversations = conversationKeys.filterNot { it.equals("member", ignoreCase = true) }.map {
         if (it.equals("self", ignoreCase = true)) ChatProtocol.ConversationWithYourselfId else Uuid.parse(it)
-    }?.toSet() ?: setOf(ChatProtocol.ConversationWithYourselfId)
-    val authors = list("allowAuthors")?.map { OdinId(it) }?.toSet() ?: setOf(owner)
+    }.toSet().let { if (memberMode) it + ChatProtocol.ConversationWithYourselfId else it }
+    val explicitAuthors = list("allowAuthors")?.map { OdinId(it) }?.toSet()
+    val ownerKey = values["owner"]?.takeIf { it.isNotEmpty() }?.let { OdinId(it) }
+    // Bot without owner=/allowAuthors= lets any conversation member summon it; `me` stays owner-only.
+    val anyMember = bot && explicitAuthors == null && ownerKey == null
+    val authors = explicitAuthors ?: ownerKey?.let { setOf(it) } ?: if (bot) emptySet() else setOf(owner)
     return AgentConfig(
         nickname = values["nickname"]?.takeIf { it.isNotEmpty() } ?: "quagmire",
         brain = values["brain"]?.takeIf { it.isNotEmpty() } ?: "claude -p --model haiku --max-turns 3",
-        bot = values["bot"].equals("true", ignoreCase = true),
-        allowlist = Allowlist(conversations, authors),
+        bot = bot,
+        allowlist = Allowlist(conversations, authors, memberMode, anyMember),
     )
 }
 

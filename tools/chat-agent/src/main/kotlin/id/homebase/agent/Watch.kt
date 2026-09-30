@@ -5,6 +5,7 @@ import java.io.File
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import id.homebase.chat.services.ChatProtocol
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -102,18 +103,22 @@ class WatchProcessor(
     private val log: (String) -> Unit,
 ) {
     private val mutex = Mutex()
+    private val seen = HashSet<Uuid>()
 
     suspend fun handle(msg: ChatMsg): String {
+        if (msg.id in seen) return "seen"
         val result = decide(msg)
+        seen.add(msg.id)
         log("${msg.id} $result")
         return result
     }
 
     private suspend fun decide(msg: ChatMsg): String {
         if (!config.allowlist.allowsConversation(msg.conversationId)) return "skip: conversation not allowed"
-        if (!config.allowlist.allowsAuthor(msg.author)) return "skip: author not allowed"
+        if (!config.allowlist.allowsAuthor(msg.author, msg.conversationId)) return "skip: author not allowed"
         if (!shouldTrigger(msg.text, config.nickname, config.bot, identity)) return "skip: no trigger"
         if (msg.id in store) return "skip: already processed"
+        if (msg.conversationId != ChatProtocol.ConversationWithYourselfId) return "skip: group reply not supported yet (L6)"
         store.add(msg.id)
         return mutex.withLock {
             val prompt = buildPrompt(msg, history(msg.conversationId))
@@ -133,8 +138,7 @@ suspend fun watch(profile: String) {
         println(entry)
         logFile.appendText(entry + "\n")
     }
-    val confFile = File(dir, "agent.conf")
-    val config = parseConfig(confFile.takeIf { it.exists() }?.readText().orEmpty(), session.identity)
+    val config = loadConfig(profile, session.identity)
     val store = ProcessedStore(File(dir, "processed.txt"))
     val stateFile = File(dir, "last_seen.txt")
     var lastSeen = stateFile.takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull()
@@ -146,7 +150,7 @@ suspend fun watch(profile: String) {
         history = { fetchMessages(session.credentials, it, HISTORY_LIMIT + 1) },
         brain = { runBrain(config.brain, it) },
         reply = { conversation, text ->
-            check(conversation == id.homebase.chat.services.ChatProtocol.ConversationWithYourselfId) {
+            check(conversation == ChatProtocol.ConversationWithYourselfId) {
                 "replies are only supported in note-to-self"
             }
             sendToSelf(session, text)
@@ -164,7 +168,9 @@ suspend fun watch(profile: String) {
     try {
         while (true) {
             try {
-                val fresh = config.allowlist.conversationIds
+                // ponytail: rediscover every poll; cache for N polls if the query ever hurts.
+                refreshAllowlist(session.credentials, config.allowlist)
+                val fresh = config.allowlist.allowedConversationIds()
                     .flatMap { fetchMessages(session.credentials, it, POLL_WINDOW) }
                     .filter { it.userDate >= lastSeen }
                     .sortedBy { it.userDate }

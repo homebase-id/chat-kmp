@@ -29,7 +29,6 @@ import kotlinx.serialization.json.put
 const val MCP_MAX_READ = 50
 const val MCP_DEFAULT_READ = 20
 private const val MCP_TEXT_CODEPOINTS = 1000
-private const val NOTE_TO_SELF_TITLE = "Note to self"
 
 interface AgentBackend {
     val allowlist: Allowlist
@@ -58,9 +57,8 @@ private suspend fun guarded(block: suspend () -> ToolReply): ToolReply =
     }
 
 suspend fun toolListConversations(backend: AgentBackend): ToolReply = guarded {
-    val lines = backend.allowlist.conversationIds.map {
-        val title = if (it == ChatProtocol.ConversationWithYourselfId) NOTE_TO_SELF_TITLE else "conversation"
-        "$it $title"
+    val lines = backend.allowlist.allowedConversationIds().map {
+        "$it ${backend.allowlist.title(it) ?: "conversation"}"
     }
     ToolReply(lines.joinToString("\n"))
 }
@@ -70,7 +68,7 @@ suspend fun toolReadMessages(backend: AgentBackend, args: JsonObject?): ToolRepl
     backend.allowlist.requireConversation(conversationId)
     val limit = (args?.get("limit")?.jsonPrimitive?.intOrNull ?: MCP_DEFAULT_READ).coerceIn(1, MCP_MAX_READ)
     val lines = backend.messages(conversationId, limit)
-        .filter { backend.allowlist.allowsAuthor(it.author) }
+        .filter { backend.allowlist.allowsAuthor(it.author, conversationId) }
         .map(::formatMessageLine)
     ToolReply(lines.joinToString("\n").ifEmpty { "(no messages)" })
 }
@@ -93,7 +91,8 @@ class SessionBackend(private val profile: String) : AgentBackend {
         get() = cachedAllowlist ?: error("allowlist not loaded")
 
     suspend fun load() {
-        cachedAllowlist = Allowlist.default(open().identity)
+        val session = open()
+        cachedAllowlist = loadConfig(profile, session.identity).allowlist.also { refreshAllowlist(session.credentials, it) }
     }
 
     override suspend fun messages(conversationId: Uuid, limit: Int) =

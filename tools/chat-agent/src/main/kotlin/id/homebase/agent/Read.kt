@@ -79,13 +79,14 @@ suspend fun fetchMessages(credentials: CredentialsManager, conversationId: Uuid,
         .sortedBy { it.userDate }
 }
 
-suspend fun read(profile: String, limit: Int) {
+suspend fun read(profile: String, limit: Int, conversation: Uuid? = null) {
     val session = openSession(profile)
-    val allowlist = Allowlist.default(session.identity)
-    val conversationId = ChatProtocol.ConversationWithYourselfId
+    val allowlist = loadConfig(profile, session.identity).allowlist
+    val conversationId = conversation ?: ChatProtocol.ConversationWithYourselfId
+    refreshAllowlist(session.credentials, allowlist)
     allowlist.requireConversation(conversationId)
 
     fetchMessages(session.credentials, conversationId, limit)
-        .filter { allowlist.allowsAuthor(it.author) }
+        .filter { allowlist.allowsAuthor(it.author, conversationId) }
         .forEach { println("${Instant.fromEpochMilliseconds(it.userDate)} ${it.author}: ${it.text}") }
 }
