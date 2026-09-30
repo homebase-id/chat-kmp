@@ -98,6 +98,7 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | sessionWarm | how long after the last job a session counts as warm (`4m`, `55m`, `1h`). Unset = derived from the previous run's cache TTL (1h cache writes: 55m, else 4m) | derived |
 | sessionMaxTokens | start fresh once the last run's context reached this many tokens | 60000 |
 | sessionMaxTurns | start fresh after this many jobs in one session | 30 |
+| timezone | IANA zone id (e.g. `Europe/Oslo`) used for schedule times; invalid is a startup error | system zone |
 | maxJobsPerDay | operator jobs per day PER OPERATOR (keyed by the server-set sender, persisted in `jobs.txt`; separate from `maxRunsPerDay`) | 20 |
 | bot | true for a bot identity | false |
 | owner | odinId allowed to summon the bot | none |
@@ -222,6 +223,8 @@ measured on the target). For better accuracy use `small` (about 470 MB, several 
     </dict></plist>
 
 ## Security
+
+- Schedules: a schedule persists an operator-privileged prompt, so in shared rooms untrusted text could persuade the operator brain to create one; every creation is confirmed in chat and listed by `@nick schedules`.
 
 - `videoFrames` (default `false`): when `true` and `ffmpeg` is on `PATH`, video sent by chat members is decoded by ffmpeg in the
   process that owns the identity credentials, so a parser bug in ffmpeg becomes a credential risk. Off, the brain only gets the
@@ -402,6 +405,31 @@ uses job budget. Each job logs `session=resumed|fresh reason=<warm|cold|big|turn
 Cost notes: a resumed warm session reads its history from the cache at a fraction of the input price; a cold or large one is
 the expensive case, which is why those start fresh instead. With `operatorContext=all` a session in a shared room also holds the
 untrusted discussion blocks of earlier turns; that is accepted.
+
+### Schedules (asked for in chat)
+
+An operator can ask the bot in chat: "remind us every weekday 09:00 to post the standup". The operator brain calls the
+`create_schedule(when, prompt)` tool (operator tier only, never the locked tier), scoped to that conversation with the asking
+operator as creator, and confirms the id and next run time. `list_schedules` and `delete_schedule(id)` are also tools.
+
+`when` (case-insensitive, times in `timezone`, DST-aware):
+
+- `every <N>m` or `every <N>h` (at least 15 minutes)
+- `daily HH:MM`
+- `every weekday HH:MM`
+- `every mon|tue|wed|thu|fri|sat|sun[,<day>...] HH:MM`
+- `once YYYY-MM-DD HH:MM` (must be in the future; removed after it fires)
+
+Caps: 10 schedules per conversation, prompt at most 2000 characters. Schedules live in `schedules.json` in the profile data dir
+and survive restarts; a fire missed while stopped runs once, then the schedule continues from the next future slot.
+
+At fire time the agent runs an operator job in that conversation with "Scheduled task <id> created by <creator>: <prompt>", so it
+gets the same tools, session, reply prefix and rules as a typed request, and counts against the creator's daily job budget. It is
+skipped (logged, not posted) when a job is still running in that conversation or the budget is used up. If the creator is no
+longer an operator the schedule is disabled and posts nothing; a conversation that is no longer allowed is skipped.
+
+Operators can send `@<nick> schedules` (list this conversation's schedules) and `@<nick> unschedule <id>` (any operator may remove
+one here); neither runs the brain or uses job budget. The startup log shows the active schedule count and timezone.
 
 ### Mini-PC setup for operator jobs (see also Operator machine checklist)
 

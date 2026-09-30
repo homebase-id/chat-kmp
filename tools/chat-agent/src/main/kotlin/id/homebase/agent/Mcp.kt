@@ -46,6 +46,7 @@ interface AgentBackend {
     suspend fun messages(conversationId: Uuid, limit: Int, beforeMs: Long? = null): List<ChatMsg>
     suspend fun send(conversationId: Uuid, text: String, replyTo: ReplyPreview? = null): Uuid
     val filesDir: File? get() = null
+    val schedules: ScheduleScope? get() = null
     val sendPrefix: String get() = if (allowlist.delegate) BOT_PREFIX else ""
     suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String): Uuid = error("sending files is not supported")
     fun visible(messages: List<ChatMsg>, conversationId: Uuid): List<ChatMsg> =
@@ -282,7 +283,7 @@ private val BASE_TOOLS: List<ToolDef> = listOf(
     ToolDef("delete_message", "Delete one of your own messages for everyone.", buildJsonObject { put("messageId", MESSAGE_PROP) }, listOf("messageId"), stdio = false, write = true) { b, a -> toolDeleteMessage(b, a) },
 )
 
-val CHAT_TOOLS: List<ToolDef> = BASE_TOOLS + typedTools()
+val CHAT_TOOLS: List<ToolDef> = BASE_TOOLS + typedTools() + scheduleTools()
 
 fun isValidReaction(emoji: String) = emoji.isNotBlank() && emoji.length <= 8 && !emoji.startsWith("_")
 

@@ -12,6 +12,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -62,7 +63,8 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     }
     val fetcher = sessionFetcher(session)
     val toolServer = if (config.operatorBrain != null || config.lockedChat) ChatToolServer(::log).start() else null
-    val chatTools = toolServer?.let { ChatTools(it, config, session, previews) }
+    val schedules = if (config.operatorBrain != null) ScheduleStore(File(dir, "schedules.json"), config.zone, log = ::log) else null
+    val chatTools = toolServer?.let { ChatTools(it, config, session, previews, schedules) }
     val processor = WatchProcessor(
         config = config,
         identity = session.identity.toString(),
@@ -74,6 +76,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         loader = AttachmentLoader(fetcher, config.transcribe?.let(::shellTranscriber), ::log, DEFAULT_FFMPEG.takeIf { config.videoFrames }),
         fetcher = fetcher,
         leaseFor = chatTools?.let { tools -> { conversation, tier, sender -> tools.lease(conversation, tier, sender) } },
+        schedules = schedules,
         sessions = if (config.sessions) SessionStore(File(dir, "sessions.json"), config.sessionMaxTokens, config.sessionMaxTurns, config.sessionWarmMs) else null,
         brain = { prompt, tier, attachments, lease, session ->
             timings.time("brain") {
@@ -111,12 +114,25 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     }
     toolServer?.let { log("chat tools on 127.0.0.1:${it.port} (per-run bearer token, loopback only)") }
     jobs?.recoverDropped { conversation, text -> sendToConversation(session, config.allowlist, conversation, text) }
+    schedules?.let { log("schedules: ${it.activeCount()} active, timezone ${config.zone}") }
     log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} readReceipts=${config.sendsReceipts} transport=${config.transport.name.lowercase()} lastSeen=${cursor.position}")
     var poll = 0
     val waker = PollWaker()
     try {
       coroutineScope {
         startDoorbell(this, config.transport, sessionConnector(session, verbose, ::log), waker, ::log)
+        if (schedules != null) launch {
+            while (true) {
+                try {
+                    processor.fireDue()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log("schedule error: ${e.message}")
+                }
+                delay(SCHEDULE_TICK_MS)
+            }
+        }
         while (true) {
             timings.reset()
             Profile.harden(dir)

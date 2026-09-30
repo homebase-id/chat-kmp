@@ -24,6 +24,7 @@ class WatchProcessor(
     private val fetcher: PayloadFetcher? = null,
     private val leaseFor: ((Uuid, Tier, OdinId?) -> ToolLease?)? = null,
     private val sessions: SessionStore? = null,
+    private val schedules: ScheduleStore? = null,
 ) {
     private val self = OdinId(identity)
     private val trust = TrustPolicy(config, self)
@@ -48,6 +49,11 @@ class WatchProcessor(
             val command = jobs?.let { jobCommand(msg.text, config.nickname) }?.takeIf { it.first != "new" || sessions != null }
             if (command != null && trust.isOperator(msg.sender, msg.conversationId, allow.info(msg.conversationId)?.members)) {
                 runJobCommand(jobs, msg, command, results)
+                continue
+            }
+            val scheduleCmd = schedules?.let { scheduleCommand(msg.text, config.nickname) }
+            if (scheduleCmd != null && trust.isOperator(msg.sender, msg.conversationId, allow.info(msg.conversationId)?.members)) {
+                runScheduleCommand(schedules, msg, scheduleCmd, results)
                 continue
             }
             eligible += msg
@@ -103,6 +109,44 @@ class WatchProcessor(
         finish(msg.id, "job ${command.first}", results)
     }
 
+    private suspend fun runScheduleCommand(sched: ScheduleStore, msg: ChatMsg, command: Pair<String, String?>, results: MutableMap<Uuid, String>) {
+        val text = if (command.first == "schedules") {
+            sched.list(msg.conversationId).joinToString("\n") { sched.describe(it) }.ifEmpty { "no schedules in this conversation" }
+        } else if (sched.delete(msg.conversationId, command.second!!)) {
+            "unscheduled ${command.second}"
+        } else {
+            "no schedule ${command.second} in this conversation"
+        }
+        safeReply(msg.conversationId, tagged(config.replyPrefix, text))
+        store.add(msg.id)
+        finish(msg.id, "schedule ${command.first}", results)
+    }
+
+    suspend fun fireDue() {
+        val store = schedules ?: return
+        val runner = jobs ?: return
+        for (s in store.due()) {
+            val conversation = Uuid.parse(s.conversation)
+            val creator = OdinId(s.creator)
+            val members = allow.info(conversation)?.members
+            when {
+                !trust.isOperator(creator, conversation, members) && !(trust.isRoom(conversation) && members == null) -> {
+                    store.disable(s.id)
+                    log("schedule ${s.id} disabled: ${s.creator} is no longer an operator")
+                }
+                !allow.allowsConversation(conversation) || !allow.allowsSend(conversation) -> log("schedule ${s.id} skipped: conversation not allowed")
+                !trust.isOperatorSender(creator, members, isNoteToSelf(conversation), conversation) -> log("schedule ${s.id} skipped: ${s.creator} is not operator-eligible here")
+                runner.busy(conversation) -> log("schedule ${s.id} skipped: a job is still running in this conversation")
+                !runner.canRun(s.creator) -> log("schedule ${s.id} skipped: ${s.creator} is over the daily job limit")
+                else -> {
+                    val trigger = ChatMsg(Uuid.random(), conversation, creator, "Scheduled task ${s.id} created by ${s.creator}: ${s.prompt}", System.currentTimeMillis(), sender = creator)
+                    log("schedule ${s.id} firing in $conversation")
+                    submitJob(runner, listOf(trigger), conversation, setOf(s.creator), ack = false) {}
+                }
+            }
+        }
+    }
+
     private suspend fun preparePrompt(sorted: List<ChatMsg>, conversation: Uuid, fetched: List<ChatMsg>, tier: Tier, awayMode: Boolean): Prepared {
         val members = allow.info(conversation)?.members
         val noteToSelf = isNoteToSelf(conversation)
@@ -129,6 +173,7 @@ class WatchProcessor(
         sorted: List<ChatMsg>,
         conversation: Uuid,
         operators: Set<String>,
+        ack: Boolean = true,
         done: (String) -> Unit,
     ) {
         val prepared = try {
@@ -143,7 +188,7 @@ class WatchProcessor(
         var quiet = false
         runner.submit(
             conversation, operators,
-            announce = { safeReply(conversation, it) },
+            announce = { if (ack) safeReply(conversation, it) },
             deliver = { if (!quiet) safeReply(conversation, it, produced) },
             work = {
                 val lease = leaseFor?.invoke(conversation, Tier.OPERATOR, effectiveSender(sorted.last()))

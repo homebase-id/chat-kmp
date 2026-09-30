@@ -87,6 +87,7 @@ class AgentConfig(
     val linkPreviews: Boolean = false,
     val mcpFilesDir: File? = null,
     val transport: Transport = Transport.AUTO,
+    val zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
     val warnings: List<String> = emptyList(),
 ) {
     val nick = Nickname(nickname)
@@ -237,6 +238,7 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         linkPreviews = bool("linkPreviews") ?: bot,
         mcpFilesDir = path("mcpFilesDir")?.let(::File),
         transport = parseTransport(str("transport")) ?: Transport.AUTO,
+        zone = str("timezone")?.let { runCatching { java.time.ZoneId.of(it) }.getOrElse { _ -> throw IllegalArgumentException("invalid timezone '$it': use an IANA id like Europe/Oslo") } } ?: java.time.ZoneId.systemDefault(),
         readReceipts = bool("readReceipts") ?: bot,
         warnings = listOfNotNull(
             "WARNING: bot=true is ignored for the $DELEGATE_PROFILE profile (always a delegate)".takeIf { profile == DELEGATE_PROFILE && bool("bot") == true },

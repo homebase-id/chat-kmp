@@ -55,6 +55,8 @@ class JobRunner(
 
     fun canRun(operator: String) = ledger.allows(operator)
 
+    fun busy(conversation: Uuid) = synchronized(lock) { running?.conversation == conversation || queue.any { it.conversation == conversation } }
+
     suspend fun refuse(operator: String, announce: suspend (String) -> Unit) {
         if (ledger.markNotified(operator)) announce(tagged(prefix, "your daily job limit (${ledger.perDay}) is reached"))
     }
