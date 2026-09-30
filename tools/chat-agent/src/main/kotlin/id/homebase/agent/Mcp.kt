@@ -28,7 +28,9 @@ import kotlinx.io.buffered
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -81,6 +83,25 @@ fun formatMessageLine(msg: ChatMsg): String {
 internal fun stringArg(args: JsonObject?, name: String): String? =
     args?.get(name)?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
 
+internal fun intArg(args: JsonObject?, name: String): Int? = args?.get(name)?.jsonPrimitive?.intOrNull
+
+internal fun boolArg(args: JsonObject?, name: String): Boolean? = args?.get(name)?.jsonPrimitive?.booleanOrNull
+
+internal fun doubleArg(args: JsonObject?, name: String): Double? = args?.get(name)?.jsonPrimitive?.doubleOrNull
+
+internal class ToolRefusal(val reply: ToolReply) : RuntimeException(reply.text)
+
+internal fun sendTarget(backend: AgentBackend, args: JsonObject?): Uuid {
+    val id = conversationArg(args, backend.allowlist) ?: throw ToolRefusal(BAD_CONVERSATION)
+    backend.allowlist.requireSend(id)
+    return id
+}
+
+internal fun fileArg(backend: AgentBackend, args: JsonObject?): OutFile {
+    val root = backend.filesDir ?: throw ToolRefusal(ToolReply("refused: no mcpFilesDir is configured, file sending is disabled", true))
+    return loadInside(root, stringArg(args, "path") ?: throw ToolRefusal(ToolReply("path is empty", true)))
+}
+
 internal fun conversationArg(args: JsonObject?, allowlist: Allowlist): Uuid? {
     val raw = stringArg(args, "conversationId")?.lowercase() ?: return null
     runCatching { Uuid.parse(raw) }.getOrNull()?.let { return it }
@@ -104,6 +125,8 @@ private fun parseInstant(raw: String): Long? =
 suspend fun guarded(block: suspend () -> ToolReply): ToolReply =
     try {
         block()
+    } catch (e: ToolRefusal) {
+        e.reply
     } catch (e: IllegalArgumentException) {
         ToolReply("refused: ${e.message}", isError = true)
     } catch (e: NotLoggedInException) {
@@ -133,7 +156,7 @@ suspend fun toolGetConversation(backend: AgentBackend, args: JsonObject?): ToolR
 suspend fun toolReadMessages(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
     val conversationId = conversationArg(args, backend.allowlist) ?: return@guarded BAD_CONVERSATION
     backend.allowlist.requireConversation(conversationId)
-    val limit = (args?.get("limit")?.jsonPrimitive?.intOrNull ?: MCP_DEFAULT_READ).coerceIn(1, MCP_MAX_READ)
+    val limit = (intArg(args, "limit") ?: MCP_DEFAULT_READ).coerceIn(1, MCP_MAX_READ)
     val before = stringArg(args, "before")?.let { ref ->
         parseInstant(ref)
             ?: findMessage(backend.messages(conversationId, LOOKUP_WINDOW), ref).userDate
@@ -144,7 +167,7 @@ suspend fun toolReadMessages(backend: AgentBackend, args: JsonObject?): ToolRepl
 
 suspend fun toolSearchMessages(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
     val query = stringArg(args, "query") ?: return@guarded ToolReply("query is empty", true)
-    val limit = (args?.get("limit")?.jsonPrimitive?.intOrNull ?: MCP_DEFAULT_SEARCH).coerceIn(1, MCP_MAX_SEARCH)
+    val limit = (intArg(args, "limit") ?: MCP_DEFAULT_SEARCH).coerceIn(1, MCP_MAX_SEARCH)
     val scoped = stringArg(args, "conversationId")?.let {
         conversationArg(args, backend.allowlist) ?: return@guarded BAD_CONVERSATION
     }
@@ -159,8 +182,7 @@ suspend fun toolSearchMessages(backend: AgentBackend, args: JsonObject?): ToolRe
 }
 
 suspend fun toolSendMessage(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
-    val conversationId = conversationArg(args, backend.allowlist) ?: return@guarded BAD_CONVERSATION
-    backend.allowlist.requireSend(conversationId)
+    val conversationId = sendTarget(backend, args)
     val text = stringArg(args, "text") ?: return@guarded ToolReply("text is empty", true)
     val reply = stringArg(args, "replyToId")?.let { ref ->
         val parent = findMessage(backend.messages(conversationId, LOOKUP_WINDOW), ref)
@@ -170,11 +192,8 @@ suspend fun toolSendMessage(backend: AgentBackend, args: JsonObject?): ToolReply
 }
 
 suspend fun toolSendFile(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
-    val conversationId = conversationArg(args, backend.allowlist) ?: return@guarded BAD_CONVERSATION
-    backend.allowlist.requireSend(conversationId)
-    val root = backend.filesDir ?: return@guarded ToolReply("refused: no mcpFilesDir is configured, file sending is disabled", true)
-    val path = stringArg(args, "path") ?: return@guarded ToolReply("path is empty", true)
-    val file = loadInside(root, path)
+    val conversationId = sendTarget(backend, args)
+    val file = fileArg(backend, args)
     val caption = stringArg(args, "caption").orEmpty()
     ToolReply("sent ${backend.sendFile(conversationId, file, tagged(backend.sendPrefix, caption).trim())}")
 }
@@ -296,8 +315,7 @@ private suspend fun ownMessage(backend: AgentBackend, args: JsonObject?, verb: S
 }
 
 suspend fun toolReact(backend: AgentBackend, args: JsonObject?, add: Boolean): ToolReply = guarded {
-    val conversationId = conversationArg(args, backend.allowlist) ?: return@guarded BAD_CONVERSATION
-    backend.allowlist.requireSend(conversationId)
+    val conversationId = sendTarget(backend, args)
     val emoji = stringArg(args, "emoji") ?: return@guarded ToolReply("emoji is empty", true)
     require(isValidReaction(emoji)) { "emoji must be a single emoji" }
     val message = findMessage(backend.messages(conversationId, LOOKUP_WINDOW), stringArg(args, "messageId") ?: "")

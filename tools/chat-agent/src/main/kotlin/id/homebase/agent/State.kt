@@ -30,7 +30,7 @@ class ProcessedStore(private val file: File?, private val cap: Int = PROCESSED_C
     }
 
     private fun compact() {
-        file?.writeText(ids.joinToString("\n", postfix = "\n"))
+        file?.let { atomicWrite(it, ids.joinToString("\n", postfix = "\n")) }
         diskLines = ids.size
     }
 
@@ -75,7 +75,7 @@ class RunLimiter(
     private fun line(run: Run) = "${run.at}\t${run.authors.joinToString(",")}\n"
 
     private fun compact() {
-        file?.writeText(runs.joinToString("") { line(it) })
+        file?.let { atomicWrite(it, runs.joinToString("") { r -> line(r) }) }
         diskLines = runs.size
     }
 

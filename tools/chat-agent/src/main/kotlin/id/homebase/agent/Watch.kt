@@ -141,7 +141,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
                 val before = cursor.position
                 val fresh = cursor.fresh(timings.time("query") { pollMessages(session, config.allowlist) })
                 if (verbose) log("poll: fresh=${fresh.size} maxUserDate=${fresh.maxOfOrNull { it.userDate }}")
-                if (cursor.position != before) stateFile.writeText(cursor.position.toString())
+                if (cursor.position != before) atomicWrite(stateFile, cursor.position.toString())
                 coroutineScope {
                     launch { timings.time("receipt") { receipts.mark(fresh) } }
                     processor.handleAll(fresh)

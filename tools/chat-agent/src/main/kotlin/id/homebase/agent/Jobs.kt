@@ -187,7 +187,7 @@ class JobLedger(
     private fun line(e: Entry) = "${e.at}\t${e.operator}${if (e.notice) "\t$NOTICE" else ""}\n"
 
     private fun compact() {
-        file?.writeText(entries.joinToString("") { line(it) })
+        file?.let { atomicWrite(it, entries.joinToString("") { e -> line(e) }) }
         diskLines = entries.size
     }
 
@@ -204,12 +204,30 @@ fun jobText(id: Int, outcome: BrainOutcome, prefix: String = BOT_PREFIX): String
     }
 }
 
-fun jobCommand(text: String, nickname: String): Pair<String, Int?>? {
+sealed interface OperatorCommand {
+    data object Status : OperatorCommand
+    data class Cancel(val id: Int?) : OperatorCommand
+    data object New : OperatorCommand
+    data object Schedules : OperatorCommand
+    data class Unschedule(val id: String) : OperatorCommand
+}
+
+fun parseOperatorCommand(text: String, nickname: String): OperatorCommand? {
     val parts = text.trim().split(WHITESPACE)
     if (parts.size !in 2..3 || !parts[0].equals("@$nickname", ignoreCase = true)) return null
     val verb = parts[1].lowercase()
-    if (verb != "status" && verb != "cancel" && verb != "new") return null
-    if (parts.size == 2) return verb to null
-    if (verb != "cancel") return null
-    return parts[2].toIntOrNull()?.let { verb to it }
+    if (parts.size == 3) {
+        return when (verb) {
+            "cancel" -> parts[2].toIntOrNull()?.let(OperatorCommand::Cancel)
+            "unschedule" -> OperatorCommand.Unschedule(parts[2])
+            else -> null
+        }
+    }
+    return when (verb) {
+        "status" -> OperatorCommand.Status
+        "cancel" -> OperatorCommand.Cancel(null)
+        "new" -> OperatorCommand.New
+        "schedules" -> OperatorCommand.Schedules
+        else -> null
+    }
 }

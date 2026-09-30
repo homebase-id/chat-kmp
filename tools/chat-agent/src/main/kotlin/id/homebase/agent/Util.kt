@@ -3,10 +3,17 @@ package id.homebase.agent
 import id.homebase.api.util.truncateToCodePoints
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 const val NAME_CODEPOINTS = 60
 private const val DISPLAY_NAME_CODEPOINTS = 100
 private const val OCTET_STREAM = "application/octet-stream"
+
+fun atomicWrite(file: File, text: String) {
+    val tmp = File.createTempFile(file.name, ".tmp", file.absoluteFile.parentFile)
+    tmp.writeText(text)
+    Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+}
 
 fun tempDir(kind: String): File = Files.createTempDirectory("chat-agent-$kind").toFile()
 

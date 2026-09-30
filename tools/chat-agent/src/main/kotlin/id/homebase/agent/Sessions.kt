@@ -38,14 +38,14 @@ class SessionUsage(
     val notes: String?,
 )
 
-class SessionRecord(
-    val id: String?,
-    val lastActivity: Long,
-    val contextTokens: Long,
-    val turns: Int,
-    val longTtl: Boolean,
-    val forced: Boolean,
-    val notes: String?,
+data class SessionRecord(
+    val id: String? = null,
+    val lastActivity: Long = 0,
+    val contextTokens: Long = 0,
+    val turns: Int = 0,
+    val longTtl: Boolean = false,
+    val forced: Boolean = false,
+    val notes: String? = null,
 )
 
 class SessionDecision(val resumeId: String?, val reason: String)
@@ -127,14 +127,14 @@ class SessionStore(
     @Synchronized
     fun drop(conversation: Uuid) {
         val old = records[conversation.toString()] ?: return
-        records[conversation.toString()] = SessionRecord(null, 0, 0, 0, false, false, old.notes)
+        records[conversation.toString()] = SessionRecord(notes = old.notes)
         save()
     }
 
     @Synchronized
     fun forget(conversation: Uuid) {
         val old = records[conversation.toString()]
-        records[conversation.toString()] = SessionRecord(null, 0, 0, 0, false, true, old?.notes)
+        records[conversation.toString()] = SessionRecord(forced = true, notes = old?.notes)
         save()
     }
 
@@ -145,7 +145,7 @@ class SessionStore(
         val usage = out.session
         val resumed = plan.decision.resumeId != null
         records[conversation.toString()] = if (usage?.sessionId == null) {
-            SessionRecord(null, 0, 0, 0, false, false, usage?.notes ?: old?.notes)
+            SessionRecord(notes = usage?.notes ?: old?.notes)
         } else {
             SessionRecord(usage.sessionId, now(), usage.context, (if (resumed) old?.turns ?: 0 else 0) + 1, usage.longTtl ?: (resumed && old?.longTtl == true), false, usage?.notes ?: old?.notes)
         }
@@ -174,7 +174,7 @@ class SessionStore(
 
     private fun save() {
         val f = file ?: return
-        f.writeText(buildJsonObject {
+        atomicWrite(f, buildJsonObject {
             records.forEach { (conversation, r) ->
                 put(conversation, buildJsonObject {
                     r.id?.let { put("id", it) }

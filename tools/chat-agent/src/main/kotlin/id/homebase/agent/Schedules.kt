@@ -29,7 +29,8 @@ const val SCHEDULE_TICK_MS = 30_000L
 const val SCHEDULE_FORMS = "every <N>m|h (at least 15 minutes), daily HH:MM, every weekday HH:MM, every mon|tue|wed|thu|fri|sat|sun[,<day>...] HH:MM, once YYYY-MM-DD HH:MM"
 
 private val DAYS = DayOfWeek.entries.associateBy { it.name.take(3).lowercase() }
-private val EVERY_INTERVAL = Regex("every (\\d{1,6})([mh])")
+private val EVERY_INTERVAL = Regex("every (\\d{1,6}[mh])")
+private val COMMA_SPACES = Regex("\\s*,\\s*")
 private val AT_TIME = Regex("(\\d{1,2}):(\\d{2})")
 private val SCHEDULE_ID = Regex("[0-9a-f]{6}")
 private val NEXT_RUN_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z")
@@ -60,13 +61,13 @@ private fun parseTime(text: String): LocalTime {
         .getOrElse { throw IllegalArgumentException("bad time '$text'; forms: $SCHEDULE_FORMS") }
 }
 
-fun canonicalWhen(text: String) = text.trim().lowercase().replace(Regex("\\s*,\\s*"), ",").replace(WHITESPACE, " ")
+fun canonicalWhen(text: String) = text.trim().lowercase().replace(COMMA_SPACES, ",").replace(WHITESPACE, " ")
 
 fun parseWhen(text: String, zone: ZoneId, now: ZonedDateTime): When {
     val w = canonicalWhen(text)
     val bad = IllegalArgumentException("unrecognised schedule '$text'; forms: $SCHEDULE_FORMS")
     EVERY_INTERVAL.matchEntire(w)?.let {
-        val minutes = it.groupValues[1].toLong() * if (it.groupValues[2] == "h") 60 else 1
+        val minutes = (parseDurationMs(it.groupValues[1]) ?: 0L) / 60_000
         require(minutes >= MIN_SCHEDULE_INTERVAL_MINUTES) { "interval must be at least $MIN_SCHEDULE_INTERVAL_MINUTES minutes" }
         return When.Interval(minutes)
     }
@@ -149,12 +150,6 @@ class ScheduleStore(
         }).toString()) }
     }
 
-    private fun atomicWrite(f: File, text: String) {
-        val tmp = File.createTempFile(f.name, ".tmp", f.absoluteFile.parentFile)
-        tmp.writeText(text)
-        java.nio.file.Files.move(tmp.toPath(), f.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-    }
-
     @Synchronized fun create(conversation: Uuid, creator: String, whenText: String, prompt: String): Schedule {
         val text = prompt.trim()
         require(text.isNotEmpty()) { "prompt is empty" }
@@ -204,14 +199,8 @@ class ScheduleStore(
 
 class ScheduleScope(val store: ScheduleStore, val conversation: Uuid, val creator: String)
 
-fun scheduleCommand(text: String, nickname: String): Pair<String, String?>? {
-    val parts = text.trim().split(WHITESPACE)
-    if (parts.size !in 2..3 || !parts[0].equals("@$nickname", ignoreCase = true)) return null
-    return when {
-        parts.size == 2 && parts[1].equals("schedules", ignoreCase = true) -> "schedules" to null
-        parts.size == 3 && parts[1].equals("unschedule", ignoreCase = true) -> "unschedule" to parts[2]
-        else -> null
-    }
+private suspend fun withSchedules(b: AgentBackend, block: suspend (ScheduleScope) -> ToolReply): ToolReply = guarded {
+    block(b.schedules ?: return@guarded ToolReply("schedules are not available", true))
 }
 
 fun scheduleTools(): List<ToolDef> = listOf(
@@ -223,22 +212,19 @@ fun scheduleTools(): List<ToolDef> = listOf(
             put("prompt", buildJsonObject { put("type", "string"); put("description", "What to do each time (max $MAX_SCHEDULE_PROMPT_CODEPOINTS characters)") })
         },
         listOf("when", "prompt"), stdio = false, write = true,
-    ) { b, a -> guarded {
-        val scope = b.schedules ?: return@guarded ToolReply("schedules are not available", true)
+    ) { b, a -> withSchedules(b) { scope ->
         val s = scope.store.create(scope.conversation, scope.creator, stringArg(a, "when") ?: "", stringArg(a, "prompt") ?: "")
         ToolReply("scheduled ${scope.store.describe(s)}")
     } },
-    ToolDef("list_schedules", "List this conversation's schedules.", buildJsonObject {}, stdio = false) { b, _ -> guarded {
-        val scope = b.schedules ?: return@guarded ToolReply("schedules are not available", true)
+    ToolDef("list_schedules", "List this conversation's schedules.", buildJsonObject {}, stdio = false) { b, _ -> withSchedules(b) { scope ->
         ToolReply(scope.store.list(scope.conversation).joinToString("\n") { scope.store.describe(it) }.ifEmpty { "(no schedules)" })
     } },
     ToolDef(
         "delete_schedule", "Delete one of this conversation's schedules by id.",
         buildJsonObject { put("id", buildJsonObject { put("type", "string"); put("description", "Schedule id") }) },
         listOf("id"), stdio = false, write = true,
-    ) { b, a -> guarded {
-        val scope = b.schedules ?: return@guarded ToolReply("schedules are not available", true)
-        val id = stringArg(a, "id") ?: return@guarded ToolReply("id is empty", true)
+    ) { b, a -> withSchedules(b) { scope ->
+        val id = stringArg(a, "id") ?: return@withSchedules ToolReply("id is empty", true)
         if (scope.store.delete(scope.conversation, id)) ToolReply("deleted $id") else ToolReply("no schedule $id in this conversation", true)
     } },
 )

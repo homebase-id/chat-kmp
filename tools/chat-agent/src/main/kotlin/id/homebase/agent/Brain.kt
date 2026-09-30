@@ -76,9 +76,9 @@ private fun writeMcpConfig(dir: File, lease: ToolLease, group: String?): File {
         val principal = dir.toPath().fileSystem.userPrincipalLookupService.lookupPrincipalByGroupName(group)
         for (path in listOf(dir.toPath(), file.toPath())) Files.getFileAttributeView(path, PosixFileAttributeView::class.java).setGroup(principal)
     }.onFailure { System.err.println("WARNING: operatorGroup '$group' unusable (${it.message}); the MCP token file stays private to the watcher user") }.isSuccess
-    val perms = if (shared) "rwxr-x---" to "rw-r-----" else "rwx------" to "rw-------"
-    Files.setPosixFilePermissions(dir.toPath(), PosixFilePermissions.fromString(perms.first))
-    Files.setPosixFilePermissions(file.toPath(), PosixFilePermissions.fromString(perms.second))
+    val (dirPerms, filePerms) = if (shared) PosixFilePermissions.fromString("rwxr-x---") to PosixFilePermissions.fromString("rw-r-----") else DIR_PERMS to FILE_PERMS
+    Files.setPosixFilePermissions(dir.toPath(), dirPerms)
+    Files.setPosixFilePermissions(file.toPath(), filePerms)
     return file
 }
 
@@ -118,8 +118,11 @@ suspend fun runBrain(
         val env = (if (files.isEmpty()) emptyMap() else mapOf("CHAT_AGENT_ATTACHMENTS" to files.joinToString("\n") { it.absolutePath })) +
             (if (lease != null && mcpConfig != null) mcpEnvironment(lease, mcpConfig) else emptyMap())
         val vision = brain.streamJson && attachments.any { it.modelBlock }
-        val withMcp = mcpConfig?.let { brain.command.replace(MCP_PLACEHOLDER, shellWord(it.absolutePath)) } ?: brain.command
-        val command = if (tier == Tier.OPERATOR) withMcp.replace(SESSION_PLACEHOLDER, sessionFlags.orEmpty()) else withMcp
+        val placeholders = buildMap {
+            mcpConfig?.let { put(MCP_PLACEHOLDER, shellWord(it.absolutePath)) }
+            if (tier == Tier.OPERATOR) put(SESSION_PLACEHOLDER, sessionFlags.orEmpty())
+        }
+        val command = placeholders.entries.fold(brain.command) { c, (k, v) -> c.replace(k, v) }
         val outcome = runBrainProcess(
             if (vision) "$command $STREAM_JSON_FLAGS" else command,
             if (vision) streamJsonInput(prompt, attachments) else prompt,

@@ -5,8 +5,8 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
 
-private val DIR_PERMS = PosixFilePermissions.fromString("rwx------")
-private val FILE_PERMS = PosixFilePermissions.fromString("rw-------")
+internal val DIR_PERMS = PosixFilePermissions.fromString("rwx------")
+internal val FILE_PERMS = PosixFilePermissions.fromString("rw-------")
 
 object Profile {
     const val APP_ID = "b7f3c1e2a94d4e6f8a1d5c0e9b2f7a36"

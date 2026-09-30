@@ -29,10 +29,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.booleanOrNull
 
 const val POLL_QUESTION_CODEPOINTS = PollDescriptor.MAX_QUESTION_CP
 const val EVENT_TITLE_CODEPOINTS = 80
@@ -68,7 +66,7 @@ private fun listArg(args: JsonObject?, name: String): List<String> =
     args?.get(name)?.let { raw -> requireNotNull(raw as? JsonArray) { "$name must be a list" }.map { it.jsonPrimitive.content } }.orEmpty()
 
 private fun numberArg(args: JsonObject?, name: String): Double {
-    val value = args?.get(name)?.jsonPrimitive?.doubleOrNull
+    val value = doubleArg(args, name)
     require(value != null && value.isFinite()) { "$name must be a number" }
     return value
 }
@@ -83,8 +81,7 @@ private suspend fun sendTypedContent(backend: AgentBackend, conversationId: Uuid
     ToolReply("sent $label ${backend.sendTyped(conversationId, content)}")
 
 suspend fun toolSendPoll(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
-    val conversationId = conversationArg(args, backend.allowlist) ?: return@guarded BAD_CONVERSATION
-    backend.allowlist.requireSend(conversationId)
+    val conversationId = sendTarget(backend, args)
     val question = stringArg(args, "question")?.oneLine(POLL_QUESTION_CODEPOINTS * 2) ?: return@guarded ToolReply("question is empty", true)
     val options = listArg(args, "options").map { it.oneLine(PollDescriptor.MAX_OPTION_CP) }
     require(options.size in PollDescriptor.MIN_OPTIONS..PollDescriptor.MAX_OPTIONS) { "a poll needs ${PollDescriptor.MIN_OPTIONS} to ${PollDescriptor.MAX_OPTIONS} options" }
@@ -92,15 +89,14 @@ suspend fun toolSendPoll(backend: AgentBackend, args: JsonObject?): ToolReply = 
     val descriptor = PollDescriptor(
         question = fitDisclosed({ backend.disclose(conversationId, it) }, question, POLL_QUESTION_CODEPOINTS),
         options = options,
-        allowMultiple = args?.get("allowMultiple")?.jsonPrimitive?.booleanOrNull ?: false,
+        allowMultiple = boolArg(args, "allowMultiple") ?: false,
     )
     require(descriptor.isValid()) { "poll is not valid" }
     sendTypedContent(backend, conversationId, MessageContent.Poll(descriptor), "poll")
 }
 
 suspend fun toolVotePoll(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
-    val conversationId = conversationArg(args, backend.allowlist) ?: return@guarded BAD_CONVERSATION
-    backend.allowlist.requireSend(conversationId)
+    val conversationId = sendTarget(backend, args)
     val message = findMessage(backend.messages(conversationId, LOOKUP_WINDOW), stringArg(args, "messageId") ?: "")
     val poll = (MessageContentParser.parse(message.dataType, message.rawContent) as? MessageContent.Poll)?.descriptor
     requireNotNull(poll) { "message ${message.id.toString().take(ID_PREFIX)} is not a poll" }
@@ -113,8 +109,7 @@ suspend fun toolVotePoll(backend: AgentBackend, args: JsonObject?): ToolReply = 
 }
 
 suspend fun toolSendEvent(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
-    val conversationId = conversationArg(args, backend.allowlist) ?: return@guarded BAD_CONVERSATION
-    backend.allowlist.requireSend(conversationId)
+    val conversationId = sendTarget(backend, args)
     val title = stringArg(args, "title")?.oneLine(EVENT_TITLE_CODEPOINTS * 2) ?: return@guarded ToolReply("title is empty", true)
     val zone = stringArg(args, "timezone")?.let { runCatching { ZoneId.of(it) }.getOrNull() ?: throw IllegalArgumentException("unknown timezone '$it'") } ?: ZoneOffset.UTC
     val start = parseEventInstant(stringArg(args, "start") ?: return@guarded ToolReply("start is empty", true), zone)
@@ -132,8 +127,7 @@ suspend fun toolSendEvent(backend: AgentBackend, args: JsonObject?): ToolReply =
 }
 
 suspend fun toolSendLocation(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
-    val conversationId = conversationArg(args, backend.allowlist) ?: return@guarded BAD_CONVERSATION
-    backend.allowlist.requireSend(conversationId)
+    val conversationId = sendTarget(backend, args)
     val lat = numberArg(args, "lat")
     val lon = numberArg(args, "lon")
     require(lat in -90.0..90.0) { "lat must be between -90 and 90" }
@@ -154,8 +148,7 @@ suspend fun toolSendLocation(backend: AgentBackend, args: JsonObject?): ToolRepl
 
 // the card has no free text besides its fields, so on a disclosed send the organization line carries it
 suspend fun toolSendContact(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
-    val conversationId = conversationArg(args, backend.allowlist) ?: return@guarded BAD_CONVERSATION
-    backend.allowlist.requireSend(conversationId)
+    val conversationId = sendTarget(backend, args)
     val name = stringArg(args, "name")?.scrubbed()?.oneLine(CONTACT_NAME_CODEPOINTS) ?: return@guarded ToolReply("name is empty", true)
     val phones = listArg(args, "phones").map { it.replace(PHONE_NOISE, "") }
     val emails = listArg(args, "emails").map { it.trim() }
@@ -171,10 +164,8 @@ private fun captionArg(backend: AgentBackend, args: JsonObject?) =
     tagged(backend.sendPrefix, stringArg(args, "caption").orEmpty()).trim().truncateToCodePoints(CAPTION_CODEPOINTS)
 
 suspend fun toolSendVideo(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
-    val conversationId = conversationArg(args, backend.allowlist) ?: return@guarded BAD_CONVERSATION
-    backend.allowlist.requireSend(conversationId)
-    val root = backend.filesDir ?: return@guarded ToolReply("refused: no mcpFilesDir is configured, file sending is disabled", true)
-    val file = loadInside(root, stringArg(args, "path") ?: return@guarded ToolReply("path is empty", true))
+    val conversationId = sendTarget(backend, args)
+    val file = fileArg(backend, args)
     val caption = captionArg(backend, args)
     val ffmpeg = backend.ffmpeg
     suspend fun asFile(why: String) = ToolReply("sent ${backend.sendFile(conversationId, file, caption)} as a file: $why")
@@ -196,10 +187,8 @@ suspend fun toolSendVideo(backend: AgentBackend, args: JsonObject?): ToolReply =
 }
 
 suspend fun toolSendVoice(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
-    val conversationId = conversationArg(args, backend.allowlist) ?: return@guarded BAD_CONVERSATION
-    backend.allowlist.requireSend(conversationId)
-    val root = backend.filesDir ?: return@guarded ToolReply("refused: no mcpFilesDir is configured, file sending is disabled", true)
-    val file = loadInside(root, stringArg(args, "path") ?: return@guarded ToolReply("path is empty", true))
+    val conversationId = sendTarget(backend, args)
+    val file = fileArg(backend, args)
     val type = VOICE_TYPES[file.name.substringAfterLast('.', "").lowercase()]
     requireNotNull(type) { "send_voice needs an audio file (${VOICE_TYPES.keys.joinToString(", ")})" }
     val ffmpeg = backend.ffmpeg
