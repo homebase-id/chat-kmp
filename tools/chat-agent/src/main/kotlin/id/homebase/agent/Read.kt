@@ -13,6 +13,8 @@ import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
+import id.homebase.api.client.drives.query.QueryBatchCursor
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.youauth.CredentialStorage
 import id.homebase.chat.services.ChatProtocol
@@ -42,10 +44,10 @@ class ChatMsg(
     val userDate: Long,
 )
 
-suspend fun fetchMessages(session: Session, conversationId: Uuid, limit: Int): List<ChatMsg> =
-    fetchMessages(session, listOf(conversationId), limit)
+suspend fun fetchMessages(session: Session, conversationId: Uuid, limit: Int, beforeMs: Long? = null): List<ChatMsg> =
+    fetchMessages(session, listOf(conversationId), limit, beforeMs)
 
-suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>, limit: Int): List<ChatMsg> {
+suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>, limit: Int, beforeMs: Long? = null): List<ChatMsg> {
     if (conversationIds.isEmpty()) return emptyList()
     // The owner's own files carry neither originalAuthor nor senderOdinId.
     val owner = session.credentials.getActiveDomain()
@@ -60,6 +62,7 @@ suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>, limit: 
                         fileState = listOf(FileState.Active),
                     ),
                     resultOptionsRequest = QueryBatchResultOptionsRequest(
+                        cursorState = beforeMs?.let { QueryBatchCursor.fromStartPoint(UnixTimeUtc(it)).toJson() },
                         maxRecords = limit,
                         includeMetadataHeader = true,
                         ordering = QueryBatchSortOrder.NewestFirst,
@@ -82,6 +85,7 @@ suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>, limit: 
                 userDate = metadata.appData.userDate ?: metadata.created.milliseconds,
             )
         }
+        .filter { beforeMs == null || it.userDate < beforeMs }
         .sortedBy { it.userDate }
 }
 

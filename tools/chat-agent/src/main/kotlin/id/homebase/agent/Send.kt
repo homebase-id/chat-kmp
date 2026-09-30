@@ -16,14 +16,15 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
+import id.homebase.chat.services.ReplyPreview
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonPrimitive
 
-fun buildMessageContent(text: String): String {
+fun buildMessageContent(text: String, replyPreview: ReplyPreview? = null): String {
     require(text.isNotBlank()) { "message text is empty" }
     val content = OdinSystemSerializer.serialize(
-        MessageAppData(message = JsonPrimitive(text), deliveryStatus = ChatDeliveryStatus.Sent.value, version = 1)
+        MessageAppData(replyPreview = replyPreview, message = JsonPrimitive(text), deliveryStatus = ChatDeliveryStatus.Sent.value, version = 1)
     )
     val size = content.encodeToByteArray().size
     require(size <= HomebaseProtocol.MaxHeaderContentBytes) {
@@ -43,6 +44,7 @@ suspend fun buildMessageMetadata(
     nowMs: Long,
     keyHeader: KeyHeader,
     distribute: Boolean,
+    replyPreview: ReplyPreview? = null,
 ): UploadFileMetadata {
     return UploadFileMetadata(
             allowDistribution = distribute,
@@ -53,7 +55,7 @@ suspend fun buildMessageMetadata(
                 fileType = ChatProtocol.MessageFileType,
                 dataType = 0,
                 userDate = nowMs,
-                content = buildMessageContent(text),
+                content = buildMessageContent(text, replyPreview),
             ),
         ).encryptContent(keyHeader)
 }
@@ -82,7 +84,7 @@ fun conversationTransitOptions(
 
 fun noteToSelf(self: OdinId) = ConversationInfo(ChatProtocol.ConversationWithYourselfId, NOTE_TO_SELF_TITLE, listOf(self))
 
-suspend fun sendToConversation(session: Session, allowlist: Allowlist, conversationId: Uuid, text: String): Uuid {
+suspend fun sendToConversation(session: Session, allowlist: Allowlist, conversationId: Uuid, text: String, replyPreview: ReplyPreview? = null): Uuid {
     allowlist.requireSend(conversationId)
     val conversation = if (conversationId == ChatProtocol.ConversationWithYourselfId) {
         noteToSelf(session.identity)
@@ -98,6 +100,7 @@ suspend fun sendToConversation(session: Session, allowlist: Allowlist, conversat
     val metadata = buildMessageMetadata(
         conversation.id, messageId, text, Clock.System.now().toEpochMilliseconds(), keyHeader,
         distribute = recipients.isNotEmpty(),
+        replyPreview = replyPreview,
     )
     DriveUploadProvider(session.http, session.credentials, JvmFileOperationsProvider())
         .uploadFile(

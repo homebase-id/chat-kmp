@@ -22,6 +22,9 @@ class Allowlist(
     fun title(id: Uuid): String? =
         if (id == ChatProtocol.ConversationWithYourselfId) NOTE_TO_SELF_TITLE else known[id]?.title
 
+    fun memberCount(id: Uuid): Int? =
+        if (id == ChatProtocol.ConversationWithYourselfId) 1 else known[id]?.members?.size
+
     fun allowsConversation(id: Uuid): Boolean = id in conversationIds || (memberMode && id in known)
 
     fun allowsAuthor(author: OdinId?): Boolean = author != null && author in authors
