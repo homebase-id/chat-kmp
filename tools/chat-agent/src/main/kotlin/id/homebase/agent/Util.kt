@@ -2,8 +2,12 @@ package id.homebase.agent
 
 import id.homebase.api.util.truncateToCodePoints
 import java.io.File
+import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 const val NAME_CODEPOINTS = 60
 private const val DISPLAY_NAME_CODEPOINTS = 100
@@ -20,6 +24,22 @@ fun tempDir(kind: String): File = Files.createTempDirectory("chat-agent-$kind").
 private val CONTROL_OR_SPACE = Regex("[\\p{Cntrl}\\s]+")
 
 fun String.oneLine(maxCodePoints: Int) = replace(CONTROL_OR_SPACE, " ").trim().truncateToCodePoints(maxCodePoints)
+
+fun String.oneLineTail(maxCodePoints: Int): String {
+    val line = replace(CONTROL_OR_SPACE, " ").trim()
+    val excess = line.codePointCount(0, line.length) - maxCodePoints
+    return if (excess <= 0) line else line.substring(line.offsetByCodePoints(0, excess))
+}
+
+// daemon threads, not the common ForkJoinPool: a blocked pipe read must never starve other async work or keep the JVM alive
+private val pipeReaders = Executors.newCachedThreadPool { r -> Thread(r).apply { isDaemon = true } }
+
+fun InputStream.readTextAsync(): CompletableFuture<String> = CompletableFuture.supplyAsync({ readBytes().decodeToString() }, pipeReaders)
+
+fun CompletableFuture<String>.tail(): String =
+    runCatching { get(2, TimeUnit.SECONDS) }.getOrDefault("").oneLineTail(STDERR_TAIL_CODEPOINTS)
+
+private const val STDERR_TAIL_CODEPOINTS = 300
 
 private val FILESYSTEM_UNSAFE = Regex("[^A-Za-z0-9._-]")
 private val DOT_RUN = Regex("\\.{2,}")

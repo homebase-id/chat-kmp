@@ -40,8 +40,10 @@ class WatchProcessor(
     private val attempts = HashMap<Uuid, Int>()
     private val pending = LinkedHashMap<Uuid, ChatMsg>()
     private val lastListen = HashMap<Uuid, Long>()
-    private val replyTriggers = HashSet<Uuid>()
-    private val unresolved = HashSet<Uuid>()
+    private val cues = HashMap<Uuid, Cue>()
+    private val fetched = HashMap<Uuid, List<ChatMsg>>()
+
+    private enum class Cue { ADDRESSED, LISTEN, NONE }
 
     private class Prepared(val prompt: String, val attachments: List<Attachment>)
 
@@ -49,6 +51,8 @@ class WatchProcessor(
         val results = LinkedHashMap<Uuid, String>()
         val eligible = ArrayList<ChatMsg>()
         val batch = (pending.values + msgs).distinctBy { it.id }
+        cues.clear()
+        fetched.clear()
         resolveReplies(batch)
         for (msg in batch) {
             if (msg.id in seen && msg.id !in pending) { results[msg.id] = "seen"; continue }
@@ -68,22 +72,29 @@ class WatchProcessor(
 
     private suspend fun resolveReplies(batch: List<ChatMsg>) {
         if (!config.bot) return
-        replyTriggers.clear()
-        val histories = HashMap<Uuid, List<ChatMsg>>()
         for (msg in batch) {
             if (msg.id in seen && msg.id !in pending) continue
-            if (isOwn(msg) || msg.text.trimStart().startsWith(BOT_PREFIX) || !allow.allowsConversation(msg.conversationId) || triggers(msg)) continue
+            if (isBotNoise(msg) || !allow.allowsConversation(msg.conversationId)) continue
+            if (cue(msg) == Cue.ADDRESSED) continue
             val parentId = replyParentId(msg.rawContent) ?: continue
             val parent = batch.firstOrNull { it.id == parentId }
-                ?: histories.getOrPut(msg.conversationId) {
-                    try { history(msg.conversationId) } catch (e: CancellationException) { throw e } catch (e: Exception) { emptyList() }
-                }.firstOrNull { it.id == parentId }
+                ?: (fetched[msg.conversationId] ?: try {
+                    history(msg.conversationId).also { fetched[msg.conversationId] = it }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    emptyList()
+                }).firstOrNull { it.id == parentId }
             when {
-                parent == null -> if (unresolved.add(msg.id)) log("${msg.id} reply parent $parentId not found in the recent window, not treated as addressed")
-                isOwn(parent) -> replyTriggers += msg.id
+                parent == null -> log("${msg.id} reply parent $parentId not found in the recent window, not treated as addressed")
+                isOwn(parent) -> cues[msg.id] = Cue.ADDRESSED
             }
         }
     }
+
+    private suspend fun takeHistory(conversation: Uuid) = fetched.remove(conversation) ?: history(conversation)
+
+    private fun settle(msgs: List<ChatMsg>, result: String, results: MutableMap<Uuid, String>) = msgs.forEach { store.add(it.id); finish(it.id, result, results) }
 
     private fun finish(id: Uuid, result: String, results: MutableMap<Uuid, String>) {
         seen.add(id)
@@ -205,7 +216,7 @@ class WatchProcessor(
         done: (String) -> Unit,
     ) {
         val prepared = try {
-            preparePrompt(sorted, conversation, history(conversation), Tier.OPERATOR, awayMode = false)
+            preparePrompt(sorted, conversation, takeHistory(conversation), Tier.OPERATOR, awayMode = false)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -223,7 +234,7 @@ class WatchProcessor(
                 try {
                     runOperator(conversation, prepared, lease).also {
                         produced = (it as? BrainOutcome.Output)?.files.orEmpty()
-                        quiet = (lease?.sent ?: 0) > 0 && it is BrainOutcome.Output && produced.isEmpty() && isSilent(it.stdout)
+                        quiet = (lease?.sent ?: 0) > 0 && it is BrainOutcome.Output && produced.isEmpty() && classifyReply(it.stdout).kind == ReplyKind.SILENT
                     }
                 } finally {
                     lease?.close()
@@ -269,8 +280,6 @@ class WatchProcessor(
         msgs.map { m -> async { if (only == null || m.id in only) fetcher?.let { expandLongText(m, it) } ?: m else m } }.awaitAll()
     }
 
-    private fun isSilent(stdout: String) = sanitizeReply(stdout).let { it.isEmpty() || it == NO_REPLY }
-
     private fun isOwn(msg: ChatMsg) = msg.author?.toString() == identity
 
     private fun isNoteToSelf(conversation: Uuid) = conversation == ChatProtocol.ConversationWithYourselfId
@@ -287,23 +296,28 @@ class WatchProcessor(
         finish(msg.id, if (on) "away on" else "away off", results)
     }
 
-    private fun triggers(msg: ChatMsg): Boolean {
+    private fun isBotNoise(msg: ChatMsg) = isOwn(msg) || msg.text.trimStart().startsWith(BOT_PREFIX)
+
+    private fun mentioned(msg: ChatMsg): Boolean {
         val conversation = msg.conversationId
         val awayMention = allow.delegate && away.on && !isNoteToSelf(conversation)
-        return msg.id in replyTriggers || shouldTrigger(msg.text, config.nick, config.bot, identity, awayMention, direct = allow.isDirect(conversation))
+        return shouldTrigger(msg.text, config.nick, config.bot, identity, awayMention, direct = allow.isDirect(conversation))
     }
 
-    private fun listens(msg: ChatMsg) =
-        config.bot && msg.conversationId in config.listenRooms && !msg.text.trimStart().startsWith(BOT_PREFIX)
-
-    private fun isUnprompted(msg: ChatMsg) = listens(msg) && !triggers(msg)
+    private fun cue(msg: ChatMsg) = cues.getOrPut(msg.id) {
+        when {
+            mentioned(msg) -> Cue.ADDRESSED
+            config.bot && msg.conversationId in config.listenRooms && !isBotNoise(msg) -> Cue.LISTEN
+            else -> Cue.NONE
+        }
+    }
 
     private fun precheck(msg: ChatMsg): String? {
         val conversation = msg.conversationId
         if (!allow.allowsConversation(conversation)) return "skip: conversation not allowed"
         if (isOwn(msg) && (config.bot || (allow.delegate && !isNoteToSelf(conversation)))) return "skip: own message"
         if (!allow.allowsAuthor(msg.author, conversation)) return "skip: author not allowed"
-        if (!triggers(msg) && !listens(msg)) return "skip: no trigger"
+        if (cue(msg) == Cue.NONE) return "skip: no trigger"
         if (msg.id in store) return "skip: already processed"
         if (!allow.allowsSend(conversation)) return "skip: send not permitted in this conversation"
         return null
@@ -312,26 +326,20 @@ class WatchProcessor(
     private suspend fun run(group: List<ChatMsg>, results: MutableMap<Uuid, String>) {
         val conversation = group.first().conversationId
         val members = allow.info(conversation)?.members
-        val (quiet, addressed) = group.partition(::isUnprompted)
-        val skipQuiet = when {
-            quiet.isEmpty() -> null
-            addressed.isNotEmpty() -> "skip: addressed in the same poll"
-            clock() - (lastListen[conversation] ?: Long.MIN_VALUE / 2) < config.listenCooldownMs -> "skip: listen cooldown"
-            else -> null
-        }
-        if (skipQuiet != null) quiet.forEach { store.add(it.id); finish(it.id, skipQuiet, results) }
+        val (quiet, addressed) = group.partition { cue(it) == Cue.LISTEN }
+        if (addressed.isNotEmpty()) settle(quiet, "skip: addressed in the same poll", results)
         val (operatorTriggers, lockedTriggers) = addressed.partition {
             trust.tier(members, isNoteToSelf(conversation), setOf(it.sender), conversation) == Tier.OPERATOR
         }
         if (operatorTriggers.isNotEmpty()) runTier(operatorTriggers, Tier.OPERATOR, results)
         if (lockedTriggers.isNotEmpty()) runTier(lockedTriggers, Tier.LOCKED, results)
-        if (quiet.isNotEmpty() && skipQuiet == null) runTier(quiet, Tier.LOCKED, results, unprompted = true)
+        if (quiet.isNotEmpty() && addressed.isEmpty()) runTier(quiet, Tier.LOCKED, results, unprompted = true)
     }
 
     private suspend fun runTier(group: List<ChatMsg>, tier: Tier, results: MutableMap<Uuid, String>, unprompted: Boolean = false) {
         var sorted = group.sortedBy { it.userDate }
         val conversation = sorted.first().conversationId
-        fun done(msgs: List<ChatMsg>, result: String) = msgs.forEach { store.add(it.id); finish(it.id, result, results) }
+        fun done(msgs: List<ChatMsg>, result: String) = settle(msgs, result, results)
         if (tier == Tier.OPERATOR && jobs != null) {
             val (ok, capped) = sorted.partition { jobs.canRun(effectiveSender(it).toString()) }
             capped.map { effectiveSender(it).toString() }.distinct().forEach { op -> jobs.refuse(op) { safeReply(conversation, it) } }
@@ -341,6 +349,7 @@ class WatchProcessor(
             val operators = ok.map { effectiveSender(it).toString() }.toSet()
             return submitJob(jobs, sorted, conversation, operators, announce = { safeReply(conversation, it) }) { done(sorted, it) }
         }
+        if (unprompted && clock() - (lastListen[conversation] ?: Long.MIN_VALUE / 2) < config.listenCooldownMs) return done(sorted, "skip: listen cooldown")
         val authors = sorted.map { it.author.toString() }.toSet()
         mutex.withLock {
             if (!limiter.allows(authors)) return done(sorted, "skip: rate limited")
@@ -349,7 +358,7 @@ class WatchProcessor(
             var toolSent = false
             val outcome = try {
                 val awayMode = away.on && allow.delegate && !isNoteToSelf(conversation)
-                val prepared = preparePrompt(sorted, conversation, history(conversation), tier, awayMode, unprompted)
+                val prepared = preparePrompt(sorted, conversation, takeHistory(conversation), tier, awayMode, unprompted)
                 val lease = leaseFor?.invoke(conversation, tier, effectiveSender(sorted.last()))
                 try {
                     brain(prepared.prompt, tier, prepared.attachments, lease, null)
@@ -364,15 +373,19 @@ class WatchProcessor(
             }
             if (tier == Tier.LOCKED && toolSent && outcome is BrainOutcome.Output) return done(sorted, "silent")
             val files = (outcome as? BrainOutcome.Output)?.files.orEmpty()
-            if (unprompted && outcome is BrainOutcome.Failed) {
-                log("listen: failed in $conversation: ${outcome.reason}")
-                return done(sorted, "failed")
+            val reply = (outcome as? BrainOutcome.Output)?.let { classifyReply(it.stdout, honourPass = unprompted) }
+            if (unprompted) {
+                val (line, result) = when {
+                    outcome is BrainOutcome.Failed -> "failed in $conversation: ${outcome.reason}" to "failed"
+                    reply?.kind == ReplyKind.PASS && files.isEmpty() -> "passed in $conversation" to "passed"
+                    else -> null to null
+                }
+                if (result != null) {
+                    log("listen: $line")
+                    return done(sorted, result)
+                }
             }
-            if (unprompted && outcome is BrainOutcome.Output && files.isEmpty() && isPass(sanitizeReply(outcome.stdout))) {
-                log("listen: passed in $conversation")
-                return done(sorted, "passed")
-            }
-            val text = brainReply(outcome, config.replyPrefix, operator = tier == Tier.OPERATOR)
+            val text = brainReply(outcome, reply, config.replyPrefix, operator = tier == Tier.OPERATOR)
                 ?: if (files.isNotEmpty()) config.replyPrefix else return done(sorted, "silent")
             val failed = outcome is BrainOutcome.Failed
             val attempt = (sorted.maxOf { attempts[it.id] ?: 0 }) + 1

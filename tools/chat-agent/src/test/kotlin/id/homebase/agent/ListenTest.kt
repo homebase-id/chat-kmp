@@ -23,6 +23,17 @@ class ListenTest {
         return AgentConfig(allowlist = allow, operators = setOf(op), operatorBrain = operatorBrain, listenRooms = listen, listenCooldownMs = cooldownMs)
     }
 
+    private fun harness(
+        listen: Set<Uuid> = setOf(room),
+        kind: Kind = Kind.BOT,
+        outcome: BrainOutcome = BrainOutcome.Output("pong"),
+        history: List<ChatMsg> = emptyList(),
+    ) = TestHarness(cfg(listen = listen, kind = kind), identity = self.toString(), outcome = outcome, history = history)
+
+    private fun addressed(prompt: String) = "not address you" !in prompt && "you only listen in" !in prompt
+
+    private fun unprompted(prompt: String) = "output exactly PASS" in prompt && "does not address you" in prompt
+
     private fun msg(who: OdinId?, text: String, conversation: Uuid = room, raw: String? = null) =
         ChatMsg(Uuid.random(), conversation, who, text, ++n, sender = who, rawContent = raw)
 
@@ -31,24 +42,24 @@ class ListenTest {
 
     @Test
     fun untaggedMessageInListenedRoomRunsLockedWithPassPrompt() = runBlocking<Unit> {
-        val h = TestHarness(cfg(), identity = self.toString())
+        val h = harness()
         val results = h.handleAll(listOf(msg(rando, "anyone know a good pizza place?")))
         assertEquals(listOf(Tier.LOCKED), h.tiers)
-        assertTrue("output exactly PASS" in h.prompts.single() && "do not address you" in h.prompts.single() || "does not address you" in h.prompts.single())
+        assertTrue(unprompted(h.prompts.single()))
         assertEquals(listOf("pong"), h.replies)
         assertTrue(results.values.all { it == "replied" })
     }
 
     @Test
     fun untaggedMessageInUnlistedRoomDoesNotRun() = runBlocking<Unit> {
-        val h = TestHarness(cfg(), identity = self.toString())
+        val h = harness()
         assertEquals("skip: no trigger", h.handle(msg(rando, "hello", conversation = other)))
         assertEquals(0, h.brainRuns)
     }
 
     @Test
     fun ownAndRobotMessagesNeverTriggerInListenedRoom() = runBlocking<Unit> {
-        val h = TestHarness(cfg(), identity = self.toString())
+        val h = harness()
         assertEquals("skip: own message", h.handle(msg(self, "my own line")))
         assertEquals("skip: no trigger", h.handle(msg(rando, "🤖 beep")))
         assertEquals(0, h.brainRuns)
@@ -64,13 +75,13 @@ class ListenTest {
         assertEquals(setOf(room), bot.listenRooms)
         assertEquals(300_000L, bot.listenCooldownMs)
 
-        val h = TestHarness(cfg(listen = emptySet(), kind = Kind.DELEGATE), identity = self.toString())
+        val h = harness(listen = emptySet(), kind = Kind.DELEGATE)
         assertEquals("skip: no trigger", h.handle(msg(op, "chatter")))
     }
 
     @Test
     fun unpromptedRunIsLockedEvenForOperatorSender() = runBlocking<Unit> {
-        val h = TestHarness(cfg(), identity = self.toString())
+        val h = harness()
         h.handle(msg(op, "thinking out loud"))
         assertEquals(listOf(Tier.LOCKED), h.tiers)
         h.handle(msg(op, "@quagmire do the thing"))
@@ -80,14 +91,14 @@ class ListenTest {
     @Test
     fun passIsNotPostedButMarkedProcessed() = runBlocking<Unit> {
         for (out in listOf("PASS", "  pass.\n", "\n PASS!! \n")) {
-            val h = TestHarness(cfg(), identity = self.toString(), outcome = BrainOutcome.Output(out))
+            val h = harness(outcome = BrainOutcome.Output(out))
             val m = msg(rando, "chatter")
             assertEquals("passed", h.handle(m))
             assertTrue(h.sends.isEmpty())
             assertTrue("listen: passed in $room" in h.logs)
             assertEquals("seen", h.handle(m))
         }
-        val blank = TestHarness(cfg(), identity = self.toString(), outcome = BrainOutcome.Output("  \n"))
+        val blank = harness(outcome = BrainOutcome.Output("  \n"))
         assertEquals("silent", blank.handle(msg(rando, "chatter")))
         assertTrue(blank.sends.isEmpty())
         assertFalse(isPass("PASSING on this"))
@@ -95,14 +106,14 @@ class ListenTest {
 
     @Test
     fun cooldownSkipsThenAllowsAndTaggedBypasses() = runBlocking<Unit> {
-        val h = TestHarness(cfg(), identity = self.toString())
+        val h = harness()
         assertEquals("replied", h.handle(msg(rando, "one")))
         h.now += 30_000
         assertEquals("skip: listen cooldown", h.handle(msg(rando, "two")))
         assertEquals(1, h.brainRuns)
         assertEquals("replied", h.handle(msg(rando, "@quagmire three")))
         assertEquals(2, h.brainRuns)
-        assertFalse("does not address" in h.prompts.last() || "do not address" in h.prompts.last())
+        assertTrue(addressed(h.prompts.last()))
         h.now += 31_000
         assertEquals("replied", h.handle(msg(rando, "four")))
         assertEquals(3, h.brainRuns)
@@ -110,7 +121,7 @@ class ListenTest {
 
     @Test
     fun severalUnpromptedMessagesInOnePollShareOneRun() = runBlocking<Unit> {
-        val h = TestHarness(cfg(), identity = self.toString())
+        val h = harness()
         val results = h.handleAll(listOf(msg(rando, "a1"), msg(op, "a2"), msg(rando, "a3")))
         assertEquals(1, h.brainRuns)
         assertEquals(3, results.size)
@@ -119,11 +130,11 @@ class ListenTest {
     @Test
     fun replyToBotMessageTriggersInAnyAllowedConversation() = runBlocking<Unit> {
         val botLine = msg(self, "earlier bot answer", conversation = other)
-        val h = TestHarness(cfg(listen = emptySet()), identity = self.toString(), history = listOf(botLine))
+        val h = harness(listen = emptySet(), history = listOf(botLine))
         val reply = msg(rando, "thanks, and also?", conversation = other, raw = replyTo(botLine))
         assertEquals("replied", h.handle(reply))
         assertEquals(listOf(Tier.LOCKED), h.tiers)
-        assertFalse("not address" in h.prompts.single())
+        assertTrue(addressed(h.prompts.single()))
         val opReply = msg(op, "and another thing", conversation = other, raw = replyTo(botLine))
         h.handle(opReply)
         assertEquals(Tier.OPERATOR, h.tiers.last())
@@ -132,7 +143,7 @@ class ListenTest {
     @Test
     fun replyToSomeoneElsesOrUnknownMessageDoesNotTrigger() = runBlocking<Unit> {
         val human = msg(op, "a human line", conversation = other)
-        val h = TestHarness(cfg(listen = emptySet()), identity = self.toString(), history = listOf(human))
+        val h = harness(listen = emptySet(), history = listOf(human))
         assertEquals("skip: no trigger", h.handle(msg(rando, "agreed", conversation = other, raw = replyTo(human))))
         val missing = msg(self, "not in window", conversation = other)
         assertEquals("skip: no trigger", h.handle(msg(rando, "what?", conversation = other, raw = replyTo(missing))))
@@ -142,7 +153,7 @@ class ListenTest {
     @Test
     fun replyBypassesListenCooldown() = runBlocking<Unit> {
         val botLine = msg(self, "bot line")
-        val h = TestHarness(cfg(), identity = self.toString(), history = listOf(botLine))
+        val h = harness(history = listOf(botLine))
         h.handle(msg(rando, "one"))
         assertEquals("replied", h.handle(msg(rando, "reply now", raw = replyTo(botLine))))
         assertEquals(2, h.brainRuns)
@@ -151,7 +162,7 @@ class ListenTest {
     @Test
     fun delegateIsNotTriggeredByRepliesToOwnerMessages() = runBlocking<Unit> {
         val ownerLine = msg(self, "owner said this", conversation = other)
-        val h = TestHarness(cfg(listen = emptySet(), kind = Kind.DELEGATE), identity = self.toString(), history = listOf(ownerLine))
+        val h = harness(listen = emptySet(), kind = Kind.DELEGATE, history = listOf(ownerLine))
         assertEquals("skip: no trigger", h.handle(msg(op, "replying to owner", conversation = other, raw = replyTo(ownerLine))))
         assertEquals(0, h.brainRuns)
     }

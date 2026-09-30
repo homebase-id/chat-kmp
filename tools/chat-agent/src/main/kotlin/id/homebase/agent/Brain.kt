@@ -5,7 +5,6 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFileAttributeView
 import java.nio.file.attribute.PosixFilePermissions
-import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
@@ -42,10 +41,27 @@ fun capTextBytes(text: String, maxBytes: Int = MAX_TEXT_BYTES): String {
     return text.substring(0, end).trimEnd() + "\n\n…(truncated: over ${maxBytes / 1000} KB)"
 }
 
-fun brainReply(outcome: BrainOutcome, prefix: String = BOT_PREFIX, operator: Boolean = false): String? = when (outcome) {
+enum class ReplyKind { SILENT, PASS, TEXT }
+
+class Reply(val kind: ReplyKind, val text: String)
+
+fun classifyReply(stdout: String, honourPass: Boolean = false): Reply {
+    val text = sanitizeReply(stdout)
+    val kind = when {
+        text.isEmpty() || text == NO_REPLY -> ReplyKind.SILENT
+        honourPass && isPass(text) -> ReplyKind.PASS
+        else -> ReplyKind.TEXT
+    }
+    return Reply(kind, text)
+}
+
+fun brainReply(outcome: BrainOutcome, prefix: String = BOT_PREFIX, operator: Boolean = false): String? =
+    brainReply(outcome, (outcome as? BrainOutcome.Output)?.let { classifyReply(it.stdout) }, prefix, operator)
+
+fun brainReply(outcome: BrainOutcome, reply: Reply?, prefix: String, operator: Boolean): String? = when (outcome) {
     is BrainOutcome.Failed -> tagged(prefix, "failed: ${failureLine(outcome.reason)}")
-    is BrainOutcome.Output -> sanitizeReply(outcome.stdout).let {
-        if (it.isEmpty() || it == NO_REPLY) null else tagged(prefix, if (operator) capTextBytes(it) else it.truncateToCodePoints(REPLY_CODEPOINTS))
+    is BrainOutcome.Output -> reply!!.takeIf { it.kind != ReplyKind.SILENT }?.let {
+        tagged(prefix, if (operator) capTextBytes(it.text) else it.text.truncateToCodePoints(REPLY_CODEPOINTS))
     }
 }
 
@@ -159,8 +175,8 @@ private suspend fun runBrainProcess(command: String, prompt: String, timeoutMs: 
         } catch (e: Exception) {
             return@withContext BrainOutcome.Failed("could not start: ${e.message}")
         }
-        val out = CompletableFuture.supplyAsync { process.inputStream.readBytes().decodeToString() }
-        val err = CompletableFuture.supplyAsync { process.errorStream.readBytes().decodeToString() }
+        val out = process.inputStream.readTextAsync()
+        val err = process.errorStream.readTextAsync()
         Thread {
             runCatching { process.outputStream.use { it.write(prompt.encodeToByteArray()) } }
         }.apply { isDaemon = true }.start()

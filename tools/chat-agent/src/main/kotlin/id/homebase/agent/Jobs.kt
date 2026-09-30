@@ -22,6 +22,7 @@ class JobRunner(
         var ready = false
         var startedAt = 0L
         var coroutine: kotlinx.coroutines.Job? = null
+        var ackTimer: kotlinx.coroutines.Job? = null
     }
 
     private val lock = Any()
@@ -36,42 +37,58 @@ class JobRunner(
         deliver: suspend (String) -> Unit,
         work: suspend () -> BrainOutcome,
     ): String {
-        val (job, ack) = synchronized(lock) {
+        val accepted = synchronized(lock) {
             if (!operators.all(ledger::allows)) {
-                null to tagged(prefix, "daily job limit reached")
+                null
             } else {
                 operators.forEach(ledger::record)
                 val job = Job(nextId++, conversation, operators, work, deliver)
                 val ahead = queue.lastOrNull() ?: running
                 queue.addLast(job)
                 journal?.appendText("+\t${job.id}\t$conversation\n")
-                job to (if (ahead == null) tagged(prefix, "on it (job ${job.id})") else tagged(prefix, "queued behind job ${ahead.id} (job ${job.id})"))
+                job to ahead?.id
             }
         }
-        if (job == null || ackDelayMs <= 0) {
+        if (accepted == null) {
+            val refusal = tagged(prefix, "daily job limit reached")
+            announce(refusal)
+            return refusal
+        }
+        val (job, aheadId) = accepted
+        val ack = ackText(job, aheadId)
+        postAck(job, ack, announce)
+        log("$conversation job ${job.id} accepted")
+        return ack
+    }
+
+    private fun ackText(job: Job, aheadId: Int?) =
+        tagged(prefix, if (aheadId == null) "on it (job ${job.id})" else "queued behind job $aheadId (job ${job.id})")
+
+    private suspend fun postAck(job: Job, ack: String, announce: suspend (String) -> Unit) {
+        if (ackDelayMs <= 0) {
             try {
                 announce(ack)
             } finally {
-                if (job != null) synchronized(lock) { job.ready = true; startNext() }
+                release(job)
             }
-        } else {
-            synchronized(lock) { job.ready = true; startNext() }
-            // Quick jobs answer without an ack; only a slow or queued job says so.
-            scope.launch {
-                delay(ackDelayMs)
-                val late = synchronized(lock) {
-                    when {
-                        running === job -> tagged(prefix, "on it (job ${job.id})")
-                        job in queue -> tagged(prefix, "queued behind job ${running?.id ?: queue.first().id} (job ${job.id})")
-                        else -> null
-                    }
-                }
-                late?.let { announce(it) }
-            }
+            return
         }
-        if (job != null) log("$conversation job ${job.id} accepted")
-        return ack
+        // Quick jobs answer without an ack; only a slow or queued job says so.
+        job.ackTimer = scope.launch {
+            delay(ackDelayMs)
+            val late = synchronized(lock) {
+                when {
+                    running === job -> ackText(job, null)
+                    job in queue -> ackText(job, running?.id ?: queue.first().id)
+                    else -> null
+                }
+            }
+            late?.let { announce(it) }
+        }
+        release(job)
     }
+
+    private fun release(job: Job) = synchronized(lock) { job.ready = true; startNext() }
 
     fun canRun(operator: String) = ledger.allows(operator)
 
@@ -131,7 +148,7 @@ class JobRunner(
             }
         }.also {
             it.invokeOnCompletion {
-                synchronized(lock) { if (running === job) running = null; journalDrop(job); startNext() }
+                synchronized(lock) { job.ackTimer?.cancel(); if (running === job) running = null; journalDrop(job); startNext() }
             }
         }
     }
@@ -152,6 +169,7 @@ class JobRunner(
             job.coroutine?.cancel()
         } else {
             queue.remove(job)
+            job.ackTimer?.cancel()
             journalDrop(job)
         }
         tagged(prefix, "cancelled job $target")
@@ -219,8 +237,8 @@ class JobLedger(
 
 fun jobText(id: Int, outcome: BrainOutcome, prefix: String = BOT_PREFIX): String = when (outcome) {
     is BrainOutcome.Failed -> tagged(prefix, "job $id failed: ${failureLine(outcome.reason)}")
-    is BrainOutcome.Output -> sanitizeReply(outcome.stdout).let {
-        if (it.isEmpty() || it == NO_REPLY) tagged(prefix, "job $id done (no output)") else tagged(prefix, capTextBytes(it))
+    is BrainOutcome.Output -> classifyReply(outcome.stdout).let {
+        if (it.kind == ReplyKind.SILENT) tagged(prefix, "job $id done (no output)") else tagged(prefix, capTextBytes(it.text))
     }
 }
 

@@ -22,10 +22,10 @@ import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.widget.mediaPayloads
 import java.io.File
-import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import kotlin.io.encoding.Base64
 import kotlin.time.Instant
+import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -48,7 +48,6 @@ const val KEYFRAME_VIDEO_MAX_BYTES = 10_000_000L
 const val INLINE_TEXT_CODEPOINTS = 8000
 private const val CIPHER_PADDING = 16L
 const val TRANSCRIBE_TIMEOUT_MS = 60_000L
-const val TRANSCRIBE_ERR_CHARS = 300
 private const val LABEL_CODEPOINTS = 120
 
 private val VIEWABLE_IMAGES = setOf("image/png", "image/jpeg", "image/gif", "image/webp")
@@ -289,9 +288,8 @@ class AttachmentLoader(
         } ?: return skipped("not downloaded: payload missing")
         if (bytes.size > cap) return skipped("not downloaded: over ${formatSize(cap)} cap")
         if (p.isAudio()) {
-            val started = System.currentTimeMillis()
-            val transcript = transcribe?.invoke(bytes, fileName)
-            if (transcript != null) log("voice $fileName ($type, ${bytes.size} B): transcribed ${transcript.length} chars in ${System.currentTimeMillis() - started} ms")
+            val (transcript, took) = measureTimedValue { transcribe?.invoke(bytes, fileName) }
+            if (transcript != null) log("voice $fileName ($type, ${bytes.size} B): transcribed ${transcript.length} chars in ${took.inWholeMilliseconds} ms")
             return Attachment(msgId, parent, fileName, type, bytes.size.toLong(), text = transcript, note = if (transcript == null) "transcription failed" else "voice transcript")
         }
         val text = if (isTextLike(type, rawName)) bytes.decodeToString().truncateToCodePoints(INLINE_TEXT_CODEPOINTS) else null
@@ -360,22 +358,18 @@ fun shellTranscriber(command: String, log: (String) -> Unit = {}): suspend (Byte
         val dir = tempDir("voice")
         try {
             val file = File(dir, safeName(name)).also { it.writeBytes(bytes) }
-            val process = ProcessBuilder("sh", "-c", "$command \"\$1\"", "transcribe", file.absolutePath).redirectErrorStream(false).start()
+            val process = ProcessBuilder("sh", "-c", "$command \"\$1\"", "transcribe", file.absolutePath).start()
             process.outputStream.close()
-            val out = CompletableFuture.supplyAsync { process.inputStream.readBytes().decodeToString() }
-            val err = CompletableFuture.supplyAsync { process.errorStream.readBytes().decodeToString() }
-            fun errTail() = runCatching { err.get(2, TimeUnit.SECONDS) }.getOrDefault("").trim().takeLast(TRANSCRIBE_ERR_CHARS).replace('\n', ' ')
+            val out = process.inputStream.readTextAsync()
+            val err = process.errorStream.readTextAsync()
+            fun fail(reason: String): String? = null.also { log("transcribe failed for $name: $reason") }
             if (!process.waitFor(TRANSCRIBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
                 process.destroyForcibly()
-                log("transcribe failed for $name: timed out after ${TRANSCRIBE_TIMEOUT_MS / 1000}s")
-                return@withContext null
+                return@withContext fail("timed out after ${TRANSCRIBE_TIMEOUT_MS / 1000}s")
             }
-            if (process.exitValue() != 0) {
-                log("transcribe failed for $name: exit ${process.exitValue()}: ${errTail()}")
-                return@withContext null
-            }
+            if (process.exitValue() != 0) return@withContext fail("exit ${process.exitValue()}: ${err.tail()}")
             out.get(2, TimeUnit.SECONDS).trim().takeIf { it.isNotEmpty() }?.truncateToCodePoints(INLINE_TEXT_CODEPOINTS)
-                ?: null.also { log("transcribe failed for $name: empty output: ${errTail()}") }
+                ?: fail("empty output: ${err.tail()}")
         } finally {
             dir.deleteRecursively()
         }
