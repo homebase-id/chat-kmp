@@ -23,17 +23,7 @@ class PlainVoiceTest {
         it.allowlist.learnDerived(ConversationInfo(dm, alice.toString(), listOf(bot, alice)))
     }
 
-    private class H(config: AgentConfig, identity: String, var history: List<ChatMsg> = emptyList()) {
-        val replies = mutableListOf<String>()
-        var brainRuns = 0
-        val p = WatchProcessor(
-            config, identity, ProcessedStore(null),
-            history = { history },
-            brain = { _, _, _ -> brainRuns++; BrainOutcome.Output("pong") },
-            reply = { _, t -> replies += t },
-            log = {},
-        )
-    }
+    private fun H(config: AgentConfig, identity: String) = TestHarness(config, identity = identity)
 
     private fun m(conv: Uuid, author: OdinId, t: Long, text: String = "hi") =
         ChatMsg(Uuid.random(), conv, author, text, t, sender = author)
@@ -41,7 +31,7 @@ class PlainVoiceTest {
     @Test
     fun botRepliesAndFailuresArePlain() = runBlocking {
         val h = H(botConfig(), bot.toString())
-        assertEquals("replied", h.p.handle(m(dm, alice, 1L)))
+        assertEquals("replied", h.handle(m(dm, alice, 1L)))
         assertEquals(listOf("pong"), h.replies)
         assertEquals("failed: boom", brainReply(BrainOutcome.Failed("boom"), botConfig().replyPrefix))
         assertEquals("pong", brainReply(BrainOutcome.Output("🤖 pong"), ""))
@@ -63,7 +53,7 @@ class PlainVoiceTest {
         val cfg = parseConfig("", owner, "me")
         assertEquals(BOT_PREFIX, cfg.replyPrefix)
         val h = H(cfg, owner.toString())
-        assertEquals("replied", h.p.handle(ChatMsg(Uuid.random(), self, owner, "@quagmire hi", 1L)))
+        assertEquals("replied", h.handle(ChatMsg(Uuid.random(), self, owner, "@quagmire hi", 1L)))
         assertEquals(listOf("🤖 pong"), h.replies)
         val group = Uuid.random()
         val me = parseConfig("allowConversations=$group", owner, "me").allowlist
@@ -80,17 +70,17 @@ class PlainVoiceTest {
     @Test
     fun robotPrefixedIncomingAndOwnMessagesNeverTrigger() = runBlocking {
         val h = H(botConfig(), bot.toString())
-        assertEquals("skip: no trigger", h.p.handle(m(dm, alice, 1L, "🤖 pong")))
-        assertEquals("skip: own message", h.p.handle(m(dm, bot, 2L, "pong")))
+        assertEquals("skip: no trigger", h.handle(m(dm, alice, 1L, "🤖 pong")))
+        assertEquals("skip: own message", h.handle(m(dm, bot, 2L, "pong")))
         assertEquals(0, h.brainRuns)
     }
 
     @Test
     fun directSenderStopsGettingRepliesAtHourlyCap() = runBlocking {
         val h = H(botConfig("maxRunsPerHour=2"), bot.toString())
-        assertEquals("replied", h.p.handle(m(dm, alice, 1L)))
-        assertEquals("replied", h.p.handle(m(dm, alice, 2L)))
-        assertEquals("skip: rate limited", h.p.handle(m(dm, alice, 3L)))
+        assertEquals("replied", h.handle(m(dm, alice, 1L)))
+        assertEquals("replied", h.handle(m(dm, alice, 2L)))
+        assertEquals("skip: rate limited", h.handle(m(dm, alice, 3L)))
         assertEquals(2, h.replies.size)
     }
 

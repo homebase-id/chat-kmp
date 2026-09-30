@@ -22,8 +22,8 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.video.VideoPayloadProcessor
 import id.homebase.upload.PayloadBundleEncryptionService
 import java.io.File
-import java.nio.file.Files
 import kotlin.time.Clock
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlin.uuid.Uuid
@@ -95,21 +95,18 @@ fun conversationTransitOptions(
 
 fun noteToSelf(self: OdinId) = ConversationInfo(ChatProtocol.ConversationWithYourselfId, NOTE_TO_SELF_TITLE, listOf(self))
 
-suspend fun outgoingBundle(text: String, files: List<OutFile>, previews: LinkPreviewSource?): StagedBundle? {
-    val fileOps = JvmFileOperationsProvider()
+suspend fun outgoingBundle(text: String, files: List<OutFile>, fileOps: JvmFileOperationsProvider = JvmFileOperationsProvider(), previews: LinkPreviewSource?): StagedBundle? {
     if (files.isNotEmpty()) return buildOutgoingBundle(files, fileOps)
     val url = previews?.let { firstUrl(text) } ?: return null
     val preview = try {
         previews.preview(url)
-    } catch (e: kotlinx.coroutines.CancellationException) {
+    } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
         System.err.println("link preview skipped: ${e.message}")
         null
     } ?: return null
-    val dir = Files.createTempDirectory("chat-agent-out").toFile()
-    val bundle = buildLinkPreviewBundle(preview, fileOps)
-    return StagedBundle(bundle, dir)
+    return StagedBundle(buildLinkPreviewBundle(preview, fileOps))
 }
 
 private fun payloadEncryptor(fileOps: JvmFileOperationsProvider) =
@@ -138,9 +135,9 @@ suspend fun sendToConversation(
     val messageId = Uuid.random()
     val text = allowlist.disclosure(conversation.id, text, session.identity)
     val keyHeader = KeyHeader.newRandom16()
-    val staged = outgoingBundle(text, files, previews)
+    val fileOps = JvmFileOperationsProvider()
+    val staged = outgoingBundle(text, files, fileOps, previews)
     try {
-        val fileOps = JvmFileOperationsProvider()
         val encrypted = staged?.let { payloadEncryptor(fileOps).encryptBundle(messageId, it.bundle, keyHeader.aesKey, CoroutineScope(currentCoroutineContext())) }
         val metadata = buildMessageMetadata(
             conversation.id, messageId, text, Clock.System.now().toEpochMilliseconds(), keyHeader,
@@ -177,5 +174,5 @@ suspend fun send(profile: String, text: String, conversation: Uuid? = null, file
     refreshAllowlist(session, allowlist)
     allowlist.requireSend(id)
     val files = file?.let { listOf(loadOutFile(File(it).canonicalFile)) }.orEmpty()
-    println("sent ${sendToConversation(session, allowlist, id, text, files = files, previews = if (config.linkPreviews) serverLinkPreviews(session) else null)}")
+    println("sent ${sendToConversation(session, allowlist, id, text, files = files, previews = config.previewsFor(session))}")
 }

@@ -14,6 +14,7 @@ import java.util.Properties
 import java.util.concurrent.CopyOnWriteArrayList
 import javax.imageio.ImageIO
 import kotlin.io.encoding.Base64
+import id.homebase.api.image.readJpegExifOrientation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -58,7 +59,7 @@ class PortableTest {
     }
 
     private fun roomConfig(rooms: Set<Uuid> = setOf(room), operators: Set<OdinId> = setOf(owner), brain: String? = "full"): AgentConfig {
-        val allow = Allowlist(setOf(ChatProtocol.ConversationWithYourselfId, room, other, dm), emptySet(), authorsAnyMember = true, groupSend = true)
+        val allow = Allowlist(setOf(ChatProtocol.ConversationWithYourselfId, room, other, dm), null, Kind.BOT)
         allow.learn(
             listOf(
                 ConversationInfo(room, "team", listOf(self, owner, member)),
@@ -66,11 +67,18 @@ class PortableTest {
                 ConversationInfo(dm, "dm", listOf(self, owner)),
             ),
         )
-        return AgentConfig(bot = true, allowlist = allow, operators = operators, operatorBrain = brain, operatorRooms = rooms)
+        return AgentConfig(allowlist = allow, operators = operators, operatorBrain = brain, operatorRooms = rooms)
     }
 
     private fun tier(config: AgentConfig, conversation: Uuid, vararg senders: OdinId) =
-        decideTier(config, self, config.allowlist.info(conversation)?.members, false, senders.toSet(), conversation)
+        TrustPolicy(config, self).tier(config.allowlist.info(conversation)?.members, false, senders.toSet(), conversation)
+
+    @Test
+    fun operatorMissingFromRoomMemberListIsLocked() {
+        val c = roomConfig(operators = setOf(owner, stranger))
+        assertEquals(Tier.LOCKED, tier(c, room, stranger))
+        assertEquals(Tier.OPERATOR, tier(c, room, owner))
+    }
 
     @Test
     fun everyMemberOfAnOperatorRoomIsOperator() {
@@ -93,7 +101,7 @@ class PortableTest {
     fun operatorRoomNeedsAnOperatorBrainAndKnownMembers() {
         assertEquals(Tier.LOCKED, tier(roomConfig(brain = null), room, member))
         val c = roomConfig()
-        assertEquals(Tier.LOCKED, decideTier(c, self, null, false, setOf(member), room))
+        assertEquals(Tier.LOCKED, TrustPolicy(c, self).tier(null, false, setOf(member), room))
     }
 
     @Test
@@ -109,10 +117,10 @@ class PortableTest {
         val c = roomConfig()
         fun m(sender: OdinId, t: String) = ChatMsg(Uuid.random(), room, sender, t, 1L, sender = sender)
         val history = listOf(m(member, "a"), m(stranger, "b"), m(self, "c"))
-        assertEquals(listOf("a", "b", "c"), operatorHistory(history, c, self, room).map { it.text })
-        assertEquals(listOf("c"), operatorHistory(history, c, self, other).map { it.text })
-        assertTrue(isOperatorSender(c, self, member, room, c.allowlist.info(room)?.members))
-        assertFalse(isOperatorSender(c, self, member, other, c.allowlist.info(other)?.members))
+        assertEquals(listOf("a", "b", "c"), TrustPolicy(c, self).history(history, room).map { it.text })
+        assertEquals(listOf("c"), TrustPolicy(c, self).history(history, other).map { it.text })
+        assertTrue(TrustPolicy(c, self).isOperator(member, room, c.allowlist.info(room)?.members))
+        assertFalse(TrustPolicy(c, self).isOperator(member, other, c.allowlist.info(other)?.members))
     }
 
     @Test
@@ -135,35 +143,28 @@ class PortableTest {
 
     @Test
     fun processorGivesRoomMembersTheOperatorBrainAndIgnoresUnlistedDms() = runBlocking<Unit> {
-        val allow = Allowlist(setOf(ChatProtocol.ConversationWithYourselfId, room, other), emptySet(), authorsAnyMember = true, groupSend = true)
+        val allow = Allowlist(setOf(ChatProtocol.ConversationWithYourselfId, room, other), null, Kind.BOT)
         allow.learn(
             listOf(
                 ConversationInfo(room, "team", listOf(self, owner, member)),
                 ConversationInfo(other, "other", listOf(self, owner, member, stranger)),
             ),
         )
-        val config = AgentConfig(bot = true, allowlist = allow, operators = setOf(owner), operatorBrain = "full", operatorRooms = setOf(room))
-        val tiers = mutableListOf<Tier>()
-        val p = WatchProcessor(
-            config, self.toString(), ProcessedStore(null),
-            history = { emptyList() },
-            brain = { _, t, _ -> tiers += t; BrainOutcome.Output("ok") },
-            reply = { _, _ -> },
-            log = {},
-        )
+        val config = AgentConfig(allowlist = allow, operators = setOf(owner), operatorBrain = "full", operatorRooms = setOf(room))
+        val h = TestHarness(config, identity = self.toString())
         var n = 0L
         fun say(c: Uuid, who: OdinId) = ChatMsg(Uuid.random(), c, who, "@quagmire hi", ++n, sender = who)
         val unlistedDm = Uuid.random()
         val unlisted = say(unlistedDm, stranger)
-        val results = p.handleAll(listOf(say(room, member), say(other, member), unlisted))
-        assertEquals(listOf(Tier.OPERATOR, Tier.LOCKED), tiers)
+        val results = h.handleAll(listOf(say(room, member), say(other, member), unlisted))
+        assertEquals(listOf(Tier.OPERATOR, Tier.LOCKED), h.tiers)
         assertEquals("skip: conversation not allowed", results[unlisted.id])
     }
 
     @Test
     fun doubleForkedDaemonDiesWithTheBrainOnTimeout() = runBlocking<Unit> {
         val pidFile = File.createTempFile("pid", ".txt")
-        val out = runBrain("(sleep 300 </dev/null >/dev/null 2>&1 & echo \$! > ${pidFile.absolutePath}); sleep 60", "", timeoutMs = 1000, tier = Tier.OPERATOR)
+        val out = runBrain(Brain("(sleep 300 </dev/null >/dev/null 2>&1 & echo \$! > ${pidFile.absolutePath}); sleep 60"), "", timeoutMs = 1000, tier = Tier.OPERATOR)
         assertTrue(out is BrainOutcome.Failed && out.reason.startsWith("timeout"))
         val pid = pidFile.readText().trim().toLong()
         untilTrue("daemon dead") { !ProcessHandle.of(pid).map { it.isAlive }.orElse(false) }
@@ -205,25 +206,18 @@ class PortableTest {
     @Test
     fun processorLetsAnotherRoomMemberCancelOnlyInTheSameRoomOrAsListedOperatorMember() = runBlocking<Unit> {
         val gate = CompletableDeferred<Unit>()
-        val allow = Allowlist(setOf(room, other), emptySet(), authorsAnyMember = true, groupSend = true)
+        val allow = Allowlist(setOf(room, other), null, Kind.BOT)
         allow.learn(
             listOf(
                 ConversationInfo(room, "team", listOf(self, owner, member)),
                 ConversationInfo(other, "other", listOf(self, member, stranger)),
             ),
         )
-        val config = AgentConfig(bot = true, allowlist = allow, operators = setOf(owner), operatorBrain = "full", operatorRooms = setOf(room, other))
-        val replies = CopyOnWriteArrayList<Pair<Uuid, String>>()
-        val p = WatchProcessor(
-            config, self.toString(), ProcessedStore(null),
-            history = { emptyList() },
-            brain = { _, _, _ -> gate.await(); BrainOutcome.Output("ok") },
-            reply = { c, t -> replies += c to t },
-            log = {},
-            jobs = runner(),
-        )
+        val config = AgentConfig(allowlist = allow, operators = setOf(owner), operatorBrain = "full", operatorRooms = setOf(room, other))
+        val h = TestHarness(config, identity = self.toString(), jobs = runner(), brainFn = { _, _, _ -> gate.await(); BrainOutcome.Output("ok") })
+        val replies = h.sends
         var n = 0L
-        suspend fun say(c: Uuid, who: OdinId, text: String) = p.handleAll(listOf(ChatMsg(Uuid.random(), c, who, text, ++n, sender = who)))
+        suspend fun say(c: Uuid, who: OdinId, text: String) = h.handleAll(listOf(ChatMsg(Uuid.random(), c, who, text, ++n, sender = who)))
         say(room, member, "@quagmire build it")
         say(other, stranger, "@quagmire cancel")
         assertTrue(replies.last().second.contains("started in another conversation"), replies.toString())
@@ -279,14 +273,14 @@ class PortableTest {
     @Test
     fun exifOrientationIsParsedAndBakedIn() {
         val jpeg = jpegWithOrientation(6)
-        assertEquals(6, exifOrientation(jpeg))
-        assertEquals(1, exifOrientation(jpegWithOrientation(1)))
-        assertEquals(1, exifOrientation(byteArrayOf(1, 2, 3)))
+        assertEquals(6, (readJpegExifOrientation(jpeg) ?: 1))
+        assertEquals(1, (readJpegExifOrientation(jpegWithOrientation(1)) ?: 1))
+        assertEquals(1, (readJpegExifOrientation(byteArrayOf(1, 2, 3)) ?: 1))
         val prepared = prepareImage(jpeg, decodeImage(jpeg)!!)
         val img = ImageIO.read(ByteArrayInputStream(prepared.bytes))
         assertEquals(8, img.width)
         assertEquals(16, img.height)
-        assertEquals(1, exifOrientation(prepared.bytes))
+        assertEquals(1, (readJpegExifOrientation(prepared.bytes) ?: 1))
         val topRight = img.getRGB(6, 2)
         val topLeft = img.getRGB(1, 2)
         assertTrue((topRight shr 16 and 0xFF) > 200 && (topRight and 0xFF) < 80, "top right should be red")

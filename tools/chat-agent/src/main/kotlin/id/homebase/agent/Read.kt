@@ -12,6 +12,7 @@ import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.drives.query.QueryBatchCursor
@@ -45,7 +46,11 @@ fun HttpClient.withRequestTimeout(ms: Long): HttpClient = config {
 class NotLoggedInException(profile: String) :
     Exception("not logged in for profile '$profile', run: chat-agent login --profile $profile")
 
-class Session(val identity: OdinId, val credentials: CredentialsManager, val http: HttpClient)
+class Session(val identity: OdinId, val credentials: CredentialsManager, val http: HttpClient) {
+    val query by lazy { DriveQueryProvider(http, credentials) }
+    val inbox by lazy { InboxProvider(this) }
+    val driveFiles by lazy { DriveFileOperationsProvider(http, credentials) }
+}
 
 suspend fun openSession(profile: String): Session {
     val stored = CredentialStorage.getCredentials() ?: throw NotLoggedInException(profile)
@@ -93,7 +98,7 @@ suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>?, limit:
     // The owner's own files carry neither originalAuthor nor senderOdinId.
     val owner = session.credentials.getActiveDomain()
     val response =
-        DriveQueryProvider(session.http, session.credentials)
+        session.query
             .queryBatch(
                 driveId = SystemDriveConstants.chatDrive.alias,
                 request = QueryBatchRequest(

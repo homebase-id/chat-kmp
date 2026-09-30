@@ -9,7 +9,7 @@ import kotlinx.coroutines.runBlocking
 private const val USAGE =
     "usage: chat-agent login --profile <p> [--identity <domain>] | read --profile <p> [--conversation <id>] [--limit <n>] | conversations --profile <p> | send --profile <p> [--conversation <id>] [--file <path>] [text] | watch --profile <p> | mcp --profile <p> [--conversation <id>] [--read-only] | brain-test --profile <p>  (global: --verbose, --version)"
 
-private val VALUE_FLAGS = setOf("--profile", "--conversation", "--limit", "--identity", "--attach", "--file")
+private val VALUE_FLAGS = setOf("--profile", "--conversation", "--limit", "--identity", "--file")
 private const val VERBOSE = "--verbose"
 private const val READ_ONLY = "--read-only"
 private const val ATTACH_LATEST = "--attach-latest-image"
@@ -24,7 +24,6 @@ fun main(args: Array<String>) {
     var verbose = false
     var readOnly = false
     var attachLatest = false
-    val attach = mutableListOf<String>()
     var i = 0
     while (i < args.size) {
         val arg = args[i]
@@ -32,7 +31,6 @@ fun main(args: Array<String>) {
             arg == VERBOSE -> verbose = true
             arg == READ_ONLY -> readOnly = true
             arg == ATTACH_LATEST -> attachLatest = true
-            arg == "--attach" && i + 1 < args.size -> attach += args[++i]
             arg in VALUE_FLAGS && i + 1 < args.size -> options[arg] = args[++i]
             else -> positional += arg
         }
@@ -53,7 +51,7 @@ fun main(args: Array<String>) {
                 "login" -> login(options["--identity"] ?: prompt("Homebase identity (e.g. me.homebase.id): "))
                 "send" -> send(profile, sendText, options["--conversation"]?.let { Uuid.parse(it) }, options["--file"])
                 "watch" -> watch(profile, verbose)
-                "brain-test" -> brainTest(profile, attach, attachLatest)
+                "brain-test" -> brainTest(profile, attachLatest)
                 "mcp" -> mcp(profile, options["--conversation"]?.let { Uuid.parse(it) }, readOnly)
                 "conversations" -> conversations(profile)
                 else -> read(

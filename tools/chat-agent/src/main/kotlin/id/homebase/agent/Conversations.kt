@@ -6,13 +6,14 @@ import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.SystemDriveConstants
-import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationAppDataJson
+import java.io.File
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CancellationException
 
 const val NOTE_TO_SELF_TITLE = "Note to self"
 private const val CONVERSATION_LIMIT = 200
@@ -32,7 +33,7 @@ fun parseConversation(id: Uuid, content: String, self: OdinId): ConversationInfo
 
 suspend fun discoverConversations(session: Session): List<ConversationInfo> {
     val self = session.credentials.requireActiveDomain()
-    val response = DriveQueryProvider(session.http, session.credentials).queryBatch(
+    val response = session.query.queryBatch(
         driveId = SystemDriveConstants.chatDrive.alias,
         request = QueryBatchRequest(
             queryParams = FileQueryParams(
@@ -52,7 +53,7 @@ suspend fun discoverConversations(session: Session): List<ConversationInfo> {
     }
 }
 
-private class InboxProvider(session: Session) :
+class InboxProvider(session: Session) :
     OdinApiProviderBase(session.http, session.credentials) {
     suspend fun process() {
         val creds = requireCreds()
@@ -65,8 +66,8 @@ private class InboxProvider(session: Session) :
 
 suspend fun processInbox(session: Session) {
     try {
-        InboxProvider(session).process()
-    } catch (e: kotlinx.coroutines.CancellationException) {
+        session.inbox.process()
+    } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
         System.err.println("processInbox failed: ${e.message}")
@@ -80,7 +81,7 @@ suspend fun refreshAllowlist(session: Session, allowlist: Allowlist, rediscover:
 }
 
 fun loadConfig(profile: String, owner: OdinId): AgentConfig =
-    java.io.File(Profile.dataDir(profile), "agent.conf").let {
+    File(Profile.dataDir(profile), "agent.conf").let {
         parseConfig(it.takeIf { f -> f.exists() }?.readText().orEmpty(), owner, profile)
     }
 

@@ -24,7 +24,7 @@ class SendTest {
     private val groupInfo = ConversationInfo(group, "Team", listOf(owner, bob, bot))
 
     private fun botAllowlist() =
-        Allowlist(setOf(ChatProtocol.ConversationWithYourselfId), setOf(owner), memberMode = true, groupSend = true)
+        Allowlist(setOf(ChatProtocol.ConversationWithYourselfId), setOf(owner), Kind.BOT, memberMode = true)
             .also { it.learn(listOf(groupInfo)) }
 
     @Test

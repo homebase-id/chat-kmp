@@ -4,23 +4,33 @@ import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatProtocol
 import kotlin.uuid.Uuid
 
+enum class Kind { DELEGATE, BOT, PLAIN }
+
 class Allowlist(
     val conversationIds: Set<Uuid>,
-    val authors: Set<OdinId>,
+    val authors: Set<OdinId>?,
+    val kind: Kind = Kind.PLAIN,
     val memberMode: Boolean = false,
-    val authorsAnyMember: Boolean = false,
-    val groupSend: Boolean = false,
-    val delegate: Boolean = false,
+    private val selfOwned: Boolean = false,
+    val scope: Uuid? = null,
+    val readOnly: Boolean = false,
 ) {
     init {
-        require(!(delegate && memberMode)) { "member mode is not permitted for the me profile; list conversation uuids explicitly" }
+        require(!(kind == Kind.DELEGATE && memberMode)) { "member mode is not permitted for the me profile; list conversation uuids explicitly" }
     }
 
-    var scope: Uuid? = null
-    var readOnly = false
+    val delegate get() = kind == Kind.DELEGATE
+    val authorsAnyMember get() = authors == null
+    val groupSend get() = kind == Kind.BOT && !selfOwned
 
     private var known: Map<Uuid, ConversationInfo> = emptyMap()
     private val derived = HashMap<Uuid, ConversationInfo>()
+
+    fun copy(scope: Uuid?, readOnly: Boolean) =
+        Allowlist(conversationIds, authors, kind, memberMode, selfOwned, scope, readOnly).also {
+            it.known = known
+            it.derived.putAll(derived)
+        }
 
     fun learn(conversations: List<ConversationInfo>) {
         known = conversations.associateBy { it.id }
@@ -48,7 +58,7 @@ class Allowlist(
     fun allowsConversation(id: Uuid): Boolean =
         (scope == null || id == scope) && (id in conversationIds || (memberMode && lookup(id) != null))
 
-    fun allowsAuthor(author: OdinId?): Boolean = author != null && author in authors
+    fun allowsAuthor(author: OdinId?): Boolean = author != null && authors != null && author in authors
 
     fun allowsAuthor(author: OdinId?, conversationId: Uuid): Boolean =
         allowsAuthor(author) ||

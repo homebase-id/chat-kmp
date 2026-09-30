@@ -29,22 +29,20 @@ class JobsTest {
         maxJobs: Int = 10,
         val operatorWork: suspend (String) -> BrainOutcome,
     ) {
-        val replies = CopyOnWriteArrayList<Pair<Uuid, String>>()
         val started = CopyOnWriteArrayList<String>()
-        val processor: WatchProcessor
+        val harness: TestHarness
+        val processor get() = harness.processor
+        val replies get() = harness.sends.map { it.first to it.second }
         var n = 0L
 
         init {
-            val allow = Allowlist(setOf(dm, dm2), emptySet(), memberMode = false, authorsAnyMember = true, groupSend = true)
+            val allow = Allowlist(setOf(dm, dm2), null, Kind.BOT)
             allow.learn(listOf(ConversationInfo(dm, "dm", listOf(self, op)), ConversationInfo(dm2, "dm2", listOf(self, rando))))
-            val config = AgentConfig(bot = true, allowlist = allow, operators = setOf(op), operatorBrain = "x", maxJobsPerDay = maxJobs)
-            processor = WatchProcessor(
-                config, self.toString(), ProcessedStore(null),
-                history = { emptyList() },
-                brain = { p, t, _ -> if (t == Tier.OPERATOR) { started += p; operatorWork(p) } else BrainOutcome.Output("pong") },
-                reply = { c, t -> replies += c to t },
-                log = {},
+            val config = AgentConfig(allowlist = allow, operators = setOf(op), operatorBrain = "x", maxJobsPerDay = maxJobs)
+            harness = TestHarness(
+                config, identity = self.toString(),
                 jobs = JobRunner(scope, RunLimiter(null, Int.MAX_VALUE, maxJobs), prefix = ""),
+                brainFn = { p, t, _ -> if (t == Tier.OPERATOR) { started += p; operatorWork(p) } else BrainOutcome.Output("pong") },
             )
         }
 
@@ -102,7 +100,7 @@ class JobsTest {
     @Test
     fun timeoutKillsTheProcessTree() = runBlocking<Unit> {
         val pidFile = File.createTempFile("pid", ".txt")
-        val out = runBrain("sleep 60 & echo \$! > ${pidFile.absolutePath}; wait", "", timeoutMs = 1000, tier = Tier.OPERATOR)
+        val out = runBrain(Brain("sleep 60 & echo \$! > ${pidFile.absolutePath}; wait"), "", timeoutMs = 1000, tier = Tier.OPERATOR)
         assertTrue(out is BrainOutcome.Failed && out.reason.startsWith("timeout"))
         val pid = pidFile.readText().trim().toLong()
         until("child dead") { !(ProcessHandle.of(pid).map { it.isAlive }.orElse(false)) }
@@ -113,7 +111,7 @@ class JobsTest {
     fun cancelKillsRunningJobAndStartsNext() = runBlocking<Unit> {
         val pidFile = File.createTempFile("pid", ".txt")
         val r = rig { p ->
-            if (p.contains("long")) runBrain("sleep 60 & echo \$! > ${pidFile.absolutePath}; wait", "", timeoutMs = 60_000, tier = Tier.OPERATOR)
+            if (p.contains("long")) runBrain(Brain("sleep 60 & echo \$! > ${pidFile.absolutePath}; wait"), "", timeoutMs = 60_000, tier = Tier.OPERATOR)
             else BrainOutcome.Output("second ran")
         }
         r.say(dm, op, "@quagmire long")

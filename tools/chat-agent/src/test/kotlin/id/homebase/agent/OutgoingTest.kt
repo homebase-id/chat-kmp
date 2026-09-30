@@ -126,7 +126,7 @@ class OutgoingTest {
 
     @Test
     fun runBrainAttachesFilesWrittenToItsScratchDirAndRemovesTheDir() = runBlocking<Unit> {
-        val outcome = runBrain("printf 'note' > out.txt; printf 'look\\nATTACH: out.txt\\nATTACH: ../../../etc/hosts'", "prompt")
+        val outcome = runBrain(Brain("printf 'note' > out.txt; printf 'look\\nATTACH: out.txt\\nATTACH: ../../../etc/hosts'"), "prompt")
         val out = outcome as BrainOutcome.Output
         assertEquals("look", out.stdout)
         assertEquals("out.txt", out.files.single().name)
@@ -244,16 +244,16 @@ class OutgoingTest {
         assertTrue(toolSendFile(traversal, args("conversationId" to self.toString(), "path" to "../x")).isError)
         assertTrue(traversal.sent.isEmpty())
 
-        val readOnly = FilesBackend(Allowlist.default(owner).also { it.readOnly = true }, root)
+        val readOnly = FilesBackend(Allowlist.default(owner).copy(null, readOnly = true), root)
         assertTrue(toolSendFile(readOnly, call).isError)
         assertTrue(readOnly.sent.isEmpty())
 
         val other = Uuid.random()
-        val scoped = FilesBackend(Allowlist(setOf(self, other), setOf(owner)).also { it.scope = other }, root)
+        val scoped = FilesBackend(Allowlist(setOf(self, other), setOf(owner)).copy(other, readOnly = false), root)
         assertTrue(toolSendFile(scoped, call).isError)
         assertTrue(scoped.sent.isEmpty())
 
-        val delegate = FilesBackend(Allowlist(setOf(self), setOf(owner), delegate = true), root)
+        val delegate = FilesBackend(Allowlist(setOf(self), setOf(owner), Kind.DELEGATE), root)
         toolSendFile(delegate, args("conversationId" to self.toString(), "path" to "a.txt"))
         assertEquals(BOT_PREFIX, delegate.sent.single().second)
     }
@@ -274,7 +274,7 @@ class OutgoingTest {
 
     @Test
     fun linkPreviewSkippedWhenDisabledMissingOrFailing() = runBlocking<Unit> {
-        assertNull(outgoingBundle("https://github.com/", emptyList(), null))
+        assertNull(outgoingBundle("https://github.com/", emptyList(), previews = null))
         assertNull(outgoingBundle("no link", emptyList()) { error("must not be called") })
         assertNull(outgoingBundle("https://github.com/", emptyList()) { null })
         assertNull(outgoingBundle("https://github.com/", emptyList()) { throw java.io.IOException("server down") })
@@ -288,32 +288,15 @@ class OutgoingTest {
 
     @Test
     fun processorSendsFilesReturnedByTheBrain() = runBlocking<Unit> {
-        val sentFiles = mutableListOf<Triple<Uuid, String, List<OutFile>>>()
-        val plain = mutableListOf<String>()
         val file = OutFile("a.txt", "x".encodeToByteArray())
-        val processor = WatchProcessor(
-            AgentConfig(allowlist = Allowlist.default(owner)), "owner.example.com", ProcessedStore(null),
-            history = { emptyList() },
-            brain = { _, _, _ -> BrainOutcome.Output("here", listOf(file)) },
-            reply = { _, t -> plain += t },
-            log = {},
-            replyFiles = { c, t, f -> sentFiles += Triple(c, t, f) },
-        )
-        assertEquals("replied", processor.handle(ChatMsg(Uuid.random(), self, owner, "@quagmire send it", 1L)))
-        assertTrue(plain.isEmpty())
-        assertEquals("🤖 here", sentFiles.single().second)
-        assertEquals("a.txt", sentFiles.single().third.single().name)
-        val silentFiles = mutableListOf<String>()
-        val p2 = WatchProcessor(
-            AgentConfig(allowlist = Allowlist.default(owner)), "owner.example.com", ProcessedStore(null),
-            history = { emptyList() },
-            brain = { _, _, _ -> BrainOutcome.Output("", listOf(file)) },
-            reply = { _, t -> plain += t },
-            log = {},
-            replyFiles = { _, t, _ -> silentFiles += t },
-        )
-        assertEquals("replied", p2.handle(ChatMsg(Uuid.random(), self, owner, "@quagmire send it", 1L)))
-        assertEquals(listOf(BOT_PREFIX), silentFiles)
+        val h = TestHarness(AgentConfig(allowlist = Allowlist.default(owner)), outcome = BrainOutcome.Output("here", listOf(file)))
+        assertEquals("replied", h.handle(ChatMsg(Uuid.random(), self, owner, "@quagmire send it", 1L)))
+        assertEquals(1, h.sends.size)
+        assertEquals("🤖 here", h.sends.single().second)
+        assertEquals("a.txt", h.sends.single().third.single().name)
+        val silent = TestHarness(AgentConfig(allowlist = Allowlist.default(owner)), outcome = BrainOutcome.Output("", listOf(file)))
+        assertEquals("replied", silent.handle(ChatMsg(Uuid.random(), self, owner, "@quagmire send it", 1L)))
+        assertEquals(listOf(BOT_PREFIX), silent.replies)
     }
 
     @Test

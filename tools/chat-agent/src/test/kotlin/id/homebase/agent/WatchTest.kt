@@ -17,7 +17,7 @@ class WatchTest {
     private val self = ChatProtocol.ConversationWithYourselfId
 
     private fun trig(text: String, bot: Boolean = false, identity: String = "owner.example.com") =
-        shouldTrigger(text, "quagmire", bot, identity)
+        shouldTrigger(text, Nickname("quagmire"), bot, identity)
 
     @Test
     fun nicknamePositives() {
@@ -67,50 +67,25 @@ class WatchTest {
     private fun msg(text: String, conv: Uuid = self, author: OdinId? = owner, id: Uuid = Uuid.random()) =
         ChatMsg(id, conv, author, text, 1L)
 
-    private class Harness(
-        config: AgentConfig,
-        store: ProcessedStore = ProcessedStore(null),
-        outcome: BrainOutcome = BrainOutcome.Output("pong"),
-        limiter: RunLimiter? = null,
-        val outcomes: MutableList<BrainOutcome> = mutableListOf(),
-        var sendFailures: Int = 0,
-        away: AwayFlag = AwayFlag(null),
-    ) {
-        val replies = mutableListOf<String>()
-        val replyTargets = mutableListOf<Uuid>()
-        val logs = mutableListOf<String>()
-        var brainRuns = 0
-        val prompts = mutableListOf<String>()
-        val processor = WatchProcessor(
-            config, "owner.example.com", store,
-            history = { emptyList() },
-            brain = { p, _, _ -> brainRuns++; prompts += p; outcomes.removeFirstOrNull() ?: outcome },
-            reply = { c, t -> if (sendFailures > 0) { sendFailures--; error("boom") }; replyTargets += c; replies += t },
-            log = { logs += it },
-            limiter = limiter ?: RunLimiter(null, config.maxRunsPerHour, config.maxRunsPerDay),
-            away = away,
-        )
-    }
-
-    private fun cfg(bot: Boolean = false) = AgentConfig(bot = bot, allowlist = Allowlist.default(owner))
+    private fun cfg() = AgentConfig(allowlist = Allowlist.default(owner))
 
     @Test
     fun allowlistRefusal() = runBlocking {
-        val h = Harness(cfg())
-        assertEquals("skip: conversation not allowed", h.processor.handle(msg("@quagmire hi", conv = Uuid.random())))
-        assertEquals("skip: author not allowed", h.processor.handle(msg("@quagmire hi", author = OdinId("evil.example.com"))))
-        assertEquals("skip: author not allowed", h.processor.handle(msg("@quagmire hi", author = null)))
-        assertEquals("skip: no trigger", h.processor.handle(msg("hello")))
+        val h = TestHarness(cfg())
+        assertEquals("skip: conversation not allowed", h.handle(msg("@quagmire hi", conv = Uuid.random())))
+        assertEquals("skip: author not allowed", h.handle(msg("@quagmire hi", author = OdinId("evil.example.com"))))
+        assertEquals("skip: author not allowed", h.handle(msg("@quagmire hi", author = null)))
+        assertEquals("skip: no trigger", h.handle(msg("hello")))
         assertEquals(0, h.brainRuns)
         assertTrue(h.replies.isEmpty())
     }
 
     @Test
     fun dedupe() = runBlocking {
-        val h = Harness(cfg())
+        val h = TestHarness(cfg())
         val m = msg("@quagmire hi")
-        assertEquals("replied", h.processor.handle(m))
-        assertEquals("seen", h.processor.handle(m))
+        assertEquals("replied", h.handle(m))
+        assertEquals("seen", h.handle(m))
         assertEquals(listOf("🤖 pong"), h.replies)
         assertEquals(1, h.brainRuns)
     }
@@ -123,6 +98,7 @@ class WatchTest {
         val ids = List(5) { Uuid.random() }
         ids.forEach(s::add)
         assertEquals(3, s.size)
+        assertEquals(5, f.readLines().size)
         assertFalse(ids[0] in s)
         assertTrue(ids[4] in s)
         val reloaded = ProcessedStore(f, cap = 3)
@@ -130,24 +106,50 @@ class WatchTest {
     }
 
     @Test
+    fun processedStoreCompactsOnLoadAndAtTwiceTheCap() {
+        val f = File.createTempFile("processed", ".txt").apply { deleteOnExit() }
+        f.delete()
+        val s = ProcessedStore(f, cap = 3)
+        val ids = List(7) { Uuid.random() }
+        ids.forEach(s::add)
+        assertEquals(ids.takeLast(3).map { it.toString() }, f.readLines())
+        f.writeText(ids.joinToString("\n", postfix = "\n"))
+        ProcessedStore(f, cap = 3)
+        assertEquals(ids.takeLast(3).map { it.toString() }, f.readLines())
+    }
+
+    @Test
+    fun sameMillisecondSiblingIsNotLostAndNewestIsNotReplayed() {
+        val cursor = SeenCursor(100L)
+        fun m(t: Long) = ChatMsg(Uuid.random(), self, owner, "x", t)
+        val first = m(200L)
+        assertEquals(listOf(first.id), cursor.fresh(listOf(first, m(50L))).map { it.id })
+        assertEquals(200L, cursor.position)
+        assertTrue(cursor.fresh(listOf(first)).isEmpty())
+        val sibling = m(200L)
+        assertEquals(listOf(sibling.id), cursor.fresh(listOf(first, sibling)).map { it.id })
+        assertTrue(cursor.fresh(listOf(first, sibling)).isEmpty())
+    }
+
+    @Test
     fun brainOutputHandling() = runBlocking {
-        assertEquals("🤖 pong", brainReply(runBrain("echo pong", "p")))
-        assertNull(brainReply(runBrain("printf ''", "p")))
-        assertNull(brainReply(runBrain("echo NO_REPLY", "p")))
-        assertEquals("🤖 failed: exit 3", brainReply(runBrain("exit 3", "p")))
-        assertEquals("🤖 failed: timeout after 1s", brainReply(runBrain("sleep 999", "p", timeoutMs = 1000)))
-        assertEquals("🤖 stdin-ok", brainReply(runBrain("cat | sed 's/^prompt/stdin-ok/'", "prompt")))
+        assertEquals("🤖 pong", brainReply(runBrain(Brain("echo pong"), "p")))
+        assertNull(brainReply(runBrain(Brain("printf ''"), "p")))
+        assertNull(brainReply(runBrain(Brain("echo NO_REPLY"), "p")))
+        assertEquals("🤖 failed: exit 3", brainReply(runBrain(Brain("exit 3"), "p")))
+        assertEquals("🤖 failed: timeout after 1s", brainReply(runBrain(Brain("sleep 999"), "p", timeoutMs = 1000)))
+        assertEquals("🤖 stdin-ok", brainReply(runBrain(Brain("cat | sed 's/^prompt/stdin-ok/'"), "prompt")))
     }
 
     @Test
     fun failureAndSilenceThroughProcessor() = runBlocking {
-        val failing = Harness(cfg(), outcome = BrainOutcome.Failed("exit 3"))
+        val failing = TestHarness(cfg(), outcome = BrainOutcome.Failed("exit 3"))
         val m = msg("@quagmire x")
-        failing.processor.handle(m)
+        failing.handle(m)
         failing.processor.handleAll(emptyList())
         assertEquals(listOf("🤖 failed: exit 3"), failing.replies)
-        val silent = Harness(cfg(), outcome = BrainOutcome.Output("NO_REPLY\n"))
-        assertEquals("silent", silent.processor.handle(msg("@quagmire x")))
+        val silent = TestHarness(cfg(), outcome = BrainOutcome.Output("NO_REPLY\n"))
+        assertEquals("silent", silent.handle(msg("@quagmire x")))
         assertTrue(silent.replies.isEmpty())
     }
 
@@ -163,13 +165,13 @@ class WatchTest {
 
     @Test
     fun coalescesTriggersPerConversation() = runBlocking {
-        val h = Harness(cfg())
+        val h = TestHarness(cfg())
         val ms = List(3) { ChatMsg(Uuid.random(), self, owner, "@quagmire q$it", it.toLong()) }
         h.processor.handleAll(ms)
         assertEquals(1, h.brainRuns)
         assertEquals(1, h.replies.size)
         assertTrue(ms.all { h.prompts.single().contains("q${ms.indexOf(it)}") })
-        assertEquals("seen", h.processor.handle(ms[1]))
+        assertEquals("seen", h.handle(ms[1]))
     }
 
     @Test
@@ -194,8 +196,8 @@ class WatchTest {
 
     @Test
     fun overCapIsSilent() = runBlocking {
-        val h = Harness(cfg(), limiter = RunLimiter(null, 0, 100))
-        assertEquals("skip: rate limited", h.processor.handle(msg("@quagmire hi")))
+        val h = TestHarness(cfg(), limiter = RunLimiter(null, 0, 100))
+        assertEquals("skip: rate limited", h.handle(msg("@quagmire hi")))
         assertEquals(0, h.brainRuns)
         assertTrue(h.replies.isEmpty())
     }
@@ -203,9 +205,9 @@ class WatchTest {
     @Test
     fun failureRetriedOnceThenReportedAndProcessed() = runBlocking {
         val store = ProcessedStore(null)
-        val h = Harness(cfg(), store, outcome = BrainOutcome.Failed("exit 3"))
+        val h = TestHarness(cfg(), store, outcome = BrainOutcome.Failed("exit 3"))
         val m = msg("@quagmire x")
-        assertEquals("retry", h.processor.handle(m))
+        assertEquals("retry", h.handle(m))
         assertTrue(h.replies.isEmpty())
         assertFalse(m.id in store)
         assertEquals("failed", h.processor.handleAll(emptyList())[m.id])
@@ -216,47 +218,46 @@ class WatchTest {
 
     @Test
     fun failureThenSuccessOnRetryAndSendFailureRetried() = runBlocking {
-        val h = Harness(cfg(), outcomes = mutableListOf(BrainOutcome.Failed("x")), sendFailures = 0)
+        val h = TestHarness(cfg(), outcomes = mutableListOf(BrainOutcome.Failed("x")), sendFailures = 0)
         val m = msg("@quagmire x")
-        assertEquals("retry", h.processor.handle(m))
+        assertEquals("retry", h.handle(m))
         assertEquals("replied", h.processor.handleAll(emptyList())[m.id])
         assertEquals(listOf("🤖 pong"), h.replies)
-        val s = Harness(cfg(), sendFailures = 1)
+        val s = TestHarness(cfg(), sendFailures = 1)
         val m2 = msg("@quagmire y")
-        assertEquals("retry", s.processor.handle(m2))
+        assertEquals("retry", s.handle(m2))
         assertEquals("replied", s.processor.handleAll(emptyList())[m2.id])
     }
 
     private val group = Uuid.random()
 
-    private fun groupCfg(bot: Boolean) = AgentConfig(
-        bot = bot,
-        allowlist = parseConfig(if (bot) "bot=true" else "allowConversations=member", owner).allowlist.also {
+    private fun groupCfg() = AgentConfig(
+        allowlist = parseConfig("bot=true", owner).allowlist.also {
             it.learn(listOf(ConversationInfo(group, "Team", listOf(OdinId("alice.example.com"), owner))))
         },
     )
 
     @Test
     fun seenMessageLoggedOnce() = runBlocking {
-        val h = Harness(cfg(), outcome = BrainOutcome.Output("NO_REPLY"))
+        val h = TestHarness(cfg(), outcome = BrainOutcome.Output("NO_REPLY"))
         val m = msg("hello")
-        assertEquals("skip: no trigger", h.processor.handle(m))
-        assertEquals("seen", h.processor.handle(m))
+        assertEquals("skip: no trigger", h.handle(m))
+        assertEquals("seen", h.handle(m))
         assertEquals(1, h.logs.size)
     }
 
     @Test
     fun botRepliesIntoTriggeringGroup() = runBlocking {
-        val h = Harness(groupCfg(bot = true))
-        assertEquals("replied", h.processor.handle(msg("@quagmire hi", conv = group, author = OdinId("alice.example.com"))))
+        val h = TestHarness(groupCfg())
+        assertEquals("replied", h.handle(msg("@quagmire hi", conv = group, author = OdinId("alice.example.com"))))
         assertEquals(listOf(group), h.replyTargets)
         assertEquals(listOf("pong"), h.replies)
     }
 
     @Test
     fun plainGroupWithoutExplicitListingRefused() = runBlocking {
-        val h = Harness(delegateCfg(listed = false))
-        assertEquals("skip: conversation not allowed", h.processor.handle(msg("@quagmire hi", conv = group, author = alice)))
+        val h = TestHarness(delegateCfg(listed = false))
+        assertEquals("skip: conversation not allowed", h.handle(msg("@quagmire hi", conv = group, author = alice)))
         assertEquals(0, h.brainRuns)
         assertTrue(h.replies.isEmpty())
     }
@@ -265,10 +266,35 @@ class WatchTest {
     fun meRefusesMemberMode() {
         assertFailsWith<IllegalArgumentException> { parseConfig("allowConversations=member", owner, "me") }
         assertFailsWith<IllegalArgumentException> { parseConfig("allowConversations=self,member", owner, "me") }
-        assertFailsWith<IllegalArgumentException> { Allowlist(setOf(self), setOf(owner), memberMode = true, delegate = true) }
+        assertFailsWith<IllegalArgumentException> { Allowlist(setOf(self), setOf(owner), Kind.DELEGATE, memberMode = true) }
     }
 
     private val alice = OdinId("alice.example.com")
+
+    private fun plainCfg(): AgentConfig {
+        val cfg = parseConfig("allowConversations=self,$group", owner)
+        assertEquals(Kind.PLAIN, cfg.allowlist.kind)
+        cfg.allowlist.learn(listOf(ConversationInfo(group, "Team", listOf(alice, owner))))
+        return cfg
+    }
+
+    @Test
+    fun plainProfileKeepsOwnerOnlyNoGroupSendNoAway() = runBlocking {
+        val flag = AwayFlag(null)
+        val h = TestHarness(plainCfg(), away = flag)
+        assertEquals("skip: author not allowed", h.handle(msg("@quagmire hi", conv = group, author = alice)))
+        assertFalse(plainCfg().allowlist.allowsSend(group))
+        assertEquals("skip: send not permitted in this conversation", h.handle(msg("@quagmire hi", conv = group, author = owner)))
+        assertEquals("replied", h.handle(msg("@quagmire away")))
+        assertFalse(flag.on)
+        assertEquals(0, h.brainRuns.minus(1))
+    }
+
+    @Test
+    fun botFlagOnMeProfileIsWarnedNotSilent() {
+        assertEquals(1, parseConfig("bot=true", owner, "me").warnings.size)
+        assertTrue(parseConfig("", owner, "me").warnings.isEmpty())
+    }
 
     private fun delegateCfg(listed: Boolean = true): AgentConfig {
         val conf = if (listed) "allowConversations=self,$group" else ""
@@ -283,10 +309,10 @@ class WatchTest {
     fun awayToggleRepliesPersistsAndSkipsBrain() = runBlocking {
         val file = File.createTempFile("away", "").apply { delete(); deleteOnExit() }
         val flag = AwayFlag(file)
-        val h = Harness(delegateCfg(), away = flag)
-        assertEquals("away on", h.processor.handle(msg("@Quagmire AWAY")))
+        val h = TestHarness(delegateCfg(), away = flag)
+        assertEquals("away on", h.handle(msg("@Quagmire AWAY")))
         assertTrue(flag.on && file.exists() && AwayFlag(file).on)
-        assertEquals("away off", h.processor.handle(msg("@quagmire back")))
+        assertEquals("away off", h.handle(msg("@quagmire back")))
         assertFalse(flag.on || file.exists())
         assertEquals(listOf("$BOT_PREFIX away on", "$BOT_PREFIX away off"), h.replies)
         assertEquals(0, h.brainRuns)
@@ -295,24 +321,24 @@ class WatchTest {
     @Test
     fun ownerMentionTriggersOnlyWhileAway() = runBlocking {
         val flag = awayFlag()
-        val h = Harness(delegateCfg(), away = flag)
+        val h = TestHarness(delegateCfg(), away = flag)
         val m1 = msg("@owner.example.com are you there", conv = group, author = alice)
-        assertEquals("skip: no trigger", h.processor.handle(m1))
+        assertEquals("skip: no trigger", h.handle(m1))
         flag.on = true
         val m2 = msg("@owner.example.com hello", conv = group, author = alice)
-        assertEquals("replied", h.processor.handle(m2))
+        assertEquals("replied", h.handle(m2))
         assertEquals(listOf(group), h.replyTargets)
         assertTrue(h.prompts.single().contains("is away"))
         flag.on = false
-        assertEquals("replied", h.processor.handle(msg("@quagmire hi", conv = group, author = alice)))
+        assertEquals("replied", h.handle(msg("@quagmire hi", conv = group, author = alice)))
         assertFalse(h.prompts.last().contains("is away"))
     }
 
     @Test
     fun nicknameSummonWhileAwayGetsAwayGuidance() = runBlocking {
         val flag = awayFlag().also { it.on = true }
-        val h = Harness(delegateCfg(), away = flag)
-        assertEquals("replied", h.processor.handle(msg("@quagmire hi", conv = group, author = alice)))
+        val h = TestHarness(delegateCfg(), away = flag)
+        assertEquals("replied", h.handle(msg("@quagmire hi", conv = group, author = alice)))
         assertTrue(h.prompts.single().contains("is away"))
         assertTrue(h.prompts.single().contains(NO_REPLY))
     }
@@ -320,17 +346,17 @@ class WatchTest {
     @Test
     fun ownMessagesInGroupIgnoredEvenWhenAway() = runBlocking {
         val flag = awayFlag().also { it.on = true }
-        val h = Harness(delegateCfg(), away = flag)
-        assertEquals("skip: own message", h.processor.handle(msg("@quagmire @owner.example.com hi", conv = group, author = owner)))
+        val h = TestHarness(delegateCfg(), away = flag)
+        assertEquals("skip: own message", h.handle(msg("@quagmire @owner.example.com hi", conv = group, author = owner)))
         assertEquals(0, h.brainRuns)
     }
 
     @Test
     fun noteToSelfStaysOwnerOnlyAndAwayMentionIgnoredThere() = runBlocking {
         val flag = awayFlag().also { it.on = true }
-        val h = Harness(delegateCfg(), away = flag)
-        assertEquals("skip: author not allowed", h.processor.handle(msg("@quagmire hi", author = alice)))
-        assertEquals("skip: no trigger", h.processor.handle(msg("note @owner.example.com")))
+        val h = TestHarness(delegateCfg(), away = flag)
+        assertEquals("skip: author not allowed", h.handle(msg("@quagmire hi", author = alice)))
+        assertEquals("skip: no trigger", h.handle(msg("note @owner.example.com")))
     }
 
     @Test
@@ -361,7 +387,7 @@ class WatchTest {
 
     @Test
     fun messageArrivingAfterFirstPollIsHandled() = runBlocking {
-        val h = Harness(cfg())
+        val h = TestHarness(cfg())
         val old = ChatMsg(Uuid.random(), self, owner, "hello", 1L)
         assertEquals("skip: no trigger", h.processor.handleAll(listOf(old))[old.id])
         val late = ChatMsg(Uuid.random(), self, owner, "@quagmire ping", 2L)

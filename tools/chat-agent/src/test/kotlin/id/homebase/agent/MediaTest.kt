@@ -155,14 +155,8 @@ class MediaTest {
         assertFalse("attachment 1" in prompt)
     }
 
-    private fun processor(config: AgentConfig, history: List<ChatMsg>, fetch: Fetch, prompts: MutableList<String>, sent: MutableList<List<Attachment>>) = WatchProcessor(
-        config, "owner.example.com", ProcessedStore(null),
-        history = { history },
-        brain = { pr, _, at -> prompts += pr; sent += at; BrainOutcome.Output("ok") },
-        reply = { _, _ -> },
-        log = {},
-        loader = AttachmentLoader(fetch),
-    )
+    private fun harness(config: AgentConfig, history: List<ChatMsg>, fetch: Fetch) =
+        TestHarness(config, history = history, loader = AttachmentLoader(fetch))
 
     @Test
     fun onlyTriggerAndReplyParentAreDownloaded() = runBlocking<Unit> {
@@ -172,29 +166,27 @@ class MediaTest {
         val reply = """{"replyPreview":{"replyUniqueId":"${parent.id}","authorOdinId":"x","message":"m"},"message":"@quagmire what","version":1}"""
         val trigger = ChatMsg(Uuid.random(), conv, owner, "@quagmire what", 5L, payloads = listOf(p("trig000001", "image/png", descriptor = "")), rawContent = reply, fileId = Uuid.random())
         val fetch = Fetch(mapOf("hist000001" to png, "parent0001" to png, "trig000001" to png))
-        val prompts = mutableListOf<String>()
-        val sent = mutableListOf<List<Attachment>>()
-        processor(cfg, listOf(hist, parent), fetch, prompts, sent).handle(trigger)
+        val h = harness(cfg, listOf(hist, parent), fetch)
+        h.handle(trigger)
         assertEquals(listOf("trig000001", "parent0001"), fetch.calls)
-        assertEquals(listOf(false, true), sent.single().map { it.parent })
-        assertTrue("replied to" in prompts.single())
+        assertEquals(listOf(false, true), h.attachments.single().map { it.parent })
+        assertTrue("replied to" in h.prompts.single())
     }
 
     @Test
     fun plainTextTriggerDownloadsNothing() = runBlocking<Unit> {
         val cfg = AgentConfig(allowlist = Allowlist.default(owner))
         val fetch = Fetch(emptyMap())
-        val sent = mutableListOf<List<Attachment>>()
-        processor(cfg, listOf(msg(payloads = listOf(p("hist000001", "image/png", descriptor = "")))), fetch, mutableListOf(), sent)
-            .handle(ChatMsg(Uuid.random(), conv, owner, "@quagmire hi", 5L))
+        val h = harness(cfg, listOf(msg(payloads = listOf(p("hist000001", "image/png", descriptor = "")))), fetch)
+        h.handle(ChatMsg(Uuid.random(), conv, owner, "@quagmire hi", 5L))
         assertTrue(fetch.calls.isEmpty())
-        assertTrue(sent.single().isEmpty())
+        assertTrue(h.attachments.single().isEmpty())
     }
 
     @Test
     fun customBrainGetsFilesAndEnvThenCleanup() = runBlocking<Unit> {
         val a = Attachment(Uuid.random(), false, "1-note.txt", "text/plain", 5, "hello".encodeToByteArray())
-        val out = (runBrain("printf '%s' \"\$CHAT_AGENT_ATTACHMENTS\"; cat \"\$CHAT_AGENT_ATTACHMENTS\"", "", attachments = listOf(a)) as BrainOutcome.Output).stdout
+        val out = (runBrain(Brain("printf '%s' \"\$CHAT_AGENT_ATTACHMENTS\"; cat \"\$CHAT_AGENT_ATTACHMENTS\""), "", attachments = listOf(a)) as BrainOutcome.Output).stdout
         val path = out.removeSuffix("hello")
         assertTrue(path.endsWith("/1-note.txt"), out)
         assertTrue(out.endsWith("hello"))
@@ -205,7 +197,7 @@ class MediaTest {
     @Test
     fun operatorTempDirCleanedToo() = runBlocking<Unit> {
         val a = Attachment(Uuid.random(), false, "1-a.txt", "text/plain", 1, "x".encodeToByteArray())
-        val out = (runBrain("echo \$CHAT_AGENT_ATTACHMENTS", "", tier = Tier.OPERATOR, attachments = listOf(a)) as BrainOutcome.Output).stdout.trim()
+        val out = (runBrain(Brain("echo \$CHAT_AGENT_ATTACHMENTS"), "", tier = Tier.OPERATOR, attachments = listOf(a)) as BrainOutcome.Output).stdout.trim()
         assertNotNull(out.takeIf { it.isNotEmpty() })
         assertFalse(File(out).parentFile.exists())
     }
@@ -241,7 +233,7 @@ class MediaTest {
         assertEquals(2, loaded.size)
         loaded.forEach { assertFalse('/' in it.fileName || ".." in it.fileName, it.fileName) }
         assertTrue(loaded[0].fileName.endsWith(".bin"), loaded[0].fileName)
-        val dir = newAttachmentDir()
+        val dir = tempDir("attach")
         try {
             assertEquals(2, writeAttachments(dir, loaded).size)
             assertFailsWith<IllegalArgumentException> {

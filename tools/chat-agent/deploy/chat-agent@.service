@@ -6,7 +6,8 @@ Wants=network-online.target
 
 [Service]
 ExecStart=%h/chat-agent/bin/chat-agent watch --profile %i
-Environment=JAVA_HOME=/usr/lib/jvm/java-21-openjdk
+# JAVA_HOME lives in ~/.config/chat-agent/env, e.g. JAVA_HOME=/usr/lib/jvm/java-21-openjdk (Arch default); unset = java on PATH.
+EnvironmentFile=-%h/.config/chat-agent/env
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 UMask=0077
 Restart=always

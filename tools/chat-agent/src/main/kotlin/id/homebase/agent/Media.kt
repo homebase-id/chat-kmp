@@ -18,7 +18,7 @@ import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.widget.mediaPayloads
 import java.io.File
-import java.nio.file.Files
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import kotlin.io.encoding.Base64
 import kotlin.time.Instant
@@ -44,12 +44,9 @@ const val INLINE_TEXT_CODEPOINTS = 8000
 private const val CIPHER_PADDING = 16L
 const val TRANSCRIBE_TIMEOUT_MS = 60_000L
 private const val LABEL_CODEPOINTS = 120
-private const val NAME_CODEPOINTS = 60
 
 private val VIEWABLE_IMAGES = setOf("image/png", "image/jpeg", "image/gif", "image/webp")
 private val TEXT_EXTENSIONS = setOf("txt", "md", "csv", "tsv", "json", "xml", "yaml", "yml", "log", "kt", "java", "py", "js", "ts", "html", "css", "sh", "toml", "ini", "sql", "c", "h", "cpp", "go", "rs", "swift")
-
-private fun oneLine(s: String, max: Int) = s.replace(Regex("[\\p{Cntrl}]+"), " ").trim().truncateToCodePoints(max)
 
 fun formatSize(bytes: Long): String = when {
     bytes < 1024 -> "$bytes B"
@@ -70,13 +67,13 @@ private fun typedLabel(dataType: Int?, rawContent: String?): String? {
         is MessageContent.Location -> "location" to content.displayLabel
         is MessageContent.Unknown -> "unknown" to "type ${content.dataType}"
     }
-    return "[$kind: ${oneLine(body, LABEL_CODEPOINTS)}]"
+    return "[$kind: ${body.oneLine(LABEL_CODEPOINTS)}]"
 }
 
 private fun linkLabels(p: PayloadDescriptor): List<String> {
     val links = runCatching { OdinSystemSerializer.deserialize<List<LinkPreviewDescriptor>>(p.descriptorContent.orEmpty()) }.getOrNull()
     if (links.isNullOrEmpty()) return listOf("[link preview]")
-    return links.map { "[link: ${oneLine(it.url, LABEL_CODEPOINTS)}${it.title.takeIf { t -> t.isNotBlank() }?.let { t -> " - ${oneLine(t, LABEL_CODEPOINTS)}" }.orEmpty()}]" }
+    return links.map { "[link: ${it.url.oneLine(LABEL_CODEPOINTS)}${it.title.takeIf { t -> t.isNotBlank() }?.let { t -> " - ${t.oneLine(LABEL_CODEPOINTS)}" }.orEmpty()}]" }
 }
 
 fun payloadLabels(payloads: List<PayloadDescriptor>?): List<String> = payloads.mediaPayloads().flatMap { p ->
@@ -92,7 +89,7 @@ fun payloadLabels(payloads: List<PayloadDescriptor>?): List<String> = payloads.m
         )
         p.isVideo() -> listOf("[video${(p.descriptorInfo() as? DescriptorContent.VideoFile)?.durationMs?.let { " " + clock(it / 1000) }.orEmpty()}]")
         p.isAudio() -> listOf(p.audioLengthSeconds()?.let { "[voice ${clock(it.toLong())}]" } ?: "[audio]")
-        else -> listOf("[file ${oneLine(p.filename() ?: p.key, NAME_CODEPOINTS)}${p.bytesWritten?.let { " " + formatSize(it) }.orEmpty()}]")
+        else -> listOf("[file ${(p.filename() ?: p.key).oneLine(NAME_CODEPOINTS)}${p.bytesWritten?.let { " " + formatSize(it) }.orEmpty()}]")
     }
 }
 
@@ -130,7 +127,7 @@ private val PDF_PAGE_OBJECT = Regex("/Type\\s*/Page(?![a-zA-Z])")
 
 fun looksLikePdf(bytes: ByteArray) = bytes.size > 5 && String(bytes, 0, 5, Charsets.ISO_8859_1) == "%PDF-"
 
-// Counts uncompressed page objects; PDFs with object streams count 0 and are let through (size cap still applies).
+// object-stream PDFs count 0 and pass; the size cap still applies
 fun pdfPageCount(bytes: ByteArray): Int = PDF_PAGE_OBJECT.findAll(String(bytes, Charsets.ISO_8859_1)).count()
 
 fun interface PayloadFetcher {
@@ -147,6 +144,7 @@ private class PayloadProvider(private val session: Session) : OdinApiProviderBas
     }
 }
 
+// DriveFileProvider.decryptBytes needs the coil-backed DriveFileProviderCached, absent from the trimmed classpath.
 fun sessionFetcher(session: Session): PayloadFetcher {
     val provider = PayloadProvider(session)
     return PayloadFetcher { fileId, key, maxBytes ->
@@ -157,33 +155,6 @@ fun sessionFetcher(session: Session): PayloadFetcher {
         val header = response.headers["sharedsecretencryptedheader64"] ?: error("payload has no key header")
         val secret = session.credentials.getActiveCredentials()?.sharedSecret ?: error("no shared secret")
         EncryptedKeyHeader.fromBase64(header).decryptAesToKeyHeader(secret).decrypt(response.bytes)
-    }
-}
-
-private fun safeName(name: String) =
-    name.replace(Regex("[^A-Za-z0-9._-]"), "_").replace(Regex("\\.{2,}"), ".").trim('.', '_').ifEmpty { "file" }.truncateToCodePoints(NAME_CODEPOINTS)
-
-private fun extensionFor(contentType: String): String = when (contentType) {
-    "image/jpeg" -> "jpg"
-    "image/png" -> "png"
-    "image/gif" -> "gif"
-    "image/webp" -> "webp"
-    else -> contentType.substringAfter('/', "").substringBefore(';').lowercase().takeIf { Regex("[a-z0-9]{1,8}").matches(it) } ?: "bin"
-}
-
-private fun guessType(name: String, declared: String?): String {
-    if (!declared.isNullOrBlank() && declared != "application/octet-stream") return declared
-    return when (name.substringAfterLast('.', "").lowercase()) {
-        "png" -> "image/png"
-        "jpg", "jpeg" -> "image/jpeg"
-        "gif" -> "image/gif"
-        "webp" -> "image/webp"
-        "pdf" -> "application/pdf"
-        "json" -> "application/json"
-        "csv" -> "text/csv"
-        "md" -> "text/markdown"
-        "txt", "log" -> "text/plain"
-        else -> declared ?: "application/octet-stream"
     }
 }
 
@@ -213,7 +184,7 @@ class AttachmentLoader(
 
     private suspend fun loadOne(msgId: Uuid, parent: Boolean, fileId: Uuid, p: PayloadDescriptor, index: Int): Attachment {
         val rawName = p.filename() ?: p.key
-        val type = guessType(rawName, p.contentType)
+        val type = contentTypeFor(rawName, p.contentType)
         val fileName = safeName("$index-${if ('.' in rawName) rawName else "$rawName.${extensionFor(type)}"}")
         val size = p.bytesWritten ?: 0L
         val cap = when {
@@ -300,17 +271,15 @@ fun writeAttachments(dir: File, attachments: List<Attachment>): List<File> =
         }
     }
 
-fun newAttachmentDir(): File = Files.createTempDirectory("chat-agent-attach").toFile()
-
 fun shellTranscriber(command: String): suspend (ByteArray, String) -> String? = { bytes, name ->
     withContext(Dispatchers.IO) {
-        val dir = Files.createTempDirectory("chat-agent-voice").toFile()
+        val dir = tempDir("voice")
         try {
             val file = File(dir, safeName(name)).also { it.writeBytes(bytes) }
             val process = ProcessBuilder("sh", "-c", "$command \"\$1\"", "transcribe", file.absolutePath).redirectErrorStream(false).start()
             process.outputStream.close()
             process.errorStream.close()
-            val out = java.util.concurrent.CompletableFuture.supplyAsync { process.inputStream.readBytes().decodeToString() }
+            val out = CompletableFuture.supplyAsync { process.inputStream.readBytes().decodeToString() }
             if (!process.waitFor(TRANSCRIBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
                 process.destroyForcibly()
                 return@withContext null

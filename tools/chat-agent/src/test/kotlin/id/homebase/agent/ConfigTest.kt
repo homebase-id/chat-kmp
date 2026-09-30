@@ -54,7 +54,7 @@ class ConfigTest {
     fun configDefaultsAndOverrides() {
         val d = parseConfig("", owner)
         assertEquals("quagmire", d.nickname)
-        assertEquals(DEFAULT_BRAIN, d.brain)
+        assertEquals(DEFAULT_BRAIN, d.brain.command)
         assertFalse(d.bot)
         assertEquals(setOf(self), d.allowlist.conversationIds)
         assertEquals(setOf(owner), d.allowlist.authors)
@@ -64,7 +64,7 @@ class ConfigTest {
             owner,
         )
         assertEquals("zed", c.nickname)
-        assertEquals("echo hi | cat", c.brain)
+        assertEquals("echo hi | cat", c.brain.command)
         assertTrue(c.bot)
         assertEquals(setOf(self, other), c.allowlist.conversationIds)
         assertEquals(setOf(OdinId("a.example.com")), c.allowlist.authors)

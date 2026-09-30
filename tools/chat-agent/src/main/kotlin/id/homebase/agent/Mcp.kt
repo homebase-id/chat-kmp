@@ -131,7 +131,7 @@ suspend fun toolSearchMessages(backend: AgentBackend, args: JsonObject?): ToolRe
     }
     scoped?.let(backend.allowlist::requireConversation)
     val ids = scoped?.let(::listOf) ?: backend.allowlist.allowedConversationIds().toList()
-    // ponytail: client-side scan of the newest LOOKUP_WINDOW messages per conversation; upgrade is a server-side search query.
+    // ponytail: client-side scan of the newest 200 per conversation; upgrade = server-side search
     val hits = ids.flatMap { id ->
         backend.messages(id, LOOKUP_WINDOW)
             .filter { backend.allowlist.allowsAuthor(it.author, id) && it.display.contains(query, ignoreCase = true) }
@@ -176,12 +176,10 @@ class SessionBackend(private val profile: String, private val scope: Uuid? = nul
         val session = open()
         val config = loadConfig(profile, session.identity)
         filesDir = config.mcpFilesDir
-        cachedAllowlist = config.allowlist.also {
-            refreshAllowlist(session, it)
-            if (!it.memberMode) it.learn(discoverConversations(session))
-            it.scope = scope
-            it.readOnly = readOnly
-        }
+        val allowlist = config.allowlist
+        refreshAllowlist(session, allowlist)
+        if (!allowlist.memberMode) allowlist.learn(discoverConversations(session))
+        cachedAllowlist = allowlist.copy(scope, readOnly)
         loadedAt = System.nanoTime()
     }
 
@@ -212,7 +210,7 @@ suspend fun mcp(profile: String, scope: Uuid? = null, readOnly: Boolean = false)
 
     val backend = SessionBackend(profile, scope, readOnly)
     val server = Server(
-        Implementation(name = "chat-agent", version = "1.0.0"),
+        Implementation(name = "chat-agent", version = agentVersion()),
         ServerOptions(capabilities = ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false))),
     )
 

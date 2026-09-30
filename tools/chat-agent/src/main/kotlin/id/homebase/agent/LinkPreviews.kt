@@ -22,7 +22,7 @@ fun interface LinkPreviewSource {
     suspend fun preview(url: String): LinkPreview?
 }
 
-// The identity server fetches the page (same /links/extract call as the app); this machine never requests chat-supplied URLs.
+// the identity server fetches the page; this machine never requests chat-supplied URLs
 fun serverLinkPreviews(session: Session) = LinkPreviewSource { url ->
     LinkPreviewProvider(session.http, session.credentials).getLinkPreview(url)
 }
@@ -40,7 +40,7 @@ private fun linkDescriptor(preview: LinkPreview, hasImage: Boolean, maxTextLen: 
     ),
 )
 
-// LinkPreviewPayloadBuilder's shape, but the tiny og:image thumb is made with javax.imageio (its createThumbnails needs Skia).
+// javax.imageio tiny thumb: the app's createThumbnails needs Skia
 suspend fun buildLinkPreviewBundle(preview: LinkPreview, fileOps: FileOperationsProvider): PayloadBundle {
     val imageUrl = preview.imageUrl
     val imageBytes = if (imageUrl != null && imageUrl.contains("base64,")) {
