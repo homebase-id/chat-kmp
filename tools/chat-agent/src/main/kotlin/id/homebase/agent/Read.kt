@@ -7,6 +7,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
+import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.query.DriveQueryProvider
@@ -41,6 +42,8 @@ class ChatMsg(
 )
 
 suspend fun fetchMessages(credentials: CredentialsManager, conversationId: Uuid, limit: Int): List<ChatMsg> {
+    // The owner's own files carry neither originalAuthor nor senderOdinId.
+    val owner = credentials.getActiveDomain()
     val response =
         DriveQueryProvider(HttpClientProvider.create(), credentials)
             .queryBatch(
@@ -55,6 +58,7 @@ suspend fun fetchMessages(credentials: CredentialsManager, conversationId: Uuid,
                         maxRecords = limit,
                         includeMetadataHeader = true,
                         ordering = QueryBatchSortOrder.NewestFirst,
+                        sorting = QueryBatchSortField.UserDate,
                     ),
                 ),
             )
@@ -67,7 +71,7 @@ suspend fun fetchMessages(credentials: CredentialsManager, conversationId: Uuid,
             ChatMsg(
                 id = metadata.appData.uniqueId ?: file.fileId,
                 conversationId = conversationId,
-                author = metadata.originalAuthor,
+                author = metadata.originalAuthor ?: metadata.senderOdinId ?: owner,
                 text = text,
                 userDate = metadata.appData.userDate ?: metadata.created.milliseconds,
             )
