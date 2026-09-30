@@ -17,6 +17,8 @@ import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -36,8 +38,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
@@ -76,6 +82,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.style.TextAlign
@@ -92,6 +100,11 @@ import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.resources.MR
 import id.homebase.resources.close
 import id.homebase.resources.file_saved_to
+import id.homebase.resources.profile_card_audience_circle
+import id.homebase.resources.profile_card_audience_description
+import id.homebase.resources.profile_card_audience_public
+import id.homebase.resources.profile_card_audience_switch
+import id.homebase.resources.profile_card_share_public_note
 import id.homebase.resources.profile_card_design_board
 import id.homebase.resources.profile_card_design_collage
 import id.homebase.resources.profile_card_design_dossier
@@ -294,6 +307,8 @@ fun ProfileCardScreen(
                     )
                 }
                 SheetTopChrome(
+                    uiState = uiState,
+                    onSelectCard = viewModel::onCardSelected,
                     onClose = leave,
                     // Over a band the whole strip drags; floating over the card only the handle does, so the card keeps its taps.
                     bandDrag = if (bands.top) dismissDrag else Modifier,
@@ -312,6 +327,15 @@ fun ProfileCardScreen(
                         .height(TOOLBAR_BAND_HEIGHT),
                     contentAlignment = Alignment.Center,
                 ) {
+                    if (uiState.isCircleSelected) {
+                        CardChromePill(modifier = Modifier.align(Alignment.TopCenter)) {
+                            Text(
+                                text = stringResource(MR.string.profile_card_share_public_note),
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
                     HorizontalFloatingToolbar(
                         expanded = true,
                         colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
@@ -390,6 +414,8 @@ private fun CardBandsLayout(
 
 @Composable
 private fun SheetTopChrome(
+    uiState: ProfileCardUiState,
+    onSelectCard: (CardAudience) -> Unit,
     onClose: () -> Unit,
     bandDrag: Modifier,
     handleDrag: Modifier,
@@ -424,9 +450,67 @@ private fun SheetTopChrome(
                 )
             }
         }
+        AudienceBadge(
+            uiState = uiState,
+            onSelect = onSelectCard,
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
+        )
         CardChromePill(modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp)) {
             IconButton(onClick = onClose) {
                 Icon(imageVector = Icons.Filled.Close, contentDescription = stringResource(MR.string.close))
+            }
+        }
+    }
+}
+
+@Composable
+private fun audienceLabel(audience: CardAudience): String = when (audience) {
+    CardAudience.Public -> stringResource(MR.string.profile_card_audience_public)
+    is CardAudience.Circle -> audience.label.trim().ifEmpty { stringResource(MR.string.profile_card_audience_circle) }
+}
+
+private fun audienceIcon(audience: CardAudience) =
+    if (audience is CardAudience.Circle) Icons.Outlined.Groups else Icons.Outlined.Public
+
+@Composable
+private fun AudienceBadge(uiState: ProfileCardUiState, onSelect: (CardAudience) -> Unit, modifier: Modifier = Modifier) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = uiState.selectedAudience
+    val label = audienceLabel(selected)
+    val description = if (uiState.canSwitchCard) {
+        stringResource(MR.string.profile_card_audience_switch, label)
+    } else {
+        stringResource(MR.string.profile_card_audience_description, label)
+    }
+    Box(modifier = modifier) {
+        CardChromePill(
+            modifier = Modifier.semantics { contentDescription = description },
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = (if (uiState.canSwitchCard) Modifier.clickable(role = Role.Button) { expanded = true } else Modifier)
+                    .minimumInteractiveComponentSize()
+                    .padding(horizontal = 12.dp),
+            ) {
+                Icon(imageVector = audienceIcon(selected), contentDescription = null, modifier = Modifier.size(18.dp))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 6.dp),
+                )
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            uiState.cards.forEach { card ->
+                DropdownMenuItem(
+                    text = { Text(audienceLabel(card.audience)) },
+                    leadingIcon = { Icon(audienceIcon(card.audience), contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        onSelect(card.audience)
+                    },
+                )
             }
         }
     }

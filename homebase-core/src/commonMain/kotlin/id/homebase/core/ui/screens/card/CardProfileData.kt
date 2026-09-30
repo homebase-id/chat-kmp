@@ -44,11 +44,13 @@ fun buildCardPayload(
     headerSrc: String?,
     tagLine: String?,
     posts: List<CardPost> = emptyList(),
+    audience: CardAudience = CardAudience.Public,
 ): CardPayload {
     val values = attributes.visibleValues(ProfileVisibility.ANONYMOUS)
     fun text(field: ProfileField) = values[field]?.trim()?.ifEmpty { null }
     return CardPayload(
         design = design,
+        audience = audience.toPayload(),
         data = CardData(
             odinId = odinId,
             firstName = text(ProfileField.GIVEN_NAME),

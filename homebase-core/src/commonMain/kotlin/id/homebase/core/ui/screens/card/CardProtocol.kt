@@ -28,7 +28,16 @@ object CardDesign {
 data class CardPayload(
     val design: String,
     val data: CardData,
+    val audience: CardAudiencePayload? = null,
 )
+
+@Serializable
+data class CardAudiencePayload(val kind: String, val label: String? = null)
+
+fun CardAudience.toPayload(): CardAudiencePayload = when (this) {
+    CardAudience.Public -> CardAudiencePayload(kind = "public")
+    is CardAudience.Circle -> CardAudiencePayload(kind = "circle", label = label.trim().ifEmpty { null })
+}
 
 @Serializable
 data class CardData(

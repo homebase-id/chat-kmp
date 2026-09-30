@@ -2324,6 +2324,11 @@
     <string name="profile_card_share_failed">Couldn't create the card image.</string>
     <string name="profile_card_unsupported">Your Homebase server doesn't support profile cards yet.</string>
     <string name="profile_card_edit">Edit card</string>
+    <string name="profile_card_audience_public">Public</string>
+    <string name="profile_card_audience_circle">Circle</string>
+    <string name="profile_card_audience_description">Card for %1$s</string>
+    <string name="profile_card_audience_switch">Card for %1$s. Choose another card.</string>
+    <string name="profile_card_share_public_note">Sharing always sends your public card</string>
     <string name="profile_card_editor_title">Card design</string>
     <string name="profile_card_edit_profile">Edit profile details</string>
     <string name="profile_card_design_save_failed">Couldn't save the card design.</string>
