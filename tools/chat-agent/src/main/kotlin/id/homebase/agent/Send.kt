@@ -96,6 +96,7 @@ suspend fun sendToConversation(session: Session, allowlist: Allowlist, conversat
         "no recipients resolved for conversation ${conversation.id}"
     }
     val messageId = Uuid.random()
+    val text = allowlist.disclosure(conversation.id, text, session.identity)
     val keyHeader = KeyHeader.newRandom16()
     val metadata = buildMessageMetadata(
         conversation.id, messageId, text, Clock.System.now().toEpochMilliseconds(), keyHeader,
@@ -118,7 +119,7 @@ suspend fun send(profile: String, text: String, conversation: Uuid? = null) {
     val session = openSession(profile)
     val allowlist = loadConfig(profile, session.identity).allowlist
     val id = conversation ?: ChatProtocol.ConversationWithYourselfId
-    require(id == ChatProtocol.ConversationWithYourselfId || allowlist.groupSend) { "this profile may only send to note-to-self" }
     refreshAllowlist(session, allowlist)
+    allowlist.requireSend(id)
     println("sent ${sendToConversation(session, allowlist, id, text)}")
 }

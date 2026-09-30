@@ -17,7 +17,19 @@ Data lives in `~/Library/Application Support/HomebaseChatAgent/<profile>/`
     chat-agent login --profile me  --identity you.homebase.id    # delegate: acts as the owner
     chat-agent login --profile bot --identity bot.homebase.id    # bot: its own identity
 
-`me` only triggers on the nickname and only ever sends to note-to-self.
+`me` triggers on the nickname, and (only while away) on a plain @owner mention. It sends to
+note-to-self, and to conversations explicitly listed by uuid in `allowConversations`;
+`allowConversations=member` is refused for `me`. Any member of a listed group may summon it
+(rate limits apply); note-to-self stays owner-only. The owner's own group messages never trigger.
+
+Away mode: send `@<nick> away` / `@<nick> back` (exact, case-insensitive) in note-to-self.
+The agent replies `🤖 away on` / `🤖 away off` and toggles the `away` file in the profile dir
+(no brain run). While away, an @owner mention in a listed group triggers a brief reply on the
+owner's behalf; the brain may answer NO_REPLY.
+
+Disclosure: every message `me` sends into a non-note-to-self conversation (watch, `send`, MCP)
+starts with `🤖 <owner>'s AI assistant: `. Note-to-self and `bot` replies start with `🤖 `.
+
 `bot` may also be summoned by an @mention of its identity and replies in
 allowlisted conversations it is a member of.
 
@@ -29,7 +41,7 @@ allowlisted conversations it is a member of.
 | brain | shell command; prompt on stdin, stdout is the reply | `claude -p --model haiku --max-turns 3` |
 | bot | true for a bot identity | false |
 | owner | odinId allowed to summon the bot | none |
-| allowConversations | `self`, `member`, or comma list of uuids | `self` (bot: `member`) |
+| allowConversations | `self`, `member` (not for `me`), or comma list of uuids | `self` (bot: `member`) |
 | allowAuthors | comma list of odinIds who may summon | owner (bot: any member) |
 | maxRunsPerHour | brain runs per author per hour | 20 |
 | maxRunsPerDay | brain runs per day, total | 100 |

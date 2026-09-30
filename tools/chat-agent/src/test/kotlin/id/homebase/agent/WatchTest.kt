@@ -5,6 +5,7 @@ import id.homebase.chat.services.ChatProtocol
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -73,6 +74,7 @@ class WatchTest {
         limiter: RunLimiter? = null,
         val outcomes: MutableList<BrainOutcome> = mutableListOf(),
         var sendFailures: Int = 0,
+        away: AwayFlag = AwayFlag(null),
     ) {
         val replies = mutableListOf<String>()
         val replyTargets = mutableListOf<Uuid>()
@@ -86,6 +88,7 @@ class WatchTest {
             reply = { c, t -> if (sendFailures > 0) { sendFailures--; error("boom") }; replyTargets += c; replies += t },
             log = { logs += it },
             limiter = limiter ?: RunLimiter(null, config.maxRunsPerHour, config.maxRunsPerDay),
+            away = away,
         )
     }
 
@@ -251,11 +254,100 @@ class WatchTest {
     }
 
     @Test
-    fun delegateNeverRepliesIntoGroupEvenIfConfigured() = runBlocking {
-        val h = Harness(groupCfg(bot = false))
-        assertEquals("skip: send not permitted in this conversation", h.processor.handle(msg("@quagmire hi", conv = group)))
+    fun plainGroupWithoutExplicitListingRefused() = runBlocking {
+        val h = Harness(delegateCfg(listed = false))
+        assertEquals("skip: conversation not allowed", h.processor.handle(msg("@quagmire hi", conv = group, author = alice)))
         assertEquals(0, h.brainRuns)
         assertTrue(h.replies.isEmpty())
+    }
+
+    @Test
+    fun meRefusesMemberMode() {
+        assertFailsWith<IllegalArgumentException> { parseConfig("allowConversations=member", owner, "me") }
+        assertFailsWith<IllegalArgumentException> { parseConfig("allowConversations=self,member", owner, "me") }
+        assertFailsWith<IllegalArgumentException> { Allowlist(setOf(self), setOf(owner), memberMode = true, delegate = true) }
+    }
+
+    private val alice = OdinId("alice.example.com")
+
+    private fun delegateCfg(listed: Boolean = true): AgentConfig {
+        val conf = if (listed) "allowConversations=self,$group" else ""
+        val cfg = parseConfig(conf, owner, "me")
+        cfg.allowlist.learn(listOf(ConversationInfo(group, "Team", listOf(alice, owner))))
+        return cfg
+    }
+
+    private fun awayFlag() = AwayFlag(File.createTempFile("away", "").apply { delete(); deleteOnExit() })
+
+    @Test
+    fun awayToggleRepliesPersistsAndSkipsBrain() = runBlocking {
+        val file = File.createTempFile("away", "").apply { delete(); deleteOnExit() }
+        val flag = AwayFlag(file)
+        val h = Harness(delegateCfg(), away = flag)
+        assertEquals("away on", h.processor.handle(msg("@Quagmire AWAY")))
+        assertTrue(flag.on && file.exists() && AwayFlag(file).on)
+        assertEquals("away off", h.processor.handle(msg("@quagmire back")))
+        assertFalse(flag.on || file.exists())
+        assertEquals(listOf("$BOT_PREFIX away on", "$BOT_PREFIX away off"), h.replies)
+        assertEquals(0, h.brainRuns)
+    }
+
+    @Test
+    fun ownerMentionTriggersOnlyWhileAway() = runBlocking {
+        val flag = awayFlag()
+        val h = Harness(delegateCfg(), away = flag)
+        val m1 = msg("@owner.example.com are you there", conv = group, author = alice)
+        assertEquals("skip: no trigger", h.processor.handle(m1))
+        flag.on = true
+        val m2 = msg("@owner.example.com hello", conv = group, author = alice)
+        assertEquals("replied", h.processor.handle(m2))
+        assertEquals(listOf(group), h.replyTargets)
+        assertTrue(h.prompts.single().contains("is away"))
+        flag.on = false
+        assertEquals("replied", h.processor.handle(msg("@quagmire hi", conv = group, author = alice)))
+        assertFalse(h.prompts.last().contains("is away"))
+    }
+
+    @Test
+    fun ownMessagesInGroupIgnoredEvenWhenAway() = runBlocking {
+        val flag = awayFlag().also { it.on = true }
+        val h = Harness(delegateCfg(), away = flag)
+        assertEquals("skip: own message", h.processor.handle(msg("@quagmire @owner.example.com hi", conv = group, author = owner)))
+        assertEquals(0, h.brainRuns)
+    }
+
+    @Test
+    fun noteToSelfStaysOwnerOnlyAndAwayMentionIgnoredThere() = runBlocking {
+        val flag = awayFlag().also { it.on = true }
+        val h = Harness(delegateCfg(), away = flag)
+        assertEquals("skip: author not allowed", h.processor.handle(msg("@quagmire hi", author = alice)))
+        assertEquals("skip: no trigger", h.processor.handle(msg("note @owner.example.com")))
+    }
+
+    @Test
+    fun awayCommandOnlyFromOwnerInNoteToSelfExact() {
+        assertEquals(true, awayCommand(" @quagmire  away ", "quagmire"))
+        assertEquals(false, awayCommand("@QUAGMIRE Back", "quagmire"))
+        assertNull(awayCommand("@quagmire away please", "quagmire"))
+        assertNull(awayCommand("@quagmire", "quagmire"))
+    }
+
+    @Test
+    fun disclosurePrefixes() {
+        val me = delegateCfg().allowlist
+        assertEquals("$BOT_PREFIX owner.example.com's AI assistant: pong", me.disclosure(group, "$BOT_PREFIX pong", owner))
+        assertEquals("$BOT_PREFIX pong", me.disclosure(self, "$BOT_PREFIX pong", owner))
+        val bot = parseConfig("bot=true", owner, "bot").allowlist
+        assertEquals("$BOT_PREFIX pong", bot.disclosure(group, "$BOT_PREFIX pong", owner))
+    }
+
+    @Test
+    fun meSendsOnlyToSelfOrExplicitlyListedGroup() {
+        val listed = delegateCfg().allowlist
+        listed.requireSend(self)
+        listed.requireSend(group)
+        assertFailsWith<IllegalArgumentException> { listed.requireSend(Uuid.random()) }
+        assertFailsWith<IllegalArgumentException> { delegateCfg(listed = false).allowlist.requireSend(group) }
     }
 
     @Test

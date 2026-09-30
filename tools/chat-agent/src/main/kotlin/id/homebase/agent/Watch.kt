@@ -1,6 +1,7 @@
 package id.homebase.agent
 
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.services.ChatProtocol
 import java.io.File
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
@@ -88,7 +89,11 @@ class ProcessedStore(private val file: File?, private val cap: Int = PROCESSED_C
     val size get() = ids.size
 }
 
-fun buildPrompt(triggers: List<ChatMsg>, history: List<ChatMsg>): String = buildString {
+fun buildPrompt(triggers: List<ChatMsg>, history: List<ChatMsg>, awayMode: Boolean = false): String = buildString {
+    if (awayMode) {
+        appendLine("The owner of this account is away. You are replying on their behalf as their AI assistant. Reply briefly, do not make commitments or promises for them, and if no reply is appropriate answer exactly $NO_REPLY.")
+        appendLine()
+    }
     val ids = triggers.map { it.id }.toSet()
     appendLine("Recent messages in this conversation (oldest first):")
     history.filter { it.id !in ids }.takeLast(HISTORY_LIMIT).forEach {
@@ -146,6 +151,7 @@ class WatchProcessor(
     private val reply: suspend (Uuid, String) -> Unit,
     private val log: (String) -> Unit,
     private val limiter: RunLimiter = RunLimiter(null, config.maxRunsPerHour, config.maxRunsPerDay),
+    private val away: AwayFlag = AwayFlag(null),
 ) {
     private val mutex = Mutex()
     private val seen = HashSet<Uuid>()
@@ -161,6 +167,7 @@ class WatchProcessor(
         val eligible = ArrayList<ChatMsg>()
         for (msg in (pending.values + msgs).distinctBy { it.id }) {
             if (msg.id in seen && msg.id !in pending) { results[msg.id] = "seen"; continue }
+            if (isAwayCommand(msg)) { toggleAway(msg, results); continue }
             val skip = precheck(msg)
             if (skip != null) { finish(msg.id, skip, results); continue }
             eligible += msg
@@ -177,10 +184,32 @@ class WatchProcessor(
         log("$id $result")
     }
 
+    private fun isOwn(msg: ChatMsg) = msg.author?.toString() == identity
+
+    private fun isAwayCommand(msg: ChatMsg) =
+        config.allowlist.delegate && msg.conversationId == ChatProtocol.ConversationWithYourselfId && isOwn(msg) &&
+            msg.id !in store && awayCommand(msg.text, config.nickname) != null
+
+    private suspend fun toggleAway(msg: ChatMsg, results: MutableMap<Uuid, String>) {
+        val on = awayCommand(msg.text, config.nickname)!!
+        away.on = on
+        try {
+            reply(msg.conversationId, "$BOT_PREFIX away ${if (on) "on" else "off"}")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("send error: ${e.message}")
+        }
+        store.add(msg.id)
+        finish(msg.id, if (on) "away on" else "away off", results)
+    }
+
     private fun precheck(msg: ChatMsg): String? {
         if (!config.allowlist.allowsConversation(msg.conversationId)) return "skip: conversation not allowed"
+        if (config.allowlist.delegate && msg.conversationId != ChatProtocol.ConversationWithYourselfId && isOwn(msg)) return "skip: own message"
         if (!config.allowlist.allowsAuthor(msg.author, msg.conversationId)) return "skip: author not allowed"
-        if (!shouldTrigger(msg.text, config.nickname, config.bot, identity)) return "skip: no trigger"
+        val awayMention = config.allowlist.delegate && away.on && msg.conversationId != ChatProtocol.ConversationWithYourselfId
+        if (!shouldTrigger(msg.text, config.nickname, config.bot, identity, awayMention)) return "skip: no trigger"
         if (msg.id in store) return "skip: already processed"
         if (!config.allowlist.allowsSend(msg.conversationId)) return "skip: send not permitted in this conversation"
         return null
@@ -195,7 +224,7 @@ class WatchProcessor(
             if (!limiter.allows(authors)) return done("skip: rate limited")
             limiter.record(authors)
             val outcome = try {
-                brain(buildPrompt(sorted, history(conversation)))
+                brain(buildPrompt(sorted, history(conversation), awayMode = away.on && config.allowlist.delegate && conversation != ChatProtocol.ConversationWithYourselfId && sorted.any { !matchesNickname(it.text, config.nickname) }))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -247,6 +276,7 @@ suspend fun watch(profile: String) {
         identity = session.identity.toString(),
         store = store,
         limiter = RunLimiter(File(dir, "runs.txt"), config.maxRunsPerHour, config.maxRunsPerDay),
+        away = AwayFlag(File(dir, "away")),
         history = { fetchMessages(session, it, HISTORY_LIMIT + 1) },
         brain = { runBrain(config.brain, it) },
         reply = { conversation, text ->

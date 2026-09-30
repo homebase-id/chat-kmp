@@ -84,10 +84,9 @@ class SendTest {
 
     @Test
     fun meProfileCannotEnableGroupSendViaConfig() = runBlocking<Unit> {
-        val me = parseConfig("bot=true\nallowConversations=member", owner, "me").allowlist
-        me.learn(listOf(groupInfo))
+        assertFailsWith<IllegalArgumentException> { parseConfig("bot=true\nallowConversations=member", owner, "me") }
+        val me = parseConfig("bot=true\nallowConversations=$group", owner, "me").allowlist
         assertFalse(me.groupSend)
-        assertFailsWith<IllegalArgumentException> { me.requireSend(group) }
         val ownerBot = parseConfig("bot=true\nowner=owner.example.com", owner, "bot").allowlist
         assertFalse(ownerBot.groupSend)
         assertTrue(parseConfig("bot=true\nowner=owner.example.com", bot, "bot").allowlist.groupSend)

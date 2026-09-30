@@ -74,7 +74,7 @@ suspend fun processInbox(session: Session) {
 }
 
 suspend fun refreshAllowlist(session: Session, allowlist: Allowlist, rediscover: Boolean = true) {
-    if (!allowlist.memberMode) return
+    if (!allowlist.memberMode && !allowlist.hasExplicitGroups) return
     processInbox(session)
     if (rediscover) allowlist.learn(discoverConversations(session))
 }
