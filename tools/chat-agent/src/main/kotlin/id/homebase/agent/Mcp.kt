@@ -46,7 +46,6 @@ interface AgentBackend {
 class ToolReply(val text: String, val isError: Boolean = false)
 
 private const val LOOKUP_WINDOW = 200
-private const val REPLY_QUOTE_CODEPOINTS = 80
 private const val ID_PREFIX = 8
 
 fun formatMessageLine(msg: ChatMsg): String {
@@ -144,11 +143,7 @@ suspend fun toolSendMessage(backend: AgentBackend, args: JsonObject?): ToolReply
     val text = stringArg(args, "text") ?: return@guarded ToolReply("text is empty", true)
     val reply = stringArg(args, "replyToId")?.let { ref ->
         val parent = findMessage(backend.messages(conversationId, LOOKUP_WINDOW), ref)
-        ReplyPreview(
-            replyUniqueId = parent.id,
-            authorOdinId = parent.author?.domainName ?: "null",
-            message = parent.text.trim().truncateToCodePoints(REPLY_QUOTE_CODEPOINTS),
-        )
+        parent.toReplyPreview()
     }
     ToolReply("sent ${backend.send(conversationId, "$BOT_PREFIX $text", reply)}")
 }

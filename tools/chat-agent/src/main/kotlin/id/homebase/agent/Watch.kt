@@ -224,7 +224,7 @@ class WatchProcessor(
             if (!limiter.allows(authors)) return done("skip: rate limited")
             limiter.record(authors)
             val outcome = try {
-                brain(buildPrompt(sorted, history(conversation), awayMode = away.on && config.allowlist.delegate && conversation != ChatProtocol.ConversationWithYourselfId && sorted.any { !matchesNickname(it.text, config.nickname) }))
+                brain(buildPrompt(sorted, history(conversation), awayMode = away.on && config.allowlist.delegate && conversation != ChatProtocol.ConversationWithYourselfId))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -257,7 +257,27 @@ class WatchProcessor(
     }
 }
 
-suspend fun watch(profile: String) {
+const val SLOW_POLL_MS = 5_000L
+
+class PollTimings(private val now: () -> Long = System::currentTimeMillis) {
+    private val phases = LinkedHashMap<String, Long>()
+
+    suspend fun <T> time(phase: String, block: suspend () -> T): T {
+        val start = now()
+        try {
+            return block()
+        } finally {
+            phases.merge(phase, now() - start, Long::plus)
+        }
+    }
+
+    fun slowLine(thresholdMs: Long = SLOW_POLL_MS): String? =
+        if (phases.values.sum() > thresholdMs) "poll slow: " + phases.entries.joinToString(" ") { "${it.key}=${it.value}ms" } else null
+
+    fun reset() = phases.clear()
+}
+
+suspend fun watch(profile: String, verbose: Boolean = false) {
     val session = openSession(profile)
     val dir = Profile.dataDir(profile).also { it.mkdirs() }
     val logFile = File(dir, "logs/agent.log").also { it.parentFile.mkdirs() }
@@ -271,16 +291,17 @@ suspend fun watch(profile: String) {
     val stateFile = File(dir, "last_seen.txt")
     var lastSeen = stateFile.takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull()
         ?: System.currentTimeMillis()
+    val timings = PollTimings()
     val processor = WatchProcessor(
         config = config,
         identity = session.identity.toString(),
         store = store,
         limiter = RunLimiter(File(dir, "runs.txt"), config.maxRunsPerHour, config.maxRunsPerDay),
         away = AwayFlag(File(dir, "away")),
-        history = { fetchMessages(session, it, HISTORY_LIMIT + 1) },
-        brain = { runBrain(config.brain, it) },
+        history = { timings.time("history") { fetchMessages(session, it, HISTORY_LIMIT + 1) } },
+        brain = { timings.time("brain") { runBrain(config.brain, it) } },
         reply = { conversation, text ->
-            sendToConversation(session, config.allowlist, conversation, text)
+            timings.time("send") { sendToConversation(session, config.allowlist, conversation, text) }
         },
         log = ::log,
     )
@@ -295,11 +316,13 @@ suspend fun watch(profile: String) {
     var poll = 0
     try {
         while (true) {
+            timings.reset()
             try {
-                refreshAllowlist(session, config.allowlist, rediscover = poll++ % REDISCOVER_EVERY == 0)
-                val fresh = fetchMessages(session, config.allowlist.allowedConversationIds().toList(), POLL_WINDOW)
+                refreshAllowlist(session, config.allowlist, rediscover = poll++ % REDISCOVER_EVERY == 0, timings = timings)
+                val fresh = timings.time("query") { fetchMessages(session, config.allowlist.allowedConversationIds().toList(), POLL_WINDOW) }
                     .filter { it.userDate >= lastSeen }
                     .sortedBy { it.userDate }
+                if (verbose) log("poll: fresh=${fresh.size} maxUserDate=${fresh.maxOfOrNull { it.userDate }}")
                 fresh.lastOrNull()?.takeIf { it.userDate > lastSeen }?.let {
                     lastSeen = it.userDate
                     stateFile.writeText(lastSeen.toString())
@@ -310,6 +333,7 @@ suspend fun watch(profile: String) {
             } catch (e: Exception) {
                 log("poll error: ${e.message}")
             }
+            timings.slowLine()?.let(::log)
             delay(POLL_INTERVAL_MS)
         }
     } catch (e: CancellationException) {

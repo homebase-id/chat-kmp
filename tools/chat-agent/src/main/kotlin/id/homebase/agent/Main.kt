@@ -40,7 +40,7 @@ fun main(args: Array<String>) {
             when (command) {
                 "login" -> login(options["--identity"] ?: prompt("Homebase identity (e.g. me.homebase.id): "))
                 "send" -> send(profile, sendText, options["--conversation"]?.let { Uuid.parse(it) })
-                "watch" -> watch(profile)
+                "watch" -> watch(profile, verbose)
                 "mcp" -> mcp(profile)
                 "conversations" -> conversations(profile)
                 else -> read(

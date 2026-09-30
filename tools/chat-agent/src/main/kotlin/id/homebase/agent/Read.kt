@@ -2,6 +2,7 @@ package id.homebase.agent
 
 import id.homebase.api.client.HttpClientProvider
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeout
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
@@ -19,8 +20,27 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.youauth.CredentialStorage
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.services.ReplyContext
+import id.homebase.chat.services.ReplyPreview
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.content.MessageContentParser
+import id.homebase.chat.widget.replyQuoteMediaPayloads
+import kotlinx.serialization.json.JsonElement
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+
+const val REPLY_QUOTE_CODEPOINTS = 80
+const val REQUEST_TIMEOUT_MS = 30_000L
+
+fun HttpClient.withRequestTimeout(ms: Long): HttpClient = config {
+    install(HttpTimeout) {
+        requestTimeoutMillis = ms
+        socketTimeoutMillis = ms
+    }
+}
 
 class NotLoggedInException(profile: String) :
     Exception("not logged in for profile '$profile', run: chat-agent login --profile $profile")
@@ -33,7 +53,7 @@ suspend fun openSession(profile: String): Session {
     credentials.setActiveCredentials(
         ApiCredentials.create(stored.identity, stored.clientAuthToken, stored.sharedSecret)
     )
-    return Session(stored.identity, credentials, HttpClientProvider.create())
+    return Session(stored.identity, credentials, HttpClientProvider.create().withRequestTimeout(REQUEST_TIMEOUT_MS))
 }
 
 class ChatMsg(
@@ -42,6 +62,22 @@ class ChatMsg(
     val author: OdinId?,
     val text: String,
     val userDate: Long,
+    val previewThumbnail: EmbeddedThumb? = null,
+    val payloads: List<PayloadDescriptor>? = null,
+    val dataType: Int? = null,
+    val rawContent: String? = null,
+) {
+    val replyContext: JsonElement?
+        get() = (MessageContentParser.parse(dataType, rawContent) as? MessageContent.Event)?.descriptor
+            ?.let { ReplyContext.event(it.startUtcMs) }
+}
+
+fun ChatMsg.toReplyPreview() = ReplyPreview(
+    replyUniqueId = id,
+    authorOdinId = author?.domainName ?: "null",
+    message = text.trim().truncateToCodePoints(REPLY_QUOTE_CODEPOINTS),
+    previewThumbnail = previewThumbnail.takeIf { payloads.replyQuoteMediaPayloads().firstOrNull()?.isVisualMedia() == true },
+    context = replyContext,
 )
 
 suspend fun fetchMessages(session: Session, conversationId: Uuid, limit: Int, beforeMs: Long? = null): List<ChatMsg> =
@@ -83,6 +119,10 @@ suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>, limit: 
                 author = metadata.originalAuthor ?: metadata.senderOdinId ?: owner,
                 text = text,
                 userDate = metadata.appData.userDate ?: metadata.created.milliseconds,
+                previewThumbnail = metadata.appData.previewThumbnail,
+                payloads = metadata.payloads,
+                dataType = metadata.appData.dataType,
+                rawContent = metadata.appData.content,
             )
         }
         .filter { beforeMs == null || it.userDate < beforeMs }

@@ -309,6 +309,15 @@ class WatchTest {
     }
 
     @Test
+    fun nicknameSummonWhileAwayGetsAwayGuidance() = runBlocking {
+        val flag = awayFlag().also { it.on = true }
+        val h = Harness(delegateCfg(), away = flag)
+        assertEquals("replied", h.processor.handle(msg("@quagmire hi", conv = group, author = alice)))
+        assertTrue(h.prompts.single().contains("is away"))
+        assertTrue(h.prompts.single().contains(NO_REPLY))
+    }
+
+    @Test
     fun ownMessagesInGroupIgnoredEvenWhenAway() = runBlocking {
         val flag = awayFlag().also { it.on = true }
         val h = Harness(delegateCfg(), away = flag)

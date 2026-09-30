@@ -73,10 +73,10 @@ suspend fun processInbox(session: Session) {
     }
 }
 
-suspend fun refreshAllowlist(session: Session, allowlist: Allowlist, rediscover: Boolean = true) {
+suspend fun refreshAllowlist(session: Session, allowlist: Allowlist, rediscover: Boolean = true, timings: PollTimings = PollTimings()) {
     if (!allowlist.memberMode && !allowlist.hasExplicitGroups) return
-    processInbox(session)
-    if (rediscover) allowlist.learn(discoverConversations(session))
+    timings.time("inbox") { processInbox(session) }
+    if (rediscover) timings.time("discovery") { allowlist.learn(discoverConversations(session)) }
 }
 
 fun loadConfig(profile: String, owner: OdinId): AgentConfig =
