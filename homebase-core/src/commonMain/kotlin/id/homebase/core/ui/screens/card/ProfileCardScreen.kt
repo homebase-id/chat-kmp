@@ -498,12 +498,12 @@ private fun SharePublicNote(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun audienceLabel(audience: CardAudience): String = when (audience) {
+internal fun audienceLabel(audience: CardAudience): String = when (audience) {
     CardAudience.Public -> stringResource(MR.string.profile_card_audience_public)
     is CardAudience.Circle -> audience.label.trim().ifEmpty { stringResource(MR.string.profile_card_audience_circle) }
 }
 
-private fun audienceIcon(audience: CardAudience) =
+internal fun audienceIcon(audience: CardAudience) =
     if (audience is CardAudience.Circle) Icons.Outlined.Groups else Icons.Outlined.Public
 
 @Composable
@@ -594,7 +594,14 @@ internal fun CardSurface(
 
     Box(modifier = modifier.drawBehind { drawRect(backdrop()) }) {
         if (uiState.loadFailed) {
-            LoadFailedState(modifier = Modifier.align(Alignment.Center), onRetry = onRetry)
+            // A tonal plate keeps the message legible on any design's backdrop.
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.align(Alignment.Center).padding(32.dp),
+            ) {
+                LoadFailedState(modifier = Modifier, onRetry = onRetry)
+            }
             return@Box
         }
         // An unsupported server's /card is its public site, which desktop and web would float over the message.
