@@ -96,4 +96,61 @@ class CardWireTest {
         assertEquals(JsonPrimitive("Friends"), body["data"]!!.jsonObject["label"])
         assertFalse("id" in body)
     }
+
+    private val friends = CardAudience.Circle("c-friends", "Friends")
+
+    private fun CardWireHarness.visibilities() = putBodies.map { it.jsonObject["visibility"]?.jsonPrimitive?.content }
+
+    @Test
+    fun onAServerWithoutCircleCardsNoPutIsEverConnectedAndTheDraftIsRemoved() = runTest {
+        val wire = CardWireHarness(circleCards = false)
+        val repo = wire.cardRepository()
+
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, "poster", CardOverrides.EMPTY))
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, "poster", CardOverrides.EMPTY))
+
+        assertEquals(listOf<String?>("owner"), wire.visibilities())
+        assertEquals(1, wire.deletes)
+        assertTrue(wire.storedIds.isEmpty())
+        assertFalse(repo.supportsCircleCards)
+    }
+
+    @Test
+    fun onASupportingServerTheStoredCardEndsConnectedWithExactlyOneCircle() = runTest {
+        val wire = CardWireHarness()
+
+        val added = wire.cardRepository().addCircle(friends, "poster", CardOverrides.EMPTY)
+
+        assertEquals(friends, (added as AddCircleCardResult.Added).card.audience)
+        assertEquals(listOf<String?>("owner", "connected"), wire.visibilities())
+        val stored = wire.storedBodies.single()
+        assertEquals("connected", stored["visibility"]?.jsonPrimitive?.content)
+        assertEquals(listOf("c-friends"), stored["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(added.card.id.toString(), wire.storedIds.single())
+    }
+
+    @Test
+    fun aFailedCleanupOfTheOwnerOnlyDraftIsNotAnError() = runTest {
+        val wire = CardWireHarness(deleteReply = { CardWireHarness.Reply.Problem(500, """{"title":"boom","status":500}""") }, circleCards = false)
+        val repo = wire.cardRepository()
+
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, "poster", CardOverrides.EMPTY))
+
+        assertEquals(1, wire.deletes)
+        assertEquals("owner", wire.storedBodies.single()["visibility"]?.jsonPrimitive?.content)
+        assertTrue(repo.cards().isEmpty())
+    }
+
+    @Test
+    fun theUnsupportedAnswerSurvivesARelaunch() = runTest {
+        val wire = CardWireHarness(circleCards = false)
+        val driver = id.homebase.core.feed.newInMemoryJdbcDriver()
+        wire.cardRepository(inMemoryCardPreferences(driver)).addCircle(friends, "poster", CardOverrides.EMPTY)
+
+        val relaunched = wire.cardRepository(inMemoryCardPreferences(driver))
+
+        assertFalse(relaunched.supportsCircleCards)
+        assertEquals(AddCircleCardResult.Unsupported, relaunched.addCircle(friends, "poster", CardOverrides.EMPTY))
+        assertEquals(1, wire.puts)
+    }
 }

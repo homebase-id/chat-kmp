@@ -6,6 +6,7 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.client.profile.ProfileWriteResponse
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonObject
@@ -19,7 +20,7 @@ interface CardAttributeStore {
         versionTag: Uuid?,
         priority: Int,
         circleIds: List<String> = emptyList(),
-    )
+    ): ProfileWriteResponse
     suspend fun delete(id: Uuid, versionTag: Uuid): Boolean
 }
 
@@ -35,31 +36,25 @@ class ProfileRepositoryCardStore(private val repository: ProfileRepository) : Ca
         versionTag: Uuid?,
         priority: Int,
         circleIds: List<String>,
-    ) {
-        repository.save(
-            type = ProfileAttributeTypes.PROFILE_CARD,
-            data = data,
-            visibility = visibility,
-            knownId = id,
-            knownVersionTag = versionTag,
-            priority = priority,
-            circleIds = circleIds,
-        )
-    }
+    ) = repository.save(
+        type = ProfileAttributeTypes.PROFILE_CARD,
+        data = data,
+        visibility = visibility,
+        knownId = id,
+        knownVersionTag = versionTag,
+        priority = priority,
+        circleIds = circleIds,
+    )
 }
 
-class CardRepository(private val store: CardAttributeStore) {
+class CardRepository(private val store: CardAttributeStore, private val preferences: CardPreferences) {
     // Older servers reject the type outright; the answer is per identity, so reset() clears it on logout.
     private var typeUnsupported = false
 
-    // A server without circle cards drops `circleIds` and stores an all-connections card; learned when a write doesn't come back scoped.
-    private var circlesUnsupported = false
-
-    val supportsCircleCards: Boolean get() = !typeUnsupported && !circlesUnsupported
+    val supportsCircleCards: Boolean get() = !typeUnsupported && !preferences.circleCardsUnsupported
 
     fun reset() {
         typeUnsupported = false
-        circlesUnsupported = false
     }
 
     suspend fun cards(): List<ProfileCard> = store.load().profileCards()
@@ -78,32 +73,41 @@ class CardRepository(private val store: CardAttributeStore) {
             id = existing?.id,
             versionTag = existing?.versionTag,
             priority = PUBLIC_CARD_PRIORITY,
-        )
+        ) != null
     }
 
     suspend fun saveCircle(card: ProfileCard): Boolean {
         val circle = card.audience as? CardAudience.Circle ?: error("not a circle card")
         if (!supportsCircleCards) return false
-        return writeCircle(card, circle)
+        return writeCircle(card, circle, ProfileVisibility.CONNECTED) != null
     }
 
-    // Reads the card back: a server without circle cards silently drops circleIds and keeps an all-connections card.
+    // A server without circle cards drops circleIds, so a Connected write there would reach every connection:
+    // write owner-only first and promote only once the circle is known to stick.
     suspend fun addCircle(circle: CardAudience.Circle, design: String, overrides: CardOverrides): AddCircleCardResult {
         if (!supportsCircleCards) return AddCircleCardResult.Unsupported
         val stored = cards()
         val priority = (stored.filter { it.audience is CardAudience.Circle }.maxOfOrNull { it.priority } ?: -1) + 1
         val card = ProfileCard(Uuid.NIL, Uuid.NIL, circle, design, overrides.prunedFor(design), priority)
-        if (!writeCircle(card, circle)) return AddCircleCardResult.Unsupported
-        val written = store.load()
-        val scoped = written.profileCards().firstOrNull { (it.audience as? CardAudience.Circle)?.id?.sameCircleId(circle.id) == true }
-        if (scoped != null) return AddCircleCardResult.Added(scoped)
-        Logger.i(tag = "CardRepository") { "server ignored circleIds; removing the unscoped card" }
-        val stray = written.filter { it.type == ProfileAttributeTypes.PROFILE_CARD && it.visibility == ProfileVisibility.CONNECTED && it.acl.circleIdList.isNullOrEmpty() }
-        val failed = stray.count { !deleted(it) }
-        // Left flagged-as-supported so the next add reads back and retries the cleanup.
-        if (failed > 0) error("could not remove $failed unscoped circle card(s)")
-        circlesUnsupported = true
-        return AddCircleCardResult.Unsupported
+        val draft = try {
+            writeCircle(card, circle, ProfileVisibility.OWNER) ?: return AddCircleCardResult.Unsupported
+        } catch (e: ClientException) {
+            // A server that scopes cards refuses circles on anything but Connected, which proves it scopes them.
+            if (!e.isCircleIdsNeedConnected()) throw e
+            null
+        }
+        val promoted = if (draft == null) card else {
+            val readBack = store.load().firstOrNull { it.id == draft.id } ?: error("the new circle card ${draft.id} did not read back")
+            if (readBack.acl.circleIdList?.singleOrNull()?.sameCircleId(circle.id) != true) {
+                Logger.i(tag = "CardRepository") { "server ignored circleIds; circle cards are unsupported" }
+                preferences.setCircleCardsUnsupported()
+                deleted(readBack)
+                return AddCircleCardResult.Unsupported
+            }
+            card.copy(id = readBack.id, versionTag = readBack.versionTag)
+        }
+        val written = writeCircle(promoted, circle, ProfileVisibility.CONNECTED) ?: return AddCircleCardResult.Unsupported
+        return AddCircleCardResult.Added(promoted.copy(id = written.id, versionTag = written.versionTag))
     }
 
     suspend fun delete(card: ProfileCard): Boolean {
@@ -119,14 +123,14 @@ class CardRepository(private val store: CardAttributeStore) {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.w(tag = "CardRepository", throwable = e) { "deleting the unscoped card ${attribute.id} failed" }
+            Logger.w(tag = "CardRepository", throwable = e) { "deleting the owner-only circle card ${attribute.id} failed" }
             false
         }
 
-    private suspend fun writeCircle(card: ProfileCard, circle: CardAudience.Circle): Boolean =
+    private suspend fun writeCircle(card: ProfileCard, circle: CardAudience.Circle, visibility: ProfileVisibility) =
         saveOrUnsupported(
             data = card.toData(),
-            visibility = ProfileVisibility.CONNECTED,
+            visibility = visibility,
             id = card.id.takeIf { it != Uuid.NIL },
             versionTag = card.versionTag.takeIf { it != Uuid.NIL },
             priority = card.priority,
@@ -140,17 +144,15 @@ class CardRepository(private val store: CardAttributeStore) {
         versionTag: Uuid?,
         priority: Int,
         circleIds: List<String> = emptyList(),
-    ): Boolean {
+    ): ProfileWriteResponse? =
         try {
             store.save(data, visibility, id, versionTag, priority, circleIds)
         } catch (e: ClientException) {
             if (!e.isUnknownCardType()) throw e
             Logger.i(tag = "CardRepository") { "server has no profile_card type; keeping the home page design only" }
             typeUnsupported = true
-            return false
+            null
         }
-        return true
-    }
 }
 
 sealed interface AddCircleCardResult {
@@ -165,3 +167,6 @@ private fun ClientException.isUnknownCardType() =
         it.contains("Unknown profile attribute type", ignoreCase = true) &&
             it.contains(ProfileAttributeTypes.PROFILE_CARD, ignoreCase = true)
     }
+
+private fun ClientException.isCircleIdsNeedConnected() =
+    message.orEmpty().contains("CircleIds can only be set when visibility is Connected", ignoreCase = true)
