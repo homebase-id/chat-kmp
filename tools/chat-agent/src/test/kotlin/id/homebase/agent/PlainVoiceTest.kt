@@ -43,7 +43,7 @@ class PlainVoiceTest {
         assertEquals("job 1 failed: boom", jobText(1, BrainOutcome.Failed("boom"), ""))
         assertEquals("job 1 done (no output)", jobText(1, BrainOutcome.Output(" "), ""))
         assertEquals("all done", jobText(1, BrainOutcome.Output("🤖 all done"), ""))
-        val runner = JobRunner(CoroutineScope(Dispatchers.Default), RunLimiter(null, 1, 1), prefix = "")
+        val runner = JobRunner(CoroutineScope(Dispatchers.Default), JobLedger(null, 1), prefix = "")
         assertEquals("no jobs", runner.status())
         assertEquals("no jobs", runner.cancel(null))
     }

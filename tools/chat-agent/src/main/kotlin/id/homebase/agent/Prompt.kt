@@ -16,6 +16,7 @@ fun buildPrompt(
     context: String? = null,
     nonce: String = newNonce(),
     attachments: List<Attachment> = emptyList(),
+    omittedParents: Set<kotlin.uuid.Uuid> = emptySet(),
 ): String = buildString {
     val h = "untrusted_history_$nonce"
     val t = "untrusted_triggers_$nonce"
@@ -47,6 +48,7 @@ fun buildPrompt(
     appendLine("<$t> (${if (triggers.size == 1) "the message" else "the messages, oldest first"} that addressed you)")
     triggers.forEach { trigger ->
         appendLine("[${trigger.author}] ${clean(trigger.display.truncateToCodePoints(MESSAGE_CODEPOINTS))}")
+        if (trigger.id in omittedParents) appendLine("[replied-to message from a non-operator omitted]")
         attachments.withIndex().filter { !it.value.parent && it.value.msgId == trigger.id }.forEach { (i, a) ->
             describeAttachment(i + 1, a, ::clean).forEach(::appendLine)
         }

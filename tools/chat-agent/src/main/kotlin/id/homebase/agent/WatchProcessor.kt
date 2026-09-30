@@ -87,7 +87,7 @@ class WatchProcessor(
         }
 
     private suspend fun runJobCommand(runner: JobRunner, msg: ChatMsg, command: Pair<String, Int?>, results: MutableMap<Uuid, String>) {
-        val text = if (command.first == "status") runner.status() else runner.cancel(command.second) { jobConversation ->
+        val text = if (command.first == "status") runner.status(effectiveSender(msg).toString()) else runner.cancel(command.second) { jobConversation ->
             jobConversation == msg.conversationId ||
                 (trust.isListed(msg.sender) && allow.info(jobConversation)?.members?.contains(effectiveSender(msg)) == true)
         }
@@ -96,20 +96,27 @@ class WatchProcessor(
         finish(msg.id, "job ${command.first}", results)
     }
 
-    private suspend fun preparePrompt(sorted: List<ChatMsg>, conversation: Uuid, past: List<ChatMsg>, awayMode: Boolean): Prepared {
+    private suspend fun preparePrompt(sorted: List<ChatMsg>, conversation: Uuid, fetched: List<ChatMsg>, tier: Tier, awayMode: Boolean): Prepared {
+        val past = if (tier == Tier.OPERATOR) trust.history(fetched, allow.info(conversation)?.members, isNoteToSelf(conversation), conversation) else fetched
+        val ids = sorted.map { it.id }.toSet()
+        val keptIds = past.map { it.id }.toSet()
+        val fetchedIds = fetched.map { it.id }.toSet()
+        val omitted = if (tier != Tier.OPERATOR) emptySet() else sorted.filter { t ->
+            replyParentId(t.rawContent)?.let { it !in ids && it !in keptIds && it in fetchedIds } == true
+        }.map { it.id }.toSet()
         val attachments = loadAttachments(sorted, past)
-        return Prepared(buildPrompt(sorted, past, awayMode, header(conversation), context(conversation), attachments = attachments), attachments)
+        return Prepared(buildPrompt(sorted, past, awayMode, header(conversation), context(conversation), attachments = attachments, omittedParents = omitted), attachments)
     }
 
     private suspend fun submitJob(
         runner: JobRunner,
         sorted: List<ChatMsg>,
         conversation: Uuid,
-        authors: Set<String>,
+        operators: Set<String>,
         done: (String) -> Unit,
     ) {
         val prepared = try {
-            preparePrompt(sorted, conversation, trust.history(history(conversation), conversation), awayMode = false)
+            preparePrompt(sorted, conversation, history(conversation), Tier.OPERATOR, awayMode = false)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -118,7 +125,7 @@ class WatchProcessor(
         }
         var produced = emptyList<OutFile>()
         runner.submit(
-            conversation, authors,
+            conversation, operators,
             announce = { safeReply(conversation, it) },
             deliver = { safeReply(conversation, it, produced) },
             work = { brain(prepared.prompt, Tier.OPERATOR, prepared.attachments).also { produced = (it as? BrainOutcome.Output)?.files.orEmpty() } },
@@ -171,20 +178,35 @@ class WatchProcessor(
     }
 
     private suspend fun run(group: List<ChatMsg>, results: MutableMap<Uuid, String>) {
-        val sorted = group.sortedBy { it.userDate }
+        val conversation = group.first().conversationId
+        val members = allow.info(conversation)?.members
+        val (operatorTriggers, lockedTriggers) = group.partition {
+            trust.tier(members, isNoteToSelf(conversation), setOf(it.sender), conversation) == Tier.OPERATOR
+        }
+        if (operatorTriggers.isNotEmpty()) runTier(operatorTriggers, Tier.OPERATOR, results)
+        if (lockedTriggers.isNotEmpty()) runTier(lockedTriggers, Tier.LOCKED, results)
+    }
+
+    private suspend fun runTier(group: List<ChatMsg>, tier: Tier, results: MutableMap<Uuid, String>) {
+        var sorted = group.sortedBy { it.userDate }
         val conversation = sorted.first().conversationId
+        fun done(msgs: List<ChatMsg>, result: String) = msgs.forEach { store.add(it.id); finish(it.id, result, results) }
+        if (tier == Tier.OPERATOR && jobs != null) {
+            val (ok, capped) = sorted.partition { jobs.canRun(effectiveSender(it).toString()) }
+            capped.map { effectiveSender(it).toString() }.distinct().forEach { op -> jobs.refuse(op) { safeReply(conversation, it) } }
+            done(capped, "skip: job limit")
+            if (ok.isEmpty()) return
+            sorted = ok
+            val operators = ok.map { effectiveSender(it).toString() }.toSet()
+            return submitJob(jobs, sorted, conversation, operators) { done(sorted, it) }
+        }
         val authors = sorted.map { it.author.toString() }.toSet()
-        val tier = trust.tier(allow.info(conversation)?.members, isNoteToSelf(conversation), sorted.map(::effectiveSender).toSet(), conversation)
-        fun done(result: String) = sorted.forEach { store.add(it.id); finish(it.id, result, results) }
-        if (tier == Tier.OPERATOR && jobs != null) return submitJob(jobs, sorted, conversation, authors, ::done)
         mutex.withLock {
-            if (!limiter.allows(authors)) return done("skip: rate limited")
+            if (!limiter.allows(authors)) return done(sorted, "skip: rate limited")
             limiter.record(authors)
             val outcome = try {
-                val fetched = history(conversation)
-                val past = if (tier == Tier.OPERATOR) trust.history(fetched, conversation) else fetched
                 val awayMode = away.on && allow.delegate && !isNoteToSelf(conversation)
-                val prepared = preparePrompt(sorted, conversation, past, awayMode)
+                val prepared = preparePrompt(sorted, conversation, history(conversation), tier, awayMode)
                 brain(prepared.prompt, tier, prepared.attachments)
             } catch (e: CancellationException) {
                 throw e
@@ -193,7 +215,7 @@ class WatchProcessor(
             }
             val files = (outcome as? BrainOutcome.Output)?.files.orEmpty()
             val text = brainReply(outcome, config.replyPrefix)
-                ?: if (files.isNotEmpty()) config.replyPrefix else return done("silent")
+                ?: if (files.isNotEmpty()) config.replyPrefix else return done(sorted, "silent")
             val failed = outcome is BrainOutcome.Failed
             val attempt = (sorted.maxOf { attempts[it.id] ?: 0 }) + 1
             val settled = if (failed && attempt < MAX_ATTEMPTS) false else safeReply(conversation, text, files) || attempt >= MAX_ATTEMPTS
@@ -201,7 +223,7 @@ class WatchProcessor(
                 sorted.forEach { attempts[it.id] = attempt; pending[it.id] = it; results[it.id] = "retry" }
                 log("${sorted.first().id} retry after attempt $attempt: ${(outcome as? BrainOutcome.Failed)?.reason ?: "send failed"}")
             } else {
-                done(if (failed) "failed" else "replied")
+                done(sorted, if (failed) "failed" else "replied")
             }
         }
     }

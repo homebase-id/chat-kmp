@@ -72,30 +72,40 @@ class TrustPolicy(private val config: AgentConfig, private val self: OdinId) {
 
     fun isRoom(conversation: Uuid?) = conversation != null && conversation in config.operatorRooms
 
-    fun trusted(conversation: Uuid?, members: List<OdinId>?): Set<OdinId> =
-        if (isRoom(conversation)) members.orEmpty().toSet() + self else listed
-
     fun isListed(sender: OdinId?) = (sender ?: self) in listed
 
     fun isOperator(sender: OdinId?, conversation: Uuid, members: List<OdinId>?): Boolean {
         val who = sender ?: self
-        return who in listed || (isRoom(conversation) && who in trusted(conversation, members))
+        return who in listed || (isRoom(conversation) && members?.contains(who) == true)
     }
 
-    // senders are server-set (senderOdinId, self when null), never originalAuthor
-    fun tier(members: List<OdinId>?, noteToSelf: Boolean, senders: Set<OdinId>, conversation: Uuid? = null): Tier {
-        if (config.operatorBrain == null) return Tier.LOCKED
-        if (isRoom(conversation)) {
-            return if (members != null && senders.all { it in trusted(conversation, members) }) Tier.OPERATOR else Tier.LOCKED
-        }
-        if (config.operators.isEmpty() || !senders.all { it in listed }) return Tier.LOCKED
-        if (noteToSelf) return Tier.OPERATOR
+    // every possible author here is an operator, so the operator prompt may carry the whole history
+    fun fullyTrusted(members: List<OdinId>?, noteToSelf: Boolean, conversation: Uuid? = null): Boolean {
+        if (isRoom(conversation)) return members != null
+        if (config.operators.isEmpty()) return false
+        if (noteToSelf) return true
         val others = members?.filter { it != self }.orEmpty()
-        return if (others.isNotEmpty() && others.all { it in config.operators }) Tier.OPERATOR else Tier.LOCKED
+        return others.isNotEmpty() && others.all { it in config.operators }
     }
 
-    fun history(history: List<ChatMsg>, conversation: Uuid? = null): List<ChatMsg> =
-        if (isRoom(conversation)) history else history.filter { it.sender.let(::isListed) }
+    // sender is server-set (senderOdinId; null = own file), never originalAuthor
+    fun isOperatorSender(sender: OdinId?, members: List<OdinId>?, noteToSelf: Boolean, conversation: Uuid? = null): Boolean {
+        val full = fullyTrusted(members, noteToSelf, conversation)
+        if (sender == null) return full
+        if (sender in config.operators) return true
+        if (sender == self) return full
+        return isRoom(conversation) && members?.contains(sender) == true
+    }
+
+    fun tier(members: List<OdinId>?, noteToSelf: Boolean, senders: Set<OdinId?>, conversation: Uuid? = null): Tier =
+        if (config.operatorBrain != null && senders.all { isOperatorSender(it, members, noteToSelf, conversation) }) Tier.OPERATOR else Tier.LOCKED
+
+    fun history(history: List<ChatMsg>, members: List<OdinId>?, noteToSelf: Boolean, conversation: Uuid? = null): List<ChatMsg> = when {
+        !fullyTrusted(members, noteToSelf, conversation) ->
+            history.filter { it.sender != null && it.sender != self && isOperatorSender(it.sender, members, noteToSelf, conversation) }
+        isRoom(conversation) -> history
+        else -> history.filter { isListed(it.sender) }
+    }
 }
 
 fun tierBanner(config: AgentConfig): List<String> = buildList {
@@ -103,7 +113,7 @@ fun tierBanner(config: AgentConfig): List<String> = buildList {
     if (config.operatorBrain == null) {
         add("tiers: locked only (no operatorBrain)")
     } else {
-        add("WARNING: operator tier active: operators=${config.operators.joinToString(",")} cwd=${config.operatorCwd ?: "(inherited)"}; operatorBrain runs as background jobs (timeout=${config.operatorTimeoutMs / 60_000}m, maxJobsPerDay=${config.maxJobsPerDay}) with full env in operator rooms")
+        add("WARNING: operator tier active: operators=${config.operators.joinToString(",")} cwd=${config.operatorCwd ?: "(inherited)"}; operatorBrain runs as background jobs (timeout=${config.operatorTimeoutMs / 60_000}m, maxJobsPerDay=${config.maxJobsPerDay} per operator); operators get the operator brain (full env) for their own messages in EVERY allowed conversation, DMs and mixed groups included; in a mixed group its history holds only operator-authored messages")
         if (config.operatorRooms.isNotEmpty()) {
             config.operatorRooms.forEach { room ->
                 val members = config.allowlist.info(room)?.members

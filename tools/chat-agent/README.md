@@ -87,12 +87,12 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 |---|---|---|
 | nickname | `@nick` anywhere or first word | quagmire |
 | brain | shell command; prompt on stdin, stdout is the reply. Default is the locked claude (no tools, no MCP, no settings) | locked `claude -p --model haiku ...` |
-| operators | comma list of odinIds trusted for the operator tier | none |
-| operatorBrain | any shell command for operator rooms (full env); unset = no privileged tier | none |
-| operatorRooms | comma list of conversation uuids where EVERY current member gets the operator tier (membership re-read on each discovery; history is unfiltered there). Also list the room in `allowConversations` | none |
+| operators | comma list of odinIds. A message SENT by one of them gets the operator brain in any allowed conversation (DM, mixed group, anything); alone this is enough, `operatorRooms` is optional | none |
+| operatorBrain | any shell command for operator-tier messages (full env); unset = no privileged tier, everyone is locked | none |
+| operatorRooms | comma list of conversation uuids where EVERY current member gets the operator tier (optional extra; membership re-read on each discovery; history is unfiltered there). Also list the room in `allowConversations` | none |
 | operatorCwd | working dir of operatorBrain | inherited |
 | operatorTimeout | kill an operator job (whole process group) after this long: `90s`, `30m`, `2h`; anything else is a startup error | 30m |
-| maxJobsPerDay | operator jobs per day (separate from `maxRunsPerDay`) | 20 |
+| maxJobsPerDay | operator jobs per day PER OPERATOR (keyed by the server-set sender, persisted in `jobs.txt`; separate from `maxRunsPerDay`) | 20 |
 | bot | true for a bot identity | false |
 | owner | odinId allowed to summon the bot | none |
 | allowConversations | `self`, `member` (not for `me`), or comma list of uuids | `self` (bot: `member`) |
@@ -217,13 +217,21 @@ Every chat member is untrusted input to the brain. Two tiers:
   and conversation title/members are passed inside `<untrusted_*_<random nonce>>` blocks (fresh nonce per prompt, so chat text cannot close a block). Replies have any leading robot emoji or spoofed
   "X's AI assistant:" stripped before the real prefix is added. `watch` logs a WARNING at startup if `brain`
   is not the locked default. Profile dir is 700, files inside 600.
-- Operator (opt-in): `operators=` + `operatorBrain=`. `operatorBrain` runs in `operatorCwd` with the full
-  environment, only when every trigger author is an operator (or this identity) AND every other member of the
-  conversation is an operator (a DM, an all-operator group, or note-to-self). One non-operator member, or a
-  non-operator trigger coalesced into the same run, keeps the whole run locked. History given to the operator
-  brain contains only operator/own messages. Identity is the server-set `senderOdinId`, never `originalAuthor`.
+- Operator (opt-in): `operators=` + `operatorBrain=` (`operators` alone is enough). The tier follows the SENDER: a
+  message whose server-set `senderOdinId` (never `originalAuthor`, never a null sender outside note-to-self) is a
+  listed operator gets `operatorBrain` (full env, `operatorCwd`) in any allowed conversation, DMs and mixed groups
+  included. Anyone else gets the locked `brain`, as before. Text written by a non-operator never reaches the
+  operator brain: in a room that is not fully trusted (a DM with an operator, an all-operator group, note-to-self
+  and `operatorRooms` are fully trusted) the operator prompt's history holds ONLY operator-authored messages, with
+  no other members' messages and none of this bot's own earlier replies (they may have been produced from
+  non-operators' text). A replied-to message or attachment from a non-operator is not passed either; the prompt only
+  says `[replied-to message from a non-operator omitted]`. The room title and member list stay inside the untrusted
+  block. In one poll, an operator's triggers and everyone else's in the same conversation run separately: one
+  operator job and one locked run, neither downgraded or dropped because of the other. Residual: a non-operator can
+  still influence an operator run indirectly, for example by editing a message an operator later quotes in their own
+  text, and only the bot's own replies and other members' messages are filtered, not what an operator pastes.
 - Operator rooms (`operatorRooms=<conversation uuid,...>`, needs `operatorBrain`): in a listed room every current
-  member is an operator, with no `operators=` entry needed, and the history is passed unfiltered. The same person in any
+  member is an operator, with no `operators=` entry needed (an optional extra on top of `operators=`), and the history is passed unfiltered. The same person in any
   other conversation is a normal locked-tier user, and conversations not in `allowConversations` are ignored (an explicit
   list turns member mode off, so unknown DMs are not derived). `watch` prints each room with its member count at startup
   plus `WARNING: group membership grants machine access`: whoever can add people to that group can run commands on this
@@ -250,8 +258,8 @@ conversation gets the brain output (truncated to 1500 characters, keeping the EN
 `🤖 job n failed: ...`. The job is killed with all its child processes after `operatorTimeout`.
 Operators (in a conversation that passes the allowlist) can send `@<nick> status` (running job, queue) and
 `@<nick> cancel` (or `@<nick> cancel <n>`); from anyone else these are ordinary chat text. A job can be cancelled only from
-the conversation that started it (or by a listed `operators=` identity who is a member of that conversation). Over
-`maxJobsPerDay` the agent answers `🤖 daily job limit reached`. Jobs do not count against `maxRunsPerHour` /
+the conversation that started it (or by a listed `operators=` identity who is a member of that conversation). `maxJobsPerDay` is a per-operator budget: one operator reaching it does not block another. The capped operator gets one
+`🤖 your daily job limit (n) is reached` per day and is ignored after that; `@<nick> status` shows their own `your jobs today: used/limit`. Jobs do not count against `maxRunsPerHour` /
 `maxRunsPerDay`. Queued and running jobs are not restarted after a restart of `watch`: each affected conversation gets
 `restarted: job n was dropped, please send the request again` (tracked in `jobs-pending.txt`). A failed job's message
 is one line, stripped of robot-emoji spoofing and cut at 120 characters. `operatorBrain` is any command (prompt on stdin, reply on

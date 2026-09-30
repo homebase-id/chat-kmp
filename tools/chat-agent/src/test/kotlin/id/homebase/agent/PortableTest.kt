@@ -74,9 +74,9 @@ class PortableTest {
         TrustPolicy(config, self).tier(config.allowlist.info(conversation)?.members, false, senders.toSet(), conversation)
 
     @Test
-    fun operatorMissingFromRoomMemberListIsLocked() {
+    fun listedOperatorNotInRoomMemberListStillGetsOperatorTier() {
         val c = roomConfig(operators = setOf(owner, stranger))
-        assertEquals(Tier.LOCKED, tier(c, room, stranger))
+        assertEquals(Tier.OPERATOR, tier(c, room, stranger))
         assertEquals(Tier.OPERATOR, tier(c, room, owner))
     }
 
@@ -117,8 +117,8 @@ class PortableTest {
         val c = roomConfig()
         fun m(sender: OdinId, t: String) = ChatMsg(Uuid.random(), room, sender, t, 1L, sender = sender)
         val history = listOf(m(member, "a"), m(stranger, "b"), m(self, "c"))
-        assertEquals(listOf("a", "b", "c"), TrustPolicy(c, self).history(history, room).map { it.text })
-        assertEquals(listOf("c"), TrustPolicy(c, self).history(history, other).map { it.text })
+        assertEquals(listOf("a", "b", "c"), TrustPolicy(c, self).history(history, c.allowlist.info(room)?.members, false, room).map { it.text })
+        assertEquals(emptyList(), TrustPolicy(c, self).history(history, c.allowlist.info(other)?.members, false, other).map { it.text })
         assertTrue(TrustPolicy(c, self).isOperator(member, room, c.allowlist.info(room)?.members))
         assertFalse(TrustPolicy(c, self).isOperator(member, other, c.allowlist.info(other)?.members))
     }
@@ -179,7 +179,7 @@ class PortableTest {
         }
     }
 
-    private fun runner(journal: File? = null) = JobRunner(CoroutineScope(Dispatchers.Default), RunLimiter(null, Int.MAX_VALUE, 10), prefix = "", journal = journal)
+    private fun runner(journal: File? = null) = JobRunner(CoroutineScope(Dispatchers.Default), JobLedger(null, 10), prefix = "", journal = journal)
 
     @Test
     fun jobFailureMessageIsSanitisedTruncatedOneLine() = runBlocking<Unit> {

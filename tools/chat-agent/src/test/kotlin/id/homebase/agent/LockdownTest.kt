@@ -37,7 +37,7 @@ class LockdownTest {
         assertEquals(Tier.OPERATOR, tier(cfg(), listOf(self, op1, op2), setOf(op2)))
 
     @Test
-    fun operatorInMixedGroupIsLocked() = assertEquals(Tier.LOCKED, tier(cfg(), listOf(self, op1, rando), setOf(op1)))
+    fun operatorInMixedGroupGetsOperatorTier() = assertEquals(Tier.OPERATOR, tier(cfg(), listOf(self, op1, rando), setOf(op1)))
 
     @Test
     fun nonOperatorAnywhereIsLocked() {
@@ -63,13 +63,14 @@ class LockdownTest {
     }
 
     @Test
-    fun unknownMembersIsLocked() = assertEquals(Tier.LOCKED, tier(cfg(), null, setOf(op1)))
+    fun unknownMembersStillGivesOperatorTierToAnOperatorSender() = assertEquals(Tier.OPERATOR, tier(cfg(), null, setOf(op1)))
 
     @Test
     fun historyFilterDropsNonOperatorText() {
         fun m(sender: OdinId?, t: String) = ChatMsg(Uuid.random(), note, sender, t, 1L, sender = sender)
-        val kept = TrustPolicy(cfg(), self).history(listOf(m(op1, "a"), m(rando, "b"), m(null, "c"), m(self, "d")))
-        assertEquals(listOf("a", "c", "d"), kept.map { it.text })
+        val all = listOf(m(op1, "a"), m(rando, "b"), m(null, "c"), m(self, "d"))
+        assertEquals(listOf("a", "c", "d"), TrustPolicy(cfg(), self).history(all, listOf(self, op1), false).map { it.text })
+        assertEquals(listOf("a"), TrustPolicy(cfg(), self).history(all, listOf(self, op1, rando), false).map { it.text })
     }
 
     @Test

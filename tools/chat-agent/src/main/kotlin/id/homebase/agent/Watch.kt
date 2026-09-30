@@ -58,7 +58,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     val timings = PollTimings()
     val previews = config.previewsFor(session)
     val jobs = config.operatorBrain?.let {
-        JobRunner(CoroutineScope(SupervisorJob(coroutineContext.job)), RunLimiter(File(dir, "jobs.txt"), Int.MAX_VALUE, config.maxJobsPerDay), ::log, prefix = config.replyPrefix, journal = File(dir, "jobs-pending.txt"))
+        JobRunner(CoroutineScope(SupervisorJob(coroutineContext.job)), JobLedger(File(dir, "jobs.txt"), config.maxJobsPerDay), ::log, prefix = config.replyPrefix, journal = File(dir, "jobs-pending.txt"))
     }
     val processor = WatchProcessor(
         config = config,

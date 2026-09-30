@@ -41,7 +41,7 @@ class JobsTest {
             val config = AgentConfig(allowlist = allow, operators = setOf(op), operatorBrain = "x", maxJobsPerDay = maxJobs)
             harness = TestHarness(
                 config, identity = self.toString(),
-                jobs = JobRunner(scope, RunLimiter(null, Int.MAX_VALUE, maxJobs), prefix = ""),
+                jobs = JobRunner(scope, JobLedger(null, maxJobs), prefix = ""),
                 brainFn = { p, t, _ -> if (t == Tier.OPERATOR) { started += p; operatorWork(p) } else BrainOutcome.Output("pong") },
             )
         }
@@ -131,12 +131,12 @@ class JobsTest {
         val gate = CompletableDeferred<Unit>()
         val r = rig { gate.await(); BrainOutcome.Output("ok") }
         r.say(dm, op, "@quagmire status")
-        assertEquals("no jobs", r.texts().last())
+        assertEquals("no jobs; your jobs today: 0/10", r.texts().last())
         r.say(dm, op, "@quagmire a")
         r.say(dm, op, "@quagmire b")
         until("started") { r.started.size == 1 }
         r.say(dm, op, "@quagmire status")
-        assertEquals("job 1 running for 0m; queued: 2", r.texts().last())
+        assertEquals("job 1 running for 0m; queued: 2; your jobs today: 2/10", r.texts().last())
         gate.complete(Unit)
     }
 
@@ -160,7 +160,7 @@ class JobsTest {
         r.say(dm, op, "@quagmire one")
         until("first done") { "done" in r.texts() }
         r.say(dm, op, "@quagmire two")
-        assertEquals("daily job limit reached", r.texts().last())
+        assertEquals("your daily job limit (1) is reached", r.texts().last())
         assertEquals(1, r.started.size)
     }
 
