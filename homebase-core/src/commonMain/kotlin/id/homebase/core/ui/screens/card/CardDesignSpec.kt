@@ -23,7 +23,7 @@ object CardDesignSpecs {
     val SOCIALS_STYLES = listOf("glyphs", "bar", "wordmark", "handles")
     val BLOCK_KINDS = listOf("chat", "links", "moments", "posts")
 
-    // Only what each odin-js layout visibly honours: poster draws no portrait and no accent; collage's page ignores block order.
+    // Rule: an option is listed when the design's card or page draws it with the preset's defaults (poster draws no portrait and no accent).
     private val specs = listOf(
         CardDesignSpec(
             CardDesign.POSTER,
@@ -39,7 +39,10 @@ object CardDesignSpecs {
         ),
         CardDesignSpec(
             CardDesign.COLLAGE,
-            setOf(CardOption.DISPLAY_FONT, CardOption.TEXT_FONT, CardOption.PORTRAIT_SHAPE, CardOption.SOCIALS_STYLE),
+            setOf(
+                CardOption.ACCENT, CardOption.DISPLAY_FONT, CardOption.TEXT_FONT,
+                CardOption.PORTRAIT_SHAPE, CardOption.SOCIALS_STYLE, CardOption.BLOCK_ORDER,
+            ),
             portraitSlots = 2,
         ),
         CardDesignSpec(

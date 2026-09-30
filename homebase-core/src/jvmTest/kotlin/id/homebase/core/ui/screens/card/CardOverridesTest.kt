@@ -5,6 +5,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -16,7 +18,7 @@ class CardOverridesTest {
     private val everything = CardOverrides(
         palette = CardPalette(ground = "#112233", accent = "#ABCDEF"),
         type = CardTypeface(display = "caveat", text = "newsreader", label = "space-mono", displayCase = "upper"),
-        portraits = listOf(CardPortrait(source = "photo", shape = "square", ring = 2, tilt = -5)),
+        portraits = listOf(CardPortrait(source = "photo", shape = "square", ring = 2.0, tilt = -5.0)),
         blocks = listOf(CardBlock("posts", "row"), CardBlock("links")),
         socials = "handles",
     )
@@ -56,8 +58,50 @@ class CardOverridesTest {
     fun unknownStoredKeysAndUndecodableValuesReadAsWhatTheyCanBe() {
         val future = buildJsonObject { put("socials", "bar"); put("sparkle", "yes") }
         assertEquals(CardOverrides(socials = "bar"), CardOverrides.fromJson(future))
-        val broken = buildJsonObject { put("palette", "not an object") }
-        assertEquals(CardOverrides.EMPTY, CardOverrides.fromJson(broken))
+    }
+
+    @Test
+    fun oneUndecodableValueDropsOnlyItselfAndASaveKeepsTheSiblings() = runTest {
+        val stored = cardJson.parseToJsonElement(
+            """{"palette":"x","socials":"bar","portraits":[{"shape":"circle","tilt":2.5},"junk"],""" +
+                """"blocks":[{"presentation":"row"},{"kind":"links","presentation":7},{"kind":"posts"}]}""",
+        ).jsonObject
+        val read = CardOverrides.fromJson(stored)
+
+        assertNull(read.palette)
+        assertEquals("bar", read.socials)
+        assertEquals(listOf(CardPortrait(shape = "circle", tilt = 2.5)), read.portraits)
+        assertEquals(listOf(CardBlock("links"), CardBlock("posts")), read.blocks)
+
+        val store = FakeStore(stored)
+        assertTrue(CardRepository(store).savePublic(CardDesign.BOARD))
+        val kept = store.written.single()["overrides"]!!.jsonObject
+        assertEquals("bar", kept["socials"]!!.jsonPrimitive.content)
+        assertEquals(
+            """[{"shape":"circle","tilt":2.5}]""",
+            kept["portraits"].toString(),
+        )
+    }
+
+    private class FakeStore(overrides: kotlinx.serialization.json.JsonObject) : CardAttributeStore {
+        val written = mutableListOf<kotlinx.serialization.json.JsonObject>()
+        private val attribute = id.homebase.api.client.profile.ProfileAttribute(
+            id = kotlin.uuid.Uuid.random(),
+            type = id.homebase.api.client.profile.ProfileAttributeTypes.PROFILE_CARD,
+            versionTag = kotlin.uuid.Uuid.random(),
+            visibility = id.homebase.api.client.profile.ProfileVisibility.ANONYMOUS,
+            data = buildJsonObject { put("design", "board"); put("overrides", overrides) },
+        )
+        override suspend fun load() = listOf(attribute)
+        override suspend fun save(
+            data: kotlinx.serialization.json.JsonObject,
+            visibility: id.homebase.api.client.profile.ProfileVisibility,
+            id: kotlin.uuid.Uuid?,
+            versionTag: kotlin.uuid.Uuid?,
+            priority: Int,
+        ) {
+            written += data
+        }
     }
 
     private fun resolves(descriptor: SerialDescriptor, path: String): Boolean {
@@ -94,8 +138,8 @@ class CardOverridesTest {
         assertEquals("handles", poster.socials)
 
         val collage = everything.prunedFor(CardDesign.COLLAGE)
-        assertNull(collage.palette)
-        assertNull(collage.blocks)
+        assertEquals(CardPalette(accent = "#ABCDEF"), collage.palette)
+        assertEquals(listOf(CardBlock("posts"), CardBlock("links")), collage.blocks)
         assertEquals(listOf(CardPortrait(shape = "square"), CardPortrait()), collage.portraits)
 
         val dossier = everything.prunedFor(CardDesign.DOSSIER)

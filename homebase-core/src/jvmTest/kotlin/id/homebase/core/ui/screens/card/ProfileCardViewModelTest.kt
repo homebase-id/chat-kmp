@@ -50,6 +50,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.int
@@ -973,6 +974,50 @@ class ProfileCardViewModelTest {
         assertTrue(vm.uiState.value.overrides.isEmpty())
         assertEquals("public", host.rendered.last().audience?.kind)
         assertNull(host.rendered.last().overrides)
+    }
+
+    private class StoredCardsOverWire(private val stored: List<ProfileAttribute>, private val wire: ProfileRepositoryCardStore) : CardAttributeStore {
+        override suspend fun load() = stored
+        override suspend fun save(data: JsonObject, visibility: ProfileVisibility, id: Uuid?, versionTag: Uuid?, priority: Int) =
+            wire.save(data, visibility, id, versionTag, priority)
+    }
+
+    @Test
+    fun switchingDesignDropsOverridesTheTargetDoesNotExposeInThePayloadAndOnThePut() = runTest(dispatcher) {
+        val stored = cardAttribute(
+            ProfileCard(
+                Uuid.NIL, Uuid.NIL, CardAudience.Public, CardDesign.DOSSIER,
+                CardOverrides(
+                    palette = CardPalette(accent = "#ABCDEF"),
+                    type = CardTypeface(display = "caveat"),
+                    portraits = listOf(CardPortrait(shape = "circle")),
+                    socials = "bar",
+                ),
+            ),
+            ProfileVisibility.ANONYMOUS,
+        )
+        val wire = CardWireHarness()
+        val repository = CardRepository(StoredCardsOverWire(listOf(stored), ProfileRepositoryCardStore(wire.profileRepository())))
+        val host = FakeHost()
+        val vm = viewModel(host, FakeSource(profile + stored, cardRepository = repository))
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
+        assertEquals("#ABCDEF", host.rendered.last().overrides?.palette?.accent)
+
+        vm.onDesignSelected(CardDesign.POSTER)
+
+        val surviving = Json.parseToJsonElement("""{"type":{"display":"caveat"},"socials":"bar"}""")
+        assertEquals(CardDesign.POSTER, host.rendered.last().design)
+        val rendered = Json.parseToJsonElement(host.rendered.last().toJson()).jsonObject
+        assertEquals(surviving, rendered["overrides"])
+
+        val event = async { vm.events.first() }
+        vm.onSaveDesign()
+        event.await()
+        wire.awaitPuts(1)
+
+        val data = wire.putBodies.single().jsonObject["data"]!!.jsonObject
+        assertEquals(JsonPrimitive("poster"), data["design"])
+        assertEquals(surviving, data["overrides"])
     }
 
     @Test
