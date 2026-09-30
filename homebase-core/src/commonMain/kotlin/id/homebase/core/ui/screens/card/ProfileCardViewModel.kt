@@ -527,7 +527,7 @@ class ProfileCardViewModel(
         if (state.isCardBusy || state.isExporting) return
         _uiState.update { it.copy(isCardBusy = true) }
         viewModelScope.launch {
-            val deleted = attempt("deleting the ${card.audience} card") { source.deleteCircleCard(card) } == true
+            val deleted = attempt("deleting the ${card.audience} card") { source.deleteCircleCard(card) } != null
             _uiState.update {
                 if (deleted) it.copy(isCardBusy = false, cards = it.cards - card, selectedAudience = CardAudience.Public, previewDesign = null, previewOverrides = null)
                 else it.copy(isCardBusy = false)

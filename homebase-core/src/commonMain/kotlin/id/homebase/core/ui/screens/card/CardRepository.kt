@@ -119,15 +119,17 @@ class CardRepository(private val store: CardAttributeStore) {
         return store.delete(card.id, card.versionTag)
     }
 
+    // A false from the store means the attribute is already gone (404); only a throw is a failed delete.
     private suspend fun deleted(attribute: ProfileAttribute): Boolean =
         try {
             store.delete(attribute.id, attribute.versionTag)
+            true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.w(tag = "CardRepository", throwable = e) { "deleting the unscoped card failed" }
+            Logger.w(tag = "CardRepository", throwable = e) { "deleting the unscoped card ${attribute.id} failed" }
             false
-        }.also { if (!it) Logger.w(tag = "CardRepository") { "unscoped card ${attribute.id} was not deleted" } }
+        }
 
     private suspend fun writeCircle(card: ProfileCard, circle: CardAudience.Circle): Boolean {
         try {
