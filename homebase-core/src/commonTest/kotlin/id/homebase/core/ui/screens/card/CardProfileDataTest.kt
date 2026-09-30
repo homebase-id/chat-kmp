@@ -300,7 +300,8 @@ class CardProfileDataTest {
         )
         val json = cardJson.encodeToString(CardPayload.serializer(), built)
         val root = cardJson.parseToJsonElement(json).jsonObject
-        assertEquals(setOf("design", "data"), root.keys)
+        assertEquals(setOf("design", "data", "audience"), root.keys)
+        assertEquals(JsonPrimitive("public"), root.getValue("audience").jsonObject["kind"])
         assertEquals(JsonPrimitive("poster"), root["design"])
         val data = root.getValue("data").jsonObject
         assertEquals(

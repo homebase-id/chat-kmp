@@ -61,6 +61,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonObject
 
 private const val TAG = "ProfileCard"
 
@@ -80,8 +81,15 @@ data class ProfileCardUiState(
     val isExporting: Boolean = false,
     val edges: Map<String, CardEvent.Edges> = emptyMap(),
     val isSwitchingDesign: Boolean = false,
+    val cards: List<ProfileCard> = emptyList(),
+    val selectedAudience: CardAudience = CardAudience.Public,
 ) {
-    val design: String get() = previewDesign ?: savedDesign
+    val selectedCard: ProfileCard? get() = cards.firstOrNull { it.audience == selectedAudience }
+    private val circleCard: ProfileCard? get() = selectedCard?.takeIf { it.audience is CardAudience.Circle }
+    val design: String get() = previewDesign ?: circleCard?.design ?: savedDesign
+    val overrides: JsonObject get() = selectedCard?.overrides ?: JsonObject(emptyMap())
+    val canSwitchCard: Boolean get() = cards.size > 1
+    val isCircleSelected: Boolean get() = selectedAudience is CardAudience.Circle
     val cardTopArgb: Int? get() = edges[design]?.topArgb
     val cardBottomArgb: Int? get() = edges[design]?.bottomArgb
     val canShare: Boolean get() = isCardReady && !isExporting
@@ -301,6 +309,18 @@ class ProfileCardViewModel(
         _uiState.update { it.copy(isSwitchingDesign = true) }
     }
 
+    fun onCardSelected(audience: CardAudience) {
+        val state = _uiState.value
+        if (audience == state.selectedAudience || state.cards.none { it.audience == audience }) return
+        designSwitchJob?.cancel()
+        _cover.value = null
+        _uiState.update { it.copy(selectedAudience = audience, previewDesign = null) }
+        designSwitchJob = viewModelScope.launch {
+            coverOutgoingDesign()
+            render()
+        }
+    }
+
     fun onPreviewDiscarded() {
         if (_uiState.value.previewDesign == null) return
         _uiState.update { it.copy(previewDesign = null) }
@@ -511,11 +531,17 @@ class ProfileCardViewModel(
         val photo = attributes.visiblePhoto(ProfileVisibility.ANONYMOUS)?.photoImageData()
         content = CardContent(odinId, attributes, defaults, photo)
         photo?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE) }
-        val cardDesign = attributes.profileCards().publicCard()?.design?.takeIf { it in CardDesign.all }
+        val stored = attributes.profileCards()
+        val cardDesign = stored.publicCard()?.design?.takeIf { it in CardDesign.all }
         val pending = unsavedCardDesign
         val saved = pending ?: cardDesign ?: storedDesign ?: defaults.design
         if (pending != null && cardJob?.isActive != true) writeCard(pending)
-        _uiState.update { it.copy(loadFailed = false, savedDesign = saved) }
+        val cards = listOf(stored.publicCard() ?: ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, saved)) +
+            stored.filter { it.audience is CardAudience.Circle && it.design in CardDesign.all }.sortedBy { it.priority }
+        _uiState.update {
+            val selected = it.selectedAudience.takeIf { audience -> cards.any { card -> card.audience == audience } }
+            it.copy(loadFailed = false, savedDesign = saved, cards = cards, selectedAudience = selected ?: CardAudience.Public)
+        }
         loadPosts(odinId)
         render()
     }
@@ -546,6 +572,7 @@ class ProfileCardViewModel(
                 headerSrc = content.siteDefaults.header?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE).await() },
                 tagLine = content.siteDefaults.tagLine,
                 posts = posts,
+                audience = state.selectedAudience,
             )
             if (payload != lastRendered) {
                 lastRendered = payload

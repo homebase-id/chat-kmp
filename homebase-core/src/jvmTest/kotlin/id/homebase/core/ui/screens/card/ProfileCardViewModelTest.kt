@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.profile.ProfileAttribute
+import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.common.OdinId
@@ -888,5 +889,95 @@ class ProfileCardViewModelTest {
         assertNull(decodeCardPng(""))
         assertNull(decodeCardPng("%%%"))
         assertNull(decodeCardPng(Base64.encode("GIF89a not a png at all".encodeToByteArray())))
+    }
+
+    private fun cardAttribute(card: ProfileCard, visibility: ProfileVisibility, circleId: String? = null) = ProfileAttribute(
+        id = Uuid.random(),
+        type = ProfileAttributeTypes.PROFILE_CARD,
+        versionTag = Uuid.random(),
+        visibility = visibility,
+        data = card.toData(),
+        acl = AccessControlList(
+            requiredSecurityGroup = visibility.wireValue,
+            circleIdList = circleId?.let { listOf(it) },
+        ),
+        priority = card.priority,
+    )
+
+    private val publicCardAttribute = cardAttribute(
+        ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, CardDesign.BOARD),
+        ProfileVisibility.ANONYMOUS,
+    )
+
+    private fun circleCardAttribute(id: String, label: String, design: String, priority: Int, overrides: JsonObject = JsonObject(emptyMap())) =
+        cardAttribute(
+            ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Circle(id, label), design, overrides, priority),
+            ProfileVisibility.CONNECTED,
+            id,
+        )
+
+    @Test
+    fun aSinglePublicCardShowsPublicAndIsNotSwitchable() = runTest(dispatcher) {
+        val host = FakeHost()
+        val vm = viewModel(host, FakeSource(profile + publicCardAttribute))
+
+        val state = vm.uiState.value
+        assertEquals(CardAudience.Public, state.selectedAudience)
+        assertEquals(1, state.cards.size)
+        assertFalse(state.canSwitchCard)
+        assertEquals("public", host.rendered.last().audience?.kind)
+        assertNull(host.rendered.last().audience?.label)
+    }
+
+    @Test
+    fun noStoredCardStillShowsPublic() = runTest(dispatcher) {
+        val vm = viewModel(FakeHost(), FakeSource(profile))
+
+        assertEquals(listOf<CardAudience>(CardAudience.Public), vm.uiState.value.cards.map { it.audience })
+        assertFalse(vm.uiState.value.canSwitchCard)
+    }
+
+    @Test
+    fun switchingCardChangesAudienceDesignAndOverrides() = runTest(dispatcher) {
+        val host = FakeHost()
+        val friends = CardAudience.Circle("c1", "Friends")
+        val overrides = JsonObject(mapOf("accent" to JsonPrimitive("#ff0000")))
+        val vm = viewModel(
+            host,
+            FakeSource(profile + publicCardAttribute + circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0, overrides)),
+        )
+        assertTrue(vm.uiState.value.canSwitchCard)
+        assertEquals(CardDesign.BOARD, vm.uiState.value.design)
+        assertTrue(vm.uiState.value.overrides.isEmpty())
+
+        vm.onCardSelected(friends)
+
+        assertEquals(friends, vm.uiState.value.selectedAudience)
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
+        assertEquals(overrides, vm.uiState.value.overrides)
+        assertEquals(CardDesign.BOARD, vm.uiState.value.savedDesign)
+        val payload = host.rendered.last()
+        assertEquals(CardDesign.DOSSIER, payload.design)
+        assertEquals("circle", payload.audience?.kind)
+        assertEquals("Friends", payload.audience?.label)
+        assertTrue(payload.toJson().contains(""""audience":{"kind":"circle","label":"Friends"}"""))
+
+        vm.onCardSelected(CardAudience.Public)
+
+        assertEquals(CardDesign.BOARD, vm.uiState.value.design)
+        assertTrue(vm.uiState.value.overrides.isEmpty())
+        assertEquals("public", host.rendered.last().audience?.kind)
+    }
+
+    @Test
+    fun selectingAnUnknownAudienceIsIgnored() = runTest(dispatcher) {
+        val host = FakeHost()
+        val vm = viewModel(host, FakeSource(profile + publicCardAttribute))
+        val renders = host.rendered.size
+
+        vm.onCardSelected(CardAudience.Circle("nope", "Nope"))
+
+        assertEquals(CardAudience.Public, vm.uiState.value.selectedAudience)
+        assertEquals(renders, host.rendered.size)
     }
 }
