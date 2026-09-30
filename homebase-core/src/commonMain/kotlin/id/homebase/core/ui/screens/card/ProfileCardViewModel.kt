@@ -93,7 +93,7 @@ data class ProfileCardUiState(
     val cardTopArgb: Int? get() = edges[design]?.topArgb
     val cardBottomArgb: Int? get() = edges[design]?.bottomArgb
     val canShare: Boolean get() = isCardReady && !isExporting
-    val canSaveDesign: Boolean get() = previewDesign != null && previewDesign != savedDesign && !isSavingDesign
+    val canSaveDesign: Boolean get() = !isCircleSelected && previewDesign != null && previewDesign != savedDesign && !isSavingDesign
 }
 
 sealed interface ProfileCardEvent {
@@ -292,8 +292,11 @@ class ProfileCardViewModel(
         }
     }
 
+    // Circle cards are edited by their own flow; the design editor only ever writes the public card.
+    fun onEditClicked() = onCardSelected(CardAudience.Public)
+
     fun onDesignSelected(design: String) {
-        if (design == _uiState.value.design) return
+        if (_uiState.value.isCircleSelected || design == _uiState.value.design) return
         _uiState.update { it.copy(previewDesign = design) }
         designSwitchJob?.cancel()
         designSwitchJob = viewModelScope.launch {
@@ -396,8 +399,13 @@ class ProfileCardViewModel(
         if (!_uiState.value.canShare || host == null) return
         _uiState.update { it.copy(isExporting = true) }
         viewModelScope.launch {
+            val publicPayload = if (_uiState.value.isCircleSelected) payloadFor(_uiState.value.savedDesign, CardAudience.Public) else null
             try {
                 val result = withTimeoutOrNull(EXPORT_TIMEOUT) {
+                    // Sharing always sends the public card, so a selected circle card is swapped out for the export only.
+                    if (publicPayload != null) {
+                        host.events.onSubscription { host.render(publicPayload) }.first { it is CardEvent.Ready }
+                    }
                     host.events
                         .onSubscription { host.exportPng() }
                         .first { it is CardEvent.Png || it is CardEvent.Error }
@@ -412,6 +420,7 @@ class ProfileCardViewModel(
                     else -> Unit
                 }
             } finally {
+                if (publicPayload != null) lastRendered?.let(host::render)
                 _uiState.update { it.copy(isExporting = false) }
             }
         }
@@ -561,24 +570,29 @@ class ProfileCardViewModel(
     private fun render() {
         val state = _uiState.value
         _cover.update { cover -> cover?.takeIf { it.design == state.savedDesign } }
-        val content = content ?: return
+        if (content == null) return
         renderJob?.cancel()
         renderJob = viewModelScope.launch {
-            val payload = buildCardPayload(
-                odinId = content.odinId.domainName,
-                attributes = content.attributes,
-                design = state.design,
-                photoSrc = content.photo?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE).await() },
-                headerSrc = content.siteDefaults.header?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE).await() },
-                tagLine = content.siteDefaults.tagLine,
-                posts = posts,
-                audience = state.selectedAudience,
-            )
+            val payload = payloadFor(state.design, state.selectedAudience) ?: return@launch
             if (payload != lastRendered) {
                 lastRendered = payload
                 _host.value?.render(payload)
             }
         }
+    }
+
+    private suspend fun payloadFor(design: String, audience: CardAudience): CardPayload? {
+        val content = content ?: return null
+        return buildCardPayload(
+            odinId = content.odinId.domainName,
+            attributes = content.attributes,
+            design = design,
+            photoSrc = content.photo?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE).await() },
+            headerSrc = content.siteDefaults.header?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE).await() },
+            tagLine = content.siteDefaults.tagLine,
+            posts = posts,
+            audience = audience,
+        )
     }
 
     // Once per image for the ViewModel's life, so a design switch never re-encodes; failures retry on the next show.
