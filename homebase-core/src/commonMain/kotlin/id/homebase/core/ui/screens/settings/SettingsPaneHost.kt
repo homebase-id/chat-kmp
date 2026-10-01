@@ -62,6 +62,7 @@ internal data class SettingsPaneActions(
     val onOpenMoments: () -> Unit,
     val onOpenVault: () -> Unit,
     val onOpenEmail: () -> Unit,
+    val onOpenEmailModeSwitch: () -> Unit,
     val onOpenContacts: () -> Unit,
     val onNavigateToCropper: (Uuid) -> Unit,
     val onNavigateToDeveloperMenu: () -> Unit,
@@ -271,6 +272,7 @@ private fun CategoryPage(
             viewModel = koinViewModel(),
             onBackClick = onDismiss,
             onOpenEmail = actions.onOpenEmail,
+            onChangeMode = actions.onOpenEmailModeSwitch,
         )
 
         SettingsCategory.Contacts -> ContactBookSettingsScreen(

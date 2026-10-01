@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.email
 
 import id.homebase.api.client.mail.MailAppStatus
+import id.homebase.api.client.mail.MailboxMode
 import id.homebase.core.ui.screens.email.setup.EmailSetupStep
 import id.homebase.core.ui.screens.email.setup.resolveSetupStep
 import kotlin.test.Test
@@ -19,12 +20,14 @@ class EmailSetupStateMachineTest {
         mailbox: Boolean = false,
         activated: Boolean = false,
         currentKey: Uuid? = null,
+        mode: MailboxMode? = null,
     ) = MailAppStatus(
         tenantMailEnabled = true,
         driveProvisioned = true,
         mailboxProvisioned = mailbox,
         activated = activated,
         currentKeyFileUniqueId = currentKey,
+        mode = mode,
     )
 
     /**
@@ -125,5 +128,51 @@ class EmailSetupStateMachineTest {
             credentialCount = 1,
         )
         assertEquals(EmailSetupStep.NeedsDrive, step)
+    }
+
+    /** A standard mailbox has no key: once it exists, the next thing is a mail app password. */
+    @Test
+    fun aStandardMailboxSkipsTheKey() {
+        val step = resolveSetupStep(
+            hasPermissions = true,
+            driveActivated = true,
+            status = status(mailbox = true, activated = true, mode = MailboxMode.Standard),
+            credentialCount = 0,
+        )
+        assertEquals(EmailSetupStep.NeedsAppPassword, step)
+    }
+
+    @Test
+    fun aStandardMailboxWithACredentialIsComplete() {
+        val step = resolveSetupStep(
+            hasPermissions = true,
+            driveActivated = true,
+            status = status(mailbox = true, activated = true, mode = MailboxMode.Standard),
+            credentialCount = 1,
+        )
+        assertEquals(EmailSetupStep.Complete, step)
+    }
+
+    @Test
+    fun anEncryptedMailboxStillNeedsItsKey() {
+        val step = resolveSetupStep(
+            hasPermissions = true,
+            driveActivated = true,
+            status = status(mailbox = true, mode = MailboxMode.Encrypted),
+            credentialCount = 0,
+        )
+        assertEquals(EmailSetupStep.NeedsKey, step)
+    }
+
+    /** A server that predates modes only makes encrypted mailboxes. */
+    @Test
+    fun noModeMeansTheKeyIsStillNeeded() {
+        val step = resolveSetupStep(
+            hasPermissions = true,
+            driveActivated = true,
+            status = status(mailbox = true, mode = null),
+            credentialCount = 0,
+        )
+        assertEquals(EmailSetupStep.NeedsKey, step)
     }
 }

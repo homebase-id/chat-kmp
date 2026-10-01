@@ -120,6 +120,7 @@ fun EmailScreen(
 
                     EmailBody.Setup -> EmailSetupContent(
                         currentStep = setupStep,
+                        status = uiState.serverStatus,
                         uiState = setupState,
                         onAction = setupViewModel::onAction,
                         onRun = {

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.mail.MailProvider
+import id.homebase.api.client.mail.MailboxMode
 import id.homebase.core.ui.screens.email.EmailService
 import id.homebase.core.ui.screens.email.EmailStream
 import id.homebase.core.ui.screens.email.model.EmailCredentialContent
@@ -67,11 +68,13 @@ class EmailSetupViewModel(
     fun onAction(action: EmailSetupUiAction) {
         when (action) {
             EmailSetupUiAction.ErrorDismissed -> _uiState.update { it.copy(error = null) }
+            is EmailSetupUiAction.ModeChosen -> _uiState.update { it.copy(chosenMode = action.mode) }
         }
     }
 
     /**
-     * Runs setup to completion: mailbox, then key, then the first app password.
+     * Runs setup to completion: mailbox, then key (encrypted mailboxes only), then the first app
+     * password.
      *
      * One action rather than a button per step, because the steps are not choices — the order is
      * fixed by the server (no credential before a published key) and every one of them is
@@ -118,7 +121,8 @@ class EmailSetupViewModel(
     private fun workFor(step: EmailSetupStep): (suspend () -> Unit)? = when (step) {
         EmailSetupStep.NeedsMailbox -> {
             {
-                val result = mailProvider.ensureMailbox(_uiState.value.primaryEmailAddress)
+                val state = _uiState.value
+                val result = mailProvider.ensureMailbox(state.primaryEmailAddress, state.chosenMode)
                 _uiState.update { it.copy(dnsRecordsWritten = result.dnsRecordsWritten) }
             }
         }
@@ -173,10 +177,13 @@ data class EmailSetupUiState(
     val error: EmailSetupError? = null,
     /** False for manual-DNS identities: the records are instructions, not something we wrote. */
     val dnsRecordsWritten: Boolean = true,
+    /** Only matters until the mailbox exists; after that the server's status says which it is. */
+    val chosenMode: MailboxMode? = null,
 )
 
 sealed interface EmailSetupUiAction {
     data object ErrorDismissed : EmailSetupUiAction
+    data class ModeChosen(val mode: MailboxMode) : EmailSetupUiAction
 }
 
 /** Convenience for the screen: the step the server's status implies right now. */

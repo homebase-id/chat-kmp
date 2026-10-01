@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.email.setup
 
 import id.homebase.api.client.mail.MailAppStatus
+import id.homebase.api.client.mail.MailboxMode
 
 /**
  * Where setup has got to.
@@ -29,8 +30,8 @@ sealed interface EmailSetupStep {
     data object NeedsMailbox : EmailSetupStep
 
     /**
-     * The mailbox exists but has no encryption key. Mail can already arrive; it starts being
-     * encrypted the moment a key exists.
+     * An encrypted mailbox exists but has no key yet. Mail can already arrive; it starts being
+     * encrypted the moment a key exists. A standard mailbox never reaches this step.
      */
     data object NeedsKey : EmailSetupStep
 
@@ -47,8 +48,9 @@ sealed interface EmailSetupStep {
  * Resolves the current step from the five signals. Pure: no IO, no clock, no state — so it can be
  * tested exhaustively and cannot drift from what the screens show.
  *
- * The order matters and matches the server's constraints: the key comes before the app password,
- * because the server refuses to issue a credential until a certificate is published.
+ * The order matters and matches the server's constraints: for an encrypted mailbox the key comes
+ * before the app password, because the server refuses to issue a credential until a certificate is
+ * published. A standard mailbox has no key step.
  */
 fun resolveSetupStep(
     hasPermissions: Boolean,
@@ -73,7 +75,8 @@ fun resolveSetupStep(
 
     // Both halves: the certificate is published AND the keyring is on the drive. Either alone
     // would be the broken state this ordering exists to prevent.
-    !status.activated || status.currentKeyFileUniqueId == null -> EmailSetupStep.NeedsKey
+    status.mode != MailboxMode.Standard &&
+        (!status.activated || status.currentKeyFileUniqueId == null) -> EmailSetupStep.NeedsKey
 
     credentialCount == 0 -> EmailSetupStep.NeedsAppPassword
 

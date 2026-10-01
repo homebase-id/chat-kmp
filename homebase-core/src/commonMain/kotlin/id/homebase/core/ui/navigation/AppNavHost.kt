@@ -7,6 +7,8 @@ import androidx.compose.material.icons.outlined.MailOutline
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.email.EmailViewModel
 import id.homebase.core.ui.screens.email.EmailScreen
+import id.homebase.core.ui.screens.email.EmailUiAction
+import id.homebase.core.ui.screens.email.mode.EmailModeSwitchScreen
 import id.homebase.core.email.EmailPreferences
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.AnimatedVisibility
@@ -1568,6 +1570,9 @@ fun AppNavHost(
                                             onOpenMoments = openMoments,
                                             onOpenVault = openVault,
                                             onOpenEmail = openEmail,
+                                            onOpenEmailModeSwitch = {
+                                                navController.navigate(Route.EmailModeSwitch)
+                                            },
                                             onOpenContacts = openContactBook,
                                             onNavigateToCropper = { requestId ->
                                                 navController.navigate(
@@ -2128,6 +2133,20 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() },
                                     onOpenEmail = openEmail,
+                                    onChangeMode = { navController.navigate(Route.EmailModeSwitch) },
+                                )
+                            }
+                        }
+
+                        composable<Route.EmailModeSwitch> {
+                            if (isAuthenticated) {
+                                EmailModeSwitchScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                    onSwitched = {
+                                        emailViewModel.onAction(EmailUiAction.RefreshStatusClicked)
+                                        navController.popBackStack()
+                                    },
                                 )
                             }
                         }

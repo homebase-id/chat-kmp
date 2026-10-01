@@ -9,6 +9,7 @@ import id.homebase.core.ui.screens.email.EmailStream
 import id.homebase.core.ui.screens.email.model.EmailCredential
 import id.homebase.core.ui.screens.email.model.EmailKeyRef
 import id.homebase.api.client.mail.MailClientSettings
+import id.homebase.api.client.mail.MailboxMode
 import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -57,11 +58,15 @@ class EmailSecretsViewModel(
      * the screen is open.
      */
     private val _clientSettings = MutableStateFlow<MailClientSettings?>(null)
+    private val _mode = MutableStateFlow<MailboxMode?>(null)
 
     init {
         viewModelScope.launch {
-            runCatching { mailProvider.getStatus().clientSettings }
-                .onSuccess { _clientSettings.value = it }
+            runCatching { mailProvider.getStatus() }
+                .onSuccess { status ->
+                    _clientSettings.value = status.clientSettings
+                    _mode.value = status.mode
+                }
                 .onFailure { Logger.d(tag = TAG) { "mail client settings unavailable: ${it.message}" } }
         }
     }
@@ -71,8 +76,10 @@ class EmailSecretsViewModel(
         emailStream.keys,
         emailStream.currentKeyFileId,
         _revealed,
-        combine(_busy, _error, _clientSettings) { busy, error, settings -> Triple(busy, error, settings) },
-    ) { credentials, keys, currentKey, revealed, (busy, error, settings) ->
+        combine(_busy, _error, _clientSettings, _mode) { busy, error, settings, mode ->
+            ServerSide(busy, error, settings, mode)
+        },
+    ) { credentials, keys, currentKey, revealed, (busy, error, settings, mode) ->
         EmailSecretsUiState(
             credentials = credentials,
             keys = keys,
@@ -81,6 +88,7 @@ class EmailSecretsViewModel(
             busyIds = busy,
             error = error,
             clientSettings = settings,
+            mode = mode,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EmailSecretsUiState())
 
@@ -202,7 +210,16 @@ data class EmailSecretsUiState(
     val busyIds: Set<String> = emptySet(),
     /** Null while loading, or when this host publishes no mail hosts. */
     val clientSettings: MailClientSettings? = null,
+    /** Null while loading, or from a server that predates the choice. */
+    val mode: MailboxMode? = null,
     val error: String? = null,
+)
+
+private data class ServerSide(
+    val busy: Set<String>,
+    val error: String?,
+    val settings: MailClientSettings?,
+    val mode: MailboxMode?,
 )
 
 sealed interface EmailSecretsUiAction {
