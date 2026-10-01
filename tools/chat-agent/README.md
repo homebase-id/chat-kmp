@@ -85,6 +85,13 @@ to the bot ignores the cooldown. If a tagged message arrives in the same poll, t
 The per-author hourly and daily caps still apply, and a listed room must also be allowed by `allowConversations`.
 Ignored (with a warning) for `me` and for profiles without `bot=true`.
 
+Follow-ups (bot only): after the bot posts a reply in a group, an untagged, non-reply message from the same sender in that
+conversation within `followUp` (default 3 minutes) is also read, as if it might continue the exchange. The sender's tier
+follows the usual rules (operator or locked), the model may answer `PASS` to stay quiet (log `follow-up: passed in
+<conversation>`), a failed run posts nothing, and no `listenCooldown` applies. Each bot reply resets the window, which is
+per conversation and sender and kept in memory only. A tagged message or a reply to the bot in the same poll makes it a
+normal run (no `PASS`). While operator jobs are enabled, operator senders get no follow-ups. `followUp=0` disables.
+
 Loop guards (the bot has no prefix to tell its messages apart): it never triggers on its own messages
 and ignores incoming messages that start with `🤖`. The per-author hourly and daily caps are the backstop
 against bot-to-bot loops.
@@ -117,6 +124,7 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | owner | odinId allowed to summon the bot | none |
 | listenRooms | bot only: comma list of conversation uuids where untagged messages may also get a reply (locked tier, model may answer `PASS` to stay quiet); must also be allowed by `allowConversations` | none |
 | listenCooldown | minimum gap between unprompted runs in one room (`30s`, `5m`; bare number = seconds) | 60s |
+| followUp | bot only: how long after a group reply the same sender's untagged messages are read as a possible continuation (`90s`, `3m`; `0` disables) | 3m |
 | allowConversations | `self`, `member` (not for `me`), or comma list of uuids | `self` (bot: `member`) |
 | allowAuthors | comma list of odinIds who may summon | owner (bot: any member) |
 | persona | one line prepended to every brain prompt, followed by a line with the bot's odinId and where it is replying | none |

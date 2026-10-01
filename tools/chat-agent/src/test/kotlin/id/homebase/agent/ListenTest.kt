@@ -20,7 +20,7 @@ class ListenTest {
         val allow = Allowlist(setOf(room, other), if (kind == Kind.BOT) null else setOf(op), kind)
         val members = listOf(self, op, rando)
         allow.learn(listOf(ConversationInfo(room, "room", members), ConversationInfo(other, "other", members)))
-        return AgentConfig(allowlist = allow, operators = setOf(op), operatorBrain = operatorBrain, listenRooms = listen, listenCooldownMs = cooldownMs)
+        return AgentConfig(allowlist = allow, operators = setOf(op), operatorBrain = operatorBrain, listenRooms = listen, listenCooldownMs = cooldownMs, followUpMs = 0)
     }
 
     private fun harness(

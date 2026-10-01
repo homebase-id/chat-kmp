@@ -44,6 +44,7 @@ const val DEFAULT_MAX_RUNS_PER_DAY = 100
 const val DEFAULT_OPERATOR_TIMEOUT_MS = 30 * 60_000L
 const val DEFAULT_MAX_JOBS_PER_DAY = 20
 const val DEFAULT_LISTEN_COOLDOWN_MS = 60_000L
+const val DEFAULT_FOLLOW_UP_MS = 180_000L
 const val MAX_LOCKED_HISTORY = 30
 
 class Brain(val command: String, val streamJson: Boolean = command == DEFAULT_BRAIN) {
@@ -73,6 +74,7 @@ class AgentConfig(
     val operatorRooms: Set<Uuid> = emptySet(),
     val listenRooms: Set<Uuid> = emptySet(),
     val listenCooldownMs: Long = DEFAULT_LISTEN_COOLDOWN_MS,
+    val followUpMs: Long = DEFAULT_FOLLOW_UP_MS,
     val operatorCwd: String? = null,
     val operatorGroup: String? = null,
     val operatorContext: OperatorContext = OperatorContext.ALL,
@@ -229,6 +231,9 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         listenCooldownMs = str("listenCooldown")?.let {
             parseDurationMs(it) ?: throw IllegalArgumentException("invalid listenCooldown '$it': use e.g. 30s, 5m")
         } ?: DEFAULT_LISTEN_COOLDOWN_MS,
+        followUpMs = str("followUp")?.let {
+            if (it.trim() == "0") 0L else parseDurationMs(it) ?: throw IllegalArgumentException("invalid followUp '$it': use e.g. 90s, 3m, or 0 to disable")
+        } ?: DEFAULT_FOLLOW_UP_MS,
         operatorCwd = path("operatorCwd"),
         operatorGroup = str("operatorGroup"),
         operatorContext = when (str("operatorContext")?.lowercase()) { null, "all" -> OperatorContext.ALL; else -> OperatorContext.OPERATORS },

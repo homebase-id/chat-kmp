@@ -27,6 +27,7 @@ fun buildPrompt(
     timed: Boolean = false,
     historyLimit: Int = HISTORY_LIMIT,
     unprompted: Boolean = false,
+    followUp: Boolean = false,
 ): String = buildString {
     val h = "untrusted_history_$nonce"
     val t = "untrusted_triggers_$nonce"
@@ -67,6 +68,8 @@ fun buildPrompt(
     appendLine()
     val single = triggers.size == 1
     val triggerHeader = when {
+        followUp && single -> "the newest message; it does not tag you, but its sender was just talking to you"
+        followUp -> "the newest messages, oldest first; they do not tag you, but their sender was just talking to you"
         unprompted && single -> "the newest message; it does not address you"
         unprompted -> "the newest messages, oldest first; they do not address you"
         single -> "the message that addressed you"
@@ -86,7 +89,9 @@ fun buildPrompt(
     }
     appendLine("</$t>")
     appendLine()
-    if (unprompted) {
+    if (followUp) {
+        append("You were not addressed explicitly, but the sender was just talking to you. If this message continues that conversation with you, reply; otherwise output exactly $PASS_REPLY and nothing else.")
+    } else if (unprompted) {
         append("You were not addressed directly; this room is one you only listen in. Reply only if you have something genuinely useful to add or you are clearly being spoken to; otherwise output exactly $PASS_REPLY and nothing else.")
     } else {
         append("Reply concisely${if (single) "" else " with one reply covering all of them"}. If no reply is needed, output exactly $NO_REPLY.")
