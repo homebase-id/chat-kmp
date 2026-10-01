@@ -408,7 +408,9 @@ class WatchProcessor(
             val sent = if (failed && attempt < MAX_ATTEMPTS && !toolSent) false else safeReply(conversation, text, files)
             val settled = sent || attempt >= MAX_ATTEMPTS
             if (sent && !failed && config.bot && config.followUpMs > 0 && !allow.isDirect(conversation)) {
-                sorted.forEach { followUps[conversation to effectiveSender(it).toString()] = clock() + config.followUpMs }
+                val now = clock()
+                followUps.values.removeIf { it <= now }
+                sorted.forEach { followUps[conversation to effectiveSender(it).toString()] = now + config.followUpMs }
             }
             if (!settled) {
                 sorted.forEach { attempts[it.id] = attempt; pending[it.id] = it; results[it.id] = "retry" }
