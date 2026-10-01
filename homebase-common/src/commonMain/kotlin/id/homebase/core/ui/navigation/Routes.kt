@@ -140,6 +140,10 @@ sealed class Route {
     data object EmailSettings : Route()
 
     @Serializable
+    @SerialName("email-mode-switch")
+    data object EmailModeSwitch : Route()
+
+    @Serializable
     @SerialName("vault")
     data object Vault : Route()
 

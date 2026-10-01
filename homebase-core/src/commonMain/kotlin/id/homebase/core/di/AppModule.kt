@@ -8,6 +8,7 @@ import id.homebase.core.ui.screens.email.EmailService
 import id.homebase.core.ui.screens.email.EmailStream
 import id.homebase.core.config.getEmailPermissionExtensionConfig
 import id.homebase.core.ui.screens.email.settings.EmailSettingsViewModel
+import id.homebase.core.ui.screens.email.mode.EmailModeSwitchViewModel
 import id.homebase.core.ui.screens.email.EmailViewModel
 import id.homebase.core.email.EmailPreferences
 import co.touchlab.kermit.Logger
@@ -1295,6 +1296,7 @@ val appModule = module {
     viewModelOf(::EmailSetupViewModel)
     viewModelOf(::EmailSecretsViewModel)
     viewModelOf(::EmailSettingsViewModel)
+    viewModelOf(::EmailModeSwitchViewModel)
     viewModel { params ->
         VaultNoteEditorViewModel(
             sectionId = params[0],

@@ -1,6 +1,7 @@
 package id.homebase.api.client.mail
 
 import id.homebase.api.serialization.UuidSerializer
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 
@@ -18,8 +19,13 @@ data class MailAppStatus(
     val driveProvisioned: Boolean = false,
     val mailboxProvisioned: Boolean = false,
     val primaryEmailAddress: String? = null,
-    /** A public certificate is published — the server-side "email is on" signal. */
+    /**
+     * The server-side "email is on" signal: the certificate is published, or for a standard
+     * mailbox, the mailbox exists.
+     */
     val activated: Boolean = false,
+    /** Null from a server that predates the choice; every mailbox there is encrypted. */
+    val mode: MailboxMode? = null,
     /**
      * What to type into a mail app. Null when the host publishes no mail hosts, so the screen
      * shows nothing rather than a form pointing at an empty server name.
@@ -31,7 +37,23 @@ data class MailAppStatus(
     /** The drive file holding the current secret keyring, once one exists. */
     @Serializable(with = UuidSerializer::class)
     val currentKeyFileUniqueId: Uuid? = null,
-)
+) {
+    val effectiveMode: MailboxMode get() = mode ?: MailboxMode.Encrypted
+
+    /** Only before the mailbox exists, and only from a server that knows about modes. */
+    val offersModeChoice: Boolean get() = mode != null && !mailboxProvisioned
+}
+
+@Serializable
+enum class MailboxMode {
+    /** Stored encrypted to the identity's OpenPGP key; only OpenPGP clients can read it. */
+    @SerialName("encrypted")
+    Encrypted,
+
+    /** Stored as received; any mail app can read it. */
+    @SerialName("standard")
+    Standard,
+}
 
 /**
  * Hostnames, ports and username for setting up a mail app by hand — the same values the

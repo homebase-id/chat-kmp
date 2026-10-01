@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.email.setup
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -21,11 +24,16 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import id.homebase.api.client.mail.MailAppStatus
+import id.homebase.api.client.mail.MailboxMode
 import id.homebase.resources.MR
 import id.homebase.resources.email_setup_action_resume
 import id.homebase.resources.email_setup_action_start
@@ -41,6 +49,12 @@ import id.homebase.resources.email_setup_step_key
 import id.homebase.resources.email_setup_step_key_detail
 import id.homebase.resources.email_setup_step_mailbox
 import id.homebase.resources.email_setup_step_mailbox_detail
+import id.homebase.resources.email_setup_mode_encrypted
+import id.homebase.resources.email_setup_mode_encrypted_detail
+import id.homebase.resources.email_setup_mode_later
+import id.homebase.resources.email_setup_mode_standard
+import id.homebase.resources.email_setup_mode_standard_detail
+import id.homebase.resources.email_setup_mode_title
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -57,9 +71,10 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun EmailSetupContent(
     currentStep: EmailSetupStep,
+    status: MailAppStatus?,
     uiState: EmailSetupUiState,
     onAction: (EmailSetupUiAction) -> Unit,
-    onRun: () -> Unit,
+    onRun: (MailboxMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -91,14 +106,25 @@ fun EmailSetupContent(
             }
         }
 
+        val mode = setupMode(status, uiState.chosenMode)
+
+        if (status?.offersModeChoice == true) {
+            Spacer(modifier = Modifier.height(24.dp))
+            ModeChoice(
+                chosen = uiState.chosenMode,
+                enabled = uiState.runningStep == null,
+                onChoose = { onAction(EmailSetupUiAction.ModeChosen(it)) },
+            )
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
 
         // One action for the whole flow. The steps are not choices — their order is fixed by the
         // server and each one is something the user wants — so the screen runs them through and
         // reports progress, rather than asking three times.
         Button(
-            onClick = onRun,
-            enabled = uiState.runningStep == null,
+            onClick = { mode?.let(onRun) },
+            enabled = uiState.runningStep == null && mode != null,
             modifier = Modifier.fillMaxWidth(),
         ) {
             if (uiState.runningStep != null) {
@@ -134,13 +160,15 @@ fun EmailSetupContent(
             detail = stringResource(MR.string.email_setup_step_mailbox_detail),
         )
 
-        SetupStepRow(
-            step = EmailSetupStep.NeedsKey,
-            currentStep = currentStep,
-            uiState = uiState,
-            title = stringResource(MR.string.email_setup_step_key),
-            detail = stringResource(MR.string.email_setup_step_key_detail),
-        )
+        if (mode != MailboxMode.Standard) {
+            SetupStepRow(
+                step = EmailSetupStep.NeedsKey,
+                currentStep = currentStep,
+                uiState = uiState,
+                title = stringResource(MR.string.email_setup_step_key),
+                detail = stringResource(MR.string.email_setup_step_key_detail),
+            )
+        }
 
         SetupStepRow(
             step = EmailSetupStep.NeedsAppPassword,
@@ -190,6 +218,79 @@ fun EmailSetupContent(
                         Text(stringResource(MR.string.email_setup_retry))
                     }
                 }
+            }
+        }
+    }
+}
+
+/** Nothing is preselected: both kinds have real costs, so the user has to pick one. */
+@Composable
+private fun ModeChoice(
+    chosen: MailboxMode?,
+    enabled: Boolean,
+    onChoose: (MailboxMode) -> Unit,
+) {
+    Text(
+        text = stringResource(MR.string.email_setup_mode_title),
+        style = MaterialTheme.typography.titleMedium,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Column(modifier = Modifier.selectableGroup()) {
+        ModeOption(
+            title = stringResource(MR.string.email_setup_mode_standard),
+            detail = stringResource(MR.string.email_setup_mode_standard_detail),
+            selected = chosen == MailboxMode.Standard,
+            enabled = enabled,
+            onClick = { onChoose(MailboxMode.Standard) },
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        ModeOption(
+            title = stringResource(MR.string.email_setup_mode_encrypted),
+            detail = stringResource(MR.string.email_setup_mode_encrypted_detail),
+            selected = chosen == MailboxMode.Encrypted,
+            enabled = enabled,
+            onClick = { onChoose(MailboxMode.Encrypted) },
+        )
+    }
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+        text = stringResource(MR.string.email_setup_mode_later),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun ModeOption(
+    title: String,
+    detail: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick),
+        border = BorderStroke(
+            width = if (selected) 2.dp else 1.dp,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            RadioButton(selected = selected, onClick = null, enabled = enabled)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = title, style = MaterialTheme.typography.titleSmall)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = detail,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

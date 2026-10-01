@@ -53,7 +53,9 @@ import id.homebase.core.ui.screens.email.model.EmailCredential
 import id.homebase.core.ui.screens.email.model.EmailKeyRef
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import id.homebase.api.client.mail.MailboxMode
 import id.homebase.resources.MR
+import id.homebase.resources.email_secrets_standard_keys_note
 import id.homebase.resources.email_secrets_save_private_key
 import id.homebase.resources.email_secrets_save_private_key_body
 import id.homebase.resources.email_secrets_save_private_key_confirm
@@ -232,39 +234,55 @@ fun EmailSecretsUi(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-            SectionHeader(stringResource(MR.string.email_secrets_keys))
+            val standard = uiState.mode == MailboxMode.Standard
 
-            uiState.keys.forEach { key ->
-                KeyCard(
-                    key = key,
-                    isCurrent = key.uniqueId == uiState.currentKeyFileId,
-                    onCopyFingerprint = { copy(key.fingerprintHex) },
-                    onCopyPublicKey = { copy(key.publicCertificateArmored) },
-                    onCopyPrivateKey = { confirmPrivateKey = key },
-                    onSavePrivateKey = { confirmSaveKey = key },
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-            }
+            if (!standard || uiState.keys.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(16.dp))
+                SectionHeader(stringResource(MR.string.email_secrets_keys))
 
-            // Rotation lives with the keys, and asks first: new mail becomes unreadable to any
-            // mail app until the new key is imported there.
-            TextButton(
-                onClick = { confirmNewKey = true },
-                enabled = EmailSecretsViewModel.ROTATING !in uiState.busyIds && uiState.keys.isNotEmpty(),
-            ) {
-                if (EmailSecretsViewModel.ROTATING in uiState.busyIds) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Spacer(modifier = Modifier.width(8.dp))
+                if (standard) {
+                    Text(
+                        text = stringResource(MR.string.email_secrets_standard_keys_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
-                Text(stringResource(MR.string.email_secrets_new_key))
-            }
 
-            Text(
-                text = stringResource(MR.string.email_secrets_no_delete_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+                uiState.keys.forEach { key ->
+                    KeyCard(
+                        key = key,
+                        isCurrent = key.uniqueId == uiState.currentKeyFileId,
+                        onCopyFingerprint = { copy(key.fingerprintHex) },
+                        onCopyPublicKey = { copy(key.publicCertificateArmored) },
+                        onCopyPrivateKey = { confirmPrivateKey = key },
+                        onSavePrivateKey = { confirmSaveKey = key },
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                // Rotation lives with the keys, and asks first: new mail becomes unreadable to any
+                // mail app until the new key is imported there. The server refuses a key for a
+                // standard mailbox.
+                if (!standard) {
+                    TextButton(
+                        onClick = { confirmNewKey = true },
+                        enabled = EmailSecretsViewModel.ROTATING !in uiState.busyIds && uiState.keys.isNotEmpty(),
+                    ) {
+                        if (EmailSecretsViewModel.ROTATING in uiState.busyIds) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(stringResource(MR.string.email_secrets_new_key))
+                    }
+                }
+
+                Text(
+                    text = stringResource(MR.string.email_secrets_no_delete_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             uiState.error?.let { message ->
                 Spacer(modifier = Modifier.height(16.dp))

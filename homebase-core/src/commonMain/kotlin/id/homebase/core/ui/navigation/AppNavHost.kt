@@ -7,6 +7,8 @@ import androidx.compose.material.icons.outlined.MailOutline
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.email.EmailViewModel
 import id.homebase.core.ui.screens.email.EmailScreen
+import id.homebase.core.ui.screens.email.EmailUiAction
+import id.homebase.core.ui.screens.email.mode.EmailModeSwitchScreen
 import id.homebase.core.email.EmailPreferences
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.AnimatedVisibility
@@ -345,6 +347,7 @@ fun AppNavHost(
     val serverSupportsMail by emailPreferences.serverSupportsMail.collectAsStateWithLifecycle()
     val emailViewModel: EmailViewModel = koinViewModel()
     val emailUiState by emailViewModel.uiState.collectAsStateWithLifecycle()
+    val emailMailboxMode = emailUiState.serverStatus?.takeIf { it.mailboxProvisioned }?.mode
     val profileCardEnabled by koinInject<DeveloperPreferences>().profileCardEnabled.collectAsStateWithLifecycle()
     val emailUnreadCount = emailUiState.mailboxStatus
         ?.takeIf { it.available }
@@ -1568,6 +1571,9 @@ fun AppNavHost(
                                             onOpenMoments = openMoments,
                                             onOpenVault = openVault,
                                             onOpenEmail = openEmail,
+                                            onOpenEmailModeSwitch = {
+                                                navController.navigate(Route.EmailModeSwitch)
+                                            },
                                             onOpenContacts = openContactBook,
                                             onNavigateToCropper = { requestId ->
                                                 navController.navigate(
@@ -1585,6 +1591,7 @@ fun AppNavHost(
                                             },
                                         ),
                                         profileCardEnabled = profileCardEnabled,
+                                        emailMailboxMode = emailMailboxMode,
                                     )
                                 }
                             },
@@ -2128,6 +2135,22 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() },
                                     onOpenEmail = openEmail,
+                                    mailboxMode = emailMailboxMode,
+                                    onChangeMode = { navController.navigate(Route.EmailModeSwitch) },
+                                )
+                            }
+                        }
+
+                        composable<Route.EmailModeSwitch> {
+                            if (isAuthenticated) {
+                                EmailModeSwitchScreen(
+                                    viewModel = koinViewModel(),
+                                    status = emailUiState.serverStatus,
+                                    onBackClick = { navController.popBackStack() },
+                                    onSwitched = {
+                                        emailViewModel.onAction(EmailUiAction.RefreshStatusClicked)
+                                        navController.popBackStack()
+                                    },
                                 )
                             }
                         }

@@ -28,9 +28,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.FilledTonalButton
 import id.homebase.api.client.mail.MailAppStatus
+import id.homebase.api.client.mail.MailboxMode
 import id.homebase.api.client.mail.MailboxStatusResult
 import id.homebase.core.email.Thunderbird
 import id.homebase.core.email.canLaunchMailClient
@@ -43,6 +45,8 @@ import id.homebase.resources.email_health_missing_record
 import id.homebase.resources.email_health_ok
 import id.homebase.resources.email_health_unavailable
 import id.homebase.resources.email_home_address_label
+import id.homebase.resources.email_home_mail_app
+import id.homebase.resources.email_home_mail_app_detail
 import id.homebase.resources.email_home_secrets
 import id.homebase.resources.email_home_thunderbird
 import id.homebase.resources.email_home_thunderbird_detail
@@ -268,66 +272,66 @@ fun EmailHomeContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onOpenThunderbirdSetup)
-                .padding(vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Lock,
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
+        // The secrets screen leads with the server settings and passwords any mail app needs
+        if (status?.effectiveMode == MailboxMode.Standard) {
+            NavigationRow(
+                icon = Icons.Outlined.MailOutline,
+                title = stringResource(MR.string.email_home_mail_app),
+                detail = stringResource(MR.string.email_home_mail_app_detail),
+                onClick = onOpenSecrets,
             )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(MR.string.email_home_thunderbird),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Text(
-                    text = stringResource(MR.string.email_home_thunderbird_detail),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        } else {
+            NavigationRow(
+                icon = Icons.Outlined.Lock,
+                title = stringResource(MR.string.email_home_thunderbird),
+                detail = stringResource(MR.string.email_home_thunderbird_detail),
+                onClick = onOpenThunderbirdSetup,
+            )
+            NavigationRow(
+                icon = Icons.Outlined.VpnKey,
+                title = stringResource(MR.string.email_home_secrets),
+                detail = stringResource(MR.string.email_home_secrets_detail),
+                onClick = onOpenSecrets,
             )
         }
+    }
+}
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onOpenSecrets)
-                .padding(vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.VpnKey,
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
+@Composable
+private fun NavigationRow(
+    icon: ImageVector,
+    title: String,
+    detail: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
             )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(MR.string.email_home_secrets),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Text(
-                    text = stringResource(MR.string.email_home_secrets_detail),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            Text(
+                text = detail,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

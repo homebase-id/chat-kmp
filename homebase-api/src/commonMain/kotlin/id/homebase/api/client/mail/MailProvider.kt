@@ -39,7 +39,7 @@ class MailProvider(
         val status = deserialize<MailAppStatus>(response.body)
         Logger.d(tag = TAG) {
             "status: enabled=${status.tenantMailEnabled} drive=${status.driveProvisioned} " +
-                "mailbox=${status.mailboxProvisioned} activated=${status.activated}"
+                "mailbox=${status.mailboxProvisioned} activated=${status.activated} mode=${status.mode}"
         }
         return status
     }
@@ -48,13 +48,13 @@ class MailProvider(
      * Creates the mailbox: DKIM keys, DNS records, the account. Idempotent, so a client that was
      * killed mid-setup calls it again instead of tracking where it got to.
      */
-    suspend fun ensureMailbox(primaryEmailAddress: String): MailboxSetupResult {
+    suspend fun ensureMailbox(primaryEmailAddress: String, mode: MailboxMode): MailboxSetupResult {
         val creds = requireCreds()
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, "$BASE/setup/mailbox"),
             token = creds.accessToken,
             jsonBody = OdinSystemSerializer.serialize(
-                EnsureMailboxRequest(primaryEmailAddress = primaryEmailAddress)
+                EnsureMailboxRequest(primaryEmailAddress = primaryEmailAddress, mode = mode)
             ),
             secret = creds.secret,
         )
@@ -89,8 +89,21 @@ class MailProvider(
         return deserialize<EmailKeyGenerationResult>(response.body)
     }
 
+    /** Mail already stored is not converted. Switching to encrypted generates a new key. */
+    suspend fun setMode(mode: MailboxMode) {
+        val creds = requireCreds()
+        val response = encryptedPostJson(
+            url = apiUrl(creds.domain, "$BASE/mode"),
+            token = creds.accessToken,
+            jsonBody = OdinSystemSerializer.serialize(SetMailboxModeRequest(mode = mode)),
+            secret = creds.secret,
+        )
+        throwForFailure(response)
+    }
+
     /**
-     * Issues a mail-client credential. Requires a published key, so it comes AFTER key generation.
+     * Issues a mail-client credential. An encrypted mailbox needs its key published first, so this
+     * comes AFTER key generation there.
      * The secret is returned once — persist it before showing it.
      */
     suspend fun issueAppPassword(primaryEmailAddress: String, label: String): AppPasswordIssueResult {
@@ -177,7 +190,10 @@ class MailProvider(
 }
 
 @kotlinx.serialization.Serializable
-private data class EnsureMailboxRequest(val primaryEmailAddress: String)
+private data class EnsureMailboxRequest(val primaryEmailAddress: String, val mode: MailboxMode)
+
+@kotlinx.serialization.Serializable
+private data class SetMailboxModeRequest(val mode: MailboxMode)
 
 @kotlinx.serialization.Serializable
 private data class GenerateEmailKeyRequest(
