@@ -48,7 +48,7 @@ class MailProvider(
      * Creates the mailbox: DKIM keys, DNS records, the account. Idempotent, so a client that was
      * killed mid-setup calls it again instead of tracking where it got to.
      */
-    suspend fun ensureMailbox(primaryEmailAddress: String, mode: MailboxMode?): MailboxSetupResult {
+    suspend fun ensureMailbox(primaryEmailAddress: String, mode: MailboxMode): MailboxSetupResult {
         val creds = requireCreds()
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, "$BASE/setup/mailbox"),
@@ -89,11 +89,8 @@ class MailProvider(
         return deserialize<EmailKeyGenerationResult>(response.body)
     }
 
-    /**
-     * Switches between an encrypted and a standard mailbox. Mail already stored is not converted.
-     * Switching to encrypted generates and publishes a new key. Returns the status after the switch.
-     */
-    suspend fun setMode(mode: MailboxMode): MailAppStatus {
+    /** Mail already stored is not converted. Switching to encrypted generates a new key. */
+    suspend fun setMode(mode: MailboxMode) {
         val creds = requireCreds()
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, "$BASE/mode"),
@@ -102,7 +99,6 @@ class MailProvider(
             secret = creds.secret,
         )
         throwForFailure(response)
-        return deserialize<MailAppStatus>(response.body)
     }
 
     /**
@@ -194,7 +190,7 @@ class MailProvider(
 }
 
 @kotlinx.serialization.Serializable
-private data class EnsureMailboxRequest(val primaryEmailAddress: String, val mode: MailboxMode?)
+private data class EnsureMailboxRequest(val primaryEmailAddress: String, val mode: MailboxMode)
 
 @kotlinx.serialization.Serializable
 private data class SetMailboxModeRequest(val mode: MailboxMode)

@@ -8,6 +8,7 @@ import id.homebase.core.ui.screens.email.EmailService
 import id.homebase.core.ui.screens.email.EmailStream
 import id.homebase.core.ui.screens.email.model.EmailCredential
 import id.homebase.core.ui.screens.email.model.EmailKeyRef
+import id.homebase.api.client.mail.MailAppStatus
 import id.homebase.api.client.mail.MailClientSettings
 import id.homebase.api.client.mail.MailboxMode
 import id.homebase.api.file.FileOperationsProvider
@@ -57,16 +58,12 @@ class EmailSecretsViewModel(
      * rather than watched - unlike the credentials and keys above, nothing here changes while
      * the screen is open.
      */
-    private val _clientSettings = MutableStateFlow<MailClientSettings?>(null)
-    private val _mode = MutableStateFlow<MailboxMode?>(null)
+    private val _status = MutableStateFlow<MailAppStatus?>(null)
 
     init {
         viewModelScope.launch {
             runCatching { mailProvider.getStatus() }
-                .onSuccess { status ->
-                    _clientSettings.value = status.clientSettings
-                    _mode.value = status.mode
-                }
+                .onSuccess { _status.value = it }
                 .onFailure { Logger.d(tag = TAG) { "mail client settings unavailable: ${it.message}" } }
         }
     }
@@ -76,10 +73,8 @@ class EmailSecretsViewModel(
         emailStream.keys,
         emailStream.currentKeyFileId,
         _revealed,
-        combine(_busy, _error, _clientSettings, _mode) { busy, error, settings, mode ->
-            ServerSide(busy, error, settings, mode)
-        },
-    ) { credentials, keys, currentKey, revealed, (busy, error, settings, mode) ->
+        combine(_busy, _error, _status, ::Triple),
+    ) { credentials, keys, currentKey, revealed, (busy, error, status) ->
         EmailSecretsUiState(
             credentials = credentials,
             keys = keys,
@@ -87,8 +82,8 @@ class EmailSecretsViewModel(
             revealedIds = revealed,
             busyIds = busy,
             error = error,
-            clientSettings = settings,
-            mode = mode,
+            clientSettings = status?.clientSettings,
+            mode = status?.mode,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EmailSecretsUiState())
 
@@ -215,12 +210,6 @@ data class EmailSecretsUiState(
     val error: String? = null,
 )
 
-private data class ServerSide(
-    val busy: Set<String>,
-    val error: String?,
-    val settings: MailClientSettings?,
-    val mode: MailboxMode?,
-)
 
 sealed interface EmailSecretsUiAction {
     /** Rotate: append a new keyring and publish it. The old one is never deleted. */

@@ -53,6 +53,7 @@ import id.homebase.resources.close
 import id.homebase.resources.settings
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
+import id.homebase.api.client.mail.MailboxMode
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -76,6 +77,7 @@ internal fun SettingsPaneHost(
     onDismiss: () -> Unit,
     actions: SettingsPaneActions,
     profileCardEnabled: Boolean,
+    emailMailboxMode: MailboxMode?,
 ) {
     // Plain remember, not rememberSaveable: the pane exists only on desktop/web, which have no
     // configuration change or process death to restore across.
@@ -151,6 +153,7 @@ internal fun SettingsPaneHost(
                                 profilePage = ProfilePage.Card
                             }.takeIf { cardViewModel != null },
                             actions = actions,
+                            emailMailboxMode = emailMailboxMode,
                         )
                     }
                 } else {
@@ -212,6 +215,7 @@ private fun CategoryPage(
     onProfileAvatarEdit: () -> Unit,
     onProfileCard: (() -> Unit)?,
     actions: SettingsPaneActions,
+    emailMailboxMode: MailboxMode?,
 ) {
     when (category) {
         SettingsCategory.General -> SettingsScreen(
@@ -272,6 +276,7 @@ private fun CategoryPage(
             viewModel = koinViewModel(),
             onBackClick = onDismiss,
             onOpenEmail = actions.onOpenEmail,
+            mailboxMode = emailMailboxMode,
             onChangeMode = actions.onOpenEmailModeSwitch,
         )
 

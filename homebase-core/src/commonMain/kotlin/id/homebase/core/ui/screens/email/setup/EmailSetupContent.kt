@@ -74,7 +74,7 @@ fun EmailSetupContent(
     status: MailAppStatus?,
     uiState: EmailSetupUiState,
     onAction: (EmailSetupUiAction) -> Unit,
-    onRun: () -> Unit,
+    onRun: (MailboxMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -106,11 +106,9 @@ fun EmailSetupContent(
             }
         }
 
-        // Offered only before the mailbox exists, and only by a server that knows about modes
-        val offerModeChoice = status?.mode != null && !status.mailboxProvisioned
-        val mode = if (offerModeChoice) uiState.chosenMode else status?.mode ?: MailboxMode.Encrypted
+        val mode = setupMode(status, uiState.chosenMode)
 
-        if (offerModeChoice) {
+        if (status?.offersModeChoice == true) {
             Spacer(modifier = Modifier.height(24.dp))
             ModeChoice(
                 chosen = uiState.chosenMode,
@@ -125,7 +123,7 @@ fun EmailSetupContent(
         // server and each one is something the user wants — so the screen runs them through and
         // reports progress, rather than asking three times.
         Button(
-            onClick = onRun,
+            onClick = { mode?.let(onRun) },
             enabled = uiState.runningStep == null && mode != null,
             modifier = Modifier.fillMaxWidth(),
         ) {

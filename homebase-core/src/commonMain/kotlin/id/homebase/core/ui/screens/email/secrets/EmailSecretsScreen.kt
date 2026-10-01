@@ -239,46 +239,44 @@ fun EmailSecretsUi(
             if (!standard || uiState.keys.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
                 SectionHeader(stringResource(MR.string.email_secrets_keys))
-            }
 
-            if (standard && uiState.keys.isNotEmpty()) {
-                Text(
-                    text = stringResource(MR.string.email_secrets_standard_keys_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            uiState.keys.forEach { key ->
-                KeyCard(
-                    key = key,
-                    isCurrent = key.uniqueId == uiState.currentKeyFileId,
-                    onCopyFingerprint = { copy(key.fingerprintHex) },
-                    onCopyPublicKey = { copy(key.publicCertificateArmored) },
-                    onCopyPrivateKey = { confirmPrivateKey = key },
-                    onSavePrivateKey = { confirmSaveKey = key },
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            // Rotation lives with the keys, and asks first: new mail becomes unreadable to any
-            // mail app until the new key is imported there. A standard mailbox encrypts nothing,
-            // and the server refuses a key for it.
-            if (!standard) {
-                TextButton(
-                    onClick = { confirmNewKey = true },
-                    enabled = EmailSecretsViewModel.ROTATING !in uiState.busyIds && uiState.keys.isNotEmpty(),
-                ) {
-                    if (EmailSecretsViewModel.ROTATING in uiState.busyIds) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-                    Text(stringResource(MR.string.email_secrets_new_key))
+                if (standard) {
+                    Text(
+                        text = stringResource(MR.string.email_secrets_standard_keys_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
-            }
 
-            if (!standard || uiState.keys.isNotEmpty()) {
+                uiState.keys.forEach { key ->
+                    KeyCard(
+                        key = key,
+                        isCurrent = key.uniqueId == uiState.currentKeyFileId,
+                        onCopyFingerprint = { copy(key.fingerprintHex) },
+                        onCopyPublicKey = { copy(key.publicCertificateArmored) },
+                        onCopyPrivateKey = { confirmPrivateKey = key },
+                        onSavePrivateKey = { confirmSaveKey = key },
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                // Rotation lives with the keys, and asks first: new mail becomes unreadable to any
+                // mail app until the new key is imported there. The server refuses a key for a
+                // standard mailbox.
+                if (!standard) {
+                    TextButton(
+                        onClick = { confirmNewKey = true },
+                        enabled = EmailSecretsViewModel.ROTATING !in uiState.busyIds && uiState.keys.isNotEmpty(),
+                    ) {
+                        if (EmailSecretsViewModel.ROTATING in uiState.busyIds) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(stringResource(MR.string.email_secrets_new_key))
+                    }
+                }
+
                 Text(
                     text = stringResource(MR.string.email_secrets_no_delete_note),
                     style = MaterialTheme.typography.bodySmall,

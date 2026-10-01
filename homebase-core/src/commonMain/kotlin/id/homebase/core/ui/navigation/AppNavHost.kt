@@ -347,6 +347,7 @@ fun AppNavHost(
     val serverSupportsMail by emailPreferences.serverSupportsMail.collectAsStateWithLifecycle()
     val emailViewModel: EmailViewModel = koinViewModel()
     val emailUiState by emailViewModel.uiState.collectAsStateWithLifecycle()
+    val emailMailboxMode = emailUiState.serverStatus?.takeIf { it.mailboxProvisioned }?.mode
     val profileCardEnabled by koinInject<DeveloperPreferences>().profileCardEnabled.collectAsStateWithLifecycle()
     val emailUnreadCount = emailUiState.mailboxStatus
         ?.takeIf { it.available }
@@ -1590,6 +1591,7 @@ fun AppNavHost(
                                             },
                                         ),
                                         profileCardEnabled = profileCardEnabled,
+                                        emailMailboxMode = emailMailboxMode,
                                     )
                                 }
                             },
@@ -2133,6 +2135,7 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() },
                                     onOpenEmail = openEmail,
+                                    mailboxMode = emailMailboxMode,
                                     onChangeMode = { navController.navigate(Route.EmailModeSwitch) },
                                 )
                             }
@@ -2142,6 +2145,7 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 EmailModeSwitchScreen(
                                     viewModel = koinViewModel(),
+                                    status = emailUiState.serverStatus,
                                     onBackClick = { navController.popBackStack() },
                                     onSwitched = {
                                         emailViewModel.onAction(EmailUiAction.RefreshStatusClicked)

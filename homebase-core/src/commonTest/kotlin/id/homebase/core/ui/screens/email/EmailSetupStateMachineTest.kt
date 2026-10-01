@@ -4,8 +4,10 @@ import id.homebase.api.client.mail.MailAppStatus
 import id.homebase.api.client.mail.MailboxMode
 import id.homebase.core.ui.screens.email.setup.EmailSetupStep
 import id.homebase.core.ui.screens.email.setup.resolveSetupStep
+import id.homebase.core.ui.screens.email.setup.setupMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.uuid.Uuid
 
 /**
@@ -174,5 +176,25 @@ class EmailSetupStateMachineTest {
             credentialCount = 0,
         )
         assertEquals(EmailSetupStep.NeedsKey, step)
+    }
+
+    /** Nothing is preselected: until the user picks, setup has no mode to run with. */
+    @Test
+    fun aServerThatOffersTheChoiceWaitsForIt() {
+        val fresh = status(mode = MailboxMode.Encrypted)
+        assertNull(setupMode(fresh, chosenMode = null))
+        assertEquals(MailboxMode.Standard, setupMode(fresh, chosenMode = MailboxMode.Standard))
+    }
+
+    /** Once the mailbox exists the server's mode wins; a stale local pick must not change it. */
+    @Test
+    fun anExistingMailboxKeepsTheServersMode() {
+        val existing = status(mailbox = true, mode = MailboxMode.Standard)
+        assertEquals(MailboxMode.Standard, setupMode(existing, chosenMode = MailboxMode.Encrypted))
+    }
+
+    @Test
+    fun anOlderServerIsAlwaysEncrypted() {
+        assertEquals(MailboxMode.Encrypted, setupMode(status(mode = null), chosenMode = null))
     }
 }

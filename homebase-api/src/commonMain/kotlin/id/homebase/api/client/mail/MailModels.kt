@@ -37,7 +37,12 @@ data class MailAppStatus(
     /** The drive file holding the current secret keyring, once one exists. */
     @Serializable(with = UuidSerializer::class)
     val currentKeyFileUniqueId: Uuid? = null,
-)
+) {
+    val effectiveMode: MailboxMode get() = mode ?: MailboxMode.Encrypted
+
+    /** Only before the mailbox exists, and only from a server that knows about modes. */
+    val offersModeChoice: Boolean get() = mode != null && !mailboxProvisioned
+}
 
 @Serializable
 enum class MailboxMode {

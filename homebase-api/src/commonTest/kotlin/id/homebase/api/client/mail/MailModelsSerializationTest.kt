@@ -94,6 +94,8 @@ class MailModelsSerializationTest {
         val status = OdinSystemSerializer.deserialize<MailAppStatus>("""{ "mailboxProvisioned": true }""")
 
         assertNull(status.mode)
+        assertEquals(MailboxMode.Encrypted, status.effectiveMode)
+        assertEquals(false, status.offersModeChoice)
     }
 
     /**

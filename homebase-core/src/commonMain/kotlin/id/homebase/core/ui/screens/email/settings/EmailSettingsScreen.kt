@@ -21,7 +21,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -45,19 +44,18 @@ fun EmailSettingsScreen(
     viewModel: EmailSettingsViewModel,
     onBackClick: () -> Unit,
     onOpenEmail: () -> Unit,
+    mailboxMode: MailboxMode?,
     onChangeMode: () -> Unit,
     showOpenEmail: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { viewModel.onAction(EmailSettingsUiAction.ScreenShown) }
     EmailSettingsUi(
         uiState = uiState,
+        mailboxMode = mailboxMode,
+        onChangeMode = onChangeMode,
         onAction = { action ->
-            when (action) {
-                EmailSettingsUiAction.OpenEmailClicked -> onOpenEmail()
-                EmailSettingsUiAction.ChangeModeClicked -> onChangeMode()
-                else -> viewModel.onAction(action)
-            }
+            if (action is EmailSettingsUiAction.OpenEmailClicked) onOpenEmail()
+            else viewModel.onAction(action)
         },
         onBackClick = onBackClick,
         showOpenEmail = showOpenEmail,
@@ -68,6 +66,9 @@ fun EmailSettingsScreen(
 @Composable
 fun EmailSettingsUi(
     uiState: EmailSettingsUiState,
+    /** Null until a mailbox exists on a server that supports the choice: nothing to switch yet. */
+    mailboxMode: MailboxMode?,
+    onChangeMode: () -> Unit,
     onAction: (EmailSettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
     showOpenEmail: Boolean = true,
@@ -106,9 +107,8 @@ fun EmailSettingsUi(
                     onCheckedChange = { onAction(EmailSettingsUiAction.SetIconVisible(it)) },
                 ),
             )
-            uiState.mailboxMode?.let { mode ->
-                // Not a toggle: switching changes who can read the mail, so it opens a full
-                // confirmation instead
+            mailboxMode?.let { mode ->
+                // Not a toggle: switching changes who can read the mail
                 SettingsRow(
                     icon = Icons.Outlined.Lock,
                     title = stringResource(MR.string.email_mode_row_title),
@@ -118,9 +118,7 @@ fun EmailSettingsUi(
                             MailboxMode.Standard -> MR.string.email_mode_standard
                         }
                     ),
-                    action = SettingsRowAction.Navigate {
-                        onAction(EmailSettingsUiAction.ChangeModeClicked)
-                    },
+                    action = SettingsRowAction.Navigate(onChangeMode),
                 )
             }
             SettingsRow(

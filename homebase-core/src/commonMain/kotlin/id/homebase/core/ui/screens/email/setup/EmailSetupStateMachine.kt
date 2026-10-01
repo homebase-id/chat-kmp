@@ -75,10 +75,17 @@ fun resolveSetupStep(
 
     // Both halves: the certificate is published AND the keyring is on the drive. Either alone
     // would be the broken state this ordering exists to prevent.
-    status.mode != MailboxMode.Standard &&
+    status.effectiveMode == MailboxMode.Encrypted &&
         (!status.activated || status.currentKeyFileUniqueId == null) -> EmailSetupStep.NeedsKey
 
     credentialCount == 0 -> EmailSetupStep.NeedsAppPassword
 
     else -> EmailSetupStep.Complete
 }
+
+/**
+ * The mode setup creates the mailbox with, or null while the user still has to choose one. The
+ * choice is local and transient, so it is not a step: [resolveSetupStep] reads only server state.
+ */
+fun setupMode(status: MailAppStatus?, chosenMode: MailboxMode?): MailboxMode? =
+    if (status?.offersModeChoice == true) chosenMode else status?.effectiveMode ?: MailboxMode.Encrypted

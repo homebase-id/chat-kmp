@@ -85,7 +85,7 @@ class EmailSetupViewModel(
      * interrupted setup and never repeats work that is already done. That is what guarantees
      * exactly one key: the key step is only reachable while the identity has none.
      */
-    fun runSetup(currentStep: () -> EmailSetupStep, refresh: suspend () -> Unit) {
+    fun runSetup(mode: MailboxMode, currentStep: () -> EmailSetupStep, refresh: suspend () -> Unit) {
         if (_uiState.value.runningStep != null) return
 
         viewModelScope.launch {
@@ -94,7 +94,7 @@ class EmailSetupViewModel(
             try {
                 while (true) {
                     val step = currentStep()
-                    val work = workFor(step) ?: break
+                    val work = workFor(step, mode) ?: break
 
                     _uiState.update { it.copy(runningStep = step) }
                     work()
@@ -118,11 +118,10 @@ class EmailSetupViewModel(
         }
     }
 
-    private fun workFor(step: EmailSetupStep): (suspend () -> Unit)? = when (step) {
+    private fun workFor(step: EmailSetupStep, mode: MailboxMode): (suspend () -> Unit)? = when (step) {
         EmailSetupStep.NeedsMailbox -> {
             {
-                val state = _uiState.value
-                val result = mailProvider.ensureMailbox(state.primaryEmailAddress, state.chosenMode)
+                val result = mailProvider.ensureMailbox(_uiState.value.primaryEmailAddress, mode)
                 _uiState.update { it.copy(dnsRecordsWritten = result.dnsRecordsWritten) }
             }
         }

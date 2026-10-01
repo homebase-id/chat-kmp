@@ -16,7 +16,6 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Button
@@ -26,13 +25,11 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,7 +42,9 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.client.mail.MailAppStatus
 import id.homebase.api.client.mail.MailboxMode
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.email_mode_acknowledge
 import id.homebase.resources.email_mode_confirm_to_encrypted
@@ -65,18 +64,13 @@ import id.homebase.resources.email_mode_to_standard_future
 import id.homebase.resources.email_mode_to_standard_key
 import id.homebase.resources.email_mode_to_standard_readers
 import id.homebase.resources.email_mode_type_address
-import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
-/**
- * The only way to change who can read this mailbox's mail. Full screen in the error colours, with
- * the consequences spelled out and two deliberate acts before the button works: switching is rare,
- * and doing it by accident is not undoable for the mail already stored.
- */
 @Composable
 fun EmailModeSwitchScreen(
     viewModel: EmailModeSwitchViewModel,
+    status: MailAppStatus?,
     onBackClick: () -> Unit,
     onSwitched: () -> Unit,
 ) {
@@ -90,44 +84,39 @@ fun EmailModeSwitchScreen(
         }
     }
 
-    EmailModeSwitchUi(uiState = uiState, onAction = viewModel::onAction, onBackClick = onBackClick)
+    EmailModeSwitchUi(
+        target = status?.takeIf { it.mailboxProvisioned }?.effectiveMode?.let {
+            if (it == MailboxMode.Encrypted) MailboxMode.Standard else MailboxMode.Encrypted
+        },
+        address = status?.primaryEmailAddress.orEmpty(),
+        uiState = uiState,
+        onAction = viewModel::onAction,
+        onBackClick = onBackClick,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EmailModeSwitchUi(
+    target: MailboxMode?,
+    address: String,
     uiState: EmailModeSwitchUiState,
     onAction: (EmailModeSwitchUiAction) -> Unit,
     onBackClick: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    val target = uiState.targetMode
 
     Scaffold(
         containerColor = colors.errorContainer,
         contentColor = colors.onErrorContainer,
         topBar = {
-            TopAppBar(
-                title = {
-                    target?.let {
-                        Text(
-                            stringResource(
-                                when (it) {
-                                    MailboxMode.Standard -> MR.string.email_mode_switch_to_standard_title
-                                    MailboxMode.Encrypted -> MR.string.email_mode_switch_to_encrypted_title
-                                }
-                            )
-                        )
-                    }
+            SettingsTopBar(
+                title = when (target) {
+                    MailboxMode.Standard -> stringResource(MR.string.email_mode_switch_to_standard_title)
+                    MailboxMode.Encrypted -> stringResource(MR.string.email_mode_switch_to_encrypted_title)
+                    null -> ""
                 },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
-                        )
-                    }
-                },
+                onBack = onBackClick,
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = colors.errorContainer,
                     titleContentColor = colors.onErrorContainer,
@@ -142,19 +131,14 @@ fun EmailModeSwitchUi(
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding),
         ) {
-            when {
-                uiState.loading -> CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center),
-                    color = colors.onErrorContainer,
-                )
-
-                target == null -> Text(
+            if (target == null) {
+                Text(
                     text = stringResource(MR.string.email_mode_load_failed),
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
                 )
-
-                else -> SwitchForm(target = target, uiState = uiState, onAction = onAction)
+            } else {
+                SwitchForm(target = target, address = address, uiState = uiState, onAction = onAction)
             }
         }
     }
@@ -163,25 +147,14 @@ fun EmailModeSwitchUi(
 @Composable
 private fun SwitchForm(
     target: MailboxMode,
+    address: String,
     uiState: EmailModeSwitchUiState,
     onAction: (EmailModeSwitchUiAction) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val consequences = when (target) {
-        MailboxMode.Standard -> listOf(
-            MR.string.email_mode_to_standard_future,
-            MR.string.email_mode_to_standard_readers,
-            MR.string.email_mode_to_standard_existing,
-            MR.string.email_mode_to_standard_key,
-            MR.string.email_mode_to_standard_back,
-        )
-
-        MailboxMode.Encrypted -> listOf(
-            MR.string.email_mode_to_encrypted_apps,
-            MR.string.email_mode_to_encrypted_shared,
-            MR.string.email_mode_to_encrypted_key,
-            MR.string.email_mode_to_encrypted_existing,
-        )
+        MailboxMode.Standard -> ToStandardConsequences
+        MailboxMode.Encrypted -> ToEncryptedConsequences
     }
     val enabled = !uiState.busy
 
@@ -236,7 +209,7 @@ private fun SwitchForm(
         OutlinedTextField(
             value = uiState.typedAddress,
             onValueChange = { onAction(EmailModeSwitchUiAction.TypedAddressChanged(it)) },
-            label = { Text(stringResource(MR.string.email_mode_type_address, uiState.address)) },
+            label = { Text(stringResource(MR.string.email_mode_type_address, address)) },
             singleLine = true,
             enabled = enabled,
             keyboardOptions = KeyboardOptions(
@@ -260,8 +233,8 @@ private fun SwitchForm(
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
-            onClick = { onAction(EmailModeSwitchUiAction.ConfirmClicked) },
-            enabled = enabled && canConfirmModeSwitch(uiState.acknowledged, uiState.typedAddress, uiState.address),
+            onClick = { onAction(EmailModeSwitchUiAction.ConfirmClicked(target)) },
+            enabled = enabled && canConfirmModeSwitch(uiState.acknowledged, uiState.typedAddress, address),
             colors = ButtonDefaults.buttonColors(
                 containerColor = colors.error,
                 contentColor = colors.onError,
@@ -288,7 +261,7 @@ private fun SwitchForm(
             }
         }
 
-        if (uiState.error == EmailModeSwitchError.SwitchFailed) {
+        if (uiState.switchFailed) {
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = stringResource(MR.string.email_mode_failed),
@@ -298,6 +271,21 @@ private fun SwitchForm(
         }
     }
 }
+
+private val ToStandardConsequences = listOf(
+    MR.string.email_mode_to_standard_future,
+    MR.string.email_mode_to_standard_readers,
+    MR.string.email_mode_to_standard_existing,
+    MR.string.email_mode_to_standard_key,
+    MR.string.email_mode_to_standard_back,
+)
+
+private val ToEncryptedConsequences = listOf(
+    MR.string.email_mode_to_encrypted_apps,
+    MR.string.email_mode_to_encrypted_shared,
+    MR.string.email_mode_to_encrypted_key,
+    MR.string.email_mode_to_encrypted_existing,
+)
 
 @Composable
 private fun Consequence(text: StringResource) {

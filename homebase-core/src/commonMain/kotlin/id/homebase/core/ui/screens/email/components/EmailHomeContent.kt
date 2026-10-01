@@ -272,9 +272,8 @@ fun EmailHomeContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // A standard mailbox works in any mail app, and the secrets screen leads with the server
-        // settings and passwords such an app needs - so it is the one way in, named for that.
-        if (status?.mode == MailboxMode.Standard) {
+        // The secrets screen leads with the server settings and passwords any mail app needs
+        if (status?.effectiveMode == MailboxMode.Standard) {
             NavigationRow(
                 icon = Icons.Outlined.MailOutline,
                 title = stringResource(MR.string.email_home_mail_app),
