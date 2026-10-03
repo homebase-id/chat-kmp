@@ -1246,8 +1246,6 @@
     <string name="dev_menu_network_last_good_ip">Sidst kendte gode IP: %1$s</string>
     <string name="dev_menu_network_last_good_ip_none">ingen registreret endnu</string>
     <string name="dev_menu_force_sync">Gennemtving fuld synkronisering</string>
-    <string name="dev_menu_connection_review">Forbindelsesgennemgang</string>
-    <string name="dev_menu_connection_review_desc">Vis knappen Gennemgå, kontaktprompten og Markér som ny.</string>
     <string name="dev_menu_profile_card">Profilkort</string>
     <string name="dev_menu_profile_card_desc">Vis dit profilkort i Indstillinger og profileditoren.</string>
     <string name="dev_menu_clear_data">Ryd alle data</string>
@@ -1499,11 +1497,7 @@
 
     <string name="contactbook_tab_circles">Kredse</string>
     <string name="contactbook_connected">Forbundet</string>
-    <string name="contactbook_vetted">Godkendt</string>
-    <string name="contactbook_unvetted_empty">Ingen ikke-godkendte forbindelser.</string>
-    <string name="contactbook_vetted_empty">Ingen godkendte forbindelser.</string>
     <string name="contactbook_circles_empty">Du har ingen kredse endnu.</string>
-    <string name="contactbook_circle_unvetted">Ikke godkendt</string>
     <string name="contactbook_circle_members_empty">Denne kreds har ingen medlemmer.</string>
     <string name="contactbook_circle_members_count">%1$d medlemmer</string>
     <string name="contactbook_circle_disabled">Deaktiveret</string>
@@ -1610,9 +1604,7 @@
     <string name="contactbook_detail_connect">Send forbindelsesanmodning</string>
     <string name="contactbook_detail_not_connected">Ikke forbundet</string>
     <string name="contactbook_detail_pending">Forbindelsesanmodning afventer</string>
-    <string name="contactbook_detail_request_incoming">Vil gerne forbindes med dig</string>
     <string name="contactbook_detail_request_outgoing">Forbindelsesanmodning sendt</string>
-    <string name="contactbook_detail_accept">Acceptér</string>
     <string name="contactbook_detail_reject">Afvis</string>
     <string name="contactbook_detail_cancel_request">Annullér anmodning</string>
     <string name="contactbook_detail_blocked">Blokeret</string>
@@ -1763,17 +1755,13 @@
     <string name="profile_edit_linkedin">LinkedIn</string>
 
     <string name="profile_edit_visibility_public">Offentlig</string>
-    <string name="profile_edit_visibility_connected">Godkendt</string>
     <string name="profile_edit_visibility_circles">Kredse</string>
     <string name="profile_edit_public_hint">Synlig for alle, også personer du ikke er forbundet med.</string>
-    <string name="profile_edit_connected_fallback_hint">Lad feltet stå tomt for i stedet at vise godkendte kontakter din offentlige værdi.</string>
     <string name="profile_edit_circles_fallback_hint">Lad feltet stå tomt for i stedet at vise dine kredse din offentlige værdi.</string>
     <string name="profile_edit_preview_enter">Forhåndsvisning</string>
     <string name="profile_edit_preview_exit">Tilbage til redigering</string>
     <string name="profile_edit_preview_section_public">Offentlig</string>
     <string name="profile_edit_preview_section_public_desc">Synlig for alle, også personer du ikke er forbundet med.</string>
-    <string name="profile_edit_preview_section_vetted">Godkendt</string>
-    <string name="profile_edit_preview_section_vetted_desc">Yderligere attributter, der er synlige for dine godkendte (bekræftede) forbindelser.</string>
     <string name="profile_edit_preview_section_circles">Synlig for mine kredse</string>
     <string name="profile_edit_preview_section_circles_desc">Yderligere oplysninger, der vises for alle, du har føjet til dine kredse.</string>
     <string name="profile_edit_preview_empty">Intet er synligt på dette niveau endnu.</string>
@@ -1810,10 +1798,8 @@
     <string name="profile_avatar_edit_title">Skift foto</string>
     <string name="cd_profile_avatar_change_photo">Skift foto</string>
     <string name="profile_avatar_edit_acl_anonymous">Offentligt foto</string>
-    <string name="profile_avatar_edit_acl_connected">Foto til godkendte</string>
     <string name="profile_avatar_edit_acl_circles">Foto til kredse</string>
     <string name="profile_avatar_edit_anonymous_desc">Synligt for alle, også personer du ikke er forbundet med.</string>
-    <string name="profile_avatar_edit_connected_desc">Kun synligt for godkendte kontakter — kan være et andet foto end dit offentlige.</string>
     <string name="profile_avatar_edit_circles_desc">Kun synligt for personer i dine kredse — kan være et andet foto end dit offentlige.</string>
     <string name="profile_avatar_edit_upload">Gem</string>
     <string name="profile_avatar_edit_remove">Fjern</string>

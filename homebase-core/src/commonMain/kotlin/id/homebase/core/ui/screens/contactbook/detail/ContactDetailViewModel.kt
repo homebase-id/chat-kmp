@@ -46,7 +46,6 @@ import id.homebase.core.ui.screens.contactbook.ConnectionRequestFailure
 import id.homebase.core.ui.screens.contactbook.connectionRequestFailure
 import id.homebase.core.ui.screens.contactbook.isTerminal
 import id.homebase.core.ui.screens.contactbook.toCircleUuids
-import id.homebase.core.ui.screens.contactbook.assignableCircles
 import id.homebase.core.ui.screens.contactbook.CircleAccessState
 import id.homebase.core.ui.screens.contactbook.ContactState
 import id.homebase.core.ui.screens.contactbook.circleAccessState
@@ -56,7 +55,7 @@ import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 import id.homebase.core.ui.screens.contactbook.isAccessRevoked
 import id.homebase.core.ui.screens.contactbook.isPendingIncomingRequest
-import id.homebase.core.ui.screens.contactbook.isUserCircle
+import id.homebase.core.ui.screens.contactbook.isPersonalKind
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
@@ -67,10 +66,8 @@ import id.homebase.core.ui.screens.contactbook.resolveCircleDrives
 import id.homebase.core.ui.screens.contactbook.saveContactDraft
 import id.homebase.core.ui.screens.contactbook.saveContactEdit
 import id.homebase.core.ui.screens.contactbook.withOverride
-import id.homebase.core.settings.DeveloperPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -96,7 +93,6 @@ class ContactDetailViewModel(
     private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
     private val connectionService: ConnectionService,
-    private val developerPreferences: DeveloperPreferences,
     private val connectionRequestService: ConnectionRequestService,
     private val connectionNetworkProvider: ConnectionNetworkProvider,
     private val ownerSessionRepository: OwnerSessionRepository,
@@ -124,15 +120,6 @@ class ContactDetailViewModel(
 
     /** (uniqueId, versionTag) we last fetched ext_data for, to avoid re-fetching unchanged. */
     private var extLoadedFor: Pair<Uuid, Uuid?>? = null
-
-    /** Flag off only: main's live-read pending circle ids — see [refreshPendingCircles]. */
-    private val _pendingCircleIds = MutableStateFlow<Set<String>>(emptySet())
-    private var pendingCirclesLoadedFor: String? = null
-    private var pendingCirclesJob: Job? = null
-    private var circleDetailPendingJob: Job? = null
-
-    /** Guards against a slow read for a previous contact landing after a fresher one. */
-    private var pendingCirclesGeneration = 0
 
     /** Latest circle-membership snapshot + contact list, cached from the init collector so
      *  [onCircleClicked] can build the circle-detail dialog without
@@ -185,11 +172,10 @@ class ContactDetailViewModel(
         val outgoing: List<OutgoingConnectionRequestUiModel>,
     )
 
-    /** The four independently-changing inputs the state collector folds into [ContactDetailUiState]. */
+    /** The three independently-changing inputs the state collector folds into [ContactDetailUiState]. */
     private data class CollectorInputs(
         val bundle: DetailBundle,
         val overrides: Map<Uuid, id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay>,
-        val livePendingCircleIds: Set<String>,
         val publicIdentity: id.homebase.api.client.identity.PublicIdentity?,
     )
 
@@ -212,12 +198,11 @@ class ContactDetailViewModel(
                     DetailBundle(contacts, conn, circ, incoming, outgoing)
                 },
                 overrideStore.overrides,
-                _pendingCircleIds,
                 _publicIdentity,
-            ) { bundle, overrides, livePendingCircleIds, publicIdentity ->
-                CollectorInputs(bundle, overrides, livePendingCircleIds, publicIdentity)
+            ) { bundle, overrides, publicIdentity ->
+                CollectorInputs(bundle, overrides, publicIdentity)
             }
-                .collect { (bundle, overrides, livePendingCircleIds, publicIdentity) ->
+                .collect { (bundle, overrides, publicIdentity) ->
                 val contacts = bundle.contacts
                 val conn = bundle.conn
                 val circ = bundle.circ
@@ -284,29 +269,19 @@ class ContactDetailViewModel(
                 }
                 val pendingIncoming = isPendingIncomingRequest(status, incomingRequest != null)
                 // User circles only — app default circles are surfaced through the connection
-                // status, not as chips. Both halves are now reactive: real membership from
-                // circ.circlesFor, pending deposits from the registration the refresh already
-                // updated. A circle that goes pending mid-review therefore appears at once,
-                // where the old once-per-contact live read left it invisible until the screen
-                // was resumed.
-                // Dark launch: the access marks, awaiting chips and revoked banner are new, and flag
-                // off reads pending circles through main's live lookup rather than the registration.
-                val reviewEnabled = developerPreferences.connectionReviewEnabled.value
-                val pendingCircleIds = if (reviewEnabled) {
-                    registration?.accessGrant?.pendingCircleIds
-                        .orEmpty()
-                        .map { it.toHexString() }
-                        .toSet()
-                } else {
-                    livePendingCircleIds
-                }
+                // status, not as chips. Real membership comes from circ.circlesFor and pending
+                // deposits from the registration, so both update with the next refresh.
+                val pendingCircleIds = registration?.accessGrant?.pendingCircleIds
+                    .orEmpty()
+                    .map { it.toHexString() }
+                    .toSet()
                 val realCircles = domain?.let { d -> circ.circlesFor(d) }.orEmpty()
-                    .filter { it.isUserCircle(reviewEnabled) }
+                    .filter { it.isPersonalKind() }
                 val realIds = realCircles.map { it.id.lowercase() }.toSet()
                 val pendingMatched = pendingCircleIds
                     .mapNotNull { pid -> circ.circles.map { it.circle }.firstOrNull { it.id.equals(pid, ignoreCase = true) } }
                 val pendingCircles = pendingMatched
-                    .filter { it.isUserCircle(reviewEnabled) && it.id.lowercase() !in realIds }
+                    .filter { it.isPersonalKind() && it.id.lowercase() !in realIds }
                 // Waiting on the app that owns them to mint the grants. A third list, not merged
                 // into pending: they clear by different means, and only one of them resolves on
                 // its own. Without this they were selected in the review and then rendered
@@ -317,7 +292,7 @@ class ContactDetailViewModel(
                 // stuck. Requiring a local definition would hide exactly that case.
                 val awaitingEntries = registration?.accessGrant?.awaitingApps
                     .orEmpty()
-                    .filter { reviewEnabled && it.circleIdHex !in realIds && it.circleIdHex !in pendingIds }
+                    .filter { it.circleIdHex !in realIds && it.circleIdHex !in pendingIds }
 
                 val circleItems = (
                     realCircles.map {
@@ -325,10 +300,10 @@ class ContactDetailViewModel(
                             it.id,
                             it.name,
                             pending = false,
-                            emoji = it.emoji.takeIf { reviewEnabled },
+                            emoji = it.emoji,
                             // Membership alone overstates it: a read grant without its storage
                             // key reads as access the contact cannot actually exercise.
-                            accessState = if (reviewEnabled) registration?.circleAccessState(it.id) else null,
+                            accessState = registration?.circleAccessState(it.id),
                             disabled = it.disabled,
                         )
                     } +
@@ -337,7 +312,7 @@ class ContactDetailViewModel(
                                 it.id,
                                 it.name,
                                 pending = true,
-                                emoji = it.emoji.takeIf { reviewEnabled },
+                                emoji = it.emoji,
                                 accessState = CircleAccessState.Pending,
                                 disabled = it.disabled,
                             )
@@ -366,17 +341,12 @@ class ContactDetailViewModel(
                     .filter { it.name.isNotBlank() || it.accessState == CircleAccessState.AwaitingApp }
                     .distinctBy { it.id.lowercase() }
                     .sortedBy { it.name.lowercase() }
-                // Every user-defined circle the user could add a contact to — independent of this
-                // contact's membership. Same system-circle exclusion as the chips above; feeds the
-                // pending-request circle picker (#921 Part B).
-                val assignableCircles = circ.assignableCircles(reviewEnabled)
-                val requestUnderReview = incomingRequest.takeIf { reviewEnabled && pendingIncoming }
+                val requestUnderReview = incomingRequest.takeIf { pendingIncoming }
                 _uiState.update {
                     it.copy(
                         entry = entry,
                         connectionStatus = status,
-                        isAccessRevoked = reviewEnabled && registration?.isAccessRevoked() == true,
-                        reviewEnabled = reviewEnabled,
+                        isAccessRevoked = registration?.isAccessRevoked() == true,
                         needsReview = registration != null &&
                             contactStateOf(
                                 registration,
@@ -388,7 +358,6 @@ class ContactDetailViewModel(
                             open.withCircle(circ.circles.firstOrNull { c -> c.circle.id.equals(open.circleId, ignoreCase = true) }?.circle)
                         },
                         connectionStatuses = conn.statusByDomain(),
-                        assignableCircles = assignableCircles,
                         isLoading = false,
                         isSelf = isSelf,
                         requestDirection = requestDirection,
@@ -403,10 +372,6 @@ class ContactDetailViewModel(
                             )
                         },
                     )
-                }
-                if (!reviewEnabled && domain != null && pendingCirclesLoadedFor != domain) {
-                    pendingCirclesLoadedFor = domain
-                    refreshPendingCircles()
                 }
                 // Fetch the public profile once for a not-yet-connected identity so the pending
                 // request card can show name/status. Best-effort — failure just leaves the domain.
@@ -469,7 +434,6 @@ class ContactDetailViewModel(
             .toSet()
         val pending = resolveCircleMemberEntries(pendingDomains, latestContacts)
             .sortedBy { it.sortKey }
-        val reviewEnabled = developerPreferences.connectionReviewEnabled.value
         val isRealMember = domain != null && memberDomains.any { it.equals(domain, ignoreCase = true) }
         val isPendingMember = domain != null && pendingDomains.any { it.equals(domain, ignoreCase = true) }
         val viewerEntry = domain?.let { d -> latestContacts.firstOrNull { it.odinId.equals(d, ignoreCase = true) } }
@@ -479,104 +443,22 @@ class ContactDetailViewModel(
                 circleDetail = CircleMembersUi(
                     circleId = match.circle.id,
                     circleName = match.circle.name,
-                    circleEmoji = match.circle.emoji.takeIf { reviewEnabled },
+                    circleEmoji = match.circle.emoji,
                     manageable = false,
                     disabled = match.circle.disabled,
                     toggleBlockedReason = match.circle.toggleBlockedReason(),
                     members = members,
-                    pendingMembers = if (reviewEnabled) pending else emptyList(),
+                    pendingMembers = pending,
                     isLoading = false,
-                    pendingChecking = !reviewEnabled,
                     drives = resolveCircleDrives(match.circle),
                     viewerStatus = when {
                         isRealMember -> CircleMemberStatus.Member
-                        // Flag off: main's provisional status until the live read corrects it.
-                        !reviewEnabled || isPendingMember -> CircleMemberStatus.Pending
+                        isPendingMember -> CircleMemberStatus.Pending
                         else -> null
                     },
                     viewerContactId = viewerEntry?.uniqueId,
                 ),
             )
-        }
-        if (!reviewEnabled) checkCircleDetailPending(match)
-    }
-
-    /**
-     * Flag off only: main's live re-check of this contact's pending circles, called once per
-     * contact from the collector and again on screen resume. A pending-only change doesn't alter
-     * real membership, so the circles flow alone can't catch it (#1096). Also re-checks the open
-     * circle-detail dialog's roster.
-     */
-    fun refreshPendingCircles() {
-        if (developerPreferences.connectionReviewEnabled.value) return
-        val domain = odinId
-        if (domain != null) {
-            pendingCirclesJob?.cancel()
-            val generation = ++pendingCirclesGeneration
-            pendingCirclesJob = viewModelScope.launch {
-                val pending = try {
-                    connectionService.findPendingCircles(OdinId(domain))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Logger.w(e, TAG) { "findPendingCircles failed for $domain" }
-                    emptyList()
-                }
-                if (generation == pendingCirclesGeneration) {
-                    _pendingCircleIds.value = pending.map { it.toHexString() }.toSet()
-                }
-            }
-        }
-        val open = _uiState.value.circleDetail ?: return
-        val match = latestCirc?.circles?.firstOrNull { it.circle.id.equals(open.circleId, ignoreCase = true) }
-            ?: return
-        checkCircleDetailPending(match)
-    }
-
-    private fun checkCircleDetailPending(circle: id.homebase.api.client.connections.CircleWithMembers) {
-        circleDetailPendingJob?.cancel()
-        val domain = odinId
-        circleDetailPendingJob = viewModelScope.launch {
-            val circleId = try {
-                Uuid.parseHex(circle.circle.id)
-            } catch (e: Exception) {
-                Logger.w(e, TAG) { "bad circle id ${circle.circle.id}" }
-                _uiState.update { it.copy(circleDetail = it.circleDetail?.copy(pendingChecking = false)) }
-                return@launch
-            }
-            val pending = try {
-                connectionService.findPendingMembers(circleId)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.w(e, TAG) { "findPendingMembers failed for ${circle.circle.id}" }
-                emptyList()
-            }
-            val pendingEntries = resolveCircleMemberEntries(
-                pending.map { it.domainName }.toSet(),
-                latestContacts,
-            ).sortedBy { it.sortKey }
-            val isRealMember = domain != null && circle.members.any { it.domainName.equals(domain, ignoreCase = true) }
-            val isPendingMember = domain != null && pending.any { it.domainName.equals(domain, ignoreCase = true) }
-            // Re-excludes against the CURRENT members: a stale job can land after someone
-            // converted, and a duplicate key crashes CircleMembersSheet's keyed LazyColumn.
-            _uiState.update {
-                val current = it.circleDetail
-                if (current?.circleId == circle.circle.id) {
-                    val deduped = pendingEntries.filterNot { p -> current.members.any { m -> m.uniqueId == p.uniqueId } }
-                    it.copy(
-                        circleDetail = current.copy(
-                            pendingMembers = deduped,
-                            pendingChecking = false,
-                            viewerStatus = when {
-                                isRealMember -> CircleMemberStatus.Member
-                                isPendingMember -> CircleMemberStatus.Pending
-                                else -> current.viewerStatus
-                            },
-                        ),
-                    )
-                } else it
-            }
         }
     }
 
@@ -630,12 +512,6 @@ class ContactDetailViewModel(
             ContactDetailAction.BlockClicked -> _uiState.update { it.copy(confirm = ContactDetailConfirm.BLOCK) }
             ContactDetailAction.DisconnectClicked ->
                 _uiState.update { it.copy(confirm = ContactDetailConfirm.DISCONNECT) }
-            is ContactDetailAction.AcceptRequestClicked -> {
-                val circleUuids = action.circleIds.toCircleUuids()
-                handleRequestAction(event = ContactDetailEvent.RequestAccepted) {
-                    connectionRequestService.acceptIncomingRequest(it, circleUuids)
-                }
-            }
             ContactDetailAction.RejectRequestClicked -> handleRequestAction(
                 event = ContactDetailEvent.RequestRejected,
             ) { connectionRequestService.rejectIncomingRequest(it) }

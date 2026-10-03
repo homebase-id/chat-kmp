@@ -24,7 +24,6 @@ class ContactStateTest {
 
     private fun connection(
         reviewedAt: Long? = null,
-        vetted: Boolean = false,
         status: ConnectionStatus = ConnectionStatus.Connected,
     ) = RedactedIdentityConnectionRegistration(
         odinId = OdinId("sam.dotyou.cloud"),
@@ -35,7 +34,6 @@ class ContactStateTest {
         hasVerificationHash = false,
         rku = false,
         reviewedAt = reviewedAt,
-        vetted = vetted,
     )
 
     private fun circle(
@@ -66,15 +64,6 @@ class ContactStateTest {
     @Test
     fun circleMembershipOutranksAMissingStamp() {
         assertEquals(ContactState.Circle, contactStateOf(connection(), listOf(circle())))
-    }
-
-    /**
-     * `vetted` is the retired alias and nothing reads it any more: a contact carrying it without
-     * a stamp is New, because the stamp is the only record of a review.
-     */
-    @Test
-    fun theVettedAliasIsIgnored() {
-        assertEquals(ContactState.New, contactStateOf(connection(vetted = true), emptyList()))
     }
 
     @Test

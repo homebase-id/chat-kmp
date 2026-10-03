@@ -64,12 +64,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.staticCompositionLocalOf
 import id.homebase.resources.profile_edit_circles_fallback_hint
-import id.homebase.resources.profile_edit_preview_section_vetted
-import id.homebase.resources.profile_edit_preview_section_vetted_desc
 import id.homebase.resources.profile_edit_visibility_circles
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -109,7 +105,6 @@ import id.homebase.resources.profile_edit_address_label_hint
 import id.homebase.resources.profile_edit_birthday
 import id.homebase.resources.profile_edit_birthday_hint
 import id.homebase.resources.profile_edit_city
-import id.homebase.resources.profile_edit_connected_fallback_hint
 import id.homebase.resources.profile_edit_country
 import id.homebase.resources.profile_edit_email
 import id.homebase.resources.profile_edit_email_label
@@ -143,7 +138,6 @@ import id.homebase.resources.profile_edit_twitter
 import id.homebase.resources.profile_avatar_edit_error_delete
 import id.homebase.resources.profile_avatar_edit_error_too_large
 import id.homebase.resources.profile_avatar_edit_error_upload
-import id.homebase.resources.profile_edit_visibility_connected
 import id.homebase.resources.profile_edit_visibility_public
 import id.homebase.resources.save
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -258,17 +252,15 @@ fun ProfileEditScreen(
                         )
                     } else {
                         Box(modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
-                            CompositionLocalProvider(LocalReviewEnabled provides uiState.reviewEnabled) {
-                                ProfileForm(
-                                    uiState = uiState,
-                                    onAction = viewModel::onAction,
-                                    avatarUiState = avatarUiState,
-                                    onAvatarAction = avatarViewModel::onAction,
-                                    onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
-                                    onPickConnectedPhoto = { connectedPhotoPicker.launch() },
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
+                            ProfileForm(
+                                uiState = uiState,
+                                onAction = viewModel::onAction,
+                                avatarUiState = avatarUiState,
+                                onAvatarAction = avatarViewModel::onAction,
+                                onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
+                                onPickConnectedPhoto = { connectedPhotoPicker.launch() },
+                                modifier = Modifier.fillMaxSize(),
+                            )
                             AnimatedVisibility(
                                 visible = uiState.savingAttributes.isNotEmpty(),
                                 modifier = Modifier.align(Alignment.TopCenter),
@@ -367,14 +359,8 @@ private fun ProfileForm(
 
             ProfileFieldsSection(
                 tier = ProfileVisibility.CONNECTED,
-                title = stringResource(
-                    if (uiState.reviewEnabled) MR.string.profile_edit_preview_section_circles
-                    else MR.string.profile_edit_preview_section_vetted
-                ),
-                description = stringResource(
-                    if (uiState.reviewEnabled) MR.string.profile_edit_preview_section_circles_desc
-                    else MR.string.profile_edit_preview_section_vetted_desc
-                ),
+                title = stringResource(MR.string.profile_edit_preview_section_circles),
+                description = stringResource(MR.string.profile_edit_preview_section_circles_desc),
                 uiState = uiState,
                 onAction = onAction,
                 editingRows = editingRows,
@@ -782,8 +768,7 @@ private fun EditableFieldGroup(
                         if (selectedTier == ProfileVisibility.ANONYMOUS) {
                             MR.string.profile_edit_public_hint
                         } else {
-                            if (LocalReviewEnabled.current) MR.string.profile_edit_circles_fallback_hint
-                            else MR.string.profile_edit_connected_fallback_hint
+                            MR.string.profile_edit_circles_fallback_hint
                         }
                     ),
                     style = MaterialTheme.typography.bodySmall,
@@ -794,16 +779,12 @@ private fun EditableFieldGroup(
     }
 }
 
-/** Dark launch: provided around [ProfileForm] so the deep tier toggles and hints can keep main's "Vetted" wording. */
-private val LocalReviewEnabled = staticCompositionLocalOf { false }
-
 /** Picks which of an attribute's two independent tier records a row's [content] shows/edits. */
 @Composable
 internal fun TierToggle(
     selected: ProfileVisibility,
     onSelect: (ProfileVisibility) -> Unit,
     modifier: Modifier = Modifier,
-    reviewEnabled: Boolean = LocalReviewEnabled.current,
 ) {
     SingleChoiceSegmentedButtonRow(modifier = modifier.fillMaxWidth()) {
         SegmentedButton(
@@ -817,12 +798,7 @@ internal fun TierToggle(
             onClick = { onSelect(ProfileVisibility.CONNECTED) },
             shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
             label = {
-                Text(
-                    stringResource(
-                        if (reviewEnabled) MR.string.profile_edit_visibility_circles
-                        else MR.string.profile_edit_visibility_connected
-                    )
-                )
+                Text(stringResource(MR.string.profile_edit_visibility_circles))
             },
         )
     }
@@ -958,8 +934,7 @@ private fun AddAttributeDialog(
                         if (tier == ProfileVisibility.ANONYMOUS) {
                             MR.string.profile_edit_public_hint
                         } else {
-                            if (LocalReviewEnabled.current) MR.string.profile_edit_circles_fallback_hint
-                            else MR.string.profile_edit_connected_fallback_hint
+                            MR.string.profile_edit_circles_fallback_hint
                         }
                     ),
                     style = MaterialTheme.typography.bodySmall,

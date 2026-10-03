@@ -29,7 +29,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.outlined.AddAPhoto
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ErrorOutline
@@ -76,12 +75,10 @@ import id.homebase.core.connections.ConnectRequestAction
 import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.connections.RecipientResolution
-import id.homebase.core.ui.screens.contactbook.components.CirclePickerChips
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
 import id.homebase.core.ui.screens.contactbook.components.PendingRequestReview
 import id.homebase.core.ui.screens.contactbook.detail.ReviewSheetState
-import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.core.widget.HomebaseIdField
 import id.homebase.resources.MR
 import id.homebase.resources.add_contact_already_connected
@@ -105,12 +102,9 @@ import id.homebase.resources.contactbook_action_request_accepted
 import id.homebase.resources.contactbook_action_request_cancelled
 import id.homebase.resources.contactbook_action_request_withdrawn
 import id.homebase.resources.contactbook_action_request_rejected
-import id.homebase.resources.contactbook_detail_accept
 import id.homebase.resources.contactbook_detail_cancel_request
 import id.homebase.resources.contactbook_detail_message
-import id.homebase.resources.contactbook_detail_request_incoming
 import id.homebase.resources.contactbook_detail_request_outgoing
-import id.homebase.resources.contactbook_detail_reject
 import id.homebase.resources.auto_connect_failed_generic
 import id.homebase.resources.contactbook_edit_change_photo
 import id.homebase.resources.contactbook_edit_city
@@ -381,7 +375,6 @@ private fun ByIdentitySection(
                     RelationActions(
                         relation = uiState.relation,
                         odinId = shown.identity.odinId,
-                        assignableCircles = uiState.assignableCircles,
                         displayName = shown.identity.displayNameOrDomain(),
                         requestReview = uiState.requestReview,
                         reviewCircleGroups = uiState.reviewCircleGroups,
@@ -449,7 +442,6 @@ private fun ResolvedIdentityCard(identity: PublicIdentity) {
 private fun RelationActions(
     relation: IdentityRelation,
     odinId: OdinId,
-    assignableCircles: List<ContactCircleUi>,
     displayName: String,
     requestReview: ReviewSheetState?,
     reviewCircleGroups: ReviewCircleGroups,
@@ -458,16 +450,11 @@ private fun RelationActions(
     onSendConnectionRequest: (OdinId) -> Unit,
     onAction: (AddContactAction) -> Unit,
 ) {
-    // Circle ids the user has ticked to add this identity to on Accept. Keyed by the resolved
-    // identity so correcting the Homebase ID clears a selection made for the previous one (a
-    // transient picker — no need to survive process death).
-    var selectedCircleIds by remember(odinId.domainName) { mutableStateOf(emptySet<String>()) }
-
     when (relation) {
         IdentityRelation.NONE ->
             ConnectRequestOffer(onClick = { onSendConnectionRequest(odinId) })
 
-        // With the review on, the request is reviewed in place; submitting it accepts.
+        // The request is reviewed in place; submitting the review accepts it.
         IdentityRelation.INCOMING_PENDING -> if (requestReview != null) {
             Spacer(modifier = Modifier.height(12.dp))
             PendingRequestReview(
@@ -481,53 +468,6 @@ private fun RelationActions(
                 onReject = { onAction(AddContactAction.RejectRequestClicked) },
                 rejectEnabled = !actionInProgress,
             )
-        } else {
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = stringResource(MR.string.contactbook_detail_request_incoming),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-            )
-            // Optional: pick which of the user's own circles to add this identity to on Accept.
-            // The circles ride the accept request atomically (see AcceptConnectionRequestV2).
-            CirclePickerChips(
-                circles = assignableCircles,
-                selectedIds = selectedCircleIds,
-                onToggle = { id ->
-                    selectedCircleIds = if (id in selectedCircleIds) {
-                        selectedCircleIds - id
-                    } else {
-                        selectedCircleIds + id
-                    }
-                },
-                enabled = !actionInProgress,
-                modifier = Modifier.padding(bottom = 12.dp),
-                centered = false,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(
-                    onClick = {
-                        onAction(AddContactAction.AcceptRequestClicked(selectedCircleIds.toList()))
-                    },
-                    enabled = !actionInProgress,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Text(stringResource(MR.string.contactbook_detail_accept))
-                }
-                OutlinedButton(
-                    onClick = { onAction(AddContactAction.RejectRequestClicked) },
-                    enabled = !actionInProgress,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(MR.string.contactbook_detail_reject))
-                }
-            }
         }
 
         IdentityRelation.OUTGOING_PENDING -> {

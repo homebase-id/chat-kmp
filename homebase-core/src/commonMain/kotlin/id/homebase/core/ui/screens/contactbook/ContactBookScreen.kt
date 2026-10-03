@@ -112,11 +112,8 @@ fun ContactBookScreen(
         }
     }
 
-    // Returning here from the circle-member-add picker (or any other screen) needs to re-check
-    // an open circle sheet's pending badge explicitly — a pending-only add doesn't change any
-    // circle's real member list, so ConnectionService.circles' StateFlow conflates the
-    // assignment and never notifies the reactive collector in the ViewModel's init (#1096).
-    // Mirrors LocationScreen's resume-triggered refresh.
+    // Returning from the member picker (or elsewhere) asks the server for fresh circle data;
+    // the ViewModel's circles collector picks up the change.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -271,9 +268,8 @@ fun ContactBookScreen(
         ) {
             // The search query (driven from the top-bar search field) filters both the
             // Contacts and Circles tabs.
-            val tabs = if (uiState.reviewEnabled) ContactTab.entries else ContactTab.entries - ContactTab.NEW
-            PrimaryTabRow(selectedTabIndex = tabs.indexOf(uiState.selectedTab).coerceAtLeast(0)) {
-                tabs.forEach { tab ->
+            PrimaryTabRow(selectedTabIndex = uiState.selectedTab.ordinal) {
+                ContactTab.entries.forEach { tab ->
                     val waiting = uiState.newContacts.size + uiState.incomingRequestCount
                     Tab(
                         selected = uiState.selectedTab == tab,
@@ -327,7 +323,6 @@ fun ContactBookScreen(
                         loading = uiState.circlesLoading,
                         onAction = viewModel::onAction,
                         candidateCount = uiState.enrollmentCandidateCount,
-                        reviewEnabled = uiState.reviewEnabled,
                         listState = circlesListState,
                     )
                 }
