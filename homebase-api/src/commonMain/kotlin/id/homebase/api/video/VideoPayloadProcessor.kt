@@ -13,6 +13,7 @@ import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.withResolvedFile
 import id.homebase.api.image.createThumbnails
+import id.homebase.api.platform.beginBackgroundExecutionAssertion
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.isBlobUrl
 import io.ktor.utils.io.core.toByteArray
@@ -37,25 +38,33 @@ class VideoPayloadProcessor(
         trimEndMs: Long? = null,
         videoQuality: VideoQuality = VideoQuality.STANDARD,
         inputBlobUrl: String? = null,
-    ): VideoProcessResult =
-        // Resolve content URIs (Android copies the gallery pick into cacheDir as
-        // resolved_*; other platforms no-op) and reap that copy when we're done,
-        // so it can't linger at full video size. withResolvedFile is the shared
-        // resolve-then-delete scope — see FileOperationsProvider.withResolvedFile.
-        fileOperationsProvider.withResolvedFile(payload.filePath) { resolvedPath ->
-            processResolved(
-                payload =
-                    if (resolvedPath != payload.filePath) payload.copy(filePath = resolvedPath)
-                    else payload,
-                keyHeader = keyHeader,
-                onProgress = onProgress,
-                descriptorContentPayloadKey = descriptorContentPayloadKey,
-                trimStartMs = trimStartMs,
-                trimEndMs = trimEndMs,
-                videoQuality = videoQuality,
-                inputBlobUrl = inputBlobUrl,
-            )
+    ): VideoProcessResult {
+        // Without it iOS suspends ffmpeg mid-encode as soon as the user leaves the app,
+        // and the message never reaches the outbox until they come back (#1800).
+        val assertion = beginBackgroundExecutionAssertion("video-bundle")
+        return try {
+            // Resolve content URIs (Android copies the gallery pick into cacheDir as
+            // resolved_*; other platforms no-op) and reap that copy when we're done,
+            // so it can't linger at full video size. withResolvedFile is the shared
+            // resolve-then-delete scope — see FileOperationsProvider.withResolvedFile.
+            fileOperationsProvider.withResolvedFile(payload.filePath) { resolvedPath ->
+                processResolved(
+                    payload =
+                        if (resolvedPath != payload.filePath) payload.copy(filePath = resolvedPath)
+                        else payload,
+                    keyHeader = keyHeader,
+                    onProgress = onProgress,
+                    descriptorContentPayloadKey = descriptorContentPayloadKey,
+                    trimStartMs = trimStartMs,
+                    trimEndMs = trimEndMs,
+                    videoQuality = videoQuality,
+                    inputBlobUrl = inputBlobUrl,
+                )
+            }
+        } finally {
+            assertion.end()
         }
+    }
 
     private suspend fun processResolved(
         payload: PayloadFile,
@@ -74,6 +83,10 @@ class VideoPayloadProcessor(
         // Only a real blob: handle may bypass the resolved path — a raw content:// or PHAsset id
         // here is unreadable by native ffmpeg.
         val ffmpegInputPath = inputBlobUrl?.takeIf { it.isBlobUrl() } ?: payload.filePath
+        val inputSize = fileOperationsProvider.getFileSize(payload.filePath)
+        Logger.i(tag = "VideoProcessing") {
+            "VideoProcessing start: input=${inputSize}B quality=$videoQuality trim=$trimStartMs..$trimEndMs"
+        }
 
         /* ---------- PHASE 1: THUMBNAILS ---------- */
 
@@ -91,7 +104,11 @@ class VideoPayloadProcessor(
 
         // Poster frame via the thumbnail seam — returns JPEG bytes directly (tiered
         // native-first decode per platform), so no temp-file round-trip to read+delete.
-        val posterBytes = VideoThumbnailService.extractPosterFrame(ffmpegInputPath)
+        val (posterBytes, posterElapsed) =
+            measureTimedValue { VideoThumbnailService.extractPosterFrame(ffmpegInputPath) }
+        Logger.i(tag = "VideoProcessing") {
+            "poster done in ${posterElapsed.inWholeMilliseconds}ms (bytes=${posterBytes?.size})"
+        }
         if (posterBytes != null) {
             val (_, generatedTinyThumb, generatedThumbnails) =
                 createThumbnails(posterBytes, payload.key)
@@ -114,7 +131,7 @@ class VideoPayloadProcessor(
             )
         )
 
-        val inputSize = fileOperationsProvider.getFileSize(payload.filePath)
+        Logger.i(tag = "VideoProcessing") { "compress start" }
         // Collapse the per-tick ffmpeg progress to one event per whole percent (fractions are
         // 0f..1f, so key on it*100). Primed at 0 so the first tick doesn't duplicate the
         // phase-start 0f emitted above. Without this every raw tick became a suspending
