@@ -143,15 +143,18 @@ class CardWireTest {
     }
 
     @Test
-    fun theUnsupportedAnswerSurvivesARelaunch() = runTest {
+    fun theUnsupportedAnswerIsRememberedForTheSessionButNotTheNext() = runTest {
         val wire = CardWireHarness(circleCards = false)
-        val driver = newInMemoryJdbcDriver()
-        wire.cardRepository(inMemoryCardPreferences(driver)).addCircle(friends, "poster", CardOverrides.EMPTY)
+        val repo = wire.cardRepository()
+        repo.addCircle(friends, "poster", CardOverrides.EMPTY)
 
-        val relaunched = wire.cardRepository(inMemoryCardPreferences(driver))
-
-        assertFalse(relaunched.supportsCircleCards)
-        assertEquals(AddCircleCardResult.Unsupported, relaunched.addCircle(friends, "poster", CardOverrides.EMPTY))
+        assertFalse(repo.supportsCircleCards)
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, "poster", CardOverrides.EMPTY))
         assertEquals(1, wire.puts)
+
+        val relaunched = wire.cardRepository()
+        assertTrue(relaunched.supportsCircleCards)
+        relaunched.addCircle(friends, "poster", CardOverrides.EMPTY)
+        assertEquals(2, wire.puts)
     }
 }

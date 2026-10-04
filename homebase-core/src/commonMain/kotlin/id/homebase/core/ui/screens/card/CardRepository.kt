@@ -7,6 +7,7 @@ import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.client.profile.ProfileWriteResponse
+import kotlin.concurrent.Volatile
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonObject
@@ -47,14 +48,19 @@ class ProfileRepositoryCardStore(private val repository: ProfileRepository) : Ca
     )
 }
 
-class CardRepository(private val store: CardAttributeStore, private val preferences: CardPreferences) {
+class CardRepository(private val store: CardAttributeStore) {
     // Older servers reject the type outright; the answer is per identity, so reset() clears it on logout.
     private var typeUnsupported = false
 
-    val supportsCircleCards: Boolean get() = !typeUnsupported && !preferences.circleCardsUnsupported
+    // Not persisted: the server may be upgraded, so each session probes again.
+    @Volatile
+    private var circlesIgnored = false
+
+    val supportsCircleCards: Boolean get() = !typeUnsupported && !circlesIgnored
 
     fun reset() {
         typeUnsupported = false
+        circlesIgnored = false
     }
 
     suspend fun cards(): List<ProfileCard> = store.load().profileCards()
@@ -109,7 +115,7 @@ class CardRepository(private val store: CardAttributeStore, private val preferen
         val readBack = store.load().firstOrNull { it.id == draft.id } ?: error("the new circle card ${draft.id} did not read back")
         if (readBack.acl.circleIdList?.singleOrNull()?.sameCircleId(circle.id) == true) return CircleProbe.Sticks(readBack)
         Logger.i(tag = "CardRepository") { "server ignored circleIds; circle cards are unsupported" }
-        preferences.setCircleCardsUnsupported()
+        circlesIgnored = true
         deleted(readBack)
         return CircleProbe.Ignored
     }

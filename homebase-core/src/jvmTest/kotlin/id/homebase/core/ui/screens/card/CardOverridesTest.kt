@@ -77,7 +77,7 @@ class CardOverridesTest {
         assertEquals(listOf(CardBlock("links"), CardBlock("posts")), read.blocks)
 
         val store = FakeStore(stored)
-        assertTrue(CardRepository(store, inMemoryCardPreferences()).savePublic(CardDesign.BOARD))
+        assertTrue(CardRepository(store).savePublic(CardDesign.BOARD))
         val kept = store.written.single()["overrides"]!!.jsonObject
         assertEquals("bar", kept["socials"]!!.jsonPrimitive.content)
         assertEquals(
