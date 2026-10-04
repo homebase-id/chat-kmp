@@ -123,14 +123,13 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
     }
 
     override fun send(command: CardCommand) {
-        awaitReply(
-            when (command) {
-                is CardCommand.Render -> CardEvent.Ready::class
-                CardCommand.ExportPng -> CardEvent.Png::class
-                CardCommand.ProbeEdges -> CardEvent.Edges::class
-                CardCommand.RequestPaint -> CardEvent.Painted::class
-            },
-        )
+        when (command) {
+            is CardCommand.Render -> CardEvent.Ready::class
+            CardCommand.ExportPng -> CardEvent.Png::class
+            CardCommand.ProbeEdges -> CardEvent.Edges::class
+            CardCommand.RequestPaint -> CardEvent.Painted::class
+            is CardCommand.Reveal -> null
+        }?.let(::awaitReply)
         panel.evaluateJavaScript(command.script()) {}
     }
 

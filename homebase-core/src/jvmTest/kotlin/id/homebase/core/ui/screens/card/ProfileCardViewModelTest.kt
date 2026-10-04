@@ -102,6 +102,10 @@ class ProfileCardViewModelTest {
         }
         var onPaintRequest: () -> Unit = {}
         override fun requestPaint() = onPaintRequest()
+        val reveals = mutableListOf<CardEdge>()
+        override fun reveal(edge: CardEdge) {
+            reveals += edge
+        }
         var snapshots = 0
         override suspend fun snapshot(): ImageBitmap {
             snapshots++

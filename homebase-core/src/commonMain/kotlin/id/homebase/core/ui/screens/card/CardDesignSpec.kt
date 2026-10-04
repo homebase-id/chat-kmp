@@ -9,6 +9,13 @@ enum class CardOption {
     BLOCK_ORDER,
 }
 
+// Every design sets the name and portrait at the top and the sections and social links below them.
+internal val CardOption.previewEdge: CardEdge
+    get() = when (this) {
+        CardOption.ACCENT, CardOption.DISPLAY_FONT, CardOption.PORTRAIT_SHAPE -> CardEdge.TOP
+        CardOption.TEXT_FONT, CardOption.SOCIALS_STYLE, CardOption.BLOCK_ORDER -> CardEdge.BOTTOM
+    }
+
 /** [portraitSlots] is how many portraits the layout's preset draws; the web replaces the preset's list, so a shape override must fill every slot. */
 data class CardDesignSpec(
     val design: String,

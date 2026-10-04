@@ -45,6 +45,7 @@ interface CardHost {
     fun exportPng()
     fun probeEdges()
     fun requestPaint()
+    fun reveal(edge: CardEdge)
     suspend fun snapshot(): ImageBitmap?
     fun dispose()
 }
@@ -75,6 +76,7 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
     protected val scope = supervisedScope("card-host", Dispatchers.Main)
 
     private var lastPayload: CardPayload? = null
+    private var revealed = CardEdge.TOP
     private var mainFrameSettled = false
     private var loadedTimeout: Job? = null
 
@@ -104,6 +106,11 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
 
     override fun requestPaint() {
         if (_isLoaded.value) send(CardCommand.RequestPaint)
+    }
+
+    override fun reveal(edge: CardEdge) {
+        revealed = edge
+        if (_isLoaded.value) send(CardCommand.Reveal(edge))
     }
 
     override suspend fun snapshot(): ImageBitmap? = null
@@ -140,7 +147,11 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
         }
         when (event) {
             CardEvent.Loaded -> onLoaded()
-            is CardEvent.Ready -> CardLog.info("ready layout=${event.layout} ${event.ms}ms")
+            is CardEvent.Ready -> {
+                CardLog.info("ready layout=${event.layout} ${event.ms}ms")
+                // A render remounts the card and its images settle late, either of which can move the bottom edge.
+                if (revealed == CardEdge.BOTTOM) send(CardCommand.Reveal(revealed))
+            }
             is CardEvent.Png -> CardLog.info("png ${decodedSize(event.base64)}B ${event.width}x${event.height}")
             is CardEvent.Link -> CardLog.info("link ${event.href}")
             is CardEvent.Error -> CardLog.error(event.message)
