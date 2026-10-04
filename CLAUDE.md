@@ -296,6 +296,18 @@ Rules:
 - CI must be green on every layer before merging — the stack merge is all-or-nothing.
 - Branch names never contain `/` (this applies to every branch, stacked or not).
 
+## Opening a PR
+
+When you open a PR, before handing it over:
+
+- **Simplify.** Remind me to run `/simplify` (see below).
+- **Platforms.** If the diff touches platform code, the description says which of the four
+  platforms were verified and how. CI alone covers JVM, plus iOS/WASM for `homebase-api` only.
+- **Evidence.** A bug fix's description states what proved the root cause (log, trace, failing
+  test), and for a platform-specific bug, whether the platform principles held.
+- **Watch CI to green**, and read the silent-revert check's summary: it never fails the build,
+  so its warnings are only seen if someone looks.
+
 ## Before you merge: remind me to run a simplify pass
 
 Before a PR is opened or merged, **remind me to run `/simplify` on the branch**.
