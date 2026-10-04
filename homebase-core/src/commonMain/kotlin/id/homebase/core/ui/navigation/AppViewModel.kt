@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.time.measureTime
 
 class AppViewModel(
     private val credentialsManager: CredentialsManager,
@@ -138,13 +139,16 @@ class AppViewModel(
 
     /** Called when the app enters RESUMED state. */
     fun onResumed() {
-        notificationService.isAppInForeground = true
-        authConnectionCoordinator.setForeground(true)
-        refreshData()
-        checkForUpdate()
-        // Re-assert the real total rather than zeroing: the iOS extension has been counting
-        // pushes on its own while backgrounded, and messages still unread must stay shown.
-        conversationStream.currentUnreadTotal()?.let { BadgeManager.setCount(it) }
+        val took = measureTime {
+            notificationService.isAppInForeground = true
+            authConnectionCoordinator.setForeground(true)
+            refreshData()
+            checkForUpdate()
+            // Re-assert the real total rather than zeroing: the iOS extension has been counting
+            // pushes on its own while backgrounded, and messages still unread must stay shown.
+            conversationStream.currentUnreadTotal()?.let { BadgeManager.setCount(it) }
+        }
+        Logger.i(tag = "AppViewModel") { "onResumed took ${took.inWholeMilliseconds}ms" }
     }
 
     /** Called when the app leaves RESUMED state. */
