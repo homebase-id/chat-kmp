@@ -29,7 +29,7 @@ import platform.Foundation.dataWithContentsOfFile
 import platform.Foundation.fileHandleForReadingAtPath
 import platform.Foundation.fileHandleForWritingAtPath
 import platform.Foundation.readDataOfLength
-import platform.Foundation.seekToEndOfFile
+import platform.Foundation.truncateFileAtOffset
 import platform.Foundation.writeData
 import platform.Foundation.writeToFile
 import platform.Photos.PHAsset
@@ -283,7 +283,7 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         val handle = NSFileHandle.fileHandleForWritingAtPath(path)
             ?: error("Unable to open file for writing: $path")
 
-        handle.seekToEndOfFile()
+        handle.truncateFileAtOffset(0u)
 
         data.collect { chunk ->
 
