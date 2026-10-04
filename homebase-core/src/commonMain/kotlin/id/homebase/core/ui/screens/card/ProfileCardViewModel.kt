@@ -88,6 +88,9 @@ data class ProfileCardUiState(
     val circleCardsSupported: Boolean = true,
     val circlePicker: CirclePicker? = null,
     val isCardBusy: Boolean = false,
+    val designAccessMissing: Boolean = false,
+    val isDesignAccessPromptShown: Boolean = false,
+    val isHomePageBehind: Boolean = false,
 ) {
     val selectedCard: ProfileCard? get() = cards.firstOrNull { it.audience == selectedAudience }
     private val circleCard: ProfileCard? get() = selectedCard?.takeIf { it.audience is CardAudience.Circle }
@@ -106,6 +109,7 @@ data class ProfileCardUiState(
     val cardBottomArgb: Int? get() = edges[design]?.bottomArgb
     val canShare: Boolean get() = isCardReady && !isExporting
     val canSaveDesign: Boolean get() = hasUnsavedChanges && !isSavingDesign && !isCardBusy
+    val showsDesignAccessNote: Boolean get() = designAccessMissing && !isCircleSelected && !isDesignAccessPromptShown
 }
 
 data class CardCircle(val id: String, val name: String, val memberCount: Int)
@@ -309,6 +313,8 @@ class ProfileCardViewModel(
     private var posts: List<CardPost> = emptyList()
     private var postsFresh = false
     private var designAccess: MissingPermissionsResult? = null
+    private var designAccessWanted = false
+    private var designAccessAsked = false
     private var unpublishedDesign: String? = null
     private var unsavedCardDesign: String? = null
     private var unsavedCardOverrides: CardOverrides? = null
@@ -328,6 +334,7 @@ class ProfileCardViewModel(
                 checkDesignAccess()
                 val design = unpublishedDesign
                 if (design != null && designAccess == null) publishDesign(design)
+                else if (design != null) Logger.i(tag = TAG) { "home page access still missing; card design $design stays unpublished" }
             }
         }
     }
@@ -440,9 +447,8 @@ class ProfileCardViewModel(
             if (saved) render()
             if (saved && designChanged) {
                 unpublishedDesign = design
-                val access = designAccess
-                if (access == null) publishDesign(design)
-                else _events.tryEmit(ProfileCardEvent.OpenLink(access.buildExtendPermissionUrl()))
+                _uiState.update { it.copy(isHomePageBehind = true) }
+                if (designAccess == null) publishDesign(design)
             }
             _events.tryEmit(if (saved) ProfileCardEvent.DesignSaved else ProfileCardEvent.DesignSaveFailed)
         }
@@ -573,6 +579,7 @@ class ProfileCardViewModel(
         publishJob = viewModelScope.launch {
             val result = attempt("publishing card design $design") { source.publishDesign(design) } ?: return@launch
             unpublishedDesign = null
+            _uiState.update { it.copy(isHomePageBehind = false) }
             if (result == CardDesignPublish.NoTheme) {
                 Logger.i(tag = TAG) { "no home page theme to publish card design $design to" }
             }
@@ -581,6 +588,40 @@ class ProfileCardViewModel(
 
     private suspend fun checkDesignAccess() {
         designAccess = attempt("design access check") { source.missingDesignAccess(source.odinId()) }
+        _uiState.update { it.copy(designAccessMissing = designAccess != null) }
+        promptForDesignAccessIfWanted()
+    }
+
+    /** The public card's design is written to the home page, which needs a grant the app may not have yet: ask before editing, not mid-save. */
+    fun onEditorOpened() {
+        designAccessWanted = true
+        promptForDesignAccessIfWanted()
+    }
+
+    fun onEditorClosed() {
+        designAccessWanted = false
+    }
+
+    private fun promptForDesignAccessIfWanted() {
+        if (!designAccessWanted || designAccessAsked || designAccess == null || _uiState.value.isCircleSelected) return
+        designAccessAsked = true
+        designAccessWanted = false
+        _uiState.update { it.copy(isDesignAccessPromptShown = true) }
+    }
+
+    fun onDesignAccessAccepted() {
+        _uiState.update { it.copy(isDesignAccessPromptShown = false) }
+        designAccess?.let { _events.tryEmit(ProfileCardEvent.OpenLink(it.buildExtendPermissionUrl())) }
+    }
+
+    fun onDesignAccessDeclined() = _uiState.update { it.copy(isDesignAccessPromptShown = false) }
+
+    fun onPublishRetry() {
+        if (designAccess != null) {
+            _uiState.update { it.copy(isDesignAccessPromptShown = true) }
+            return
+        }
+        unpublishedDesign?.let(::publishDesign)
     }
 
     /** Picks up profile edits made since the pre-warm; the warm card shows until they land. */
