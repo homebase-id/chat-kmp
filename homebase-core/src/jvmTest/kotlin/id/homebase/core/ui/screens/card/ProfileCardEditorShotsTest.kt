@@ -3,6 +3,13 @@ package id.homebase.core.ui.screens.card
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
@@ -20,7 +27,10 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.runDesktopComposeUiTest
@@ -105,7 +115,135 @@ class ProfileCardEditorShotsTest {
         Shot("20-small-phone-customise", edited, EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Section order")),
         Shot("21-small-phone-design", base.copy(previewDesign = CardDesign.DOSSIER), widthDp = 360, heightDp = 640),
         Shot("22-small-phone-fonts", edited, EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Body font")),
+        Shot("23-access-note", base.copy(designAccessMissing = true), EditorStep.Design),
+        Shot("24-access-note-customise", edited.copy(designAccessMissing = true), EditorStep.Customise, act = tool("Social links style")),
     )
+
+    private fun circles(n: Int) = List(n) { CardCircle("c$it", CIRCLE_NAMES[it % CIRCLE_NAMES.size], memberCount = it * 3 % 11) }
+
+    private class ViewerShot(val name: String, val state: ProfileCardUiState, val act: ComposeUiTest.() -> Unit = {}, val popup: Boolean = false)
+
+    private val work = CardAudience.Circle("c1", "Work")
+    private val withCircle = base.copy(cards = listOf(public, card(work, CardDesign.COLLAGE)), selectedAudience = work)
+
+    private val viewerShots = listOf(
+        ViewerShot("v01-public", base.copy(cards = listOf(public, card(work)))),
+        ViewerShot("v02-circle", withCircle),
+        ViewerShot("v03-home-page-behind", base.copy(isHomePageBehind = true)),
+        ViewerShot("v04-exporting", withCircle.copy(isExporting = true)),
+        ViewerShot("v05-menu", withCircle, act = { onNodeWithContentDescription("Card for Work. Choose another card.").performClick() }, popup = true),
+    )
+
+    @Test
+    fun viewerChromeRendersEveryState() {
+        for (dark in listOf(false, true)) {
+            for (shot in viewerShots) renderViewer(shot, dark)
+            renderPopup("v06-delete-dialog", dark) { DeleteCardDialog(label = "Work", onDelete = {}, onDismiss = {}) }
+            renderPopup("v07-access-dialog", dark) { DesignAccessDialog(onContinue = {}, onDismiss = {}) }
+            renderSheet("v08-add-circle", dark, CirclePicker(circles(12), withCard = setOf("c1", "c4"), loading = false))
+            renderSheet("v09-add-circle-few", dark, CirclePicker(circles(3), withCard = setOf("c0"), loading = false))
+            renderSheet("v10-add-circle-loading", dark, CirclePicker())
+            renderSheet("v11-add-circle-all-taken", dark, CirclePicker(circles(2), withCard = setOf("c0", "c1"), loading = false))
+            renderSheet("v12-add-circle-pick", dark, CirclePicker(circles(4), withCard = setOf("c1"), loading = false)) {
+                onNodeWithText(CIRCLE_NAMES[2]).performClick()
+            }
+        }
+    }
+
+    @Composable
+    private fun themed(dark: Boolean, content: @Composable () -> Unit) {
+        CompositionLocalProvider(LocalDensity provides Density(SCALE, 1f)) {
+            HomebaseTheme(darkTheme = dark, updatesSystemChrome = false) {
+                CardExpressiveTheme(content)
+            }
+        }
+    }
+
+    private fun renderViewer(shot: ViewerShot, dark: Boolean) = runDesktopComposeUiTest(
+        width = (PHONE_W * SCALE).toInt(),
+        height = (PHONE_H * SCALE).toInt(),
+    ) {
+        mainClock.autoAdvance = false
+        setContent {
+            themed(dark) {
+                Box(Modifier.fillMaxSize().background(Color(CardDesign.baseArgb(shot.state.design)))) {
+                    SheetTopChrome(
+                        uiState = shot.state,
+                        onSelectCard = {},
+                        circleActions = CircleCardActions({}, {}, {}, {}),
+                        onClose = {},
+                        bandDrag = Modifier,
+                        handleDrag = Modifier,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
+                    CardBottomChrome(
+                        sharesPublicCard = shot.state.isCircleSelected,
+                        isExporting = shot.state.isExporting,
+                        canShare = true,
+                        saveInsteadOfShare = false,
+                        isHomePageBehind = shot.state.isHomePageBehind,
+                        onShare = {},
+                        onPublish = {},
+                        onEdit = {},
+                        extraActions = {},
+                    )
+                }
+            }
+        }
+        mainClock.advanceTimeBy(SETTLE_MS)
+        shot.act(this)
+        mainClock.advanceTimeBy(SETTLE_MS)
+        save(shot.name, dark)
+    }
+
+    private fun renderPopup(name: String, dark: Boolean, content: @Composable () -> Unit) = runDesktopComposeUiTest(
+        width = (PHONE_W * SCALE).toInt(),
+        height = (PHONE_H * SCALE).toInt(),
+    ) {
+        mainClock.autoAdvance = false
+        setContent {
+            themed(dark) {
+                Box(Modifier.fillMaxSize().background(Color(CardDesign.baseArgb(CardDesign.COLLAGE))))
+                content()
+            }
+        }
+        mainClock.advanceTimeBy(SETTLE_MS)
+        save(name, dark)
+    }
+
+    private fun renderSheet(name: String, dark: Boolean, picker: CirclePicker, act: ComposeUiTest.() -> Unit = {}) = runDesktopComposeUiTest(
+        width = (PHONE_W * SCALE).toInt(),
+        height = (PHONE_H * SCALE).toInt(),
+    ) {
+        mainClock.autoAdvance = false
+        setContent {
+            themed(dark) {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f)), contentAlignment = Alignment.BottomCenter) {
+                    Surface(
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = (PHONE_H * 0.9f).dp),
+                    ) {
+                        Box(Modifier.padding(top = 32.dp)) {
+                            CirclePickerContent(picker = picker, onPick = {}, onCancel = {})
+                        }
+                    }
+                }
+            }
+        }
+        mainClock.advanceTimeBy(SETTLE_MS)
+        act(this)
+        mainClock.advanceTimeBy(SETTLE_MS)
+        save(name, dark)
+    }
+
+    private fun ComposeUiTest.save(name: String, dark: Boolean) {
+        val image = onAllNodes(isRoot()).onFirst().captureToImage()
+        assertTrue(image.width > 0 && image.height > 0)
+        outDir?.let { dir ->
+            ImageIO.write(image.toAwtImage(), "png", File(dir, "$name-${if (dark) "dark" else "light"}.png"))
+        }
+    }
 
     @Test
     fun editorRendersEveryState() {
@@ -161,11 +299,7 @@ class ProfileCardEditorShotsTest {
         mainClock.advanceTimeBy(SETTLE_MS)
         shot.act(this)
         mainClock.advanceTimeBy(SETTLE_MS)
-        val image = onRoot().captureToImage()
-        assertTrue(image.width > 0 && image.height > 0)
-        outDir?.let { dir ->
-            ImageIO.write(image.toAwtImage(), "png", File(dir, "${shot.name}-${if (dark) "dark" else "light"}.png"))
-        }
+        save(shot.name, dark)
     }
 
     private companion object {
@@ -174,5 +308,6 @@ class ProfileCardEditorShotsTest {
         const val PHONE_H = 892
         const val SETTLE_MS = 1_500L
         const val PARK_PX = 100_000f
+        val CIRCLE_NAMES = listOf("Acquaintances", "Chat", "Emergency Location Access", "Family", "Feed", "Friends", "HomePage", "Moments", "Recovery", "Vault", "Webdrop", "Work")
     }
 }
