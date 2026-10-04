@@ -20,7 +20,6 @@ import id.homebase.api.image.ArgbImage
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.youauth.MissingPermissionsResult
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.AfterTest
@@ -134,10 +133,10 @@ class ProfileCardViewModelTest {
         var liveCards: (suspend () -> List<ProfileAttribute>)? = null
         override suspend fun attributes() = attributes + liveCards?.invoke().orEmpty()
 
-        var circleList: List<ContactCircleUi> = emptyList()
+        var circleList: List<CardCircle> = emptyList()
         var circlesFail = false
         override val supportsCircleCards: Boolean get() = cardRepository?.supportsCircleCards ?: true
-        override suspend fun circles(): List<ContactCircleUi> {
+        override suspend fun circles(): List<CardCircle> {
             check(!circlesFail) { "circles unavailable" }
             return circleList
         }
@@ -1264,6 +1263,7 @@ class ProfileCardViewModelTest {
         val saves = mutableListOf<Save>()
         val deleted = mutableListOf<Uuid>()
         var dropCircleIds = false
+        var serverCircleId: (String) -> String = { it }
         var deleteResult = true
         var deleteThrows: Exception? = null
         var failWith: Exception? = null
@@ -1285,7 +1285,7 @@ class ProfileCardViewModelTest {
                 data = data,
                 acl = AccessControlList(
                     requiredSecurityGroup = visibility.wireValue,
-                    circleIdList = circleIds.takeIf { it.isNotEmpty() && !dropCircleIds },
+                    circleIdList = circleIds.map(serverCircleId).takeIf { it.isNotEmpty() && !dropCircleIds },
                 ),
                 priority = priority,
             )
@@ -1300,8 +1300,8 @@ class ProfileCardViewModelTest {
         }
     }
 
-    private val family = ContactCircleUi("c2", "Family", pending = false)
-    private val friendsCircle = ContactCircleUi("c1", "Friends", pending = false)
+    private val family = CardCircle("c2", "Family", memberCount = 3)
+    private val friendsCircle = CardCircle("c1", "Friends", memberCount = 5)
 
     private fun circleVm(
         store: ServerStore,
@@ -1342,13 +1342,33 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun aCircleThatAlreadyHasACardIsNotOffered() = runTest(dispatcher) {
+    fun aNewCircleCardStaysSelectedWhenTheServerSpellsItsCircleIdDifferently() = runTest(dispatcher) {
+        val store = ServerStore(listOf(publicCardAttribute)).apply { serverCircleId = { it.replace("-", "").lowercase() } }
+        val (vm, _, host) = circleVm(store) { circleList = listOf(CardCircle("AB12-CD34", "Work", memberCount = 2)) }
+
+        vm.onAddCardClicked()
+        vm.onCircleChosen("AB12-CD34")
+        advanceUntilIdle()
+
+        val selected = assertIs<CardAudience.Circle>(vm.uiState.value.selectedAudience)
+        assertEquals("ab12cd34", selected.id)
+        assertEquals(selected, vm.uiState.value.selectedCard?.audience)
+        assertEquals("circle", host.rendered.last().audience?.kind)
+        assertEquals("Work", host.rendered.last().audience?.label)
+    }
+
+    @Test
+    fun aCircleThatAlreadyHasACardIsListedButCannotBePicked() = runTest(dispatcher) {
         val store = ServerStore(listOf(publicCardAttribute, circleCardAttribute("c1", "Friends", CardDesign.POSTER, 0)))
         val (vm, _, _) = circleVm(store)
 
         vm.onAddCardClicked()
 
-        assertEquals(listOf("c2"), vm.uiState.value.circlePicker?.circles?.map { it.id })
+        val picker = assertNotNull(vm.uiState.value.circlePicker)
+        assertEquals(listOf("c1", "c2"), picker.circles.map { it.id })
+        assertEquals(setOf("c1"), picker.withCard)
+        assertEquals(listOf(5, 3), picker.circles.map { it.memberCount })
+        assertTrue(picker.hasChoice)
         vm.onCircleChosen("c1")
         advanceUntilIdle()
         assertTrue(store.saves.isEmpty())

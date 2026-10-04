@@ -2340,7 +2340,10 @@
     <string name="profile_card_delete_message">People in this circle will see your public card instead.</string>
     <string name="profile_card_circle_failed">Couldn't update your circle cards.</string>
     <string name="profile_card_circle_unsupported">Your Homebase server doesn't support circle cards yet.</string>
-    <string name="profile_card_share_public_note">Sharing always sends your public card</string>
+    <string name="profile_card_share_public">Share public card</string>
+    <string name="profile_card_save_public">Save public card</string>
+    <string name="profile_card_add_circle_has_card">Already has a card</string>
+    <string name="profile_card_add_circle_no_circles">You don't have any circles yet.</string>
     <string name="profile_card_editor_title">Card design</string>
     <string name="profile_card_edit_profile">Edit profile details</string>
     <string name="profile_card_design_save_failed">Couldn't save the card design.</string>

@@ -36,4 +36,8 @@
         <item quantity="one">Sending to %1$d conversation…</item>
         <item quantity="other">Sending to %1$d conversations…</item>
     </plurals>
+    <plurals name="profile_card_circle_members">
+        <item quantity="one">%1$d member</item>
+        <item quantity="other">%1$d members</item>
+    </plurals>
 </resources>

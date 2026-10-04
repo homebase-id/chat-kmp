@@ -20,6 +20,10 @@ sealed interface CardAudience {
     data class Circle(val id: String, val label: String) : CardAudience
 }
 
+// The server may spell a circle id differently from the circle list it came from.
+internal fun CardAudience.isSameAs(other: CardAudience): Boolean =
+    this == other || (this is CardAudience.Circle && other is CardAudience.Circle && id.sameCircleId(other.id))
+
 internal fun CardAudience.aclFilter(): AclFilter = when (this) {
     CardAudience.Public -> ProfileVisibility.ANONYMOUS.aclFilter()
     is CardAudience.Circle -> { acl -> acl.isVisibleToCircle(id) }

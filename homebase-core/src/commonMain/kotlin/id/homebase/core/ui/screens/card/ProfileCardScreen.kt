@@ -109,7 +109,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import id.homebase.core.localization.TranslationUtil
-import id.homebase.core.ui.screens.contactbook.components.CirclePickerChips
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.resources.MR
@@ -121,7 +120,6 @@ import id.homebase.resources.delete
 import id.homebase.resources.profile_card_add_circle_card
 import id.homebase.resources.profile_card_add_circle_title
 import id.homebase.resources.profile_card_add_circle_hint
-import id.homebase.resources.profile_card_add_circle_pick
 import id.homebase.resources.profile_card_add_circle_confirm
 import id.homebase.resources.profile_card_add_circle_none
 import id.homebase.resources.profile_card_add_circle_load_failed
@@ -135,7 +133,6 @@ import id.homebase.resources.profile_card_audience_circle
 import id.homebase.resources.profile_card_audience_description
 import id.homebase.resources.profile_card_audience_public
 import id.homebase.resources.profile_card_audience_switch
-import id.homebase.resources.profile_card_share_public_note
 import id.homebase.resources.profile_card_design_board
 import id.homebase.resources.profile_card_design_collage
 import id.homebase.resources.profile_card_design_dossier
@@ -146,6 +143,26 @@ import id.homebase.resources.profile_card_save
 import id.homebase.resources.profile_card_share
 import id.homebase.resources.profile_card_share_failed
 import id.homebase.resources.profile_card_unsupported
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MenuDefaults
+import androidx.compose.material3.RadioButton
+import id.homebase.core.widget.AdaptiveSheet
+import id.homebase.resources.profile_card_add_circle_has_card
+import id.homebase.resources.profile_card_add_circle_no_circles
+import id.homebase.resources.profile_card_circle_members
+import id.homebase.resources.profile_card_save_public
+import id.homebase.resources.profile_card_share_public
+import org.jetbrains.compose.resources.pluralStringResource
 import kotlin.math.exp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
@@ -161,7 +178,11 @@ private val TOP_BAND_HEIGHT = 56.dp
 private val BAND_FADE_HEIGHT = 16.dp
 // The floating toolbar plus its vertical margins.
 private val TOOLBAR_BAND_HEIGHT = 88.dp
-private val AUDIENCE_BADGE_MAX_WIDTH = 132.dp
+private val AUDIENCE_BADGE_MAX_WIDTH = 160.dp
+private val CHROME_CONTROL_SIZE = 40.dp
+private val PICKER_ROW_HEIGHT = 64.dp
+private const val PICKER_HALF_SHEET_ROWS = 5
+private const val DISABLED_ALPHA = 0.38f
 private val MAX_SHEET_PULL = 32.dp
 private val DISMISS_DRAG_DISTANCE = 96.dp
 private const val DISMISS_FLING_VELOCITY = 1500f
@@ -361,7 +382,7 @@ fun ProfileCardScreen(
                     modifier = Modifier.align(Alignment.TopCenter),
                 )
                 CardBottomChrome(
-                    showPublicNote = uiState.isCircleSelected,
+                    sharesPublicCard = uiState.isCircleSelected,
                     isExporting = uiState.isExporting,
                     canShare = uiState.canShare,
                     saveInsteadOfShare = saveInsteadOfShare,
@@ -374,10 +395,9 @@ fun ProfileCardScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun BoxScope.CardBottomChrome(
-    showPublicNote: Boolean,
+    sharesPublicCard: Boolean,
     isExporting: Boolean,
     canShare: Boolean,
     saveInsteadOfShare: Boolean,
@@ -385,14 +405,6 @@ internal fun BoxScope.CardBottomChrome(
     onEdit: () -> Unit,
     extraActions: @Composable () -> Unit,
 ) {
-    if (showPublicNote) {
-        SharePublicNote(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = TOOLBAR_BAND_HEIGHT + 4.dp),
-        )
-    }
     Box(
         modifier = Modifier
             .align(Alignment.BottomCenter)
@@ -407,6 +419,18 @@ internal fun BoxScope.CardBottomChrome(
     ) {
         HorizontalFloatingToolbar(
             expanded = true,
+            floatingActionButton = {
+                FloatingToolbarDefaults.VibrantFloatingActionButton(
+                    onClick = onEdit,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Edit,
+                        contentDescription = stringResource(MR.string.profile_card_edit),
+                    )
+                }
+            },
             colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
                 toolbarContainerColor = chromePillColor(),
                 toolbarContentColor = MaterialTheme.colorScheme.onSurface,
@@ -416,15 +440,10 @@ internal fun BoxScope.CardBottomChrome(
                 isExporting = isExporting,
                 enabled = canShare,
                 saveInsteadOfShare = saveInsteadOfShare,
+                labelled = sharesPublicCard,
                 onClick = onShare,
             )
             extraActions()
-            IconButton(onClick = onEdit) {
-                Icon(
-                    imageVector = Icons.Outlined.Edit,
-                    contentDescription = stringResource(MR.string.profile_card_edit),
-                )
-            }
         }
     }
 }
@@ -479,7 +498,7 @@ private fun CardBandsLayout(
 }
 
 @Composable
-private fun SheetTopChrome(
+internal fun SheetTopChrome(
     uiState: ProfileCardUiState,
     onSelectCard: (CardAudience) -> Unit,
     circleActions: CircleCardActions,
@@ -521,24 +540,18 @@ private fun SheetTopChrome(
             uiState = uiState,
             onSelect = onSelectCard,
             circleActions = circleActions,
-            modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp),
         )
-        CardChromePill(modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp)) {
-            IconButton(onClick = onClose) {
-                Icon(imageVector = Icons.Filled.Close, contentDescription = stringResource(MR.string.close))
-            }
+        ChromeIconButton(
+            onClick = onClose,
+            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = stringResource(MR.string.close),
+                modifier = Modifier.size(20.dp),
+            )
         }
-    }
-}
-
-@Composable
-private fun SharePublicNote(modifier: Modifier = Modifier) {
-    CardChromePill(modifier = modifier) {
-        Text(
-            text = stringResource(MR.string.profile_card_share_public_note),
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-        )
     }
 }
 
@@ -575,24 +588,43 @@ internal fun AudienceBadge(
     } else {
         stringResource(MR.string.profile_card_audience_description, label)
     }
+    val isCircle = selected is CardAudience.Circle
+    val colors = MaterialTheme.colorScheme
+    // Same audience colours as the editor's title: a circle card reads tertiary, the public one stays neutral.
+    val spec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
+    val container by animateColorAsState(if (isCircle) colors.tertiaryContainer else chromePillColor(), spec)
+    val content by animateColorAsState(if (isCircle) colors.onTertiaryContainer else colors.onSurface, spec)
     Box(modifier = modifier) {
-        CardChromePill {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = (if (hasMenu) Modifier.clickable(role = Role.Button) { expanded = true } else Modifier)
-                    .clearAndSetSemantics { contentDescription = description }
-                    .widthIn(max = AUDIENCE_BADGE_MAX_WIDTH)
-                    .minimumInteractiveComponentSize()
-                    .padding(horizontal = 12.dp),
-            ) {
-                Icon(imageVector = audienceIcon(selected), contentDescription = null, modifier = Modifier.size(18.dp))
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 6.dp),
-                )
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = (if (hasMenu) Modifier.clickable(role = Role.Button) { expanded = true } else Modifier)
+                .clearAndSetSemantics { contentDescription = description }
+                .minimumInteractiveComponentSize(),
+        ) {
+            Surface(shape = CircleShape, color = container, contentColor = content, shadowElevation = 2.dp) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .height(CHROME_CONTROL_SIZE)
+                        .widthIn(max = AUDIENCE_BADGE_MAX_WIDTH)
+                        .padding(start = 10.dp, end = if (hasMenu) 6.dp else 14.dp),
+                ) {
+                    Icon(imageVector = audienceIcon(selected), contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 6.dp).weight(1f, fill = false),
+                    )
+                    if (hasMenu) {
+                        Icon(
+                            imageVector = Icons.Filled.ArrowDropDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
             }
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -600,6 +632,11 @@ internal fun AudienceBadge(
                 DropdownMenuItem(
                     text = { Text(audienceLabel(card.audience)) },
                     leadingIcon = { Icon(audienceIcon(card.audience), contentDescription = null) },
+                    trailingIcon = if (card.audience == selected) {
+                        { Icon(Icons.Filled.Check, contentDescription = null) }
+                    } else {
+                        null
+                    },
                     onClick = {
                         expanded = false
                         onSelect(card.audience)
@@ -617,9 +654,14 @@ internal fun AudienceBadge(
                 )
             }
             if (uiState.isCircleSelected && !uiState.isCardBusy) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 DropdownMenuItem(
                     text = { Text(stringResource(MR.string.profile_card_delete_card)) },
                     leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
+                    colors = MenuDefaults.itemColors(
+                        textColor = MaterialTheme.colorScheme.error,
+                        leadingIconColor = MaterialTheme.colorScheme.error,
+                    ),
                     onClick = {
                         expanded = false
                         confirmDelete = true
@@ -629,59 +671,144 @@ internal fun AudienceBadge(
         }
     }
     uiState.circlePicker?.let { picker ->
-        CirclePickerDialog(picker = picker, onPick = circleActions.onPick, onDismiss = circleActions.onDismissPicker)
+        CirclePickerSheet(picker = picker, onPick = circleActions.onPick, onDismiss = circleActions.onDismissPicker)
     }
     if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text(stringResource(MR.string.profile_card_delete_title, label)) },
-            text = { Text(stringResource(MR.string.profile_card_delete_message)) },
-            confirmButton = {
-                TextButton(onClick = { confirmDelete = false; circleActions.onDelete() }) {
-                    Text(stringResource(MR.string.delete))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text(stringResource(MR.string.cancel)) }
-            },
+        DeleteCardDialog(
+            label = label,
+            onDelete = { confirmDelete = false; circleActions.onDelete() },
+            onDismiss = { confirmDelete = false },
         )
     }
 }
 
 @Composable
-private fun CirclePickerDialog(picker: CirclePicker, onPick: (String) -> Unit, onDismiss: () -> Unit) {
-    var chosen by remember { mutableStateOf<String?>(null) }
+internal fun DeleteCardDialog(label: String, onDelete: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(MR.string.profile_card_add_circle_title)) },
-        text = {
-            when {
-                picker.loading -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { LoadingIndicator() }
-                picker.failed -> Text(stringResource(MR.string.profile_card_add_circle_load_failed))
-                picker.circles.isEmpty() -> Text(stringResource(MR.string.profile_card_add_circle_none))
-                else -> Column {
-                    Text(
-                        stringResource(MR.string.profile_card_add_circle_hint),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(bottom = 12.dp),
-                    )
-                    CirclePickerChips(
-                        circles = picker.circles,
-                        selectedIds = setOfNotNull(chosen),
-                        onToggle = { chosen = it },
-                        enabled = true,
-                        centered = false,
-                        label = stringResource(MR.string.profile_card_add_circle_pick),
+            onDismissRequest = onDismiss,
+            icon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
+            title = { Text(stringResource(MR.string.profile_card_delete_title, label), textAlign = TextAlign.Center) },
+            text = { Text(stringResource(MR.string.profile_card_delete_message)) },
+            confirmButton = {
+                Button(
+                    onClick = onDelete,
+                    shapes = ButtonDefaults.shapes(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
+                ) {
+                    Text(stringResource(MR.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
+            },
+        )
+}
+
+@Composable
+private fun CirclePickerSheet(picker: CirclePicker, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    AdaptiveSheet(onDismiss = onDismiss, expandFully = picker.circles.size > PICKER_HALF_SHEET_ROWS) {
+        CirclePickerContent(
+            picker = picker,
+            onPick = { id -> dismiss { onPick(id) } },
+            onCancel = { dismiss() },
+        )
+    }
+}
+
+@Composable
+internal fun CirclePickerContent(picker: CirclePicker, onPick: (String) -> Unit, onCancel: () -> Unit) {
+    var chosen by remember { mutableStateOf<String?>(null) }
+    val colors = MaterialTheme.colorScheme
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+        Text(
+            text = stringResource(MR.string.profile_card_add_circle_title),
+            style = MaterialTheme.typography.headlineSmallEmphasized,
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
+        val message = when {
+            picker.loading -> null
+            picker.failed -> MR.string.profile_card_add_circle_load_failed
+            picker.circles.isEmpty() -> MR.string.profile_card_add_circle_no_circles
+            !picker.hasChoice -> MR.string.profile_card_add_circle_none
+            else -> MR.string.profile_card_add_circle_hint
+        }
+        message?.let {
+            Text(
+                text = stringResource(it),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 8.dp),
+            )
+        }
+        when {
+            picker.loading -> Box(Modifier.fillMaxWidth().height(PICKER_ROW_HEIGHT * 2), contentAlignment = Alignment.Center) {
+                LoadingIndicator()
+            }
+            picker.circles.isNotEmpty() -> LazyColumn(modifier = Modifier.weight(1f, fill = false).selectableGroup()) {
+                items(picker.circles, key = { it.id }) { circle ->
+                    CirclePickerRow(
+                        circle = circle,
+                        hasCard = circle.id in picker.withCard,
+                        selected = circle.id == chosen,
+                        onSelect = { chosen = circle.id },
                     )
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { chosen?.let(onPick) }, enabled = chosen != null) {
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = onCancel, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
+            Button(
+                onClick = { chosen?.let(onPick) },
+                enabled = chosen != null,
+                shapes = ButtonDefaults.shapes(),
+            ) {
+                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
                 Text(stringResource(MR.string.profile_card_add_circle_confirm))
             }
+        }
+    }
+}
+
+@Composable
+private fun CirclePickerRow(circle: CardCircle, hasCard: Boolean, selected: Boolean, onSelect: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val muted = colors.onSurface.copy(alpha = DISABLED_ALPHA)
+    ListItem(
+        headlineContent = { Text(circle.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        supportingContent = {
+            Text(
+                if (hasCard) stringResource(MR.string.profile_card_add_circle_has_card)
+                else pluralStringResource(MR.plurals.profile_card_circle_members, circle.memberCount, circle.memberCount),
+            )
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) } },
+        leadingContent = { RadioButton(selected = selected, onClick = null, enabled = !hasCard) },
+        colors = ListItemDefaults.colors(
+            containerColor = Color.Transparent,
+            headlineColor = when {
+                hasCard -> muted
+                selected -> colors.onSecondaryContainer
+                else -> colors.onSurface
+            },
+            supportingColor = when {
+                hasCard -> muted
+                selected -> colors.onSecondaryContainer
+                else -> colors.onSurfaceVariant
+            },
+        ),
+        modifier = Modifier
+            .padding(horizontal = 12.dp, vertical = 2.dp)
+            .clip(MaterialTheme.shapes.large)
+            .background(if (selected) colors.secondaryContainer else Color.Transparent)
+            .heightIn(min = PICKER_ROW_HEIGHT)
+            .selectable(selected = selected, enabled = !hasCard, role = Role.RadioButton, onClick = onSelect),
     )
 }
 
@@ -699,6 +826,22 @@ private fun CardChromePill(modifier: Modifier = Modifier, content: @Composable (
         shadowElevation = 2.dp,
         content = content,
     )
+}
+
+@Composable
+private fun ChromeIconButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Box(modifier = modifier.minimumInteractiveComponentSize(), contentAlignment = Alignment.Center) {
+        Surface(
+            onClick = onClick,
+            shape = CircleShape,
+            color = chromePillColor(),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            shadowElevation = 2.dp,
+            modifier = Modifier.size(CHROME_CONTROL_SIZE),
+        ) {
+            Box(contentAlignment = Alignment.Center) { content() }
+        }
+    }
 }
 
 @Composable
@@ -783,9 +926,11 @@ private fun ShareAction(
     isExporting: Boolean,
     enabled: Boolean,
     saveInsteadOfShare: Boolean,
+    labelled: Boolean,
     onClick: () -> Unit,
 ) {
     val motion = MaterialTheme.motionScheme
+    val icon = if (saveInsteadOfShare) Icons.Outlined.Download else Icons.Outlined.Share
     AnimatedContent(
         targetState = isExporting,
         transitionSpec = { fadeIn(motion.fastEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
@@ -794,10 +939,25 @@ private fun ShareAction(
             Box(modifier = Modifier.minimumInteractiveComponentSize(), contentAlignment = Alignment.Center) {
                 LoadingIndicator(modifier = Modifier.size(40.dp))
             }
+        } else if (labelled) {
+            // A circle card is never what gets shared, so the action says which card goes out.
+            TextButton(
+                onClick = onClick,
+                enabled = enabled,
+                shapes = ButtonDefaults.shapes(),
+                colors = ButtonDefaults.textButtonColors(contentColor = LocalContentColor.current),
+            ) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                Text(
+                    stringResource(if (saveInsteadOfShare) MR.string.profile_card_save_public else MR.string.profile_card_share_public),
+                    maxLines = 1,
+                )
+            }
         } else {
             IconButton(onClick = onClick, enabled = enabled) {
                 Icon(
-                    imageVector = if (saveInsteadOfShare) Icons.Outlined.Download else Icons.Outlined.Share,
+                    imageVector = icon,
                     contentDescription = stringResource(
                         if (saveInsteadOfShare) MR.string.profile_card_save else MR.string.profile_card_share,
                     ),
