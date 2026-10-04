@@ -121,54 +121,23 @@ Each module follows the standard KMP layout:
 
 The flag `-Xexpect-actual-classes` is enabled.
 
-## Platform-specific code: one contract, tested on every real platform
+## Platform-specific code
 
-**Four platforms, every time: iOS, Android, JVM (desktop) and WASM (web).** Platform code is
-not done until it is right on all four, and a fix on one is not done until the other three are
-checked.
+We ship on four platforms: **iOS, Android, JVM (desktop) and WASM (web)**. Platform code is done
+only when it behaves the same on all four.
 
-Platform implementations drift apart silently. iOS `writeStream` appended where every other
-platform replaced the file, so "Save image" saved the wrong photo; every test passed,
-because no test ran the iOS implementation. Before adding or changing an `expect` or a
-per-platform implementation:
-
-1. **Reuse an existing seam.** File I/O goes through `FileOperationsProvider`; images through
-   `ImageUtils`; storage through the existing stores. Don't add a new `expect` that does file or
-   storage I/O on the side.
-2. **Write one implementation where you can.** If a multiplatform library covers it (okio for
-   files, Skia for images), or an intermediate source set can host it, implement it once there
-   rather than once per target. Per-platform code is only for what is truly platform-specific
-   (`content://`, PHAsset, Keychain, …).
-3. **Write the contract on the common declaration.** KDoc states the behaviour every platform
-   must match, especially edge cases: existing file → replaced or appended, missing key →
-   null or throw, empty input, denied vs permanently denied. An `actual` without a stated
-   contract is a guess.
-4. **Prefer an interface bound in Koin over `expect object`** for anything stateful, so it can
-   be faked in tests and contract-tested per platform.
-5. **Test the real implementation, not only a fake.** For anything that stores data or gates a
-   feature, put an abstract contract suite in `commonTest` and subclass it per platform with
-   the REAL implementation. A fake with correct semantics passes while the shipped
-   implementation is wrong.
-6. **Green `jvmTest` does not mean iOS or Android work.** CI runs `commonTest` on the iOS
-   simulator and wasmJs for `homebase-api` only; every other module's tests run on the JVM.
-   Code in `androidMain` / `nativeMain` / `appleMain` / `wasmJsMain` is otherwise untested.
-   Say so in the PR when you change it.
-7. **Don't copy an `actual` between platforms.** Two `actual`s that are near-identical (Android
-   and JVM especially) belong in one shared source set.
-
-8. **A bug in code that breaks these rules is fixed at the level of the rules, not only on the
-   platform where it was seen.** Otherwise we chase the same bug one platform at a time.
-   - The fix PR always adds the bug's scenario as a contract test that runs the real
-     implementation on all four platforms. That catches the same bug wherever else it lives. In a
-     module whose CI runs only the JVM (rule 6), run the other targets locally and say so in the PR.
-   - If bringing the area in line is small (writing the missing contract, merging two copied
-     `actual`s), do it in the same PR. If it is a bigger move (a shared implementation, `expect
-     object` → interface), ship the bug fix and file the structural work as a linked issue in
-     the same session. Never leave it unrecorded.
-
-iOS UI specifically: present view controllers from the **topmost** controller (walk
-`presentedViewController`, as `InAppBrowser.native.kt` does). Presenting from
-`keyWindow.rootViewController` fails silently when anything is already presented.
+- **One contract.** Each platform capability has one common interface whose KDoc states the
+  behaviour all four must match, edge cases included. An `actual` without a written contract
+  is a guess.
+- **One implementation where possible.** Prefer a multiplatform library or a shared source set
+  (okio, `skiaMain`); write per-platform code only for what is genuinely platform-specific.
+  Never copy an `actual` from one platform to another.
+- **Tested on the real platforms.** Contract tests run the real implementation, not a fake.
+  CI runs `commonTest` on iOS and WASM for `homebase-api` only; elsewhere a green `jvmTest`
+  proves nothing about iOS, Android or WASM.
+- **A bug fixes the pattern, not just the platform.** A bug in code that breaks these rules
+  gets a cross-platform test of its scenario in the fix, and the structural fix in the same PR
+  or a linked issue, so we don't chase the same bug one platform at a time.
 
 ## Key Technology Choices
 
