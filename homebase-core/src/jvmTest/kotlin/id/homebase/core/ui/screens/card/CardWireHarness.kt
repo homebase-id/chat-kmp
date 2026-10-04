@@ -169,8 +169,7 @@ class CardWireHarness(
         return ProfileRepository(DriveQueryProvider(client, cm), ProfileProvider(client, cm))
     }
 
-    suspend fun cardRepository(preferences: CardPreferences = inMemoryCardPreferences()) =
-        CardRepository(ProfileRepositoryCardStore(profileRepository()), preferences)
+    suspend fun cardRepository() = CardRepository(ProfileRepositoryCardStore(profileRepository()))
 
     companion object {
         const val UNKNOWN_CARD_TYPE_400 =
@@ -189,5 +188,3 @@ internal fun circlesNeedConnected() = ClientException(
     problem = ProblemDetails(status = 400, title = "CircleIds can only be set when visibility is Connected"),
 )
 
-fun inMemoryCardPreferences(driver: SqlDriver = newInMemoryJdbcDriver()) =
-    CardPreferences(DatabaseManager({ driver }, dispatcher = Dispatchers.Unconfined, readDispatcher = Dispatchers.Unconfined))

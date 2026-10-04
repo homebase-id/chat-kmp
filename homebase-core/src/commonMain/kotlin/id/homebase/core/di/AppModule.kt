@@ -858,7 +858,7 @@ val appModule = module {
     singleOf(::HomebaseImageLoader)
     factoryOf(::DefaultProfileCardSource) bind ProfileCardSource::class
     singleOf(::CardPreferences)
-    single { CardRepository(ProfileRepositoryCardStore(get()), get()) }
+    single { CardRepository(ProfileRepositoryCardStore(get())) }
     singleOf(::CardTapShare)
     singleOf(::ChatMessageActionService)
     singleOf(::DiceRollPreferences)

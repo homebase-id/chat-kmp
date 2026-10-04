@@ -466,7 +466,7 @@ class ProfileCardViewModelTest {
     fun aFailedCardWriteDoesNotRevertTheLocallySavedDesignOnReload() = runTest(dispatcher) {
         val existing = cardAttribute(CardDesign.BOARD)
         val store = CardStore(listOf(existing)).apply { failWith = RuntimeException("offline") }
-        val source = FakeSource(profile + existing, cardRepository = CardRepository(store, inMemoryCardPreferences()))
+        val source = FakeSource(profile + existing, cardRepository = CardRepository(store))
         val vm = viewModel(FakeHost(), source)
         vm.onDesignSelected(CardDesign.COLLAGE)
 
@@ -485,7 +485,7 @@ class ProfileCardViewModelTest {
     @Test
     fun theCardWriteDoesNotBlockTheLocalSave() = runTest(dispatcher) {
         val store = CardStore().apply { gate = CompletableDeferred() }
-        val source = FakeSource(profile, cardRepository = CardRepository(store, inMemoryCardPreferences()))
+        val source = FakeSource(profile, cardRepository = CardRepository(store))
         val vm = viewModel(FakeHost(), source)
         vm.onDesignSelected(CardDesign.COLLAGE)
 
@@ -1021,7 +1021,7 @@ class ProfileCardViewModelTest {
             ProfileVisibility.ANONYMOUS,
         )
         val wire = CardWireHarness()
-        val repository = CardRepository(StoredCardsOverWire(listOf(stored), ProfileRepositoryCardStore(wire.profileRepository())), inMemoryCardPreferences())
+        val repository = CardRepository(StoredCardsOverWire(listOf(stored), ProfileRepositoryCardStore(wire.profileRepository())))
         val host = FakeHost()
         val vm = viewModel(host, FakeSource(profile + stored, cardRepository = repository))
         assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
@@ -1304,7 +1304,7 @@ class ProfileCardViewModelTest {
         host: FakeHost = FakeHost(),
         configure: FakeSource.() -> Unit = {},
     ): Triple<ProfileCardViewModel, FakeSource, FakeHost> {
-        val source = FakeSource(profile, cardRepository = CardRepository(store, inMemoryCardPreferences())).apply {
+        val source = FakeSource(profile, cardRepository = CardRepository(store)).apply {
             liveCards = { store.attributes }
             circleList = listOf(friendsCircle, family)
             configure()
@@ -1518,11 +1518,10 @@ class ProfileCardViewModelTest {
         wire: CardWireHarness,
         seeded: List<ProfileAttribute>,
         host: FakeHost = FakeHost(),
-        preferences: CardPreferences = inMemoryCardPreferences(),
     ): Pair<ProfileCardViewModel, FakeHost> {
         seeded.forEach { wire.seed(it.id, it.versionTag, it.type, it.visibility.wireValue, it.data, it.priority, it.acl.circleIdList) }
         val profileRepository = wire.profileRepository()
-        val source = FakeSource(profile, cardRepository = CardRepository(ProfileRepositoryCardStore(profileRepository), preferences)).apply {
+        val source = FakeSource(profile, cardRepository = CardRepository(ProfileRepositoryCardStore(profileRepository))).apply {
             liveCards = { profileRepository.loadAttributes() }
             circleList = listOf(friendsCircle, family)
         }
@@ -1587,22 +1586,17 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun theUnsupportedAnswerHidesTheAddOnTheNextLaunch() = runTest(dispatcher) {
+    fun theUnsupportedAnswerIsReProbedOnTheNextLaunch() = runTest(dispatcher) {
         val wire = CardWireHarness(circleCards = false)
-        val driver = newInMemoryJdbcDriver()
-        val (first, _) = wireCircleVm(wire, listOf(publicCardAttribute), preferences = inMemoryCardPreferences(driver))
+        val (first, _) = wireCircleVm(wire, listOf(publicCardAttribute))
         val event = chooseCircleOverWire(first)
         assertEquals(ProfileCardEvent.CircleCardsUnsupported, awaited(event))
-        val puts = wire.puts
 
-        val (relaunched, _) = wireCircleVm(wire, listOf(publicCardAttribute), preferences = inMemoryCardPreferences(driver))
+        val (relaunched, _) = wireCircleVm(wire, listOf(publicCardAttribute))
         awaited(async { relaunched.uiState.first { it.cards.isNotEmpty() } })
 
-        assertFalse(relaunched.uiState.value.circleCardsSupported)
-        assertFalse(relaunched.uiState.value.canAddCircleCard)
-        relaunched.onAddCardClicked()
-        assertNull(relaunched.uiState.value.circlePicker)
-        assertEquals(puts, wire.puts)
+        assertTrue(relaunched.uiState.value.circleCardsSupported)
+        assertTrue(relaunched.uiState.value.canAddCircleCard)
     }
 
     @Test
@@ -1708,7 +1702,7 @@ class ProfileCardViewModelTest {
 
     private fun boardVm(store: CardStore = CardStore(listOf(cardAttribute(CardDesign.BOARD)))): Triple<ProfileCardViewModel, FakeHost, CardStore> {
         val host = FakeHost()
-        val source = FakeSource(profile + store.attributes, cardRepository = CardRepository(store, inMemoryCardPreferences()))
+        val source = FakeSource(profile + store.attributes, cardRepository = CardRepository(store))
         return Triple(viewModel(host, source), host, store)
     }
 
@@ -1777,7 +1771,7 @@ class ProfileCardViewModelTest {
     @Test
     fun anOverridesOnlySaveWritesTheCardWithoutRepublishingTheDesign() = runTest(dispatcher) {
         val store = CardStore(listOf(cardAttribute(CardDesign.BOARD)))
-        val source = FakeSource(profile + store.attributes, cardRepository = CardRepository(store, inMemoryCardPreferences()))
+        val source = FakeSource(profile + store.attributes, cardRepository = CardRepository(store))
         val vm = viewModel(FakeHost(), source)
         val publishedBefore = source.publishedDesigns.size
         vm.onOptionSelected(CardOption.TEXT_FONT, "newsreader")
