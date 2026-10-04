@@ -30,7 +30,6 @@ import id.homebase.api.youauth.PermissionExtensionManager
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
-import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.core.ui.screens.contactbook.isUserCircle
 import id.homebase.core.ui.screens.profile.photoImageData
 import id.homebase.core.ui.screens.profile.visiblePhoto
@@ -109,11 +108,17 @@ data class ProfileCardUiState(
     val canSaveDesign: Boolean get() = hasUnsavedChanges && !isSavingDesign && !isCardBusy
 }
 
+data class CardCircle(val id: String, val name: String, val memberCount: Int)
+
+/** [withCard] holds the ids of [circles] that already have a card; they are listed but can't be picked. */
 data class CirclePicker(
-    val circles: List<ContactCircleUi> = emptyList(),
+    val circles: List<CardCircle> = emptyList(),
+    val withCard: Set<String> = emptySet(),
     val loading: Boolean = true,
     val failed: Boolean = false,
-)
+) {
+    val hasChoice: Boolean get() = circles.any { it.id !in withCard }
+}
 
 sealed interface ProfileCardEvent {
     data class ShareImage(val path: String, val fileName: String) : ProfileCardEvent
@@ -140,7 +145,7 @@ interface ProfileCardSource {
     /** Writes the public card attribute; a no-op on a server that doesn't know the type. */
     suspend fun savePublicCard(design: String, overrides: CardOverrides?)
     val supportsCircleCards: Boolean
-    suspend fun circles(): List<ContactCircleUi>
+    suspend fun circles(): List<CardCircle>
     suspend fun addCircleCard(circle: CardAudience.Circle, design: String, overrides: CardOverrides): AddCircleCardResult
     suspend fun saveCircleCard(card: ProfileCard): Boolean
     suspend fun deleteCircleCard(card: ProfileCard): Boolean
@@ -210,11 +215,10 @@ class DefaultProfileCardSource(
 
     override val supportsCircleCards: Boolean get() = cardRepository.supportsCircleCards
 
-    override suspend fun circles(): List<ContactCircleUi> =
+    override suspend fun circles(): List<CardCircle> =
         connectionProvider.getCirclesWithMembers(includeSystemCircle = false)
-            .map { it.circle }
-            .filter { it.isUserCircle(reviewEnabled = false) && !it.disabled && it.name.isNotBlank() }
-            .map { ContactCircleUi(it.id, it.name, pending = false, emoji = null) }
+            .filter { it.circle.isUserCircle(reviewEnabled = false) && !it.circle.disabled && it.circle.name.isNotBlank() }
+            .map { CardCircle(it.circle.id, it.circle.name, it.members.size) }
             .distinctBy { it.id.lowercase() }
             .sortedBy { it.name.lowercase() }
 
@@ -482,7 +486,11 @@ class ProfileCardViewModel(
                 val taken = state.cards.mapNotNull { (it.audience as? CardAudience.Circle)?.id }
                 state.copy(
                     circlePicker = if (circles == null) CirclePicker(loading = false, failed = true)
-                    else CirclePicker(circles.filter { c -> taken.none { it.sameCircleId(c.id) } }, loading = false),
+                    else CirclePicker(
+                        circles = circles,
+                        withCard = circles.filter { c -> taken.any { it.sameCircleId(c.id) } }.mapTo(mutableSetOf()) { it.id },
+                        loading = false,
+                    ),
                 )
             }
         }
@@ -492,7 +500,9 @@ class ProfileCardViewModel(
 
     fun onCircleChosen(circleId: String) {
         val state = _uiState.value
-        val circle = state.circlePicker?.circles?.firstOrNull { it.id == circleId } ?: return
+        val picker = state.circlePicker ?: return
+        if (circleId in picker.withCard) return
+        val circle = picker.circles.firstOrNull { it.id == circleId } ?: return
         if (!state.canAddCircleCard) return
         val base = state.cards.firstOrNull { it.audience == CardAudience.Public }
         val audience = CardAudience.Circle(circle.id, circle.name)
@@ -749,7 +759,7 @@ class ProfileCardViewModel(
             .let { card -> if (pendingOverrides != null) card.copy(overrides = pendingOverrides) else card }
         val cards = (listOf(publicCard) + stored.filter { it.audience is CardAudience.Circle && it.design in CardDesign.all }).sortedCards()
         _uiState.update {
-            val selected = it.selectedAudience.takeIf { audience -> cards.any { card -> card.audience == audience } }
+            val selected = cards.firstOrNull { card -> card.audience.isSameAs(it.selectedAudience) }?.audience
             it.copy(
                 loadFailed = false,
                 savedDesign = saved,
