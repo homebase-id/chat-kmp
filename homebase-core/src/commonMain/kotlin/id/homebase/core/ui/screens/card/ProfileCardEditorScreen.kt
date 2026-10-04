@@ -11,6 +11,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -51,6 +53,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.ManageAccounts
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.AlertDialog
@@ -102,6 +105,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
+import id.homebase.resources.profile_card_access_allow
+import id.homebase.resources.profile_card_not_published
 import id.homebase.resources.profile_card_audience_editing
 import id.homebase.resources.profile_card_audience_overline
 import id.homebase.resources.profile_card_change_design
@@ -153,7 +158,9 @@ fun ProfileCardEditorScreen(
 
     LaunchedEffect(viewModel) { viewModel.startHost() }
     DisposableEffect(viewModel) {
+        viewModel.onEditorOpened()
         onDispose {
+            viewModel.onEditorClosed()
             viewModel.onPreviewFocus(CardEdge.TOP)
             viewModel.onPreviewDiscarded()
         }
@@ -203,6 +210,7 @@ fun ProfileCardEditorScreen(
             onEditProfile = onEditProfile,
             snackbarHostState = snackbarHostState,
             onPreviewFocus = viewModel::onPreviewFocus,
+            onRequestDesignAccess = viewModel::onPublishRetry,
         ) {
             val backdrop by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
             val designCover by viewModel.designCover.collectAsStateWithLifecycle()
@@ -217,6 +225,9 @@ fun ProfileCardEditorScreen(
                 coverHeld = uiState.isSwitchingDesign,
                 skeleton = true,
             )
+        }
+        if (uiState.isDesignAccessPromptShown) {
+            DesignAccessDialog(onContinue = viewModel::onDesignAccessAccepted, onDismiss = viewModel::onDesignAccessDeclined)
         }
     }
 }
@@ -235,6 +246,7 @@ internal fun ProfileCardEditorContent(
     onEditProfile: () -> Unit,
     snackbarHostState: SnackbarHostState,
     onPreviewFocus: (CardEdge) -> Unit = {},
+    onRequestDesignAccess: () -> Unit = {},
     preview: @Composable BoxScope.() -> Unit,
 ) {
     Surface(color = MaterialTheme.colorScheme.surfaceDim, contentColor = MaterialTheme.colorScheme.onSurface) {
@@ -269,6 +281,16 @@ internal fun ProfileCardEditorContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 EditorTopBar(audience = uiState.selectedAudience, onBack = onBack, onEditProfile = onEditProfile)
+                AnimatedVisibility(
+                    visible = uiState.showsDesignAccessNote,
+                    enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) + expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()),
+                    exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) + shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()),
+                ) {
+                    DesignAccessNote(
+                        onAllow = onRequestDesignAccess,
+                        modifier = Modifier.widthIn(max = WIDE_SHEET_MAX_WIDTH).padding(horizontal = 24.dp),
+                    )
+                }
                 if (wide) {
                     // One group, top-aligned: the card and its controls start on the same line.
                     Row(
@@ -331,6 +353,38 @@ private fun CardPreviewFrame(
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
             content = content,
         )
+    }
+}
+
+// The design is saved either way; this says the home page won't follow it until access is allowed.
+@Composable
+private fun DesignAccessNote(onAllow: () -> Unit, modifier: Modifier = Modifier) {
+    val height = ButtonDefaults.ExtraSmallContainerHeight
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        ) {
+            Icon(Icons.Outlined.Info, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(
+                text = stringResource(MR.string.profile_card_not_published),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+            )
+            TextButton(
+                onClick = onAllow,
+                shapes = ButtonDefaults.shapes(),
+                contentPadding = ButtonDefaults.contentPaddingFor(height),
+                modifier = Modifier.heightIn(min = height),
+            ) {
+                Text(stringResource(MR.string.profile_card_access_allow), style = ButtonDefaults.textStyleFor(height))
+            }
+        }
     }
 }
 

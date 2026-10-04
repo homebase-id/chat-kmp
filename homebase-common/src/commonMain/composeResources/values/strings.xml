@@ -2344,6 +2344,13 @@
     <string name="profile_card_save_public">Save public card</string>
     <string name="profile_card_add_circle_has_card">Already has a card</string>
     <string name="profile_card_add_circle_no_circles">You don't have any circles yet.</string>
+    <string name="profile_card_access_title">Update your home page too?</string>
+    <string name="profile_card_access_body">Your public card follows your home page's design. To change it from the app, Homebase needs permission to edit your home page settings. You'll confirm in your browser.</string>
+    <string name="profile_card_access_continue">Continue</string>
+    <string name="profile_card_access_later">Not now</string>
+    <string name="profile_card_access_allow">Allow</string>
+    <string name="profile_card_not_published">Not published to your home page</string>
+    <string name="profile_card_publish">Publish to your home page</string>
     <string name="profile_card_editor_title">Card design</string>
     <string name="profile_card_edit_profile">Edit profile details</string>
     <string name="profile_card_design_save_failed">Couldn't save the card design.</string>

@@ -150,6 +150,9 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.Publish
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -157,9 +160,15 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.RadioButton
 import id.homebase.core.widget.AdaptiveSheet
+import id.homebase.resources.profile_card_access_body
+import id.homebase.resources.profile_card_access_continue
+import id.homebase.resources.profile_card_access_later
+import id.homebase.resources.profile_card_access_title
 import id.homebase.resources.profile_card_add_circle_has_card
 import id.homebase.resources.profile_card_add_circle_no_circles
 import id.homebase.resources.profile_card_circle_members
+import id.homebase.resources.profile_card_not_published
+import id.homebase.resources.profile_card_publish
 import id.homebase.resources.profile_card_save_public
 import id.homebase.resources.profile_card_share_public
 import org.jetbrains.compose.resources.pluralStringResource
@@ -386,11 +395,16 @@ fun ProfileCardScreen(
                     isExporting = uiState.isExporting,
                     canShare = uiState.canShare,
                     saveInsteadOfShare = saveInsteadOfShare,
+                    isHomePageBehind = uiState.isHomePageBehind,
                     onShare = viewModel::onShareClicked,
+                    onPublish = viewModel::onPublishRetry,
                     onEdit = onEdit,
                     extraActions = { nfc?.let { CardNfcAction(it) } },
                 )
             }
+        }
+        if (uiState.isDesignAccessPromptShown) {
+            DesignAccessDialog(onContinue = viewModel::onDesignAccessAccepted, onDismiss = viewModel::onDesignAccessDeclined)
         }
     }
 }
@@ -401,7 +415,9 @@ internal fun BoxScope.CardBottomChrome(
     isExporting: Boolean,
     canShare: Boolean,
     saveInsteadOfShare: Boolean,
+    isHomePageBehind: Boolean,
     onShare: () -> Unit,
+    onPublish: () -> Unit,
     onEdit: () -> Unit,
     extraActions: @Composable () -> Unit,
 ) {
@@ -444,8 +460,40 @@ internal fun BoxScope.CardBottomChrome(
                 onClick = onShare,
             )
             extraActions()
+            if (isHomePageBehind) PublishAction(onClick = onPublish)
         }
     }
+}
+
+// Only there while the home page still shows an older design; the badge says something is waiting.
+@Composable
+private fun PublishAction(onClick: () -> Unit) {
+    val description = stringResource(MR.string.profile_card_not_published) + ". " + stringResource(MR.string.profile_card_publish)
+    IconButton(onClick = onClick, modifier = Modifier.semantics { contentDescription = description }) {
+        BadgedBox(badge = { Badge() }) {
+            Icon(imageVector = Icons.Outlined.Publish, contentDescription = null)
+        }
+    }
+}
+
+@Composable
+internal fun DesignAccessDialog(onContinue: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
+        title = { Text(stringResource(MR.string.profile_card_access_title), textAlign = TextAlign.Center) },
+        text = { Text(stringResource(MR.string.profile_card_access_body)) },
+        confirmButton = {
+            Button(onClick = onContinue, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(MR.string.profile_card_access_continue))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(MR.string.profile_card_access_later))
+            }
+        },
+    )
 }
 
 // Native bands in the page's colour where a design has content under the chrome; the page has no safe-area support.

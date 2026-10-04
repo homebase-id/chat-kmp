@@ -564,21 +564,111 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun aMissingGrantAsksForItInsteadOfWritingAndWritesOnceGranted() = runTest(dispatcher) {
+    fun savingWithoutTheGrantNeverLeavesForTheBrowserAndPublishesOnceGranted() = runTest(dispatcher) {
         val source = FakeSource(profile).apply { designAccessMissing = true }
         val vm = viewModel(FakeHost(), source)
 
         val events = saveCollectingEvents(vm, CardDesign.COLLAGE)
 
-        assertEquals(listOf(ProfileCardEvent.OpenLink(DESIGN_ACCESS_URL), ProfileCardEvent.DesignSaved), events)
+        assertEquals(listOf<ProfileCardEvent>(ProfileCardEvent.DesignSaved), events)
         assertEquals(listOf(CardDesign.COLLAGE), source.savedDesigns)
         assertTrue(source.publishedDesigns.isEmpty())
+        assertTrue(vm.uiState.value.isHomePageBehind)
 
         source.designAccessMissing = false
         source.accessGranted.emit(Unit)
         advanceUntilIdle()
 
         assertEquals(listOf(CardDesign.COLLAGE), source.publishedDesigns)
+        assertFalse(vm.uiState.value.isHomePageBehind)
+        assertFalse(vm.uiState.value.designAccessMissing)
+    }
+
+    @Test
+    fun openingTheEditorAsksForTheGrantOnceAndContinuingOpensTheBrowser() = runTest(dispatcher) {
+        val source = FakeSource(profile).apply { designAccessMissing = true }
+        val vm = viewModel(FakeHost(), source)
+        advanceUntilIdle()
+        val events = mutableListOf<ProfileCardEvent>()
+        backgroundScope.launch { vm.events.collect { events += it } }
+
+        vm.onEditorOpened()
+        assertTrue(vm.uiState.value.isDesignAccessPromptShown)
+        assertFalse(vm.uiState.value.showsDesignAccessNote)
+        vm.onDesignAccessAccepted()
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.isDesignAccessPromptShown)
+        assertEquals(listOf<ProfileCardEvent>(ProfileCardEvent.OpenLink(DESIGN_ACCESS_URL)), events)
+        vm.onEditorClosed()
+        vm.onEditorOpened()
+        assertFalse(vm.uiState.value.isDesignAccessPromptShown)
+    }
+
+    @Test
+    fun aGrantCheckLandingAfterTheEditorOpenedStillAsks() = runTest(dispatcher) {
+        val source = FakeSource(profile).apply { designAccessMissing = true }
+        val vm = ProfileCardViewModel(source) { FakeHost() }
+
+        vm.onEditorOpened()
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.isDesignAccessPromptShown)
+    }
+
+    @Test
+    fun withTheGrantInPlaceTheEditorAsksNothing() = runTest(dispatcher) {
+        val vm = viewModel(FakeHost(), FakeSource(profile))
+        advanceUntilIdle()
+
+        vm.onEditorOpened()
+
+        assertFalse(vm.uiState.value.isDesignAccessPromptShown)
+        assertFalse(vm.uiState.value.showsDesignAccessNote)
+    }
+
+    @Test
+    fun aDeclinedOrCancelledGrantLeavesAnExplicitNotPublishedStateThatRetries() = runTest(dispatcher) {
+        val source = FakeSource(profile).apply { designAccessMissing = true }
+        val vm = viewModel(FakeHost(), source)
+        advanceUntilIdle()
+        vm.onEditorOpened()
+        vm.onDesignAccessDeclined()
+        assertTrue(vm.uiState.value.showsDesignAccessNote)
+
+        saveCollectingEvents(vm, CardDesign.DOSSIER)
+        source.accessGranted.emit(Unit)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.isHomePageBehind)
+        assertTrue(source.publishedDesigns.isEmpty())
+
+        vm.onPublishRetry()
+        assertTrue(vm.uiState.value.isDesignAccessPromptShown)
+        source.designAccessMissing = false
+        vm.onDesignAccessAccepted()
+        source.accessGranted.emit(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf(CardDesign.DOSSIER), source.publishedDesigns)
+        assertFalse(vm.uiState.value.isHomePageBehind)
+    }
+
+    @Test
+    fun aFailedPublishWithTheGrantRetriesDirectly() = runTest(dispatcher) {
+        var fail = true
+        val source = FakeSource(profile).apply {
+            onPublishDesign = { if (fail) error("offline") else CardDesignPublish.Published }
+        }
+        val vm = viewModel(FakeHost(), source)
+        saveCollectingEvents(vm, CardDesign.COLLAGE)
+        assertTrue(vm.uiState.value.isHomePageBehind)
+
+        fail = false
+        vm.onPublishRetry()
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.isDesignAccessPromptShown)
+        assertFalse(vm.uiState.value.isHomePageBehind)
     }
 
     @Test
@@ -1372,6 +1462,7 @@ class ProfileCardViewModelTest {
         vm.onCircleChosen("c1")
         advanceUntilIdle()
         assertTrue(store.saves.isEmpty())
+        assertEquals(picker, vm.uiState.value.circlePicker)
     }
 
     @Test
