@@ -392,6 +392,10 @@ class ProfileCardViewModel(
         }
     }
 
+    fun onPreviewFocus(edge: CardEdge) {
+        _host.value?.reveal(edge)
+    }
+
     fun onPreviewDiscarded() {
         if (_uiState.value.previewDesign == null && _uiState.value.previewOverrides == null) return
         _uiState.update { it.copy(previewDesign = null, previewOverrides = null) }

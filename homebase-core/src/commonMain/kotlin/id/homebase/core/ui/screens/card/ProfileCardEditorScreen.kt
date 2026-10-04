@@ -121,7 +121,7 @@ import id.homebase.resources.save
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
-private val ACTION_HEIGHT = 56.dp
+private val ACTION_HEIGHT = ButtonDefaults.MinHeight
 private val TOP_BAR_ICON_SLOT = 56.dp
 private val COMPACT_HEIGHT = 760.dp
 private val WIDE_LAYOUT_MIN_WIDTH = 840.dp
@@ -153,7 +153,10 @@ fun ProfileCardEditorScreen(
 
     LaunchedEffect(viewModel) { viewModel.startHost() }
     DisposableEffect(viewModel) {
-        onDispose { viewModel.onPreviewDiscarded() }
+        onDispose {
+            viewModel.onPreviewFocus(CardEdge.TOP)
+            viewModel.onPreviewDiscarded()
+        }
     }
     // Reverting before the pop keeps the viewer from fading in on the unsaved preview.
     val leave = {
@@ -199,6 +202,7 @@ fun ProfileCardEditorScreen(
             onSave = viewModel::onSaveDesign,
             onEditProfile = onEditProfile,
             snackbarHostState = snackbarHostState,
+            onPreviewFocus = viewModel::onPreviewFocus,
         ) {
             val backdrop by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
             val designCover by viewModel.designCover.collectAsStateWithLifecycle()
@@ -230,6 +234,7 @@ internal fun ProfileCardEditorContent(
     onSave: () -> Unit,
     onEditProfile: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    onPreviewFocus: (CardEdge) -> Unit = {},
     preview: @Composable BoxScope.() -> Unit,
 ) {
     Surface(color = MaterialTheme.colorScheme.surfaceDim, contentColor = MaterialTheme.colorScheme.onSurface) {
@@ -250,6 +255,7 @@ internal fun ProfileCardEditorContent(
                     onOption = onOption,
                     onBlockOrder = onBlockOrder,
                     onSave = onSave,
+                    onPreviewFocus = onPreviewFocus,
                     metrics = metrics,
                     narrow = narrow,
                     shape = shape,
@@ -301,9 +307,9 @@ internal fun ProfileCardEditorContent(
 /** [body] is shared by both steps so the card above never resizes when the step changes. */
 private class PanelMetrics(val body: Dp, val segment: Dp, val gap: Dp, val edge: Dp) {
     companion object {
-        val Regular = PanelMetrics(body = 236.dp, segment = 88.dp, gap = 12.dp, edge = 20.dp)
-        val Compact = PanelMetrics(body = 196.dp, segment = 80.dp, gap = 8.dp, edge = 14.dp)
-        val Wide = PanelMetrics(body = 264.dp, segment = 96.dp, gap = 12.dp, edge = 24.dp)
+        val Regular = PanelMetrics(body = 196.dp, segment = 64.dp, gap = 12.dp, edge = 16.dp)
+        val Compact = PanelMetrics(body = 172.dp, segment = 60.dp, gap = 8.dp, edge = 12.dp)
+        val Wide = PanelMetrics(body = 236.dp, segment = 72.dp, gap = 12.dp, edge = 24.dp)
     }
 }
 
@@ -402,6 +408,7 @@ private fun EditorPanel(
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
     onSave: () -> Unit,
+    onPreviewFocus: (CardEdge) -> Unit,
     metrics: PanelMetrics,
     narrow: Boolean,
     shape: Shape,
@@ -416,6 +423,9 @@ private fun EditorPanel(
     // Grows with the text so a large font scale shrinks the card rather than clipping the controls.
     val optionsNeeded = CAPTION_LINE * fontScale + metrics.gap + segment + metrics.gap
     val body = maxOf(metrics.body, optionsNeeded + metrics.gap + TOOLBAR_HEIGHT)
+    LaunchedEffect(step) {
+        if (step == EditorStep.Design) onPreviewFocus(CardEdge.TOP)
+    }
     val save: @Composable () -> Unit = {
         SaveFab(isSaving = isSaving, enabled = uiState.canSaveDesign, onClick = onSave)
     }
@@ -474,6 +484,7 @@ private fun EditorPanel(
                         gap = metrics.gap,
                         save = save,
                         onTryAnotherDesign = { if (!isSaving) onStep(EditorStep.Design) },
+                        onToolShown = { onPreviewFocus(it.previewEdge) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -494,14 +505,15 @@ private fun DesignActions(
 ) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (showSave) {
             TextButton(
                 onClick = { if (!isSaving) onSave() },
+                shapes = ButtonDefaults.shapes(),
                 modifier = Modifier.heightIn(min = ACTION_HEIGHT),
-                contentPadding = PaddingValues(start = 12.dp, end = 16.dp),
+                contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
             ) {
                 SaveGlyph(isSaving = isSaving, size = ButtonDefaults.iconSizeFor(ACTION_HEIGHT))
                 Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
@@ -513,7 +525,7 @@ private fun DesignActions(
             enabled = canCustomise,
             shapes = ButtonDefaults.shapes(),
             contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-            modifier = Modifier.weight(1f).heightIn(min = ACTION_HEIGHT),
+            modifier = Modifier.heightIn(min = ACTION_HEIGHT),
         ) {
             ActionLabel(stringResource(MR.string.profile_card_step_customise))
             Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
@@ -602,16 +614,17 @@ private fun StepHeader(
             exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec()),
         ) {
             val description = stringResource(MR.string.profile_card_change_design)
+            val height = ButtonDefaults.ExtraSmallContainerHeight
             FilledTonalButton(
                 onClick = onChangeDesign,
                 enabled = changeDesignEnabled,
                 shapes = ButtonDefaults.shapes(),
-                contentPadding = PaddingValues(start = 12.dp, end = 16.dp),
-                modifier = Modifier.padding(start = 8.dp).semantics { contentDescription = description },
+                contentPadding = ButtonDefaults.contentPaddingFor(height),
+                modifier = Modifier.padding(start = 8.dp).heightIn(min = height).semantics { contentDescription = description },
             ) {
-                Icon(Icons.Outlined.SwapHoriz, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                Text(stringResource(MR.string.profile_card_change_design_short), maxLines = 1)
+                Icon(Icons.Outlined.SwapHoriz, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(height)))
+                Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(height)))
+                Text(stringResource(MR.string.profile_card_change_design_short), style = ButtonDefaults.textStyleFor(height), maxLines = 1)
             }
         }
     }

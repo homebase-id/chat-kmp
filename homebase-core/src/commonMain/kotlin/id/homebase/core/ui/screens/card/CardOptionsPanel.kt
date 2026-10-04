@@ -166,7 +166,7 @@ private val SWATCH_TARGET = 56.dp
 private val FONT_SEGMENT_MIN_WIDTH = 96.dp
 private val SOCIALS_SEGMENT_MIN_WIDTH = 72.dp
 private val SHAPE_SEGMENT_MIN_WIDTH = 64.dp
-private val GLYPH_SIZE = 28.dp
+private val GLYPH_SIZE = 24.dp
 private val TOOL_SIZE = 48.dp
 private val FADE_LENGTH = 24.dp
 private val OPTION_SIDE_INSET = 16.dp
@@ -186,6 +186,7 @@ internal fun CardOptionsPanel(
     gap: Dp,
     save: @Composable () -> Unit,
     onTryAnotherDesign: () -> Unit,
+    onToolShown: (CardOption) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spec = CardDesignSpecs.of(design)
@@ -196,6 +197,7 @@ internal fun CardOptionsPanel(
     }
     var picked by rememberSaveable(design) { mutableStateOf(options.first().name) }
     val current = options.firstOrNull { it.name == picked } ?: options.first()
+    LaunchedEffect(current) { onToolShown(current) }
     val motion = MaterialTheme.motionScheme
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
         AnimatedContent(
@@ -451,12 +453,12 @@ private fun SegmentedChoices(
                     onCheckedChange = { onSelect(value) },
                     enabled = enabled,
                     shapes = connectedButtonShapes(index, values.size),
-                    contentPadding = PaddingValues(horizontal = sidePadding, vertical = 10.dp),
+                    contentPadding = PaddingValues(horizontal = sidePadding, vertical = 8.dp),
                     modifier = Modifier.revealWhenSelected(value == selected).widthIn(min = segmentWidth).height(segmentHeight),
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
+                        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
                     ) { content(value) }
                 }
             }
