@@ -1,5 +1,6 @@
 package id.homebase.core.gallery
 
+import co.touchlab.kermit.Logger
 import kotlin.concurrent.Volatile
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Photos.PHChange
@@ -22,6 +23,7 @@ class IOSGalleryLibraryObserver(private val cache: GalleryCache) :
     }
 
     override fun photoLibraryDidChange(changeInstance: PHChange) {
+        Logger.i { "photo library changed, refreshing gallery cache" }
         cache.refresh()
     }
 }
