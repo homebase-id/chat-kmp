@@ -112,11 +112,63 @@ Each module follows the standard KMP layout:
 - `src/commonMain/kotlin/` — Shared code (bulk of logic)
 - `src/androidMain/kotlin/` — Android implementations (OkHttp, ExoPlayer, SQLCipher)
 - `src/jvmMain/kotlin/` — Desktop implementations (VLC-J, JDBC SQLite)
-- `src/nativeMain/kotlin/` — iOS implementations (Darwin networking, native SQLite)
-- `src/webMain/kotlin/` — Web implementations (partial)
+- `src/nativeMain/kotlin/` — iOS implementations (Darwin networking, native SQLite); `appleMain`
+  in some modules
+- `src/wasmJsMain/kotlin/` — Web implementations (partial)
+- Intermediate sets that share ONE implementation across targets: `skiaMain` (jvm + native +
+  wasmJs; homebase-api images, homebase-common), `cameraStubMain` (jvm + wasmJs),
+  `jvmAndNativeTest`
 
-Use `expect`/`actual` declarations for platform-specific code. The flag `-Xexpect-actual-classes` is
-enabled.
+The flag `-Xexpect-actual-classes` is enabled.
+
+## Platform-specific code: one contract, tested on every real platform
+
+**Four platforms, every time: iOS, Android, JVM (desktop) and WASM (web).** Platform code is
+not done until it is right on all four, and a fix on one is not done until the other three are
+checked.
+
+Platform implementations drift apart silently. iOS `writeStream` appended where every other
+platform replaced the file, so "Save image" saved the wrong photo; every test passed,
+because no test ran the iOS implementation. Before adding or changing an `expect` or a
+per-platform implementation:
+
+1. **Reuse an existing seam.** File I/O goes through `FileOperationsProvider`; images through
+   `ImageUtils`; storage through the existing stores. Don't add a new `expect` that does file or
+   storage I/O on the side.
+2. **Write one implementation where you can.** If a multiplatform library covers it (okio for
+   files, Skia for images), or an intermediate source set can host it, implement it once there
+   rather than once per target. Per-platform code is only for what is truly platform-specific
+   (`content://`, PHAsset, Keychain, …).
+3. **Write the contract on the common declaration.** KDoc states the behaviour every platform
+   must match, especially edge cases: existing file → replaced or appended, missing key →
+   null or throw, empty input, denied vs permanently denied. An `actual` without a stated
+   contract is a guess.
+4. **Prefer an interface bound in Koin over `expect object`** for anything stateful, so it can
+   be faked in tests and contract-tested per platform.
+5. **Test the real implementation, not only a fake.** For anything that stores data or gates a
+   feature, put an abstract contract suite in `commonTest` and subclass it per platform with
+   the REAL implementation. A fake with correct semantics passes while the shipped
+   implementation is wrong.
+6. **Green `jvmTest` does not mean iOS or Android work.** CI runs `commonTest` on the iOS
+   simulator and wasmJs for `homebase-api` only; every other module's tests run on the JVM.
+   Code in `androidMain` / `nativeMain` / `appleMain` / `wasmJsMain` is otherwise untested.
+   Say so in the PR when you change it.
+7. **Don't copy an `actual` between platforms.** Two `actual`s that are near-identical (Android
+   and JVM especially) belong in one shared source set.
+
+8. **A bug in code that breaks these rules is fixed at the level of the rules, not only on the
+   platform where it was seen.** Otherwise we chase the same bug one platform at a time.
+   - The fix PR always adds the bug's scenario as a contract test that runs the real
+     implementation on all four platforms. That catches the same bug wherever else it lives. In a
+     module whose CI runs only the JVM (rule 6), run the other targets locally and say so in the PR.
+   - If bringing the area in line is small (writing the missing contract, merging two copied
+     `actual`s), do it in the same PR. If it is a bigger move (a shared implementation, `expect
+     object` → interface), ship the bug fix and file the structural work as a linked issue in
+     the same session. Never leave it unrecorded.
+
+iOS UI specifically: present view controllers from the **topmost** controller (walk
+`presentedViewController`, as `InAppBrowser.native.kt` does). Presenting from
+`keyWindow.rootViewController` fails silently when anything is already presented.
 
 ## Key Technology Choices
 
