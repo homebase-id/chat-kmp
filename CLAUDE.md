@@ -38,6 +38,11 @@ one of these patterns, stop and write down what you actually observed,
 what you suspect, and what evidence you'd need to confirm — then go get
 that evidence.
 
+**Platform-specific bugs.** When a bug shows up on only some platforms, check whether that code
+follows the "Platform-specific code" principles below. If it doesn't, step back: the fix brings
+the code in line with them, so the same bug can't be waiting on the other platforms. Do it in
+the same PR, or as a linked issue when it's too big to hold the fix back.
+
 ## Project Overview
 
 Homebase Chat — a Kotlin Multiplatform (KMP) chat application targeting Android, iOS, Desktop (
@@ -135,9 +140,6 @@ only when it behaves the same on all four.
 - **Tested on the real platforms.** Contract tests run the real implementation, not a fake.
   CI runs `commonTest` on iOS and WASM for `homebase-api` only; elsewhere a green `jvmTest`
   proves nothing about iOS, Android or WASM.
-- **A bug fixes the pattern, not just the platform.** A bug in code that breaks these rules
-  gets a cross-platform test of its scenario in the fix, and the structural fix in the same PR
-  or a linked issue, so we don't chase the same bug one platform at a time.
 
 ## Key Technology Choices
 
