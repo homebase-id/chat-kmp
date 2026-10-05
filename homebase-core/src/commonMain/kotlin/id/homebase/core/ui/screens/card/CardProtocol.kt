@@ -91,10 +91,7 @@ internal sealed interface CardCommand {
     data object ExportPng : CardCommand
     data object ProbeEdges : CardCommand
     data object RequestPaint : CardCommand
-    data class Reveal(val edge: CardEdge) : CardCommand
 }
-
-enum class CardEdge { TOP, BOTTOM }
 
 // Optional fields are omitted rather than sent as null; empty lists are always sent.
 internal val cardJson = Json {
@@ -137,13 +134,6 @@ internal fun CardCommand.script(): String = when (this) {
     CardCommand.ExportPng -> "window.homebaseCard.exportPng()"
     CardCommand.ProbeEdges -> PROBE_EDGES_SCRIPT
     CardCommand.RequestPaint -> REQUEST_PAINT_SCRIPT
-    is CardCommand.Reveal -> revealScript(edge)
-}
-
-// Host-side only: the compact card grows past a short viewport, so the editor's preview scrolls to the part being changed.
-private fun revealScript(edge: CardEdge): String {
-    val top = if (edge == CardEdge.BOTTOM) "document.documentElement.scrollHeight" else "0"
-    return "(document.scrollingElement||document.documentElement).scrollTo({top:$top,behavior:'smooth'})"
 }
 
 // Host-side only: reads the colour of the full-width surface at the page's top and bottom edges (not a card that happens to sit there), so native chrome can continue it.

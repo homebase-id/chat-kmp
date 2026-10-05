@@ -161,7 +161,6 @@ fun ProfileCardEditorScreen(
         viewModel.onEditorOpened()
         onDispose {
             viewModel.onEditorClosed()
-            viewModel.onPreviewFocus(CardEdge.TOP)
             viewModel.onPreviewDiscarded()
         }
     }
@@ -209,9 +208,8 @@ fun ProfileCardEditorScreen(
             onSave = viewModel::onSaveDesign,
             onEditProfile = onEditProfile,
             snackbarHostState = snackbarHostState,
-            onPreviewFocus = viewModel::onPreviewFocus,
             onRequestDesignAccess = viewModel::onPublishRetry,
-        ) {
+        ) { layoutWidth ->
             val backdrop by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
             val designCover by viewModel.designCover.collectAsStateWithLifecycle()
             CardSurface(
@@ -221,6 +219,7 @@ fun ProfileCardEditorScreen(
                 onRetry = viewModel::onRetry,
                 paintWhileAttached = viewModel::paintWhileAttached,
                 modifier = Modifier.fillMaxSize(),
+                layoutWidth = layoutWidth,
                 cover = designCover,
                 coverHeld = uiState.isSwitchingDesign,
                 skeleton = true,
@@ -245,9 +244,8 @@ internal fun ProfileCardEditorContent(
     onSave: () -> Unit,
     onEditProfile: () -> Unit,
     snackbarHostState: SnackbarHostState,
-    onPreviewFocus: (CardEdge) -> Unit = {},
     onRequestDesignAccess: () -> Unit = {},
-    preview: @Composable BoxScope.() -> Unit,
+    preview: @Composable BoxScope.(layoutWidth: Dp) -> Unit,
 ) {
     Surface(color = MaterialTheme.colorScheme.surfaceDim, contentColor = MaterialTheme.colorScheme.onSurface) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -258,6 +256,8 @@ internal fun ProfileCardEditorContent(
                 else -> PanelMetrics.Regular
             }
             val narrow = !wide && maxWidth < NARROW_WIDTH
+            // The viewer's sheet width: the preview lays the card out there and scales it down, so it wraps like the saved card.
+            val cardWidth = minOf(maxWidth, WIDE_SHEET_MAX_WIDTH)
             val panel: @Composable (Modifier, Shape) -> Unit = { modifier, shape ->
                 EditorPanel(
                     uiState = uiState,
@@ -267,7 +267,6 @@ internal fun ProfileCardEditorContent(
                     onOption = onOption,
                     onBlockOrder = onBlockOrder,
                     onSave = onSave,
-                    onPreviewFocus = onPreviewFocus,
                     metrics = metrics,
                     narrow = narrow,
                     shape = shape,
@@ -305,15 +304,13 @@ internal fun ProfileCardEditorContent(
                         CardPreviewFrame(
                             alignment = Alignment.TopEnd,
                             modifier = Modifier.weight(1f, fill = false).fillMaxHeight(),
-                            content = preview,
-                        )
+                        ) { preview(cardWidth) }
                         panel(Modifier.width(WIDE_PANEL_WIDTH), MaterialTheme.shapes.extraLargeIncreased)
                     }
                 } else {
                     CardPreviewFrame(
                         modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp, vertical = metrics.gap),
-                        content = preview,
-                    )
+                    ) { preview(cardWidth) }
                     panel(Modifier.widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(), cardSheetShape())
                 }
             }
@@ -462,7 +459,6 @@ private fun EditorPanel(
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
     onSave: () -> Unit,
-    onPreviewFocus: (CardEdge) -> Unit,
     metrics: PanelMetrics,
     narrow: Boolean,
     shape: Shape,
@@ -477,9 +473,6 @@ private fun EditorPanel(
     // Grows with the text so a large font scale shrinks the card rather than clipping the controls.
     val optionsNeeded = CAPTION_LINE * fontScale + metrics.gap + segment + metrics.gap
     val body = maxOf(metrics.body, optionsNeeded + metrics.gap + TOOLBAR_HEIGHT)
-    LaunchedEffect(step) {
-        if (step == EditorStep.Design) onPreviewFocus(CardEdge.TOP)
-    }
     val save: @Composable () -> Unit = {
         SaveFab(isSaving = isSaving, enabled = uiState.canSaveDesign, onClick = onSave)
     }
@@ -538,7 +531,6 @@ private fun EditorPanel(
                         gap = metrics.gap,
                         save = save,
                         onTryAnotherDesign = { if (!isSaving) onStep(EditorStep.Design) },
-                        onToolShown = { onPreviewFocus(it.previewEdge) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

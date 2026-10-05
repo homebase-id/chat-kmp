@@ -2330,7 +2330,7 @@
     <string name="profile_card_audience_switch">Card for %1$s. Choose another card.</string>
     <string name="profile_card_add_circle_card">Add a card for a circle</string>
     <string name="profile_card_add_circle_title">Add a card for a circle</string>
-    <string name="profile_card_add_circle_hint">Pick one circle. It starts as a copy of your public card.</string>
+    <string name="profile_card_add_circle_hint">Pick one circle. Its card starts with your public card's design and shows what that circle can see of your profile.</string>
     <string name="profile_card_add_circle_pick">Circle</string>
     <string name="profile_card_add_circle_confirm">Add card</string>
     <string name="profile_card_add_circle_none">Every circle already has a card.</string>
@@ -2342,6 +2342,10 @@
     <string name="profile_card_circle_unsupported">Your Homebase server doesn't support circle cards yet.</string>
     <string name="profile_card_share_public">Share public card</string>
     <string name="profile_card_save_public">Save public card</string>
+    <string name="profile_card_share_public_title">Share your public card?</string>
+    <string name="profile_card_save_public_title">Save your public card?</string>
+    <string name="profile_card_share_public_message">Your %1$s card is only shown to people in %1$s when they visit your home page. Sharing sends your public card.</string>
+    <string name="profile_card_save_public_message">Your %1$s card is only shown to people in %1$s when they visit your home page. Saving gives you your public card.</string>
     <string name="profile_card_add_circle_has_card">Already has a card</string>
     <string name="profile_card_add_circle_no_circles">You don't have any circles yet.</string>
     <string name="profile_card_access_title">Update your home page too?</string>
@@ -2350,7 +2354,6 @@
     <string name="profile_card_access_later">Not now</string>
     <string name="profile_card_access_allow">Allow</string>
     <string name="profile_card_not_published">Not published to your home page</string>
-    <string name="profile_card_publish">Publish to your home page</string>
     <string name="profile_card_editor_title">Card design</string>
     <string name="profile_card_edit_profile">Edit profile details</string>
     <string name="profile_card_design_save_failed">Couldn't save the card design.</string>
@@ -2369,6 +2372,7 @@
     <string name="profile_card_option_portrait_shape">Portrait shape</string>
     <string name="profile_card_option_socials_style">Social links style</string>
     <string name="profile_card_option_block_order">Section order</string>
+    <string name="profile_card_option_block_order_hint">Drag to reorder</string>
     <string name="profile_card_option_move_up">Move %1$s up</string>
     <string name="profile_card_option_move_down">Move %1$s down</string>
     <string name="profile_card_option_drag">Drag to reorder %1$s</string>
@@ -2377,7 +2381,7 @@
     <string name="profile_card_audience_editing">Card audience: %1$s</string>
     <string name="profile_card_audience_overline">Audience</string>
     <string name="profile_card_font_montserrat">Montserrat</string>
-    <string name="profile_card_font_montserrat_alt">Montserrat Alt</string>
+    <string name="profile_card_font_montserrat_alt">Alternates</string>
     <string name="profile_card_font_newsreader">Newsreader</string>
     <string name="profile_card_font_caveat">Caveat</string>
     <string name="profile_card_font_archivo_black">Archivo Black</string>

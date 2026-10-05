@@ -101,10 +101,6 @@ class ProfileCardViewModelTest {
         }
         var onPaintRequest: () -> Unit = {}
         override fun requestPaint() = onPaintRequest()
-        val reveals = mutableListOf<CardEdge>()
-        override fun reveal(edge: CardEdge) {
-            reveals += edge
-        }
         var snapshots = 0
         override suspend fun snapshot(): ImageBitmap {
             snapshots++
@@ -573,14 +569,12 @@ class ProfileCardViewModelTest {
         assertEquals(listOf<ProfileCardEvent>(ProfileCardEvent.DesignSaved), events)
         assertEquals(listOf(CardDesign.COLLAGE), source.savedDesigns)
         assertTrue(source.publishedDesigns.isEmpty())
-        assertTrue(vm.uiState.value.isHomePageBehind)
 
         source.designAccessMissing = false
         source.accessGranted.emit(Unit)
         advanceUntilIdle()
 
         assertEquals(listOf(CardDesign.COLLAGE), source.publishedDesigns)
-        assertFalse(vm.uiState.value.isHomePageBehind)
         assertFalse(vm.uiState.value.designAccessMissing)
     }
 
@@ -639,7 +633,6 @@ class ProfileCardViewModelTest {
         saveCollectingEvents(vm, CardDesign.DOSSIER)
         source.accessGranted.emit(Unit)
         advanceUntilIdle()
-        assertTrue(vm.uiState.value.isHomePageBehind)
         assertTrue(source.publishedDesigns.isEmpty())
 
         vm.onPublishRetry()
@@ -650,25 +643,25 @@ class ProfileCardViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(CardDesign.DOSSIER), source.publishedDesigns)
-        assertFalse(vm.uiState.value.isHomePageBehind)
     }
 
     @Test
-    fun aFailedPublishWithTheGrantRetriesDirectly() = runTest(dispatcher) {
+    fun aFailedPublishWithTheGrantRetriesOnTheNextShowingUntilItLands() = runTest(dispatcher) {
         var fail = true
         val source = FakeSource(profile).apply {
             onPublishDesign = { if (fail) error("offline") else CardDesignPublish.Published }
         }
         val vm = viewModel(FakeHost(), source)
         saveCollectingEvents(vm, CardDesign.COLLAGE)
-        assertTrue(vm.uiState.value.isHomePageBehind)
 
         fail = false
-        vm.onPublishRetry()
+        vm.onScreenShown()
+        advanceUntilIdle()
+        vm.onScreenShown()
         advanceUntilIdle()
 
         assertFalse(vm.uiState.value.isDesignAccessPromptShown)
-        assertFalse(vm.uiState.value.isHomePageBehind)
+        assertEquals(listOf(CardDesign.COLLAGE, CardDesign.COLLAGE), source.publishedDesigns)
     }
 
     @Test
