@@ -144,6 +144,7 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.boundedFirstVisibleItemIndex
@@ -297,6 +298,7 @@ fun ConversationContent(
     var payloadRenderers by remember { mutableStateOf<List<PayloadRenderer>>(emptyList()) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
 
     var dropPreview by remember { mutableStateOf<FileDropPreview?>(null) }
     val foldersOnlyDropMessage = stringResource(MR.string.chat_drop_files_none_usable)
@@ -1246,6 +1248,7 @@ fun ConversationContent(
                                                 isCurrentSearchResult = isFocused,
                                                 chainCap = chainCap,
                                                 ownLiveShareUntilMs = uiState.ownLiveShareUntilMs,
+                                                onCopyText = copyToClipboard,
                                             )
                                         }
                                     }

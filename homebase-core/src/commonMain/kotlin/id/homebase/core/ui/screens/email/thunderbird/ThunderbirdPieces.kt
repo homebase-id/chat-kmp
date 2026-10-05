@@ -31,6 +31,7 @@ internal data class ThunderbirdActions(
     val password: String?,
     val settings: MailClientSettings?,
     val onCopy: (String) -> Unit,
+    val onCopySecret: (String) -> Unit,
     val onOpenUrl: (String) -> Unit,
     val onSaveKey: (() -> Unit)?,
     val onCopyKey: (() -> Unit)?,
