@@ -26,7 +26,7 @@ import platform.posix.timeval
  * were missing; iOS additionally has its own OS-level main-thread watchdog (0x8badf00d) for
  * launch/resume hangs.
  */
-internal actual fun captureMainThreadStackTrace(maxFrames: Int): String? = null
+actual fun captureMainThreadStackTrace(maxFrames: Int): String? = null
 
 /**
  * On Darwin (unlike Linux) `CLOCK_MONOTONIC` keeps counting while the device sleeps and while the
