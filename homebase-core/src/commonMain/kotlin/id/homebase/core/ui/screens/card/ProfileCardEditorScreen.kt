@@ -8,11 +8,10 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -53,7 +52,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.ManageAccounts
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.AlertDialog
@@ -61,8 +59,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
@@ -106,11 +105,11 @@ import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.profile_card_access_allow
-import id.homebase.resources.profile_card_not_published
+import id.homebase.resources.profile_card_not_on_home_page
+import id.homebase.resources.profile_card_access_allow_description
+import id.homebase.resources.profile_card_change_design_to
 import id.homebase.resources.profile_card_audience_editing
 import id.homebase.resources.profile_card_audience_overline
-import id.homebase.resources.profile_card_change_design
-import id.homebase.resources.profile_card_change_design_short
 import id.homebase.resources.profile_card_design_save_failed
 import id.homebase.resources.profile_card_discard_confirm
 import id.homebase.resources.profile_card_discard_keep
@@ -120,7 +119,6 @@ import id.homebase.resources.profile_card_edit_profile
 import id.homebase.resources.profile_card_error
 import id.homebase.resources.profile_card_step_count
 import id.homebase.resources.profile_card_step_customise
-import id.homebase.resources.profile_card_step_customise_title
 import id.homebase.resources.profile_card_step_design_title
 import id.homebase.resources.save
 import kotlinx.coroutines.launch
@@ -130,10 +128,11 @@ private val ACTION_HEIGHT = ButtonDefaults.MinHeight
 private val TOP_BAR_ICON_SLOT = 56.dp
 private val COMPACT_HEIGHT = 760.dp
 private val WIDE_LAYOUT_MIN_WIDTH = 840.dp
-private val NARROW_WIDTH = 400.dp
 private val WIDE_PANEL_WIDTH = 420.dp
 private val PREVIEW_MAX_WIDTH = 440.dp
-private val DESIGN_LABEL_HEIGHT = 32.dp
+private val PREVIEW_SIDE_INSET = 16.dp
+private const val LARGE_FONT_SCALE = 1.3f
+private val DESIGN_LABEL_HEIGHT = 24.dp
 private val DESIGN_TILE_MIN_WIDTH = 80.dp
 private val DESIGN_TILE_MAX_WIDTH = 128.dp
 private val DESIGN_TILE_SPACING = 8.dp
@@ -141,7 +140,6 @@ private val DESIGN_STRIP_INSET = 20.dp
 private val CAPTION_LINE = 20.dp
 private val AUDIENCE_AVATAR = 28.dp
 private const val CARD_PREVIEW_ASPECT = CARD_THUMB_ASPECT
-private const val LARGE_FONT_SCALE = 1.3f
 
 @Composable
 fun ProfileCardEditorScreen(
@@ -255,7 +253,6 @@ internal fun ProfileCardEditorContent(
                 maxHeight < COMPACT_HEIGHT -> PanelMetrics.Compact
                 else -> PanelMetrics.Regular
             }
-            val narrow = !wide && maxWidth < NARROW_WIDTH
             // The viewer's sheet width: the preview lays the card out there and scales it down, so it wraps like the saved card.
             val cardWidth = minOf(maxWidth, WIDE_SHEET_MAX_WIDTH)
             val panel: @Composable (Modifier, Shape) -> Unit = { modifier, shape ->
@@ -268,7 +265,6 @@ internal fun ProfileCardEditorContent(
                     onBlockOrder = onBlockOrder,
                     onSave = onSave,
                     metrics = metrics,
-                    narrow = narrow,
                     shape = shape,
                     modifier = modifier,
                 )
@@ -279,17 +275,13 @@ internal fun ProfileCardEditorContent(
                     .windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top)),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                EditorTopBar(audience = uiState.selectedAudience, onBack = onBack, onEditProfile = onEditProfile)
-                AnimatedVisibility(
-                    visible = uiState.showsDesignAccessNote,
-                    enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) + expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()),
-                    exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) + shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()),
-                ) {
-                    DesignAccessNote(
-                        onAllow = onRequestDesignAccess,
-                        modifier = Modifier.widthIn(max = WIDE_SHEET_MAX_WIDTH).padding(horizontal = 24.dp),
-                    )
-                }
+                EditorTopBar(
+                    audience = uiState.selectedAudience,
+                    notPublished = uiState.showsDesignAccessNote,
+                    onAllow = onRequestDesignAccess,
+                    onBack = onBack,
+                    onEditProfile = onEditProfile,
+                )
                 if (wide) {
                     // One group, top-aligned: the card and its controls start on the same line.
                     Row(
@@ -302,6 +294,7 @@ internal fun ProfileCardEditorContent(
                         verticalAlignment = Alignment.Top,
                     ) {
                         CardPreviewFrame(
+                            keepProportions = true,
                             alignment = Alignment.TopEnd,
                             modifier = Modifier.weight(1f, fill = false).fillMaxHeight(),
                         ) { preview(cardWidth) }
@@ -309,7 +302,8 @@ internal fun ProfileCardEditorContent(
                     }
                 } else {
                     CardPreviewFrame(
-                        modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp, vertical = metrics.gap),
+                        keepProportions = false,
+                        modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = PREVIEW_SIDE_INSET, vertical = metrics.gap),
                     ) { preview(cardWidth) }
                     panel(Modifier.widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(), cardSheetShape())
                 }
@@ -324,17 +318,21 @@ internal fun ProfileCardEditorContent(
 }
 
 /** [body] is shared by both steps so the card above never resizes when the step changes. */
-private class PanelMetrics(val body: Dp, val segment: Dp, val gap: Dp, val edge: Dp) {
+private class PanelMetrics(val body: Dp, val gap: Dp, val edge: Dp) {
     companion object {
-        val Regular = PanelMetrics(body = 196.dp, segment = 64.dp, gap = 12.dp, edge = 16.dp)
-        val Compact = PanelMetrics(body = 172.dp, segment = 60.dp, gap = 8.dp, edge = 12.dp)
-        val Wide = PanelMetrics(body = 236.dp, segment = 72.dp, gap = 12.dp, edge = 24.dp)
+        val Regular = PanelMetrics(body = 144.dp, gap = 8.dp, edge = 16.dp)
+        val Compact = PanelMetrics(body = 144.dp, gap = 8.dp, edge = 8.dp)
+        val Wide = PanelMetrics(body = 236.dp, gap = 12.dp, edge = 24.dp)
     }
 }
 
-// The card keeps its portrait proportions at any size, so it shrinks on a short screen instead of turning landscape.
+/**
+ * On a phone the card is drawn at nearly the viewer's own width and runs past the frame's bottom, where it scrolls as it
+ * does in the viewer; shrinking it to fit made a poster of it. A wide window has the height to show it whole.
+ */
 @Composable
 private fun CardPreviewFrame(
+    keepProportions: Boolean,
     modifier: Modifier = Modifier,
     alignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit,
@@ -344,7 +342,10 @@ private fun CardPreviewFrame(
         Box(
             modifier = Modifier
                 .widthIn(max = PREVIEW_MAX_WIDTH)
-                .aspectRatio(CARD_PREVIEW_ASPECT, matchHeightConstraintsFirst = true)
+                .then(
+                    if (keepProportions) Modifier.aspectRatio(CARD_PREVIEW_ASPECT, matchHeightConstraintsFirst = true)
+                    else Modifier.fillMaxSize(),
+                )
                 .clip(shape)
                 // Sets the card off the page when its own colour is close to the backdrop's.
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
@@ -353,52 +354,44 @@ private fun CardPreviewFrame(
     }
 }
 
-// The design is saved either way; this says the home page won't follow it until access is allowed.
 @Composable
-private fun DesignAccessNote(onAllow: () -> Unit, modifier: Modifier = Modifier) {
-    val height = ButtonDefaults.ExtraSmallContainerHeight
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier,
+private fun EditorTopBar(
+    audience: CardAudience,
+    notPublished: Boolean,
+    onAllow: () -> Unit,
+    onBack: () -> Unit,
+    onEditProfile: () -> Unit,
+) {
+    val motion = MaterialTheme.motionScheme
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-        ) {
-            Icon(Icons.Outlined.Info, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(
-                text = stringResource(MR.string.profile_card_not_published),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-            )
-            TextButton(
-                onClick = onAllow,
-                shapes = ButtonDefaults.shapes(),
-                contentPadding = ButtonDefaults.contentPaddingFor(height),
-                modifier = Modifier.heightIn(min = height),
-            ) {
-                Text(stringResource(MR.string.profile_card_access_allow), style = ButtonDefaults.textStyleFor(height))
-            }
-        }
-    }
-}
-
-@Composable
-private fun EditorTopBar(audience: CardAudience, onBack: () -> Unit, onEditProfile: () -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp)) {
-        IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) {
+        IconButton(onClick = onBack) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = stringResource(MR.string.menu_back),
             )
         }
-        AudienceTitle(
-            audience = audience,
-            modifier = Modifier.align(Alignment.Center).padding(horizontal = TOP_BAR_ICON_SLOT),
-        )
-        IconButton(onClick = onEditProfile, modifier = Modifier.align(Alignment.CenterEnd)) {
+        AudienceTitle(audience = audience, notPublished = notPublished, modifier = Modifier.weight(1f))
+        // Lives in the bar, not above the card, so asking for access never takes height from the preview.
+        AnimatedVisibility(
+            visible = notPublished,
+            enter = fadeIn(motion.defaultEffectsSpec()) + expandHorizontally(motion.defaultSpatialSpec()),
+            exit = fadeOut(motion.fastEffectsSpec()) + shrinkHorizontally(motion.defaultSpatialSpec()),
+        ) {
+            val height = ButtonDefaults.ExtraSmallContainerHeight
+            val description = stringResource(MR.string.profile_card_access_allow_description)
+            FilledTonalButton(
+                onClick = onAllow,
+                shapes = ButtonDefaults.shapes(),
+                contentPadding = ButtonDefaults.contentPaddingFor(height),
+                modifier = Modifier.heightIn(min = height).semantics { contentDescription = description },
+            ) {
+                Text(stringResource(MR.string.profile_card_access_allow), style = ButtonDefaults.textStyleFor(height), maxLines = 1)
+            }
+        }
+        IconButton(onClick = onEditProfile) {
             Icon(
                 imageVector = Icons.Outlined.ManageAccounts,
                 contentDescription = stringResource(MR.string.profile_card_edit_profile),
@@ -409,9 +402,10 @@ private fun EditorTopBar(audience: CardAudience, onBack: () -> Unit, onEditProfi
 
 // Read-only: which card is being edited is decided before the editor opens, so it is set as a title, not a chip.
 @Composable
-private fun AudienceTitle(audience: CardAudience, modifier: Modifier = Modifier) {
+private fun AudienceTitle(audience: CardAudience, notPublished: Boolean, modifier: Modifier = Modifier) {
     val label = audienceLabel(audience)
-    val description = stringResource(MR.string.profile_card_audience_editing, label)
+    val overline = stringResource(if (notPublished) MR.string.profile_card_not_on_home_page else MR.string.profile_card_audience_overline)
+    val description = stringResource(MR.string.profile_card_audience_editing, label).let { if (notPublished) "$it. $overline" else it }
     val isCircle = audience is CardAudience.Circle
     val colors = MaterialTheme.colorScheme
     Column(
@@ -419,10 +413,11 @@ private fun AudienceTitle(audience: CardAudience, modifier: Modifier = Modifier)
         modifier = modifier.clearAndSetSemantics { contentDescription = description },
     ) {
         Text(
-            text = stringResource(MR.string.profile_card_audience_overline),
+            text = overline,
             style = MaterialTheme.typography.labelMedium,
-            color = colors.onSurfaceVariant,
+            color = if (notPublished) colors.tertiary else colors.onSurfaceVariant,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
             Box(
@@ -460,7 +455,6 @@ private fun EditorPanel(
     onBlockOrder: (List<String>) -> Unit,
     onSave: () -> Unit,
     metrics: PanelMetrics,
-    narrow: Boolean,
     shape: Shape,
     modifier: Modifier = Modifier,
 ) {
@@ -468,14 +462,10 @@ private fun EditorPanel(
     val fontScale = LocalDensity.current.fontScale
     val design = uiState.design
     val isSaving = uiState.isSavingDesign
-    val hasOptions = CardDesignSpecs.of(design)?.options?.isNotEmpty() == true
-    val segment = metrics.segment * fontScale.coerceIn(1f, MAX_SEGMENT_GROWTH)
-    // Grows with the text so a large font scale shrinks the card rather than clipping the controls.
-    val optionsNeeded = CAPTION_LINE * fontScale + metrics.gap + segment + metrics.gap
-    val body = maxOf(metrics.body, optionsNeeded + metrics.gap + TOOLBAR_HEIGHT)
-    val save: @Composable () -> Unit = {
-        SaveFab(isSaving = isSaving, enabled = uiState.canSaveDesign, onClick = onSave)
-    }
+    val grow = fontScale.coerceIn(1f, MAX_SEGMENT_GROWTH)
+    // Grows with the text so a large font scale shortens the preview rather than clipping the controls.
+    val optionsNeeded = CAPTION_LINE * fontScale + CHIP_HEIGHT * grow + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
+    val body = maxOf(metrics.body, optionsNeeded)
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = shape,
@@ -488,11 +478,12 @@ private fun EditorPanel(
             StepHeader(
                 step = step,
                 design = design,
-                narrow = narrow,
-                showChangeDesign = step == EditorStep.Customise && hasOptions,
-                changeDesignEnabled = !isSaving,
-                onChangeDesign = { onStep(EditorStep.Design) },
-                modifier = Modifier.padding(start = 24.dp, end = 16.dp),
+                isSaving = isSaving,
+                canSave = uiState.canSaveDesign,
+                canCustomise = !uiState.loadFailed,
+                onSave = onSave,
+                onStep = onStep,
+                modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp),
             )
             AnimatedContent(
                 targetState = step,
@@ -505,31 +496,19 @@ private fun EditorPanel(
                 contentAlignment = Alignment.Center,
             ) { shown ->
                 when (shown) {
-                    EditorStep.Design -> Column(verticalArrangement = Arrangement.spacedBy(metrics.gap)) {
-                        DesignStrip(
-                            selected = design,
-                            enabled = !isSaving,
-                            onSelect = onSelect,
-                            modifier = Modifier.weight(1f).fillMaxWidth(),
-                        )
-                        DesignActions(
-                            showSave = uiState.canSaveDesign || isSaving,
-                            isSaving = isSaving,
-                            canCustomise = !uiState.loadFailed,
-                            onSave = onSave,
-                            onCustomise = { onStep(EditorStep.Customise) },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        )
-                    }
+                    EditorStep.Design -> DesignStrip(
+                        selected = design,
+                        enabled = !isSaving,
+                        onSelect = onSelect,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                     EditorStep.Customise -> CardOptionsPanel(
                         design = design,
                         overrides = uiState.overrides,
                         enabled = !isSaving,
                         onOption = onOption,
                         onBlockOrder = onBlockOrder,
-                        segmentHeight = segment,
                         gap = metrics.gap,
-                        save = save,
                         onTryAnotherDesign = { if (!isSaving) onStep(EditorStep.Design) },
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -539,47 +518,120 @@ private fun EditorPanel(
     }
 }
 
-// Customise leads; Save is the quiet companion here and only becomes the primary action on the customise step.
+// One filled action per step: Customise on the first, Save on the second; Save on the first is the quiet way out.
 @Composable
-private fun DesignActions(
-    showSave: Boolean,
+private fun StepHeader(
+    step: EditorStep,
+    design: String,
     isSaving: Boolean,
+    canSave: Boolean,
     canCustomise: Boolean,
     onSave: () -> Unit,
-    onCustomise: () -> Unit,
+    onStep: (EditorStep) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    val motion = MaterialTheme.motionScheme
+    val count = stringResource(MR.string.profile_card_step_count, step.ordinal + 1, EditorStep.entries.size)
+    val designName = stringResource(designLabel(design))
+    val save: () -> Unit = { if (!isSaving) onSave() }
+    AnimatedContent(
+        targetState = step,
+        transitionSpec = {
+            val forward = if (targetState.ordinal > initialState.ordinal) 1 else -1
+            (slideInVertically(motion.defaultSpatialSpec()) { it / 2 * forward } + fadeIn(motion.defaultEffectsSpec()))
+                .togetherWith(slideOutVertically(motion.defaultSpatialSpec()) { -it / 2 * forward } + fadeOut(motion.fastEffectsSpec()))
+        },
+        contentAlignment = Alignment.CenterStart,
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (showSave) {
-            TextButton(
-                onClick = { if (!isSaving) onSave() },
-                shapes = ButtonDefaults.shapes(),
-                modifier = Modifier.heightIn(min = ACTION_HEIGHT),
-                contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-            ) {
-                SaveGlyph(isSaving = isSaving, size = ButtonDefaults.iconSizeFor(ACTION_HEIGHT))
-                Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-                ActionLabel(stringResource(MR.string.save))
-            }
-        }
-        Button(
-            onClick = { if (!isSaving) onCustomise() },
-            enabled = canCustomise,
-            shapes = ButtonDefaults.shapes(),
-            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-            modifier = Modifier.heightIn(min = ACTION_HEIGHT),
+    ) { shown ->
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         ) {
-            ActionLabel(stringResource(MR.string.profile_card_step_customise))
-            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = null,
-                modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
-            )
+            when (shown) {
+                EditorStep.Design -> {
+                    val title = stringResource(MR.string.profile_card_step_design_title)
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLargeEmphasized,
+                        // One line steps down before it wraps; only a large text size gets the second line.
+                        maxLines = if (LocalDensity.current.fontScale < LARGE_FONT_SCALE) 1 else 2,
+                        softWrap = LocalDensity.current.fontScale >= LARGE_FONT_SCALE,
+                        autoSize = TextAutoSize.StepBased(
+                            minFontSize = MaterialTheme.typography.titleSmall.fontSize,
+                            maxFontSize = MaterialTheme.typography.titleLargeEmphasized.fontSize,
+                        ),
+                        modifier = Modifier.weight(1f).semantics {
+                            heading()
+                            contentDescription = "$title, $count"
+                        },
+                    )
+                    // Icon-only so the title keeps its room; Customise stays the one labelled, filled action here.
+                    if (canSave || isSaving) {
+                        val description = stringResource(MR.string.save)
+                        FilledTonalIconButton(
+                            onClick = save,
+                            shapes = IconButtonDefaults.shapes(),
+                            modifier = Modifier.size(ACTION_HEIGHT).semantics { contentDescription = description },
+                        ) {
+                            SaveGlyph(isSaving = isSaving, size = ButtonDefaults.iconSizeFor(ACTION_HEIGHT))
+                        }
+                    }
+                    Button(
+                        onClick = { if (!isSaving) onStep(EditorStep.Customise) },
+                        enabled = canCustomise,
+                        shapes = ButtonDefaults.shapes(),
+                        contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
+                        modifier = Modifier.heightIn(min = ACTION_HEIGHT),
+                    ) {
+                        ActionLabel(stringResource(MR.string.profile_card_step_customise))
+                        Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
+                        )
+                    }
+                }
+                // The design's name is the way back to step one, so the step reads as "this design, adjusted".
+                EditorStep.Customise -> {
+                    val description = stringResource(MR.string.profile_card_change_design_to, designName)
+                    Box(Modifier.weight(1f)) {
+                        FilledTonalButton(
+                            onClick = { if (!isSaving) onStep(EditorStep.Design) },
+                            enabled = !isSaving,
+                            shapes = ButtonDefaults.shapes(),
+                            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
+                            modifier = Modifier
+                                .heightIn(min = ACTION_HEIGHT)
+                                .semantics {
+                                    heading()
+                                    contentDescription = "$description, $count"
+                                },
+                        ) {
+                            Icon(
+                                Icons.Outlined.SwapHoriz,
+                                contentDescription = null,
+                                modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
+                            )
+                            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
+                            ActionLabel(designName)
+                        }
+                    }
+                    Button(
+                        onClick = save,
+                        enabled = canSave || isSaving,
+                        shapes = ButtonDefaults.shapes(),
+                        contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
+                        modifier = Modifier.heightIn(min = ACTION_HEIGHT),
+                    ) {
+                        SaveGlyph(isSaving = isSaving, size = ButtonDefaults.iconSizeFor(ACTION_HEIGHT))
+                        Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
+                        ActionLabel(stringResource(MR.string.save))
+                    }
+                }
+            }
         }
     }
 }
@@ -597,19 +649,6 @@ private fun SaveGlyph(isSaving: Boolean, size: Dp) {
 }
 
 @Composable
-internal fun SaveFab(isSaving: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    val description = stringResource(MR.string.save)
-    FilledIconButton(
-        onClick = { if (!isSaving) onClick() },
-        enabled = enabled || isSaving,
-        shape = MaterialTheme.shapes.large,
-        modifier = Modifier.size(SAVE_FAB_SIZE).semantics { contentDescription = description },
-    ) {
-        SaveGlyph(isSaving = isSaving, size = 28.dp)
-    }
-}
-
-@Composable
 private fun ActionLabel(label: String) {
     Text(
         text = label,
@@ -617,98 +656,6 @@ private fun ActionLabel(label: String) {
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
-}
-
-@Composable
-private fun StepHeader(
-    step: EditorStep,
-    design: String,
-    narrow: Boolean,
-    showChangeDesign: Boolean,
-    changeDesignEnabled: Boolean,
-    onChangeDesign: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val motion = MaterialTheme.motionScheme
-    val count = stringResource(MR.string.profile_card_step_count, step.ordinal + 1, EditorStep.entries.size)
-    val designName = stringResource(designLabel(design))
-    val title = when (step) {
-        EditorStep.Design -> stringResource(MR.string.profile_card_step_design_title)
-        EditorStep.Customise -> stringResource(MR.string.profile_card_step_customise_title, designName)
-    }
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.heightIn(min = 48.dp)) {
-        AnimatedContent(
-            targetState = step,
-            transitionSpec = {
-                val forward = if (targetState.ordinal > initialState.ordinal) 1 else -1
-                (slideInVertically(motion.defaultSpatialSpec()) { it / 2 * forward } + fadeIn(motion.defaultEffectsSpec()))
-                    .togetherWith(slideOutVertically(motion.defaultSpatialSpec()) { -it / 2 * forward } + fadeOut(motion.fastEffectsSpec()))
-            },
-            contentAlignment = Alignment.CenterStart,
-            modifier = Modifier
-                .weight(1f)
-                .clearAndSetSemantics {
-                    heading()
-                    contentDescription = "$title, $count"
-                },
-        ) { shown ->
-            StepTitle(step = shown, designName = designName, narrow = narrow)
-        }
-        AnimatedVisibility(
-            visible = showChangeDesign,
-            enter = fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.fastSpatialSpec()),
-            exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec()),
-        ) {
-            val description = stringResource(MR.string.profile_card_change_design)
-            val height = ButtonDefaults.ExtraSmallContainerHeight
-            FilledTonalButton(
-                onClick = onChangeDesign,
-                enabled = changeDesignEnabled,
-                shapes = ButtonDefaults.shapes(),
-                contentPadding = ButtonDefaults.contentPaddingFor(height),
-                modifier = Modifier.padding(start = 8.dp).heightIn(min = height).semantics { contentDescription = description },
-            ) {
-                Icon(Icons.Outlined.SwapHoriz, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(height)))
-                Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(height)))
-                Text(stringResource(MR.string.profile_card_change_design_short), style = ButtonDefaults.textStyleFor(height), maxLines = 1)
-            }
-        }
-    }
-}
-
-@Composable
-private fun StepTitle(step: EditorStep, designName: String, narrow: Boolean) {
-    val typography = MaterialTheme.typography
-    val large = LocalDensity.current.fontScale >= LARGE_FONT_SCALE
-    val style = when {
-        large -> typography.titleLargeEmphasized
-        narrow -> typography.headlineMediumEmphasized
-        else -> typography.headlineLargeEmphasized
-    }
-    when (step) {
-        EditorStep.Design -> Text(
-            text = stringResource(MR.string.profile_card_step_design_title),
-            style = style,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        // Step two is about the design just chosen, so its name is what the title emphasises.
-        EditorStep.Customise -> Column {
-            Text(
-                text = stringResource(MR.string.profile_card_step_customise),
-                style = typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
-            Text(
-                text = designName,
-                style = style,
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
 }
 
 @Composable

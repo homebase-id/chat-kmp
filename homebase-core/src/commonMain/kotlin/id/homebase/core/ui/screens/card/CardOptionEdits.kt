@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.card
 
 /** The value [option] currently holds; null means the design's preset applies. */
 fun CardOverrides.valueOf(option: CardOption): String? = when (option) {
+    CardOption.COLOURS -> palette?.ground
     CardOption.ACCENT -> palette?.accent
     CardOption.DISPLAY_FONT -> type?.display
     CardOption.TEXT_FONT -> type?.text
@@ -18,7 +19,11 @@ fun CardOverrides.blockOrder(): List<String> {
 
 /** Sets a single-valued [option] to [value], or back to the preset for null. */
 fun CardOverrides.with(option: CardOption, value: String?): CardOverrides = when (option) {
-    CardOption.ACCENT -> copy(palette = value?.let { (palette ?: CardPalette()).copy(accent = it) })
+    CardOption.COLOURS -> copy(
+        palette = (CardDesignSpecs.schemeByGround(value)?.applyTo(palette) ?: CardPalette(accent = palette?.accent))
+            .takeUnless { it == CardPalette() },
+    )
+    CardOption.ACCENT -> copy(palette = (palette ?: CardPalette()).copy(accent = value).takeUnless { it == CardPalette() })
     CardOption.DISPLAY_FONT -> copy(type = (type ?: CardTypeface()).copy(display = value).takeUnless { it == CardTypeface() })
     CardOption.TEXT_FONT -> copy(type = (type ?: CardTypeface()).copy(text = value).takeUnless { it == CardTypeface() })
     CardOption.PORTRAIT_SHAPE -> copy(portraits = value?.let { listOf(CardPortrait(shape = it)) })
