@@ -11,7 +11,8 @@ class CardColourSchemeTest {
     private val schemes = CardDesign.all.flatMap { design -> CardDesignSpecs.of(design)!!.schemes.map { design to it } }
 
     private fun luminance(hex: String): Double {
-        val rgb = hex.removePrefix("#").chunked(2).map { it.toInt(16) / 255.0 }
+        val argb = hexToArgb(hex)
+        val rgb = listOf(16, 8, 0).map { (argb shr it and 0xFF) / 255.0 }
         val (r, g, b) = rgb.map { if (it <= 0.03928) it / 12.92 else ((it + 0.055) / 1.055).pow(2.4) }
         return 0.2126 * r + 0.7152 * g + 0.0722 * b
     }

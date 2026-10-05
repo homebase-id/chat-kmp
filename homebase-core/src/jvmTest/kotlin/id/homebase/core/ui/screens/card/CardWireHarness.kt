@@ -5,16 +5,17 @@ import id.homebase.api.client.CryptoHelper
 import id.homebase.api.client.ProblemDetails
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.query.DriveQueryProvider
+import id.homebase.api.client.profile.ProfileAttribute
+import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileProvider
 import id.homebase.api.client.profile.ProfileRepository
+import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.client.profile.ProfileWriteResponse
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.core.feed.newInMemoryJdbcDriver
-import app.cash.sqldelight.db.SqlDriver
-import kotlinx.coroutines.Dispatchers
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -24,6 +25,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.http.content.TextContent
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -187,4 +189,69 @@ internal fun circlesNeedConnected() = ClientException(
     correlationId = null,
     problem = ProblemDetails(status = 400, title = "CircleIds can only be set when visibility is Connected"),
 )
+
+internal fun profileCardAttribute(
+    data: JsonObject,
+    visibility: ProfileVisibility = ProfileVisibility.ANONYMOUS,
+    circles: List<String>? = null,
+    priority: Int = PUBLIC_CARD_PRIORITY,
+    id: Uuid = Uuid.random(),
+    versionTag: Uuid = Uuid.random(),
+) = ProfileAttribute(
+    id = id,
+    type = ProfileAttributeTypes.PROFILE_CARD,
+    versionTag = versionTag,
+    visibility = visibility,
+    data = data,
+    acl = AccessControlList(requiredSecurityGroup = visibility.wireValue, circleIdList = circles),
+    priority = priority,
+)
+
+/** In-memory [CardAttributeStore]; [keepWrites] plays a server that stores what it was sent, refusing circles off Connected as the real one does. */
+internal class FakeCardStore(var attributes: List<ProfileAttribute> = emptyList(), var keepWrites: Boolean = false) : CardAttributeStore {
+    class Write(
+        val data: JsonObject,
+        val visibility: ProfileVisibility,
+        val id: Uuid?,
+        val versionTag: Uuid?,
+        val priority: Int,
+        val circleIds: List<String>,
+    )
+
+    val writes = mutableListOf<Write>()
+    val deleted = mutableListOf<Uuid>()
+    var saveCalls = 0
+    var gate: CompletableDeferred<Unit>? = null
+    var failWith: Exception? = null
+    var dropCircleIds = false
+    var circlesOnAnyVisibility = false
+    var serverCircleId: (String) -> String = { it }
+    // false plays a 404: the attribute was already gone.
+    var deleteResult = true
+    var deleteThrows: Exception? = null
+
+    override suspend fun load() = attributes
+
+    override suspend fun save(data: JsonObject, visibility: ProfileVisibility, id: Uuid?, versionTag: Uuid?, priority: Int, circleIds: List<String>): ProfileWriteResponse {
+        saveCalls++
+        gate?.await()
+        failWith?.let { throw it }
+        if (!dropCircleIds && !circlesOnAnyVisibility && circleIds.isNotEmpty() && visibility != ProfileVisibility.CONNECTED) throw circlesNeedConnected()
+        writes += Write(data, visibility, id, versionTag, priority, circleIds)
+        val written = ProfileWriteResponse(id ?: Uuid.random(), Uuid.random())
+        if (keepWrites) {
+            val stored = circleIds.map(serverCircleId).takeIf { it.isNotEmpty() && !dropCircleIds }
+            attributes = attributes.filter { it.id != id } +
+                profileCardAttribute(data, visibility, stored, priority, id = written.id, versionTag = written.versionTag)
+        }
+        return written
+    }
+
+    override suspend fun delete(id: Uuid, versionTag: Uuid): Boolean {
+        deleteThrows?.let { throw it }
+        deleted += id
+        attributes = attributes.filter { it.id != id }
+        return deleteResult
+    }
+}
 

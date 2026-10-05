@@ -22,6 +22,14 @@ object CardDesign {
         DOSSIER -> 0xFF0E1013
         else -> 0xFF1F4E8C
     }.toInt()
+
+    // The preset ink each page draws on its base colour (odin-js cards/presets.ts).
+    fun inkArgb(design: String): Int = when (design) {
+        POSTER -> 0xFFF4F0EA
+        COLLAGE -> 0xFF3A2E22
+        DOSSIER -> 0xFFE9ECF1
+        else -> 0xFFFFFFFF
+    }.toInt()
 }
 
 @Serializable

@@ -48,12 +48,11 @@ fun CirclePickerChips(
     enabled: Boolean,
     modifier: Modifier = Modifier,
     centered: Boolean = true,
-    label: String = stringResource(MR.string.contactbook_detail_add_to_circles),
 ) {
     if (circles.isEmpty()) return
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
-            text = label,
+            text = stringResource(MR.string.contactbook_detail_add_to_circles),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth(),

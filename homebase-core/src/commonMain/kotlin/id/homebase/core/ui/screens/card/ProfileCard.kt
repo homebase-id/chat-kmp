@@ -4,6 +4,7 @@ import id.homebase.api.client.drives.isVisibleToCircle
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.util.compareStringUuId
 import id.homebase.core.ui.screens.profile.AclFilter
 import id.homebase.core.ui.screens.profile.aclFilter
 import kotlin.uuid.Uuid
@@ -22,7 +23,7 @@ sealed interface CardAudience {
 
 // The server may spell a circle id differently from the circle list it came from.
 internal fun CardAudience.isSameAs(other: CardAudience): Boolean =
-    this == other || (this is CardAudience.Circle && other is CardAudience.Circle && id.sameCircleId(other.id))
+    this == other || (this is CardAudience.Circle && other is CardAudience.Circle && compareStringUuId(id, other.id))
 
 internal fun CardAudience.aclFilter(): AclFilter = when (this) {
     CardAudience.Public -> ProfileVisibility.ANONYMOUS.aclFilter()
@@ -39,6 +40,12 @@ data class ProfileCard(
     val priority: Int = PUBLIC_CARD_PRIORITY,
     val extra: JsonObject = JsonObject(emptyMap()),
 ) {
+    /** A null [overrides] keeps this card's; either way a design change drops what the new design doesn't expose. */
+    fun withDesign(design: String, overrides: CardOverrides? = null): ProfileCard {
+        val kept = overrides ?: this.overrides
+        return copy(design = design, overrides = if (this.design != design) kept.prunedFor(design) else kept)
+    }
+
     fun toData(): JsonObject = JsonObject(
         buildMap {
             putAll(extra)

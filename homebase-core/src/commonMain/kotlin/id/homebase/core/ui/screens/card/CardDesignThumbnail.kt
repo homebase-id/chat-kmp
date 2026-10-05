@@ -12,15 +12,8 @@ import androidx.compose.ui.graphics.drawscope.rotate
 
 internal const val CARD_THUMB_ASPECT = 0.66f
 
-// The pages' own ink and accent, like baseArgb: a design's thumbnail wears its colours, not the app theme's.
-private fun inkArgb(design: String): Long = when (design) {
-    CardDesign.POSTER -> 0xFFF2EDE4
-    CardDesign.COLLAGE -> 0xFF2B2622
-    CardDesign.DOSSIER -> 0xFFC9D1D9
-    else -> 0xFFE9F0FA
-}
-
-private fun accentArgb(design: String): Long = when (design) {
+// Stylised, not the page's accent: Poster's preset accent is its ink, which would erase the schematic's accent bar.
+private fun thumbnailAccentArgb(design: String): Long = when (design) {
     CardDesign.POSTER -> 0xFFF26B5B
     CardDesign.COLLAGE -> 0xFFB4553A
     CardDesign.DOSSIER -> 0xFF4FD1C5
@@ -31,8 +24,8 @@ private fun accentArgb(design: String): Long = when (design) {
 @Composable
 internal fun CardDesignThumbnail(design: String, modifier: Modifier = Modifier) {
     val base = Color(CardDesign.baseArgb(design))
-    val ink = Color(inkArgb(design))
-    val accent = Color(accentArgb(design))
+    val ink = Color(CardDesign.inkArgb(design))
+    val accent = Color(thumbnailAccentArgb(design))
     Canvas(modifier = modifier) {
         drawRect(base)
         when (design) {

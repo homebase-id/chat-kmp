@@ -3,6 +3,7 @@ package id.homebase.api.client.drives
 import kotlinx.serialization.Serializable
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.common.OdinId
+import id.homebase.api.util.compareStringUuId
 
 /**
  * Server metadata
@@ -67,11 +68,7 @@ fun AccessControlList?.isVisibleToCircle(circleId: String): Boolean {
     }
     val circles = circleIdList.orEmpty()
     if (circles.isEmpty()) return true
-    val wanted = circleId.replace("-", "")
-    return circles.any {
-        val id = it.replace("-", "")
-        id.equals(wanted, ignoreCase = true) || id.equals(CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE, ignoreCase = true)
-    }
+    return circles.any { compareStringUuId(it, circleId) || compareStringUuId(it, CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE) }
 }
 
 private fun securityRank(group: String?): Int = when (group?.lowercase()) {

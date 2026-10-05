@@ -158,7 +158,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.RadioButton
 import id.homebase.core.widget.AdaptiveSheet
@@ -169,7 +168,6 @@ import id.homebase.resources.profile_card_access_title
 import id.homebase.resources.profile_card_add_circle_has_card
 import id.homebase.resources.profile_card_add_circle_no_circles
 import id.homebase.resources.profile_card_circle_members
-import id.homebase.resources.profile_card_not_published
 import id.homebase.resources.profile_card_save_public
 import id.homebase.resources.profile_card_share_public
 import id.homebase.resources.profile_card_share_public_message
@@ -406,9 +404,7 @@ fun ProfileCardScreen(
                 )
             }
         }
-        if (uiState.isDesignAccessPromptShown) {
-            DesignAccessDialog(onContinue = viewModel::onDesignAccessAccepted, onDismiss = viewModel::onDesignAccessDeclined)
-        }
+        DesignAccessPrompt(shown = uiState.isDesignAccessPromptShown, viewModel = viewModel)
         val circle = uiState.selectedAudience as? CardAudience.Circle
         if (confirmPublicShare && circle != null) {
             SharePublicCardDialog(
@@ -504,6 +500,11 @@ internal fun BoxScope.CardBottomChrome(
             }
         }
     }
+}
+
+@Composable
+internal fun DesignAccessPrompt(shown: Boolean, viewModel: ProfileCardViewModel) {
+    if (shown) DesignAccessDialog(onContinue = viewModel::onDesignAccessAccepted, onDismiss = viewModel::onDesignAccessDeclined)
 }
 
 @Composable

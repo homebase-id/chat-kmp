@@ -58,7 +58,7 @@ actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?) {
         UIKitView(
             factory = { cardHost.webView },
             modifier = Modifier.fillMaxSize(),
-            update = { it.pageZoom = zoom.toDouble() },
+            update = { view -> zoom.toDouble().let { if (view.pageZoom != it) view.pageZoom = it } },
         )
     }
 }
