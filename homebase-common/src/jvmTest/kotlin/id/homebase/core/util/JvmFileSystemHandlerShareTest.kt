@@ -8,6 +8,7 @@ import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.io.File
 import java.nio.file.Files
+import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -40,8 +41,10 @@ class JvmFileSystemHandlerShareTest {
             },
             reveal = { revealedFile.set(it); revealed.countDown() },
         )
-        handler.shareFile(Path(src.path))
-        returned.set(true)
+        SwingUtilities.invokeAndWait {
+            handler.shareFile(Path(src.path))
+            returned.set(true)
+        }
 
         assertTrue(revealed.await(5, TimeUnit.SECONDS))
         assertEquals("log-body", target.readText())
@@ -69,8 +72,14 @@ class JvmFileSystemHandlerShareTest {
     @Test
     fun shareTextCopiesToClipboard() {
         assumeFalse(GraphicsEnvironment.isHeadless())
-        JvmFileSystemHandler().shareText("x")
-        val text = Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.stringFlavor)
-        assertEquals("x", text)
+        val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+        val previous = runCatching { clipboard.getContents(null) }.getOrNull()
+        try {
+            val v = "share-" + UUID.randomUUID()
+            JvmFileSystemHandler().shareText(v)
+            assertEquals(v, clipboard.getData(DataFlavor.stringFlavor))
+        } finally {
+            if (previous != null) clipboard.setContents(previous, null)
+        }
     }
 }
