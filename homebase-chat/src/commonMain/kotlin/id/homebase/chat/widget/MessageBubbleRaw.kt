@@ -371,10 +371,6 @@ fun MessageBubbleRaw(
 
     val filteredPayloads = message.payloads.mediaPayloads()
     val hasMedia = filteredPayloads.isNotEmpty()
-    // A 2+-image album (MediaGallery) sitting above a caption renders full-bleed —
-    // the images run edge-to-edge to the bubble, and only the caption below keeps its
-    // 12dp inset (the messenger convention, matching this app's media-only bubbles). A
-    // single image already renders edge-to-edge, so it is untouched.
     val isGallery = filteredPayloads.size >= 2
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -863,7 +859,7 @@ fun MessageBubbleRaw(
                                         downloadingFiles = downloadingFiles,
                                         uploadStatus = uploadStatus,
                                         // Single media stays off fill: MediaMessage.fillsBubble would crop it to maxHeight.
-                                        fillWidth = filteredPayloads.size > 1,
+                                        fillWidth = isGallery,
                                         // Floors a narrow single image to 240dp so the caption
                                         // clamp below can't collapse it to one char per line.
                                         hasCaption = true,
