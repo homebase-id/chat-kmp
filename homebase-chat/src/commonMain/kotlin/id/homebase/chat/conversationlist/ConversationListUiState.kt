@@ -25,6 +25,8 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.toPersistentList
+import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.datetime.LocalDate
 import org.jetbrains.compose.resources.StringResource
 import kotlin.time.Instant
@@ -207,6 +209,17 @@ data class PendingOutgoingMessage(
     val attachmentCount: Int,
     val sentAt: Instant,
     val replyPreview: ReplyPreview? = null,
+)
+
+internal fun MessageListUiState.withPendingSend(placeholder: PendingOutgoingMessage): MessageListUiState = copy(
+    uploadProgress = (uploadProgress + (placeholder.id to UploadStatus.Preparing)).toPersistentMap(),
+    pendingOutgoing = (pendingOutgoing + placeholder).toPersistentList(),
+)
+
+// Keep progress when the real bubble lands: it takes over the same message id's upload status.
+internal fun MessageListUiState.withoutPendingSend(id: Uuid, clearProgress: Boolean): MessageListUiState = copy(
+    uploadProgress = if (clearProgress) (uploadProgress - id).toPersistentMap() else uploadProgress,
+    pendingOutgoing = pendingOutgoing.filterNot { it.id == id }.toPersistentList(),
 )
 
 internal fun messageListKey(item: Any): String = when (item) {
