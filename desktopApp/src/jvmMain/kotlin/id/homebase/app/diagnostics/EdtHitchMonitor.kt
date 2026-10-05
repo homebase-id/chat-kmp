@@ -1,6 +1,7 @@
 package id.homebase.app.diagnostics
 
 import co.touchlab.kermit.Logger
+import id.homebase.core.diagnostics.captureMainThreadStackTrace
 import java.awt.EventQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -8,12 +9,6 @@ import kotlin.concurrent.thread
 
 /** Logs sub-second EDT stalls, which MainThreadWatchdog (4 s threshold, 30 s throttle) never reports. */
 class EdtHitchMonitor(
-    private val thresholdMs: Long = 500,
-    private val pollMs: Long = 250,
-    private val throttleMs: Long = 5_000,
-    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000 },
-    private val post: (Runnable) -> Unit = EventQueue::invokeLater,
-    private val captureStack: () -> String? = ::captureEdtStack,
     private val log: (String) -> Unit = { Logger.w(tag = "EdtHitchMonitor") { it } },
 ) {
     @Volatile private var lastFocusGainMs: Long? = null
@@ -25,7 +20,7 @@ class EdtHitchMonitor(
         thread(name = "EdtHitchMonitor", isDaemon = true) {
             while (true) {
                 probeOnce()
-                Thread.sleep(pollMs)
+                Thread.sleep(POLL_MS)
             }
         }
     }
@@ -38,10 +33,10 @@ class EdtHitchMonitor(
     private fun probeOnce() {
         val acked = CountDownLatch(1)
         val postedAt = nowMs()
-        post { acked.countDown() }
-        if (acked.await(thresholdMs, TimeUnit.MILLISECONDS)) return
+        EventQueue.invokeLater { acked.countDown() }
+        if (acked.await(THRESHOLD_MS, TimeUnit.MILLISECONDS)) return
         // Snapshot while the EDT is still stuck; after the ack it shows idle frames.
-        val stack = captureStack()
+        val stack = captureMainThreadStackTrace()
         acked.await()
         report(postedAt, nowMs() - postedAt, stack)
     }
@@ -49,7 +44,7 @@ class EdtHitchMonitor(
     private fun report(postedAt: Long, hitchMs: Long, stack: String?) {
         val now = nowMs()
         val firstSinceFocus = unreportedFocusGain
-        val throttled = lastLogMs?.let { now - it < throttleMs } ?: false
+        val throttled = lastLogMs?.let { now - it < THROTTLE_MS } ?: false
         if (throttled && !firstSinceFocus) return
         unreportedFocusGain = false
         lastLogMs = now
@@ -66,11 +61,8 @@ class EdtHitchMonitor(
     }
 }
 
-private fun captureEdtStack(): String? {
-    val edt = Thread.getAllStackTraces().entries.firstOrNull { it.key.name.startsWith("AWT-EventQueue") }
-        ?: return null
-    return buildString {
-        appendLine("    [thread: ${edt.key.name}]")
-        edt.value.take(60).forEach { appendLine("    at $it") }
-    }
-}
+private const val THRESHOLD_MS = 500L
+private const val POLL_MS = 250L
+private const val THROTTLE_MS = 5_000L
+
+private fun nowMs(): Long = System.nanoTime() / 1_000_000
