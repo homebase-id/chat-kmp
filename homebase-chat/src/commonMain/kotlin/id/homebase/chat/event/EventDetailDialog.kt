@@ -33,6 +33,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -46,7 +48,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,7 +67,7 @@ import id.homebase.chat.widget.MediaItem
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.avatars.PublicAvatar
-import id.homebase.core.clipboard.clipEntryOf
+import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.ImageSize
 import id.homebase.core.util.initials
@@ -159,7 +160,8 @@ private fun EventDetailContent(
     val contactService: ContactService = koinInject()
     val ownerSession: OwnerSessionRepository = koinInject()
     val uriHandler = LocalUriHandler.current
-    val clipboard = LocalClipboard.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
     val calendarLauncher = rememberCalendarLauncher()
     val scope = rememberCoroutineScope()
 
@@ -211,6 +213,7 @@ private fun EventDetailContent(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {},
@@ -321,9 +324,7 @@ private fun EventDetailContent(
                     // depend on selection gestures.
                     trailing = {
                         IconButton(
-                            onClick = {
-                                scope.launch { clipboard.setClipEntry(clipEntryOf(url)) }
-                            },
+                            onClick = { copyToClipboard(url) },
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ContentCopy,

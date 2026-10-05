@@ -235,7 +235,7 @@ class MainThreadWatchdog(
  * Renders the current UI/main thread's stack (top [maxFrames] frames), or `null` if the platform
  * cannot capture another thread's stack from the watchdog thread.
  */
-internal expect fun captureMainThreadStackTrace(maxFrames: Int = 60): String?
+expect fun captureMainThreadStackTrace(maxFrames: Int = 60): String?
 
 /** A single thread nothing else shares, so the watchdog loop can't be starved by pool exhaustion. */
 internal expect fun createWatchdogDispatcher(): CoroutineDispatcher

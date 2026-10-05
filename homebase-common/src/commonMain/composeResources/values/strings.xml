@@ -973,7 +973,6 @@
     <string name="chat_contact_card_title">Contact</string>
     <string name="chat_contact_card_call">Call</string>
     <string name="chat_contact_card_send_email">Send email</string>
-    <string name="chat_contact_card_copied">Copied to clipboard</string>
     <string name="chat_contact_card_action_unavailable">Nothing on this device can open that.</string>
     <string name="chat_contact_card_exists_title">Already in your contacts</string>
     <string name="chat_contact_card_exists_body">%1$s already has one of these phone numbers or email addresses.</string>
@@ -1197,7 +1196,8 @@
     <string name="email_secrets_revoke_body">%1$s stops working immediately and cannot be brought back. Any mail app using it will stop sending and receiving until you issue a new one.</string>
     <string name="email_secrets_revoke_confirm">Revoke it</string>
     <string name="email_secrets_cancel">Cancel</string>
-    <string name="email_secrets_copied">Copied</string>
+    <string name="copied">Copied</string>
+    <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="email_secrets_copy_password">Copy password</string>
     <string name="email_secrets_copy_label">Copy:</string>
     <string name="email_secrets_copy_fingerprint">Fingerprint</string>

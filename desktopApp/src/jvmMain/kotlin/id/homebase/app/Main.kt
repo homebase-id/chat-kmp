@@ -38,6 +38,7 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.desktop.AppIconBadge
 import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
+import id.homebase.app.diagnostics.EdtHitchMonitor
 import id.homebase.api.client.isRecoverablePermissionFailure
 import id.homebase.api.client.isRecoverableServerConflict
 import id.homebase.api.client.isTransientNetworkFailure
@@ -119,6 +120,7 @@ fun main() {
     // Detect UI-thread (AWT EDT) stalls and log the EDT stack to homebase.log. Desktop has no
     // OS-level ANR, so without this a freeze leaves no evidence at all.
     MainThreadWatchdog().start()
+    EdtHitchMonitor().start()
 
     // Initialize the database BEFORE Koin. startKoin eagerly instantiates `createdAtStart`
     // singletons (e.g. DesktopChatNotificationBridge), and that chain resolves
@@ -359,6 +361,11 @@ fun main() {
 
             DesktopAppFocusManager.registerWindowProvider { window }
             window.minimumSize = java.awt.Dimension(minWidth, minHeight)
+            LaunchedEffect(window) {
+                Logger.i(tag = "DesktopWindowState") {
+                    "window created: renderApi=${window.renderApi} scale=${window.graphicsConfiguration.defaultTransform.scaleX}"
+                }
+            }
 
             // Diagnostic: an un-minimise nobody asked for has no other trace, so log the
             // transition to correlate it against the requestFocus / notification lines.

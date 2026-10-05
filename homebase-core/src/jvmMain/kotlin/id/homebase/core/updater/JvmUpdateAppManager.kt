@@ -16,21 +16,29 @@ import java.io.File
 import java.util.Properties
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
+import kotlin.time.measureTimedValue
 
 class JvmUpdateAppManager(
     private val httpClient: HttpClient,
     private val platformInfo: PlatformInfo,
+    private val controller: SoftwareUpdateController? = SoftwareUpdateController.getInstance(),
+    private val isLinux: Boolean = hostOs.isLinux,
 ): UpdateAppManager {
-
-    private val controller: SoftwareUpdateController? = SoftwareUpdateController.getInstance()
 
     private val githubRepo: String by lazy {
         if (isProductionVersion()) "chat-desktop-release-production" else "chat-desktop-release-bleeding"
     }
 
-    override suspend fun checkForUpdate(): UpdateAppModel {
+    // Callers run on Dispatchers.Main (the EDT); the Conveyor repository read is a blocking HTTP call.
+    override suspend fun checkForUpdate(): UpdateAppModel = withContext(Dispatchers.IO) {
+        val (result, took) = measureTimedValue { checkForUpdateBlocking() }
+        Logger.i { "update check took ${took.inWholeMilliseconds}ms on ${Thread.currentThread().name}" }
+        result
+    }
+
+    private suspend fun checkForUpdateBlocking(): UpdateAppModel {
         try {
-            if (hostOs.isLinux) {
+            if (isLinux) {
                 val canUpdate = isDebianPackageInstalled()
                 return checkForUpdateDirectly(canUpdate)
             }
@@ -73,9 +81,9 @@ class JvmUpdateAppManager(
 
     override suspend fun downloadUpdate(): UpdateResult {
         return try {
-            if (hostOs.isLinux) {
+            if (isLinux) {
                 // Check if installed via .deb
-                return if (isDebianPackageInstalled()) {
+                return if (withContext(Dispatchers.IO) { isDebianPackageInstalled() }) {
                     // Use apt to update from configured repository
                     updateFromAptRepository()
                 } else {
@@ -89,7 +97,7 @@ class JvmUpdateAppManager(
                 return UpdateResult.Unsupported
             }
 
-            if (controller.canTriggerUpdateCheckUI() != SoftwareUpdateController.Availability.AVAILABLE) {
+            if (withContext(Dispatchers.IO) { controller.canTriggerUpdateCheckUI() } != SoftwareUpdateController.Availability.AVAILABLE) {
                 Logger.w { "Cannot trigger update UI" }
                 return UpdateResult.NoUpdateAvailable
             }
@@ -104,8 +112,8 @@ class JvmUpdateAppManager(
         }
     }
 
-    private suspend fun checkForUpdateDirectly(canUpdate: Boolean): UpdateAppModel = withContext(Dispatchers.IO) {
-        try {
+    private suspend fun checkForUpdateDirectly(canUpdate: Boolean): UpdateAppModel {
+        return try {
             val url = "https://github.com/homebase-id/$githubRepo/releases/latest/download/metadata.properties"
 
             val response = httpClient.get(url).bodyAsText()
@@ -113,7 +121,7 @@ class JvmUpdateAppManager(
             // Parse properties
             val properties = Properties()
             properties.load(response.byteInputStream())
-            val remoteVersion = properties.getProperty("app.version") ?: return@withContext UpdateAppModel(
+            val remoteVersion = properties.getProperty("app.version") ?: return UpdateAppModel(
                 updateAvailable = false,
                 error = UpdateAppError.LATEST_VERSION_NOT_AVAILABLE
             )
