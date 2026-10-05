@@ -11,35 +11,6 @@ class ContinuedProcessingBridgeImpl: ContinuedProcessingBridge {
         onStarted: @escaping () -> Void
     ) -> ContinuedProcessingHandle? {
         guard #available(iOS 26.0, *) else { return nil }
-        return ContinuedProcessingTaskHandle.submit(name: name, title: title, log: log, onStarted: onStarted)
-    }
-}
-
-@available(iOS 26.0, *)
-private class ContinuedProcessingTaskHandle: ContinuedProcessingHandle {
-
-    private let identifier: String
-    private let name: String
-    private let log: (String) -> Void
-    private let onStarted: () -> Void
-
-    // Main-queue confined: the launch handler runs on .main and every other entry hops there.
-    private var task: BGContinuedProcessingTask?
-    private var ended = false
-
-    private init(identifier: String, name: String, log: @escaping (String) -> Void, onStarted: @escaping () -> Void) {
-        self.identifier = identifier
-        self.name = name
-        self.log = log
-        self.onStarted = onStarted
-    }
-
-    static func submit(
-        name: String,
-        title: String,
-        log: @escaping (String) -> Void,
-        onStarted: @escaping () -> Void
-    ) -> ContinuedProcessingTaskHandle? {
         // Registering an identifier twice kills the app, so every task gets its own.
         let identifier = "\(Bundle.main.bundleIdentifier ?? "").\(name).\(UUID().uuidString)"
         let handle = ContinuedProcessingTaskHandle(identifier: identifier, name: name, log: log, onStarted: onStarted)
@@ -64,8 +35,28 @@ private class ContinuedProcessingTaskHandle: ContinuedProcessingHandle {
         }
         return handle
     }
+}
 
-    private func started(_ launched: BGContinuedProcessingTask) {
+@available(iOS 26.0, *)
+private class ContinuedProcessingTaskHandle: ContinuedProcessingHandle {
+
+    private let identifier: String
+    private let name: String
+    private let log: (String) -> Void
+    private let onStarted: () -> Void
+
+    // Main-queue confined: the launch handler runs on .main and every other entry hops there.
+    private var task: BGContinuedProcessingTask?
+    private var ended = false
+
+    init(identifier: String, name: String, log: @escaping (String) -> Void, onStarted: @escaping () -> Void) {
+        self.identifier = identifier
+        self.name = name
+        self.log = log
+        self.onStarted = onStarted
+    }
+
+    func started(_ launched: BGContinuedProcessingTask) {
         if ended {
             launched.setTaskCompleted(success: true)
             return
