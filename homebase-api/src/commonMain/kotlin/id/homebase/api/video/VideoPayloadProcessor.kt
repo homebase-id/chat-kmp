@@ -40,7 +40,12 @@ class VideoPayloadProcessor(
         inputBlobUrl: String? = null,
     ): VideoProcessResult {
         // Without it iOS suspends ffmpeg mid-encode as soon as the user leaves the app.
-        val assertion = beginBackgroundExecutionAssertion("video-bundle")
+        val assertion =
+            beginBackgroundExecutionAssertion("video-bundle", continuedProcessingTitle = "Preparing video")
+        val reportingProgress: (VideoPayloadProgressPhase) -> Unit = { phase ->
+            assertion.reportProgress(overallFraction(phase))
+            onProgress?.invoke(phase)
+        }
         return try {
             // Resolve content URIs (Android copies the gallery pick into cacheDir as
             // resolved_*; other platforms no-op) and reap that copy when we're done,
@@ -52,7 +57,7 @@ class VideoPayloadProcessor(
                         if (resolvedPath != payload.filePath) payload.copy(filePath = resolvedPath)
                         else payload,
                     keyHeader = keyHeader,
-                    onProgress = onProgress,
+                    onProgress = reportingProgress,
                     descriptorContentPayloadKey = descriptorContentPayloadKey,
                     trimStartMs = trimStartMs,
                     trimEndMs = trimEndMs,
@@ -64,6 +69,15 @@ class VideoPayloadProcessor(
             assertion.end()
         }
     }
+
+    private fun overallFraction(phase: VideoPayloadProgressPhase): Float =
+        when (phase.phase) {
+            VideoProcessingPhase.THUMBNAIL -> 0f
+            VideoProcessingPhase.COMPRESSING -> 0.9f * phase.progress
+            VideoProcessingPhase.SEGMENTING -> 0.9f + 0.1f * phase.progress
+            VideoProcessingPhase.ENCRYPTING -> 0.9f
+            VideoProcessingPhase.COMPLETE -> 1f
+        }
 
     private suspend fun processResolved(
         payload: PayloadFile,
