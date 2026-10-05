@@ -293,7 +293,7 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
             }
 
             PHAuthorizationStatusNotDetermined -> {
-                PHPhotoLibrary.requestAuthorization { newStatus ->
+                PHPhotoLibrary.requestAuthorizationForAccessLevel(PHAccessLevelReadWrite) { newStatus ->
                     askGalleryPermission(newStatus, permission, onPermissionStatus)
                 }
             }
