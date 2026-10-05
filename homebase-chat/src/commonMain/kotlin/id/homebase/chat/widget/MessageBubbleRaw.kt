@@ -860,10 +860,8 @@ fun MessageBubbleRaw(
                                         messageId = message.id,
                                         downloadingFiles = downloadingFiles,
                                         uploadStatus = uploadStatus,
-                                        // The custom Layout below already clamps the caption to
-                                        // the media width, so there is no gap to fill — the
-                                        // gallery renders full-bleed at its album width.
-                                        fillWidth = false,
+                                        // Single media stays off fill: MediaMessage.fillsBubble would crop it to maxHeight.
+                                        fillWidth = filteredPayloads.size > 1,
                                         // Floors a narrow single image to 240dp so the caption
                                         // clamp below can't collapse it to one char per line.
                                         hasCaption = true,
