@@ -114,6 +114,7 @@ import id.homebase.core.clipboard.ClipboardImagePasteEffect
 import id.homebase.core.clipboard.KeyboardImageReceiver
 import id.homebase.core.clipboard.clipboardImageReceiverModifier
 import id.homebase.core.clipboard.pasteImageContextMenuItem
+import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.clipboard.readClipboardImage
 import id.homebase.core.emoji.EmojiShortcodeEffect
 import id.homebase.core.settings.rememberArrowUpEditsLastMessage
@@ -393,7 +394,6 @@ fun MessageTextFieldExpanded(
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
     val arrowUpEditsLastMessage = rememberArrowUpEditsLastMessage()
-    val pasteScope = rememberCoroutineScope()
     var isFieldFocused by remember { mutableStateOf(false) }
     val autocomplete = rememberComposerAutocompleteController()
 
@@ -437,25 +437,13 @@ fun MessageTextFieldExpanded(
         } else {
             Modifier
         }
-        val pasteImageLabel = stringResource(MR.string.chat_message_paste_image)
         Box(modifier = Modifier.fillMaxWidth()) {
             KeyboardImageReceiver(onPasteImage) {
                 RichTextEditor(
                     state = state,
                     modifier = Modifier.fillMaxWidth()
                         .then(pasteModifier)
-                        .then(
-                            if (onPasteImage != null)
-                                Modifier.pasteImageContextMenuItem(
-                                    label = pasteImageLabel,
-                                    enabled = true,
-                                ) {
-                                    pasteScope.launch {
-                                        readClipboardImage()?.let { onPasteImage.invoke(it) }
-                                    }
-                                }
-                            else Modifier
-                        )
+                        .pasteImageMenuItem(onPasteImage)
                         .focusRequester(focusRequester)
                         .onFocusChanged { focusState ->
                             isFieldFocused = focusState.isFocused
@@ -597,7 +585,6 @@ fun MessageTextFieldCompact(
     attachmentActions: ImmutableList<AttachmentAction>? = null,
     onCancelEdit: () -> Unit,
 ) {
-    val pasteScope = rememberCoroutineScope()
     val autocomplete = rememberComposerAutocompleteController()
     val showSendButton = hasSendableContent(state, payloadRenderers)
     val showRecordingButton by remember(
@@ -752,7 +739,6 @@ fun MessageTextFieldCompact(
                         } else {
                             Modifier
                         }
-                        val pasteImageLabel = stringResource(MR.string.chat_message_paste_image)
                         Box(modifier = Modifier.weight(1f)) {
                             KeyboardImageReceiver(onPasteImage) {
                                 RichTextEditor(
@@ -760,18 +746,7 @@ fun MessageTextFieldCompact(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .then(pasteModifier)
-                                        .then(
-                                            if (onPasteImage != null)
-                                                Modifier.pasteImageContextMenuItem(
-                                                    label = pasteImageLabel,
-                                                    enabled = true,
-                                                ) {
-                                                    pasteScope.launch {
-                                                        readClipboardImage()?.let { onPasteImage.invoke(it) }
-                                                    }
-                                                }
-                                            else Modifier
-                                        )
+                                        .pasteImageMenuItem(onPasteImage)
                                         .focusRequester(focusRequester)
                                         .onFocusChanged { focusState ->
                                             isKeyboardFocused = focusState.isFocused
@@ -1247,6 +1222,9 @@ fun MessageTextFieldForAttachment(
     // are unit-testable without a device.
     showFormattingToolbar: Boolean = isDesktopOrWeb(),
     onEmojiPickerVisibilityChanged: (Boolean) -> Unit = {},
+    onPasteImage: ((ByteArray) -> Unit)? = null,
+    // Injectable so a test can paste without the OS clipboard, which headless CI lacks.
+    clipboardImage: () -> ByteArray? = ::getImageFromClipboard,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
     var hasSent by remember { mutableStateOf(false) }
@@ -1308,6 +1286,7 @@ fun MessageTextFieldForAttachment(
                 RichTextEditor(
                     state = state,
                     modifier = Modifier.fillMaxWidth().testTag(ATTACHMENT_CAPTION_FIELD_TAG)
+                        .pasteImageMenuItem(onPasteImage)
                         .focusRequester(captionFocusRequester)
                         // Tapping into the caption closes the panel; the keyboard reclaims the space.
                         .onFocusChanged { if (it.isFocused) setEmojiPicker(false, forKeyboard = true) }
@@ -1321,6 +1300,8 @@ fun MessageTextFieldForAttachment(
                                 }
                             },
                             onNewline = { state.addTextAfterSelection("\n") },
+                            onPasteImage = onPasteImage,
+                            clipboardImage = clipboardImage,
                         ),
                     placeholder = {
                         Text(stringResource(MR.string.chat_new_message_placeholder))
@@ -1671,3 +1652,12 @@ private fun MarkdownLinkDialog(
     )
 }
 
+@Composable
+private fun Modifier.pasteImageMenuItem(onPasteImage: ((ByteArray) -> Unit)?): Modifier {
+    val scope = rememberCoroutineScope()
+    val label = stringResource(MR.string.chat_message_paste_image)
+    if (onPasteImage == null) return this
+    return pasteImageContextMenuItem(label = label, enabled = true) {
+        scope.launch { readClipboardImage()?.let(onPasteImage) }
+    }
+}

@@ -51,7 +51,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,7 +60,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -90,7 +88,6 @@ import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
-import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.image.HomebaseImage
@@ -134,7 +131,6 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
@@ -207,6 +203,7 @@ fun SentMessageBubble(
     chainCap: Int? = null,
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
+    onCopyText: (String) -> Unit = {},
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     val popupTransition = updateTransition(popupMode, label = "messagePopup")
@@ -215,8 +212,6 @@ fun SentMessageBubble(
     var showEmojiPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
-    val clipboardManager = LocalClipboard.current
-    val scope = rememberCoroutineScope()
     // Captures the bubble's measured width so the reaction pill can be capped to
     // it instead of widening the bubble for narrow messages (e.g. "."). Initial
     // value 0 means "no constraint yet" — pill renders unconstrained for one
@@ -315,9 +310,7 @@ fun SentMessageBubble(
                         },
                         onCopy = {
                             popupMode = MessagePopupMode.None
-                            scope.launch {
-                                clipboardManager.setClipEntry(clipEntryOf(message.content))
-                            }
+                            onCopyText(message.content)
                         },
                         onEdit = onEdit?.let { orig ->
                             { popupMode = MessagePopupMode.None; orig() }
@@ -535,6 +528,7 @@ fun ReceivedMessageBubble(
     chainCap: Int? = null,
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
+    onCopyText: (String) -> Unit = {},
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     val popupTransition = updateTransition(popupMode, label = "messagePopup")
@@ -556,8 +550,6 @@ fun ReceivedMessageBubble(
     val hasVisibleBackground = !mediaOnly && !emojiOnly
     val isVoiceNote = mediaOnly &&
         filteredPayloads.singleOrNull()?.isAudio() == true
-    val clipboardManager = LocalClipboard.current
-    val scope = rememberCoroutineScope()
     val haptics = rememberHaptics()
     val policy = message.messageContent?.actions ?: ActionPolicy.Standard
     val openReactionBar: (() -> Unit)? =
@@ -776,9 +768,7 @@ fun ReceivedMessageBubble(
                         },
                         onCopy = {
                             popupMode = MessagePopupMode.None
-                            scope.launch {
-                                clipboardManager.setClipEntry(clipEntryOf(message.content))
-                            }
+                            onCopyText(message.content)
                         },
                         onDelete = {
                             popupMode = MessagePopupMode.None

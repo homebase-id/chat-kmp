@@ -4,6 +4,10 @@
 <dict>
 	<key>AppGroupIdentifier</key>
 	<string>$(APP_GROUP_IDENTIFIER)</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).video-bundle.*</string>
+	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleURLTypes</key>
@@ -20,6 +24,8 @@
 	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Homebase uses Face ID to protect your vault</string>
+	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>
+	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

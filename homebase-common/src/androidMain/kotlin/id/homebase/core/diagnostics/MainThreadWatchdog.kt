@@ -15,7 +15,7 @@ import java.util.concurrent.Executors
  * (deobfuscated-on-mapping) instead of the input-dispatcher-level R8 frames the system crash dump
  * lands after the kill.
  */
-internal actual fun captureMainThreadStackTrace(maxFrames: Int): String? {
+actual fun captureMainThreadStackTrace(maxFrames: Int): String? {
     val stack = Looper.getMainLooper().thread.stackTrace
     return buildString {
         stack.take(maxFrames).forEach { appendLine("    at $it") }
