@@ -320,6 +320,28 @@ class BubbleLayoutInvariantTest {
         assertTrue(failures.isEmpty(), "gallery full-bleed invariant failures:\n" + failures.joinToString("\n"))
     }
 
+    @Test
+    fun galleryWithInlineCaption_fillsBubbleWidth() = runComposeUiTest {
+        val failures = mutableListOf<String>()
+        for (width in listOf(columnWidth, phoneWidth))
+            for (sent in listOf(true, false))
+                for (images in listOf(2, 4, 7))
+                    for (cap in listOf(Caption.SHORT, Caption.LONG)) {
+                        val name = "${images}img/$cap/${if (sent) "sent" else "recv"}@${width.value}"
+                        val author = if (sent) null else "Alice Wonderland"
+                        render(Case(name, sent, images, cap), authorName = author, width = width)
+                        val inline = boundsOf(ChatBubbleTestTags.MEDIA).let { it.right.value - it.left.value }
+                        render(Case(name, sent, images, Caption.BLOCK), authorName = author, width = width)
+                        val block = boundsOf(ChatBubbleTestTags.MEDIA).let { it.right.value - it.left.value }
+                        if (!approx(inline, width.value)) failures += "[$name] media=$inline != column=${width.value}"
+                        if (!approx(inline, block)) failures += "[$name] media=$inline != block-caption media=$block"
+                    }
+        render(Case("1img/LONG", false, 1, Caption.LONG), authorName = "Alice Wonderland")
+        val single = boundsOf(ChatBubbleTestTags.MEDIA).let { it.right.value - it.left.value }
+        if (!approx(single, columnWidth.value)) failures += "[1img/LONG] media=$single != ${columnWidth.value}"
+        assertTrue(failures.isEmpty(), "inline-caption gallery width failures:\n" + failures.joinToString("\n"))
+    }
+
     /**
      * Consistent edge inset: the gallery's left offset from the bubble edge is the SAME
      * across every gallery+caption case — now 0 (full-bleed), and crucially not a
