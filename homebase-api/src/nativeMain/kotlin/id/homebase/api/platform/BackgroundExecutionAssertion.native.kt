@@ -8,8 +8,54 @@ import platform.UIKit.UIBackgroundTaskInvalid
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 
-actual fun beginBackgroundExecutionAssertion(name: String): BackgroundExecutionAssertion =
-    IosBackgroundExecutionAssertion(name)
+actual fun beginBackgroundExecutionAssertion(
+    name: String,
+    continuedProcessingTitle: String?,
+): BackgroundExecutionAssertion {
+    // Bridges until the system launches the continued task, and is the fallback if it never does.
+    val uiKit = IosBackgroundExecutionAssertion(name)
+    val continued =
+        continuedProcessingTitle?.let { title ->
+            ContinuedProcessingBridgeHolder.bridge?.begin(
+                name = name,
+                title = title,
+                log = { Logger.i(tag = BgTrace.TAG) { it } },
+                onStarted = { uiKit.end() },
+            )
+        } ?: return uiKit
+    return object : BackgroundExecutionAssertion {
+        override fun reportProgress(fraction: Float) = continued.reportProgress(fraction)
+
+        override fun end() {
+            uiKit.end()
+            continued.end()
+        }
+    }
+}
+
+/**
+ * `BGContinuedProcessingTask` (iOS 26+), implemented in Swift: Kotlin/Native links ObjC classes
+ * strongly, so referencing it here would stop the app launching below iOS 26.
+ */
+interface ContinuedProcessingBridge {
+    /** Null when the system won't run one; [log] says why. */
+    fun begin(
+        name: String,
+        title: String,
+        log: (String) -> Unit,
+        onStarted: () -> Unit,
+    ): ContinuedProcessingHandle?
+}
+
+interface ContinuedProcessingHandle {
+    fun reportProgress(fraction: Float)
+
+    fun end()
+}
+
+object ContinuedProcessingBridgeHolder {
+    var bridge: ContinuedProcessingBridge? = null
+}
 
 private class IosBackgroundExecutionAssertion(private val name: String) :
     BackgroundExecutionAssertion {
