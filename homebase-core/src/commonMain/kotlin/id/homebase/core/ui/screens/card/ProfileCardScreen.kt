@@ -94,6 +94,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.isTraversalGroup
@@ -189,7 +192,7 @@ private val TOP_BAND_HEIGHT = 56.dp
 private val BAND_FADE_HEIGHT = 16.dp
 // The floating toolbar plus its vertical margins.
 private val TOOLBAR_BAND_HEIGHT = 88.dp
-private val AUDIENCE_BADGE_MAX_WIDTH = 160.dp
+private val CHROME_GAP = 8.dp
 private val CHROME_CONTROL_SIZE = 40.dp
 private val PICKER_ROW_HEIGHT = 64.dp
 private const val PICKER_HALF_SHEET_ROWS = 5
@@ -473,24 +476,14 @@ internal fun BoxScope.CardBottomChrome(
             .height(TOOLBAR_BAND_HEIGHT),
         contentAlignment = Alignment.Center,
     ) {
+        // One toolbar: the quick actions as icons, Edit as its labelled, filled lead action.
         HorizontalFloatingToolbar(
             expanded = true,
-            floatingActionButton = {
-                FloatingToolbarDefaults.VibrantFloatingActionButton(
-                    onClick = onEdit,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Edit,
-                        contentDescription = stringResource(MR.string.profile_card_edit),
-                    )
-                }
-            },
             colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
                 toolbarContainerColor = chromePillColor(),
                 toolbarContentColor = MaterialTheme.colorScheme.onSurface,
             ),
+            contentPadding = PaddingValues(start = 4.dp, end = 8.dp),
         ) {
             ShareAction(
                 isExporting = isExporting,
@@ -499,6 +492,16 @@ internal fun BoxScope.CardBottomChrome(
                 onClick = onShare,
             )
             extraActions()
+            Spacer(Modifier.width(4.dp))
+            Button(
+                onClick = onEdit,
+                shapes = ButtonDefaults.shapes(),
+                contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
+            ) {
+                Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                Text(stringResource(MR.string.profile_card_edit), maxLines = 1)
+            }
         }
     }
 }
@@ -582,7 +585,11 @@ internal fun SheetTopChrome(
     handleDrag: Modifier,
     modifier: Modifier = Modifier,
 ) {
-    Box(
+    val gap = with(LocalDensity.current) { CHROME_GAP.roundToPx() }
+    val edge = with(LocalDensity.current) { 8.dp.roundToPx() }
+    // The audience pill takes all the room up to the close button; the drag handle shows only while it has clear space
+    // in the middle, so a long circle name never runs into it.
+    Layout(
         modifier = modifier
             .fillMaxWidth()
             .height(TOP_BAND_HEIGHT)
@@ -591,41 +598,48 @@ internal fun SheetTopChrome(
                 isTraversalGroup = true
                 traversalIndex = -1f
             },
-    ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(width = 64.dp, height = 48.dp)
-                .then(handleDrag)
-                // Close already dismisses; a second announced control for the same action is noise.
-                .clearAndSetSemantics { },
-            contentAlignment = Alignment.Center,
-        ) {
-            CardChromePill {
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = 10.dp, vertical = 7.dp)
-                        .size(width = 32.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.onSurfaceVariant),
+        content = {
+            AudienceBadge(uiState = uiState, onSelect = onSelectCard, circleActions = circleActions)
+            ChromeIconButton(onClick = onClose) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringResource(MR.string.close),
+                    modifier = Modifier.size(20.dp),
                 )
             }
-        }
-        AudienceBadge(
-            uiState = uiState,
-            onSelect = onSelectCard,
-            circleActions = circleActions,
-            modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp),
-        )
-        ChromeIconButton(
-            onClick = onClose,
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Close,
-                contentDescription = stringResource(MR.string.close),
-                modifier = Modifier.size(20.dp),
-            )
+            Box(
+                modifier = Modifier
+                    .size(width = 64.dp, height = 48.dp)
+                    .then(handleDrag)
+                    // Close already dismisses; a second announced control for the same action is noise.
+                    .clearAndSetSemantics { },
+                contentAlignment = Alignment.Center,
+            ) {
+                CardChromePill {
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 10.dp, vertical = 7.dp)
+                            .size(width = 32.dp, height = 4.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.onSurfaceVariant),
+                    )
+                }
+            }
+        },
+    ) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val close = measurables[1].measure(loose)
+        val handle = measurables[2].measure(loose)
+        val badgeRoom = (width - edge * 2 - close.width - gap).coerceAtLeast(0)
+        val badge = measurables[0].measure(loose.copy(maxWidth = badgeRoom))
+        val handleStart = (width - handle.width) / 2
+        val handleFits = edge + badge.width + gap <= handleStart
+        layout(width, height) {
+            badge.placeRelative(edge, (height - badge.height) / 2)
+            close.placeRelative(width - edge - close.width, (height - close.height) / 2)
+            if (handleFits) handle.placeRelative(handleStart, (height - handle.height) / 2)
         }
     }
 }
@@ -681,7 +695,6 @@ internal fun AudienceBadge(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .height(CHROME_CONTROL_SIZE)
-                        .widthIn(max = AUDIENCE_BADGE_MAX_WIDTH)
                         .padding(start = 10.dp, end = if (hasMenu) 6.dp else 14.dp),
                 ) {
                     Icon(imageVector = audienceIcon(selected), contentDescription = null, modifier = Modifier.size(18.dp))
