@@ -394,7 +394,6 @@ fun MessageTextFieldExpanded(
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
     val arrowUpEditsLastMessage = rememberArrowUpEditsLastMessage()
-    val pasteScope = rememberCoroutineScope()
     var isFieldFocused by remember { mutableStateOf(false) }
     val autocomplete = rememberComposerAutocompleteController()
 
@@ -438,25 +437,13 @@ fun MessageTextFieldExpanded(
         } else {
             Modifier
         }
-        val pasteImageLabel = stringResource(MR.string.chat_message_paste_image)
         Box(modifier = Modifier.fillMaxWidth()) {
             KeyboardImageReceiver(onPasteImage) {
                 RichTextEditor(
                     state = state,
                     modifier = Modifier.fillMaxWidth()
                         .then(pasteModifier)
-                        .then(
-                            if (onPasteImage != null)
-                                Modifier.pasteImageContextMenuItem(
-                                    label = pasteImageLabel,
-                                    enabled = true,
-                                ) {
-                                    pasteScope.launch {
-                                        readClipboardImage()?.let { onPasteImage.invoke(it) }
-                                    }
-                                }
-                            else Modifier
-                        )
+                        .pasteImageMenuItem(onPasteImage)
                         .focusRequester(focusRequester)
                         .onFocusChanged { focusState ->
                             isFieldFocused = focusState.isFocused
@@ -598,7 +585,6 @@ fun MessageTextFieldCompact(
     attachmentActions: ImmutableList<AttachmentAction>? = null,
     onCancelEdit: () -> Unit,
 ) {
-    val pasteScope = rememberCoroutineScope()
     val autocomplete = rememberComposerAutocompleteController()
     val showSendButton = hasSendableContent(state, payloadRenderers)
     val showRecordingButton by remember(
@@ -753,7 +739,6 @@ fun MessageTextFieldCompact(
                         } else {
                             Modifier
                         }
-                        val pasteImageLabel = stringResource(MR.string.chat_message_paste_image)
                         Box(modifier = Modifier.weight(1f)) {
                             KeyboardImageReceiver(onPasteImage) {
                                 RichTextEditor(
@@ -761,18 +746,7 @@ fun MessageTextFieldCompact(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .then(pasteModifier)
-                                        .then(
-                                            if (onPasteImage != null)
-                                                Modifier.pasteImageContextMenuItem(
-                                                    label = pasteImageLabel,
-                                                    enabled = true,
-                                                ) {
-                                                    pasteScope.launch {
-                                                        readClipboardImage()?.let { onPasteImage.invoke(it) }
-                                                    }
-                                                }
-                                            else Modifier
-                                        )
+                                        .pasteImageMenuItem(onPasteImage)
                                         .focusRequester(focusRequester)
                                         .onFocusChanged { focusState ->
                                             isKeyboardFocused = focusState.isFocused
@@ -1253,8 +1227,6 @@ fun MessageTextFieldForAttachment(
     clipboardImage: () -> ByteArray? = ::getImageFromClipboard,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
-    val pasteScope = rememberCoroutineScope()
-    val pasteImageLabel = stringResource(MR.string.chat_message_paste_image)
     var hasSent by remember { mutableStateOf(false) }
     val autocomplete = rememberComposerAutocompleteController()
     val isKeyboardVisible by keyboardAsState()
@@ -1314,18 +1286,7 @@ fun MessageTextFieldForAttachment(
                 RichTextEditor(
                     state = state,
                     modifier = Modifier.fillMaxWidth().testTag(ATTACHMENT_CAPTION_FIELD_TAG)
-                        .then(
-                            if (onPasteImage != null)
-                                Modifier.pasteImageContextMenuItem(
-                                    label = pasteImageLabel,
-                                    enabled = true,
-                                ) {
-                                    pasteScope.launch {
-                                        readClipboardImage()?.let { onPasteImage.invoke(it) }
-                                    }
-                                }
-                            else Modifier
-                        )
+                        .pasteImageMenuItem(onPasteImage)
                         .focusRequester(captionFocusRequester)
                         // Tapping into the caption closes the panel; the keyboard reclaims the space.
                         .onFocusChanged { if (it.isFocused) setEmojiPicker(false, forKeyboard = true) }
@@ -1691,3 +1652,12 @@ private fun MarkdownLinkDialog(
     )
 }
 
+@Composable
+private fun Modifier.pasteImageMenuItem(onPasteImage: ((ByteArray) -> Unit)?): Modifier {
+    val scope = rememberCoroutineScope()
+    val label = stringResource(MR.string.chat_message_paste_image)
+    if (onPasteImage == null) return this
+    return pasteImageContextMenuItem(label = label, enabled = true) {
+        scope.launch { readClipboardImage()?.let(onPasteImage) }
+    }
+}
