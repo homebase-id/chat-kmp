@@ -11,6 +11,7 @@ interface FileSystemHandler {
     fun editFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit = {})
     fun openFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit = {})
     fun openFileBrowser(file: Path, onError: (Throwable) -> Unit = {})
+    /** Desktop: opens a Save As dialog for a copy. */
     fun shareFile(file: Path, onError: (Throwable) -> Unit = {})
 
     /**
