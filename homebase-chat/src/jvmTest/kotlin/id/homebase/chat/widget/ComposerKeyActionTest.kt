@@ -159,4 +159,33 @@ class ComposerKeyActionTest {
     ) {
         assertEquals(1, it.sends)
     }
+
+    @Test
+    fun pasteShortcutInTheCaptionAddsEachClipboardImage() = runComposeUiTest {
+        val image = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47)
+        val pasted = mutableListOf<ByteArray>()
+        setContent {
+            WithComposerPreferences(enterSendsMessage = true) {
+                HomebaseTheme {
+                    MessageTextFieldForAttachment(
+                        state = rememberRichTextState(),
+                        onSendMessage = {},
+                        onPasteImage = { pasted += it },
+                        clipboardImage = { image },
+                    )
+                }
+            }
+        }
+
+        onNodeWithTag(ATTACHMENT_CAPTION_FIELD_TAG).requestFocus()
+        waitForIdle()
+        onNodeWithTag(ATTACHMENT_CAPTION_FIELD_TAG).performKeyInput {
+            withKeyDown(Key.CtrlLeft) { pressKey(Key.V) }
+            withKeyDown(Key.MetaLeft) { pressKey(Key.V) }
+        }
+        waitForIdle()
+
+        assertEquals(2, pasted.size)
+        assertTrue(pasted.all { it.contentEquals(image) })
+    }
 }

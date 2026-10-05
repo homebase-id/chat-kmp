@@ -417,6 +417,13 @@ fun ConversationMessagesPane(
                                         onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments))
                                     },
                                     onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
+                                    onPasteImage = { imageBytes ->
+                                        onUiAction(
+                                            id.homebase.chat.conversationlist.ConversationListUiAction.AttachClipboardImage(
+                                                data.conversationId, imageBytes,
+                                            )
+                                        )
+                                    },
                                 )
                             },
                         )

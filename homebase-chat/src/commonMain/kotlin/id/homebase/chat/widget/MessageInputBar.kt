@@ -114,6 +114,7 @@ import id.homebase.core.clipboard.ClipboardImagePasteEffect
 import id.homebase.core.clipboard.KeyboardImageReceiver
 import id.homebase.core.clipboard.clipboardImageReceiverModifier
 import id.homebase.core.clipboard.pasteImageContextMenuItem
+import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.clipboard.readClipboardImage
 import id.homebase.core.emoji.EmojiShortcodeEffect
 import id.homebase.core.settings.rememberArrowUpEditsLastMessage
@@ -1247,8 +1248,13 @@ fun MessageTextFieldForAttachment(
     // are unit-testable without a device.
     showFormattingToolbar: Boolean = isDesktopOrWeb(),
     onEmojiPickerVisibilityChanged: (Boolean) -> Unit = {},
+    onPasteImage: ((ByteArray) -> Unit)? = null,
+    // Injectable so a test can paste without the OS clipboard, which headless CI lacks.
+    clipboardImage: () -> ByteArray? = ::getImageFromClipboard,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
+    val pasteScope = rememberCoroutineScope()
+    val pasteImageLabel = stringResource(MR.string.chat_message_paste_image)
     var hasSent by remember { mutableStateOf(false) }
     val autocomplete = rememberComposerAutocompleteController()
     val isKeyboardVisible by keyboardAsState()
@@ -1308,6 +1314,18 @@ fun MessageTextFieldForAttachment(
                 RichTextEditor(
                     state = state,
                     modifier = Modifier.fillMaxWidth().testTag(ATTACHMENT_CAPTION_FIELD_TAG)
+                        .then(
+                            if (onPasteImage != null)
+                                Modifier.pasteImageContextMenuItem(
+                                    label = pasteImageLabel,
+                                    enabled = true,
+                                ) {
+                                    pasteScope.launch {
+                                        readClipboardImage()?.let { onPasteImage.invoke(it) }
+                                    }
+                                }
+                            else Modifier
+                        )
                         .focusRequester(captionFocusRequester)
                         // Tapping into the caption closes the panel; the keyboard reclaims the space.
                         .onFocusChanged { if (it.isFocused) setEmojiPicker(false, forKeyboard = true) }
@@ -1321,6 +1339,8 @@ fun MessageTextFieldForAttachment(
                                 }
                             },
                             onNewline = { state.addTextAfterSelection("\n") },
+                            onPasteImage = onPasteImage,
+                            clipboardImage = clipboardImage,
                         ),
                     placeholder = {
                         Text(stringResource(MR.string.chat_new_message_placeholder))

@@ -20,6 +20,7 @@ fun Modifier.composerKeyHandler(
     onSend: () -> Unit,
     onNewline: (() -> Unit)? = null,
     onPasteImage: ((ByteArray) -> Unit)? = null,
+    clipboardImage: () -> ByteArray? = ::getImageFromClipboard,
     arrowUpEditsLastMessage: Boolean = false,
     isComposerEmpty: () -> Boolean = { false },
     // False when there was nothing to edit, so the caret moves as usual.
@@ -39,7 +40,7 @@ fun Modifier.composerKeyHandler(
         onSend = onSend,
         onNewline = onNewline,
         onEditLast = onEditLast,
-        pasteImage = { onPasteImage != null && event.pasteClipboardImage(onPasteImage) },
+        pasteImage = { onPasteImage != null && event.pasteClipboardImage(clipboardImage, onPasteImage) },
     )
 }
 
@@ -75,9 +76,12 @@ internal fun handleComposerKey(
     return pasteImage()
 }
 
-private fun KeyEvent.pasteClipboardImage(onPasteImage: (ByteArray) -> Unit): Boolean {
+private fun KeyEvent.pasteClipboardImage(
+    clipboardImage: () -> ByteArray?,
+    onPasteImage: (ByteArray) -> Unit,
+): Boolean {
     if (type != KeyEventType.KeyDown || key != Key.V || !(isCtrlPressed || isMetaPressed)) return false
-    val imageBytes = getImageFromClipboard() ?: return false
+    val imageBytes = clipboardImage() ?: return false
     onPasteImage(imageBytes)
     return true
 }
