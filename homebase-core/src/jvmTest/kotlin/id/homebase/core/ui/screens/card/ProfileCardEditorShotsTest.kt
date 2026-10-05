@@ -82,6 +82,16 @@ class ProfileCardEditorShotsTest {
         previewOverrides = CardOverrides(palette = CardPalette(accent = "#F26B5B"), socials = "bar", type = CardTypeface(display = "newsreader")),
     )
 
+    private val schemed = base.copy(previewOverrides = CardOverrides().with(CardOption.COLOURS, "#1E5B45").with(CardOption.ACCENT, "#F2B84B"))
+    private val collageSchemed = base.copy(
+        previewDesign = CardDesign.COLLAGE,
+        previewOverrides = CardOverrides().with(CardOption.COLOURS, "#DDE5D3"),
+    )
+    private val dossierSchemed = base.copy(
+        previewDesign = CardDesign.DOSSIER,
+        previewOverrides = CardOverrides().with(CardOption.COLOURS, "#F4F1EA"),
+    )
+
     private fun tool(description: String): ComposeUiTest.() -> Unit = {
         // A mouse click, then the pointer leaves, so no hover highlight is left on whatever ends up under it.
         onNodeWithContentDescription(description).performMouseInput {
@@ -121,6 +131,19 @@ class ProfileCardEditorShotsTest {
         Shot("22-small-phone-fonts", edited, EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Body font")),
         Shot("23-access-note", base.copy(designAccessMissing = true), EditorStep.Design),
         Shot("24-access-note-customise", edited.copy(designAccessMissing = true), EditorStep.Customise, act = tool("Social links style")),
+        Shot("30-redmi-design", base.copy(previewDesign = CardDesign.DOSSIER), widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("31-redmi-design-access", base.copy(previewDesign = CardDesign.DOSSIER, designAccessMissing = true), widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("32-redmi-design-unsaved", base.copy(previewDesign = CardDesign.COLLAGE, designAccessMissing = true), widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("33-redmi-colours", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("34-redmi-colours-access", schemed.copy(designAccessMissing = true), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("35-redmi-accent", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Accent colour")),
+        Shot("36-redmi-heading-font", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Heading font")),
+        Shot("37-redmi-portrait", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Portrait shape")),
+        Shot("38-redmi-socials", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Social links style")),
+        Shot("39-redmi-order", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Section order")),
+        Shot("40-redmi-collage-colours", collageSchemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("41-redmi-dossier-colours", dossierSchemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("42-redmi-poster-colours", base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
     )
 
     private fun circles(n: Int) = List(n) { CardCircle("c$it", CIRCLE_NAMES[it % CIRCLE_NAMES.size], memberCount = it * 3 % 11) }
@@ -128,12 +151,15 @@ class ProfileCardEditorShotsTest {
     private class ViewerShot(val name: String, val state: ProfileCardUiState, val act: ComposeUiTest.() -> Unit = {}, val popup: Boolean = false)
 
     private val work = CardAudience.Circle("c1", "Work")
+    private val emergency = CardAudience.Circle("c3", "Emergency Location Access")
     private val withCircle = base.copy(cards = listOf(public, card(work, CardDesign.COLLAGE)), selectedAudience = work)
 
     private val viewerShots = listOf(
         ViewerShot("v01-public", base.copy(cards = listOf(public, card(work)))),
         ViewerShot("v02-circle", withCircle),
         ViewerShot("v04-exporting", withCircle.copy(isExporting = true)),
+        ViewerShot("v13-long-circle", base.copy(cards = listOf(public, card(emergency)), selectedAudience = emergency)),
+        ViewerShot("v14-long-circle-tiny", base.copy(cards = listOf(public, card(longCircle)), selectedAudience = longCircle)),
         ViewerShot("v05-menu", withCircle, act = { onNodeWithContentDescription("Card for Work. Choose another card.").performClick() }, popup = true),
     )
 
@@ -281,7 +307,7 @@ class ProfileCardEditorShotsTest {
                             snackbarHostState = remember { SnackbarHostState() },
                         ) { layoutWidth ->
                             when (shot.preview) {
-                                Preview.Ready -> StandInCard(shot.state.design, Modifier.fillMaxSize().laidOutAt(layoutWidth))
+                                Preview.Ready -> StandInCard(shot.state.design, shot.state.overrides.palette, Modifier.fillMaxSize().laidOutAt(layoutWidth))
                                 else -> CardSurface(
                                     uiState = shot.state,
                                     host = null,
@@ -305,19 +331,22 @@ class ProfileCardEditorShotsTest {
 
     // Real-size type laid out at the viewer's width, so the shot shows the preview's scale-down, not a reflow.
     @Composable
-    private fun StandInCard(design: String, modifier: Modifier) {
+    private fun StandInCard(design: String, palette: CardPalette?, modifier: Modifier) {
         val name = "Samwise Gamgeex"
         val headline = "HOMEBASE / NEW IDENTITY OWNER"
         val link = "samwise.gamgee.demo.rocks/posts"
-        val ink = if (design == CardDesign.COLLAGE) Color.Black else Color.White
+        fun hex(value: String) = Color(value.removePrefix("#").toLong(16) or 0xFF000000)
+        val ink = palette?.ink?.let(::hex) ?: Color(CardDesignSpecs.presetInkArgb(design))
+        val ground = palette?.ground?.let(::hex) ?: Color(CardDesign.baseArgb(design))
         Column(
-            modifier = modifier.background(Color(CardDesign.baseArgb(design))).padding(24.dp),
+            modifier = modifier.background(ground).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Box(Modifier.size(120.dp).background(ink.copy(alpha = 0.3f)))
             Text(name, style = MaterialTheme.typography.displaySmall, color = ink)
             Text(headline, style = MaterialTheme.typography.labelLarge, color = ink.copy(alpha = 0.7f))
             Text(link, style = MaterialTheme.typography.bodyLarge, color = ink.copy(alpha = 0.7f))
+            palette?.accent?.let { Box(Modifier.size(width = 160.dp, height = 8.dp).background(hex(it))) }
         }
     }
 
@@ -325,6 +354,8 @@ class ProfileCardEditorShotsTest {
         const val SCALE = 2f
         const val PHONE_W = 412
         const val PHONE_H = 892
+        const val REDMI_W = 393
+        const val REDMI_H = 800
         const val SETTLE_MS = 1_500L
         const val PARK_PX = 100_000f
         val CIRCLE_NAMES = listOf("Acquaintances", "Chat", "Emergency Location Access", "Family", "Feed", "Friends", "HomePage", "Moments", "Recovery", "Vault", "Webdrop", "Work")
