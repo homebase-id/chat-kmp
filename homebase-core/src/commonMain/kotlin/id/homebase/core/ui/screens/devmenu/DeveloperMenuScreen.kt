@@ -50,7 +50,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -63,7 +62,7 @@ import id.homebase.api.client.diagnostics.ResolutionRung
 import id.homebase.api.client.diagnostics.ResolutionSource
 import id.homebase.core.camera.CameraModes
 import id.homebase.core.camera.rememberInAppCameraManager
-import id.homebase.core.clipboard.clipEntryOf
+import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.core.util.contentType
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
@@ -172,11 +171,11 @@ fun DeveloperMenuUi(
     val scrollState = rememberScrollState()
     var showCrashConfirm by remember { mutableStateOf(false) }
     var showForceLogoutConfirm by remember { mutableStateOf(false) }
-    val clipboard = LocalClipboard.current
-    val clipboardScope = rememberCoroutineScope()
+    val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
+    val scope = rememberCoroutineScope()
     var cameraResult by remember { mutableStateOf<CameraCaptureResult?>(null) }
     val camera = rememberInAppCameraManager(allowedModes = CameraModes.PhotoAndVideo) { file ->
-        clipboardScope.launch { cameraResult = CameraCaptureResult.of(file) }
+        scope.launch { cameraResult = CameraCaptureResult.of(file) }
     }
 
     cameraResult?.let { result ->
@@ -323,9 +322,7 @@ fun DeveloperMenuUi(
                 lastKnownGoodIp = uiState.lastKnownGoodIp,
                 diagnostics = uiState.networkDiagnostics,
                 onRun = { onAction(DeveloperMenuUiAction.RunNetworkDiagnostics) },
-                onCopy = { snapshot ->
-                    clipboardScope.launch { clipboard.setClipEntry(clipEntryOf(snapshot)) }
-                },
+                onCopy = copyToClipboard,
             )
 
             DevSectionHeader(title = stringResource(MR.string.dev_menu_section_database))

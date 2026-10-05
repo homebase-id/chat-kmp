@@ -5,4 +5,4 @@ import androidx.compose.ui.platform.ClipEntry
 import java.awt.datatransfer.StringSelection
 
 @OptIn(ExperimentalComposeUiApi::class)
-actual fun clipEntryOf(string: String): ClipEntry = ClipEntry(StringSelection(string))
+actual fun clipEntryOf(string: String, sensitive: Boolean): ClipEntry = ClipEntry(StringSelection(string))
