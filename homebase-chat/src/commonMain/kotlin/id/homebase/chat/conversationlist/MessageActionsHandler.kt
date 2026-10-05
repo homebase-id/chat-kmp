@@ -120,6 +120,23 @@ internal suspend fun RichTextState.clearedForSend(content: String, send: suspend
 }
 
 /**
+ * Awaits [send] under the already-registered placeholder [messageId]: drops it once the real
+ * bubble has landed, or drops it and its progress and rethrows if [send] fails.
+ */
+internal suspend fun MutableStateFlow<MessageListUiState>.sendUnderPlaceholder(
+    messageId: Uuid,
+    send: suspend () -> Unit,
+) {
+    try {
+        send()
+    } catch (e: Throwable) {
+        update { it.withoutPendingSend(messageId, clearProgress = true) }
+        throw e
+    }
+    update { it.withoutPendingSend(messageId, clearProgress = false) }
+}
+
+/**
  * Handles message-action arms (send / edit / delete / react / scroll-to /
  * mark-as-read / forward / reply / battle-dice / reaction-details) extracted
  * from `ConversationListViewModel.onAction`.
@@ -877,9 +894,7 @@ internal class MessageActionsHandler(
             // composer, and close the overlay BEFORE the heavy work so the
             // user sees a "Preparing…" bubble in the chat immediately.
             messagesUiState.update { state ->
-                state.copy(
-                    uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap(),
-                    pendingOutgoing = (state.pendingOutgoing + placeholder).toPersistentList(),
+                state.withPendingSend(placeholder).copy(
                     fullScreenOverlay = null,
                     isSendingMessage = false,
                     replyToMessage = if (replyTo != null) null else state.replyToMessage,
@@ -897,49 +912,16 @@ internal class MessageActionsHandler(
 
             scope.launch {
                 try {
-                    val prepared = prepare(attachments)
-                    prepared.forEachIndexed { index, input ->
-                        if (input.filePath == attachments[index].filePath) return@forEachIndexed
-                        val preview = localVideoContextStore.get(newMessageId, payloadKey(index))
-                        if (preview is LocalAttachmentContext.Image) {
-                            localVideoContextStore.put(newMessageId, payloadKey(index), preview.copy(localFilePath = input.filePath))
+                    messagesUiState.sendUnderPlaceholder(newMessageId) {
+                        val prepared = prepare(attachments)
+                        prepared.forEachIndexed { index, input ->
+                            if (input.filePath == attachments[index].filePath) return@forEachIndexed
+                            val preview = localVideoContextStore.get(newMessageId, payloadKey(index))
+                            if (preview is LocalAttachmentContext.Image) {
+                                localVideoContextStore.put(newMessageId, payloadKey(index), preview.copy(localFilePath = input.filePath))
+                            }
                         }
-                    }
-                    val bundle = MessageAttachmentBuilder.build(
-                        attachments = prepared,
-                        fileOperationsProvider = fileOperationsProvider,
-                        mediaQuality = userPreferences.mediaQuality,
-                        payloadKeyFactory = { index, _ -> payloadKey(index) },
-                    )
-
-                    if (replyTo != null) {
-                        Logger.d(tag = TAG) { "addMessageWithFiles: reply message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
-                        chatMessageSenderService.replyToMessage(
-                            messageUniqueId = newMessageId,
-                            conversationId = conversationId,
-                            replyTo = replyTo.toReplyPreview(),
-                            messageText = content,
-                            previousMessageUniqueId = null,
-                            payloadBundle = bundle,
-                            userDate = sentAt,
-                        )
-                    } else {
-                        chatMessageSenderService.sendNewMessage(
-                            messageUniqueId = newMessageId,
-                            conversationId = conversationId,
-                            messageText = content,
-                            previousMessageUniqueId = null,
-                            payloadBundle = bundle,
-                            userDate = sentAt,
-                        )
-                    }
-                    // Real optimistic bubble has landed — drop the placeholder.
-                    messagesUiState.update { state ->
-                        state.copy(
-                            pendingOutgoing = state.pendingOutgoing
-                                .filterNot { it.id == newMessageId }
-                                .toPersistentList(),
-                        )
+                        bundleAndSend(newMessageId, conversationId, content, prepared, replyTo, sentAt)
                     }
                     jumpToLatestAfterOwnSend(conversationId)
                 } catch (e: Throwable) {
@@ -953,13 +935,7 @@ internal class MessageActionsHandler(
                         tag = TAG
                     ) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
                     messagesUiState.update { state ->
-                        state.copy(
-                            uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap(),
-                            pendingOutgoing = state.pendingOutgoing
-                                .filterNot { it.id == newMessageId }
-                                .toPersistentList(),
-                            replyToMessage = replyTo ?: state.replyToMessage,
-                        )
+                        state.copy(replyToMessage = replyTo ?: state.replyToMessage)
                     }
                     sendEvent(
                         // Fail soft: a disposable pre-encryption source was swept/evicted (or its
@@ -1054,25 +1030,26 @@ internal class MessageActionsHandler(
 
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
+                val sentAt = UnixTimeUtc.now()
 
-                val bundle = MessageAttachmentBuilder.build(
-                    attachments = attachments,
-                    fileOperationsProvider = fileOperationsProvider,
-                    mediaQuality = userPreferences.mediaQuality,
-                    payloadKeyFactory = { index, _ ->
-                        "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
-                    }
-                )
-
-                chatMessageSenderService.sendNewMessage(
-                    messageUniqueId = newMessageId,
-                    conversationId = conversationId,
-                    messageText = text,
-                    previousMessageUniqueId = null,
-                    payloadBundle = bundle,
-                )
+                // Awaited, not launched: the finally below deletes the shared files being encoded.
+                messagesUiState.update {
+                    it.withPendingSend(
+                        PendingOutgoingMessage(
+                            id = newMessageId,
+                            conversationId = conversationId,
+                            text = text,
+                            attachmentCount = attachments.size,
+                            sentAt = Instant.fromEpochMilliseconds(sentAt.milliseconds),
+                        )
+                    )
+                }
+                messagesUiState.sendUnderPlaceholder(newMessageId) {
+                    bundleAndSend(newMessageId, conversationId, text, attachments, replyTo = null, sentAt = sentAt)
+                }
             }
         } catch (e: CancellationException) {
+            Logger.w(tag = "ConversationListViewModel") { "shared content send cancelled message=$pendingMessageId" }
             throw e
         } catch (e: SourceUnavailableException) {
             // Shared-in source vanished before send (no outbox row enqueued) — re-pick.
@@ -1083,6 +1060,43 @@ internal class MessageActionsHandler(
             sendEvent(ShowErrorMessage(MR.string.chat_error_send_shared_content, e.message ?: ""))
         } finally {
             shareContentProcessor.cleanup()
+        }
+    }
+
+    private suspend fun bundleAndSend(
+        messageId: Uuid,
+        conversationId: Uuid,
+        content: String,
+        attachments: List<AttachmentInput>,
+        replyTo: MessageUiModel?,
+        sentAt: UnixTimeUtc,
+    ) {
+        val bundle = MessageAttachmentBuilder.build(
+            attachments = attachments,
+            fileOperationsProvider = fileOperationsProvider,
+            mediaQuality = userPreferences.mediaQuality,
+            payloadKeyFactory = { index, _ -> "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index" },
+        )
+        if (replyTo != null) {
+            Logger.d(tag = TAG) { "addMessageWithFiles: reply message=$messageId conversation=$conversationId replyTo=${replyTo.id}" }
+            chatMessageSenderService.replyToMessage(
+                messageUniqueId = messageId,
+                conversationId = conversationId,
+                replyTo = replyTo.toReplyPreview(),
+                messageText = content,
+                previousMessageUniqueId = null,
+                payloadBundle = bundle,
+                userDate = sentAt,
+            )
+        } else {
+            chatMessageSenderService.sendNewMessage(
+                messageUniqueId = messageId,
+                conversationId = conversationId,
+                messageText = content,
+                previousMessageUniqueId = null,
+                payloadBundle = bundle,
+                userDate = sentAt,
+            )
         }
     }
 
