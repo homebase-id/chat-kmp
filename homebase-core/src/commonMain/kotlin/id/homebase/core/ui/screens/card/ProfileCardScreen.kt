@@ -89,6 +89,12 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
@@ -125,7 +131,6 @@ import id.homebase.resources.delete
 import id.homebase.resources.profile_card_add_circle_card
 import id.homebase.resources.profile_card_add_circle_title
 import id.homebase.resources.profile_card_add_circle_hint
-import id.homebase.resources.profile_card_add_circle_confirm
 import id.homebase.resources.profile_card_add_circle_none
 import id.homebase.resources.profile_card_add_circle_load_failed
 import id.homebase.resources.profile_card_delete_card
@@ -151,15 +156,12 @@ import id.homebase.resources.profile_card_unsupported
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MenuDefaults
-import androidx.compose.material3.RadioButton
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.profile_card_access_body
 import id.homebase.resources.profile_card_access_continue
@@ -193,6 +195,8 @@ private val TOOLBAR_BAND_HEIGHT = 88.dp
 private val CHROME_GAP = 8.dp
 private val CHROME_CONTROL_SIZE = 40.dp
 private val PICKER_ROW_HEIGHT = 64.dp
+private val PICKER_AVATAR = 40.dp
+private val PICKER_FADE = 24.dp
 private const val PICKER_HALF_SHEET_ROWS = 5
 private const val DISABLED_ALPHA = 0.38f
 private val MAX_SHEET_PULL = 32.dp
@@ -799,23 +803,18 @@ internal fun DeleteCardDialog(label: String, onDelete: () -> Unit, onDismiss: ()
 @Composable
 private fun CirclePickerSheet(picker: CirclePicker, onPick: (String) -> Unit, onDismiss: () -> Unit) {
     AdaptiveSheet(onDismiss = onDismiss, expandFully = picker.circles.size > PICKER_HALF_SHEET_ROWS) {
-        CirclePickerContent(
-            picker = picker,
-            onPick = { id -> dismiss { onPick(id) } },
-            onCancel = { dismiss() },
-        )
+        CirclePickerContent(picker = picker, onPick = { id -> dismiss { onPick(id) } })
     }
 }
 
 @Composable
-internal fun CirclePickerContent(picker: CirclePicker, onPick: (String) -> Unit, onCancel: () -> Unit) {
-    var chosen by remember { mutableStateOf<String?>(null) }
+internal fun CirclePickerContent(picker: CirclePicker, onPick: (String) -> Unit) {
     val colors = MaterialTheme.colorScheme
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp)) {
         Text(
             text = stringResource(MR.string.profile_card_add_circle_title),
             style = MaterialTheme.typography.headlineSmallEmphasized,
-            modifier = Modifier.padding(horizontal = 24.dp),
+            modifier = Modifier.padding(horizontal = 24.dp).semantics { heading() },
         )
         val message = when {
             picker.loading -> null
@@ -829,76 +828,91 @@ internal fun CirclePickerContent(picker: CirclePicker, onPick: (String) -> Unit,
                 text = stringResource(it),
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.onSurfaceVariant,
-                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 8.dp),
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp),
             )
         }
         when {
             picker.loading -> Box(Modifier.fillMaxWidth().height(PICKER_ROW_HEIGHT * 2), contentAlignment = Alignment.Center) {
                 LoadingIndicator()
             }
-            picker.circles.isNotEmpty() -> LazyColumn(modifier = Modifier.weight(1f, fill = false).selectableGroup()) {
-                items(picker.circles, key = { it.id }) { circle ->
-                    CirclePickerRow(
-                        circle = circle,
-                        hasCard = circle.id in picker.withCard,
-                        selected = circle.id == chosen,
-                        onSelect = { chosen = circle.id },
-                    )
+            picker.circles.isNotEmpty() -> {
+                val listState = rememberLazyListState()
+                LazyColumn(
+                    state = listState,
+                    contentPadding = PaddingValues(top = 12.dp),
+                    modifier = Modifier.weight(1f, fill = false).verticalFadingEdges(listState),
+                ) {
+                    items(picker.circles, key = { it.id }) { circle ->
+                        CirclePickerRow(circle = circle, hasCard = circle.id in picker.withCard, onPick = { onPick(circle.id) })
+                    }
                 }
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(onClick = onCancel, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
-            Button(
-                onClick = { chosen?.let(onPick) },
-                enabled = chosen != null,
-                shapes = ButtonDefaults.shapes(),
-            ) {
-                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                Text(stringResource(MR.string.profile_card_add_circle_confirm))
             }
         }
     }
 }
 
 @Composable
-private fun CirclePickerRow(circle: CardCircle, hasCard: Boolean, selected: Boolean, onSelect: () -> Unit) {
+private fun CirclePickerRow(circle: CardCircle, hasCard: Boolean, onPick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val muted = colors.onSurface.copy(alpha = DISABLED_ALPHA)
     ListItem(
         headlineContent = { Text(circle.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = {
-            Text(
-                if (hasCard) stringResource(MR.string.profile_card_add_circle_has_card)
-                else pluralStringResource(MR.plurals.profile_card_circle_members, circle.memberCount, circle.memberCount),
-            )
+            Text(pluralStringResource(MR.plurals.profile_card_circle_members, circle.memberCount, circle.memberCount))
         },
-        leadingContent = { RadioButton(selected = selected, onClick = null, enabled = !hasCard) },
+        leadingContent = {
+            Box(
+                modifier = Modifier
+                    .size(PICKER_AVATAR)
+                    .background(if (hasCard) colors.surfaceContainerHighest else colors.tertiaryContainer, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Groups,
+                    contentDescription = null,
+                    tint = if (hasCard) muted else colors.onTertiaryContainer,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        },
+        trailingContent = if (hasCard) {
+            {
+                Text(
+                    text = stringResource(MR.string.profile_card_add_circle_has_card),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+        } else null,
         colors = ListItemDefaults.colors(
             containerColor = Color.Transparent,
-            headlineColor = when {
-                hasCard -> muted
-                selected -> colors.onSecondaryContainer
-                else -> colors.onSurface
-            },
-            supportingColor = when {
-                hasCard -> muted
-                selected -> colors.onSecondaryContainer
-                else -> colors.onSurfaceVariant
-            },
+            headlineColor = if (hasCard) muted else colors.onSurface,
+            supportingColor = if (hasCard) muted else colors.onSurfaceVariant,
         ),
         modifier = Modifier
-            .padding(horizontal = 12.dp, vertical = 2.dp)
-            .clip(MaterialTheme.shapes.large)
-            .background(if (selected) colors.secondaryContainer else Color.Transparent)
             .heightIn(min = PICKER_ROW_HEIGHT)
-            .selectable(selected = selected, enabled = !hasCard, role = Role.RadioButton, onClick = onSelect),
+            .clickable(enabled = !hasCard, onClick = onPick)
+            .padding(horizontal = 8.dp),
     )
+}
+
+// Masks rows under a gradient at whichever end can still scroll, so the list never stops on a hard cut mid-row.
+@Composable
+private fun Modifier.verticalFadingEdges(state: LazyListState): Modifier {
+    val fade = with(LocalDensity.current) { PICKER_FADE.toPx() }
+    return graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            if (state.canScrollBackward) {
+                drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = 0f, endY = fade), blendMode = BlendMode.DstIn)
+            }
+            if (state.canScrollForward) {
+                drawRect(
+                    Brush.verticalGradient(listOf(Color.Black, Color.Transparent), startY = size.height - fade, endY = size.height),
+                    blendMode = BlendMode.DstIn,
+                )
+            }
+        }
 }
 
 @Composable

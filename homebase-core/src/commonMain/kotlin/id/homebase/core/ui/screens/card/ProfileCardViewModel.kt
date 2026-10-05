@@ -91,6 +91,7 @@ data class ProfileCardUiState(
     val isCardBusy: Boolean = false,
     val designAccessMissing: Boolean = false,
     val isDesignAccessPromptShown: Boolean = false,
+    val designAccessDeclined: Boolean = false,
 ) {
     val selectedCard: ProfileCard? get() = cards.firstOrNull { it.audience == selectedAudience }
     private val baseDesign: String get() = selectedCard?.takeIf { it.audience is CardAudience.Circle }?.design ?: savedDesign
@@ -107,7 +108,8 @@ data class ProfileCardUiState(
     val cardBottomArgb: Int? get() = edges[design]?.bottomArgb
     val canShare: Boolean get() = isCardReady && !isExporting
     val canSaveDesign: Boolean get() = hasUnsavedChanges && !isSavingDesign && !isCardBusy
-    val showsDesignAccessNote: Boolean get() = designAccessMissing && !isCircleSelected && !isDesignAccessPromptShown
+    val showsAppOnlyTag: Boolean
+        get() = designAccessMissing && designAccessDeclined && !isCircleSelected && !isDesignAccessPromptShown
 }
 
 data class CardCircle(val id: String, val name: String, val memberCount: Int)
@@ -590,7 +592,7 @@ class ProfileCardViewModel(
         designAccess?.let { _events.tryEmit(ProfileCardEvent.OpenLink(it.buildExtendPermissionUrl())) }
     }
 
-    fun onDesignAccessDeclined() = _uiState.update { it.copy(isDesignAccessPromptShown = false) }
+    fun onDesignAccessDeclined() = _uiState.update { it.copy(isDesignAccessPromptShown = false, designAccessDeclined = true) }
 
     fun onPublishRetry() {
         if (designAccess != null) {

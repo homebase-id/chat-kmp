@@ -563,11 +563,11 @@ class ProfileCardViewModelTest {
 
         vm.onEditorOpened()
         assertTrue(vm.uiState.value.isDesignAccessPromptShown)
-        assertFalse(vm.uiState.value.showsDesignAccessNote)
         vm.onDesignAccessAccepted()
         advanceUntilIdle()
 
         assertFalse(vm.uiState.value.isDesignAccessPromptShown)
+        assertFalse(vm.uiState.value.showsAppOnlyTag)
         assertEquals(listOf<ProfileCardEvent>(ProfileCardEvent.OpenLink(DESIGN_ACCESS_URL)), events)
         vm.onEditorClosed()
         vm.onEditorOpened()
@@ -593,7 +593,7 @@ class ProfileCardViewModelTest {
         vm.onEditorOpened()
 
         assertFalse(vm.uiState.value.isDesignAccessPromptShown)
-        assertFalse(vm.uiState.value.showsDesignAccessNote)
+        assertFalse(vm.uiState.value.showsAppOnlyTag)
     }
 
     @Test
@@ -603,7 +603,7 @@ class ProfileCardViewModelTest {
         advanceUntilIdle()
         vm.onEditorOpened()
         vm.onDesignAccessDeclined()
-        assertTrue(vm.uiState.value.showsDesignAccessNote)
+        assertTrue(vm.uiState.value.showsAppOnlyTag)
 
         saveCollectingEvents(vm, CardDesign.DOSSIER)
         source.accessGranted.emit(Unit)
@@ -618,6 +618,29 @@ class ProfileCardViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(CardDesign.DOSSIER), source.publishedDesigns)
+    }
+
+    @Test
+    fun theAppOnlyTagShowsOnlyAfterADeclineWhileAccessIsMissingAndGoesOnceGranted() = runTest(dispatcher) {
+        val source = FakeSource(profile).apply { designAccessMissing = true }
+        val vm = viewModel(FakeHost(), source)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.showsAppOnlyTag)
+
+        vm.onEditorOpened()
+        assertFalse(vm.uiState.value.showsAppOnlyTag)
+        vm.onDesignAccessDeclined()
+        assertTrue(vm.uiState.value.showsAppOnlyTag)
+
+        vm.onPublishRetry()
+        assertFalse(vm.uiState.value.showsAppOnlyTag)
+        vm.onDesignAccessAccepted()
+        assertTrue(vm.uiState.value.showsAppOnlyTag)
+
+        source.designAccessMissing = false
+        source.accessGranted.emit(Unit)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.showsAppOnlyTag)
     }
 
     @Test

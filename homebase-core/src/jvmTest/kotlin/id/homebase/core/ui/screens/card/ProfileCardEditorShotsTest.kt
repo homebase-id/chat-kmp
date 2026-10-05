@@ -33,7 +33,6 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onFirst
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performMouseInput
@@ -92,6 +91,8 @@ class ProfileCardEditorShotsTest {
         previewOverrides = CardOverrides().with(CardOption.COLOURS, "#F4F1EA"),
     )
 
+    private fun appOnly(state: ProfileCardUiState) = state.copy(designAccessMissing = true, designAccessDeclined = true)
+
     private fun tool(description: String): ComposeUiTest.() -> Unit = {
         // A mouse click, then the pointer leaves, so no hover highlight is left on whatever ends up under it.
         onNodeWithContentDescription(description).performMouseInput {
@@ -129,13 +130,16 @@ class ProfileCardEditorShotsTest {
         Shot("20-small-phone-customise", edited, EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Section order")),
         Shot("21-small-phone-design", base.copy(previewDesign = CardDesign.DOSSIER), widthDp = 360, heightDp = 640),
         Shot("22-small-phone-fonts", edited, EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Body font")),
-        Shot("23-access-note", base.copy(designAccessMissing = true), EditorStep.Design),
-        Shot("24-access-note-customise", edited.copy(designAccessMissing = true), EditorStep.Customise, act = tool("Social links style")),
+        Shot("23-app-only-design", appOnly(base), EditorStep.Design),
+        Shot("24-app-only-customise", appOnly(edited), EditorStep.Customise, act = tool("Social links style")),
+        Shot("25-app-only-small-phone", appOnly(edited), EditorStep.Customise, widthDp = 360, heightDp = 640),
+        Shot("26-app-only-font-scale", appOnly(edited), EditorStep.Customise, fontScale = 1.6f),
+        Shot("27-app-only-long-design", appOnly(base.copy(previewDesign = CardDesign.DOSSIER)), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
         Shot("30-redmi-design", base.copy(previewDesign = CardDesign.DOSSIER), widthDp = REDMI_W, heightDp = REDMI_H),
-        Shot("31-redmi-design-access", base.copy(previewDesign = CardDesign.DOSSIER, designAccessMissing = true), widthDp = REDMI_W, heightDp = REDMI_H),
-        Shot("32-redmi-design-unsaved", base.copy(previewDesign = CardDesign.COLLAGE, designAccessMissing = true), widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("31-redmi-design-access", appOnly(base.copy(previewDesign = CardDesign.DOSSIER)), widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("32-redmi-design-unsaved", appOnly(base.copy(previewDesign = CardDesign.COLLAGE)), widthDp = REDMI_W, heightDp = REDMI_H),
         Shot("33-redmi-colours", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
-        Shot("34-redmi-colours-access", schemed.copy(designAccessMissing = true), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("34-redmi-colours-access", appOnly(schemed), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
         Shot("35-redmi-accent", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Accent colour")),
         Shot("36-redmi-heading-font", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Heading font")),
         Shot("37-redmi-portrait", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Portrait shape")),
@@ -176,9 +180,9 @@ class ProfileCardEditorShotsTest {
             renderSheet("v09-add-circle-few", dark, CirclePicker(circles(3), withCard = setOf("c0"), loading = false))
             renderSheet("v10-add-circle-loading", dark, CirclePicker())
             renderSheet("v11-add-circle-all-taken", dark, CirclePicker(circles(2), withCard = setOf("c0", "c1"), loading = false))
-            renderSheet("v12-add-circle-pick", dark, CirclePicker(circles(4), withCard = setOf("c1"), loading = false)) {
-                onNodeWithText(CIRCLE_NAMES[2]).performClick()
-            }
+            renderSheet("v12-add-circle-redmi", dark, CirclePicker(circles(12), withCard = setOf("c1", "c4"), loading = false), REDMI_W, REDMI_H)
+            renderSheet("v15-add-circle-redmi-few", dark, CirclePicker(circles(4), withCard = setOf("c1"), loading = false), REDMI_W, REDMI_H)
+            renderSheet("v16-add-circle-load-failed", dark, CirclePicker(loading = false, failed = true), REDMI_W, REDMI_H)
         }
     }
 
@@ -240,9 +244,16 @@ class ProfileCardEditorShotsTest {
         save(name, dark)
     }
 
-    private fun renderSheet(name: String, dark: Boolean, picker: CirclePicker, act: ComposeUiTest.() -> Unit = {}) = runDesktopComposeUiTest(
-        width = (PHONE_W * SCALE).toInt(),
-        height = (PHONE_H * SCALE).toInt(),
+    private fun renderSheet(
+        name: String,
+        dark: Boolean,
+        picker: CirclePicker,
+        widthDp: Int = PHONE_W,
+        heightDp: Int = PHONE_H,
+        act: ComposeUiTest.() -> Unit = {},
+    ) = runDesktopComposeUiTest(
+        width = (widthDp * SCALE).toInt(),
+        height = (heightDp * SCALE).toInt(),
     ) {
         mainClock.autoAdvance = false
         setContent {
@@ -251,10 +262,10 @@ class ProfileCardEditorShotsTest {
                     Surface(
                         shape = MaterialTheme.shapes.extraLarge,
                         color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        modifier = Modifier.fillMaxWidth().heightIn(max = (PHONE_H * 0.9f).dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = (heightDp * 0.9f).dp),
                     ) {
-                        Box(Modifier.padding(top = 32.dp)) {
-                            CirclePickerContent(picker = picker, onPick = {}, onCancel = {})
+                        Box(Modifier.padding(top = 48.dp)) {
+                            CirclePickerContent(picker = picker, onPick = {})
                         }
                     }
                 }
