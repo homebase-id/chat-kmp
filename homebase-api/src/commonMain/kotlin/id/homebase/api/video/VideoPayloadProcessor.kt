@@ -39,8 +39,7 @@ class VideoPayloadProcessor(
         videoQuality: VideoQuality = VideoQuality.STANDARD,
         inputBlobUrl: String? = null,
     ): VideoProcessResult {
-        // Without it iOS suspends ffmpeg mid-encode as soon as the user leaves the app,
-        // and the message never reaches the outbox until they come back (#1800).
+        // Without it iOS suspends ffmpeg mid-encode as soon as the user leaves the app.
         val assertion = beginBackgroundExecutionAssertion("video-bundle")
         return try {
             // Resolve content URIs (Android copies the gallery pick into cacheDir as
