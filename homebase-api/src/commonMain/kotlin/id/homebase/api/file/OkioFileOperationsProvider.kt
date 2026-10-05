@@ -33,7 +33,6 @@ open class OkioFileOperationsProvider(
 
     protected open fun openSource(path: String): Source = fileSystem.source(path.toPath())
 
-
     /**
      * Lazy, CHUNKED multipart upload source (#947). Previously this read the whole
      * file eagerly at `openFileInput` time and replayed the captured array on every
@@ -128,13 +127,7 @@ open class OkioFileOperationsProvider(
     override suspend fun writeBytesToShareOutboundFile(
         bytes: ByteArray,
         suffix: String,
-    ): String = withContext(io) {
-        val dir = AppCacheDirs.scratchPath(getCacheDirectory(), SHARE_OUTBOUND_DIR_NAME).toPath()
-        fileSystem.createDirectories(dir)
-        val path = dir / "share_${randomToken()}$suffix"
-        fileSystem.write(path) { write(bytes) }
-        path.toString()
-    }
+    ): String = writeBytesIn(SHARE_OUTBOUND_DIR_NAME, bytes, "share_", suffix)
 
     override suspend fun writeStream(
         path: String,
