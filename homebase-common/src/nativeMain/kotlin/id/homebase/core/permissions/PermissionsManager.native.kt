@@ -289,7 +289,7 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
                         }
                     }
                 }
-                onPermissionStatus(permission, PermissionStatus.GRANTED, true)
+                onPermissionStatus(PermissionType.GALLERY_LIMITED, PermissionStatus.GRANTED, true)
             }
 
             PHAuthorizationStatusNotDetermined -> {
