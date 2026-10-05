@@ -3,14 +3,11 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.text.TextAutoSize
-import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
@@ -52,9 +49,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.ManageAccounts
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -95,6 +95,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -104,12 +105,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
-import id.homebase.resources.profile_card_access_allow
-import id.homebase.resources.profile_card_not_on_home_page
 import id.homebase.resources.profile_card_access_allow_description
+import id.homebase.resources.profile_card_app_only
 import id.homebase.resources.profile_card_change_design_to
 import id.homebase.resources.profile_card_audience_editing
-import id.homebase.resources.profile_card_audience_overline
 import id.homebase.resources.profile_card_design_save_failed
 import id.homebase.resources.profile_card_discard_confirm
 import id.homebase.resources.profile_card_discard_keep
@@ -125,6 +124,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 private val ACTION_HEIGHT = ButtonDefaults.MinHeight
+private val APP_ONLY_LABEL_MIN_ROOM = 216.dp
 private val COMPACT_HEIGHT = 760.dp
 private val WIDE_LAYOUT_MIN_WIDTH = 840.dp
 private val WIDE_PANEL_WIDTH = 420.dp
@@ -259,6 +259,7 @@ internal fun ProfileCardEditorContent(
                     onOption = onOption,
                     onBlockOrder = onBlockOrder,
                     onSave = onSave,
+                    onAppOnly = onRequestDesignAccess,
                     metrics = metrics,
                     shape = shape,
                     modifier = modifier,
@@ -272,8 +273,6 @@ internal fun ProfileCardEditorContent(
             ) {
                 EditorTopBar(
                     audience = uiState.selectedAudience,
-                    notPublished = uiState.showsDesignAccessNote,
-                    onAllow = onRequestDesignAccess,
                     onBack = onBack,
                     onEditProfile = onEditProfile,
                 )
@@ -352,12 +351,9 @@ private fun CardPreviewFrame(
 @Composable
 private fun EditorTopBar(
     audience: CardAudience,
-    notPublished: Boolean,
-    onAllow: () -> Unit,
     onBack: () -> Unit,
     onEditProfile: () -> Unit,
 ) {
-    val motion = MaterialTheme.motionScheme
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp),
@@ -368,24 +364,7 @@ private fun EditorTopBar(
                 contentDescription = stringResource(MR.string.menu_back),
             )
         }
-        AudienceTitle(audience = audience, notPublished = notPublished, modifier = Modifier.weight(1f))
-        // Lives in the bar, not above the card, so asking for access never takes height from the preview.
-        AnimatedVisibility(
-            visible = notPublished,
-            enter = fadeIn(motion.defaultEffectsSpec()) + expandHorizontally(motion.defaultSpatialSpec()),
-            exit = fadeOut(motion.fastEffectsSpec()) + shrinkHorizontally(motion.defaultSpatialSpec()),
-        ) {
-            val height = ButtonDefaults.ExtraSmallContainerHeight
-            val description = stringResource(MR.string.profile_card_access_allow_description)
-            FilledTonalButton(
-                onClick = onAllow,
-                shapes = ButtonDefaults.shapes(),
-                contentPadding = ButtonDefaults.contentPaddingFor(height),
-                modifier = Modifier.heightIn(min = height).semantics { contentDescription = description },
-            ) {
-                Text(stringResource(MR.string.profile_card_access_allow), style = ButtonDefaults.textStyleFor(height), maxLines = 1)
-            }
-        }
+        AudienceTitle(audience = audience, modifier = Modifier.weight(1f))
         IconButton(onClick = onEditProfile) {
             Icon(
                 imageVector = Icons.Outlined.ManageAccounts,
@@ -397,24 +376,16 @@ private fun EditorTopBar(
 
 // Read-only: which card is being edited is decided before the editor opens, so it is set as a title, not a chip.
 @Composable
-private fun AudienceTitle(audience: CardAudience, notPublished: Boolean, modifier: Modifier = Modifier) {
+private fun AudienceTitle(audience: CardAudience, modifier: Modifier = Modifier) {
     val label = audienceLabel(audience)
-    val overline = stringResource(if (notPublished) MR.string.profile_card_not_on_home_page else MR.string.profile_card_audience_overline)
-    val description = stringResource(MR.string.profile_card_audience_editing, label).let { if (notPublished) "$it. $overline" else it }
+    val description = stringResource(MR.string.profile_card_audience_editing, label)
     val isCircle = audience is CardAudience.Circle
     val colors = MaterialTheme.colorScheme
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Box(
+        contentAlignment = Alignment.Center,
         modifier = modifier.clearAndSetSemantics { contentDescription = description },
     ) {
-        Text(
-            text = overline,
-            style = MaterialTheme.typography.labelMedium,
-            color = if (notPublished) colors.tertiary else colors.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
                     .size(AUDIENCE_AVATAR)
@@ -449,6 +420,7 @@ private fun EditorPanel(
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
     onSave: () -> Unit,
+    onAppOnly: () -> Unit,
     metrics: PanelMetrics,
     shape: Shape,
     modifier: Modifier = Modifier,
@@ -476,6 +448,8 @@ private fun EditorPanel(
                 isSaving = isSaving,
                 canSave = uiState.canSaveDesign,
                 canCustomise = !uiState.loadFailed,
+                showsAppOnly = uiState.showsAppOnlyTag,
+                onAppOnly = onAppOnly,
                 onSave = onSave,
                 onStep = onStep,
                 modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp),
@@ -521,6 +495,8 @@ private fun StepHeader(
     isSaving: Boolean,
     canSave: Boolean,
     canCustomise: Boolean,
+    showsAppOnly: Boolean,
+    onAppOnly: () -> Unit,
     onSave: () -> Unit,
     onStep: (EditorStep) -> Unit,
     modifier: Modifier = Modifier,
@@ -592,26 +568,42 @@ private fun StepHeader(
                 // The design's name is the way back to step one, so the step reads as "this design, adjusted".
                 EditorStep.Customise -> {
                     val description = stringResource(MR.string.profile_card_change_design_to, designName)
-                    Box(Modifier.weight(1f)) {
-                        FilledTonalButton(
-                            onClick = { if (!isSaving) onStep(EditorStep.Design) },
-                            enabled = !isSaving,
-                            shapes = ButtonDefaults.shapes(),
-                            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-                            modifier = Modifier
-                                .heightIn(min = ACTION_HEIGHT)
-                                .semantics {
-                                    heading()
-                                    contentDescription = "$description, $count"
-                                },
+                    BoxWithConstraints(Modifier.weight(1f)) {
+                        // Below this the label would squeeze the design's name, so the tag keeps only its icon.
+                        val tagLabelled = maxWidth >= APP_ONLY_LABEL_MIN_ROOM * LocalDensity.current.fontScale.coerceAtLeast(1f)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Icon(
-                                Icons.Outlined.SwapHoriz,
-                                contentDescription = null,
-                                modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
-                            )
-                            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-                            ActionLabel(designName)
+                            FilledTonalButton(
+                                onClick = { if (!isSaving) onStep(EditorStep.Design) },
+                                enabled = !isSaving,
+                                shapes = ButtonDefaults.shapes(),
+                                contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
+                                modifier = Modifier
+                                    .weight(1f, fill = false)
+                                    .heightIn(min = ACTION_HEIGHT)
+                                    .semantics {
+                                        heading()
+                                        contentDescription = "$description, $count"
+                                    },
+                            ) {
+                                Icon(
+                                    Icons.Outlined.SwapHoriz,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
+                                )
+                                Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
+                                ActionLabel(designName)
+                            }
+                            if (showsAppOnly) {
+                                AppOnlyTag(
+                                    labelled = tagLabelled,
+                                    onClick = { if (!isSaving) onAppOnly() },
+                                    modifier = Modifier.padding(start = 8.dp),
+                                )
+                            }
                         }
                     }
                     Button(
@@ -629,6 +621,42 @@ private fun StepHeader(
             }
         }
     }
+}
+
+// Quiet on purpose: the app-only card is a choice the owner made, not an error, and the tag is the way back to the grant.
+@Composable
+private fun AppOnlyTag(labelled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val label = stringResource(MR.string.profile_card_app_only)
+    val action = stringResource(MR.string.profile_card_access_allow_description)
+    val colors = MaterialTheme.colorScheme
+    val semantics = Modifier.semantics {
+        contentDescription = label
+        onClick(label = action) { onClick(); true }
+    }
+    if (!labelled) {
+        IconButton(onClick = onClick, modifier = modifier.then(semantics)) {
+            Icon(
+                Icons.Outlined.Info,
+                contentDescription = null,
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.size(AssistChipDefaults.IconSize),
+            )
+        }
+        return
+    }
+    AssistChip(
+        onClick = onClick,
+        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = {
+            Icon(Icons.Outlined.Info, contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize))
+        },
+        colors = AssistChipDefaults.assistChipColors(
+            labelColor = colors.onSurfaceVariant,
+            leadingIconContentColor = colors.onSurfaceVariant,
+        ),
+        border = AssistChipDefaults.assistChipBorder(enabled = true, borderColor = colors.outlineVariant),
+        modifier = modifier.then(semantics),
+    )
 }
 
 // The glyph and the indicator share one slot, so saving never changes the button's width.

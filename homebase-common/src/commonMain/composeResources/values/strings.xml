@@ -2330,8 +2330,7 @@
     <string name="profile_card_audience_switch">Card for %1$s. Choose another card.</string>
     <string name="profile_card_add_circle_card">Add a card for a circle</string>
     <string name="profile_card_add_circle_title">Add a card for a circle</string>
-    <string name="profile_card_add_circle_hint">Pick one circle. Its card starts with your public card's design and shows what that circle can see of your profile.</string>
-    <string name="profile_card_add_circle_confirm">Add card</string>
+    <string name="profile_card_add_circle_hint">Its card starts with your public design and shows only what that circle can see.</string>
     <string name="profile_card_add_circle_none">Every circle already has a card.</string>
     <string name="profile_card_add_circle_load_failed">Couldn't load your circles.</string>
     <string name="profile_card_delete_card">Delete this card</string>
@@ -2345,13 +2344,12 @@
     <string name="profile_card_save_public_title">Save your public card?</string>
     <string name="profile_card_share_public_message">Your %1$s card is only shown to people in %1$s when they visit your home page. Sharing sends your public card.</string>
     <string name="profile_card_save_public_message">Your %1$s card is only shown to people in %1$s when they visit your home page. Saving gives you your public card.</string>
-    <string name="profile_card_add_circle_has_card">Already has a card</string>
+    <string name="profile_card_add_circle_has_card">Has a card</string>
     <string name="profile_card_add_circle_no_circles">You don't have any circles yet.</string>
     <string name="profile_card_access_title">Update your home page too?</string>
     <string name="profile_card_access_body">Your public card follows your home page's design. To change it from the app, Homebase needs permission to edit your home page settings. You'll confirm in your browser.</string>
     <string name="profile_card_access_continue">Continue</string>
     <string name="profile_card_access_later">Not now</string>
-    <string name="profile_card_access_allow">Allow</string>
     <string name="profile_card_editor_title">Card design</string>
     <string name="profile_card_edit_profile">Edit profile details</string>
     <string name="profile_card_design_save_failed">Couldn't save the card design.</string>
@@ -2391,7 +2389,7 @@
     <string name="profile_card_colours_paper">Paper</string>
     <string name="profile_card_colours_blueprint">Blueprint</string>
     <string name="profile_card_colours_sand">Sand</string>
-    <string name="profile_card_not_on_home_page">Not on your home page</string>
+    <string name="profile_card_app_only">App only</string>
     <string name="profile_card_access_allow_description">Allow publishing this design to your home page</string>
     <string name="profile_card_change_design_to">Change design. Current design: %1$s</string>
     <string name="profile_card_option_accent_swatch">Accent %1$s</string>
@@ -2405,7 +2403,6 @@
     <string name="profile_card_option_move_down">Move %1$s down</string>
     <string name="profile_card_option_drag">Drag to reorder %1$s</string>
     <string name="profile_card_audience_editing">Card audience: %1$s</string>
-    <string name="profile_card_audience_overline">Audience</string>
     <string name="profile_card_font_montserrat">Montserrat</string>
     <string name="profile_card_font_montserrat_alt">Alternates</string>
     <string name="profile_card_font_newsreader">Newsreader</string>
