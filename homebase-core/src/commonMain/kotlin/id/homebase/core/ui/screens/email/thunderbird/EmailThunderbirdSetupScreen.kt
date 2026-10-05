@@ -27,13 +27,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import id.homebase.core.clipboard.clipEntryOf
+import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.core.email.MailSetupPlatform
 import id.homebase.core.email.Thunderbird
 import id.homebase.core.email.currentMailSetupPlatform
@@ -83,7 +81,6 @@ import id.homebase.resources.email_tb_steps_title
 import id.homebase.resources.email_tb_title
 import id.homebase.resources.email_tb_view_generic
 import id.homebase.resources.email_tb_view_phone
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -134,9 +131,8 @@ fun EmailThunderbirdSetupUi(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val uriHandler = getUriHandler()
-    val clipboard = LocalClipboard.current
-    val scope = rememberCoroutineScope()
-    val copy: (String) -> Unit = { text -> scope.launch { clipboard.setClipEntry(clipEntryOf(text)) } }
+    val copy = rememberCopyToClipboard(snackbarHostState)
+    val copySecret = rememberCopyToClipboard(snackbarHostState, sensitive = true)
 
     // The published key, which is the one incoming mail is encrypted to. Retired keys still open
     // older mail, but importing one of those into a fresh mail app would decrypt nothing new.
@@ -153,6 +149,7 @@ fun EmailThunderbirdSetupUi(
         password = uiState.credentials.firstOrNull()?.secret,
         settings = uiState.clientSettings,
         onCopy = copy,
+        onCopySecret = copySecret,
         onOpenUrl = { uriHandler.openUrl(it) },
         onSaveKey = currentKey?.let { key -> { confirmSaveKey = key } },
         // Never on Android: OpenKeychain's clipboard import runs the text through a
@@ -227,7 +224,7 @@ fun EmailThunderbirdSetupUi(
             text = { Text(stringResource(MR.string.email_secrets_private_key_body)) },
             confirmButton = {
                 TextButton(onClick = {
-                    copy(key.secretKeyArmored)
+                    copySecret(key.secretKeyArmored)
                     confirmCopyKey = null
                 }) {
                     Text(stringResource(MR.string.email_secrets_private_key_confirm))
@@ -380,7 +377,7 @@ private fun ThunderbirdStepList(
                         StepExtras.KEY -> ActionRow {
                             actions.password?.let { password ->
                                 StepAction(stringResource(MR.string.email_tb_copy_password)) {
-                                    actions.onCopy(password)
+                                    actions.onCopySecret(password)
                                 }
                             }
                             actions.onSaveKey?.let { save ->
@@ -400,7 +397,7 @@ private fun ThunderbirdStepList(
                                 }
                                 actions.password?.let { password ->
                                     StepAction(stringResource(MR.string.email_tb_copy_password)) {
-                                        actions.onCopy(password)
+                                        actions.onCopySecret(password)
                                     }
                                 }
                             }

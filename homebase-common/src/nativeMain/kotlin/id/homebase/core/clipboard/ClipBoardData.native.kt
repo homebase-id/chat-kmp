@@ -4,6 +4,6 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.platform.ClipEntry
 
 @OptIn(ExperimentalComposeUiApi::class)
-actual fun clipEntryOf(string: String): ClipEntry {
+actual fun clipEntryOf(string: String, sensitive: Boolean): ClipEntry {
         return ClipEntry.withPlainText(string)
 }

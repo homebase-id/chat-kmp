@@ -24,6 +24,8 @@
 	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Homebase uses Face ID to protect your vault</string>
+	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>
+	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
