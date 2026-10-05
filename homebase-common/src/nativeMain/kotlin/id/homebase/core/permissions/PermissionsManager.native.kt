@@ -2,7 +2,7 @@ package id.homebase.core.permissions
 
 import androidx.compose.runtime.Composable
 import co.touchlab.kermit.Logger
-import id.homebase.core.util.topViewController
+import id.homebase.core.util.presentWhenMainWindowIsKey
 import platform.AVFoundation.AVAuthorizationStatus
 import platform.AVFoundation.AVAuthorizationStatusAuthorized
 import platform.AVFoundation.AVAuthorizationStatusNotDetermined
@@ -282,10 +282,7 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
             PHAuthorizationStatusLimited -> {
                 // Show picker to select more photos when already in limited mode
                 if (permission == PermissionType.GALLERY_LIMITED) {
-                    val presenter = topViewController()
-                    if (presenter == null) {
-                        log.w { "no presenter for limited picker" }
-                    } else {
+                    presentWhenMainWindowIsKey { presenter ->
                         log.i { "presenting limited picker from ${presenter::class.simpleName}" }
                         PHPhotoLibrary.sharedPhotoLibrary().presentLimitedLibraryPickerFromViewController(presenter) { ids ->
                             log.i { "limited picker done, ${ids?.size ?: 0} selected" }
