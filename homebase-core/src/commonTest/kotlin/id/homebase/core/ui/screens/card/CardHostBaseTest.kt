@@ -90,27 +90,9 @@ class CardHostBaseTest {
     }
 
     @Test
-    fun theBottomEdgeStaysInViewAcrossRenders() {
-        host.onBridgeMessage("""{"type":"loaded"}""")
-        host.reveal(CardEdge.BOTTOM)
-        host.render(payload(CardDesign.POSTER))
-        host.onBridgeMessage("""{"type":"ready","layout":"poster","ms":5}""")
-
-        assertEquals(CardCommand.Reveal(CardEdge.BOTTOM), host.sent.last())
-        assertEquals(2, host.sent.count { it == CardCommand.Reveal(CardEdge.BOTTOM) })
-        assertTrue(host.sent.last().script().contains("scrollHeight"))
-
-        host.reveal(CardEdge.TOP)
-        host.onBridgeMessage("""{"type":"ready","layout":"poster","ms":5}""")
-
-        assertEquals(CardCommand.Reveal(CardEdge.TOP), host.sent.last())
-    }
-
-    @Test
-    fun aRevealBeforeLoadIsNotSent() {
-        host.reveal(CardEdge.BOTTOM)
-
-        assertTrue(host.sent.isEmpty())
+    fun aNarrowViewScalesThePageDownButNeverUp() {
+        assertEquals(0.5f, pageScale(viewWidth = 200f, layoutWidth = 400f))
+        assertEquals(1f, pageScale(viewWidth = 600f, layoutWidth = 400f))
     }
 
     @Test

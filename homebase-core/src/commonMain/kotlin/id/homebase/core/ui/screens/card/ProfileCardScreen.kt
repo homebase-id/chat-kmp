@@ -77,6 +77,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -102,6 +103,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -150,9 +152,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.outlined.Publish
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -168,9 +167,12 @@ import id.homebase.resources.profile_card_add_circle_has_card
 import id.homebase.resources.profile_card_add_circle_no_circles
 import id.homebase.resources.profile_card_circle_members
 import id.homebase.resources.profile_card_not_published
-import id.homebase.resources.profile_card_publish
 import id.homebase.resources.profile_card_save_public
 import id.homebase.resources.profile_card_share_public
+import id.homebase.resources.profile_card_share_public_message
+import id.homebase.resources.profile_card_share_public_title
+import id.homebase.resources.profile_card_save_public_message
+import id.homebase.resources.profile_card_save_public_title
 import org.jetbrains.compose.resources.pluralStringResource
 import kotlin.math.exp
 import kotlinx.coroutines.Job
@@ -330,6 +332,7 @@ fun ProfileCardScreen(
     // the native card view behind on iOS/Desktop instead of following cardSheetExitTransition().
     @Suppress("DEPRECATION") BackHandler { leave() }
     val cover by viewModel.cover.collectAsStateWithLifecycle()
+    var confirmPublicShare by rememberSaveable { mutableStateOf(false) }
 
     CardExpressiveTheme {
         val bands = cardBands(uiState.design)
@@ -391,13 +394,10 @@ fun ProfileCardScreen(
                     modifier = Modifier.align(Alignment.TopCenter),
                 )
                 CardBottomChrome(
-                    sharesPublicCard = uiState.isCircleSelected,
                     isExporting = uiState.isExporting,
                     canShare = uiState.canShare,
                     saveInsteadOfShare = saveInsteadOfShare,
-                    isHomePageBehind = uiState.isHomePageBehind,
-                    onShare = viewModel::onShareClicked,
-                    onPublish = viewModel::onPublishRetry,
+                    onShare = { if (uiState.isCircleSelected) confirmPublicShare = true else viewModel.onShareClicked() },
                     onEdit = onEdit,
                     extraActions = { nfc?.let { CardNfcAction(it) } },
                 )
@@ -406,18 +406,58 @@ fun ProfileCardScreen(
         if (uiState.isDesignAccessPromptShown) {
             DesignAccessDialog(onContinue = viewModel::onDesignAccessAccepted, onDismiss = viewModel::onDesignAccessDeclined)
         }
+        val circle = uiState.selectedAudience as? CardAudience.Circle
+        if (confirmPublicShare && circle != null) {
+            SharePublicCardDialog(
+                circleLabel = audienceLabel(circle),
+                saveInsteadOfShare = saveInsteadOfShare,
+                onConfirm = {
+                    confirmPublicShare = false
+                    viewModel.onShareClicked()
+                },
+                onDismiss = { confirmPublicShare = false },
+            )
+        }
     }
+}
+
+// A circle card is never what gets shared, so the toolbar stays the same on every card and the swap is said here, where it happens.
+@Composable
+internal fun SharePublicCardDialog(circleLabel: String, saveInsteadOfShare: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
+        title = {
+            Text(
+                stringResource(if (saveInsteadOfShare) MR.string.profile_card_save_public_title else MR.string.profile_card_share_public_title),
+                textAlign = TextAlign.Center,
+            )
+        },
+        text = {
+            Text(
+                stringResource(
+                    if (saveInsteadOfShare) MR.string.profile_card_save_public_message else MR.string.profile_card_share_public_message,
+                    circleLabel,
+                ),
+            )
+        },
+        confirmButton = {
+            Button(onClick = onConfirm, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(if (saveInsteadOfShare) MR.string.profile_card_save_public else MR.string.profile_card_share_public))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
+        },
+    )
 }
 
 @Composable
 internal fun BoxScope.CardBottomChrome(
-    sharesPublicCard: Boolean,
     isExporting: Boolean,
     canShare: Boolean,
     saveInsteadOfShare: Boolean,
-    isHomePageBehind: Boolean,
     onShare: () -> Unit,
-    onPublish: () -> Unit,
     onEdit: () -> Unit,
     extraActions: @Composable () -> Unit,
 ) {
@@ -456,22 +496,9 @@ internal fun BoxScope.CardBottomChrome(
                 isExporting = isExporting,
                 enabled = canShare,
                 saveInsteadOfShare = saveInsteadOfShare,
-                labelled = sharesPublicCard,
                 onClick = onShare,
             )
             extraActions()
-            if (isHomePageBehind) PublishAction(onClick = onPublish)
-        }
-    }
-}
-
-// Only there while the home page still shows an older design; the badge says something is waiting.
-@Composable
-private fun PublishAction(onClick: () -> Unit) {
-    val description = stringResource(MR.string.profile_card_not_published) + ". " + stringResource(MR.string.profile_card_publish)
-    IconButton(onClick = onClick, modifier = Modifier.semantics { contentDescription = description }) {
-        BadgedBox(badge = { Badge() }) {
-            Icon(imageVector = Icons.Outlined.Publish, contentDescription = null)
         }
     }
 }
@@ -900,6 +927,7 @@ internal fun CardSurface(
     onRetry: () -> Unit,
     paintWhileAttached: suspend (onPainted: () -> Unit) -> Unit,
     modifier: Modifier = Modifier,
+    layoutWidth: Dp? = null,
     cover: ImageBitmap? = null,
     coverHeld: Boolean = false,
     skeleton: Boolean = false,
@@ -933,8 +961,7 @@ internal fun CardSurface(
         }
         // An unsupported server's /card is its public site, which desktop and web would float over the message.
         if (!uiState.cardUnsupported && attached) {
-            // Left untransformed: iOS and desktop interop views don't follow a graphicsLayer.
-            host?.let { CardHostView(host = it, modifier = Modifier.fillMaxSize()) }
+            host?.let { CardHostView(host = it, modifier = Modifier.fillMaxSize(), layoutWidth = layoutWidth) }
         }
         if (cover != null && !uiState.cardUnsupported) {
             AnimatedVisibility(
@@ -974,7 +1001,6 @@ private fun ShareAction(
     isExporting: Boolean,
     enabled: Boolean,
     saveInsteadOfShare: Boolean,
-    labelled: Boolean,
     onClick: () -> Unit,
 ) {
     val motion = MaterialTheme.motionScheme
@@ -986,21 +1012,6 @@ private fun ShareAction(
         if (exporting) {
             Box(modifier = Modifier.minimumInteractiveComponentSize(), contentAlignment = Alignment.Center) {
                 LoadingIndicator(modifier = Modifier.size(40.dp))
-            }
-        } else if (labelled) {
-            // A circle card is never what gets shared, so the action says which card goes out.
-            TextButton(
-                onClick = onClick,
-                enabled = enabled,
-                shapes = ButtonDefaults.shapes(),
-                colors = ButtonDefaults.textButtonColors(contentColor = LocalContentColor.current),
-            ) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                Text(
-                    stringResource(if (saveInsteadOfShare) MR.string.profile_card_save_public else MR.string.profile_card_share_public),
-                    maxLines = 1,
-                )
             }
         } else {
             IconButton(onClick = onClick, enabled = enabled) {

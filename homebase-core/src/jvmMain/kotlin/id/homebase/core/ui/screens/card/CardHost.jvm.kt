@@ -6,6 +6,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
+import androidx.compose.ui.unit.Dp
 import io.github.kdroidfilter.webview.wry.Rgba
 import io.github.kdroidfilter.webview.wry.WryWebViewPanel
 import java.awt.Container
@@ -29,7 +30,7 @@ import kotlinx.coroutines.launch
 actual fun createCardHost(odinId: String): CardHost = DesktopCardHost(cardPageUrl(odinId))
 
 @Composable
-actual fun CardHostView(host: CardHost, modifier: Modifier) {
+actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?) {
     val cardHost = host as DesktopCardHost
     key(cardHost) {
         val slot = remember { CardSlot(cardHost) }
@@ -128,8 +129,7 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
             CardCommand.ExportPng -> CardEvent.Png::class
             CardCommand.ProbeEdges -> CardEvent.Edges::class
             CardCommand.RequestPaint -> CardEvent.Painted::class
-            is CardCommand.Reveal -> null
-        }?.let(::awaitReply)
+        }.let(::awaitReply)
         panel.evaluateJavaScript(command.script()) {}
     }
 

@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatformTools
@@ -29,12 +30,13 @@ actual fun createCardHost(odinId: String): CardHost =
     AndroidCardHost(KoinPlatformTools.defaultContext().get().get<Context>(), cardPageUrl(odinId))
 
 @Composable
-actual fun CardHostView(host: CardHost, modifier: Modifier) {
+actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?) {
     val cardHost = host as AndroidCardHost
     key(cardHost.webView) {
         AndroidView(
             factory = { activityContext -> cardHost.attach(activityContext) },
-            modifier = modifier,
+            // Compose draws an AndroidView into its own canvas, so the layer's scale reaches the WebView.
+            modifier = modifier.laidOutAt(layoutWidth),
             onRelease = { cardHost.detach() },
         )
     }

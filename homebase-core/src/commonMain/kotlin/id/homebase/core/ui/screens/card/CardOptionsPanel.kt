@@ -40,6 +40,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.outlined.AccountCircle
@@ -111,7 +112,6 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
@@ -122,6 +122,12 @@ import androidx.compose.ui.unit.sp
 import androidx.graphics.shapes.Morph
 import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
+import id.homebase.resources.card_font_archivo_black
+import id.homebase.resources.card_font_caveat
+import id.homebase.resources.card_font_newsreader
+import id.homebase.resources.card_font_space_mono
+import id.homebase.resources.montserrat_alternates_light
+import id.homebase.resources.montserrat_regular
 import id.homebase.resources.profile_card_block_chat
 import id.homebase.resources.profile_card_block_links
 import id.homebase.resources.profile_card_block_moments
@@ -135,6 +141,7 @@ import id.homebase.resources.profile_card_font_space_mono
 import id.homebase.resources.profile_card_option_accent
 import id.homebase.resources.profile_card_option_accent_swatch
 import id.homebase.resources.profile_card_option_block_order
+import id.homebase.resources.profile_card_option_block_order_hint
 import id.homebase.resources.profile_card_option_default
 import id.homebase.resources.profile_card_option_display_font
 import id.homebase.resources.profile_card_option_drag
@@ -154,6 +161,7 @@ import id.homebase.resources.profile_card_socials_glyphs
 import id.homebase.resources.profile_card_socials_handles
 import id.homebase.resources.profile_card_socials_wordmark
 import id.homebase.resources.profile_card_try_another_design
+import org.jetbrains.compose.resources.Font
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import sh.calvin.reorderable.ReorderableRow
@@ -173,6 +181,8 @@ private val OPTION_SIDE_INSET = 16.dp
 private val CAPTION_INSET = 24.dp
 private const val REVEAL_MARGIN = 0.6f
 private val MIN_TILE_LABEL_SIZE = 9.sp
+private val GRIP_SIZE = 18.dp
+private val BADGE_SIZE = 18.dp
 
 /** Every control comes from the design's [CardDesignSpec]; there is no per-design screen. */
 @Composable
@@ -186,7 +196,6 @@ internal fun CardOptionsPanel(
     gap: Dp,
     save: @Composable () -> Unit,
     onTryAnotherDesign: () -> Unit,
-    onToolShown: (CardOption) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spec = CardDesignSpecs.of(design)
@@ -197,7 +206,6 @@ internal fun CardOptionsPanel(
     }
     var picked by rememberSaveable(design) { mutableStateOf(options.first().name) }
     val current = options.firstOrNull { it.name == picked } ?: options.first()
-    LaunchedEffect(current) { onToolShown(current) }
     val motion = MaterialTheme.motionScheme
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
         AnimatedContent(
@@ -211,14 +219,29 @@ internal fun CardOptionsPanel(
         ) { option ->
             // The caption names the tool picked below, so every tool can stay an icon at any text size.
             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap, Alignment.CenterVertically)) {
-                Text(
-                    text = stringResource(optionLabel(option)),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(horizontal = CAPTION_INSET),
-                )
+                ) {
+                    Text(
+                        text = stringResource(optionLabel(option)),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (option == CardOption.BLOCK_ORDER) {
+                        Text(
+                            text = stringResource(MR.string.profile_card_option_block_order_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 Box(modifier = Modifier.fillMaxWidth().heightIn(min = segmentHeight), contentAlignment = Alignment.Center) {
                     OptionControl(option, overrides, enabled, segmentHeight, onOption, onBlockOrder)
                 }
@@ -482,18 +505,20 @@ private fun DefaultGlyph() {
     Icon(Icons.Outlined.AutoAwesome, contentDescription = null, modifier = Modifier.size(GLYPH_SIZE))
 }
 
-// A hint of each face from the platform's generic families; the card itself uses the real web font.
+// Each name set in the card's own face (Latin subsets bundled from the web card's fonts), so look-alike names still differ.
 @Composable
 private fun fontPreviewStyle(font: String?): TextStyle {
-    val base = MaterialTheme.typography.titleLarge
-    return when (font) {
-        "newsreader" -> base.copy(fontFamily = FontFamily.Serif)
-        "caveat" -> base.copy(fontFamily = FontFamily.Cursive)
-        "archivo-black" -> base.copy(fontWeight = FontWeight.Black)
-        "space-mono" -> base.copy(fontFamily = FontFamily.Monospace)
-        "montserrat-alt" -> base.copy(fontWeight = FontWeight.SemiBold)
-        else -> base
+    val base = MaterialTheme.typography.titleMedium
+    val face = when (font) {
+        "montserrat" -> MR.font.montserrat_regular
+        "montserrat-alt" -> MR.font.montserrat_alternates_light
+        "newsreader" -> MR.font.card_font_newsreader
+        "caveat" -> MR.font.card_font_caveat
+        "archivo-black" -> MR.font.card_font_archivo_black
+        "space-mono" -> MR.font.card_font_space_mono
+        else -> return base
     }
+    return base.copy(fontFamily = FontFamily(Font(face)))
 }
 
 @Composable
@@ -671,22 +696,38 @@ private fun BlockOrderRow(order: List<String>, enabled: Boolean, tileHeight: Dp,
     }
 }
 
+// The grip says the tile moves; the numbered badge says where its section sits on the card.
 @Composable
 private fun BlockTile(kind: String, name: String, position: Int) {
-    val ordinal = position.toString()
-    Box(modifier = Modifier.fillMaxSize()) {
-        Text(
-            text = ordinal,
-            style = MaterialTheme.typography.labelLargeEmphasized,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+    val colors = MaterialTheme.colorScheme
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxSize().padding(start = 2.dp, end = 6.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.DragIndicator,
+            contentDescription = null,
+            tint = colors.outline,
+            modifier = Modifier.size(GRIP_SIZE),
         )
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(start = 4.dp, end = 4.dp, bottom = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+            modifier = Modifier.weight(1f),
         ) {
-            Icon(imageVector = blockIcon(kind), contentDescription = null, modifier = Modifier.size(22.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Box(
+                    modifier = Modifier.size(BADGE_SIZE).background(colors.primaryContainer, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = position.toString(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onPrimaryContainer,
+                    )
+                }
+                Icon(imageVector = blockIcon(kind), contentDescription = null, modifier = Modifier.size(20.dp))
+            }
             val style = MaterialTheme.typography.labelMedium
             // Four tiles share the row, so a long name at a large text size steps down rather than being cut.
             Text(

@@ -90,7 +90,6 @@ data class ProfileCardUiState(
     val isCardBusy: Boolean = false,
     val designAccessMissing: Boolean = false,
     val isDesignAccessPromptShown: Boolean = false,
-    val isHomePageBehind: Boolean = false,
 ) {
     val selectedCard: ProfileCard? get() = cards.firstOrNull { it.audience == selectedAudience }
     private val circleCard: ProfileCard? get() = selectedCard?.takeIf { it.audience is CardAudience.Circle }
@@ -403,10 +402,6 @@ class ProfileCardViewModel(
         }
     }
 
-    fun onPreviewFocus(edge: CardEdge) {
-        _host.value?.reveal(edge)
-    }
-
     fun onPreviewDiscarded() {
         if (_uiState.value.previewDesign == null && _uiState.value.previewOverrides == null) return
         _uiState.update { it.copy(previewDesign = null, previewOverrides = null) }
@@ -447,7 +442,6 @@ class ProfileCardViewModel(
             if (saved) render()
             if (saved && designChanged) {
                 unpublishedDesign = design
-                _uiState.update { it.copy(isHomePageBehind = true) }
                 if (designAccess == null) publishDesign(design)
             }
             _events.tryEmit(if (saved) ProfileCardEvent.DesignSaved else ProfileCardEvent.DesignSaveFailed)
@@ -579,7 +573,6 @@ class ProfileCardViewModel(
         publishJob = viewModelScope.launch {
             val result = attempt("publishing card design $design") { source.publishDesign(design) } ?: return@launch
             unpublishedDesign = null
-            _uiState.update { it.copy(isHomePageBehind = false) }
             if (result == CardDesignPublish.NoTheme) {
                 Logger.i(tag = TAG) { "no home page theme to publish card design $design to" }
             }
@@ -627,6 +620,8 @@ class ProfileCardViewModel(
     /** Picks up profile edits made since the pre-warm; the warm card shows until they land. */
     fun onScreenShown() {
         startHost()
+        // A publish that failed with the grant in place has no button of its own; each showing retries it.
+        if (designAccess == null && publishJob?.isActive != true) unpublishedDesign?.let(::publishDesign)
         failedImages.forEach(imageSrcs::remove)
         failedImages.clear()
         // The pre-warm's posts serve the first showing; a later one picks up newly published posts.

@@ -15,26 +15,31 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import id.homebase.api.browser.guardJsCallback
 import id.homebase.core.util.showHtmlOverlay
 
 actual fun createCardHost(odinId: String): CardHost = WebCardHost(odinId)
 
 @Composable
-actual fun CardHostView(host: CardHost, modifier: Modifier) {
+actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?) {
     val cardHost = host as WebCardHost
     val density = LocalDensity.current.density
     var bounds by remember { mutableStateOf<Rect?>(null) }
 
-    LaunchedEffect(cardHost, bounds) {
+    LaunchedEffect(cardHost, bounds, layoutWidth) {
         val b = bounds ?: return@LaunchedEffect
+        val width = b.width / density
+        // The iframe gets the full layout size and a CSS scale, so its own viewport is the full-size card's.
+        val scale = layoutWidth?.let { pageScale(width, it.value) } ?: 1f
         showHtmlOverlay(
             cardHost.frame,
             (b.left / density).toDouble(),
             (b.top / density).toDouble(),
-            (b.width / density).toDouble(),
-            (b.height / density).toDouble(),
+            (width / scale).toDouble(),
+            (b.height / density / scale).toDouble(),
         )
+        setCardFrameScale(cardHost.frame, scale.toDouble())
     }
     DisposableEffect(cardHost) {
         onDispose { hideCardFrame(cardHost.frame) }
@@ -61,7 +66,7 @@ internal class WebCardHost(odinId: String) : CardHostBase(cardPageUrl(odinId, Ca
         is CardCommand.Render -> postCardCommand(frame, "render", command.payload.toJson(), origin)
         CardCommand.ExportPng -> postCardCommand(frame, "exportPng", null, origin)
         // A cross-origin frame runs none of our script: its colours stay the fallback ones and it paints as the browser composites it.
-        CardCommand.ProbeEdges, is CardCommand.Reveal -> Unit
+        CardCommand.ProbeEdges -> Unit
         CardCommand.RequestPaint -> onBridgeMessage("""{"type":"hostPainted"}""")
     }
 
@@ -118,6 +123,10 @@ private fun addCardMessageListener(frame: JsAny, origin: String, onMessage: (Str
 
 private fun removeCardMessageListener(listener: JsAny): Unit = js(
     "{ window.removeEventListener('message', listener); }"
+)
+
+private fun setCardFrameScale(frame: JsAny, scale: Double): Unit = js(
+    "{ frame.style.transformOrigin = '0 0'; frame.style.transform = scale === 1 ? '' : 'scale(' + scale + ')'; }"
 )
 
 private fun hideCardFrame(frame: JsAny): Unit = js("{ frame.style.display = 'none'; }")

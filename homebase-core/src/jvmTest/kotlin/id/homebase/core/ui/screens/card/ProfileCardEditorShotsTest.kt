@@ -1,7 +1,11 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -129,7 +133,6 @@ class ProfileCardEditorShotsTest {
     private val viewerShots = listOf(
         ViewerShot("v01-public", base.copy(cards = listOf(public, card(work)))),
         ViewerShot("v02-circle", withCircle),
-        ViewerShot("v03-home-page-behind", base.copy(isHomePageBehind = true)),
         ViewerShot("v04-exporting", withCircle.copy(isExporting = true)),
         ViewerShot("v05-menu", withCircle, act = { onNodeWithContentDescription("Card for Work. Choose another card.").performClick() }, popup = true),
     )
@@ -140,6 +143,9 @@ class ProfileCardEditorShotsTest {
             for (shot in viewerShots) renderViewer(shot, dark)
             renderPopup("v06-delete-dialog", dark) { DeleteCardDialog(label = "Work", onDelete = {}, onDismiss = {}) }
             renderPopup("v07-access-dialog", dark) { DesignAccessDialog(onContinue = {}, onDismiss = {}) }
+            renderPopup("v03-share-public-confirm", dark) {
+                SharePublicCardDialog(circleLabel = "Acquaintances", saveInsteadOfShare = false, onConfirm = {}, onDismiss = {})
+            }
             renderSheet("v08-add-circle", dark, CirclePicker(circles(12), withCard = setOf("c1", "c4"), loading = false))
             renderSheet("v09-add-circle-few", dark, CirclePicker(circles(3), withCard = setOf("c0"), loading = false))
             renderSheet("v10-add-circle-loading", dark, CirclePicker())
@@ -177,13 +183,10 @@ class ProfileCardEditorShotsTest {
                         modifier = Modifier.align(Alignment.TopCenter),
                     )
                     CardBottomChrome(
-                        sharesPublicCard = shot.state.isCircleSelected,
                         isExporting = shot.state.isExporting,
                         canShare = true,
                         saveInsteadOfShare = false,
-                        isHomePageBehind = shot.state.isHomePageBehind,
                         onShare = {},
-                        onPublish = {},
                         onEdit = {},
                         extraActions = {},
                     )
@@ -276,11 +279,9 @@ class ProfileCardEditorShotsTest {
                             onSave = {},
                             onEditProfile = {},
                             snackbarHostState = remember { SnackbarHostState() },
-                        ) {
+                        ) { layoutWidth ->
                             when (shot.preview) {
-                                Preview.Ready -> Box(
-                                    Modifier.fillMaxSize().background(Color(CardDesign.baseArgb(shot.state.design))),
-                                )
+                                Preview.Ready -> StandInCard(shot.state.design, Modifier.fillMaxSize().laidOutAt(layoutWidth))
                                 else -> CardSurface(
                                     uiState = shot.state,
                                     host = null,
@@ -300,6 +301,24 @@ class ProfileCardEditorShotsTest {
         shot.act(this)
         mainClock.advanceTimeBy(SETTLE_MS)
         save(shot.name, dark)
+    }
+
+    // Real-size type laid out at the viewer's width, so the shot shows the preview's scale-down, not a reflow.
+    @Composable
+    private fun StandInCard(design: String, modifier: Modifier) {
+        val name = "Samwise Gamgeex"
+        val headline = "HOMEBASE / NEW IDENTITY OWNER"
+        val link = "samwise.gamgee.demo.rocks/posts"
+        val ink = if (design == CardDesign.COLLAGE) Color.Black else Color.White
+        Column(
+            modifier = modifier.background(Color(CardDesign.baseArgb(design))).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(Modifier.size(120.dp).background(ink.copy(alpha = 0.3f)))
+            Text(name, style = MaterialTheme.typography.displaySmall, color = ink)
+            Text(headline, style = MaterialTheme.typography.labelLarge, color = ink.copy(alpha = 0.7f))
+            Text(link, style = MaterialTheme.typography.bodyLarge, color = ink.copy(alpha = 0.7f))
+        }
     }
 
     private companion object {
