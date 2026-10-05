@@ -530,6 +530,8 @@ fun MessageBubbleRaw(
     Surface(
         modifier = modifier
             .testTag(ChatBubbleTestTags.BUBBLE)
+            // Capped on the bubble, not the gallery, so a block caption can't widen it past the images.
+            .ifTrue(isGallery) { Modifier.widthIn(max = Dimens.MediaBubble.galleryMaxWidth) }
             .ifTrue(!isStickerBubble) { Modifier.clip(shape) }
             .ifTrue(isMobile()) {
                 Modifier.combinedClickable(

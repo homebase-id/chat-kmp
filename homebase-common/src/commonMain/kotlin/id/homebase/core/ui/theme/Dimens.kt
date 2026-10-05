@@ -30,6 +30,7 @@ object Dimens {
 
         // Wider than any phone bubble (~382dp on a 430dp screen), so only large windows are capped.
         val linkPreviewMaxWidth = 400.dp
+        val galleryMaxWidth = linkPreviewMaxWidth
     }
 
     object Sticker {

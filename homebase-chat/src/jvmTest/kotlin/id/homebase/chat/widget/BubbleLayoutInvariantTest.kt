@@ -321,25 +321,33 @@ class BubbleLayoutInvariantTest {
     }
 
     @Test
-    fun galleryWithInlineCaption_fillsBubbleWidth() = runComposeUiTest {
+    fun galleryWithCaption_fillsBubbleUpToCap() = runComposeUiTest {
+        val cap = Dimens.MediaBubble.galleryMaxWidth.value
         val failures = mutableListOf<String>()
-        for (width in listOf(columnWidth, phoneWidth))
+        for (width in listOf(phoneWidth, columnWidth, 700.dp, 1000.dp))
             for (sent in listOf(true, false))
                 for (images in listOf(2, 4, 7))
-                    for (cap in listOf(Caption.SHORT, Caption.LONG)) {
-                        val name = "${images}img/$cap/${if (sent) "sent" else "recv"}@${width.value}"
-                        val author = if (sent) null else "Alice Wonderland"
-                        render(Case(name, sent, images, cap), authorName = author, width = width)
-                        val inline = boundsOf(ChatBubbleTestTags.MEDIA).let { it.right.value - it.left.value }
-                        render(Case(name, sent, images, Caption.BLOCK), authorName = author, width = width)
-                        val block = boundsOf(ChatBubbleTestTags.MEDIA).let { it.right.value - it.left.value }
-                        if (!approx(inline, width.value)) failures += "[$name] media=$inline != column=${width.value}"
-                        if (!approx(inline, block)) failures += "[$name] media=$inline != block-caption media=$block"
+                    for (caption in listOf(Caption.SHORT, Caption.LONG, Caption.BLOCK)) {
+                        val name = "${images}img/$caption/${if (sent) "sent" else "recv"}@${width.value}"
+                        val expected = minOf(width.value, cap)
+                        render(
+                            Case(name, sent, images, caption),
+                            authorName = if (sent) null else "Alice Wonderland",
+                            width = width,
+                        )
+                        val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+                        val media = boundsOf(ChatBubbleTestTags.MEDIA)
+                        val mediaWidth = media.right.value - media.left.value
+                        val bubbleWidth = bubble.right.value - bubble.left.value
+                        val captionRight = boundsOf(ChatBubbleTestTags.CAPTION).right.value
+                        if (!approx(mediaWidth, expected)) failures += "[$name] media=$mediaWidth != $expected"
+                        if (!approx(bubbleWidth, mediaWidth)) failures += "[$name] bubble=$bubbleWidth != media=$mediaWidth"
+                        if (captionRight > media.right.value + tol) failures += "[$name] caption.right=$captionRight past media"
                     }
         render(Case("1img/LONG", false, 1, Caption.LONG), authorName = "Alice Wonderland")
         val single = boundsOf(ChatBubbleTestTags.MEDIA).let { it.right.value - it.left.value }
         if (!approx(single, columnWidth.value)) failures += "[1img/LONG] media=$single != ${columnWidth.value}"
-        assertTrue(failures.isEmpty(), "inline-caption gallery width failures:\n" + failures.joinToString("\n"))
+        assertTrue(failures.isEmpty(), "captioned gallery width failures:\n" + failures.joinToString("\n"))
     }
 
     /**
