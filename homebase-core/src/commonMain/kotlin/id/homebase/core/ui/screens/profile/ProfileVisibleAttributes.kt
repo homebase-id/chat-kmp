@@ -46,8 +46,6 @@ internal fun List<ProfileAttribute>.visibleBio(canSee: AclFilter): String? =
     visibleAttribute(ProfileAttributeTypes.BIO_SUMMARY, canSee, listOf(ProfileAttributeTypes.KEY_SHORT_BIO))
         ?.string(ProfileAttributeTypes.KEY_SHORT_BIO)
 
-internal fun List<ProfileAttribute>.visibleBio(tier: ProfileVisibility): String? = visibleBio(tier.aclFilter())
-
 /** Links are many per profile, so a viewer sees every one it can read, in odin-js `useLinks` order. */
 internal fun List<ProfileAttribute>.visibleLinks(canSee: AclFilter): List<ProfileAttribute> =
     filter { it.type == ProfileAttributeTypes.LINK && canSee(it.acl) }

@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material.icons.outlined.Colorize
@@ -73,24 +72,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DragIndicator
-import androidx.compose.material.icons.automirrored.outlined.Article
-import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.outlined.AccountCircle
-import androidx.compose.material.icons.outlined.AlternateEmail
-import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.Reorder
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.SwapHoriz
-import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material.icons.outlined.ViewStream
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -201,7 +189,8 @@ import sh.calvin.reorderable.ReorderableRow
 
 internal val TOOLBAR_HEIGHT = 64.dp
 internal val CHIP_HEIGHT = 40.dp
-internal const val MAX_SEGMENT_GROWTH = 1.3f
+// Past this text scale, controls stop growing and labels get their own line.
+internal const val LARGE_TEXT_SCALE = 1.3f
 private val SWATCH_SIZE = 36.dp
 private val SWATCH_TARGET = 48.dp
 private val INK_DOT_SIZE = 12.dp
@@ -210,11 +199,11 @@ private val GLYPH_SIZE = 20.dp
 private val TOOL_SIZE = 48.dp
 private val FADE_LENGTH = 24.dp
 private val OPTION_SIDE_INSET = 16.dp
+private val SWATCH_ROW_INSET = OPTION_SIDE_INSET - 4.dp
 private val CAPTION_INSET = 24.dp
 private const val REVEAL_MARGIN = 0.6f
 private val MIN_TILE_LABEL_SIZE = 9.sp
 private val BADGE_SIZE = 18.dp
-private const val LARGE_TEXT_SCALE = 1.3f
 
 /** Every control comes from the design's [CardDesignSpec]; there is no per-design screen. */
 @Composable
@@ -237,7 +226,7 @@ internal fun CardOptionsPanel(
     var picked by rememberSaveable(design) { mutableStateOf(options.first().name) }
     val current = options.firstOrNull { it.name == picked } ?: options.first()
     val motion = MaterialTheme.motionScheme
-    val chipHeight = CHIP_HEIGHT * LocalDensity.current.fontScale.coerceIn(1f, MAX_SEGMENT_GROWTH)
+    val chipHeight = CHIP_HEIGHT * LocalDensity.current.fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
         AnimatedContent(
             targetState = current,
@@ -341,7 +330,7 @@ private fun OptionControl(
     }
 }
 
-// Tools as icons that morph into a filled squircle when picked; Save lives in the step header, so the tools get the row.
+// Tools as icons that morph into a filled squircle when picked.
 @Composable
 private fun OptionToolbar(
     options: List<CardOption>,
@@ -349,7 +338,6 @@ private fun OptionToolbar(
     onPick: (CardOption) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val scroll = rememberScrollState()
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         HorizontalFloatingToolbar(
             expanded = true,
@@ -360,10 +348,7 @@ private fun OptionToolbar(
             contentPadding = PaddingValues(horizontal = 4.dp),
             expandedShadowElevation = 0.dp,
         ) {
-            Row(
-                modifier = Modifier.fadingEdges(scroll, horizontal = true).horizontalScroll(scroll).selectableGroup(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            ScrollableChoiceRow(verticalAlignment = Alignment.CenterVertically) {
                 options.forEach { option ->
                     ToolItem(
                         icon = optionIcon(option),
@@ -473,14 +458,9 @@ private fun SegmentedChoices(
         // A connected group that fits shares the row out evenly, so it reads as one control rather than loose buttons.
         val even = (maxWidth - OPTION_SIDE_INSET * 2 - spacing * (values.size - 1)) / values.size
         val segmentWidth = if (connected) maxOf(minSegmentWidth, even) else 0.dp
-        val scroll = rememberScrollState()
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fadingEdges(scroll, horizontal = true)
-                .horizontalScroll(scroll)
-                .padding(horizontal = OPTION_SIDE_INSET)
-                .selectableGroup(),
+        ScrollableChoiceRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = OPTION_SIDE_INSET,
             horizontalArrangement = Arrangement.spacedBy(spacing),
         ) {
             values.forEachIndexed { index, value ->
@@ -531,37 +511,31 @@ private fun fontPreviewStyle(font: String?): TextStyle {
         "space-mono" -> MR.font.card_font_space_mono
         else -> return base
     }
-    return base.copy(fontFamily = FontFamily(Font(face)))
+    val font = Font(face)
+    val family = remember(font) { FontFamily(font) }
+    return base.copy(fontFamily = family)
 }
 
 // Each swatch is the scheme in small: its ground with an ink dot, so the pairing is judged before it is picked.
 @Composable
 private fun SchemeRow(design: String, selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
-    val scroll = rememberScrollState()
     val schemes = CardDesignSpecs.of(design)?.schemes.orEmpty()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .fadingEdges(scroll, horizontal = true)
-            .horizontalScroll(scroll)
-            .padding(horizontal = OPTION_SIDE_INSET - 4.dp)
-            .selectableGroup(),
-    ) {
+    ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET) {
         Swatch(
             fill = Color(CardDesign.baseArgb(design)),
             selected = selected == null || schemes.none { it.ground.equals(selected, ignoreCase = true) },
             enabled = enabled,
             description = stringResource(MR.string.profile_card_option_default),
             onClick = { onSelect(null) },
-        ) { InkDot(Color(CardDesignSpecs.presetInkArgb(design))) }
+        ) { InkDot(Color(CardDesign.inkArgb(design))) }
         schemes.forEach { scheme ->
             Swatch(
-                fill = hexColor(scheme.ground),
+                fill = Color(hexToArgb(scheme.ground)),
                 selected = scheme.ground.equals(selected, ignoreCase = true),
                 enabled = enabled,
                 description = stringResource(MR.string.profile_card_option_colours_swatch, stringResource(schemeLabel(scheme.id))),
                 onClick = { onSelect(scheme.ground) },
-            ) { InkDot(hexColor(scheme.ink)) }
+            ) { InkDot(Color(hexToArgb(scheme.ink))) }
         }
     }
 }
@@ -573,16 +547,8 @@ private fun InkDot(ink: Color) {
 
 @Composable
 private fun SwatchRow(selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
-    val scroll = rememberScrollState()
     val values = listOf<String?>(null) + CardDesignSpecs.ACCENT_SWATCHES
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .fadingEdges(scroll, horizontal = true)
-            .horizontalScroll(scroll)
-            .padding(horizontal = OPTION_SIDE_INSET - 4.dp)
-            .selectableGroup(),
-    ) {
+    ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET) {
         values.forEach { hex ->
             if (hex == null) {
                 Swatch(
@@ -594,7 +560,7 @@ private fun SwatchRow(selected: String?, enabled: Boolean, onSelect: (String?) -
                 ) { NoColourSlash() }
             } else {
                 Swatch(
-                    fill = hexColor(hex),
+                    fill = Color(hexToArgb(hex)),
                     selected = selected.equals(hex, ignoreCase = true),
                     enabled = enabled,
                     description = stringResource(MR.string.profile_card_option_accent_swatch, hex),
@@ -790,9 +756,30 @@ private fun Modifier.revealWhenSelected(selected: Boolean): Modifier {
     return bringIntoViewRequester(requester).onSizeChanged { width = it.width }
 }
 
+@Composable
+private fun ScrollableChoiceRow(
+    modifier: Modifier = Modifier,
+    contentPadding: Dp = 0.dp,
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
+    verticalAlignment: Alignment.Vertical = Alignment.Top,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val scroll = rememberScrollState()
+    Row(
+        modifier = modifier
+            .fadingEdges(scroll)
+            .horizontalScroll(scroll)
+            .padding(horizontal = contentPadding)
+            .selectableGroup(),
+        horizontalArrangement = horizontalArrangement,
+        verticalAlignment = verticalAlignment,
+        content = content,
+    )
+}
+
 // Masks content under a gradient at whichever ends can still scroll, so hidden rows read as "more this way".
 @Composable
-private fun Modifier.fadingEdges(scroll: ScrollState, horizontal: Boolean): Modifier {
+private fun Modifier.fadingEdges(scroll: ScrollState): Modifier {
     val fade = with(LocalDensity.current) { FADE_LENGTH.toPx() }
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     return graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
@@ -800,15 +787,12 @@ private fun Modifier.fadingEdges(scroll: ScrollState, horizontal: Boolean): Modi
             drawContent()
             val atStart = scroll.value > 0
             val atEnd = scroll.value < scroll.maxValue
-            val extent = if (horizontal) size.width else size.height
-            fun mask(fromEdge: Float, towardInside: Float) = if (horizontal) {
+            val extent = size.width
+            fun mask(fromEdge: Float, towardInside: Float) =
                 Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), startX = fromEdge, endX = towardInside)
-            } else {
-                Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = fromEdge, endY = towardInside)
-            }
             // Horizontal scroll runs from the end side in RTL, so "start" is the right edge there.
-            val startEdge = if (horizontal && rtl) extent else 0f
-            val endEdge = if (horizontal && rtl) 0f else extent
+            val startEdge = if (rtl) extent else 0f
+            val endEdge = if (rtl) 0f else extent
             val inward = { edge: Float -> if (edge == 0f) fade else extent - fade }
             if (atStart) drawRect(mask(startEdge, inward(startEdge)), blendMode = BlendMode.DstIn)
             if (atEnd) drawRect(mask(endEdge, inward(endEdge)), blendMode = BlendMode.DstIn)
@@ -821,8 +805,6 @@ private fun List<String>.swap(a: Int, b: Int): List<String> {
     moved[b] = this[a]
     return moved
 }
-
-private fun hexColor(hex: String): Color = Color(hex.removePrefix("#").toLong(16) or 0xFF000000)
 
 private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.COLOURS -> MR.string.profile_card_option_colours

@@ -7,6 +7,7 @@ import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.client.profile.ProfileWriteResponse
+import id.homebase.api.util.compareStringUuId
 import kotlin.concurrent.Volatile
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.Uuid
@@ -69,10 +70,7 @@ class CardRepository(private val store: CardAttributeStore) {
     suspend fun savePublic(design: String, overrides: CardOverrides? = null): Boolean {
         if (typeUnsupported) return false
         val existing = cards().publicCard()
-        val card = existing?.let {
-            val kept = overrides ?: it.overrides
-            it.copy(design = design, overrides = if (it.design != design) kept.prunedFor(design) else kept)
-        } ?: ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, design, overrides ?: CardOverrides.EMPTY)
+        val card = existing?.withDesign(design, overrides) ?: ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, design, overrides ?: CardOverrides.EMPTY)
         return saveOrUnsupported(
             data = card.toData(),
             visibility = ProfileVisibility.ANONYMOUS,
@@ -113,10 +111,10 @@ class CardRepository(private val store: CardAttributeStore) {
             return CircleProbe.Refused
         }
         val readBack = store.load().firstOrNull { it.id == draft.id } ?: error("the new circle card ${draft.id} did not read back")
-        if (readBack.acl.circleIdList?.singleOrNull()?.sameCircleId(circle.id) == true) return CircleProbe.Sticks(readBack)
+        if (compareStringUuId(readBack.acl.circleIdList?.singleOrNull(), circle.id)) return CircleProbe.Sticks(readBack)
         Logger.i(tag = "CardRepository") { "server ignored circleIds; circle cards are unsupported" }
         circlesIgnored = true
-        deleted(readBack)
+        deleteQuietly(readBack)
         return CircleProbe.Ignored
     }
 
@@ -126,16 +124,15 @@ class CardRepository(private val store: CardAttributeStore) {
     }
 
     // A false from the store means the attribute is already gone (404); only a throw is a failed delete.
-    private suspend fun deleted(attribute: ProfileAttribute): Boolean =
+    private suspend fun deleteQuietly(attribute: ProfileAttribute) {
         try {
             store.delete(attribute.id, attribute.versionTag)
-            true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = "CardRepository", throwable = e) { "deleting the owner-only circle card ${attribute.id} failed" }
-            false
         }
+    }
 
     private suspend fun writeCircle(card: ProfileCard, circle: CardAudience.Circle, visibility: ProfileVisibility) =
         saveOrUnsupported(
@@ -169,8 +166,6 @@ sealed interface AddCircleCardResult {
     data class Added(val card: ProfileCard) : AddCircleCardResult
     data object Unsupported : AddCircleCardResult
 }
-
-internal fun String.sameCircleId(other: String) = replace("-", "").equals(other.replace("-", ""), ignoreCase = true)
 
 private sealed interface CircleProbe {
     data object Refused : CircleProbe

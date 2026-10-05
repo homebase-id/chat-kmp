@@ -335,8 +335,8 @@ class ProfileCardEditorShotsTest {
         val name = "Samwise Gamgeex"
         val headline = "HOMEBASE / NEW IDENTITY OWNER"
         val link = "samwise.gamgee.demo.rocks/posts"
-        fun hex(value: String) = Color(value.removePrefix("#").toLong(16) or 0xFF000000)
-        val ink = palette?.ink?.let(::hex) ?: Color(CardDesignSpecs.presetInkArgb(design))
+        fun hex(value: String) = Color(hexToArgb(value))
+        val ink = palette?.ink?.let(::hex) ?: Color(CardDesign.inkArgb(design))
         val ground = palette?.ground?.let(::hex) ?: Color(CardDesign.baseArgb(design))
         Column(
             modifier = modifier.background(ground).padding(24.dp),

@@ -5,7 +5,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.node.LayoutModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.invalidateMeasurement
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import co.touchlab.kermit.Logger
@@ -72,16 +77,31 @@ internal fun pageScale(viewWidth: Float, layoutWidth: Float): Float = (viewWidth
 private const val MIN_PAGE_SCALE = 0.1f
 
 /** Measures the content at [layoutWidth] and the view's aspect ratio, then draws it scaled into the view's bounds. */
-internal fun Modifier.laidOutAt(layoutWidth: Dp?): Modifier = if (layoutWidth == null) this else clipToBounds().layout { measurable, constraints ->
-    val width = constraints.maxWidth
-    val height = constraints.maxHeight
-    val scale = pageScale(width.toFloat(), layoutWidth.toPx())
-    val placeable = measurable.measure(Constraints.fixed((width / scale).roundToInt(), (height / scale).roundToInt()))
-    layout(width, height) {
-        placeable.placeWithLayer(0, 0) {
-            scaleX = scale
-            scaleY = scale
-            transformOrigin = TransformOrigin(0f, 0f)
+internal fun Modifier.laidOutAt(layoutWidth: Dp?): Modifier =
+    if (layoutWidth == null) this else clipToBounds().then(LaidOutAtElement(layoutWidth))
+
+private data class LaidOutAtElement(val layoutWidth: Dp) : ModifierNodeElement<LaidOutAtNode>() {
+    override fun create() = LaidOutAtNode(layoutWidth)
+
+    override fun update(node: LaidOutAtNode) {
+        if (node.layoutWidth == layoutWidth) return
+        node.layoutWidth = layoutWidth
+        node.invalidateMeasurement()
+    }
+}
+
+private class LaidOutAtNode(var layoutWidth: Dp) : Modifier.Node(), LayoutModifierNode {
+    override fun MeasureScope.measure(measurable: Measurable, constraints: Constraints): MeasureResult {
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        val scale = pageScale(width.toFloat(), layoutWidth.toPx())
+        val placeable = measurable.measure(Constraints.fixed((width / scale).roundToInt(), (height / scale).roundToInt()))
+        return layout(width, height) {
+            placeable.placeWithLayer(0, 0) {
+                scaleX = scale
+                scaleY = scale
+                transformOrigin = TransformOrigin(0f, 0f)
+            }
         }
     }
 }

@@ -87,9 +87,9 @@ class ProfileVisibleAttributesTest {
             priority = priority,
         )
         val attributes = listOf(bio("public", "anonymous"), bio("vetted b", "connected", 5), bio("vetted a", "connected", 1), bio("owner", "owner"))
-        assertEquals("public", attributes.visibleBio(ANONYMOUS))
-        assertEquals("vetted a", attributes.visibleBio(CONNECTED))
-        assertNull(listOf(bio("owner", "owner")).visibleBio(CONNECTED))
+        assertEquals("public", attributes.visibleBio(ANONYMOUS.aclFilter()))
+        assertEquals("vetted a", attributes.visibleBio(CONNECTED.aclFilter()))
+        assertNull(listOf(bio("owner", "owner")).visibleBio(CONNECTED.aclFilter()))
     }
 
     @Test

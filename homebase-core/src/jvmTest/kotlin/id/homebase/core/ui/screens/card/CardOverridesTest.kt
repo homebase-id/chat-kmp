@@ -1,7 +1,5 @@
 package id.homebase.core.ui.screens.card
 
-import id.homebase.api.client.profile.ProfileWriteResponse
-import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -76,9 +74,9 @@ class CardOverridesTest {
         assertEquals(listOf(CardPortrait(shape = "circle", tilt = 2.5)), read.portraits)
         assertEquals(listOf(CardBlock("links"), CardBlock("posts")), read.blocks)
 
-        val store = FakeStore(stored)
+        val store = FakeCardStore(listOf(profileCardAttribute(buildJsonObject { put("design", "board"); put("overrides", stored) })))
         assertTrue(CardRepository(store).savePublic(CardDesign.BOARD))
-        val kept = store.written.single()["overrides"]!!.jsonObject
+        val kept = store.writes.single().data["overrides"]!!.jsonObject
         assertEquals("bar", kept["socials"]!!.jsonPrimitive.content)
         assertEquals(
             """[{"shape":"circle","tilt":2.5}]""",
@@ -86,28 +84,14 @@ class CardOverridesTest {
         )
     }
 
-    private class FakeStore(overrides: kotlinx.serialization.json.JsonObject) : CardAttributeStore {
-        val written = mutableListOf<kotlinx.serialization.json.JsonObject>()
-        private val attribute = id.homebase.api.client.profile.ProfileAttribute(
-            id = kotlin.uuid.Uuid.random(),
-            type = id.homebase.api.client.profile.ProfileAttributeTypes.PROFILE_CARD,
-            versionTag = kotlin.uuid.Uuid.random(),
-            visibility = id.homebase.api.client.profile.ProfileVisibility.ANONYMOUS,
-            data = buildJsonObject { put("design", "board"); put("overrides", overrides) },
-        )
-        override suspend fun load() = listOf(attribute)
-        override suspend fun save(
-            data: kotlinx.serialization.json.JsonObject,
-            visibility: id.homebase.api.client.profile.ProfileVisibility,
-            id: kotlin.uuid.Uuid?,
-            versionTag: kotlin.uuid.Uuid?,
-            priority: Int,
-            circleIds: List<String>,
-        ): ProfileWriteResponse {
-            written += data
-            return ProfileWriteResponse(id ?: kotlin.uuid.Uuid.random(), kotlin.uuid.Uuid.random())
-        }
-        override suspend fun delete(id: kotlin.uuid.Uuid, versionTag: kotlin.uuid.Uuid) = false
+    private fun fieldOf(option: CardOption): String = when (option) {
+        CardOption.COLOURS -> "palette.ground"
+        CardOption.ACCENT -> "palette.accent"
+        CardOption.DISPLAY_FONT -> "type.display"
+        CardOption.TEXT_FONT -> "type.text"
+        CardOption.PORTRAIT_SHAPE -> "portraits[].shape"
+        CardOption.SOCIALS_STYLE -> "socials"
+        CardOption.BLOCK_ORDER -> "blocks[].kind"
     }
 
     private fun resolves(descriptor: SerialDescriptor, path: String): Boolean {
@@ -127,7 +111,7 @@ class CardOverridesTest {
             val spec = requireNotNull(CardDesignSpecs.of(design)) { "no spec for $design" }
             assertTrue(spec.options.isNotEmpty(), design)
             for (option in spec.options) {
-                val path = CardDesignSpecs.fieldOf(option)
+                val path = fieldOf(option)
                 assertTrue(resolves(CardOverrides.serializer().descriptor, path), "$design/$option -> $path")
             }
             assertEquals(spec.options.contains(CardOption.PORTRAIT_SHAPE), spec.portraitSlots > 0, design)

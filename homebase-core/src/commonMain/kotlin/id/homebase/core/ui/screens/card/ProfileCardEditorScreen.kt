@@ -125,13 +125,11 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 private val ACTION_HEIGHT = ButtonDefaults.MinHeight
-private val TOP_BAR_ICON_SLOT = 56.dp
 private val COMPACT_HEIGHT = 760.dp
 private val WIDE_LAYOUT_MIN_WIDTH = 840.dp
 private val WIDE_PANEL_WIDTH = 420.dp
 private val PREVIEW_MAX_WIDTH = 440.dp
 private val PREVIEW_SIDE_INSET = 16.dp
-private const val LARGE_FONT_SCALE = 1.3f
 private val DESIGN_LABEL_HEIGHT = 24.dp
 private val DESIGN_TILE_MIN_WIDTH = 80.dp
 private val DESIGN_TILE_MAX_WIDTH = 128.dp
@@ -139,7 +137,6 @@ private val DESIGN_TILE_SPACING = 8.dp
 private val DESIGN_STRIP_INSET = 20.dp
 private val CAPTION_LINE = 20.dp
 private val AUDIENCE_AVATAR = 28.dp
-private const val CARD_PREVIEW_ASPECT = CARD_THUMB_ASPECT
 
 @Composable
 fun ProfileCardEditorScreen(
@@ -223,9 +220,7 @@ fun ProfileCardEditorScreen(
                 skeleton = true,
             )
         }
-        if (uiState.isDesignAccessPromptShown) {
-            DesignAccessDialog(onContinue = viewModel::onDesignAccessAccepted, onDismiss = viewModel::onDesignAccessDeclined)
-        }
+        DesignAccessPrompt(shown = uiState.isDesignAccessPromptShown, viewModel = viewModel)
     }
 }
 
@@ -343,7 +338,7 @@ private fun CardPreviewFrame(
             modifier = Modifier
                 .widthIn(max = PREVIEW_MAX_WIDTH)
                 .then(
-                    if (keepProportions) Modifier.aspectRatio(CARD_PREVIEW_ASPECT, matchHeightConstraintsFirst = true)
+                    if (keepProportions) Modifier.aspectRatio(CARD_THUMB_ASPECT, matchHeightConstraintsFirst = true)
                     else Modifier.fillMaxSize(),
                 )
                 .clip(shape)
@@ -462,7 +457,7 @@ private fun EditorPanel(
     val fontScale = LocalDensity.current.fontScale
     val design = uiState.design
     val isSaving = uiState.isSavingDesign
-    val grow = fontScale.coerceIn(1f, MAX_SEGMENT_GROWTH)
+    val grow = fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     // Grows with the text so a large font scale shortens the preview rather than clipping the controls.
     val optionsNeeded = CAPTION_LINE * fontScale + CHIP_HEIGHT * grow + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
     val body = maxOf(metrics.body, optionsNeeded)
@@ -556,8 +551,8 @@ private fun StepHeader(
                         text = title,
                         style = MaterialTheme.typography.titleLargeEmphasized,
                         // One line steps down before it wraps; only a large text size gets the second line.
-                        maxLines = if (LocalDensity.current.fontScale < LARGE_FONT_SCALE) 1 else 2,
-                        softWrap = LocalDensity.current.fontScale >= LARGE_FONT_SCALE,
+                        maxLines = if (LocalDensity.current.fontScale < LARGE_TEXT_SCALE) 1 else 2,
+                        softWrap = LocalDensity.current.fontScale >= LARGE_TEXT_SCALE,
                         autoSize = TextAutoSize.StepBased(
                             minFontSize = MaterialTheme.typography.titleSmall.fontSize,
                             maxFontSize = MaterialTheme.typography.titleLargeEmphasized.fontSize,

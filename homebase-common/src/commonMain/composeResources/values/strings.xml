@@ -2331,7 +2331,6 @@
     <string name="profile_card_add_circle_card">Add a card for a circle</string>
     <string name="profile_card_add_circle_title">Add a card for a circle</string>
     <string name="profile_card_add_circle_hint">Pick one circle. Its card starts with your public card's design and shows what that circle can see of your profile.</string>
-    <string name="profile_card_add_circle_pick">Circle</string>
     <string name="profile_card_add_circle_confirm">Add card</string>
     <string name="profile_card_add_circle_none">Every circle already has a card.</string>
     <string name="profile_card_add_circle_load_failed">Couldn't load your circles.</string>
@@ -2353,12 +2352,10 @@
     <string name="profile_card_access_continue">Continue</string>
     <string name="profile_card_access_later">Not now</string>
     <string name="profile_card_access_allow">Allow</string>
-    <string name="profile_card_not_published">Not published to your home page</string>
     <string name="profile_card_editor_title">Card design</string>
     <string name="profile_card_edit_profile">Edit profile details</string>
     <string name="profile_card_design_save_failed">Couldn't save the card design.</string>
     <string name="profile_card_step_customise">Customise</string>
-    <string name="profile_card_step_customise_title">Customise %1$s</string>
     <string name="profile_card_step_count">Step %1$d of %2$d</string>
     <string name="profile_card_step_design_title">Choose a design</string>
     <string name="profile_card_options_empty">Save it as it is, or try another design.</string>
@@ -2407,8 +2404,6 @@
     <string name="profile_card_option_move_up">Move %1$s up</string>
     <string name="profile_card_option_move_down">Move %1$s down</string>
     <string name="profile_card_option_drag">Drag to reorder %1$s</string>
-    <string name="profile_card_change_design">Change design</string>
-    <string name="profile_card_change_design_short">Design</string>
     <string name="profile_card_audience_editing">Card audience: %1$s</string>
     <string name="profile_card_audience_overline">Audience</string>
     <string name="profile_card_font_montserrat">Montserrat</string>
