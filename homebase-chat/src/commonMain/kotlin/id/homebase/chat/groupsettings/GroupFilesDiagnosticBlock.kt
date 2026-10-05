@@ -12,11 +12,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.ui.unit.dp
-import id.homebase.core.clipboard.clipEntryOf
+import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.resources.MR
 import id.homebase.resources.chat_group_files_diagnostic_absent
 import id.homebase.resources.chat_group_files_diagnostic_db_admin_label
@@ -27,7 +26,6 @@ import id.homebase.resources.chat_group_files_diagnostic_server_admin_label
 import id.homebase.resources.chat_group_files_diagnostic_server_group_label
 import id.homebase.resources.chat_group_files_diagnostic_title
 import kotlin.uuid.Uuid
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -46,10 +44,10 @@ import org.jetbrains.compose.resources.stringResource
 fun GroupFilesDiagnosticBlock(
     diagnostic: GroupFilesDiagnostic,
     selfDomain: String?,
+    snackbarHostState: SnackbarHostState,
     modifier: Modifier = Modifier,
 ) {
-    val clipboard = LocalClipboard.current
-    val scope = rememberCoroutineScope()
+    val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
     val copyBlob = buildSupportBlob(diagnostic, selfDomain)
 
     Column(
@@ -57,11 +55,7 @@ fun GroupFilesDiagnosticBlock(
             .fillMaxWidth()
             .combinedClickable(
                 onClick = {},
-                onLongClick = {
-                    scope.launch {
-                        clipboard.setClipEntry(clipEntryOf(copyBlob))
-                    }
-                },
+                onLongClick = { copyToClipboard(copyBlob) },
             )
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {

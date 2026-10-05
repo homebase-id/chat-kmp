@@ -8,6 +8,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import co.touchlab.kermit.Logger
+import id.homebase.app.diagnostics.EdtHitchMonitor
 import java.awt.event.WindowEvent
 import java.awt.event.WindowFocusListener
 
@@ -32,7 +33,8 @@ class DesktopLifecycleOwner : LifecycleOwner {
     }
 
     fun onWindowFocusGained() {
-        Logger.d(tag = "DesktopLifecycleOwner") { "onWindowFocusGained -> RESUMED" }
+        Logger.i(tag = "DesktopLifecycleOwner") { "onWindowFocusGained -> RESUMED" }
+        EdtHitchMonitor.onFocusGained()
         lifecycleRegistry.currentState = Lifecycle.State.RESUMED
     }
 

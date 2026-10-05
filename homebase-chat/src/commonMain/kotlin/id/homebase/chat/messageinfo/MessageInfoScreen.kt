@@ -35,11 +35,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
@@ -53,7 +51,7 @@ import id.homebase.chat.widget.SentMessageBubbleDisplayOnly
 import id.homebase.chat.widget.deliveryFailureTint
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
-import id.homebase.core.clipboard.clipEntryOf
+import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.core.util.formateDateTime
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
@@ -89,7 +87,6 @@ import id.homebase.resources.read_by
 import id.homebase.resources.sending_to
 import id.homebase.resources.uploaded
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -170,6 +167,7 @@ fun MessageInfoUi(
 ) {
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
 
     val retryFailed = uiState.uiEvent as? MessageInfoUiEvent.RetryFailed
     val retryFailedText = retryFailed?.let { stringResource(it.messageRes) }
@@ -508,8 +506,6 @@ fun MessageInfoUi(
                 // tiny copy button puts the full UUID on the clipboard for bug
                 // reports / cross-referencing server logs.
                 uiState.message?.id?.let { messageId ->
-                    val clipboard = LocalClipboard.current
-                    val scope = rememberCoroutineScope()
                     val idText = messageId.toString()
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -523,11 +519,7 @@ fun MessageInfoUi(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         IconButton(
-                            onClick = {
-                                scope.launch {
-                                    clipboard.setClipEntry(clipEntryOf(idText))
-                                }
-                            },
+                            onClick = { copyToClipboard(idText) },
                             modifier = Modifier.size(28.dp),
                         ) {
                             Icon(
