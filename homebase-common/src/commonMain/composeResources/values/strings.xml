@@ -2344,7 +2344,14 @@
     <string name="profile_card_read_only_title">This card is locked</string>
     <string name="profile_card_read_only_ok">Got it</string>
     <string name="profile_card_design_locked_title">Design · %1$s</string>
-    <string name="profile_card_read_only_line">Your Homebase server can't keep circle cards yet, so this card can't be changed.</string>
+    <string name="profile_card_not_saved">Not saved yet</string>
+    <string name="profile_card_read_only_reason">Your server can't save circle cards yet.</string>
+    <string name="profile_card_tool_accent">Accent</string>
+    <string name="profile_card_tool_heading">Heading</string>
+    <string name="profile_card_tool_body">Body</string>
+    <string name="profile_card_tool_portrait">Portrait</string>
+    <string name="profile_card_tool_socials">Socials</string>
+    <string name="profile_card_tool_order">Order</string>
     <string name="profile_card_share_public">Share public card</string>
     <string name="profile_card_save_public">Save public card</string>
     <string name="profile_card_share_public_title">Share your public card?</string>
@@ -2361,7 +2368,6 @@
     <string name="profile_card_step_customise">Customise</string>
     <string name="profile_card_step_count">Step %1$d of %2$d</string>
     <string name="profile_card_step_design_title">Choose a design</string>
-    <string name="profile_card_option_caption_hint">%1$s · %2$s</string>
     <string name="profile_card_options_empty">Save it as it is, or tap its name to pick another design.</string>
     <string name="profile_card_options_empty_title">%1$s has nothing to adjust</string>
     <string name="profile_card_option_default">Default</string>
@@ -2403,7 +2409,6 @@
     <string name="profile_card_option_portrait_shape">Portrait shape</string>
     <string name="profile_card_option_socials_style">Social links style</string>
     <string name="profile_card_option_block_order">Section order</string>
-    <string name="profile_card_option_block_order_hint">Drag to reorder</string>
     <string name="profile_card_option_move_up">Move %1$s up</string>
     <string name="profile_card_option_move_down">Move %1$s down</string>
     <string name="profile_card_option_drag">Drag to reorder %1$s</string>

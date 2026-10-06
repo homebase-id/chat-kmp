@@ -31,6 +31,7 @@ import id.homebase.resources.profile_card_read_only_ok
 import id.homebase.resources.profile_card_own_design
 import id.homebase.resources.profile_card_public_everyone
 import id.homebase.resources.profile_card_read_only
+import id.homebase.resources.profile_card_not_saved
 import id.homebase.resources.profile_card_read_only_title
 import id.homebase.resources.profile_card_read_only_why
 import androidx.compose.animation.AnimatedVisibility
@@ -214,11 +215,15 @@ private val CHIP_SWIPE_DISTANCE = 48.dp
 private const val CHIP_SWIPE_VELOCITY = 600f
 private const val CHIP_PULL_DAMPING = 0.35f
 private const val DOT_IDLE_ALPHA = 0.4f
+private const val UNSAVED_LABEL_ALPHA = 0.8f
 private val MENU_MAX_WIDTH = 320.dp
 private val MENU_INSET = 4.dp
 private val MENU_ITEM_CORNER = 12.dp
 private val MENU_SELECTED_CORNER = 20.dp
 private val MENU_ITEM_SHAPE = RoundedCornerShape(MENU_ITEM_CORNER)
+private val MINI_CARD_WIDTH = 26.dp
+private val MINI_CARD_CORNER = 5.dp
+private val MINI_CARD_SELECTED_CORNER = 9.dp
 private val DISMISS_DRAG_DISTANCE = 96.dp
 private const val DISMISS_FLING_VELOCITY = 1500f
 private const val SKELETON_ALPHA_LOW = 0.35f
@@ -413,6 +418,8 @@ fun ProfileCardScreen(
                 )
                 CardBottomChrome(
                     audience = uiState.selectedAudience,
+                    page = uiState.cards.indexOfFirst { it.audience == uiState.selectedAudience },
+                    pages = if (uiState.hasCardMenu) uiState.cards.size else 0,
                     isExporting = uiState.isExporting,
                     canShare = uiState.canShare,
                     saveInsteadOfShare = saveInsteadOfShare,
@@ -476,6 +483,8 @@ internal fun SharePublicCardDialog(circleLabel: String, saveInsteadOfShare: Bool
 @Composable
 internal fun BoxScope.CardBottomChrome(
     audience: CardAudience,
+    page: Int,
+    pages: Int,
     isExporting: Boolean,
     canShare: Boolean,
     saveInsteadOfShare: Boolean,
@@ -490,6 +499,17 @@ internal fun BoxScope.CardBottomChrome(
     var confirmReset by remember { mutableStateOf(false) }
     var explainReadOnly by remember { mutableStateOf(false) }
     val motion = MaterialTheme.motionScheme
+    if (pages > 1) {
+        CardChromePill(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = TOOLBAR_BAND_HEIGHT - 4.dp)
+                .clearAndSetSemantics { },
+        ) {
+            PageDots(page = page, pages = pages, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
+        }
+    }
     Box(
         modifier = Modifier
             .align(Alignment.BottomCenter)
@@ -664,8 +684,7 @@ internal fun SheetTopChrome(
 ) {
     val gap = with(LocalDensity.current) { CHROME_GAP.roundToPx() }
     val edge = with(LocalDensity.current) { 8.dp.roundToPx() }
-    // The audience pill takes all the room up to the close button; the drag handle shows only while it has clear space
-    // in the middle, so a long circle name never runs into it.
+    // The audience pill takes all the room up to the close button; the grab zone sits in the middle only while it's clear.
     Layout(
         modifier = modifier
             .fillMaxWidth()
@@ -684,24 +703,13 @@ internal fun SheetTopChrome(
                     modifier = Modifier.size(20.dp),
                 )
             }
+            // An unmarked grab zone: Close is the visible way out, and a bare handle read as an empty chip.
             Box(
                 modifier = Modifier
                     .size(width = 64.dp, height = 48.dp)
                     .then(handleDrag)
-                    // Close already dismisses; a second announced control for the same action is noise.
                     .clearAndSetSemantics { },
-                contentAlignment = Alignment.Center,
-            ) {
-                CardChromePill {
-                    Box(
-                        modifier = Modifier
-                            .padding(horizontal = 10.dp, vertical = 7.dp)
-                            .size(width = 32.dp, height = 4.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.onSurfaceVariant),
-                    )
-                }
-            }
+            )
         },
     ) { measurables, constraints ->
         val width = constraints.maxWidth
@@ -745,7 +753,12 @@ internal fun AudienceBadge(
     val readOnly = uiState.isCircleReadOnly
     val named = stringResource(if (hasMenu) MR.string.profile_card_audience_switch else MR.string.profile_card_audience_description, label)
     val readOnlyLabel = stringResource(MR.string.profile_card_read_only)
-    val description = if (readOnly) "$named $readOnlyLabel" else named
+    val unsavedLabel = stringResource(MR.string.profile_card_not_saved)
+    val description = when {
+        readOnly -> "$named $readOnlyLabel"
+        uiState.isUnsavedCard -> "$named $unsavedLabel"
+        else -> named
+    }
     val motion = MaterialTheme.motionScheme
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val threshold = with(LocalDensity.current) { CHIP_SWIPE_DISTANCE.toPx() }
@@ -788,16 +801,17 @@ internal fun AudienceBadge(
                 audience = selected,
                 onClick = if (hasMenu) ({ expanded = true }) else null,
                 locked = readOnly,
+                unsaved = uiState.isUnsavedCard,
                 opensMenu = hasMenu,
                 page = page,
-                pages = if (hasMenu) cards.size else 0,
             )
         }
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            shape = MaterialTheme.shapes.large,
+            shape = MaterialTheme.shapes.extraLarge,
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            shadowElevation = 3.dp,
             modifier = Modifier.widthIn(min = MENU_MIN_WIDTH, max = MENU_MAX_WIDTH).padding(horizontal = MENU_INSET),
         ) {
             cards.forEach { card ->
@@ -822,7 +836,7 @@ private fun audienceContainer(audience: CardAudience): Color =
 private fun onAudienceContainer(audience: CardAudience): Color =
     if (audience is CardAudience.Circle) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
 
-/** Public reads primary, a circle tertiary, wherever a card's audience is shown; [pages] adds the card-set indicator. */
+/** Public reads primary, a circle tertiary, wherever a card's audience is shown; [unsaved] marks a card that's still virtual. */
 @Composable
 internal fun AudienceChip(
     audience: CardAudience,
@@ -831,8 +845,8 @@ internal fun AudienceChip(
     opensMenu: Boolean = false,
     elevated: Boolean = true,
     maxLines: Int = 1,
+    unsaved: Boolean = false,
     page: Int = -1,
-    pages: Int = 0,
     onClick: (() -> Unit)? = null,
 ) {
     val motion = MaterialTheme.motionScheme
@@ -847,29 +861,38 @@ internal fun AudienceChip(
                 .padding(start = 12.dp, end = if (opensMenu) 6.dp else 16.dp, top = 4.dp, bottom = 4.dp),
         ) {
             AnimatedContent(
-                targetState = page to audience,
+                targetState = Triple(page, audience, unsaved),
                 transitionSpec = {
                     val forward = if (targetState.first >= initialState.first) 1 else -1
                     (slideInHorizontally(motion.defaultSpatialSpec()) { it / 2 * forward } + fadeIn(motion.defaultEffectsSpec()))
                         .togetherWith(slideOutHorizontally(motion.defaultSpatialSpec()) { -it / 2 * forward } + fadeOut(motion.fastEffectsSpec()))
                 },
                 modifier = Modifier.weight(1f, fill = false),
-            ) { (_, shown) ->
+            ) { (_, shown, draft) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(imageVector = audienceIcon(shown), contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text(
-                        text = audienceLabel(shown),
-                        style = MaterialTheme.typography.labelLargeEmphasized,
-                        maxLines = maxLines,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 8.dp).weight(1f, fill = false),
-                    )
+                    Column(modifier = Modifier.padding(start = 8.dp).weight(1f, fill = false)) {
+                        Text(
+                            text = audienceLabel(shown),
+                            style = MaterialTheme.typography.labelLargeEmphasized,
+                            maxLines = maxLines,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (draft) {
+                            Text(
+                                text = stringResource(MR.string.profile_card_not_saved),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = LocalContentColor.current.copy(alpha = UNSAVED_LABEL_ALPHA),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                 }
             }
             if (locked) {
                 Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.padding(start = 6.dp).size(16.dp))
             }
-            if (pages > 1) PageDots(page = page, pages = pages, modifier = Modifier.padding(start = 10.dp))
             if (opensMenu) {
                 Icon(imageVector = Icons.Filled.ArrowDropDown, contentDescription = null, modifier = Modifier.size(20.dp))
             }
@@ -942,19 +965,23 @@ private fun CardMenuItem(card: ProfileCard, selected: Boolean, onClick: () -> Un
     )
 }
 
+// The card in miniature, the same schematic as the design tiles, so rows that share a design read as the same card.
 @Composable
 private fun CardSwatch(card: ProfileCard, selected: Boolean) {
-    val ground = Color(card.overrides.palette?.ground?.let(::hexToArgb) ?: CardDesign.baseArgb(card.design))
-    val ink = Color(card.overrides.palette?.ink?.let(::hexToArgb) ?: CardDesign.inkArgb(card.design))
-    val shape = if (selected) MaterialShapes.Cookie4Sided.toShape() else RoundedCornerShape(8.dp)
-    Box(
-        modifier = Modifier
-            .size(28.dp)
-            .background(ground, shape)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = ink, modifier = Modifier.size(16.dp))
+    val palette = card.overrides.palette
+    val corner by animateDpAsState(if (selected) MINI_CARD_SELECTED_CORNER else MINI_CARD_CORNER, MaterialTheme.motionScheme.fastSpatialSpec())
+    val shape = RoundedCornerShape(corner)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (selected) Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+        CardDesignThumbnail(
+            design = card.design,
+            groundOverride = palette?.ground?.let { Color(hexToArgb(it)) },
+            inkOverride = palette?.ink?.let { Color(hexToArgb(it)) },
+            modifier = Modifier
+                .size(width = MINI_CARD_WIDTH, height = MINI_CARD_WIDTH / CARD_THUMB_ASPECT)
+                .clip(shape)
+                .border(1.dp, MaterialTheme.colorScheme.outline, shape),
+        )
     }
 }
 
@@ -975,13 +1002,18 @@ internal fun ResetCardDialog(audience: CardAudience, onReset: () -> Unit, onDism
                 Text(message)
             }
         },
-        // Error-tinted, not filled: it throws work away, so it mustn't read as the positive path.
+        // The one filled action, in the error role: it's the step taken here, and it throws work away.
         confirmButton = {
-            TextButton(
+            Button(
                 onClick = onReset,
                 shapes = ButtonDefaults.shapes(),
-                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                ),
             ) {
+                Icon(Icons.Outlined.RestartAlt, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
                 Text(stringResource(MR.string.profile_card_reset_confirm))
             }
         },
@@ -1210,12 +1242,17 @@ private fun CardErrorPlate(message: StringResource, onRetry: () -> Unit, modifie
         modifier = modifier.padding(32.dp),
     ) {
         CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
-            Icon(
-                Icons.Outlined.ErrorOutline,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(32.dp),
-            )
+            Box(
+                modifier = Modifier.size(64.dp).background(MaterialTheme.colorScheme.errorContainer, MaterialShapes.Cookie9Sided.toShape()),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.ErrorOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
             Text(
                 text = stringResource(message),
                 style = MaterialTheme.typography.bodyLarge,

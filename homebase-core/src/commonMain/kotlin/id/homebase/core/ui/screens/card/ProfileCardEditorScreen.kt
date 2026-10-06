@@ -12,9 +12,10 @@ import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
 import id.homebase.resources.profile_card_more_actions
 import id.homebase.resources.profile_card_read_only
-import id.homebase.resources.profile_card_read_only_line
+import id.homebase.resources.profile_card_read_only_reason
+import id.homebase.resources.profile_card_read_only_title
+import id.homebase.resources.profile_card_not_saved
 import id.homebase.resources.profile_card_design_locked_title
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -73,7 +74,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
@@ -101,6 +101,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -144,6 +147,7 @@ private val WIDE_LAYOUT_MIN_WIDTH = 840.dp
 private val WIDE_PANEL_WIDTH = 420.dp
 private val PREVIEW_MAX_WIDTH = 440.dp
 private val PREVIEW_SIDE_INSET = 16.dp
+private val PREVIEW_FADE_HEIGHT = 40.dp
 private val DESIGN_LABEL_HEIGHT = 24.dp
 private val DESIGN_TILE_MIN_WIDTH = 80.dp
 private val DESIGN_TILE_MAX_WIDTH = 128.dp
@@ -152,7 +156,7 @@ private val DESIGN_STRIP_INSET = 20.dp
 private val CAPTION_LINE = 20.dp
 // The card keeps at least the rest of the height, so the controls never shrink it out of being the hero.
 private const val PANEL_MAX_SHARE = 0.55f
-private const val LOCKED_TILE_ALPHA = 0.38f
+private const val DISABLED_TILE_ALPHA = 0.38f
 private const val UNSELECTED_TILE_SCALE = 0.92f
 private const val LARGE_TILE_GROWTH = 1.25f
 // Tiles kept in view before the selected one, so the strip opens on its first design whenever the choice allows.
@@ -274,6 +278,10 @@ internal fun ProfileCardEditorContent(
             val panelMaxHeight = maxHeight * PANEL_MAX_SHARE
             // A read-only card has nothing to customise, so it stays on the design step.
             val shownStep = if (uiState.isCircleReadOnly) EditorStep.Design else step
+            val previewEdge by cardEdgeColor(
+                uiState.cardBottomArgb ?: uiState.overrides.palette?.ground?.let(::hexToArgb),
+                uiState.design,
+            )
             val panel: @Composable (Modifier, Shape) -> Unit = { modifier, shape ->
                 EditorPanel(
                     uiState = uiState,
@@ -298,6 +306,7 @@ internal fun ProfileCardEditorContent(
                 EditorTopBar(
                     audience = uiState.selectedAudience,
                     readOnly = uiState.isCircleReadOnly,
+                    unsaved = uiState.isUnsavedCard,
                     onBack = onBack,
                     onEditProfile = onEditProfile,
                 )
@@ -322,6 +331,8 @@ internal fun ProfileCardEditorContent(
                 } else {
                     CardPreviewFrame(
                         keepProportions = false,
+                        // A failure sits on a neutral plate, which a fade in the card's colour would only stain.
+                        fadeInto = if (uiState.loadFailed || uiState.cardFailed) null else ({ previewEdge }),
                         modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = PREVIEW_SIDE_INSET, vertical = metrics.gap),
                     ) { preview(cardWidth) }
                     panel(
@@ -357,6 +368,7 @@ private fun CardPreviewFrame(
     keepProportions: Boolean,
     modifier: Modifier = Modifier,
     alignment: Alignment = Alignment.Center,
+    fadeInto: (() -> Color)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val shape = MaterialTheme.shapes.extraLargeIncreased
@@ -371,8 +383,22 @@ private fun CardPreviewFrame(
                 .clip(shape)
                 // Sets the card off the page when its own colour is close to the backdrop's.
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
-            content = content,
-        )
+        ) {
+            content()
+            // The card scrolls on past the frame; the edge fades into its own ground so no line is left half-drawn.
+            if (fadeInto != null) {
+                Spacer(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(PREVIEW_FADE_HEIGHT)
+                        .drawBehind {
+                            val color = fadeInto()
+                            drawRect(Brush.verticalGradient(listOf(color.copy(alpha = 0f), color)))
+                        },
+                )
+            }
+        }
     }
 }
 
@@ -380,12 +406,19 @@ private fun CardPreviewFrame(
 private fun EditorTopBar(
     audience: CardAudience,
     readOnly: Boolean,
+    unsaved: Boolean,
     onBack: () -> Unit,
     onEditProfile: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val editing = stringResource(MR.string.profile_card_audience_editing, audienceLabel(audience))
     val readOnlyLabel = stringResource(MR.string.profile_card_read_only)
+    val unsavedLabel = stringResource(MR.string.profile_card_not_saved)
+    val chipDescription = when {
+        readOnly -> "$editing. $readOnlyLabel"
+        unsaved -> "$editing. $unsavedLabel"
+        else -> editing
+    }
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -403,9 +436,9 @@ private fun EditorTopBar(
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 8.dp)
-                    .clearAndSetSemantics { contentDescription = if (readOnly) "$editing. $readOnlyLabel" else editing },
+                    .clearAndSetSemantics { contentDescription = chipDescription },
             ) {
-                AudienceChip(audience = audience, locked = readOnly, elevated = false)
+                AudienceChip(audience = audience, locked = readOnly, unsaved = unsaved, elevated = false)
             }
             Box {
                 IconButton(onClick = { menuOpen = true }) {
@@ -465,7 +498,10 @@ private fun EditorPanel(
                 .padding(top = metrics.edge, bottom = metrics.edge),
             verticalArrangement = Arrangement.spacedBy(metrics.gap),
         ) {
-            if (uiState.isCircleReadOnly) ReadOnlyNotice(Modifier.padding(horizontal = 16.dp))
+            if (uiState.isCircleReadOnly) {
+                ReadOnlyCard(designName = stringResource(designLabel(design)), modifier = Modifier.padding(horizontal = 16.dp))
+                return@Column
+            }
             StepHeader(
                 step = step,
                 design = design,
@@ -492,9 +528,8 @@ private fun EditorPanel(
                 when (shown) {
                     EditorStep.Design -> DesignStrip(
                         selected = design,
-                        enabled = !isSaving && !uiState.isCircleReadOnly && !uiState.loadFailed,
-                        locked = uiState.isCircleReadOnly,
-                        dimmed = uiState.isCircleReadOnly || uiState.loadFailed,
+                        enabled = !isSaving && !uiState.loadFailed,
+                        dimmed = uiState.loadFailed,
                         onSelect = onSelect,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -617,8 +652,7 @@ private fun StepHeader(
     }
 }
 
-// Customise is the step's one action and leads on to Save. Large text keeps it inline as an icon, so the title keeps its line
-// and the card keeps its height.
+// Customise is the step's one action and leads on to Save.
 @Composable
 private fun DesignStepHeader(
     designName: String,
@@ -653,19 +687,8 @@ private fun DesignStepHeader(
                 contentDescription = "$title, $count"
             },
         )
-        when {
-            readOnly -> Unit
-            compact -> WithTooltip(customise) {
-                FilledIconButton(
-                    onClick = onCustomise,
-                    enabled = canCustomise,
-                    shapes = IconButtonDefaults.shapes(),
-                    modifier = Modifier.size(IconButtonDefaults.mediumContainerSize()),
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = customise)
-                }
-            }
-            else -> Button(
+        if (!readOnly) {
+            Button(
                 onClick = onCustomise,
                 enabled = canCustomise,
                 shapes = ButtonDefaults.shapes(),
@@ -673,35 +696,67 @@ private fun DesignStepHeader(
                 modifier = Modifier.heightIn(min = ACTION_HEIGHT),
             ) {
                 ActionLabel(customise)
-                Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = null,
-                    modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
-                )
+                // Large text keeps the word and drops the arrow, so the title keeps its line.
+                if (!compact) {
+                    Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
+                    )
+                }
             }
         }
     }
 }
 
+// A locked card has nothing to pick, so the whole panel is one quiet statement: what's locked, why, and what it shows.
 @Composable
-private fun ReadOnlyNotice(modifier: Modifier = Modifier) {
+private fun ReadOnlyCard(designName: String, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        shape = MaterialTheme.shapes.large,
+        color = colors.surfaceContainerHighest,
+        contentColor = colors.onSurface,
+        shape = MaterialTheme.shapes.extraLarge,
         modifier = modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(16.dp),
         ) {
-            Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(20.dp))
-            Text(
-                text = stringResource(MR.string.profile_card_read_only_line),
-                style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
-            )
+            Box(
+                modifier = Modifier.size(48.dp).background(colors.secondaryContainer, MaterialShapes.Cookie9Sided.toShape()),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Lock, contentDescription = null, tint = colors.onSecondaryContainer, modifier = Modifier.size(22.dp))
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = stringResource(MR.string.profile_card_read_only_title),
+                    style = MaterialTheme.typography.titleMediumEmphasized,
+                    modifier = Modifier.semantics { heading() },
+                )
+                Text(
+                    text = stringResource(MR.string.profile_card_read_only_reason),
+                    style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
+                    color = colors.onSurfaceVariant,
+                )
+                Surface(
+                    shape = CircleShape,
+                    color = colors.secondaryContainer,
+                    contentColor = colors.onSecondaryContainer,
+                    modifier = Modifier.padding(top = 6.dp),
+                ) {
+                    Text(
+                        text = stringResource(MR.string.profile_card_design_locked_title, designName),
+                        style = MaterialTheme.typography.labelLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -768,7 +823,6 @@ private fun ActionLabel(label: String) {
 private fun DesignStrip(
     selected: String,
     enabled: Boolean,
-    locked: Boolean,
     dimmed: Boolean,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -799,7 +853,6 @@ private fun DesignStrip(
                 design = design,
                 selected = design == selected,
                 enabled = enabled,
-                locked = locked,
                 dimmed = dimmed,
                 labelHeight = labelHeight,
                 onClick = {
@@ -834,7 +887,6 @@ private fun DesignTile(
     design: String,
     selected: Boolean,
     enabled: Boolean,
-    locked: Boolean,
     dimmed: Boolean,
     labelHeight: Dp,
     onClick: () -> Unit,
@@ -848,7 +900,8 @@ private fun DesignTile(
     val scale by animateFloatAsState(if (selected) 1f else UNSELECTED_TILE_SCALE, motion.defaultSpatialSpec())
     val ring by animateDpAsState(if (selected) 3.dp else 1.dp, motion.fastSpatialSpec())
     val badge by animateFloatAsState(if (selected) 1f else 0f, motion.fastSpatialSpec())
-    val dim = if (dimmed && !selected) LOCKED_TILE_ALPHA else 1f
+    // A blocked picker dims as a whole, the choice included, so nothing in it looks live.
+    val dim = if (dimmed) DISABLED_TILE_ALPHA else 1f
     val shape = RoundedCornerShape(corner)
     val label = stringResource(designLabel(design))
     val labelStyle = if (selected) typography.labelLargeEmphasized else typography.labelLarge
@@ -881,13 +934,13 @@ private fun DesignTile(
                     }
                     .padding(8.dp)
                     .size(26.dp)
-                    .background(if (locked) colors.secondary else colors.primary, MaterialShapes.Cookie4Sided.toShape()),
+                    .background(colors.primary, MaterialShapes.Cookie4Sided.toShape()),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = if (locked) Icons.Outlined.Lock else Icons.Filled.Check,
+                    imageVector = Icons.Filled.Check,
                     contentDescription = null,
-                    tint = if (locked) colors.onSecondary else colors.onPrimary,
+                    tint = colors.onPrimary,
                     modifier = Modifier.size(14.dp),
                 )
             }

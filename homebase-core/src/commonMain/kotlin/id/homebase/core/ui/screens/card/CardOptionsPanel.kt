@@ -3,7 +3,6 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
@@ -23,6 +22,21 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ToggleButtonShapes
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.material.icons.outlined.DragIndicator
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.text.style.LineHeightStyle
+import id.homebase.resources.profile_card_tool_accent
+import id.homebase.resources.profile_card_tool_heading
+import id.homebase.resources.profile_card_tool_body
+import id.homebase.resources.profile_card_tool_portrait
+import id.homebase.resources.profile_card_tool_socials
+import id.homebase.resources.profile_card_tool_order
 import androidx.compose.material.icons.outlined.Colorize
 import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.ViewAgenda
@@ -59,17 +73,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -79,8 +90,6 @@ import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FloatingToolbarDefaults
-import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialShapes
@@ -130,12 +139,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.graphics.shapes.Morph
 import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
@@ -158,7 +165,6 @@ import id.homebase.resources.profile_card_font_space_mono
 import id.homebase.resources.profile_card_option_accent
 import id.homebase.resources.profile_card_option_accent_swatch
 import id.homebase.resources.profile_card_option_block_order
-import id.homebase.resources.profile_card_option_block_order_hint
 import id.homebase.resources.profile_card_option_default
 import id.homebase.resources.profile_card_option_display_font
 import id.homebase.resources.profile_card_option_drag
@@ -177,7 +183,6 @@ import id.homebase.resources.profile_card_socials_bar
 import id.homebase.resources.profile_card_socials_glyphs
 import id.homebase.resources.profile_card_socials_handles
 import id.homebase.resources.profile_card_socials_wordmark
-import id.homebase.resources.profile_card_option_caption_hint
 import org.jetbrains.compose.resources.Font
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -200,8 +205,8 @@ private val TOOLBAR_SIDE_INSET = 8.dp
 private val SWATCH_ROW_INSET = OPTION_SIDE_INSET - 4.dp
 private val CAPTION_INSET = 24.dp
 private const val REVEAL_MARGIN = 0.6f
-private val MIN_TILE_LABEL_SIZE = 9.sp
-private val BADGE_SIZE = 18.dp
+private val BLOCK_TILE_SPACING = 6.dp
+private val BLOCK_TILE_CORNER = 12.dp
 
 /** Every control comes from the design's [CardDesignSpec]; there is no per-design screen. */
 @Composable
@@ -234,23 +239,9 @@ internal fun CardOptionsPanel(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.TopStart,
         ) { option ->
-            // The toolbar is icons only, so the picked tool is named here, with its gesture hint where it has one.
-            Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)) {
-                Text(
-                    text = if (option == CardOption.BLOCK_ORDER) {
-                        stringResource(MR.string.profile_card_option_caption_hint, stringResource(optionLabel(option)), stringResource(MR.string.profile_card_option_block_order_hint))
-                    } else {
-                        stringResource(optionLabel(option))
-                    },
-                    style = MaterialTheme.typography.labelLargeEmphasized,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = CAPTION_INSET),
-                )
-                Box(modifier = Modifier.fillMaxWidth().heightIn(min = SWATCH_TARGET), contentAlignment = Alignment.Center) {
-                    OptionControl(option, design, overrides, enabled, chipHeight, onOption, onBlockOrder)
-                }
+            // The picked tool names itself in the group below, so the control stands alone here.
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                OptionControl(option, design, overrides, enabled, chipHeight, onOption, onBlockOrder)
             }
         }
         OptionToolbar(
@@ -316,7 +307,7 @@ private fun OptionControl(
     }
 }
 
-// Tools as icons that morph into a filled squircle when picked.
+// One connected group: unpicked tools are icons, the picked one springs open into a pill that names itself.
 @Composable
 private fun OptionToolbar(
     options: List<CardOption>,
@@ -324,59 +315,66 @@ private fun OptionToolbar(
     onPick: (CardOption) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        HorizontalFloatingToolbar(
-            expanded = true,
-            colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
-                toolbarContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                toolbarContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            ),
-            contentPadding = PaddingValues(horizontal = 4.dp),
-            expandedShadowElevation = 0.dp,
-        ) {
-            ScrollableChoiceRow(verticalAlignment = Alignment.CenterVertically) {
-                options.forEach { option ->
-                    ToolItem(
-                        icon = optionIcon(option),
-                        description = stringResource(optionLabel(option)),
-                        selected = option == current,
-                        onClick = { onPick(option) },
-                    )
-                }
-            }
+    ScrollableChoiceRow(
+        modifier = modifier,
+        contentPadding = OPTION_SIDE_INSET,
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        options.forEachIndexed { index, option ->
+            ToolItem(
+                icon = optionIcon(option),
+                label = stringResource(toolLabel(option)),
+                description = stringResource(optionLabel(option)),
+                selected = option == current,
+                shapes = connectedButtonShapes(index, options.size),
+                onClick = { onPick(option) },
+            )
         }
     }
 }
 
-// Icons only, so every tool fits on a phone; the picked one morphs into a filled squircle and each names itself in a tooltip.
 @Composable
 private fun ToolItem(
     icon: ImageVector,
+    label: String,
     description: String,
     selected: Boolean,
+    shapes: ToggleButtonShapes,
     onClick: () -> Unit,
 ) {
     val motion = MaterialTheme.motionScheme
-    val colors = MaterialTheme.colorScheme
-    val corner by animateDpAsState(if (selected) 14.dp else TOOL_SIZE / 2, motion.fastSpatialSpec())
-    val fill by animateColorAsState(if (selected) colors.secondaryContainer else colors.surfaceContainerHighest, motion.fastEffectsSpec())
-    val ink by animateColorAsState(if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant, motion.fastEffectsSpec())
     WithTooltip(description) {
-        Box(
+        ToggleButton(
+            checked = selected,
+            onCheckedChange = { onClick() },
+            shapes = shapes,
+            colors = ToggleButtonDefaults.tonalToggleButtonColors(),
+            contentPadding = PaddingValues(horizontal = 14.dp),
             modifier = Modifier
-                .size(TOOL_SIZE)
                 .revealWhenSelected(selected)
-                .selectable(selected = selected, role = Role.Tab, onClick = onClick)
-                .semantics { contentDescription = description },
-            contentAlignment = Alignment.Center,
+                .height(TOOL_SIZE)
+                .widthIn(min = TOOL_SIZE)
+                .clearAndSetSemantics {
+                    contentDescription = description
+                    role = Role.Tab
+                    this.selected = selected
+                    onClick { onClick(); true }
+                },
         ) {
-            Box(
-                modifier = Modifier
-                    .size(TOOL_SIZE - 8.dp)
-                    .background(fill, RoundedCornerShape(corner)),
-                contentAlignment = Alignment.Center,
+            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            AnimatedVisibility(
+                visible = selected,
+                enter = expandHorizontally(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()),
+                exit = shrinkHorizontally(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
             ) {
-                Icon(imageVector = icon, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
             }
         }
     }
@@ -418,6 +416,13 @@ private fun OptionsEmptyState(design: String, modifier: Modifier = Modifier) {
     }
 }
 
+// Squircle at rest, pill when picked: the same softening the design tiles and connected groups use for a choice.
+private val LOOSE_CHOICE_SHAPES = ToggleButtonShapes(
+    shape = RoundedCornerShape(12.dp),
+    pressedShape = RoundedCornerShape(8.dp),
+    checkedShape = CircleShape,
+)
+
 /**
  * Pick-one chips. [connected] makes them one M3 connected group (rounded ends, tight inner corners, the checked one springs to a
  * pill); otherwise each is its own pill. Chips are as wide as their content; when they don't fit, the row scrolls under faded edges.
@@ -443,6 +448,7 @@ private fun SegmentedChoices(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = OPTION_SIDE_INSET,
             horizontalArrangement = Arrangement.spacedBy(spacing),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             values.forEachIndexed { index, value ->
                 val label = description?.invoke(value)
@@ -450,7 +456,7 @@ private fun SegmentedChoices(
                     checked = value == selected,
                     onCheckedChange = { onSelect(value) },
                     enabled = enabled,
-                    shapes = if (connected) connectedButtonShapes(index, values.size) else ToggleButtonDefaults.shapes(),
+                    shapes = if (connected) connectedButtonShapes(index, values.size) else LOOSE_CHOICE_SHAPES,
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     modifier = Modifier
                         .revealWhenSelected(value == selected)
@@ -490,11 +496,12 @@ private fun fontPreviewStyle(font: String?): TextStyle {
         "caveat" -> MR.font.card_font_caveat
         "archivo-black" -> MR.font.card_font_archivo_black
         "space-mono" -> MR.font.card_font_space_mono
-        else -> return base
+        else -> return base.copy(lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both))
     }
     val font = Font(face)
     val family = remember(font) { FontFamily(font) }
-    return base.copy(fontFamily = family)
+    // Each face has its own ascent; centring the trimmed line keeps every name on the chips' common midline.
+    return base.copy(fontFamily = family, lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both))
 }
 
 // Each swatch is the scheme in small: its ground with an ink dot, so the pairing is judged before it is picked.
@@ -637,16 +644,17 @@ private fun DrawScope.drawPortraitShape(shape: String, color: Color) {
 }
 
 // The card's sections as tiles in the order they appear, dragged along the row; move up/down stay as accessibility actions.
+// Tiles keep their full label at a fixed size; when they don't fit, the row scrolls instead of shrinking them.
 @Composable
 private fun BlockOrderRow(order: List<String>, enabled: Boolean, tileHeight: Dp, onChange: (List<String>) -> Unit) {
-    val spacing = ButtonGroupDefaults.ConnectedSpaceBetween
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(horizontal = OPTION_SIDE_INSET)) {
-        val tileWidth = (maxWidth - spacing * (order.size - 1)) / order.size
+    val scroll = rememberScrollState()
+    Box(modifier = Modifier.fillMaxWidth()) {
         // The list must be a new immutable instance per change: ReorderableRow keys its offsets on the instance.
         ReorderableRow(
             list = order,
             onSettle = { from, to -> if (from != to) onChange(order.toMutableList().apply { add(to, removeAt(from)) }) },
-            horizontalArrangement = Arrangement.spacedBy(spacing),
+            modifier = Modifier.fillMaxWidth().fadingEdges(scroll).horizontalScroll(scroll).padding(horizontal = OPTION_SIDE_INSET),
+            horizontalArrangement = Arrangement.spacedBy(BLOCK_TILE_SPACING, Alignment.CenterHorizontally),
         ) { index, kind, dragging ->
             key(kind) {
                 ReorderableItem {
@@ -658,15 +666,15 @@ private fun BlockOrderRow(order: List<String>, enabled: Boolean, tileHeight: Dp,
                     val last = index == order.lastIndex
                     val colors = MaterialTheme.colorScheme
                     val motion = MaterialTheme.motionScheme
-                    val elevation by animateDpAsState(if (dragging) 6.dp else 0.dp, motion.fastSpatialSpec())
+                    val elevation by animateDpAsState(if (dragging) 6.dp else 1.dp, motion.fastSpatialSpec())
                     val lift by animateFloatAsState(if (dragging) 1.06f else 1f, motion.fastSpatialSpec())
+                    val corner by animateDpAsState(if (dragging) tileHeight / 2 else BLOCK_TILE_CORNER, motion.fastSpatialSpec())
                     Surface(
-                        shape = if (dragging) CircleShape else connectedButtonShapes(index, order.size).shape,
+                        shape = RoundedCornerShape(corner),
                         color = if (dragging) colors.secondaryContainer else colors.surfaceContainerHighest,
                         contentColor = if (dragging) colors.onSecondaryContainer else colors.onSurface,
                         shadowElevation = elevation,
                         modifier = Modifier
-                            .width(tileWidth)
                             .height(tileHeight)
                             .graphicsLayer {
                                 scaleX = lift
@@ -685,7 +693,7 @@ private fun BlockOrderRow(order: List<String>, enabled: Boolean, tileHeight: Dp,
                                 }
                             },
                     ) {
-                        BlockTile(name = name, position = index + 1)
+                        BlockTile(name = name)
                     }
                 }
             }
@@ -693,36 +701,21 @@ private fun BlockOrderRow(order: List<String>, enabled: Boolean, tileHeight: Dp,
     }
 }
 
-// The numbered badge says where the section sits on the card; the caption above says the tiles drag.
+// The grip says the tiles move; their left-to-right order is the order on the card.
 @Composable
-private fun BlockTile(name: String, position: Int) {
-    val colors = MaterialTheme.colorScheme
+private fun BlockTile(name: String) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-        modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+        modifier = Modifier.padding(start = 8.dp, end = 14.dp),
     ) {
-        // At a large text size the name needs the whole tile; the order of the tiles still says the position.
-        if (LocalDensity.current.fontScale < LARGE_TEXT_SCALE) {
-            Box(
-                modifier = Modifier.size(BADGE_SIZE).background(colors.primaryContainer, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = position.toString(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onPrimaryContainer,
-                )
-            }
-        }
-        val style = MaterialTheme.typography.labelLarge
-        // Four tiles share the row, so a long name at a large text size steps down rather than being cut.
-        Text(
-            text = name,
-            style = style,
-            maxLines = 1,
-            autoSize = TextAutoSize.StepBased(minFontSize = MIN_TILE_LABEL_SIZE, maxFontSize = style.fontSize),
+        Icon(
+            Icons.Outlined.DragIndicator,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp),
         )
+        Text(text = name, style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
     }
 }
 
@@ -795,6 +788,16 @@ private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.PORTRAIT_SHAPE -> MR.string.profile_card_option_portrait_shape
     CardOption.SOCIALS_STYLE -> MR.string.profile_card_option_socials_style
     CardOption.BLOCK_ORDER -> MR.string.profile_card_option_block_order
+}
+
+private fun toolLabel(option: CardOption): StringResource = when (option) {
+    CardOption.COLOURS -> MR.string.profile_card_option_colours
+    CardOption.ACCENT -> MR.string.profile_card_tool_accent
+    CardOption.DISPLAY_FONT -> MR.string.profile_card_tool_heading
+    CardOption.TEXT_FONT -> MR.string.profile_card_tool_body
+    CardOption.PORTRAIT_SHAPE -> MR.string.profile_card_tool_portrait
+    CardOption.SOCIALS_STYLE -> MR.string.profile_card_tool_socials
+    CardOption.BLOCK_ORDER -> MR.string.profile_card_tool_order
 }
 
 private fun optionIcon(option: CardOption): ImageVector = when (option) {
