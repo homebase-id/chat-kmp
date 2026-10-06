@@ -70,7 +70,8 @@ data class CircleMembersUi(
      *  flow rather than manually curated. */
     val manageable: Boolean = true,
     val disabled: Boolean = false,
-    val offersEnableToggle: Boolean = false,
+    /** Shown under the menu's greyed Disable/Enable item; null means the toggle is offered. */
+    val toggleBlockedReason: ContactBookError? = null,
     val togglingEnabled: Boolean = false,
     /** Shown in the sheet, like [removeError]: the screen's snackbar sits underneath it. */
     val toggleError: ContactBookError? = null,

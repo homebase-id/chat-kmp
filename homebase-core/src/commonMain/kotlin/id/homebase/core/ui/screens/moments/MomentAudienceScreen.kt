@@ -279,6 +279,7 @@ fun MomentAudienceScreen(
                 onAddMemberClick = {},
                 onRemoveMemberClick = {},
                 connectionStatuses = uiState.connectionStatuses,
+                onEnabledChange = { viewModel.onAction(MomentAudienceUiAction.CircleEnabledChanged(detail.circleId, it)) },
             )
         }
     }

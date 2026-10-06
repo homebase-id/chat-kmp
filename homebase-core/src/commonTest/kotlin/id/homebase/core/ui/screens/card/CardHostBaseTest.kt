@@ -90,6 +90,12 @@ class CardHostBaseTest {
     }
 
     @Test
+    fun aNarrowViewScalesThePageDownButNeverUp() {
+        assertEquals(0.5f, pageScale(viewWidth = 200f, layoutWidth = 400f))
+        assertEquals(1f, pageScale(viewWidth = 600f, layoutWidth = 400f))
+    }
+
+    @Test
     fun exportPngBeforeLoadIsAnErrorNotASilentNoOp() = runTest {
         val next = async(start = CoroutineStart.UNDISPATCHED) { host.events.first() }
 

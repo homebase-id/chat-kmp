@@ -77,6 +77,27 @@ class MailModelsSerializationTest {
         assertTrue(status.dkimRecords.isEmpty())
     }
 
+    /** odin-core writes enums camelCase; the request bodies must match, or setup quietly makes an encrypted mailbox. */
+    @Test
+    fun modeRoundTripsInTheServerSpelling() {
+        val standard = OdinSystemSerializer.deserialize<MailAppStatus>("""{ "mode": "standard" }""")
+        val encrypted = OdinSystemSerializer.deserialize<MailAppStatus>("""{ "mode": "encrypted" }""")
+
+        assertEquals(MailboxMode.Standard, standard.mode)
+        assertEquals(MailboxMode.Encrypted, encrypted.mode)
+        assertEquals("\"standard\"", OdinSystemSerializer.serialize(MailboxMode.Standard))
+    }
+
+    /** A server that predates the choice sends no mode; the app must not invent one. */
+    @Test
+    fun modeIsNullFromAnOlderServer() {
+        val status = OdinSystemSerializer.deserialize<MailAppStatus>("""{ "mailboxProvisioned": true }""")
+
+        assertNull(status.mode)
+        assertEquals(MailboxMode.Encrypted, status.effectiveMode)
+        assertEquals(false, status.offersModeChoice)
+    }
+
     /**
      * Guards the silent-failure mode itself: a payload whose keys are all wrong must NOT read as
      * a plausible status. If someone renames a field on one side only, this is what catches it.

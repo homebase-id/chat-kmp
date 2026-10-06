@@ -9,18 +9,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.Switch
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,11 +35,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.CircleDriveUi
 import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
+import id.homebase.core.ui.screens.contactbook.ContactBookError
 import id.homebase.core.ui.screens.contactbook.messageRes
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -53,11 +57,15 @@ import id.homebase.resources.circle_member_status_member
 import id.homebase.resources.circle_member_status_pending
 import id.homebase.resources.contactbook_circle_add_member
 import id.homebase.resources.contactbook_circle_disabled
-import id.homebase.resources.contactbook_circle_enabled
+import id.homebase.resources.contactbook_circle_disable
+import id.homebase.resources.contactbook_circle_disable_confirm
+import id.homebase.resources.contactbook_circle_disable_confirm_title
+import id.homebase.resources.contactbook_circle_enable
 import id.homebase.resources.contactbook_circle_enabled_hint
 import id.homebase.resources.contactbook_circle_members_count
 import id.homebase.resources.contactbook_circle_members_count_with_pending
 import id.homebase.resources.contactbook_circle_members_empty
+import id.homebase.resources.contactbook_circle_menu
 import id.homebase.resources.remove
 import org.jetbrains.compose.resources.stringResource
 
@@ -80,6 +88,7 @@ fun CircleMembersSheet(
     onEnabledChange: (Boolean) -> Unit = {},
 ) {
     var confirmRemove by remember { mutableStateOf<ContactBookEntry?>(null) }
+    var confirmDisable by remember { mutableStateOf(false) }
 
     AdaptiveSheet(onDismiss = onDismiss) {
         Column(
@@ -103,6 +112,13 @@ fun CircleMembersSheet(
                         Icon(imageVector = Icons.Default.Add, contentDescription = stringResource(MR.string.contactbook_circle_add_member))
                     }
                 }
+                CircleMenu(
+                    disabled = state.disabled,
+                    toggling = state.togglingEnabled,
+                    blockedReason = state.toggleBlockedReason,
+                    onDisableClick = { confirmDisable = true },
+                    onEnableClick = { onEnabledChange(true) },
+                )
             }
             state.viewerStatus?.let { status ->
                 Text(
@@ -116,36 +132,19 @@ fun CircleMembersSheet(
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
-            if (state.offersEnableToggle) {
-                val toggleError = state.toggleError
-                ListItem(
-                    modifier = Modifier
-                        .padding(bottom = if (toggleError == null) 12.dp else 4.dp)
-                        .toggleable(
-                            value = !state.disabled,
-                            enabled = !state.togglingEnabled,
-                            onValueChange = onEnabledChange,
-                            role = Role.Switch,
-                        ),
-                    headlineContent = { Text(stringResource(MR.string.contactbook_circle_enabled)) },
-                    supportingContent = { Text(stringResource(MR.string.contactbook_circle_enabled_hint)) },
-                    trailingContent = {
-                        Switch(checked = !state.disabled, onCheckedChange = null, enabled = !state.togglingEnabled)
-                    },
-                )
-                if (toggleError != null) {
-                    Text(
-                        text = stringResource(toggleError.messageRes()),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-                    )
-                }
-            } else if (state.disabled) {
+            if (state.disabled) {
                 Text(
                     text = stringResource(MR.string.contactbook_circle_disabled),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+            state.toggleError?.let { error ->
+                Text(
+                    text = stringResource(error.messageRes()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
@@ -258,6 +257,70 @@ fun CircleMembersSheet(
                 }
             },
         )
+    }
+
+    if (confirmDisable) {
+        AlertDialog(
+            onDismissRequest = { confirmDisable = false },
+            title = { Text(stringResource(MR.string.contactbook_circle_disable_confirm_title, state.circleName)) },
+            text = { Text(stringResource(MR.string.contactbook_circle_enabled_hint)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDisable = false
+                    onEnabledChange(false)
+                }) { Text(stringResource(MR.string.contactbook_circle_disable_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDisable = false }) {
+                    Text(stringResource(MR.string.cancel))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun CircleMenu(
+    disabled: Boolean,
+    toggling: Boolean,
+    blockedReason: ContactBookError?,
+    onDisableClick: () -> Unit,
+    onEnableClick: () -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    // The Box is the anchor: without it the menu positions against the whole header row.
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.string.contactbook_circle_menu))
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            val allowed = blockedReason == null && !toggling
+            if (disabled) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.contactbook_circle_enable)) },
+                    leadingIcon = { Icon(Icons.Outlined.CheckCircle, contentDescription = null) },
+                    enabled = allowed,
+                    onClick = { open = false; onEnableClick() },
+                )
+            } else {
+                val error = MaterialTheme.colorScheme.error
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.contactbook_circle_disable)) },
+                    leadingIcon = { Icon(Icons.Outlined.Block, contentDescription = null) },
+                    enabled = allowed,
+                    colors = MenuDefaults.itemColors(textColor = error, leadingIconColor = error),
+                    onClick = { open = false; onDisableClick() },
+                )
+            }
+            if (blockedReason != null) {
+                Text(
+                    text = stringResource(blockedReason.messageRes()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.widthIn(max = 240.dp).padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                )
+            }
+        }
     }
 }
 

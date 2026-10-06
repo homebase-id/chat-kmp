@@ -39,7 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.heading
@@ -49,13 +48,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import id.homebase.core.clipboard.clipEntryOf
+import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.resources.MR
 import id.homebase.resources.chat_contact_card_action_unavailable
 import id.homebase.resources.chat_contact_card_call
 import id.homebase.resources.chat_contact_card_close
-import id.homebase.resources.chat_contact_card_copied
 import id.homebase.resources.chat_contact_card_copy_email
 import id.homebase.resources.chat_contact_card_copy_identity
 import id.homebase.resources.chat_contact_card_copy_phone
@@ -118,7 +116,6 @@ private fun ContactCardDetailContent(
     photo: HomebaseImageData?,
 ) {
     val uriHandler = LocalUriHandler.current
-    val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val subtitle = remember(descriptor) { descriptor.subtitleLine() }
@@ -129,13 +126,7 @@ private fun ContactCardDetailContent(
     val phoneValues = values.filter { it.kind == ContactValueKind.Phone }.map { it.value }
     val emailValues = values.filter { it.kind == ContactValueKind.Email }.map { it.value }
 
-    val copiedMessage = stringResource(MR.string.chat_contact_card_copied)
-    val copyValue: (String) -> Unit = { value ->
-        scope.launch {
-            clipboard.setClipEntry(clipEntryOf(value))
-            snackbarHostState.showSnackbar(copiedMessage)
-        }
-    }
+    val copyValue = rememberCopyToClipboard(snackbarHostState)
     // A device with no dialer or mail client throws out of openUri; a silent tap looks broken.
     val unavailableMessage = stringResource(MR.string.chat_contact_card_action_unavailable)
     val openUri: (String) -> Unit = { uri ->

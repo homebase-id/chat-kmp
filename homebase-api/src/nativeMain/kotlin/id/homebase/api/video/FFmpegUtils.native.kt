@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.foundation.toByteArray
@@ -247,6 +248,9 @@ actual object FFmpegUtils {
         val encoders =
             if (dimensionsUnknown) listOf("libx264")
             else listOf("h264_videotoolbox", "libx264")
+        Logger.i(tag = "VideoProcessing") {
+            "compressVideo: probed=${widthPx}x$heightPx rotation=$rotation duration=${durationMs}ms encoder=${encoders.first()}"
+        }
         for ((index, encoder) in encoders.withIndex()) {
             val plan = FfmpegCompressPlanner.plan(
                 inputPath = inputPath,
@@ -281,10 +285,11 @@ actual object FFmpegUtils {
             if (result.isSuccess) {
                 return@withContext outputPath
             }
+            val failLine = result.failStackTrace?.lineSequence()?.firstOrNull()
             if (index < encoders.lastIndex) {
-                println("Docs: Encoder $encoder failed, trying next: ${result.failStackTrace}")
+                Logger.w(tag = "VideoProcessing") { "Encoder $encoder failed, trying ${encoders[index + 1]}: $failLine" }
             } else {
-                println("Docs: Encoder $encoder (last) also failed: ${result.failStackTrace}")
+                Logger.w(tag = "VideoProcessing") { "Encoder $encoder (last) also failed: $failLine" }
             }
         }
 

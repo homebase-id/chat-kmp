@@ -9,6 +9,7 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
@@ -22,8 +23,11 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
+import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.conversationlist.MessageClusterPosition
+import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
@@ -158,6 +162,7 @@ class BubbleLayoutInvariantTest {
         // A single voice-note payload instead of images. Renders via AudioPlayerWidget,
         // which has no intrinsic width and fills whatever the bubble offers.
         val audio: Boolean = false,
+        val linkPreview: Boolean = false,
     )
 
     private fun imagePayload(i: Int, aspect: Aspect = Aspect.LANDSCAPE) = PayloadDescriptor(
@@ -185,6 +190,25 @@ class BubbleLayoutInvariantTest {
         key = "chat_aud0",
         contentType = "audio/mp4",
         iv = Base64.encode(ByteArray(16)),
+    )
+
+    private val linkTitle = "Link title"
+
+    private fun linkPreviewPayload() = PayloadDescriptor(
+        key = "chat_links",
+        contentType = "application/json",
+        iv = Base64.encode(ByteArray(16)),
+        descriptorContent = OdinSystemSerializer.serialize(
+            listOf(
+                LinkPreviewDescriptor(
+                    url = "https://example.com", hasImage = true, imageWidth = null,
+                    imageHeight = null, description = "", title = linkTitle,
+                ),
+            ),
+        ),
+        previewThumbnail = ThumbnailDescriptor(
+            pixelWidth = 1200, pixelHeight = 600, contentType = "image/jpeg", content = "",
+        ),
     )
 
     // Stable so a test can hand the bubble the quoted message itself (which is what makes the
@@ -215,6 +239,7 @@ class BubbleLayoutInvariantTest {
             payloads = when {
                 document -> listOf(documentPayload()).toPersistentList()
                 audio -> listOf(audioPayload()).toPersistentList()
+                linkPreview -> listOf(linkPreviewPayload()).toPersistentList()
                 else -> (0 until images).map { imagePayload(it, aspect) }.toPersistentList()
             },
             keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
@@ -231,6 +256,7 @@ class BubbleLayoutInvariantTest {
         quoted: MessageUiModel? = null,
         width: Dp = columnWidth,
         showVoiceNoteSender: Boolean = false,
+        uploadStatus: UploadStatus? = null,
     ) = setContent {
         Host(width) {
             MessageBubbleRaw(
@@ -247,6 +273,7 @@ class BubbleLayoutInvariantTest {
                 authorName = authorName,
                 clusterPosition = cluster,
                 showVoiceNoteSender = showVoiceNoteSender,
+                uploadStatus = uploadStatus,
             )
         }
     }
@@ -318,6 +345,36 @@ class BubbleLayoutInvariantTest {
                 "caption overflows bubble")
         }
         assertTrue(failures.isEmpty(), "gallery full-bleed invariant failures:\n" + failures.joinToString("\n"))
+    }
+
+    @Test
+    fun galleryWithCaption_fillsBubbleUpToCap() = runComposeUiTest {
+        val cap = Dimens.MediaBubble.galleryMaxWidth.value
+        val failures = mutableListOf<String>()
+        for (width in listOf(phoneWidth, columnWidth, 700.dp, 1000.dp))
+            for (sent in listOf(true, false))
+                for (images in listOf(2, 4, 7))
+                    for (caption in listOf(Caption.SHORT, Caption.LONG, Caption.BLOCK)) {
+                        val name = "${images}img/$caption/${if (sent) "sent" else "recv"}@${width.value}"
+                        val expected = minOf(width.value, cap)
+                        render(
+                            Case(name, sent, images, caption),
+                            authorName = if (sent) null else "Alice Wonderland",
+                            width = width,
+                        )
+                        val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+                        val media = boundsOf(ChatBubbleTestTags.MEDIA)
+                        val mediaWidth = media.right.value - media.left.value
+                        val bubbleWidth = bubble.right.value - bubble.left.value
+                        val captionRight = boundsOf(ChatBubbleTestTags.CAPTION).right.value
+                        if (!approx(mediaWidth, expected)) failures += "[$name] media=$mediaWidth != $expected"
+                        if (!approx(bubbleWidth, mediaWidth)) failures += "[$name] bubble=$bubbleWidth != media=$mediaWidth"
+                        if (captionRight > media.right.value + tol) failures += "[$name] caption.right=$captionRight past media"
+                    }
+        render(Case("1img/LONG", false, 1, Caption.LONG), authorName = "Alice Wonderland")
+        val single = boundsOf(ChatBubbleTestTags.MEDIA).let { it.right.value - it.left.value }
+        if (!approx(single, columnWidth.value)) failures += "[1img/LONG] media=$single != ${columnWidth.value}"
+        assertTrue(failures.isEmpty(), "captioned gallery width failures:\n" + failures.joinToString("\n"))
     }
 
     /**
@@ -806,6 +863,30 @@ class BubbleLayoutInvariantTest {
             failures.isEmpty(),
             "voice-note sender-avatar failures:\n" + failures.joinToString("\n"),
         )
+    }
+
+    @Test
+    fun linkPreview_blockCaption_imageFollowsAspect_desktop_unchangedPhone() = runComposeUiTest {
+        val failures = mutableListOf<String>()
+        for (width in listOf(desktopWidth, phoneWidth)) {
+            val case = Case("link/${width.value}", sent = false, images = 0, caption = Caption.BLOCK, linkPreview = true)
+            // Preparing makes the card use AsyncImage, which carries the title as its description without a drive fetch.
+            render(case, width = width, uploadStatus = UploadStatus.Preparing)
+            val image = onNodeWithContentDescription(linkTitle, useUnmergedTree = true).getUnclippedBoundsInRoot()
+            val media = boundsOf(ChatBubbleTestTags.MEDIA)
+            val imageWidth = image.right.value - image.left.value
+            val imageHeight = image.bottom.value - image.top.value
+            val mediaHeight = media.bottom.value - media.top.value
+            if (width == desktopWidth) {
+                if (!approx(imageHeight, minOf(imageWidth / 2f, 480f)))
+                    failures += "[${case.name}] image is ${imageWidth}x${imageHeight}dp, expected 2:1 up to 480dp tall"
+                if (mediaHeight <= Dimens.MediaBubble.maxHeight.value + tol)
+                    failures += "[${case.name}] card is ${mediaHeight}dp, still clamped to the bubble cap"
+            } else if (!approx(imageHeight, minOf(imageWidth / 2f, 180f))) {
+                failures += "[${case.name}] phone image is ${imageWidth}x${imageHeight}dp, expected 2:1 up to 180dp tall"
+            }
+        }
+        assertTrue(failures.isEmpty(), "link preview block-caption failures:\n" + failures.joinToString("\n"))
     }
 
     /**

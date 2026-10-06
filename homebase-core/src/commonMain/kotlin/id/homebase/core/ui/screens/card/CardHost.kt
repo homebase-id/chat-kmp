@@ -2,11 +2,24 @@ package id.homebase.core.ui.screens.card
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.node.LayoutModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.invalidateMeasurement
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import co.touchlab.kermit.Logger
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.util.truncateToCodePoints
+import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -51,8 +64,47 @@ interface CardHost {
 
 expect fun createCardHost(odinId: String): CardHost
 
+/**
+ * Shows [host]'s page. With a [layoutWidth] wider than the view, the page lays out at that width (keeping the view's
+ * aspect ratio) and is drawn scaled down to fit, so a small preview reflows exactly like the full-size card.
+ * Desktop lays out at the view's own size: wry exposes no zoom.
+ */
 @Composable
-expect fun CardHostView(host: CardHost, modifier: Modifier = Modifier)
+expect fun CardHostView(host: CardHost, modifier: Modifier = Modifier, layoutWidth: Dp? = null)
+
+internal fun pageScale(viewWidth: Float, layoutWidth: Float): Float = (viewWidth / layoutWidth).coerceIn(MIN_PAGE_SCALE, 1f)
+
+private const val MIN_PAGE_SCALE = 0.1f
+
+/** Measures the content at [layoutWidth] and the view's aspect ratio, then draws it scaled into the view's bounds. */
+internal fun Modifier.laidOutAt(layoutWidth: Dp?): Modifier =
+    if (layoutWidth == null) this else clipToBounds().then(LaidOutAtElement(layoutWidth))
+
+private data class LaidOutAtElement(val layoutWidth: Dp) : ModifierNodeElement<LaidOutAtNode>() {
+    override fun create() = LaidOutAtNode(layoutWidth)
+
+    override fun update(node: LaidOutAtNode) {
+        if (node.layoutWidth == layoutWidth) return
+        node.layoutWidth = layoutWidth
+        node.invalidateMeasurement()
+    }
+}
+
+private class LaidOutAtNode(var layoutWidth: Dp) : Modifier.Node(), LayoutModifierNode {
+    override fun MeasureScope.measure(measurable: Measurable, constraints: Constraints): MeasureResult {
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        val scale = pageScale(width.toFloat(), layoutWidth.toPx())
+        val placeable = measurable.measure(Constraints.fixed((width / scale).roundToInt(), (height / scale).roundToInt()))
+        return layout(width, height) {
+            placeable.placeWithLayer(0, 0) {
+                scaleX = scale
+                scaleY = scale
+                transformOrigin = TransformOrigin(0f, 0f)
+            }
+        }
+    }
+}
 
 internal object CardLog {
     private const val TAG = "CardHost"
@@ -75,6 +127,7 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
     protected val scope = supervisedScope("card-host", Dispatchers.Main)
 
     private var lastPayload: CardPayload? = null
+    private var renderSent: TimeMark? = null
     private var mainFrameSettled = false
     private var loadedTimeout: Job? = null
 
@@ -91,7 +144,12 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
 
     override fun render(payload: CardPayload) {
         lastPayload = payload
-        if (_isLoaded.value) send(CardCommand.Render(payload))
+        if (_isLoaded.value) sendRender(payload)
+    }
+
+    private fun sendRender(payload: CardPayload) {
+        renderSent = TimeSource.Monotonic.markNow()
+        send(CardCommand.Render(payload))
     }
 
     override fun exportPng() {
@@ -140,11 +198,15 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
         }
         when (event) {
             CardEvent.Loaded -> onLoaded()
-            is CardEvent.Ready -> CardLog.info("ready layout=${event.layout} ${event.ms}ms")
+            is CardEvent.Ready -> CardLog.info("ready layout=${event.layout} ${event.ms}ms, ${renderSent?.elapsedNow()?.inWholeMilliseconds}ms after the render was sent")
+            CardEvent.Painted -> renderSent?.let {
+                CardLog.info("painted ${it.elapsedNow().inWholeMilliseconds}ms after the render was sent")
+                renderSent = null
+            }
             is CardEvent.Png -> CardLog.info("png ${decodedSize(event.base64)}B ${event.width}x${event.height}")
             is CardEvent.Link -> CardLog.info("link ${event.href}")
             is CardEvent.Error -> CardLog.error(event.message)
-            is CardEvent.Edges, CardEvent.Painted -> Unit
+            is CardEvent.Edges -> Unit
         }
         _events.tryEmit(event)
     }
@@ -159,7 +221,7 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
         loadedTimeout?.cancel()
         _isLoaded.value = true
         // Covers a render queued before load and a page that reloaded under a rendered card.
-        lastPayload?.let { send(CardCommand.Render(it)) }
+        lastPayload?.let(::sendRender)
     }
 
     private fun decodedSize(base64: String): Int =

@@ -9,13 +9,12 @@ import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONTACTS_APP_ID
 import id.homebase.core.ui.screens.contactbook.ContactBookError
-import id.homebase.core.ui.screens.contactbook.offersEnableToggle
 import id.homebase.core.ui.screens.contactbook.toCircleToggleError
+import id.homebase.core.ui.screens.contactbook.toggleBlockedReason
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import kotlin.test.assertNull
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -26,20 +25,26 @@ class CircleToggleTest {
 
     @Test
     fun theToggleIsOfferedOnChatAndContactsAppCircles() {
-        assertTrue(circle(ChatProtocol.ChatAppId).offersEnableToggle())
-        assertTrue(circle(Uuid.parse(CONTACTS_APP_ID)).offersEnableToggle())
+        assertNull(circle(ChatProtocol.ChatAppId).toggleBlockedReason())
+        assertNull(circle(Uuid.parse(CONTACTS_APP_ID)).toggleBlockedReason())
     }
 
     @Test
-    fun theToggleIsNotOfferedOnOwnerOrOtherAppCircles() {
-        assertFalse(circle(null).offersEnableToggle())
-        assertFalse(circle(Uuid.random()).offersEnableToggle())
+    fun ownerAndOtherAppCirclesAreBlockedAsForbidden() {
+        assertEquals(ContactBookError.CircleToggleForbidden, circle(null).toggleBlockedReason())
+        assertEquals(ContactBookError.CircleToggleForbidden, circle(Uuid.random()).toggleBlockedReason())
     }
 
     @Test
-    fun theToggleIsNeverOfferedOnASystemCircle() {
-        assertFalse(circle(ChatProtocol.ChatAppId, CONFIRMED_CONNECTIONS_CIRCLE_ID).offersEnableToggle())
-        assertFalse(circle(ChatProtocol.ChatAppId, AUTO_CONNECTIONS_CIRCLE_ID).offersEnableToggle())
+    fun systemCirclesAreBlockedAsSystem() {
+        assertEquals(ContactBookError.CircleToggleSystemCircle, circle(ChatProtocol.ChatAppId, CONFIRMED_CONNECTIONS_CIRCLE_ID).toggleBlockedReason())
+        assertEquals(ContactBookError.CircleToggleSystemCircle, circle(ChatProtocol.ChatAppId, AUTO_CONNECTIONS_CIRCLE_ID).toggleBlockedReason())
+    }
+
+    @Test
+    fun aMissingCircleIsBlockedAsNotFound() {
+        val missing: RedactedCircleDefinition? = null
+        assertEquals(ContactBookError.CircleToggleNotFound, missing.toggleBlockedReason())
     }
 
     private fun badRequest(code: String) = ClientException(

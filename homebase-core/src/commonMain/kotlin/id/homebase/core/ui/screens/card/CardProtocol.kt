@@ -22,13 +22,31 @@ object CardDesign {
         DOSSIER -> 0xFF0E1013
         else -> 0xFF1F4E8C
     }.toInt()
+
+    // The preset ink each page draws on its base colour (odin-js cards/presets.ts).
+    fun inkArgb(design: String): Int = when (design) {
+        POSTER -> 0xFFF4F0EA
+        COLLAGE -> 0xFF3A2E22
+        DOSSIER -> 0xFFE9ECF1
+        else -> 0xFFFFFFFF
+    }.toInt()
 }
 
 @Serializable
 data class CardPayload(
     val design: String,
     val data: CardData,
+    val audience: CardAudiencePayload? = null,
+    val overrides: CardOverrides? = null,
 )
+
+@Serializable
+data class CardAudiencePayload(val kind: String, val label: String? = null)
+
+fun CardAudience.toPayload(): CardAudiencePayload = when (this) {
+    CardAudience.Public -> CardAudiencePayload(kind = "public")
+    is CardAudience.Circle -> CardAudiencePayload(kind = "circle", label = label.trim().ifEmpty { null })
+}
 
 @Serializable
 data class CardData(

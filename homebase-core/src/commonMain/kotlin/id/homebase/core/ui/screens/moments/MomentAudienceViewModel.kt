@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.moments
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.conversationlist.AttachmentPendingFile
@@ -13,10 +14,14 @@ import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipient
 import id.homebase.core.moments.services.MomentsRecipientId
 import id.homebase.core.moments.services.MomentsRecipientLookupService
+import id.homebase.core.moments.services.isDisabledCircle
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
+import id.homebase.core.ui.screens.contactbook.launchCircleToggle
 import id.homebase.core.ui.screens.contactbook.resolveCircleMemberEntries
+import id.homebase.core.ui.screens.contactbook.toggleBlockedReason
+import id.homebase.core.ui.screens.contactbook.withCircle
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -48,11 +53,16 @@ class MomentAudienceViewModel(
     // Address-book entries, kept current so the circle-roster sheet can resolve each snapshot
     // odinId to a name/avatar (falling back to a synthetic domain row for non-contacts).
     private var latestContacts: List<ContactBookEntry> = emptyList()
+    private var latestCircles: List<RedactedCircleDefinition> = emptyList()
+
+    private fun circleDef(circleId: String) = latestCircles.firstOrNull { it.id.equals(circleId, ignoreCase = true) }
 
     init {
         viewModelScope.launch {
             recipientLookup.recipients.collect { list ->
-                _uiState.update { it.copy(recipients = list) }
+                // A circle disabled while picked would otherwise still be posted to.
+                val disabledIds = list.all.filter { r -> r.isDisabledCircle }.map { r -> r.id }.toSet()
+                _uiState.update { it.copy(recipients = list, selected = it.selected - disabledIds) }
             }
         }
         viewModelScope.launch {
@@ -64,6 +74,12 @@ class MomentAudienceViewModel(
         viewModelScope.launch {
             contactRepository.contacts.collect { list ->
                 latestContacts = list.mapNotNull { it.toContactBookEntry() }
+            }
+        }
+        viewModelScope.launch {
+            connectionService.circles.collect { circ ->
+                latestCircles = circ.circles.map { it.circle }
+                _uiState.update { it.copy(circleDetail = it.circleDetail?.let { open -> open.withCircle(circleDef(open.circleId)) }) }
             }
         }
         viewModelScope.launch {
@@ -100,6 +116,13 @@ class MomentAudienceViewModel(
 
             MomentAudienceUiAction.DismissCircleMembers ->
                 _uiState.update { it.copy(circleDetail = null) }
+
+            is MomentAudienceUiAction.CircleEnabledChanged -> {
+                if (_uiState.value.circleDetail?.togglingEnabled == true) return
+                viewModelScope.launchCircleToggle(connectionService, action.circleId, action.enabled) { f ->
+                    _uiState.update { s -> s.copy(circleDetail = s.circleDetail?.let { if (it.circleId == action.circleId) f(it) else it }) }
+                }
+            }
         }
     }
 
@@ -124,6 +147,8 @@ class MomentAudienceViewModel(
                     circleId = circle.circleId,
                     circleName = circle.displayName,
                     manageable = false,
+                    disabled = circle.disabled,
+                    toggleBlockedReason = circleDef(circle.circleId).toggleBlockedReason(),
                     members = members,
                     isLoading = false,
                 ),

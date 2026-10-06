@@ -3,7 +3,6 @@ package id.homebase.core.ui.screens.card
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
-import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.image.ImageFormat
 import id.homebase.api.image.ImageUtils
 import id.homebase.core.image.CachedImage
@@ -44,11 +43,16 @@ fun buildCardPayload(
     headerSrc: String?,
     tagLine: String?,
     posts: List<CardPost> = emptyList(),
+    audience: CardAudience = CardAudience.Public,
+    overrides: CardOverrides = CardOverrides.EMPTY,
 ): CardPayload {
-    val values = attributes.visibleValues(ProfileVisibility.ANONYMOUS)
+    val canSee = audience.aclFilter()
+    val values = attributes.visibleValues(canSee)
     fun text(field: ProfileField) = values[field]?.trim()?.ifEmpty { null }
     return CardPayload(
         design = design,
+        audience = audience.toPayload(),
+        overrides = overrides.takeUnless { it.isEmpty() },
         data = CardData(
             odinId = odinId,
             firstName = text(ProfileField.GIVEN_NAME),
@@ -56,10 +60,10 @@ fun buildCardPayload(
             displayName = profileNameValue(values)?.trim(),
             headline = tagLine?.trim()?.ifEmpty { null } ?: text(ProfileField.STATUS),
             // The public site's card shows the summary, never the full bio.
-            bio = attributes.visibleBio(ProfileVisibility.ANONYMOUS)?.trim()?.ifEmpty { null },
+            bio = attributes.visibleBio(canSee)?.trim()?.ifEmpty { null },
             photo = photoSrc?.ifBlank { null }?.let(::CardImage),
             header = headerSrc?.ifBlank { null }?.let(::CardImage),
-            links = cardLinks(attributes.visibleLinks(ProfileVisibility.ANONYMOUS)),
+            links = cardLinks(attributes.visibleLinks(canSee)),
             socials = cardSocialFields.mapNotNull { (type, social) ->
                 text(social.field)?.let { socialUsername(type, it) }?.let { CardSocial(type = type, username = it) }
             },

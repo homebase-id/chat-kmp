@@ -2,10 +2,13 @@
 
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.viewinterop.UIKitView
 import id.homebase.core.image.NativeImageDecoder
 import kotlin.coroutines.resume
@@ -47,12 +50,17 @@ private const val COVER_DOWNSCALE = 2.0
 actual fun createCardHost(odinId: String): CardHost = IosCardHost(cardPageUrl(odinId))
 
 @Composable
-actual fun CardHostView(host: CardHost, modifier: Modifier) {
+actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?) {
     val cardHost = host as IosCardHost
-    UIKitView(
-        factory = { cardHost.webView },
-        modifier = modifier,
-    )
+    // UIKit views ignore a graphicsLayer; page zoom reflows the page as a browser's zoom would, viewport units included.
+    BoxWithConstraints(modifier = modifier) {
+        val zoom = layoutWidth?.let { pageScale(maxWidth.value, it.value) } ?: 1f
+        UIKitView(
+            factory = { cardHost.webView },
+            modifier = Modifier.fillMaxSize(),
+            update = { view -> zoom.toDouble().let { if (view.pageZoom != it) view.pageZoom = it } },
+        )
+    }
 }
 
 internal class IosCardHost(pageUrl: String) : CardHostBase(pageUrl) {

@@ -286,7 +286,7 @@ private fun PageExtras(extras: PageExtras, actions: ThunderbirdActions) {
             // side left people guessing which one the Password field wanted.
             ActionRow {
                 actions.password?.let { password ->
-                    StepAction(stringResource(MR.string.email_tb_copy_password)) { actions.onCopy(password) }
+                    StepAction(stringResource(MR.string.email_tb_copy_password)) { actions.onCopySecret(password) }
                 }
             }
             actions.settings?.let { settings ->
