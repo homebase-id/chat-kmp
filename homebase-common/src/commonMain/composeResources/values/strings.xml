@@ -2328,7 +2328,7 @@
     <string name="profile_card_audience_circle">Circle</string>
     <string name="profile_card_audience_description">Card for %1$s</string>
     <string name="profile_card_audience_switch">Card for %1$s. Choose another card.</string>
-    <string name="profile_card_circle_failed">Couldn't update your circle cards.</string>
+    <string name="profile_card_reset_failed">Couldn't reset this card.</string>
     <string name="profile_card_circle_unsupported">Your Homebase server can't keep a separate card for each circle yet, so circle cards can't be changed.</string>
     <string name="profile_card_reset_card">Reset to default design</string>
     <string name="profile_card_reset_title">Reset the %1$s card?</string>

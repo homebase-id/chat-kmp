@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -24,7 +25,6 @@ import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
-import id.homebase.api.util.compareStringUuId
 import id.homebase.api.youauth.MissingPermissionsResult
 import id.homebase.api.youauth.PermissionCheckResult
 import id.homebase.api.youauth.PermissionExtensionManager
@@ -87,6 +87,7 @@ data class ProfileCardUiState(
     val selectedAudience: CardAudience = CardAudience.Public,
     val previewOverrides: CardOverrides? = null,
     val circleCardsSupported: Boolean = true,
+    val hasLocalPublicDesign: Boolean = false,
     val isCardBusy: Boolean = false,
     val designAccessMissing: Boolean = false,
     val isDesignAccessPromptShown: Boolean = false,
@@ -102,7 +103,9 @@ data class ProfileCardUiState(
             (previewOverrides != null && previewOverrides != savedOverrides)
     val hasCardMenu: Boolean get() = !isExporting
     val isCircleReadOnly: Boolean get() = isCircleSelected && !circleCardsSupported
-    val canReset: Boolean get() = !isExporting && !isCardBusy && !isSavingDesign && !isCircleReadOnly
+    private val hasStoredCard: Boolean
+        get() = selectedCard?.let { it.id != Uuid.NIL || (it.audience == CardAudience.Public && hasLocalPublicDesign) } ?: false
+    val canReset: Boolean get() = hasStoredCard && !isExporting && !isCardBusy && !isSavingDesign && !isCircleReadOnly
     val isCircleSelected: Boolean get() = selectedAudience is CardAudience.Circle
     val cardTopArgb: Int? get() = edges[design]?.topArgb
     val cardBottomArgb: Int? get() = edges[design]?.bottomArgb
@@ -112,7 +115,7 @@ data class ProfileCardUiState(
         get() = designAccessMissing && designAccessDeclined && !isCircleSelected && !isDesignAccessPromptShown
 }
 
-data class CardCircle(val id: String, val name: String, val memberCount: Int)
+data class CardCircle(val id: String, val name: String)
 
 sealed interface ProfileCardEvent {
     data class ShareImage(val path: String, val fileName: String) : ProfileCardEvent
@@ -121,7 +124,7 @@ sealed interface ProfileCardEvent {
     data object ShareFailed : ProfileCardEvent
     data object DesignSaved : ProfileCardEvent
     data object DesignSaveFailed : ProfileCardEvent
-    data object CircleCardFailed : ProfileCardEvent
+    data object ResetFailed : ProfileCardEvent
     data object CircleCardsUnsupported : ProfileCardEvent
 }
 
@@ -211,11 +214,7 @@ class DefaultProfileCardSource(
     override val supportsCircleCards: Boolean get() = cardRepository.supportsCircleCards
 
     override suspend fun circles(): List<CardCircle> =
-        connectionProvider.getCirclesWithMembers(includeSystemCircle = false)
-            .filter { it.circle.isOwnedByContactsApp() && !it.circle.disabled && it.circle.name.isNotBlank() }
-            .map { CardCircle(it.circle.id, it.circle.name, it.members.size) }
-            .distinctBy { it.id.lowercase() }
-            .sortedBy { it.name.lowercase() }
+        contactsCircles(connectionProvider.getCirclesWithMembers(includeSystemCircle = false))
 
     override suspend fun saveCircleCard(card: ProfileCard) = cardRepository.saveCircle(card)
 
@@ -250,6 +249,13 @@ class DefaultProfileCardSource(
             driveUploadProvider.updateFileByFileId(request, onVersionConflict = { null })
     }
 }
+
+internal fun contactsCircles(circles: List<CircleWithMembers>): List<CardCircle> =
+    circles
+        .filter { it.circle.isOwnedByContactsApp() && !it.circle.disabled && it.circle.name.isNotBlank() }
+        .map { CardCircle(it.circle.id, it.circle.name) }
+        .distinctBy { it.id.lowercase() }
+        .sortedBy { it.name.lowercase() }
 
 private data class UnsavedCard(val design: String, val overrides: CardOverrides?)
 
@@ -418,6 +424,7 @@ class ProfileCardViewModel(
                 if (saved) it.copy(
                     isSavingDesign = false,
                     savedDesign = design,
+                    hasLocalPublicDesign = true,
                     previewDesign = null,
                     previewOverrides = null,
                     cards = it.cards.map { card ->
@@ -490,7 +497,7 @@ class ProfileCardViewModel(
                 }
                 load(force = true)
             } else {
-                _events.tryEmit(ProfileCardEvent.CircleCardFailed)
+                _events.tryEmit(ProfileCardEvent.ResetFailed)
             }
         }
     }
@@ -745,6 +752,7 @@ class ProfileCardViewModel(
             it.copy(
                 loadFailed = false,
                 savedDesign = saved,
+                hasLocalPublicDesign = storedDesign != null || pending != null,
                 cards = cards,
                 selectedAudience = selected ?: CardAudience.Public,
             ).let(::withCircleSupport)

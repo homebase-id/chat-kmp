@@ -41,7 +41,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Refresh
@@ -74,12 +73,12 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -89,12 +88,6 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
@@ -127,8 +120,7 @@ import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_edit_retry
 import id.homebase.resources.close
 import id.homebase.resources.cancel
-import id.homebase.resources.delete
-import id.homebase.resources.profile_card_circle_failed
+import id.homebase.resources.profile_card_reset_failed
 import id.homebase.resources.profile_card_circle_unsupported
 import id.homebase.resources.file_saved_to
 import id.homebase.resources.profile_card_audience_circle
@@ -149,16 +141,9 @@ import id.homebase.resources.profile_card_save
 import id.homebase.resources.profile_card_share
 import id.homebase.resources.profile_card_share_failed
 import id.homebase.resources.profile_card_unsupported
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.MenuDefaults
-import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.profile_card_access_body
 import id.homebase.resources.profile_card_access_continue
 import id.homebase.resources.profile_card_access_later
@@ -169,7 +154,6 @@ import id.homebase.resources.profile_card_share_public_message
 import id.homebase.resources.profile_card_share_public_title
 import id.homebase.resources.profile_card_save_public_message
 import id.homebase.resources.profile_card_save_public_title
-import org.jetbrains.compose.resources.pluralStringResource
 import kotlin.math.exp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
@@ -187,11 +171,6 @@ private val BAND_FADE_HEIGHT = 16.dp
 private val TOOLBAR_BAND_HEIGHT = 88.dp
 private val CHROME_GAP = 8.dp
 private val CHROME_CONTROL_SIZE = 40.dp
-private val PICKER_ROW_HEIGHT = 64.dp
-private val PICKER_AVATAR = 40.dp
-private val PICKER_FADE = 24.dp
-private const val PICKER_HALF_SHEET_ROWS = 5
-private const val DISABLED_ALPHA = 0.38f
 private val MAX_SHEET_PULL = 32.dp
 private val DISMISS_DRAG_DISTANCE = 96.dp
 private const val DISMISS_FLING_VELOCITY = 1500f
@@ -245,7 +224,7 @@ fun ProfileCardScreen(
     val nfc = rememberCardNfc()
     val errCard = stringResource(MR.string.profile_card_error)
     val errShare = stringResource(MR.string.profile_card_share_failed)
-    val errCircle = stringResource(MR.string.profile_card_circle_failed)
+    val errReset = stringResource(MR.string.profile_card_reset_failed)
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
 
     LaunchedEffect(viewModel) { viewModel.onScreenShown() }
@@ -278,7 +257,7 @@ fun ProfileCardScreen(
                 }
                 ProfileCardEvent.CardFailed -> launch { snackbarHostState.showSnackbar(errCard) }
                 ProfileCardEvent.ShareFailed -> launch { snackbarHostState.showSnackbar(errShare) }
-                ProfileCardEvent.CircleCardFailed -> launch { snackbarHostState.showSnackbar(errCircle) }
+                ProfileCardEvent.ResetFailed -> launch { snackbarHostState.showSnackbar(errReset) }
                 ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
                 ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed -> Unit
             }

@@ -202,8 +202,9 @@ class CardRepositoryTest {
     }
 
     @Test
-    fun aServerThatRejectsCircleIdsMakesCircleCardsReadOnlyWithoutFurtherWrites() = runTest {
-        val store = FakeCardStore().apply { failWith = ClientException(status = 400, message = "Unknown field circleIds", correlationId = null, problem = ProblemDetails(status = 400, title = "Unknown field circleIds")) }
+    fun aServerWithoutTheCardTypeMakesCircleCardsReadOnlyWithoutFurtherWrites() = runTest {
+        val unknownType = "Unknown profile attribute type ${ProfileAttributeTypes.PROFILE_CARD}"
+        val store = FakeCardStore().apply { failWith = ClientException(status = 400, message = unknownType, correlationId = null, problem = ProblemDetails(status = 400, title = unknownType)) }
         val repo = CardRepository(store)
         assertTrue(repo.supportsCircleCards)
 
@@ -260,8 +261,8 @@ class CardRepositoryTest {
     @Test
     fun fixedPrioritiesPutFamilyFriendsWorkFirstThenOthersByName() {
         val circles = listOf(
-            CardCircle("w", "Work", 0), CardCircle("z", "Zed", 0), CardCircle("a", "Acquaintances", 0),
-            CardCircle("fr", "friends", 0), CardCircle("fa", "Family", 0),
+            CardCircle("w", "Work"), CardCircle("z", "Zed"), CardCircle("a", "Acquaintances"),
+            CardCircle("fr", "friends"), CardCircle("fa", "Family"),
         )
         val p = fixedCirclePriorities(circles)
         assertEquals(10, p["fa"])

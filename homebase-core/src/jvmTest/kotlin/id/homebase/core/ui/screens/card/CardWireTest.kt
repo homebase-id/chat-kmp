@@ -101,8 +101,8 @@ class CardWireTest {
     private fun CardWireHarness.visibilities() = putBodies.map { it.jsonObject["visibility"]?.jsonPrimitive?.content }
 
     @Test
-    fun onAServerThatRejectsCircleIdsTheCardIsNeverStoredAndNoSecondPutIsSent() = runTest {
-        val wire = CardWireHarness(circleCards = false)
+    fun onAServerWithoutTheCardTypeTheCardIsNeverStoredAndNoSecondPutIsSent() = runTest {
+        val wire = CardWireHarness(cardType = false)
         val repo = wire.cardRepository()
         val card = ProfileCard(kotlin.uuid.Uuid.NIL, kotlin.uuid.Uuid.NIL, friends, "poster", priority = 20)
 

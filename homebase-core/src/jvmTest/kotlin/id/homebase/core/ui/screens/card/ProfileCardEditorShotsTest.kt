@@ -150,8 +150,6 @@ class ProfileCardEditorShotsTest {
         Shot("42-redmi-poster-colours", base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
     )
 
-    private fun circles(n: Int) = List(n) { CardCircle("c$it", CIRCLE_NAMES[it % CIRCLE_NAMES.size], memberCount = it * 3 % 11) }
-
     private class ViewerShot(val name: String, val state: ProfileCardUiState, val act: ComposeUiTest.() -> Unit = {}, val popup: Boolean = false)
 
     private val work = CardAudience.Circle("c1", "Work")
@@ -329,6 +327,5 @@ class ProfileCardEditorShotsTest {
         const val REDMI_H = 800
         const val SETTLE_MS = 1_500L
         const val PARK_PX = 100_000f
-        val CIRCLE_NAMES = listOf("Acquaintances", "Chat", "Emergency Location Access", "Family", "Feed", "Friends", "HomePage", "Moments", "Recovery", "Vault", "Webdrop", "Work")
     }
 }

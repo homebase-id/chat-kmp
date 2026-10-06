@@ -7,7 +7,6 @@ import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.client.profile.ProfileWriteResponse
-import kotlin.concurrent.Volatile
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonObject
 
@@ -51,15 +50,10 @@ class CardRepository(private val store: CardAttributeStore) {
     // Older servers reject the type outright; the answer is per identity, so reset() clears it on logout.
     private var typeUnsupported = false
 
-    // Not persisted: the server may be upgraded, so each session finds out again.
-    @Volatile
-    private var circlesRejected = false
-
-    val supportsCircleCards: Boolean get() = !typeUnsupported && !circlesRejected
+    val supportsCircleCards: Boolean get() = !typeUnsupported
 
     fun reset() {
         typeUnsupported = false
-        circlesRejected = false
     }
 
     suspend fun cards(): List<ProfileCard> = store.load().profileCards()
@@ -78,29 +72,21 @@ class CardRepository(private val store: CardAttributeStore) {
         ) != null
     }
 
-    /** Writes [card] with its own priority. Returns the stored card, or null when the server can't keep a card for a circle. */
     suspend fun saveCircle(card: ProfileCard): ProfileCard? {
         val circle = card.audience as? CardAudience.Circle ?: error("not a circle card")
         if (!supportsCircleCards) return null
-        val written = try {
-            saveOrUnsupported(
-                data = card.toData(),
-                visibility = ProfileVisibility.CONNECTED,
-                id = card.id.takeIf { it != Uuid.NIL },
-                versionTag = card.versionTag.takeIf { it != Uuid.NIL },
-                priority = card.priority,
-                circleIds = listOf(circle.id),
-            )
-        } catch (e: ClientException) {
-            if (!e.hasMessage("circleIds")) throw e
-            Logger.i(tag = "CardRepository") { "server rejected circleIds; circle cards are read-only" }
-            circlesRejected = true
-            null
-        } ?: return null
+        val written = saveOrUnsupported(
+            data = card.toData(),
+            visibility = ProfileVisibility.CONNECTED,
+            id = card.id.takeIf { it != Uuid.NIL },
+            versionTag = card.versionTag.takeIf { it != Uuid.NIL },
+            priority = card.priority,
+            circleIds = listOf(circle.id),
+        ) ?: return null
         return card.copy(id = written.id, versionTag = written.versionTag)
     }
 
-    /** Removes the stored attribute so the card falls back to its default. Already gone (404) counts as reset. */
+    // 404 counts as reset.
     suspend fun resetPublic() {
         cards().publicCard()?.let { store.delete(it.id, it.versionTag) }
     }
