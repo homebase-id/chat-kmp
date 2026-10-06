@@ -1135,6 +1135,7 @@ class ProfileCardViewModelTest {
 
         assertTrue(vm.uiState.value.viewing)
         assertEquals(friends, vm.uiState.value.selectedAudience)
+        assertEquals(setOf("public"), vm.introTiles.value.keys)
         val afterOpen = host.rendered.size
         vm.captureIntroTiles()
         assertEquals(afterOpen, host.rendered.size)

@@ -31,7 +31,7 @@ actual fun createCardHost(odinId: String): CardHost = DesktopCardHost(cardPageUr
 
 @Composable
 actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?) {
-    val cardHost = host as? DesktopCardHost ?: return
+    val cardHost = host as DesktopCardHost
     key(cardHost) {
         val slot = remember { CardSlot(cardHost) }
         DisposableEffect(slot) {

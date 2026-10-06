@@ -14,6 +14,10 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.isPopup
@@ -28,6 +32,7 @@ import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalTestApi::class)
@@ -71,24 +76,6 @@ class CardIntroTest {
         onCapture = {},
         onTilePainted = onTilePainted,
     )
-
-    private fun render(name: String, state: ProfileCardUiState, fontScale: Float = 1f, w: Int = 412, h: Int = 892, act: (Int) -> Unit = {}): List<CardAudience> {
-        val opened = mutableListOf<CardAudience>()
-        runDesktopComposeUiTest(width = w * 2, height = h * 2) {
-            mainClock.autoAdvance = false
-            setContent {
-                CompositionLocalProvider(LocalDensity provides Density(2f, fontScale)) {
-                    HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
-                        intro(state, onOpen = { opened += it })
-                    }
-                }
-            }
-            mainClock.advanceTimeBy(1_500)
-            act(0)
-            outDir?.let { ImageIO.write(onAllNodes(isRoot()).onFirst().captureToImage().toAwtImage(), "png", File(it, "k7-$name.png")) }
-        }
-        return opened
-    }
 
     @Test
     fun everyFixedCardShowsItsCircleTitleAndSelectingOneOpensIt() {
@@ -177,18 +164,53 @@ class CardIntroTest {
         }
     }
 
+    private fun assertLayout(
+        name: String,
+        state: ProfileCardUiState,
+        columns: Int,
+        fontScale: Float = 1f,
+        w: Int = 412,
+        h: Int = 892,
+    ) {
+        runDesktopComposeUiTest(width = w * 2, height = h * 2) {
+            setContent {
+                CompositionLocalProvider(LocalDensity provides Density(2f, fontScale)) {
+                    HomebaseTheme(darkTheme = false, updatesSystemChrome = false) { intro(state) }
+                }
+            }
+            waitForIdle()
+            val rootWidth = w * 2f
+            val lefts = mutableSetOf<Float>()
+            state.cards.forEach { card ->
+                val title = (card.audience as? CardAudience.Circle)?.label ?: "Public"
+                val tile = hasContentDescription("Open the $title card")
+                onAllNodes(hasScrollAction()).onFirst().performScrollToNode(tile)
+                waitForIdle()
+                onNode(tile).assertIsDisplayed()
+                val bounds = onNode(tile).fetchSemanticsNode().boundsInRoot
+                assertTrue(bounds.left >= 0f && bounds.right <= rootWidth, "$name: $title tile $bounds leaves the $rootWidth px root")
+                lefts += bounds.left
+                val text = onNode(hasText(title), useUnmergedTree = true)
+                text.assertIsDisplayed()
+                assertTrue(text.fetchSemanticsNode().boundsInRoot.width > 0f, "$name: $title is clipped to nothing")
+            }
+            assertEquals(columns, lefts.size, "$name: columns")
+            outDir?.let { ImageIO.write(onAllNodes(isRoot()).onFirst().captureToImage().toAwtImage(), "png", File(it, "k7-$name.png")) }
+        }
+    }
+
     @Test
     fun layoutsHoldUpAcrossCircleCountsLongNamesAndLargeFonts() {
         val long = CardAudience.Circle("long", "Climbing partners from the Tuesday bouldering gym night")
         fun circle(n: Int) = CardAudience.Circle("extra$n", "Circle $n")
-        render("intro-1-circle-2-cards", stateOf(base = listOf(card(CardAudience.Public), card(friends, 20))))
-        render("intro-2-circles-3-cards", stateOf(base = listOf(card(CardAudience.Public), card(family, 10, CardDesign.POSTER), card(friends, 20))))
-        render("intro-3-circles-4-cards", stateOf())
-        render("intro-4-circles-5-cards", stateOf(circle(1)))
-        render("intro-5-circles-6-cards", stateOf(circle(1), circle(2)))
-        render("intro-long-name", stateOf(long))
-        render("intro-font-2x", stateOf(long), fontScale = 2f)
-        render("intro-small-phone", stateOf(circle(1)), w = 360, h = 640)
-        render("intro-wide", stateOf(circle(1)), w = 1000, h = 800)
+        assertLayout("intro-1-circle-2-cards", stateOf(base = listOf(card(CardAudience.Public), card(friends, 20))), columns = 2)
+        assertLayout("intro-2-circles-3-cards", stateOf(base = listOf(card(CardAudience.Public), card(family, 10, CardDesign.POSTER), card(friends, 20))), columns = 2)
+        assertLayout("intro-3-circles-4-cards", stateOf(), columns = 2)
+        assertLayout("intro-4-circles-5-cards", stateOf(circle(1)), columns = 2)
+        assertLayout("intro-5-circles-6-cards", stateOf(circle(1), circle(2)), columns = 2)
+        assertLayout("intro-long-name", stateOf(long), columns = 2)
+        assertLayout("intro-font-2x", stateOf(long), columns = 1, fontScale = 2f)
+        assertLayout("intro-small-phone", stateOf(circle(1)), columns = 2, w = 360, h = 640)
+        assertLayout("intro-wide", stateOf(circle(1)), columns = 5, w = 1000, h = 800)
     }
 }

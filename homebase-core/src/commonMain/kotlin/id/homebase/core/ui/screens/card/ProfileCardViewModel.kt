@@ -423,6 +423,8 @@ class ProfileCardViewModel(
         is CardAudience.Circle -> label
     }
 
+    private fun interruptedByViewer() = _uiState.value.viewing || _uiState.value.isExporting
+
     // The host goes back to the card the viewer shows when done or cancelled.
     suspend fun captureIntroTiles() {
         val host = _host.value ?: return
@@ -430,7 +432,7 @@ class ProfileCardViewModel(
         var touched = false
         try {
             for (card in _uiState.value.cards) {
-                if (_uiState.value.viewing || _uiState.value.isExporting) return
+                if (interruptedByViewer()) return
                 val key = audienceKey(card.audience)
                 val design = if (card.audience == CardAudience.Public) _uiState.value.savedDesign else card.design
                 val payload = payloadFor(design, card.audience) ?: return
@@ -445,11 +447,14 @@ class ProfileCardViewModel(
                 withTimeoutOrNull(PAINT_TIMEOUT) {
                     host.events.onSubscription { host.requestPaint() }.first { it is CardEvent.Painted }
                 }
+                if (interruptedByViewer()) return
                 val image = attempt("capturing the ${card.audience.logName()} intro tile") { host.snapshot() }
                 if (image == null) {
                     Logger.i(tag = TAG) { "card intro: no snapshot for ${card.audience.logName()}, tile stays a placeholder" }
                     return
                 }
+                // The viewer may have opened during the snapshot, so the image can show its card, not this one.
+                if (interruptedByViewer()) return
                 tilePayloads[key] = payload
                 _introTiles.update { it + (key to image) }
             }
