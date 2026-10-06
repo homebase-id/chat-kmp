@@ -613,7 +613,7 @@ private fun Swatch(
     }
 }
 
-private class MorphShape(private val morph: Morph, private val progress: Float) : Shape {
+internal class MorphShape(private val morph: Morph, private val progress: Float) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
         val path = Path()
         var first = true
@@ -734,7 +734,7 @@ private fun Modifier.revealWhenSelected(selected: Boolean): Modifier {
 }
 
 @Composable
-private fun ScrollableChoiceRow(
+internal fun ScrollableChoiceRow(
     modifier: Modifier = Modifier,
     contentPadding: Dp = 0.dp,
     horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,

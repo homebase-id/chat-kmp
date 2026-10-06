@@ -364,11 +364,11 @@ internal fun ProfileCardEditorContent(
 }
 
 /** [body] is shared by both steps so the card above never resizes when the step changes. */
-private class PanelMetrics(val body: Dp, val gap: Dp, val edge: Dp) {
+private class PanelMetrics(val body: Dp, val content: Dp, val gap: Dp, val edge: Dp) {
     companion object {
-        val Regular = PanelMetrics(body = 144.dp, gap = 8.dp, edge = 16.dp)
-        val Compact = PanelMetrics(body = 144.dp, gap = 8.dp, edge = 8.dp)
-        val Wide = PanelMetrics(body = 236.dp, gap = 12.dp, edge = 24.dp)
+        val Regular = PanelMetrics(body = 144.dp, content = CARD_CONTENT_BODY_HEIGHT, gap = 8.dp, edge = 16.dp)
+        val Compact = PanelMetrics(body = 144.dp, content = CARD_CONTENT_BODY_HEIGHT, gap = 8.dp, edge = 8.dp)
+        val Wide = PanelMetrics(body = 236.dp, content = CARD_CONTENT_WIDE_BODY_HEIGHT, gap = 12.dp, edge = 24.dp)
     }
 }
 
@@ -503,7 +503,7 @@ private fun EditorPanel(
     val optionsNeeded = CAPTION_LINE * fontScale + CHIP_HEIGHT * grow + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
     var contentOpen by remember { mutableStateOf(false) }
     val body by animateDpAsState(
-        if (contentOpen) maxOf(CARD_CONTENT_BODY_HEIGHT, optionsNeeded) else maxOf(metrics.body, optionsNeeded),
+        if (contentOpen) maxOf(metrics.content, optionsNeeded) else maxOf(metrics.body, optionsNeeded),
         motion.defaultSpatialSpec(),
     )
     val items = uiState.contentItems

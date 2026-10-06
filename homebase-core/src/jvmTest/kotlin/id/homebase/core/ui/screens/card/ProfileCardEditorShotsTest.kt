@@ -31,6 +31,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
@@ -251,6 +252,14 @@ class ProfileCardEditorShotsTest {
         cards = listOf(public, card(friendsCard)),
     )
     private val contentTool = tool("What this card shows")
+    private val familyCard = CardAudience.Circle(FAMILY_CIRCLE_ID, "Family")
+    private val longContentCircle = CardCircle("c-long", "Climbing partners from the Tuesday bouldering gym night")
+    private val longContentCard = CardAudience.Circle(longContentCircle.id, longContentCircle.name)
+    private val fullAttributes = listOf(
+        attribute(ProfileAttributeTypes.EMAIL, ProfileAttributeTypes.KEY_EMAIL, "sam@shire.example", ProfileVisibility.ANONYMOUS),
+        attribute(ProfileAttributeTypes.TWITTER, ProfileAttributeTypes.KEY_TWITTER, "samwise", ProfileVisibility.ANONYMOUS),
+        attribute(ProfileAttributeTypes.LINKEDIN, ProfileAttributeTypes.KEY_LINKEDIN, "samwise-gamgee", ProfileVisibility.CONNECTED, listOf(WORK_CIRCLE_ID)),
+    )
 
     private val contentShots = listOf(
         Shot("k9-content-public", contentBase, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
@@ -260,6 +269,11 @@ class ProfileCardEditorShotsTest {
         Shot("k9-content-rtl", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, rtl = true, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
         Shot("k9-content-empty", base, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
         Shot("k9-content-wide", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = 900, heightDp = 820, act = contentTool),
+        Shot("k9-content-family", contentBase.copy(cards = listOf(public, card(familyCard)), selectedAudience = familyCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
+        Shot("k9-content-busy", contentBase.copy(selectedAudience = friendsCard, isContentBusy = true), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
+        Shot("k9-content-long-circle", contentBase.copy(circles = contentCircles + longContentCircle, cards = listOf(public, card(longContentCard)), selectedAudience = longContentCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
+        Shot("k9-content-everything", contentBase.copy(attributes = contentAttributes + fullAttributes), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
+        Shot("k9-content-public-hint", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); onAllNodesWithText("Public, shown on every card").onFirst().performSemanticsAction(SemanticsActions.OnClick); mainClock.advanceTimeBy(SETTLE_MS) }),
     )
 
     @Test
