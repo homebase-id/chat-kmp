@@ -19,7 +19,6 @@ import kotlinx.cinterop.useContents
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import platform.CoreGraphics.CGAffineTransformIdentity
 import platform.CoreGraphics.CGAffineTransformMakeScale
 import platform.CoreGraphics.CGPointMake
 import platform.CoreGraphics.CGRectMake
@@ -86,7 +85,6 @@ internal class ScaledContainer(private val content: UIView) : UIView(frame = CGR
     override fun layoutSubviews() {
         super.layoutSubviews()
         val (width, height) = bounds.useContents { size.width to size.height }
-        content.setTransform(CGAffineTransformIdentity.readValue())
         content.setBounds(CGRectMake(0.0, 0.0, width / scale, height / scale))
         content.layer.setPosition(CGPointMake(0.0, 0.0))
         content.setTransform(CGAffineTransformMakeScale(scale, scale))
