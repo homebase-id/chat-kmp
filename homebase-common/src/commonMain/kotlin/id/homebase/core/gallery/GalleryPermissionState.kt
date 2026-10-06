@@ -76,6 +76,8 @@ class GalleryPermissionState(
     val hasPermanentlyDeniedPartialPermission: Boolean,
     private val permissionsManager: PermissionsManager,
 ) {
+    val canSelectMorePhotos: Boolean get() = hasPartialGalleryPermission && !hasGalleryPermission
+
     fun requestGalleryPermission() {
         if (hasPermanentlyDeniedPermission) {
             permissionsManager.launchSettings()

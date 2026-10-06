@@ -2,12 +2,17 @@ package id.homebase.api.file
 
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
+import id.homebase.api.coroutines.ioDispatcher as defaultIoDispatcher
 import kotlinx.io.Buffer
 import kotlinx.io.RawSource
 import kotlinx.io.buffered
 import okio.BufferedSource
 import okio.FileSystem
+import okio.Source
 import okio.buffer
 import okio.use
 import okio.Path.Companion.toPath
@@ -23,7 +28,10 @@ import kotlin.random.Random
 open class OkioFileOperationsProvider(
     private val fileSystem: FileSystem,
     private val cacheDir: String,
+    private val io: CoroutineDispatcher = defaultIoDispatcher,
 ) : FileOperationsProvider {
+
+    protected open fun openSource(path: String): Source = fileSystem.source(path.toPath())
 
     /**
      * Lazy, CHUNKED multipart upload source (#947). Previously this read the whole
@@ -35,16 +43,24 @@ open class OkioFileOperationsProvider(
      */
     override fun openFileInput(path: String): InputProvider =
         InputProvider(size = fileSystem.metadataOrNull(path.toPath())?.size) {
-            OkioBackedRawSource(fileSystem.source(path.toPath()).buffer()).buffered()
+            OkioBackedRawSource(openSource(path).buffer()).buffered()
         }
 
-    override suspend fun readFileBytes(path: String): ByteArray =
-        fileSystem.read(path.toPath()) { readByteArray() }
+    override suspend fun readFileBytes(path: String): ByteArray = withContext(io) {
+        openSource(path).buffer().use { it.readByteArray() }
+    }
+
+    override suspend fun readFileHeaderBytes(path: String, maxBytes: Int): ByteArray = withContext(io) {
+        openSource(path).buffer().use { source ->
+            source.request(maxBytes.toLong())
+            source.readByteArray(minOf(source.buffer.size, maxBytes.toLong()))
+        }
+    }
 
     // Real chunked streaming (#842) — the interface default emits the whole file as
     // ONE chunk, defeating streamed encryption's bounded-memory point.
     override fun readFileAsFlow(path: String, chunkSize: Int): Flow<ByteArray> = flow {
-        fileSystem.source(path.toPath()).buffer().use { source ->
+        openSource(path).buffer().use { source ->
             val buf = ByteArray(chunkSize)
             while (true) {
                 val read = source.read(buf, 0, chunkSize)
@@ -52,11 +68,12 @@ open class OkioFileOperationsProvider(
                 if (read > 0) emit(buf.copyOf(read))
             }
         }
-    }
+    }.flowOn(io)
 
     override fun deleteTempFile(path: String): Boolean {
         val p = path.toPath()
-        if (!fileSystem.exists(p)) return true
+        val meta = fileSystem.metadataOrNull(p) ?: return true
+        if (meta.isDirectory) return true
         return runCatching { fileSystem.delete(p); true }.getOrDefault(false)
     }
 
@@ -65,8 +82,9 @@ open class OkioFileOperationsProvider(
     override fun getFileSize(path: String): Long =
         fileSystem.metadataOrNull(path.toPath())?.size ?: 0L
 
-    override suspend fun sourceExists(path: String): Boolean =
+    override suspend fun sourceExists(path: String): Boolean = withContext(io) {
         fileSystem.exists(path.toPath())
+    }
 
     override suspend fun writeBytesToTempFile(
         bytes: ByteArray,
@@ -81,50 +99,45 @@ open class OkioFileOperationsProvider(
     // the path/promote operations must run over the INJECTED fileSystem, not the global
     // systemFileSystem the interface defaults use — otherwise web/test writes would land on the
     // wrong filesystem.
-    override suspend fun createOutboxStagingPath(prefix: String, suffix: String): String =
+    override suspend fun createOutboxStagingPath(prefix: String, suffix: String): String = withContext(io) {
         createStagingPathIn(getOutboxStagingDirectory(), prefix, suffix, fileSystem)
+    }
 
     override suspend fun promoteToOutboxStaging(path: String): String =
         promoteIntoStaging(path, getOutboxStagingDirectory(), fileSystem)
 
-    override suspend fun createShareOutboundPath(suffix: String): String =
-        createStagingPathIn(AppCacheDirs.scratchPath(cacheDir, SHARE_OUTBOUND_DIR_NAME), "share_", suffix, fileSystem)
+    override suspend fun createShareOutboundPath(suffix: String): String = withContext(io) {
+        createStagingPathIn(AppCacheDirs.scratchPath(getCacheDirectory(), SHARE_OUTBOUND_DIR_NAME), "share_", suffix, fileSystem)
+    }
 
-    override suspend fun createUploadTempPath(prefix: String, suffix: String): String =
-        createStagingPathIn(AppCacheDirs.scratchPath(cacheDir, CacheAudit.UPLOAD_TEMP_DIR_NAME), prefix, suffix, fileSystem)
+    override suspend fun createUploadTempPath(prefix: String, suffix: String): String = withContext(io) {
+        createStagingPathIn(AppCacheDirs.scratchPath(getCacheDirectory(), CacheAudit.UPLOAD_TEMP_DIR_NAME), prefix, suffix, fileSystem)
+    }
 
     // upload-temp is swept every startup (disposable).
-    private fun writeBytesIn(dirName: String, bytes: ByteArray, prefix: String, suffix: String): String {
-        val dir = AppCacheDirs.scratchPath(cacheDir, dirName).toPath()
-        fileSystem.createDirectories(dir)
-        val path = dir / "$prefix${randomToken()}$suffix"
-        fileSystem.write(path) { write(bytes) }
-        return path.toString()
-    }
+    private suspend fun writeBytesIn(dirName: String, bytes: ByteArray, prefix: String, suffix: String): String =
+        withContext(io) {
+            val dir = AppCacheDirs.scratchPath(getCacheDirectory(), dirName).toPath()
+            fileSystem.createDirectories(dir)
+            val path = dir / "$prefix${randomToken()}$suffix"
+            fileSystem.write(path) { write(bytes) }
+            path.toString()
+        }
 
     override suspend fun writeBytesToShareOutboundFile(
         bytes: ByteArray,
         suffix: String,
-    ): String {
-        val dir = AppCacheDirs.scratchPath(cacheDir, SHARE_OUTBOUND_DIR_NAME).toPath()
-        fileSystem.createDirectories(dir)
-        val path = dir / "share_${randomToken()}$suffix"
-        fileSystem.write(path) { write(bytes) }
-        return path.toString()
-    }
+    ): String = writeBytesIn(SHARE_OUTBOUND_DIR_NAME, bytes, "share_", suffix)
 
     override suspend fun writeStream(
         path: String,
         data: Flow<ByteArray>
-    ) {
+    ) = withContext(io) {
         val p = path.toPath()
         p.parent?.let { fileSystem.createDirectories(it) }
         // okio's write{} block is non-suspend, so stream into a buffered sink instead.
-        val sink = fileSystem.sink(p).buffer()
-        try {
+        fileSystem.sink(p).buffer().use { sink ->
             data.collect { chunk -> sink.write(chunk) }
-        } finally {
-            sink.close()
         }
     }
 
