@@ -23,12 +23,35 @@ import io.github.kdroidfilter.composemediaplayer.DefaultVideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.InitialPlayerState
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface as ComposeMediaPlayerSurface
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 internal const val NATIVE_FIRST_FRAME_WATCHDOG_MS = 8_000L
+
+// AVPlayer failures never reach Kotlin in 0.10.0, so "no frame" is judged by silence: a localhost segment fetch
+// still in flight, or finished within the window, means the load is progressing and the deadline slides.
+internal object NativeLoadActivity {
+    private val inFlight = AtomicInteger(0)
+    private val lastEndMs = AtomicLong(0)
+
+    fun <T> track(block: () -> T): T {
+        inFlight.incrementAndGet()
+        try {
+            return block()
+        } finally {
+            lastEndMs.set(System.currentTimeMillis())
+            inFlight.decrementAndGet()
+        }
+    }
+
+    fun busy(): Boolean = inFlight.get() > 0
+
+    fun lastActivityMs(): Long = lastEndMs.get()
+}
 
 // The dylib's minos is 14.0; Windows uses Media Foundation. Linux needs GStreamer, which the probe finds out.
 private fun osHasNativeBackend(): Boolean {
@@ -166,7 +189,10 @@ internal fun NativeAvPlayer(
                     firstFrame = true
                     if (clipStartMs != null && clipStartMs > 0) seekMs(clipStartMs, thenPause = false)
                     onFirstFrame.value()
-                } else if (state.error != null || System.currentTimeMillis() - openedAt > watchdogMs) {
+                } else if (state.error != null ||
+                    (!NativeLoadActivity.busy() &&
+                        System.currentTimeMillis() - maxOf(openedAt, NativeLoadActivity.lastActivityMs()) > watchdogMs)
+                ) {
                     Logger.w(tag = "VideoIO") { "native player gave no frame (error=${state.error}): $videoPath" }
                     onUnplayableState.value()
                     return@LaunchedEffect
