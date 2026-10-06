@@ -28,8 +28,6 @@ import id.homebase.resources.profile_card_read_only_title
 import id.homebase.resources.profile_card_read_only_why
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.role
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloat
@@ -771,7 +769,8 @@ internal fun AudienceChip(
     val motion = MaterialTheme.motionScheme
     val container by animateColorAsState(audienceContainer(audience), motion.defaultEffectsSpec())
     val content by animateColorAsState(onAudienceContainer(audience), motion.defaultEffectsSpec())
-    val chip: @Composable () -> Unit = {
+    val elevation = if (elevated) 2.dp else 0.dp
+    Surface(shape = CircleShape, color = container, contentColor = content, shadowElevation = elevation, modifier = modifier) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -810,8 +809,6 @@ internal fun AudienceChip(
             }
         }
     }
-    val elevation = if (elevated) 2.dp else 0.dp
-    Surface(shape = CircleShape, color = container, contentColor = content, shadowElevation = elevation, modifier = modifier) { chip() }
 }
 
 @Composable
