@@ -196,8 +196,7 @@ internal fun NativeAvPlayer(
                 }
             } else {
                 val tMs = (state.currentTime * 1000).toLong()
-                val clipEnd = clipEndMs
-                if (clipEnd != null && clipEnd > 0 && tMs >= clipEnd) {
+                if (clipEndMs != null && clipEndMs > 0 && tMs >= clipEndMs) {
                     seekMs(clipStartMs ?: 0L, thenPause = false)
                 } else if (ended.getAndSet(false)) {
                     if (clipStartMs != null) {
@@ -242,14 +241,11 @@ internal fun NativeAvPlayer(
     }
 
     Box(modifier, contentAlignment = Alignment.Center) {
-        val surfaceModifier = if (aspectRatio != null) Modifier.aspectRatio(aspectRatio) else Modifier.fillMaxSize()
-        Box(surfaceModifier) {
-            ComposeMediaPlayerSurface(
-                playerState = state,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = if (aspectRatio != null) ContentScale.FillBounds else ContentScale.Fit,
-            )
-        }
+        ComposeMediaPlayerSurface(
+            playerState = state,
+            modifier = if (aspectRatio != null) Modifier.aspectRatio(aspectRatio) else Modifier.fillMaxSize(),
+            contentScale = if (aspectRatio != null) ContentScale.FillBounds else ContentScale.Fit,
+        )
         if (!firstFrame) CircularProgressIndicator()
         if (showControls && firstFrame) TransportBar(
             isPlaying = isPlaying,

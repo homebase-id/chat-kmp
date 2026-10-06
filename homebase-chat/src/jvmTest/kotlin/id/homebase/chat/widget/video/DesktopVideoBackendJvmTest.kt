@@ -10,19 +10,15 @@ import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.foundation.layout.fillMaxSize
 import com.sun.net.httpserver.HttpServer
-import id.homebase.api.client.drives.files.HLS_PLAYLIST_CONTENT_TYPE
 import java.io.File
-import java.net.InetAddress
-import java.net.InetSocketAddress
 import java.util.Collections
-import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.Assume.assumeTrue
 
@@ -43,15 +39,15 @@ class DesktopVideoBackendJvmTest {
         assumeTrue(System.getProperty("os.name").lowercase().contains("mac"))
     }
 
+    private val defaultNativeLibraryLoad = nativeLibraryLoad
+    private val defaultNativeBackendAvailable = nativeBackendAvailable
+
     @AfterTest
     fun stopServer() {
         server?.stop(0)
         nativeLibraryLoad = defaultNativeLibraryLoad
         nativeBackendAvailable = defaultNativeBackendAvailable
     }
-
-    private val defaultNativeLibraryLoad = nativeLibraryLoad
-    private val defaultNativeBackendAvailable = nativeBackendAvailable
 
     @Test
     fun h264Mp4File() = playsThroughChooser(File(fixtures, "h264.mp4").absolutePath)
@@ -153,7 +149,7 @@ class DesktopVideoBackendJvmTest {
             )
         }) { scene ->
             awaitTrue(scene, 8_000) { unplayable.get() }
-            assertTrue(!first.get(), "garbage must not report a first frame")
+            assertFalse(first.get(), "garbage must not report a first frame")
         }
     }
 
@@ -215,7 +211,7 @@ class DesktopVideoBackendJvmTest {
     fun slowSegmentBeyondWatchdogStaysOnNative() {
         val port = startHlsServer(File(fixtures, "hls"), segmentDelayMs = 3_000)
         val firstFrame = AtomicBoolean(false)
-        val backends = Collections.synchronizedList(mutableListOf<DesktopVideoBackend>())
+        val unplayable = AtomicBoolean(false)
         scene({
             NativeAvPlayer(
                 videoPath = "http://localhost:$port/index.m3u8",
@@ -224,13 +220,12 @@ class DesktopVideoBackendJvmTest {
                 showControls = false,
                 muted = true,
                 onFirstFrameRendered = { firstFrame.set(true) },
-                onUnplayable = { backends += DesktopVideoBackend.VLC },
+                onUnplayable = { unplayable.set(true) },
                 watchdogMs = 1_000,
             )
         }) { scene ->
-            backends += DesktopVideoBackend.NATIVE
-            awaitTrue(scene, 20_000) { firstFrame.get() || DesktopVideoBackend.VLC in backends }
-            assertEquals(listOf(DesktopVideoBackend.NATIVE), backends.toList(), "slow segment must not trigger the VLC fallback")
+            awaitTrue(scene, 20_000) { firstFrame.get() || unplayable.get() }
+            assertFalse(unplayable.get(), "slow segment must not trigger the VLC fallback")
             assertTrue(firstFrame.get(), "first frame never arrived")
         }
     }
@@ -306,34 +301,11 @@ class DesktopVideoBackendJvmTest {
     }
 
     private fun startHlsServer(dir: File, segmentDelayMs: Long = 0): Int {
-        val segment = File(dir, "stream.ts")
-        val totalSize = segment.length()
-        val s = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0).apply {
-            createContext("/") { exchange ->
-                val name = exchange.requestURI.path.trimStart('/')
-                if (name.endsWith(".m3u8")) {
-                    val bytes = File(dir, name).readBytes()
-                    exchange.responseHeaders.add("Content-Type", HLS_PLAYLIST_CONTENT_TYPE)
-                    exchange.sendResponseHeaders(200, bytes.size.toLong())
-                    exchange.responseBody.use { it.write(bytes) }
-                    return@createContext
-                }
-                exchange.responseHeaders.add("Content-Type", "video/mp2t")
-                exchange.responseHeaders.add("Accept-Ranges", "bytes")
-                val range = exchange.requestHeaders.getFirst("Range")
-                val (start, end) = if (range != null) {
-                    val parts = range.removePrefix("bytes=").split("-")
-                    parts[0].toLong() to (if (parts[1].isNotEmpty()) parts[1].toLong() else totalSize - 1)
-                } else 0L to totalSize - 1
-                rangeRequests += "$name:$start-$end"
-                NativeLoadActivity.track { Thread.sleep(segmentDelayMs) }
-                val bytes = segment.readBytes().copyOfRange(start.toInt(), (end + 1).toInt())
-                exchange.responseHeaders.add("Content-Range", "bytes $start-$end/$totalSize")
-                exchange.sendResponseHeaders(206, bytes.size.toLong())
-                exchange.responseBody.use { it.write(bytes) }
-            }
-            executor = Executors.newFixedThreadPool(4)
-            start()
+        val segment = File(dir, "stream.ts").readBytes()
+        val s = startLocalHlsServer(dir, segment.size.toLong()) { start, length ->
+            rangeRequests += "$start+$length"
+            Thread.sleep(segmentDelayMs)
+            segment.copyOfRange(start.toInt(), (start + length).toInt())
         }
         server = s
         return s.address.port
