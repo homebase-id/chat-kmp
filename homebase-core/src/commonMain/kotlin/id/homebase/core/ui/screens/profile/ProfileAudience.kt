@@ -4,9 +4,11 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
+import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.util.compareStringUuId
 import id.homebase.core.ui.screens.card.CardCircle
+import kotlinx.serialization.json.JsonObject
 
 /** Who sees one profile detail; it decides which cards show it. */
 sealed interface ProfileAudience {
@@ -62,3 +64,29 @@ internal fun ProfileAttribute.audience(circles: List<CardCircle>): ProfileAudien
 
 internal fun ProfileAudience.toAcl(): AccessControlList =
     AccessControlList(requiredSecurityGroup = visibility.wireValue, circleIdList = circleIds.takeIf { it.isNotEmpty() })
+
+// priority rides along so a link keeps its place
+internal suspend fun ProfileRepository.saveWithAudience(
+    type: String,
+    data: JsonObject,
+    audience: ProfileAudience,
+    existing: ProfileAttribute?,
+): ProfileAttribute {
+    val response = save(
+        type = type,
+        data = data,
+        visibility = audience.visibility,
+        knownId = existing?.id,
+        knownVersionTag = existing?.versionTag,
+        priority = existing?.priority,
+        circleIds = audience.circleIds,
+    )
+    return (existing ?: ProfileAttribute(id = response.id, type = type, versionTag = response.versionTag, visibility = audience.visibility, data = data))
+        .copy(
+            id = response.id,
+            versionTag = response.versionTag,
+            visibility = audience.visibility,
+            data = data,
+            acl = audience.toAcl(),
+        )
+}

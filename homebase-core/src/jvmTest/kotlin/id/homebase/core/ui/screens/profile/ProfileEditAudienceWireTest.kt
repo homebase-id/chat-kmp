@@ -343,4 +343,36 @@ class ProfileEditAudienceWireTest {
         assertIs<ProfileEditEvent.AttributeSaved>(vm.act(ProfileEditAction.SaveAttribute(ProfileAttributeTypes.PHONE)))
         assertEquals(listOf(userCircle), harness.lastPut()["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
     }
+
+    @Test
+    fun anEditedDetailKeepsItsStoredPriority() = runBlocking {
+        val harness = CardWireHarness()
+        harness.seed(Uuid.random(), Uuid.random(), ProfileAttributeTypes.PHONE, "anonymous", phoneData(), 7, null)
+        val vm = viewModel(harness)
+
+        vm.onAction(ProfileEditAction.FieldChanged(ProfileField.PHONE, "+14155550199"))
+        assertIs<ProfileEditEvent.AttributeSaved>(vm.act(ProfileEditAction.SaveAttribute(ProfileAttributeTypes.PHONE)))
+
+        assertEquals(7, harness.lastPut()["priority"]?.jsonPrimitive?.content?.toInt())
+        assertEquals(7, harness.profileRepository().loadAttributes().single { it.type == ProfileAttributeTypes.PHONE }.priority)
+    }
+
+    @Test
+    fun anEditedLinkKeepsItsStoredPriority() = runBlocking {
+        val harness = CardWireHarness()
+        val link = JsonObject(
+            mapOf(
+                ProfileAttributeTypes.KEY_LINK_TEXT to JsonPrimitive("Garden"),
+                ProfileAttributeTypes.KEY_LINK_TARGET to JsonPrimitive("https://bagend.me"),
+            ),
+        )
+        harness.seed(Uuid.random(), Uuid.random(), ProfileAttributeTypes.LINK, "anonymous", link, 3, null)
+        val vm = viewModel(harness)
+        val key = vm.state.value.links.single().key
+
+        vm.onAction(ProfileEditAction.LinkChanged(key, "Vegetables", "https://bagend.me"))
+        assertIs<ProfileEditEvent.AttributeSaved>(vm.act(ProfileEditAction.SaveLink(key)))
+
+        assertEquals(3, harness.lastPut()["priority"]?.jsonPrimitive?.content?.toInt())
+    }
 }

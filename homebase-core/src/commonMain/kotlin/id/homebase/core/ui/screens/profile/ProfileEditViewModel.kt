@@ -245,22 +245,7 @@ class ProfileEditViewModel(
         _state.update { it.copy(savingAttributes = it.savingAttributes + savingKey) }
         viewModelScope.launch {
             try {
-                val response = repository.save(
-                    type = edit.type,
-                    data = edit.data,
-                    visibility = edit.audience.visibility,
-                    knownId = existing?.id,
-                    knownVersionTag = existing?.versionTag,
-                    circleIds = edit.audience.circleIds,
-                )
-                val newAttr = ProfileAttribute(
-                    id = response.id,
-                    type = edit.type,
-                    versionTag = response.versionTag,
-                    visibility = edit.audience.visibility,
-                    data = edit.data,
-                    acl = edit.audience.toAcl(),
-                )
+                val newAttr = repository.saveWithAudience(edit.type, edit.data, edit.audience, existing)
                 _state.update {
                     it.copy(attributes = it.attributes.filterNot { stored -> stored.id == newAttr.id } + newAttr)
                 }
