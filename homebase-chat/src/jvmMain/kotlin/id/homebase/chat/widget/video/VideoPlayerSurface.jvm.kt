@@ -54,6 +54,8 @@ import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.resources.MR
+import id.homebase.resources.cd_pause_video
+import id.homebase.resources.cd_play_video
 import id.homebase.resources.cd_video_frame
 import id.homebase.resources.video_error_generic
 import id.homebase.resources.vlc_required
@@ -567,7 +569,7 @@ internal fun TransportBar(
         IconButton(onClick = onTogglePlay) {
             Icon(
                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                contentDescription = if (isPlaying) "Pause" else "Play",
+                contentDescription = stringResource(if (isPlaying) MR.string.cd_pause_video else MR.string.cd_play_video),
                 tint = Color.White,
             )
         }

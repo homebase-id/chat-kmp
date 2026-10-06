@@ -21,7 +21,6 @@ import androidx.compose.ui.layout.ContentScale
 import co.touchlab.kermit.Logger
 import io.github.kdroidfilter.composemediaplayer.DefaultVideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.InitialPlayerState
-import io.github.kdroidfilter.composemediaplayer.VideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface as ComposeMediaPlayerSurface
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
@@ -40,12 +39,25 @@ private fun osHasNativeBackend(): Boolean {
     }
 }
 
-private val nativeBackendAvailable: Boolean by lazy {
-    osHasNativeBackend() &&
-        runCatching { DefaultVideoPlayerState().dispose() }
-            .onFailure { Logger.w(tag = "VideoIO", throwable = it) { "native video backend unavailable" } }
-            .isSuccess
+// The state constructor only starts an async init, so the library load is forced here; load() returns false instead of throwing.
+// NativeLibraryLoader is internal to the library, hence reflection.
+internal var nativeLibraryLoad: () -> Boolean = {
+    val loader = Class.forName("io.github.kdroidfilter.composemediaplayer.util.NativeLibraryLoader")
+    loader.getMethod("load", String::class.java, Class::class.java)
+        .invoke(loader.getField("INSTANCE").get(null), "NativeVideoPlayer", loader) as Boolean
 }
+
+private val nativeBackendProbe: Boolean by lazy { probeNativeBackend() }
+
+internal fun probeNativeBackend(): Boolean =
+    osHasNativeBackend() &&
+        runCatching { nativeLibraryLoad() }
+            .onFailure { Logger.w(tag = "VideoIO", throwable = it) { "native video backend unavailable" } }
+            .getOrDefault(false)
+
+internal var nativeBackendAvailable: () -> Boolean = { nativeBackendProbe }
+
+internal enum class DesktopVideoBackend { NATIVE, VLC }
 
 @Composable
 internal fun DesktopVideoPlayer(
@@ -62,9 +74,17 @@ internal fun DesktopVideoPlayer(
     muted: Boolean = false,
     onEnded: () -> Unit = {},
     replayToken: Int = 0,
+    onBackendChosen: (DesktopVideoBackend) -> Unit = {},
 ) {
-    val nativeOk by produceState<Boolean?>(null) { value = withContext(Dispatchers.IO) { nativeBackendAvailable } }
+    val nativeOk by produceState<Boolean?>(null) { value = withContext(Dispatchers.IO) { nativeBackendAvailable() } }
     var useVlc by remember(videoPath) { mutableStateOf(false) }
+    val chosen = when {
+        nativeOk == null -> null
+        nativeOk == false || useVlc -> DesktopVideoBackend.VLC
+        else -> DesktopVideoBackend.NATIVE
+    }
+    val onBackend = rememberUpdatedState(onBackendChosen)
+    LaunchedEffect(chosen) { chosen?.let { onBackend.value(it) } }
     when {
         nativeOk == null -> Box(modifier, contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         nativeOk == false || useVlc -> VlcjPlayer(
