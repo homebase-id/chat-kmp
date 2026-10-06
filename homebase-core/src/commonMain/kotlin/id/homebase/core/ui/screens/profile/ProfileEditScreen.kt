@@ -30,7 +30,6 @@ import id.homebase.resources.ok
 import id.homebase.resources.profile_edit_label
 import id.homebase.resources.profile_edit_birthday_pick
 import id.homebase.resources.profile_edit_not_on_card
-import id.homebase.resources.profile_edit_visibility_public
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
@@ -158,6 +157,7 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.screens.card.CardCircle
+import id.homebase.core.ui.screens.card.CookieBadge
 import id.homebase.core.ui.screens.card.WithTooltip
 import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
@@ -307,94 +307,75 @@ internal fun ProfileEditContent(
     snackbarHostState: SnackbarHostState,
 ) {
     ProfileExpressiveType {
-        ProfileEditScaffold(
-            uiState, avatarUiState, previewMode, onTogglePreview, onOpenCard, onAction, onAvatarAction,
-            onPickAnonymousPhoto, onPickOnlyMePhoto, snackbarHostState,
-        )
-    }
-}
-
-@Composable
-private fun ProfileEditScaffold(
-    uiState: ProfileEditUiState,
-    avatarUiState: ProfileAvatarEditUiState,
-    previewMode: Boolean,
-    onTogglePreview: () -> Unit,
-    onOpenCard: (() -> Unit)?,
-    onAction: (ProfileEditAction) -> Unit,
-    onAvatarAction: (ProfileAvatarEditAction) -> Unit,
-    onPickAnonymousPhoto: () -> Unit,
-    onPickOnlyMePhoto: () -> Unit,
-    snackbarHostState: SnackbarHostState,
-) {
-    val motion = MaterialTheme.motionScheme
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    val ready = !uiState.isLoading && !uiState.loadFailed
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            SettingsLargeTopBar(
-                title = stringResource(MR.string.profile_edit_title),
-                onBack = { onAction(ProfileEditAction.BackClicked) },
-                scrollBehavior = scrollBehavior,
-                actions = {
-                    if (ready) {
-                        TopBarAction(
-                            label = stringResource(
-                                if (previewMode) MR.string.profile_edit_preview_exit else MR.string.profile_edit_action_preview,
-                            ),
-                            icon = if (previewMode) Icons.Outlined.Edit else Icons.Outlined.Visibility,
-                            onClick = onTogglePreview,
-                        )
-                        if (onOpenCard != null) {
+        val motion = MaterialTheme.motionScheme
+        val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+        val ready = !uiState.isLoading && !uiState.loadFailed
+        Scaffold(
+            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+            topBar = {
+                SettingsLargeTopBar(
+                    title = stringResource(MR.string.profile_edit_title),
+                    onBack = { onAction(ProfileEditAction.BackClicked) },
+                    scrollBehavior = scrollBehavior,
+                    actions = {
+                        if (ready) {
                             TopBarAction(
-                                label = stringResource(MR.string.profile_edit_action_cards),
-                                icon = Icons.Outlined.ContactPage,
-                                onClick = onOpenCard,
+                                label = stringResource(
+                                    if (previewMode) MR.string.profile_edit_preview_exit else MR.string.profile_edit_action_preview,
+                                ),
+                                icon = if (previewMode) Icons.Outlined.Edit else Icons.Outlined.Visibility,
+                                onClick = onTogglePreview,
                             )
+                            if (onOpenCard != null) {
+                                TopBarAction(
+                                    label = stringResource(MR.string.profile_edit_action_cards),
+                                    icon = Icons.Outlined.ContactPage,
+                                    onClick = onOpenCard,
+                                )
+                            }
                         }
-                    }
-                },
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { padding ->
-        when {
-            uiState.isLoading -> ProfileEditSkeleton(Modifier.fillMaxSize().padding(padding))
-            uiState.loadFailed -> LoadFailedState(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                onRetry = { onAction(ProfileEditAction.RetryLoadClicked) },
-            )
-            else -> {
-                AnimatedContent(
-                    targetState = previewMode,
-                    transitionSpec = {
-                        fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
                     },
-                ) { preview ->
-                    if (preview) {
-                        ProfilePreview(
-                            uiState = uiState,
-                            modifier = Modifier.fillMaxSize().padding(padding),
-                        )
-                    } else {
-                        Box(modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
-                            ProfileForm(
+                )
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+        ) { padding ->
+            when {
+                uiState.isLoading -> ProfileEditSkeleton(Modifier.fillMaxSize().padding(padding))
+                uiState.loadFailed -> LoadFailedState(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    onRetry = { onAction(ProfileEditAction.RetryLoadClicked) },
+                )
+                else -> {
+                    AnimatedContent(
+                        targetState = previewMode,
+                        transitionSpec = {
+                            fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
+                        },
+                    ) { preview ->
+                        if (preview) {
+                            ProfilePreview(
                                 uiState = uiState,
-                                onAction = onAction,
-                                avatarUiState = avatarUiState,
-                                onAvatarAction = onAvatarAction,
-                                onPickAnonymousPhoto = onPickAnonymousPhoto,
-                                onPickOnlyMePhoto = onPickOnlyMePhoto,
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier.fillMaxSize().padding(padding),
                             )
-                            AnimatedVisibility(
-                                visible = uiState.savingAttributes.isNotEmpty(),
-                                modifier = Modifier.align(Alignment.TopCenter),
-                                enter = fadeIn(motion.defaultEffectsSpec()),
-                                exit = fadeOut(motion.defaultEffectsSpec()),
-                            ) {
-                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        } else {
+                            Box(modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+                                ProfileForm(
+                                    uiState = uiState,
+                                    onAction = onAction,
+                                    avatarUiState = avatarUiState,
+                                    onAvatarAction = onAvatarAction,
+                                    onPickAnonymousPhoto = onPickAnonymousPhoto,
+                                    onPickOnlyMePhoto = onPickOnlyMePhoto,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                AnimatedVisibility(
+                                    visible = uiState.savingAttributes.isNotEmpty(),
+                                    modifier = Modifier.align(Alignment.TopCenter),
+                                    enter = fadeIn(motion.defaultEffectsSpec()),
+                                    exit = fadeOut(motion.defaultEffectsSpec()),
+                                ) {
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                }
                             }
                         }
                     }
@@ -463,19 +444,13 @@ internal fun LoadFailedState(modifier: Modifier, onRetry: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .background(MaterialTheme.colorScheme.errorContainer, MaterialShapes.Cookie9Sided.toShape()),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.ErrorOutline,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onErrorContainer,
-                modifier = Modifier.size(32.dp),
-            )
-        }
+        CookieBadge(
+            icon = Icons.Outlined.ErrorOutline,
+            container = MaterialTheme.colorScheme.errorContainer,
+            content = MaterialTheme.colorScheme.onErrorContainer,
+            size = 72.dp,
+            iconSize = 32.dp,
+        )
         Spacer(Modifier.height(24.dp))
         Text(
             text = stringResource(MR.string.profile_edit_load_failed),
@@ -538,7 +513,7 @@ private fun ProfileForm(
     val cards = remember(uiState.circles) { listOf(EditorCard(null)) + uiState.circles.map { EditorCard(it) } }
     val focusCard = cards.firstOrNull { it.key == selectedCard }
     fun onFocusedCard(audience: ProfileAudience) = focusCard == null || audience.isOnCard(focusCard.circle?.id)
-    val focusName = focusCard?.let { it.circle?.name ?: stringResource(MR.string.profile_edit_visibility_public) }
+    val focusName = focusCard?.let { cardLabel(it) }
     fun hiddenOn(audience: ProfileAudience): String? = focusName?.takeUnless { onFocusedCard(audience) }
     fun pulseCardsOf(audience: ProfileAudience) {
         pulse = CardPulse(pulse.tick + 1, cards.filter { audience.isOnCard(it.circle?.id) }.map { it.key }.toSet())
@@ -1252,19 +1227,13 @@ private fun AddAttributeRow(icon: ImageVector, label: String, social: Boolean, o
     val colors = MaterialTheme.colorScheme
     ListItem(
         leadingContent = {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(if (social) colors.tertiaryContainer else colors.secondaryContainer, MaterialShapes.Cookie9Sided.toShape()),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = if (social) colors.onTertiaryContainer else colors.onSecondaryContainer,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
+            CookieBadge(
+                icon = icon,
+                container = if (social) colors.tertiaryContainer else colors.secondaryContainer,
+                content = if (social) colors.onTertiaryContainer else colors.onSecondaryContainer,
+                size = 44.dp,
+                iconSize = 22.dp,
+            )
         },
         headlineContent = { Text(label) },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),

@@ -15,11 +15,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.ToggleButtonShapes
-import androidx.compose.material3.toShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -83,6 +80,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import id.homebase.core.ui.screens.card.CardCircle
+import id.homebase.core.ui.screens.card.CookieBadge
 import id.homebase.core.ui.screens.card.WithTooltip
 import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
@@ -291,11 +289,12 @@ internal fun AudiencePicker(
 
 @Composable
 private fun AudienceHint(audience: ProfileAudience, noCircles: Boolean) {
-    val emptyPick = !audience.isSavable && !noCircles
+    val unsavable = !audience.isSavable
+    val emptyPick = unsavable && !noCircles
     Text(
         text = stringResource(
             when {
-                audience is ProfileAudience.Circles && noCircles && !audience.isSavable -> MR.string.profile_edit_audience_circles_none
+                unsavable && noCircles -> MR.string.profile_edit_audience_circles_none
                 emptyPick -> MR.string.profile_edit_audience_circles_empty
                 audience == ProfileAudience.Public -> MR.string.profile_edit_audience_public_hint
                 audience == ProfileAudience.OnlyMe -> MR.string.profile_edit_audience_only_me_hint
@@ -553,23 +552,16 @@ internal fun PanelHeader(icon: ImageVector, title: String, subtitle: String? = n
     }
 }
 
-/** An icon in the scalloped badge the add sheet and the cards use; [filled] for a panel's header, tonal for a row. */
 @Composable
-internal fun CookieIcon(icon: ImageVector, modifier: Modifier = Modifier, filled: Boolean = false) {
+internal fun CookieIcon(icon: ImageVector, filled: Boolean = false) {
     val colors = MaterialTheme.colorScheme
-    Box(
-        modifier = modifier
-            .size(44.dp)
-            .background(if (filled) colors.secondary else colors.secondaryContainer, MaterialShapes.Cookie9Sided.toShape()),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = if (filled) colors.onSecondary else colors.onSecondaryContainer,
-            modifier = Modifier.size(22.dp),
-        )
-    }
+    CookieBadge(
+        icon = icon,
+        container = if (filled) colors.secondary else colors.secondaryContainer,
+        content = if (filled) colors.onSecondary else colors.onSecondaryContainer,
+        size = 44.dp,
+        iconSize = 22.dp,
+    )
 }
 
 /** Whether a detail with this audience appears on the Public card ([circleId] null) or on that circle's card. */

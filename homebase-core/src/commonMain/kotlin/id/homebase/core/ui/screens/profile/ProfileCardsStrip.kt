@@ -190,7 +190,7 @@ private fun tileCorner(selected: Boolean): Dp =
     animateDpAsState(if (selected) 40.dp else 20.dp, MaterialTheme.motionScheme.defaultSpatialSpec()).value
 
 @Composable
-private fun cardLabel(card: EditorCard): String =
+internal fun cardLabel(card: EditorCard): String =
     card.circle?.name ?: stringResource(MR.string.profile_edit_visibility_public)
 
 @Composable

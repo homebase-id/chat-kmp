@@ -12,6 +12,8 @@ import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.util.compareStringUuId
 import id.homebase.core.ui.screens.card.CardCircle
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -97,7 +99,10 @@ class ProfileEditViewModel(
         _state.update { it.copy(isLoading = true, loadFailed = false) }
         viewModelScope.launch {
             val (attributes, circles) = try {
-                repository.loadAttributes() to loadCircles()
+                coroutineScope {
+                    val circles = async { loadCircles() }
+                    repository.loadAttributes() to circles.await()
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -109,10 +114,10 @@ class ProfileEditViewModel(
             val result = LoadedProfileAttributes.from(attributes)
             loaded = result.byType
             duplicates = result.duplicates
-            loadedAudiences = result.byType.mapValues { (_, attribute) -> attribute.audience(circles) }
             loadedLinks = result.links.associateBy { it.id.toString() }
-            loadedLinkAudiences = result.links.associate { it.id.toString() to it.audience(circles) }
             _state.update { it.withLoaded(result, circles) }
+            loadedAudiences = _state.value.audiences
+            loadedLinkAudiences = _state.value.links.associate { it.key to it.audience }
             nameOtherCircles()
         }
     }
