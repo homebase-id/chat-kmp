@@ -1240,7 +1240,10 @@ val appModule = module {
         )
     }
     viewModelOf(::SettingsViewModel)
-    viewModelOf(::ProfileEditViewModel)
+    viewModel {
+        val cards = get<ProfileCardSource>()
+        ProfileEditViewModel(get(), get<DeveloperPreferences>().connectionReviewEnabled.value) { cards.circles() }
+    }
     viewModelOf(::ProfileAvatarEditViewModel)
     viewModel { ProfileCardViewModel(get(), ::createCardHost) }
     viewModelOf(::NotificationSettingsViewModel)

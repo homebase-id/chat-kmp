@@ -93,12 +93,12 @@ class ProfileVisibleAttributesTest {
     }
 
     @Test
-    fun previewVettedValuesLeaveOutAnOwnerOnlyRecordTheEditorStillEdits() {
+    fun theEditorEditsThePublicRecordAndPreviewKeepsTheOwnerOnlyOneOut() {
         val ownerOnly = status("owner only", "owner")
-        val state = ProfileEditUiState().withLoaded(LoadedProfileAttributes.from(listOf(status("public", "anonymous"), ownerOnly)))
+        val loaded = LoadedProfileAttributes.from(listOf(ownerOnly, status("public", "anonymous")))
+        val state = ProfileEditUiState().withLoaded(loaded, emptyList())
 
-        assertEquals("owner only", state.connectedValues[ProfileField.STATUS])
+        assertEquals("public", state.values[ProfileField.STATUS])
         assertEquals("public", state.visibleValues(CONNECTED)[ProfileField.STATUS])
-        assertEquals("public", state.visibleValues(ANONYMOUS)[ProfileField.STATUS])
     }
 }

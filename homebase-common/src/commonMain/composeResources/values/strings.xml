@@ -2297,6 +2297,17 @@
     <string name="profile_edit_visibility_public">Public</string>
     <string name="profile_edit_visibility_connected">Vetted</string>
     <string name="profile_edit_visibility_circles">Circles</string>
+    <string name="profile_edit_audience_title">Who can see this</string>
+    <string name="profile_edit_audience_only_me">Only me</string>
+    <string name="profile_edit_audience_public_hint">Shown on every card, including the Public card.</string>
+    <string name="profile_edit_audience_only_me_hint">Not shown on any card.</string>
+    <string name="profile_edit_audience_circles_hint">Shown only on the cards of the circles you pick.</string>
+    <string name="profile_edit_audience_circles_empty">Pick at least one circle.</string>
+    <string name="profile_edit_audience_circles_none">No circles to choose from.</string>
+    <string name="profile_edit_photos_title">Photos</string>
+    <string name="profile_edit_photos_desc">Photos can be Public or shown to all your connections. Circles can't be chosen for photos yet.</string>
+    <string name="profile_edit_details_title">Details</string>
+    <string name="profile_edit_details_desc">Enter each detail once, then choose which cards show it.</string>
     <string name="profile_edit_public_hint">Visible to everyone, including people you haven't connected with.</string>
     <string name="profile_edit_connected_fallback_hint">Leave blank to show vetted contacts your Public value instead.</string>
     <string name="profile_edit_circles_fallback_hint">Leave blank to show your circles your Public value instead.</string>

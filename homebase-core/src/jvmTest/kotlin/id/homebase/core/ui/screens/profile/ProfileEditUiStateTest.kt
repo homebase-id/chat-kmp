@@ -1,46 +1,39 @@
 package id.homebase.core.ui.screens.profile
 
-import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.core.ui.screens.card.CardCircle
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ProfileEditUiStateTest {
 
     @Test
-    fun value_anonymousTier_returnsAnonymousMapEntry() {
-        val state = ProfileEditUiState(anonymousValues = mapOf(ProfileField.NICKNAME to "abc"))
-        assertEquals("abc", state.value(ProfileField.NICKNAME, ProfileVisibility.ANONYMOUS))
+    fun anUnsetAttributeStartsPublic() {
+        assertEquals(ProfileAudience.Public, ProfileEditUiState().audience("phone"))
     }
 
     @Test
-    fun value_connectedTier_returnsConnectedMapEntry() {
-        val state = ProfileEditUiState(connectedValues = mapOf(ProfileField.NICKNAME to "ppp"))
-        assertEquals("ppp", state.value(ProfileField.NICKNAME, ProfileVisibility.CONNECTED))
+    fun valueIsBlankWhenNotSet() {
+        assertEquals("", ProfileEditUiState().value(ProfileField.NICKNAME))
+        assertEquals("abc", ProfileEditUiState(values = mapOf(ProfileField.NICKNAME to "abc")).value(ProfileField.NICKNAME))
     }
 
     @Test
-    fun value_fieldPresentOnlyInAnonymous_connectedTierReturnsEmpty() {
-        // No automatic cross-tier fallback in the raw accessor — that's a display-time concern
-        // owned by ProfilePreview, not storage.
-        val state = ProfileEditUiState(anonymousValues = mapOf(ProfileField.NICKNAME to "abc"))
-        assertEquals("", state.value(ProfileField.NICKNAME, ProfileVisibility.CONNECTED))
+    fun isSavingIsPerAttributeType() {
+        val state = ProfileEditUiState(savingAttributes = setOf("nickname"))
+        assertTrue(state.isSaving("nickname"))
+        assertFalse(state.isSaving("email"))
     }
 
     @Test
-    fun isSaving_pairInSavingAttributes_true() {
-        val state = ProfileEditUiState(
-            savingAttributes = setOf("nickname" to ProfileVisibility.CONNECTED),
-        )
-        assertTrue(state.isSaving("nickname", ProfileVisibility.CONNECTED))
+    fun circlesAudienceWithNoCircleIsNotSavable() {
+        assertFalse(ProfileAudience.Circles(emptySet()).isSavable)
+        assertTrue(ProfileAudience.Circles(setOf(CIRCLE)).isSavable)
+        assertTrue(ProfileAudience.OnlyMe.isSavable)
     }
 
-    @Test
-    fun isSaving_pairNotInSavingAttributes_false() {
-        val state = ProfileEditUiState(
-            savingAttributes = setOf("nickname" to ProfileVisibility.CONNECTED),
-        )
-        assertTrue(!state.isSaving("nickname", ProfileVisibility.ANONYMOUS))
-        assertTrue(!state.isSaving("email", ProfileVisibility.CONNECTED))
+    private companion object {
+        const val CIRCLE = "cefc4f7cbc8c34762e0f76703e7e174e"
     }
 }

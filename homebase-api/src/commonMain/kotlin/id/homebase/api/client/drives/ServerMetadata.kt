@@ -35,7 +35,7 @@ data class AccessControlList(
 )
 
 // Odin's SystemCircleConstants.ConfirmedConnectionsCircleId, granted to every owner-approved connection.
-private const val CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE = "bb2683fa402aff866e771a6495765a15"
+const val CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE = "bb2683fa402aff866e771a6495765a15"
 
 /**
  * Whether [viewer] can read a file with this ACL, mirroring Odin's DriveAclAuthorizationService for

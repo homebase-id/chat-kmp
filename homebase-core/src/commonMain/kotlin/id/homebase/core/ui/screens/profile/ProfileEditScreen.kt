@@ -64,7 +64,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import id.homebase.resources.profile_edit_circles_fallback_hint
@@ -91,6 +90,7 @@ import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.core.widget.SettingsTopBar
+import id.homebase.core.ui.screens.card.CardCircle
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.contactbook_detail_location
@@ -123,6 +123,10 @@ import id.homebase.resources.profile_edit_instagram
 import id.homebase.resources.profile_edit_linkedin
 import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_edit_nickname
+import id.homebase.resources.profile_edit_photos_title
+import id.homebase.resources.profile_edit_photos_desc
+import id.homebase.resources.profile_edit_details_title
+import id.homebase.resources.profile_edit_details_desc
 import id.homebase.resources.profile_edit_phone
 import id.homebase.resources.profile_edit_phone_label
 import id.homebase.resources.profile_edit_phone_label_hint
@@ -258,17 +262,15 @@ fun ProfileEditScreen(
                         )
                     } else {
                         Box(modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
-                            CompositionLocalProvider(LocalReviewEnabled provides uiState.reviewEnabled) {
-                                ProfileForm(
-                                    uiState = uiState,
-                                    onAction = viewModel::onAction,
-                                    avatarUiState = avatarUiState,
-                                    onAvatarAction = avatarViewModel::onAction,
-                                    onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
-                                    onPickConnectedPhoto = { connectedPhotoPicker.launch() },
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
+                            ProfileForm(
+                                uiState = uiState,
+                                onAction = viewModel::onAction,
+                                avatarUiState = avatarUiState,
+                                onAvatarAction = avatarViewModel::onAction,
+                                onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
+                                onPickConnectedPhoto = { connectedPhotoPicker.launch() },
+                                modifier = Modifier.fillMaxSize(),
+                            )
                             AnimatedVisibility(
                                 visible = uiState.savingAttributes.isNotEmpty(),
                                 modifier = Modifier.align(Alignment.TopCenter),
@@ -312,10 +314,9 @@ internal fun LoadFailedState(modifier: Modifier, onRetry: () -> Unit) {
 }
 
 /**
- * Mirrors [ProfilePreview]'s Public/Circles split: everyone-visible fields first, then everything a
- * contact in one of your circles can see. There's no screen-wide Save — tapping a row expands it in
- * place with a Public|Circles toggle (defaulting to that row's own section) and its field(s); the
- * checkmark persists just that one attribute at whichever tier is currently selected.
+ * Photos first, then every detail in one list. There's no screen-wide Save — tapping a row expands
+ * it in place with its field(s) and the shared [AudiencePicker]; the checkmark persists just that
+ * one attribute with the chosen audience.
  */
 @Composable
 private fun ProfileForm(
@@ -327,19 +328,13 @@ private fun ProfileForm(
     onPickConnectedPhoto: () -> Unit,
     modifier: Modifier,
 ) {
-    // Which (section tier, attribute type) rows are currently expanded — keeps a row mounted (and
-    // visible) for the whole edit session once it has a value. Blank attributes are never opened
-    // this way — they're only added via the FAB's dialog, below.
-    val editingRows = remember { mutableStateMapOf<Pair<ProfileVisibility, String>, Boolean>() }
+    // Keeps a row mounted (and visible) for the whole edit session once it has a value. Blank
+    // attributes are only added via the FAB's dialog, below.
+    val editingRows = remember { mutableStateMapOf<String, Boolean>() }
     var showAddSheet by remember { mutableStateOf(false) }
-    var addDialogTarget by remember { mutableStateOf<Pair<AttributeSpec, ProfileVisibility>?>(null) }
+    var addDialogTarget by remember { mutableStateOf<AttributeSpec?>(null) }
 
-    // An attribute qualifies once it's missing from either tier — if it already has a value in one
-    // tier, that tier's row is already on screen and its own Public|Circles toggle can add the other.
-    val missingAttributes = ATTRIBUTE_SPECS.filter {
-        displayValueFor(it.type, uiState.anonymousValues) == null ||
-            displayValueFor(it.type, uiState.connectedValues) == null
-    }
+    val missingAttributes = ATTRIBUTE_SPECS.filter { displayValueFor(it.type, uiState.values) == null }
     val hasMissing = missingAttributes.isNotEmpty()
     val motion = MaterialTheme.motionScheme
 
@@ -351,37 +346,60 @@ private fun ProfileForm(
                 .verticalScroll(rememberScrollState()),
         ) {
             Spacer(Modifier.height(8.dp))
-            ProfileFieldsSection(
+            SectionHeader(
+                stringResource(MR.string.profile_edit_photos_title),
+                stringResource(MR.string.profile_edit_photos_desc),
+            )
+            PhotoBlock(
+                label = stringResource(MR.string.profile_edit_visibility_public),
                 tier = ProfileVisibility.ANONYMOUS,
-                title = stringResource(MR.string.profile_edit_preview_section_public),
-                description = stringResource(MR.string.profile_edit_preview_section_public_desc),
-                uiState = uiState,
-                onAction = onAction,
-                editingRows = editingRows,
                 photoState = if (avatarUiState.isLoading) null else avatarUiState.anonymous,
                 onAvatarAction = onAvatarAction,
                 onPickPhoto = onPickAnonymousPhoto,
             )
-
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp))
-
-            ProfileFieldsSection(
+            PhotoBlock(
+                label = stringResource(
+                    if (uiState.reviewEnabled) MR.string.profile_edit_visibility_circles
+                    else MR.string.profile_edit_visibility_connected
+                ),
                 tier = ProfileVisibility.CONNECTED,
-                title = stringResource(
-                    if (uiState.reviewEnabled) MR.string.profile_edit_preview_section_circles
-                    else MR.string.profile_edit_preview_section_vetted
-                ),
-                description = stringResource(
-                    if (uiState.reviewEnabled) MR.string.profile_edit_preview_section_circles_desc
-                    else MR.string.profile_edit_preview_section_vetted_desc
-                ),
-                uiState = uiState,
-                onAction = onAction,
-                editingRows = editingRows,
                 photoState = if (avatarUiState.isLoading) null else avatarUiState.connected,
                 onAvatarAction = onAvatarAction,
                 onPickPhoto = onPickConnectedPhoto,
             )
+
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp))
+
+            Column(
+                modifier = Modifier.fillMaxWidth().animateContentSize(motion.defaultSpatialSpec()),
+            ) {
+                SectionHeader(
+                    stringResource(MR.string.profile_edit_details_title),
+                    stringResource(MR.string.profile_edit_details_desc),
+                )
+                ATTRIBUTE_SPECS.forEach { spec ->
+                    val display = displayValueFor(spec.type, uiState.values)
+                        ?.let { if (spec.type == ProfileAttributeTypes.PHONE) formatPhoneForDisplay(it) else it }
+                    if (display != null || editingRows[spec.type] == true) {
+                        val audience = uiState.audience(spec.type)
+                        EditableFieldGroup(
+                            type = spec.type,
+                            icon = spec.icon,
+                            label = stringResource(spec.labelRes),
+                            displayValue = display,
+                            audience = audience,
+                            circles = uiState.circles,
+                            editingRows = editingRows,
+                            onAction = onAction,
+                            canSave = isAttributeValid(spec.type) { uiState.value(it) } && audience.isSavable,
+                        ) {
+                            AttributeFields(spec.type, { uiState.value(it) }) { field, v ->
+                                onAction(ProfileEditAction.FieldChanged(field, v))
+                            }
+                        }
+                    }
+                }
+            }
             // Clearance so the last row isn't hidden behind the floating action button.
             Spacer(Modifier.height(88.dp))
         }
@@ -406,21 +424,22 @@ private fun ProfileForm(
             missing = missingAttributes,
             onPick = { spec ->
                 showAddSheet = false
-                addDialogTarget = spec to ProfileVisibility.ANONYMOUS
+                addDialogTarget = spec
             },
             onDismiss = { showAddSheet = false },
         )
     }
 
-    addDialogTarget?.let { (spec, tier) ->
+    addDialogTarget?.let { spec ->
         AddAttributeDialog(
             spec = spec,
-            initialTier = tier,
-            onSave = { savedTier, values ->
+            circles = uiState.circles,
+            onSave = { audience, values ->
                 ProfileEditViewModel.TYPE_FIELDS[spec.type].orEmpty().forEach { (field, _) ->
-                    onAction(ProfileEditAction.FieldChanged(field, savedTier, values[field].orEmpty()))
+                    onAction(ProfileEditAction.FieldChanged(field, values[field].orEmpty()))
                 }
-                onAction(ProfileEditAction.SaveAttribute(spec.type, savedTier))
+                onAction(ProfileEditAction.AudienceChanged(spec.type, audience))
+                onAction(ProfileEditAction.SaveAttribute(spec.type))
                 addDialogTarget = null
             },
             onDismiss = { addDialogTarget = null },
@@ -428,252 +447,39 @@ private fun ProfileForm(
     }
 }
 
+/** One photo slot. Tapping the photo reveals the camera badge and Remove button; Save collapses them again. */
 @Composable
-private fun ProfileFieldsSection(
+private fun PhotoBlock(
+    label: String,
     tier: ProfileVisibility,
-    title: String,
-    description: String,
-    uiState: ProfileEditUiState,
-    onAction: (ProfileEditAction) -> Unit,
-    editingRows: SnapshotStateMap<Pair<ProfileVisibility, String>, Boolean>,
     photoState: PhotoTierUiState?,
     onAvatarAction: (ProfileAvatarEditAction) -> Unit,
     onPickPhoto: () -> Unit,
 ) {
-    val values = if (tier == ProfileVisibility.ANONYMOUS) uiState.anonymousValues else uiState.connectedValues
-    val v: (ProfileField) -> String = { values[it].orEmpty() }
-    fun vf(editTier: ProfileVisibility, field: ProfileField): String =
-        (if (editTier == ProfileVisibility.ANONYMOUS) uiState.anonymousValues else uiState.connectedValues)[field].orEmpty()
-
+    if (photoState == null) return
+    var photoRevealed by remember { mutableStateOf(false) }
     Column(
-        modifier = Modifier.fillMaxWidth().animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec()),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        SectionHeader(title, description)
-
-        if (photoState != null) {
-            // Tapping the photo reveals the camera badge and Remove button, same as tapping an
-            // attribute row below reveals its Save button — collapses again once Save is pressed.
-            var photoRevealed by remember { mutableStateOf(false) }
-            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                PhotoTierSection(
-                    tier = photoState,
-                    onPick = onPickPhoto,
-                    onRemove = { onAvatarAction(ProfileAvatarEditAction.RemoveClicked(tier)) },
-                    onSaveClicked = {
-                        onAvatarAction(ProfileAvatarEditAction.SaveClicked(tier))
-                        photoRevealed = false
-                    },
-                    controlsVisible = photoRevealed,
-                    centered = true,
-                    onPhotoTap = { photoRevealed = true },
-                ) {
-                    ExistingAvatarContent(photoState.existing, "ProfileEditScreen")
-                }
-            }
-        }
-
-        val nameDisplay = profileNameValue(values)
-        if (nameDisplay != null || editingRows[tier to ProfileAttributeTypes.NAME] == true) {
-            EditableFieldGroup(
-                sectionTier = tier,
-                type = ProfileAttributeTypes.NAME,
-                icon = Icons.Outlined.Person,
-                label = stringResource(MR.string.contactbook_detail_name),
-                displayValue = nameDisplay,
-                editingRows = editingRows,
-                onAction = onAction,
-            ) { editTier ->
-                AttributeFields(ProfileAttributeTypes.NAME, { vf(editTier, it) }) { field, v ->
-                    onAction(ProfileEditAction.FieldChanged(field, editTier, v))
-                }
-            }
-        }
-
-        val nicknameDisplay = v(ProfileField.NICKNAME).ifBlank { null }
-        if (nicknameDisplay != null || editingRows[tier to ProfileAttributeTypes.NICKNAME] == true) {
-            EditableFieldGroup(
-                sectionTier = tier,
-                type = ProfileAttributeTypes.NICKNAME,
-                icon = Icons.Outlined.Badge,
-                label = stringResource(MR.string.profile_edit_nickname),
-                displayValue = nicknameDisplay,
-                editingRows = editingRows,
-                onAction = onAction,
-            ) { editTier ->
-                AttributeFields(ProfileAttributeTypes.NICKNAME, { vf(editTier, it) }) { field, v ->
-                    onAction(ProfileEditAction.FieldChanged(field, editTier, v))
-                }
-            }
-        }
-
-        val statusDisplay = v(ProfileField.STATUS).ifBlank { null }
-        if (statusDisplay != null || editingRows[tier to ProfileAttributeTypes.STATUS] == true) {
-            EditableFieldGroup(
-                sectionTier = tier,
-                type = ProfileAttributeTypes.STATUS,
-                icon = Icons.Outlined.Info,
-                label = stringResource(MR.string.profile_edit_status),
-                displayValue = statusDisplay,
-                editingRows = editingRows,
-                onAction = onAction,
-            ) { editTier ->
-                AttributeFields(ProfileAttributeTypes.STATUS, { vf(editTier, it) }) { field, v ->
-                    onAction(ProfileEditAction.FieldChanged(field, editTier, v))
-                }
-            }
-        }
-
-        val birthdayDisplay = v(ProfileField.BIRTHDAY).ifBlank { null }
-        if (birthdayDisplay != null || editingRows[tier to ProfileAttributeTypes.BIRTHDAY] == true) {
-            EditableFieldGroup(
-                sectionTier = tier,
-                type = ProfileAttributeTypes.BIRTHDAY,
-                icon = Icons.Outlined.Cake,
-                label = stringResource(MR.string.profile_edit_birthday),
-                displayValue = birthdayDisplay,
-                editingRows = editingRows,
-                onAction = onAction,
-                isValidForSave = { et -> isAttributeValid(ProfileAttributeTypes.BIRTHDAY) { vf(et, it) } },
-            ) { editTier ->
-                AttributeFields(ProfileAttributeTypes.BIRTHDAY, { vf(editTier, it) }) { field, v ->
-                    onAction(ProfileEditAction.FieldChanged(field, editTier, v))
-                }
-            }
-        }
-
-        val emailDisplay = v(ProfileField.EMAIL).ifBlank { null }
-        if (emailDisplay != null || editingRows[tier to ProfileAttributeTypes.EMAIL] == true) {
-            EditableFieldGroup(
-                sectionTier = tier,
-                type = ProfileAttributeTypes.EMAIL,
-                icon = Icons.Outlined.Email,
-                label = stringResource(MR.string.profile_edit_email),
-                displayValue = emailDisplay,
-                editingRows = editingRows,
-                onAction = onAction,
-                isValidForSave = { et -> isAttributeValid(ProfileAttributeTypes.EMAIL) { vf(et, it) } },
-            ) { editTier ->
-                AttributeFields(ProfileAttributeTypes.EMAIL, { vf(editTier, it) }) { field, v ->
-                    onAction(ProfileEditAction.FieldChanged(field, editTier, v))
-                }
-            }
-        }
-
-        val phoneRaw = v(ProfileField.PHONE)
-        val phoneDisplay = phoneRaw.ifBlank { null }?.let { formatPhoneForDisplay(it) }
-        if (phoneDisplay != null || editingRows[tier to ProfileAttributeTypes.PHONE] == true) {
-            EditableFieldGroup(
-                sectionTier = tier,
-                type = ProfileAttributeTypes.PHONE,
-                icon = Icons.Outlined.Call,
-                label = stringResource(MR.string.profile_edit_phone),
-                displayValue = phoneDisplay,
-                editingRows = editingRows,
-                onAction = onAction,
-                isValidForSave = { et -> isAttributeValid(ProfileAttributeTypes.PHONE) { vf(et, it) } },
-            ) { editTier ->
-                AttributeFields(ProfileAttributeTypes.PHONE, { vf(editTier, it) }) { field, v ->
-                    onAction(ProfileEditAction.FieldChanged(field, editTier, v))
-                }
-            }
-        }
-
-        val addressDisplay = profileAddressValue(values)
-        if (addressDisplay != null || editingRows[tier to ProfileAttributeTypes.ADDRESS] == true) {
-            EditableFieldGroup(
-                sectionTier = tier,
-                type = ProfileAttributeTypes.ADDRESS,
-                icon = Icons.Outlined.LocationOn,
-                label = stringResource(MR.string.contactbook_detail_location),
-                displayValue = addressDisplay,
-                editingRows = editingRows,
-                onAction = onAction,
-            ) { editTier ->
-                AttributeFields(ProfileAttributeTypes.ADDRESS, { vf(editTier, it) }) { field, v ->
-                    onAction(ProfileEditAction.FieldChanged(field, editTier, v))
-                }
-            }
-        }
-
-        val twitterDisplay = v(ProfileField.TWITTER).ifBlank { null }
-        if (twitterDisplay != null || editingRows[tier to ProfileAttributeTypes.TWITTER] == true) {
-            EditableFieldGroup(
-                sectionTier = tier,
-                type = ProfileAttributeTypes.TWITTER,
-                icon = Icons.Outlined.AlternateEmail,
-                label = stringResource(MR.string.profile_edit_twitter),
-                displayValue = twitterDisplay,
-                editingRows = editingRows,
-                onAction = onAction,
-            ) { editTier ->
-                AttributeFields(ProfileAttributeTypes.TWITTER, { vf(editTier, it) }) { field, v ->
-                    onAction(ProfileEditAction.FieldChanged(field, editTier, v))
-                }
-            }
-        }
-        val facebookDisplay = v(ProfileField.FACEBOOK).ifBlank { null }
-        if (facebookDisplay != null || editingRows[tier to ProfileAttributeTypes.FACEBOOK] == true) {
-            EditableFieldGroup(
-                sectionTier = tier,
-                type = ProfileAttributeTypes.FACEBOOK,
-                icon = Icons.Outlined.AlternateEmail,
-                label = stringResource(MR.string.profile_edit_facebook),
-                displayValue = facebookDisplay,
-                editingRows = editingRows,
-                onAction = onAction,
-            ) { editTier ->
-                AttributeFields(ProfileAttributeTypes.FACEBOOK, { vf(editTier, it) }) { field, v ->
-                    onAction(ProfileEditAction.FieldChanged(field, editTier, v))
-                }
-            }
-        }
-        val instagramDisplay = v(ProfileField.INSTAGRAM).ifBlank { null }
-        if (instagramDisplay != null || editingRows[tier to ProfileAttributeTypes.INSTAGRAM] == true) {
-            EditableFieldGroup(
-                sectionTier = tier,
-                type = ProfileAttributeTypes.INSTAGRAM,
-                icon = Icons.Outlined.AlternateEmail,
-                label = stringResource(MR.string.profile_edit_instagram),
-                displayValue = instagramDisplay,
-                editingRows = editingRows,
-                onAction = onAction,
-            ) { editTier ->
-                AttributeFields(ProfileAttributeTypes.INSTAGRAM, { vf(editTier, it) }) { field, v ->
-                    onAction(ProfileEditAction.FieldChanged(field, editTier, v))
-                }
-            }
-        }
-        val tiktokDisplay = v(ProfileField.TIKTOK).ifBlank { null }
-        if (tiktokDisplay != null || editingRows[tier to ProfileAttributeTypes.TIKTOK] == true) {
-            EditableFieldGroup(
-                sectionTier = tier,
-                type = ProfileAttributeTypes.TIKTOK,
-                icon = Icons.Outlined.AlternateEmail,
-                label = stringResource(MR.string.profile_edit_tiktok),
-                displayValue = tiktokDisplay,
-                editingRows = editingRows,
-                onAction = onAction,
-            ) { editTier ->
-                AttributeFields(ProfileAttributeTypes.TIKTOK, { vf(editTier, it) }) { field, v ->
-                    onAction(ProfileEditAction.FieldChanged(field, editTier, v))
-                }
-            }
-        }
-        val linkedinDisplay = v(ProfileField.LINKEDIN).ifBlank { null }
-        if (linkedinDisplay != null || editingRows[tier to ProfileAttributeTypes.LINKEDIN] == true) {
-            EditableFieldGroup(
-                sectionTier = tier,
-                type = ProfileAttributeTypes.LINKEDIN,
-                icon = Icons.Outlined.AlternateEmail,
-                label = stringResource(MR.string.profile_edit_linkedin),
-                displayValue = linkedinDisplay,
-                editingRows = editingRows,
-                onAction = onAction,
-            ) { editTier ->
-                AttributeFields(ProfileAttributeTypes.LINKEDIN, { vf(editTier, it) }) { field, v ->
-                    onAction(ProfileEditAction.FieldChanged(field, editTier, v))
-                }
-            }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        PhotoTierSection(
+            tier = photoState,
+            onPick = onPickPhoto,
+            onRemove = { onAvatarAction(ProfileAvatarEditAction.RemoveClicked(tier)) },
+            onSaveClicked = {
+                onAvatarAction(ProfileAvatarEditAction.SaveClicked(tier))
+                photoRevealed = false
+            },
+            controlsVisible = photoRevealed,
+            centered = true,
+            onPhotoTap = { photoRevealed = true },
+        ) {
+            ExistingAvatarContent(photoState.existing, "ProfileEditScreen")
         }
     }
 }
@@ -700,31 +506,29 @@ private fun SectionHeader(title: String, description: String) {
 }
 
 /**
- * One profile attribute rendered contact-detail style — icon, label, current value. Tapping the row
- * expands it in place with a Public|Circles toggle (defaulting to [sectionTier], the section it's
- * listed under) and [content]'s field(s) for whichever tier is currently selected. The checkmark
- * dispatches [ProfileEditAction.SaveAttribute] for that (type, tier) and collapses immediately —
- * [content]'s fields already write straight through as they change, so the value shown is correct
- * the instant it collapses regardless of when the save actually lands; a failure surfaces as a
- * screen-level snackbar and the row can simply be reopened to retry.
+ * One profile attribute rendered contact-detail style — icon, label, current value and the
+ * audience it is shown to. Tapping the row expands it in place with [content]'s field(s) and the
+ * shared [AudiencePicker]. The checkmark dispatches [ProfileEditAction.SaveAttribute] and collapses
+ * immediately — the fields write straight through as they change, so the value shown is correct
+ * the instant it collapses; a failure surfaces as a screen-level snackbar and the row can be
+ * reopened to retry.
  */
 @Composable
 private fun EditableFieldGroup(
-    sectionTier: ProfileVisibility,
     type: String,
     icon: ImageVector,
     label: String,
     displayValue: String?,
-    editingRows: SnapshotStateMap<Pair<ProfileVisibility, String>, Boolean>,
+    audience: ProfileAudience,
+    circles: List<CardCircle>,
+    editingRows: SnapshotStateMap<String, Boolean>,
     onAction: (ProfileEditAction) -> Unit,
-    isValidForSave: (ProfileVisibility) -> Boolean = { true },
-    content: @Composable ColumnScope.(editTier: ProfileVisibility) -> Unit,
+    canSave: Boolean,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
-    val key = sectionTier to type
-    val editing = editingRows[key] == true
+    val editing = editingRows[type] == true
     val saveVisibility = remember { MutableTransitionState(editing) }
     saveVisibility.targetState = editing
-    var selectedTier by remember(editing) { mutableStateOf(sectionTier) }
     val notSet = stringResource(MR.string.profile_edit_field_not_set)
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -732,7 +536,7 @@ private fun EditableFieldGroup(
             modifier = Modifier
                 .fillMaxWidth()
                 .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())
-                .then(if (editing) Modifier else Modifier.clickable { editingRows[key] = true }),
+                .then(if (editing) Modifier else Modifier.clickable { editingRows[type] = true }),
             leadingContent = { Icon(icon, contentDescription = null) },
             overlineContent = { Text(label) },
             headlineContent = {
@@ -745,6 +549,11 @@ private fun EditableFieldGroup(
                     },
                 )
             },
+            supportingContent = if (!editing && !displayValue.isNullOrBlank()) {
+                { Text(audienceSummary(audience, circles)) }
+            } else {
+                null
+            },
             trailingContent = if (saveVisibility.currentState || saveVisibility.targetState) {
                 {
                     val motion = MaterialTheme.motionScheme
@@ -754,10 +563,10 @@ private fun EditableFieldGroup(
                         exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec()),
                     ) {
                         TextButton(
-                            enabled = isValidForSave(selectedTier),
+                            enabled = canSave,
                             onClick = {
-                                onAction(ProfileEditAction.SaveAttribute(type, selectedTier))
-                                editingRows[key] = false
+                                onAction(ProfileEditAction.SaveAttribute(type))
+                                editingRows[type] = false
                             },
                         ) {
                             Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -775,56 +584,14 @@ private fun EditableFieldGroup(
                 modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                content(selectedTier)
-                TierToggle(selected = selectedTier, onSelect = { selectedTier = it })
-                Text(
-                    text = stringResource(
-                        if (selectedTier == ProfileVisibility.ANONYMOUS) {
-                            MR.string.profile_edit_public_hint
-                        } else {
-                            if (LocalReviewEnabled.current) MR.string.profile_edit_circles_fallback_hint
-                            else MR.string.profile_edit_connected_fallback_hint
-                        }
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                content()
+                AudiencePicker(
+                    audience = audience,
+                    circles = circles,
+                    onChange = { onAction(ProfileEditAction.AudienceChanged(type, it)) },
                 )
             }
         }
-    }
-}
-
-/** Dark launch: provided around [ProfileForm] so the deep tier toggles and hints can keep main's "Vetted" wording. */
-private val LocalReviewEnabled = staticCompositionLocalOf { false }
-
-/** Picks which of an attribute's two independent tier records a row's [content] shows/edits. */
-@Composable
-internal fun TierToggle(
-    selected: ProfileVisibility,
-    onSelect: (ProfileVisibility) -> Unit,
-    modifier: Modifier = Modifier,
-    reviewEnabled: Boolean = LocalReviewEnabled.current,
-) {
-    SingleChoiceSegmentedButtonRow(modifier = modifier.fillMaxWidth()) {
-        SegmentedButton(
-            selected = selected == ProfileVisibility.ANONYMOUS,
-            onClick = { onSelect(ProfileVisibility.ANONYMOUS) },
-            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-            label = { Text(stringResource(MR.string.profile_edit_visibility_public)) },
-        )
-        SegmentedButton(
-            selected = selected == ProfileVisibility.CONNECTED,
-            onClick = { onSelect(ProfileVisibility.CONNECTED) },
-            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-            label = {
-                Text(
-                    stringResource(
-                        if (reviewEnabled) MR.string.profile_edit_visibility_circles
-                        else MR.string.profile_edit_visibility_connected
-                    )
-                )
-            },
-        )
     }
 }
 
@@ -853,7 +620,7 @@ private fun ProfileField(
 }
 
 /** One attribute type the "add attribute" FAB can offer — icon/label only; the actual editable
- *  fields for each [type] live in [ProfileFieldsSection]'s per-attribute blocks. */
+ *  fields for each [type] live in [ProfileForm]'s per-attribute rows. */
 private data class AttributeSpec(val type: String, val icon: ImageVector, val labelRes: StringResource)
 
 private val ATTRIBUTE_SPECS = listOf(
@@ -871,7 +638,7 @@ private val ATTRIBUTE_SPECS = listOf(
     AttributeSpec(ProfileAttributeTypes.LINKEDIN, Icons.Outlined.AlternateEmail, MR.string.profile_edit_linkedin),
 )
 
-/** Whether [type] has a value in [values] — the same blank check each [ProfileFieldsSection] block
+/** Whether [type] has a value in [values] — the same blank check each [ProfileForm] row
  *  uses to decide whether to render, kept as one pure function so the FAB's "missing" list can
  *  never drift from what's actually hidden. */
 private fun displayValueFor(type: String, values: Map<ProfileField, String>): String? = when (type) {
@@ -933,15 +700,15 @@ private fun AddAttributeRow(spec: AttributeSpec, onClick: () -> Unit) {
 @Composable
 private fun AddAttributeDialog(
     spec: AttributeSpec,
-    initialTier: ProfileVisibility,
-    onSave: (ProfileVisibility, Map<ProfileField, String>) -> Unit,
+    circles: List<CardCircle>,
+    onSave: (ProfileAudience, Map<ProfileField, String>) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var tier by remember { mutableStateOf(initialTier) }
+    var audience by remember { mutableStateOf<ProfileAudience>(ProfileAudience.Public) }
     val draft = remember { mutableStateMapOf<ProfileField, String>() }
     val value: (ProfileField) -> String = { draft[it].orEmpty() }
     val onChange: (ProfileField, String) -> Unit = { field, v -> draft[field] = v }
-    val valid = isAttributeValid(spec.type, value)
+    val valid = isAttributeValid(spec.type, value) && audience.isSavable
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -952,23 +719,11 @@ private fun AddAttributeDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 AttributeFields(spec.type, value, onChange)
-                TierToggle(selected = tier, onSelect = { tier = it })
-                Text(
-                    text = stringResource(
-                        if (tier == ProfileVisibility.ANONYMOUS) {
-                            MR.string.profile_edit_public_hint
-                        } else {
-                            if (LocalReviewEnabled.current) MR.string.profile_edit_circles_fallback_hint
-                            else MR.string.profile_edit_connected_fallback_hint
-                        }
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                AudiencePicker(audience = audience, circles = circles, onChange = { audience = it })
             }
         },
         confirmButton = {
-            TextButton(enabled = valid, onClick = { onSave(tier, draft) }) {
+            TextButton(enabled = valid, onClick = { onSave(audience, draft) }) {
                 Text(stringResource(MR.string.save))
             }
         },
