@@ -10,6 +10,10 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.util.compareStringUuId
+import id.homebase.core.ui.screens.card.CardCircle
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -23,47 +27,53 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
- * Drives the owner's standard-profile editor.
+ * Drives the owner's standard-profile editor. Each attribute type is one [ProfileAttribute] whose
+ * ACL is the [ProfileAudience] the user picked: Public, a set of Contacts-app circles, or Only me.
  *
- * Every attribute type has up to two independent [ProfileAttribute] records — one at
- * [ProfileVisibility.ANONYMOUS] (visible to everyone), one at [ProfileVisibility.CONNECTED]
- * (visible only to connections) — since ACL enforcement is per-record on the server, not per-key
- * within a record. [loadedAnonymous]/[loadedConnected] track each bucket's currently-known record;
- * legacy [ProfileVisibility.AUTHENTICATED]/[ProfileVisibility.OWNER] data loads into the Connected
- * bucket for editing (closest available tab) but is left untouched on the server unless the user
- * actually edits that tab's content — see [computeAttributeEdit].
+ * Load reads every standard-profile attribute and the Contacts circles. If a type has several
+ * records (the old two-tier editor wrote a Public and a Connected one), the Public one is edited.
+ * A leftover holding the same data is deleted once an edit is saved, so exactly one record decides
+ * the audience. A leftover holding different data is never deleted silently: it is shown in the
+ * row ([ProfileEditUiState.conflicts]) and goes only when the user discards it. Links are the one
+ * type with many records, each its own row ([LinkDraft]).
  *
- * Load: reads every standard-profile attribute from the ProfileDrive and buckets each type's
- * fields into [ProfileEditUiState.anonymousValues]/[ProfileEditUiState.connectedValues].
- * Save: there's no screen-wide Save — [saveAttribute] persists one (type, tier) at a time, fired
- * per-row by the Screen. It rebuilds that record's `data` object (merging the edited keys over the
- * keys we read so unmodelled fields survive) and, only if it actually changed, writes it via
- * [ProfileRepository.save] (which round-trips the versionTag and re-reads on a 409).
- *
- * v1 simplification: a single attribute per (type, tier). If multiple of one type/tier exist on
- * the drive, the first is edited and the rest are left untouched.
+ * Save: there's no screen-wide Save — [saveAttribute] persists one type at a time. It rebuilds
+ * that record's `data` (merging the edited keys over the keys we read so unmodelled fields
+ * survive) and writes it with the chosen visibility and `circleIds` via [ProfileRepository.save],
+ * only if the data or audience actually changed. A legacy Connected record with no circles reads as
+ * every circle and is only rewritten, with an explicit circle list, once the user changes it.
  */
 class ProfileEditViewModel(
     private val repository: ProfileRepository,
-    developerPreferences: id.homebase.core.settings.DeveloperPreferences,
+    reviewEnabled: Boolean,
+    /** Every circle's name by id; read only when a detail is shared with circles that have no card. */
+    private val loadCircleNames: suspend () -> Map<String, String> = { emptyMap() },
+    private val loadCircles: suspend () -> List<CardCircle>,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
-        ProfileEditUiState(reviewEnabled = developerPreferences.connectionReviewEnabled.value),
+        ProfileEditUiState(reviewEnabled = reviewEnabled),
     )
     val state: StateFlow<ProfileEditUiState> = _state.asStateFlow()
 
     private val _events = MutableSharedFlow<ProfileEditEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<ProfileEditEvent> = _events.asSharedFlow()
 
-    /** The Anonymous-tier attribute per type, as last read/written — source of id/versionTag. */
-    private var loadedAnonymous: Map<String, ProfileAttribute> = emptyMap()
+    /** The edited record per type, as last read/written — source of id/versionTag. */
+    private var loaded: Map<String, ProfileAttribute> = emptyMap()
 
-    /** The Connected-tier attribute per type, as last read/written (may be a legacy
-     *  Authenticated/Owner record — see class doc). */
-    private var loadedConnected: Map<String, ProfileAttribute> = emptyMap()
+    /** Each loaded record's audience, to tell a real audience change from an untouched legacy one. */
+    private var loadedAudiences: Map<String, ProfileAudience> = emptyMap()
+
+    /** Leftovers holding the same data as the edited record; the next saved edit of that type deletes them. */
+    private var duplicates: Map<String, List<ProfileAttribute>> = emptyMap()
+
+    private var loadedLinks: Map<String, ProfileAttribute> = emptyMap()
+    private var loadedLinkAudiences: Map<String, ProfileAudience> = emptyMap()
+    private var newLinkCounter = 0
 
     init {
         load()
@@ -71,8 +81,15 @@ class ProfileEditViewModel(
 
     fun onAction(action: ProfileEditAction) {
         when (action) {
-            is ProfileEditAction.FieldChanged -> updateField(action.field, action.tier, action.value)
-            is ProfileEditAction.SaveAttribute -> saveAttribute(action.type, action.tier)
+            is ProfileEditAction.FieldChanged -> _state.update { it.copy(values = it.values + (action.field to action.value)) }
+            is ProfileEditAction.AudienceChanged -> _state.update { it.copy(audiences = it.audiences + (action.type to action.audience)) }
+            is ProfileEditAction.SaveAttribute -> saveAttribute(action.type)
+            ProfileEditAction.AddLink -> _state.update { it.copy(links = it.links + LinkDraft(key = "new-${newLinkCounter++}")) }
+            is ProfileEditAction.LinkChanged -> updateLink(action.key) { it.copy(text = action.text, target = action.target) }
+            is ProfileEditAction.LinkAudienceChanged -> updateLink(action.key) { it.copy(audience = action.audience) }
+            is ProfileEditAction.SaveLink -> saveLink(action.key)
+            is ProfileEditAction.RemoveLink -> removeLink(action.key)
+            is ProfileEditAction.DiscardConflict -> discardConflict(action.type, action.id)
             ProfileEditAction.RetryLoadClicked -> load()
             ProfileEditAction.BackClicked -> _events.tryEmit(ProfileEditEvent.Back)
         }
@@ -81,8 +98,11 @@ class ProfileEditViewModel(
     private fun load() {
         _state.update { it.copy(isLoading = true, loadFailed = false) }
         viewModelScope.launch {
-            val attributes = try {
-                repository.loadAttributes()
+            val (attributes, circles) = try {
+                coroutineScope {
+                    val circles = async { loadCircles() }
+                    repository.loadAttributes() to circles.await()
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -91,84 +111,215 @@ class ProfileEditViewModel(
                 return@launch
             }
 
-            val loaded = LoadedProfileAttributes.from(attributes)
-            loadedAnonymous = loaded.anonymous
-            loadedConnected = loaded.connected
-            _state.update { it.withLoaded(loaded) }
+            val result = LoadedProfileAttributes.from(attributes)
+            loaded = result.byType
+            duplicates = result.duplicates
+            loadedLinks = result.links.associateBy { it.id.toString() }
+            _state.update { it.withLoaded(result, circles) }
+            loadedAudiences = _state.value.audiences
+            loadedLinkAudiences = _state.value.links.associate { it.key to it.audience }
+            nameOtherCircles()
         }
     }
 
-    private fun updateField(field: ProfileField, tier: ProfileVisibility, value: String) {
-        _state.update {
-            if (tier == ProfileVisibility.ANONYMOUS) it.copy(anonymousValues = it.anonymousValues + (field to value))
-            else it.copy(connectedValues = it.connectedValues + (field to value))
-        }
-    }
-
-    /**
-     * Persists just one attribute type's [tier] record — the unit of work a row's checkmark
-     * triggers. [ProfileEditUiState.savingAttributes] tracks the in-flight (type, tier) pair so the
-     * row can show a spinner; [ProfileEditEvent.AttributeSaved] tells the Screen to collapse that
-     * row back to its read-only display once the save (or no-op) completes.
-     */
-    private fun saveAttribute(type: String, tier: ProfileVisibility) {
-        val key = type to tier
-        val edit = attributeEditFor(_state.value, loadedAnonymous, loadedConnected, type, tier)
-        if (edit == null) {
-            // Nothing actually changed vs. what's persisted — just close the row.
-            _events.tryEmit(ProfileEditEvent.AttributeSaved(type, tier))
+    private suspend fun nameOtherCircles() {
+        val s = _state.value
+        val others = (s.audiences.values + s.links.map { it.audience })
+            .flatMap { (it as? ProfileAudience.Circles)?.otherIds.orEmpty() }
+            .toSet()
+        if (others.isEmpty()) return
+        val names = try {
+            loadCircleNames()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e) { "Failed to load circle names" }
             return
         }
+        val named = others.mapNotNull { id ->
+            names.entries.firstOrNull { compareStringUuId(it.key, id) }?.let { id to it.value }
+        }.toMap()
+        _state.update { it.copy(otherCircleNames = named) }
+    }
 
+    private fun saveAttribute(type: String) {
+        val current = _state.value
+        val audience = current.audience(type)
+        if (!audience.isSavableWith(current.circles)) {
+            _events.tryEmit(ProfileEditEvent.Error)
+            return
+        }
+        val existing = loaded[type]
+        val edit = attributeEditFor(current, existing, loadedAudiences[type], type)
+        if (edit == null) {
+            if (type in cleanupDue && duplicates[type].orEmpty().isNotEmpty()) {
+                viewModelScope.launch { finishSave(type) }
+            } else {
+                _events.tryEmit(ProfileEditEvent.AttributeSaved(type))
+            }
+            return
+        }
+        persist(type, edit, existing) { newAttr ->
+            loaded = loaded + (type to newAttr)
+            loadedAudiences = loadedAudiences + (type to edit.audience)
+            cleanupDue += type
+            finishSave(type)
+        }
+    }
+
+    private fun updateLink(key: String, block: (LinkDraft) -> LinkDraft) {
+        _state.update { s -> s.copy(links = s.links.map { if (it.key == key) block(it) else it }) }
+    }
+
+    private fun saveLink(key: String) {
+        val draft = _state.value.links.firstOrNull { it.key == key } ?: return
+        if (!draft.isValid(_state.value.circles)) {
+            _events.tryEmit(ProfileEditEvent.Error)
+            return
+        }
+        val existing = loadedLinks[key]
+        val updates = mapOf(
+            ProfileAttributeTypes.KEY_LINK_TEXT to draft.text,
+            ProfileAttributeTypes.KEY_LINK_TARGET to draft.target,
+        )
+        val edit = computeAttributeEdit(existing, ProfileAttributeTypes.LINK, updates, draft.audience, loadedLinkAudiences[key])
+        if (edit == null) {
+            _events.tryEmit(ProfileEditEvent.AttributeSaved(key))
+            return
+        }
+        persist(key, edit, existing) { newAttr ->
+            val newKey = newAttr.id.toString()
+            loadedLinks = loadedLinks - key + (newKey to newAttr)
+            loadedLinkAudiences = loadedLinkAudiences - key + (newKey to edit.audience)
+            _state.update { s ->
+                s.copy(
+                    links = s.links.map { if (it.key == key) it.copy(key = newKey) else it },
+                    savingAttributes = s.savingAttributes - key,
+                )
+            }
+            _events.tryEmit(ProfileEditEvent.AttributeSaved(key))
+        }
+    }
+
+    private fun removeLink(key: String) {
+        val existing = loadedLinks[key]
+        if (existing == null) {
+            _state.update { s -> s.copy(links = s.links.filterNot { it.key == key }) }
+            return
+        }
         _state.update { it.copy(savingAttributes = it.savingAttributes + key) }
         viewModelScope.launch {
+            val ok = try {
+                repository.delete(existing.id, existing.versionTag)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e) { "Failed to remove profile link" }
+                false
+            }
+            if (!ok) {
+                _state.update { it.copy(savingAttributes = it.savingAttributes - key) }
+                _events.tryEmit(ProfileEditEvent.Error)
+                return@launch
+            }
+            loadedLinks = loadedLinks - key
+            loadedLinkAudiences = loadedLinkAudiences - key
+            _state.update { s ->
+                s.copy(
+                    links = s.links.filterNot { it.key == key },
+                    attributes = s.attributes.filterNot { it.id == existing.id },
+                    savingAttributes = s.savingAttributes - key,
+                )
+            }
+            _events.tryEmit(ProfileEditEvent.AttributeSaved(key))
+        }
+    }
+
+    /** Writes [edit], records the stored attribute in state, then runs [onWritten]; failures clear [savingKey] and report. */
+    private fun persist(
+        savingKey: String,
+        edit: AttributeEdit,
+        existing: ProfileAttribute?,
+        onWritten: suspend (ProfileAttribute) -> Unit,
+    ) {
+        _state.update { it.copy(savingAttributes = it.savingAttributes + savingKey) }
+        viewModelScope.launch {
             try {
-                val existing = if (tier == ProfileVisibility.ANONYMOUS) loadedAnonymous[type] else loadedConnected[type]
-                val response = repository.save(
-                    type = edit.type,
-                    data = edit.data,
-                    visibility = edit.visibility,
-                    knownId = existing?.id,
-                    knownVersionTag = existing?.versionTag,
-                )
-                // Remember the new id/versionTag so a follow-up save in the same session edits
-                // (not re-creates) this attribute.
-                val newAttr = ProfileAttribute(
-                    id = response.id,
-                    type = edit.type,
-                    versionTag = response.versionTag,
-                    visibility = edit.visibility,
-                    data = edit.data,
-                )
-                if (tier == ProfileVisibility.ANONYMOUS) {
-                    loadedAnonymous = loadedAnonymous + (type to newAttr)
-                } else {
-                    loadedConnected = loadedConnected + (type to newAttr)
-                }
+                val newAttr = repository.saveWithAudience(edit.type, edit.data, edit.audience, existing)
                 _state.update {
-                    it.copy(
-                        savingAttributes = it.savingAttributes - key,
-                        attributes = it.attributes.filterNot { stored -> stored.id == newAttr.id } + newAttr,
-                    )
+                    it.copy(attributes = it.attributes.filterNot { stored -> stored.id == newAttr.id } + newAttr)
                 }
-                _events.tryEmit(ProfileEditEvent.AttributeSaved(type, tier))
+                onWritten(newAttr)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ForbiddenException) {
-                _state.update { it.copy(savingAttributes = it.savingAttributes - key) }
+                _state.update { it.copy(savingAttributes = it.savingAttributes - savingKey) }
                 _events.tryEmit(ProfileEditEvent.Forbidden)
             } catch (e: Exception) {
-                Logger.w(e) { "Failed to save profile attribute $type ($tier)" }
-                _state.update { it.copy(savingAttributes = it.savingAttributes - key) }
+                Logger.w(e) { "Failed to save profile attribute ${edit.type}" }
+                _state.update { it.copy(savingAttributes = it.savingAttributes - savingKey) }
                 _events.tryEmit(ProfileEditEvent.Error)
             }
         }
     }
 
+    private fun discardConflict(type: String, id: Uuid) {
+        val record = _state.value.conflicts[type].orEmpty().firstOrNull { it.id == id } ?: return
+        viewModelScope.launch {
+            val ok = try {
+                repository.delete(record.id, record.versionTag)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e) { "Failed to remove conflicting profile attribute $type" }
+                false
+            }
+            if (!ok) {
+                _events.tryEmit(ProfileEditEvent.Error)
+                return@launch
+            }
+            _state.update { s ->
+                s.copy(
+                    conflicts = (s.conflicts + (type to s.conflicts[type].orEmpty().filter { it.id != id })).filterValues { it.isNotEmpty() },
+                    attributes = s.attributes.filterNot { it.id == id },
+                )
+            }
+        }
+    }
+
+    private val cleanupDue = mutableSetOf<String>()
+
+    /** Deletes the same-data leftovers of [type] after its edit was written, then reports the save. */
+    private suspend fun finishSave(type: String) {
+        val leftovers = duplicates[type].orEmpty()
+        val deleted = mutableSetOf<Uuid>()
+        var failed = false
+        for (attribute in leftovers) {
+            val ok = try {
+                repository.delete(attribute.id, attribute.versionTag)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e) { "Failed to remove leftover profile attribute $type" }
+                false
+            }
+            if (ok) deleted += attribute.id else failed = true
+        }
+        duplicates = duplicates + (type to leftovers.filter { it.id !in deleted })
+        if (!failed) cleanupDue -= type
+        _state.update {
+            it.copy(
+                savingAttributes = it.savingAttributes - type,
+                attributes = it.attributes.filterNot { stored -> stored.id in deleted },
+            )
+        }
+        _events.tryEmit(if (failed) ProfileEditEvent.Error else ProfileEditEvent.AttributeSaved(type))
+    }
+
     companion object {
         /**
          * The one source of truth for which [ProfileField]s make up each [ProfileAttributeTypes]
-         * type and which data key each maps to — shared by [applyLoaded] and [attributeEditFor].
+         * type and which data key each maps to.
          */
         internal val TYPE_FIELDS: Map<String, List<Pair<ProfileField, String>>> = mapOf(
             ProfileAttributeTypes.NAME to listOf(
@@ -201,6 +352,9 @@ class ProfileEditViewModel(
                 ProfileField.CITY to ProfileAttributeTypes.KEY_CITY,
                 ProfileField.COUNTRY to ProfileAttributeTypes.KEY_COUNTRY,
             ),
+            ProfileAttributeTypes.BIO_SUMMARY to listOf(
+                ProfileField.BIO to ProfileAttributeTypes.KEY_SHORT_BIO,
+            ),
             ProfileAttributeTypes.TWITTER to listOf(
                 ProfileField.TWITTER to ProfileAttributeTypes.KEY_TWITTER,
             ),
@@ -218,85 +372,48 @@ class ProfileEditViewModel(
             ),
         )
 
-        /** One attribute that actually changed, with its full replacement `data` and the tier's
-         *  fixed visibility (Anonymous bucket is always ANONYMOUS; Connected bucket is always
-         *  CONNECTED — see [computeAttributeEdit]). */
+        /** One attribute that actually changed, with its full replacement `data` and its audience. */
         internal data class AttributeEdit(
             val type: String,
             val data: JsonObject,
-            val visibility: ProfileVisibility,
+            val audience: ProfileAudience,
         )
 
         /**
-         * Pure, dependency-free computation of whether [type]'s [tier] bucket needs saving given
-         * [updates]. Returns null when nothing changed vs. [existing] — critically, when nothing
-         * changed we never even compute a visibility to send, so a legacy Authenticated/Owner
-         * attribute loaded into the Connected bucket keeps its real stored visibility on the server
-         * for as long as the user leaves that tab untouched. The moment the user *does* edit the
-         * Connected tab's content, the record becomes genuinely [ProfileVisibility.CONNECTED] —
-         * matching exactly what [ProfilePreview] shows the owner, so Preview never promises
-         * visibility the server isn't actually enforcing.
+         * Pure computation of whether [type] needs saving given [updates] and [audience]. Null when
+         * neither the data nor the audience changed against [existing] / [loadedAudience] —
+         * critically, an untouched legacy record keeps its stored visibility on the server.
          */
         internal fun computeAttributeEdit(
             existing: ProfileAttribute?,
             type: String,
             updates: Map<String, String>,
-            tier: ProfileVisibility,
+            audience: ProfileAudience,
+            loadedAudience: ProfileAudience?,
         ): AttributeEdit? {
             val merged = mergeData(existing?.data, updates)
+            val dataChanged = if (existing == null) merged.isNotEmpty() else merged != existing.data
+            val audienceChanged = existing != null && audience != loadedAudience
+            if (!dataChanged && !audienceChanged) return null
 
-            if (existing == null && merged.isEmpty()) return null
-            if (existing != null && merged == existing.data) return null
-
-            // Real change. For the Name attribute, drop the server-derived displayName so it gets
-            // recomputed from the (just-changed) name parts; a deliberate explicitDisplayName override,
-            // if present, is left untouched. (Comparison above used the full merged object, so an
-            // unchanged Name still correctly skips.)
-            val toSend = if (type == ProfileAttributeTypes.NAME) {
+            // Drop the server-derived displayName so it is recomputed from the changed name parts;
+            // a deliberate explicitDisplayName override is left untouched.
+            val toSend = if (type == ProfileAttributeTypes.NAME && dataChanged) {
                 JsonObject(merged - ProfileAttributeTypes.KEY_DISPLAY_NAME)
             } else {
                 merged
             }
-            val visibility = if (tier == ProfileVisibility.ANONYMOUS) {
-                ProfileVisibility.ANONYMOUS
-            } else {
-                ProfileVisibility.CONNECTED
-            }
-            return AttributeEdit(type, toSend, visibility)
+            return AttributeEdit(type, toSend, audience)
         }
 
-        /**
-         * The (type, tier) attribute's edit vs. what's loaded, or null if nothing changed — the same
-         * per-attribute computation both [saveAttribute] (production, one pair at a time) and
-         * [pendingEdits] (tests, all pairs at once) run, so they can never drift apart.
-         */
         internal fun attributeEditFor(
             s: ProfileEditUiState,
-            loadedAnonymous: Map<String, ProfileAttribute>,
-            loadedConnected: Map<String, ProfileAttribute>,
+            existing: ProfileAttribute?,
+            loadedAudience: ProfileAudience?,
             type: String,
-            tier: ProfileVisibility,
         ): AttributeEdit? {
-            val existing = if (tier == ProfileVisibility.ANONYMOUS) loadedAnonymous[type] else loadedConnected[type]
-            val updates = TYPE_FIELDS[type].orEmpty().associate { (field, key) -> key to s.value(field, tier) }
-            return computeAttributeEdit(existing, type, updates, tier)
-        }
-
-        /**
-         * Builds the list of (type, tier) attributes whose data actually changed vs. what's loaded —
-         * up to two per type (Anonymous and Connected are independent). Pure and dependency-free
-         * (like [computeAttributeEdit]) so the "an untouched legacy attribute's visibility never
-         * changes" guarantee is directly unit-testable without a live [ProfileRepository].
-         */
-        internal fun pendingEdits(
-            s: ProfileEditUiState,
-            loadedAnonymous: Map<String, ProfileAttribute>,
-            loadedConnected: Map<String, ProfileAttribute>,
-        ): List<AttributeEdit> = TYPE_FIELDS.keys.flatMap { type ->
-            listOfNotNull(
-                attributeEditFor(s, loadedAnonymous, loadedConnected, type, ProfileVisibility.ANONYMOUS),
-                attributeEditFor(s, loadedAnonymous, loadedConnected, type, ProfileVisibility.CONNECTED),
-            )
+            val updates = TYPE_FIELDS[type].orEmpty().associate { (field, key) -> key to s.value(field) }
+            return computeAttributeEdit(existing, type, updates, s.audience(type), loadedAudience)
         }
 
         private fun mergeData(existing: JsonObject?, updates: Map<String, String>): JsonObject {
@@ -311,42 +428,56 @@ class ProfileEditViewModel(
     }
 }
 
+
 /**
- * The editor's write target per type and tier. [connected] is the first non-anonymous record, which
- * may be owner-only or circle-restricted, so it is never what a visitor sees; see [visibleAttribute].
+ * The record the editor writes per type: the Public one if there is one, else the first other.
+ * Leftovers of the same type split by data: [duplicates] equal the edited record's (safe to delete
+ * on save) and [conflicts] differ (the user decides). Links are many-per-profile, so they bypass
+ * this and come back as [links].
  */
 internal class LoadedProfileAttributes(
-    val anonymous: Map<String, ProfileAttribute>,
-    val connected: Map<String, ProfileAttribute>,
+    val byType: Map<String, ProfileAttribute>,
     val all: List<ProfileAttribute>,
+    val duplicates: Map<String, List<ProfileAttribute>>,
+    val conflicts: Map<String, List<ProfileAttribute>>,
+    val links: List<ProfileAttribute>,
 ) {
     companion object {
         fun from(attributes: List<ProfileAttribute>): LoadedProfileAttributes {
-            val byType = attributes.groupBy { it.type }
+            val single = attributes.filter { it.type != ProfileAttributeTypes.LINK }
+            val byType = single.groupBy { it.type }.mapValues { (_, attrs) ->
+                attrs.firstOrNull { it.visibility == ProfileVisibility.ANONYMOUS } ?: attrs.first()
+            }
+            val leftovers = single.groupBy { it.type }
+                .mapValues { (type, attrs) -> attrs.filter { it.id != byType[type]?.id } }
+                .filterValues { it.isNotEmpty() }
             return LoadedProfileAttributes(
-                anonymous = byType.mapNotNull { (type, attrs) ->
-                    attrs.firstOrNull { it.visibility == ProfileVisibility.ANONYMOUS }?.let { type to it }
-                }.toMap(),
-                connected = byType.mapNotNull { (type, attrs) ->
-                    attrs.firstOrNull { it.visibility != ProfileVisibility.ANONYMOUS }?.let { type to it }
-                }.toMap(),
+                byType = byType,
                 all = attributes,
+                duplicates = leftovers.mapValues { (type, attrs) -> attrs.filter { it.data == byType[type]?.data } }.filterValues { it.isNotEmpty() },
+                conflicts = leftovers.mapValues { (type, attrs) -> attrs.filter { it.data != byType[type]?.data } }.filterValues { it.isNotEmpty() },
+                links = attributes.filter { it.type == ProfileAttributeTypes.LINK }.sortedBy { it.priority },
             )
         }
     }
 }
 
-internal fun ProfileEditUiState.withLoaded(loaded: LoadedProfileAttributes): ProfileEditUiState {
-    fun bucket(attributes: Map<String, ProfileAttribute>): Map<ProfileField, String> =
-        ProfileEditViewModel.TYPE_FIELDS.flatMap { (type, fields) ->
-            fields.map { (field, key) -> field to attributes[type]?.string(key).orEmpty() }
-        }.toMap()
-
-    return copy(
-        isLoading = false,
-        loadFailed = false,
-        anonymousValues = bucket(loaded.anonymous),
-        connectedValues = bucket(loaded.connected),
-        attributes = loaded.all,
-    )
-}
+internal fun ProfileEditUiState.withLoaded(loaded: LoadedProfileAttributes, circles: List<CardCircle>): ProfileEditUiState = copy(
+    isLoading = false,
+    loadFailed = false,
+    values = ProfileEditViewModel.TYPE_FIELDS.flatMap { (type, fields) ->
+        fields.map { (field, key) -> field to loaded.byType[type]?.string(key).orEmpty() }
+    }.toMap(),
+    audiences = loaded.byType.mapValues { (_, attribute) -> attribute.audience(circles) },
+    links = loaded.links.map {
+        LinkDraft(
+            key = it.id.toString(),
+            text = it.string(ProfileAttributeTypes.KEY_LINK_TEXT).orEmpty(),
+            target = it.string(ProfileAttributeTypes.KEY_LINK_TARGET).orEmpty(),
+            audience = it.audience(circles),
+        )
+    },
+    conflicts = loaded.conflicts,
+    circles = circles,
+    attributes = loaded.all,
+)

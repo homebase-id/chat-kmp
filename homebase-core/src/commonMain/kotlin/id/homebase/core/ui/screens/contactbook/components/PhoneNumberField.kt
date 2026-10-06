@@ -18,6 +18,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,7 +52,7 @@ import org.jetbrains.compose.resources.stringResource
 fun PhoneNumberField(
     e164Value: String,
     onValueChange: (String) -> Unit,
-    label: String,
+    label: String?,
     modifier: Modifier = Modifier,
     isError: Boolean = false,
     errorText: String? = null,
@@ -56,7 +61,7 @@ fun PhoneNumberField(
 ) {
     val region = Locale.current.region
     // Seed country/national from the incoming value once; the field owns them after.
-    val seeded = remember { splitE164(e164Value) }
+    val seeded = remember { splitE164(e164Value, region) }
     var country by remember { mutableStateOf(seeded.first ?: defaultCountryFor(region)) }
     var national by remember { mutableStateOf(seeded.second) }
     var pickerOpen by remember { mutableStateOf(false) }
@@ -66,14 +71,20 @@ fun PhoneNumberField(
     // Once per row lifetime: rows are keyed, so this never re-emits or reseeds a sibling.
     LaunchedEffect(Unit) { seededE164(e164Value, country)?.let(onValueChange) }
 
+    // Digits read left to right in every locale; the label, error and prefix placement follow the layout.
+    val digits = LocalTextStyle.current.copy(
+        textDirection = TextDirection.Ltr,
+        textAlign = if (LocalLayoutDirection.current == LayoutDirection.Rtl) TextAlign.Right else TextAlign.Left,
+    )
     OutlinedTextField(
         value = national,
         onValueChange = {
             national = it.filter { ch -> ch.isDigit() || ch == ' ' }
             emit(country, national)
         },
-        label = { Text(label) },
+        label = label?.let { { Text(it) } },
         singleLine = true,
+        textStyle = digits,
         leadingIcon = {
             Row(
                 modifier = Modifier
@@ -82,7 +93,7 @@ fun PhoneNumberField(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 val codeLabel = "${country.flag} +${country.dialCode}"
-                Text(codeLabel)
+                Text(codeLabel, style = digits)
                 Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
             }
         },

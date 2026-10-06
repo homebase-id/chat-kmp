@@ -36,4 +36,8 @@
         <item quantity="one">Sending to %1$d conversation…</item>
         <item quantity="other">Sending to %1$d conversations…</item>
     </plurals>
+    <plurals name="profile_edit_card_details">
+        <item quantity="one">%1$d detail</item>
+        <item quantity="other">%1$d details</item>
+    </plurals>
 </resources>
