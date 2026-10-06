@@ -132,6 +132,7 @@ kotlin {
             }
             implementation(libs.jna)
             implementation(libs.jna.platform)
+            implementation(libs.composemediaplayer)
         }
         // Uncomment when enabling the wasmJs target (post-pre-flight),
         // paired with the `wasmJs { browser() }` block above.
@@ -156,7 +157,6 @@ kotlin {
             implementation(libs.ktor.client.mock)
             implementation(libs.okio.fakefilesystem)
             implementation(libs.androidx.navigationevent)
-            implementation(libs.composemediaplayer)
         }
     }
 

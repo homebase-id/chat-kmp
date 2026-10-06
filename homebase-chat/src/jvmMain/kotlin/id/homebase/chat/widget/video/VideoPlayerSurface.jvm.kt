@@ -84,7 +84,7 @@ import kotlin.time.measureTimedValue
 
 private sealed interface VpsState {
     data object Loading : VpsState
-    data class Playing(val videoPath: String) : VpsState
+    data class Playing(val videoPath: String, val aspectRatio: Float? = null) : VpsState
     data class Error(val message: String) : VpsState
 }
 
@@ -234,7 +234,11 @@ actual fun VideoPlayerSurface(
                     }
                         httpServer = server
                         progressJob.cancel()
-                        state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
+                        val m = content.metadata
+                        state = VpsState.Playing(
+                            "http://localhost:${server.address.port}/index.m3u8",
+                            if (m.widthPx > 0 && m.heightPx > 0) m.widthPx.toFloat() / m.heightPx else null,
+                        )
                     }
                     is VideoContent.Mp4Bytes -> error("Mp4Bytes is the web-only variant — resolveVideoContent was given fileOps")
                     is VideoContent.Mp4File -> {
@@ -263,8 +267,9 @@ actual fun VideoPlayerSurface(
         when (val s = state) {
             VpsState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             is VpsState.Error -> Text(text = s.message, modifier = Modifier.align(Alignment.Center))
-            is VpsState.Playing -> VlcjPlayer(
+            is VpsState.Playing -> DesktopVideoPlayer(
                 videoPath = s.videoPath,
+                aspectRatio = s.aspectRatio,
                 modifier = Modifier.fillMaxSize(),
                 onFirstFrameRendered = {
                     onProgress(1f)
@@ -518,50 +523,70 @@ internal fun VlcjPlayer(
             CircularProgressIndicator()
         }
 
-        if (showControls) Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .background(Color.Black.copy(alpha = 0.5f))
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            IconButton(onClick = {
+        if (showControls) TransportBar(
+            isPlaying = isPlaying,
+            position = position,
+            duration = duration,
+            onTogglePlay = {
                 if (isPlaying) {
                     mediaPlayer.controls().setPause(true)
                 } else {
                     mediaPlayer.controls().play()
                 }
                 isPlaying = !isPlaying
-            }) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    tint = Color.White,
-                )
-            }
-            Text(
-                text = formatMs(position.toLong()),
-                color = Color.White,
-                fontSize = 12.sp,
-            )
-            SeekBar(
-                fraction = if (duration > 0f) position / duration else 0f,
-                onSeek = { fraction ->
-                    isSeeking = true
-                    position = fraction * duration
-                    mediaPlayer.controls().setTime(position.toLong())
-                },
-                onSeekFinished = { isSeeking = false },
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = formatMs(duration.toLong()),
-                color = Color.White,
-                fontSize = 12.sp,
+            },
+            onSeek = { fraction ->
+                isSeeking = true
+                position = fraction * duration
+                mediaPlayer.controls().setTime(position.toLong())
+            },
+            onSeekFinished = { isSeeking = false },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+}
+
+@Composable
+internal fun TransportBar(
+    isPlaying: Boolean,
+    position: Float,
+    duration: Float,
+    onTogglePlay: () -> Unit,
+    onSeek: (Float) -> Unit,
+    onSeekFinished: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Color.Black.copy(alpha = 0.5f))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        IconButton(onClick = onTogglePlay) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = if (isPlaying) "Pause" else "Play",
+                tint = Color.White,
             )
         }
+        Text(
+            text = formatMs(position.toLong()),
+            color = Color.White,
+            fontSize = 12.sp,
+        )
+        SeekBar(
+            fraction = if (duration > 0f) position / duration else 0f,
+            onSeek = onSeek,
+            onSeekFinished = onSeekFinished,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = formatMs(duration.toLong()),
+            color = Color.White,
+            fontSize = 12.sp,
+        )
     }
 }
 
@@ -622,7 +647,7 @@ private fun SeekBar(
     }
 }
 
-private fun formatMs(ms: Long): String {
+internal fun formatMs(ms: Long): String {
     val totalSeconds = ms / 1000
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
