@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -202,6 +204,8 @@ internal fun PhotoTierSection(
     controlsVisible: Boolean = true,
     centered: Boolean = false,
     onPhotoTap: (() -> Unit)? = null,
+    shape: Shape = CircleShape,
+    idleBadge: Boolean = false,
     existingPhotoContent: @Composable () -> Unit,
 ) {
     val motion = MaterialTheme.motionScheme
@@ -225,7 +229,9 @@ internal fun PhotoTierSection(
         ) {
             Box(contentAlignment = Alignment.BottomEnd) {
                 Box(
-                    modifier = Modifier.size(96.dp).clip(CircleShape).clickable(
+                    modifier = Modifier.size(96.dp).clip(shape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                        .clickable(
                         onClick = if (controlsVisible) onPick else (onPhotoTap ?: onPick)
                     ),
                 ) {
@@ -242,8 +248,8 @@ internal fun PhotoTierSection(
                         }
                     }
                 }
-                if (controlsVisible) {
-                    FilledIconButton(onClick = onPick, modifier = Modifier.size(32.dp)) {
+                if (controlsVisible || idleBadge) {
+                    FilledIconButton(onClick = if (controlsVisible) onPick else (onPhotoTap ?: onPick), modifier = Modifier.size(32.dp)) {
                         Icon(
                             imageVector = Icons.Filled.PhotoCamera,
                             contentDescription = stringResource(MR.string.cd_profile_avatar_change_photo),

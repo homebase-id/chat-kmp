@@ -25,7 +25,11 @@
         <item quantity="other">Sender til %1$d samtaler…</item>
     </plurals>
     <plurals name="profile_edit_audience_other_circles">
-        <item quantity="one">%1$d anden kreds, der ikke er vist her, beholder adgang</item>
-        <item quantity="other">%1$d andre kredse, der ikke er vist her, beholder adgang</item>
+        <item quantity="one">%1$d anden kreds beholder også adgang.</item>
+        <item quantity="other">%1$d andre kredse beholder også adgang.</item>
+    </plurals>
+    <plurals name="profile_edit_card_details">
+        <item quantity="one">%1$d oplysning</item>
+        <item quantity="other">%1$d oplysninger</item>
     </plurals>
 </resources>

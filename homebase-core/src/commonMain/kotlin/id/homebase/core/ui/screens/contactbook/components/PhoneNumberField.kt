@@ -18,6 +18,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,16 +80,24 @@ fun PhoneNumberField(
         },
         label = { Text(label) },
         singleLine = true,
+        // Digits stay left-to-right in RTL and sit against the prefix, which mirrors as one unit.
+        textStyle = LocalTextStyle.current.copy(
+            textDirection = TextDirection.Ltr,
+            textAlign = if (LocalLayoutDirection.current == LayoutDirection.Rtl) TextAlign.End else TextAlign.Start,
+        ),
         leadingIcon = {
-            Row(
-                modifier = Modifier
-                    .clickable { pickerOpen = true }
-                    .padding(start = 12.dp, end = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                val codeLabel = "${country.flag} +${country.dialCode}"
-                Text(codeLabel)
-                Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+            val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Row(
+                    modifier = Modifier
+                        .clickable { pickerOpen = true }
+                        .padding(start = if (rtl) 4.dp else 12.dp, end = if (rtl) 12.dp else 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val codeLabel = "${country.flag} +${country.dialCode}"
+                    Text(codeLabel)
+                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+                }
             }
         },
         trailingIcon = trailingIcon,

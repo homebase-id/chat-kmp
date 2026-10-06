@@ -1,11 +1,6 @@
 package id.homebase.core.ui.screens.profile
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -22,6 +17,8 @@ import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.Density
@@ -36,7 +33,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * Renders the profile editor's audience chrome in every state, light and dark, to PNGs for design review.
+ * Renders the profile editor in every state, light and dark, to PNGs for design review.
  * Set CARD_SHOTS_DIR to write the images; without it the states are only composed.
  */
 @OptIn(ExperimentalTestApi::class)
@@ -89,40 +86,47 @@ class ProfileEditShotsTest {
     private class Shot(
         val name: String,
         val state: ProfileEditUiState,
-        val expand: String? = null,
+        val clicks: List<String> = emptyList(),
         val fontScale: Float = 1f,
         val rtl: Boolean = false,
         val widthDp: Int = PHONE_W,
         val heightDp: Int = PHONE_H,
     )
 
+    private val empty = ProfileEditUiState(isLoading = false, circles = circles)
+
     private val shots = listOf(
         Shot("k8-01-overview", filled),
-        Shot("k8-02-phone-one-circle", filled, expand = "Phone"),
-        Shot("k8-03-email-every-circle", filled, expand = "Email"),
-        Shot("k8-04-bio-public", filled, expand = "Bio"),
-        Shot("k8-05-birthday-only-me", filled, expand = "Birthday"),
-        Shot("k8-06-no-circle-picked", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(emptySet())), expand = "Phone"),
-        Shot("k8-07-other-circles", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("f"), setOf("x1", "x2"))), expand = "Phone"),
-        Shot("k8-08-no-contacts-circles", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(emptySet()), filled.copy(circles = emptyList())), expand = "Phone"),
-        Shot("k8-09-long-circle", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", "f")), filled.copy(circles = circles + climbing))),
-        Shot("k8-09b-long-circle-open", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", "f")), filled.copy(circles = circles + climbing)), expand = "Phone"),
-        Shot("k8-10-link-open", filled, expand = "Recipes"),
-        Shot("k8-11-empty-profile", ProfileEditUiState(isLoading = false, circles = circles)),
+        Shot("k8-01b-overview-full", filled, heightDp = FULL_H),
+        Shot("k8-02-phone-one-circle", filled, listOf("Phone")),
+        Shot("k8-03-email-every-circle", filled, listOf("Email")),
+        Shot("k8-04-bio-public", filled, listOf("Bio")),
+        Shot("k8-05-birthday-only-me", filled, listOf("Birthday")),
+        Shot("k8-06-no-circle-picked", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(emptySet())), listOf("Phone")),
+        Shot("k8-07-other-circles", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("f"), setOf("x1", "x2"))), listOf("Phone")),
+        Shot("k8-08-no-contacts-circles", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(emptySet()), filled.copy(circles = emptyList())), listOf("Phone")),
+        Shot("k8-09-long-circle", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", "f", "fr")), filled.copy(circles = circles + climbing)), heightDp = FULL_H),
+        Shot("k8-09b-long-circle-open", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", "f")), filled.copy(circles = circles + climbing)), listOf("Phone")),
+        Shot("k8-10-link-open", filled, listOf("Recipes")),
+        Shot("k8-11-empty-profile", empty, heightDp = FULL_H),
         Shot("k8-12-loading", ProfileEditUiState()),
         Shot("k8-13-load-failed", ProfileEditUiState(isLoading = false, loadFailed = true)),
         Shot("k8-14-font-scale", filled, fontScale = 1.6f),
-        Shot("k8-15-font-scale-open", filled, expand = "Phone", fontScale = 1.6f),
-        Shot("k8-16-rtl-open", filled, expand = "Phone", rtl = true),
-        Shot("k8-17-small-open", filled, expand = "Email", widthDp = 360, heightDp = 640),
+        Shot("k8-15-font-scale-open", filled, listOf("Phone"), fontScale = 1.6f),
+        Shot("k8-16-rtl-open", filled, listOf("Phone"), rtl = true),
+        Shot("k8-17-small-open", filled, listOf("Email"), widthDp = 360, heightDp = 640),
+        Shot("k8-18-card-focused", filled, listOf("Family"), heightDp = FULL_H),
+        Shot("k8-19-single-card", filled.copy(circles = emptyList(), audiences = filled.audiences.filterValues { it !is ProfileAudience.Circles })),
+        Shot("k8-20-add-sheet", filled, listOf("Add detail")),
+        Shot("k8-21-add-from-empty", empty, listOf("Phone")),
+        Shot("k8-22-add-from-empty-no-circles", empty.copy(circles = emptyList()), listOf("Phone")),
+        Shot("k8-23-add-status", filled, listOf("Add detail", "Status")),
     )
 
     @Test
     fun profileEditorRendersEveryState() {
         for (dark in listOf(false, true)) {
             for (shot in shots) render(shot, dark)
-            renderDialog("k8-20-add-dialog", dark, circles)
-            renderDialog("k8-21-add-dialog-no-circles", dark, emptyList())
         }
     }
 
@@ -153,8 +157,12 @@ class ProfileEditShotsTest {
                     onTogglePreview = {},
                     onOpenCard = {},
                     onAction = { action ->
-                        if (action is ProfileEditAction.AudienceChanged) {
-                            state = state.copy(audiences = state.audiences + (action.type to action.audience))
+                        when (action) {
+                            is ProfileEditAction.AudienceChanged ->
+                                state = state.copy(audiences = state.audiences + (action.type to action.audience))
+                            is ProfileEditAction.FieldChanged ->
+                                state = state.copy(values = state.values + (action.field to action.value))
+                            else -> Unit
                         }
                     },
                     onAvatarAction = {},
@@ -165,37 +173,30 @@ class ProfileEditShotsTest {
             }
         }
         mainClock.advanceTimeBy(SETTLE_MS)
-        shot.expand?.let { label ->
+        for (label in shot.clicks) {
             // A scroll waits on its own animation frames, which a paused clock never delivers.
             mainClock.autoAdvance = true
-            onAllNodesWithText(label).onFirst().performScrollTo().performClick()
+            val node = onAllNodesWithText(label, useUnmergedTree = true).onFirst()
+            // Floating chrome (the extended FAB, a sheet) has no scrolling parent to bring it into view.
+            runCatching { node.performScrollTo() }
+            node.performClick()
+            // The injected tap leaves a pointer behind that hovers whichever row scrolls under it.
+            onAllNodes(isRoot()).onFirst().performMouseInput {
+                moveTo(Offset(width / 2f, 1f))
+                exit()
+            }
             waitForIdle()
-            onAllNodesWithText("Save").onFirst().performScrollTo()
+            mainClock.autoAdvance = false
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }
+        if (shot.clicks.isNotEmpty()) {
+            // A sheet's pick lands only after its hide animation, so the row it opens needs frames of its own.
+            mainClock.autoAdvance = true
             waitForIdle()
             mainClock.autoAdvance = false
             mainClock.advanceTimeBy(SETTLE_MS)
         }
         save(shot.name, dark)
-    }
-
-    private fun renderDialog(name: String, dark: Boolean, circles: List<CardCircle>) = runDesktopComposeUiTest(
-        width = (PHONE_W * SCALE).toInt(),
-        height = (PHONE_H * SCALE).toInt(),
-    ) {
-        mainClock.autoAdvance = false
-        setContent {
-            themed(dark) {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
-                AddAttributeDialog(
-                    spec = ATTRIBUTE_SPECS.first { it.type == ProfileAttributeTypes.PHONE },
-                    circles = circles,
-                    onSave = { _, _ -> },
-                    onDismiss = {},
-                )
-            }
-        }
-        mainClock.advanceTimeBy(SETTLE_MS)
-        save(name, dark)
     }
 
     private fun ComposeUiTest.save(name: String, dark: Boolean) {
@@ -211,5 +212,6 @@ class ProfileEditShotsTest {
         const val PHONE_W = 412
         const val PHONE_H = 892
         const val SETTLE_MS = 1_500L
+        const val FULL_H = 1_900
     }
 }
