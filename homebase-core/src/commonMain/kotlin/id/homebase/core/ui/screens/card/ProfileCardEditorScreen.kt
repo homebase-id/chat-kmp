@@ -276,8 +276,6 @@ internal fun ProfileCardEditorContent(
             // The viewer's sheet width: the preview lays the card out there and scales it down, so it wraps like the saved card.
             val cardWidth = minOf(maxWidth, WIDE_SHEET_MAX_WIDTH)
             val panelMaxHeight = maxHeight * PANEL_MAX_SHARE
-            // A read-only card has nothing to customise, so it stays on the design step.
-            val shownStep = if (uiState.isCircleReadOnly) EditorStep.Design else step
             val previewEdge by cardEdgeColor(
                 uiState.cardBottomArgb ?: uiState.overrides.palette?.ground?.let(::hexToArgb),
                 uiState.design,
@@ -285,7 +283,7 @@ internal fun ProfileCardEditorContent(
             val panel: @Composable (Modifier, Shape) -> Unit = { modifier, shape ->
                 EditorPanel(
                     uiState = uiState,
-                    step = shownStep,
+                    step = step,
                     onStep = onStep,
                     onSelect = onSelect,
                     onOption = onOption,
@@ -508,7 +506,6 @@ private fun EditorPanel(
                 isSaving = isSaving,
                 canSave = uiState.canSaveDesign,
                 canCustomise = !uiState.loadFailed,
-                readOnly = uiState.isCircleReadOnly,
                 showsAppOnly = uiState.showsAppOnlyTag,
                 onAppOnly = onAppOnly,
                 onSave = onSave,
@@ -556,7 +553,6 @@ private fun StepHeader(
     isSaving: Boolean,
     canSave: Boolean,
     canCustomise: Boolean,
-    readOnly: Boolean,
     showsAppOnly: Boolean,
     onAppOnly: () -> Unit,
     onSave: () -> Unit,
@@ -579,10 +575,8 @@ private fun StepHeader(
     ) { shown ->
         if (shown == EditorStep.Design) {
             DesignStepHeader(
-                designName = designName,
                 count = count,
                 canCustomise = canCustomise,
-                readOnly = readOnly,
                 onCustomise = { if (!isSaving) onStep(EditorStep.Customise) },
             )
             return@AnimatedContent
@@ -652,21 +646,14 @@ private fun StepHeader(
     }
 }
 
-// Customise is the step's one action and leads on to Save.
 @Composable
 private fun DesignStepHeader(
-    designName: String,
     count: String,
     canCustomise: Boolean,
-    readOnly: Boolean,
     onCustomise: () -> Unit,
 ) {
     val compact = LocalDensity.current.fontScale >= LARGE_TEXT_SCALE
-    val title = if (readOnly) {
-        stringResource(MR.string.profile_card_design_locked_title, designName)
-    } else {
-        stringResource(MR.string.profile_card_step_design_title)
-    }
+    val title = stringResource(MR.string.profile_card_step_design_title)
     val customise = stringResource(MR.string.profile_card_step_customise)
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -687,30 +674,27 @@ private fun DesignStepHeader(
                 contentDescription = "$title, $count"
             },
         )
-        if (!readOnly) {
-            Button(
-                onClick = onCustomise,
-                enabled = canCustomise,
-                shapes = ButtonDefaults.shapes(),
-                contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-                modifier = Modifier.heightIn(min = ACTION_HEIGHT),
-            ) {
-                ActionLabel(customise)
-                // Large text keeps the word and drops the arrow, so the title keeps its line.
-                if (!compact) {
-                    Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
-                    )
-                }
+        Button(
+            onClick = onCustomise,
+            enabled = canCustomise,
+            shapes = ButtonDefaults.shapes(),
+            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
+            modifier = Modifier.heightIn(min = ACTION_HEIGHT),
+        ) {
+            ActionLabel(customise)
+            // Large text keeps the word and drops the arrow, so the title keeps its line.
+            if (!compact) {
+                Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
+                )
             }
         }
     }
 }
 
-// A locked card has nothing to pick, so the whole panel is one quiet statement: what's locked, why, and what it shows.
 @Composable
 private fun ReadOnlyCard(designName: String, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
@@ -725,12 +709,13 @@ private fun ReadOnlyCard(designName: String, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.padding(16.dp),
         ) {
-            Box(
-                modifier = Modifier.size(48.dp).background(colors.secondaryContainer, MaterialShapes.Cookie9Sided.toShape()),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Outlined.Lock, contentDescription = null, tint = colors.onSecondaryContainer, modifier = Modifier.size(22.dp))
-            }
+            CookieBadge(
+                icon = Icons.Outlined.Lock,
+                container = colors.secondaryContainer,
+                content = colors.onSecondaryContainer,
+                size = 48.dp,
+                iconSize = 22.dp,
+            )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = stringResource(MR.string.profile_card_read_only_title),
@@ -895,7 +880,6 @@ private fun DesignTile(
     val motion = MaterialTheme.motionScheme
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
-    // Selection springs the tile up to full size and softens its corners, the same way a picked swatch morphs.
     val corner by animateDpAsState(if (selected) 32.dp else 12.dp, motion.fastSpatialSpec())
     val scale by animateFloatAsState(if (selected) 1f else UNSELECTED_TILE_SCALE, motion.defaultSpatialSpec())
     val ring by animateDpAsState(if (selected) 3.dp else 1.dp, motion.fastSpatialSpec())

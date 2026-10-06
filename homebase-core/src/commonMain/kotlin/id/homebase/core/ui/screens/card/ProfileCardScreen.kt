@@ -129,6 +129,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.foundation.layout.PaddingValues
@@ -763,7 +764,6 @@ internal fun AudienceBadge(
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val threshold = with(LocalDensity.current) { CHIP_SWIPE_DISTANCE.toPx() }
     var pull by remember { mutableFloatStateOf(0f) }
-    // Swiping the chip pages through the cards; the pull follows the finger, damped, then springs home.
     val swipe = if (hasMenu && page >= 0) {
         Modifier.draggable(
             state = rememberDraggableState { pull += it },
@@ -802,7 +802,6 @@ internal fun AudienceBadge(
                 onClick = if (hasMenu) ({ expanded = true }) else null,
                 locked = readOnly,
                 unsaved = uiState.isUnsavedCard,
-                opensMenu = hasMenu,
                 page = page,
             )
         }
@@ -836,13 +835,11 @@ private fun audienceContainer(audience: CardAudience): Color =
 private fun onAudienceContainer(audience: CardAudience): Color =
     if (audience is CardAudience.Circle) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
 
-/** Public reads primary, a circle tertiary, wherever a card's audience is shown; [unsaved] marks a card that's still virtual. */
 @Composable
 internal fun AudienceChip(
     audience: CardAudience,
     modifier: Modifier = Modifier,
     locked: Boolean = false,
-    opensMenu: Boolean = false,
     elevated: Boolean = true,
     maxLines: Int = 1,
     unsaved: Boolean = false,
@@ -850,6 +847,7 @@ internal fun AudienceChip(
     onClick: (() -> Unit)? = null,
 ) {
     val motion = MaterialTheme.motionScheme
+    val opensMenu = onClick != null
     val container by animateColorAsState(audienceContainer(audience), motion.defaultEffectsSpec())
     val content by animateColorAsState(onAudienceContainer(audience), motion.defaultEffectsSpec())
     val chip: @Composable () -> Unit = {
@@ -906,7 +904,6 @@ internal fun AudienceChip(
     }
 }
 
-// The current card stretches into a pill, so the set reads as pages and swiping as the way through them.
 @Composable
 private fun PageDots(page: Int, pages: Int, modifier: Modifier = Modifier) {
     val motion = MaterialTheme.motionScheme
@@ -921,7 +918,6 @@ private fun PageDots(page: Int, pages: Int, modifier: Modifier = Modifier) {
     }
 }
 
-// The chosen card fills with its audience's colour, matching the pill that opened the menu; every row previews its card's ground.
 @Composable
 private fun CardMenuItem(card: ProfileCard, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
@@ -965,7 +961,6 @@ private fun CardMenuItem(card: ProfileCard, selected: Boolean, onClick: () -> Un
     )
 }
 
-// The card in miniature, the same schematic as the design tiles, so rows that share a design read as the same card.
 @Composable
 private fun CardSwatch(card: ProfileCard, selected: Boolean) {
     val palette = card.overrides.palette
@@ -985,7 +980,6 @@ private fun CardSwatch(card: ProfileCard, selected: Boolean) {
     }
 }
 
-// A fixed headline, so a long circle name sits in the body and the dialog keeps one shape.
 @Composable
 internal fun ResetCardDialog(audience: CardAudience, onReset: () -> Unit, onDismiss: () -> Unit) {
     val message = when (audience) {
@@ -1002,7 +996,6 @@ internal fun ResetCardDialog(audience: CardAudience, onReset: () -> Unit, onDism
                 Text(message)
             }
         },
-        // The one filled action, in the error role: it's the step taken here, and it throws work away.
         confirmButton = {
             Button(
                 onClick = onReset,
@@ -1233,6 +1226,16 @@ private fun CardSkeleton(design: String) {
     CardDesignThumbnail(design = design, modifier = Modifier.fillMaxSize().graphicsLayer { alpha = pulse })
 }
 
+@Composable
+internal fun CookieBadge(icon: ImageVector, container: Color, content: Color, size: Dp, iconSize: Dp) {
+    Box(
+        modifier = Modifier.size(size).background(container, MaterialShapes.Cookie9Sided.toShape()),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(iconSize))
+    }
+}
+
 // One message for both preview failures, on the neutral ground: it reads as blocked, not alarming; only the icon carries the error role.
 @Composable
 private fun CardErrorPlate(message: StringResource, onRetry: () -> Unit, modifier: Modifier = Modifier) {
@@ -1242,17 +1245,13 @@ private fun CardErrorPlate(message: StringResource, onRetry: () -> Unit, modifie
         modifier = modifier.padding(32.dp),
     ) {
         CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
-            Box(
-                modifier = Modifier.size(64.dp).background(MaterialTheme.colorScheme.errorContainer, MaterialShapes.Cookie9Sided.toShape()),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Outlined.ErrorOutline,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
+            CookieBadge(
+                icon = Icons.Outlined.ErrorOutline,
+                container = MaterialTheme.colorScheme.errorContainer,
+                content = MaterialTheme.colorScheme.onErrorContainer,
+                size = 64.dp,
+                iconSize = 28.dp,
+            )
             Text(
                 text = stringResource(message),
                 style = MaterialTheme.typography.bodyLarge,

@@ -97,7 +97,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
-import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -307,7 +306,6 @@ private fun OptionControl(
     }
 }
 
-// One connected group: unpicked tools are icons, the picked one springs open into a pill that names itself.
 @Composable
 private fun OptionToolbar(
     options: List<CardOption>,
@@ -388,19 +386,13 @@ private fun OptionsEmptyState(design: String, modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         modifier = modifier.padding(horizontal = CAPTION_INSET),
     ) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .background(MaterialTheme.colorScheme.secondaryContainer, MaterialShapes.Cookie9Sided.toShape()),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Tune,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.size(24.dp),
-            )
-        }
+        CookieBadge(
+            icon = Icons.Outlined.Tune,
+            container = MaterialTheme.colorScheme.secondaryContainer,
+            content = MaterialTheme.colorScheme.onSecondaryContainer,
+            size = 56.dp,
+            iconSize = 24.dp,
+        )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 text = stringResource(MR.string.profile_card_options_empty_title, name),
@@ -416,7 +408,6 @@ private fun OptionsEmptyState(design: String, modifier: Modifier = Modifier) {
     }
 }
 
-// Squircle at rest, pill when picked: the same softening the design tiles and connected groups use for a choice.
 private val LOOSE_CHOICE_SHAPES = ToggleButtonShapes(
     shape = RoundedCornerShape(12.dp),
     pressedShape = RoundedCornerShape(8.dp),
@@ -701,7 +692,6 @@ private fun BlockOrderRow(order: List<String>, enabled: Boolean, tileHeight: Dp,
     }
 }
 
-// The grip says the tiles move; their left-to-right order is the order on the card.
 @Composable
 private fun BlockTile(name: String) {
     Row(
