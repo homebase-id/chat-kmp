@@ -9,7 +9,7 @@ actual fun LocalVideoPlayerSurface(
     modifier: Modifier,
     onFirstFrameRendered: (() -> Unit)?,
 ) {
-    VlcjPlayer(videoPath = filePath, modifier = modifier, onFirstFrameRendered = onFirstFrameRendered ?: {})
+    DesktopVideoPlayer(videoPath = filePath, modifier = modifier, onFirstFrameRendered = onFirstFrameRendered ?: {})
 }
 
 @Composable
@@ -23,7 +23,7 @@ actual fun TrimmableVideoPlayerSurface(
     modifier: Modifier,
     onFirstFrameRendered: (() -> Unit)?,
 ) {
-    VlcjPlayer(
+    DesktopVideoPlayer(
         videoPath = filePath,
         modifier = modifier,
         onFirstFrameRendered = onFirstFrameRendered ?: {},
