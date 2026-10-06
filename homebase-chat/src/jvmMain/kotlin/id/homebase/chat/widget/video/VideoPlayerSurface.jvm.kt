@@ -181,58 +181,19 @@ actual fun VideoPlayerSurface(
                                 .joinToString("\n")
                         )
 
-                        val totalSize = content.metadata.fileSize
-                        val server = HttpServer.create(InetSocketAddress(0), 0).apply {
-                        createContext("/") { exchange ->
-                            val name = exchange.requestURI.path.trimStart('/')
-                            if (name.endsWith(".m3u8")) {
-                                val fileBytes = File(dir, name).readBytes()
-                                exchange.responseHeaders.add("Content-Type", HLS_PLAYLIST_CONTENT_TYPE)
-                                exchange.sendResponseHeaders(200, fileBytes.size.toLong())
-                                exchange.responseBody.use { it.write(fileBytes) }
-                                return@createContext
+                        val server = startLocalHlsServer(dir, content.metadata.fileSize) { start, length ->
+                            Logger.d(tag = "VideoHLS") { "hls chunk request: fileId=${data.fileId} key=${data.payloadKey} chunkStart=$start chunkLength=$length" }
+                            runBlocking {
+                                videoAccess.getPayloadBytesDecrypted(
+                                    driveId = data.driveId,
+                                    fileId = data.fileId,
+                                    key = data.payloadKey,
+                                    keyHeader = data.keyHeader,
+                                    chunkStart = start,
+                                    chunkLength = length,
+                                )?.bytes
                             }
-
-                            // .ts range requests — fetch and decrypt the requested chunk on demand
-                            exchange.responseHeaders.add("Content-Type", "video/mp2t")
-                            exchange.responseHeaders.add("Accept-Ranges", "bytes")
-                            val rangeHeader = exchange.requestHeaders.getFirst("Range")
-                            val start: Long
-                            val end: Long
-                            if (rangeHeader != null) {
-                                val parts = rangeHeader.removePrefix("bytes=").split("-")
-                                start = parts[0].toLong()
-                                end = if (parts[1].isNotEmpty()) parts[1].toLong() else totalSize - 1
-                            } else {
-                                start = 0
-                                end = totalSize - 1
-                            }
-                            val length = end - start + 1
-                            Logger.d(tag = "VideoHLS") { "hls chunk request: fileId=${data.fileId} key=${data.payloadKey} chunkStart=$start chunkLength=$length name=$name" }
-                            val bytes = NativeLoadActivity.track {
-                                runBlocking {
-                                    videoAccess.getPayloadBytesDecrypted(
-                                        driveId = data.driveId,
-                                        fileId = data.fileId,
-                                        key = data.payloadKey,
-                                        keyHeader = data.keyHeader,
-                                        chunkStart = start,
-                                        chunkLength = length,
-                                    )?.bytes
-                                }
-                            }
-                            if (bytes == null) {
-                                exchange.sendResponseHeaders(500, -1)
-                                exchange.responseBody.close()
-                                return@createContext
-                            }
-                            exchange.responseHeaders.add("Content-Range", "bytes $start-$end/$totalSize")
-                            exchange.sendResponseHeaders(206, bytes.size.toLong())
-                            exchange.responseBody.use { it.write(bytes) }
                         }
-                        executor = Executors.newFixedThreadPool(4)
-                        start()
-                    }
                         httpServer = server
                         progressJob.cancel()
                         val m = content.metadata
@@ -282,6 +243,49 @@ actual fun VideoPlayerSurface(
             )
         }
     }
+}
+
+// Serves the playlist from [dir] and every segment as a byte range of the single payload.
+internal fun startLocalHlsServer(
+    dir: File,
+    totalSize: Long,
+    fetchRange: (start: Long, length: Long) -> ByteArray?,
+): HttpServer = HttpServer.create(InetSocketAddress(0), 0).apply {
+    createContext("/") { exchange ->
+        val name = exchange.requestURI.path.trimStart('/')
+        if (name.endsWith(".m3u8")) {
+            val fileBytes = File(dir, name).readBytes()
+            exchange.responseHeaders.add("Content-Type", HLS_PLAYLIST_CONTENT_TYPE)
+            exchange.sendResponseHeaders(200, fileBytes.size.toLong())
+            exchange.responseBody.use { it.write(fileBytes) }
+            return@createContext
+        }
+
+        exchange.responseHeaders.add("Content-Type", "video/mp2t")
+        exchange.responseHeaders.add("Accept-Ranges", "bytes")
+        val rangeHeader = exchange.requestHeaders.getFirst("Range")
+        val start: Long
+        val end: Long
+        if (rangeHeader != null) {
+            val parts = rangeHeader.removePrefix("bytes=").split("-")
+            start = parts[0].toLong()
+            end = if (parts[1].isNotEmpty()) parts[1].toLong() else totalSize - 1
+        } else {
+            start = 0
+            end = totalSize - 1
+        }
+        val bytes = NativeLoadActivity.track { fetchRange(start, end - start + 1) }
+        if (bytes == null) {
+            exchange.sendResponseHeaders(500, -1)
+            exchange.responseBody.close()
+            return@createContext
+        }
+        exchange.responseHeaders.add("Content-Range", "bytes $start-$end/$totalSize")
+        exchange.sendResponseHeaders(206, bytes.size.toLong())
+        exchange.responseBody.use { it.write(bytes) }
+    }
+    executor = Executors.newFixedThreadPool(4)
+    start()
 }
 
 // Discovery dlopens libvlccore; a broken or ABI-mismatched JNA raises UnsatisfiedLinkError,
