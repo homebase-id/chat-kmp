@@ -55,11 +55,8 @@ internal object NativeLoadActivity {
 
 // The dylib's minos is 14.0; Windows uses Media Foundation. Linux needs GStreamer, which the probe finds out.
 private fun osHasNativeBackend(): Boolean {
-    val os = System.getProperty("os.name").lowercase()
-    return when {
-        os.contains("mac") -> (System.getProperty("os.version").substringBefore('.').toIntOrNull() ?: 0) >= 14
-        else -> true
-    }
+    if (!System.getProperty("os.name").lowercase().contains("mac")) return true
+    return (System.getProperty("os.version").substringBefore('.').toIntOrNull() ?: 0) >= 14
 }
 
 // The state constructor only starts an async init, so the library load is forced here; load() returns false instead of throwing.
@@ -108,13 +105,13 @@ internal fun DesktopVideoPlayer(
     }
     val onBackend = rememberUpdatedState(onBackendChosen)
     LaunchedEffect(chosen) { chosen?.let { onBackend.value(it) } }
-    when {
-        nativeOk == null -> Box(modifier, contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        nativeOk == false || useVlc -> VlcjPlayer(
+    when (chosen) {
+        null -> Box(modifier, contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        DesktopVideoBackend.VLC -> VlcjPlayer(
             videoPath, modifier, onFirstFrameRendered, showControls, clipStartMs, clipEndMs,
             externalIsPlaying, seekRequestMs, onPositionMs, muted, onEnded, replayToken,
         )
-        else -> NativeAvPlayer(
+        DesktopVideoBackend.NATIVE -> NativeAvPlayer(
             videoPath, aspectRatio, modifier, onFirstFrameRendered, showControls, clipStartMs, clipEndMs,
             externalIsPlaying, seekRequestMs, onPositionMs, muted, onEnded, replayToken,
             onUnplayable = { useVlc = true },

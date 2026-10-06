@@ -110,9 +110,6 @@ actual fun VideoPlayerSurface(
     @Suppress("UNUSED_PARAMETER") paused: Boolean,
     onError: (String) -> Unit,
 ) {
-    // VLC-J's CallbackMediaPlayerComponent paints to a Swing canvas with no
-    // built-in transport UI of its own (host renders controls). Param is
-    // accepted for API parity with the mobile actuals.
     // ponytail: no keep-screen-awake on Desktop. There is no portable JDK API to
     // inhibit display sleep — it needs per-OS native calls (Windows
     // SetThreadExecutionState / macOS IOPMAssertion / Linux org.freedesktop.ScreenSaver)
@@ -171,9 +168,9 @@ actual fun VideoPlayerSurface(
                                 if (highWater < 1f) onProgress(highWater)
                             }
                         }
-                        // Await the preload so the first segment is cached before VLC starts.
+                        // Await the preload so the first segment is cached before the player starts.
                         // If MediaItem's preload was cancelled when the chat list left composition,
-                        // this is the only path that drives real progress — VLC's own data-source
+                        // this is the only path that drives real progress — the player's own segment
                         // fetches bypass onDownloadProgress entirely.
                         // The preloader reads our own drive, so for a followed identity it would fetch the
                         // wrong file. Playback warms the chunk cache itself; only progress goes dark.
@@ -211,7 +208,7 @@ actual fun VideoPlayerSurface(
                                 end = totalSize - 1
                             }
                             val length = end - start + 1
-                            Logger.d(tag = "VideoHLS") { "vlc chunk request: fileId=${data.fileId} key=${data.payloadKey} chunkStart=$start chunkLength=$length name=$name" }
+                            Logger.d(tag = "VideoHLS") { "hls chunk request: fileId=${data.fileId} key=${data.payloadKey} chunkStart=$start chunkLength=$length name=$name" }
                             val bytes = NativeLoadActivity.track {
                                 runBlocking {
                                     videoAccess.getPayloadBytesDecrypted(
@@ -651,7 +648,7 @@ private fun SeekBar(
     }
 }
 
-internal fun formatMs(ms: Long): String {
+private fun formatMs(ms: Long): String {
     val totalSeconds = ms / 1000
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
