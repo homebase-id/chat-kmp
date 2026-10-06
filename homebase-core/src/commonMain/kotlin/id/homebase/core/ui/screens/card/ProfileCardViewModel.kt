@@ -398,7 +398,6 @@ class ProfileCardViewModel(
         _uiState.update { it.copy(isSwitchingDesign = true) }
     }
 
-    /** The intro's pick: the card opens in the viewer. */
     fun onCardOpened(audience: CardAudience) {
         val state = _uiState.value
         val card = state.cards.firstOrNull { it.audience.isSameAs(audience) }
@@ -424,10 +423,7 @@ class ProfileCardViewModel(
         is CardAudience.Circle -> label
     }
 
-    /**
-     * Renders each card into the one shared host and keeps a still of it for the intro's tile. Stills that already
-     * match the card's current payload are kept; the host goes back to the card the viewer shows when done or cancelled.
-     */
+    // The host goes back to the card the viewer shows when done or cancelled.
     suspend fun captureIntroTiles() {
         val host = _host.value ?: return
         host.isLoaded.first { it }

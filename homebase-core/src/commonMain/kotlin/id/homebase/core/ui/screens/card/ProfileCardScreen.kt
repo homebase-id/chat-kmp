@@ -6,17 +6,11 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.border
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.PlainTooltip
@@ -34,10 +28,6 @@ import id.homebase.resources.profile_card_read_only_title
 import id.homebase.resources.profile_card_read_only_why
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MenuDefaults
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.animation.core.RepeatMode
@@ -85,8 +75,6 @@ import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.ContainedLoadingIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
@@ -134,7 +122,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.isTraversalGroup
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
@@ -176,9 +163,6 @@ import id.homebase.resources.profile_card_save
 import id.homebase.resources.profile_card_share
 import id.homebase.resources.profile_card_share_failed
 import id.homebase.resources.profile_card_unsupported
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.HorizontalDivider
 import id.homebase.resources.profile_card_access_body
 import id.homebase.resources.profile_card_access_continue
 import id.homebase.resources.profile_card_access_later
@@ -207,20 +191,7 @@ private val TOOLBAR_BAND_HEIGHT = 88.dp
 private val CHROME_GAP = 8.dp
 private val CHROME_CONTROL_SIZE = 40.dp
 private val MAX_SHEET_PULL = 32.dp
-private val MENU_MIN_WIDTH = 248.dp
-private val CHIP_SWIPE_DISTANCE = 48.dp
-private const val CHIP_SWIPE_VELOCITY = 600f
-private const val CHIP_PULL_DAMPING = 0.35f
-private const val DOT_IDLE_ALPHA = 0.4f
 private const val UNSAVED_LABEL_ALPHA = 0.8f
-private val MENU_MAX_WIDTH = 320.dp
-private val MENU_INSET = 4.dp
-private val MENU_ITEM_CORNER = 12.dp
-private val MENU_SELECTED_CORNER = 20.dp
-private val MENU_ITEM_SHAPE = RoundedCornerShape(MENU_ITEM_CORNER)
-private val MINI_CARD_WIDTH = 26.dp
-private val MINI_CARD_CORNER = 5.dp
-private val MINI_CARD_SELECTED_CORNER = 9.dp
 private val DISMISS_DRAG_DISTANCE = 96.dp
 private const val DISMISS_FLING_VELOCITY = 1500f
 private const val SKELETON_ALPHA_LOW = 0.35f
@@ -785,8 +756,6 @@ internal fun AudienceChip(
     elevated: Boolean = true,
     maxLines: Int = 1,
     unsaved: Boolean = false,
-    page: Int = -1,
-    onClick: (() -> Unit)? = null,
 ) {
     val motion = MaterialTheme.motionScheme
     val container by animateColorAsState(audienceContainer(audience), motion.defaultEffectsSpec())
@@ -797,17 +766,13 @@ internal fun AudienceChip(
             modifier = Modifier
                 .animateContentSize(motion.defaultSpatialSpec())
                 .heightIn(min = CHROME_CONTROL_SIZE)
-                .padding(start = 12.dp, end = if (opensMenu) 6.dp else 16.dp, top = 4.dp, bottom = 4.dp),
+                .padding(start = 12.dp, end = 16.dp, top = 4.dp, bottom = 4.dp),
         ) {
             AnimatedContent(
-                targetState = Triple(page, audience, unsaved),
-                transitionSpec = {
-                    val forward = if (targetState.first >= initialState.first) 1 else -1
-                    (slideInHorizontally(motion.defaultSpatialSpec()) { it / 2 * forward } + fadeIn(motion.defaultEffectsSpec()))
-                        .togetherWith(slideOutHorizontally(motion.defaultSpatialSpec()) { -it / 2 * forward } + fadeOut(motion.fastEffectsSpec()))
-                },
+                targetState = audience to unsaved,
+                transitionSpec = { fadeIn(motion.defaultEffectsSpec()).togetherWith(fadeOut(motion.fastEffectsSpec())) },
                 modifier = Modifier.weight(1f, fill = false),
-            ) { (_, shown, draft) ->
+            ) { (shown, draft) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(imageVector = audienceIcon(shown), contentDescription = null, modifier = Modifier.size(18.dp))
                     Column(modifier = Modifier.padding(start = 8.dp).weight(1f, fill = false)) {
@@ -832,17 +797,10 @@ internal fun AudienceChip(
             if (locked) {
                 Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.padding(start = 6.dp).size(16.dp))
             }
-            if (opensMenu) {
-                Icon(imageVector = Icons.Filled.ArrowDropDown, contentDescription = null, modifier = Modifier.size(20.dp))
-            }
         }
     }
     val elevation = if (elevated) 2.dp else 0.dp
-    if (onClick != null) {
-        Surface(onClick = onClick, shape = CircleShape, color = container, contentColor = content, shadowElevation = elevation, modifier = modifier) { chip() }
-    } else {
-        Surface(shape = CircleShape, color = container, contentColor = content, shadowElevation = elevation, modifier = modifier) { chip() }
-    }
+    Surface(shape = CircleShape, color = container, contentColor = content, shadowElevation = elevation, modifier = modifier) { chip() }
 }
 
 @Composable

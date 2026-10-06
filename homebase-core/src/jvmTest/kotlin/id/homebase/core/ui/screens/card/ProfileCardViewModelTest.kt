@@ -1116,6 +1116,33 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun capturingStopsWhenTheViewerOpensMidCapture() = runTest(dispatcher) {
+        val host = FakeHost()
+        val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
+        val vm = viewModel(
+            host,
+            FakeSource(profile + publicCardAttribute + circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 0, CardOverrides())),
+        )
+        host.onPaintRequest = { host.send(CardEvent.Painted) }
+        val before = host.rendered.size
+        host.onRender = {
+            host.send(CardEvent.Ready(layout = it.design, ms = 1))
+            if (host.rendered.size == before + 2) vm.onCardOpened(friends)
+        }
+
+        vm.captureIntroTiles()
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.viewing)
+        assertEquals(friends, vm.uiState.value.selectedAudience)
+        val afterOpen = host.rendered.size
+        vm.captureIntroTiles()
+        assertEquals(afterOpen, host.rendered.size)
+        assertEquals(CardDesign.DOSSIER, host.rendered.last().design)
+        assertEquals("Friends", host.rendered.last().audience?.label)
+    }
+
+    @Test
     fun switchingCardChangesAudienceDesignAndOverrides() = runTest(dispatcher) {
         val host = FakeHost()
         val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")

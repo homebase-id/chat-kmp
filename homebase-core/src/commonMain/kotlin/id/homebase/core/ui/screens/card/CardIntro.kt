@@ -76,10 +76,6 @@ private val CAPTURE_HOST_WIDTH = 240.dp
 private val CAPTURE_LAYOUT_WIDTH = 360.dp
 private val TILE_ICON_SIZE = 18.sp
 
-/**
- * Every fixed card side by side, each titled by its circle; the pick opens the viewer. Each tile is a still of the
- * user's real card, taken from the one shared host through [onCapture]; until it lands the tile is a schematic.
- */
 @Composable
 @Suppress("DEPRECATION")
 internal fun CardIntro(
