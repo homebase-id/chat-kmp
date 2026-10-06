@@ -1,8 +1,16 @@
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalUuidApi::class)
 
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
+import id.homebase.core.ui.screens.profile.ProfileAudience
+import id.homebase.resources.profile_card_option_content
+import id.homebase.resources.profile_card_tool_content
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
@@ -172,8 +180,6 @@ import id.homebase.resources.profile_card_option_move_up
 import id.homebase.resources.profile_card_option_portrait_shape
 import id.homebase.resources.profile_card_option_socials_style
 import id.homebase.resources.profile_card_option_text_font
-import id.homebase.resources.profile_card_options_empty
-import id.homebase.resources.profile_card_options_empty_title
 import id.homebase.resources.profile_card_shape_circle
 import id.homebase.resources.profile_card_shape_ellipse
 import id.homebase.resources.profile_card_shape_rounded
@@ -207,7 +213,21 @@ private const val REVEAL_MARGIN = 0.6f
 private val BLOCK_TILE_SPACING = 6.dp
 private val BLOCK_TILE_CORNER = 12.dp
 
-/** Every control comes from the design's [CardDesignSpec]; there is no per-design screen. */
+/** What the Content tool needs of the selected card; [onOpen] tells the panel to make room while the tool is picked. */
+internal class CardContentTool(
+    val card: CardAudience,
+    val items: List<CardContentItem>,
+    val circles: List<CardCircle>,
+    val enabled: Boolean,
+    val onToggle: (Uuid, Boolean) -> Unit,
+    val onAudience: (Uuid, ProfileAudience) -> Unit,
+    val onAdd: (String, Map<String, String>) -> Unit,
+    val onOpen: (Boolean) -> Unit,
+)
+
+private const val CONTENT_TOOL = "CONTENT"
+
+/** Every control comes from the design's [CardDesignSpec]; Content, which every design has, comes last. */
 @Composable
 internal fun CardOptionsPanel(
     design: String,
@@ -215,38 +235,52 @@ internal fun CardOptionsPanel(
     enabled: Boolean,
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
+    content: CardContentTool,
     gap: Dp,
     modifier: Modifier = Modifier,
 ) {
     val spec = CardDesignSpecs.of(design)
     val options = CardOption.entries.filter { spec != null && it in spec.options }
-    if (options.isEmpty()) {
-        OptionsEmptyState(design = design, modifier = modifier)
-        return
-    }
-    var picked by rememberSaveable(design) { mutableStateOf(options.first().name) }
-    val current = options.firstOrNull { it.name == picked } ?: options.first()
+    var picked by rememberSaveable(design) { mutableStateOf(options.firstOrNull()?.name ?: CONTENT_TOOL) }
+    val current = options.firstOrNull { it.name == picked }
     val motion = MaterialTheme.motionScheme
     val chipHeight = CHIP_HEIGHT * LocalDensity.current.fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
+    val onOpen by rememberUpdatedState(content.onOpen)
+    LaunchedEffect(current == null) { onOpen(current == null) }
+    DisposableEffect(Unit) { onDispose { onOpen(false) } }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
         AnimatedContent(
-            targetState = current,
+            targetState = picked,
             transitionSpec = {
                 (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
                     .togetherWith(fadeOut(motion.fastEffectsSpec()))
             },
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.TopStart,
-        ) { option ->
-            // The picked tool names itself in the group below, so the control stands alone here.
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                OptionControl(option, design, overrides, enabled, chipHeight, onOption, onBlockOrder)
+        ) { shown ->
+            val option = options.firstOrNull { it.name == shown }
+            if (option == null) {
+                CardContentPanel(
+                    card = content.card,
+                    items = content.items,
+                    circles = content.circles,
+                    enabled = content.enabled,
+                    onToggle = content.onToggle,
+                    onAudience = content.onAudience,
+                    onAdd = content.onAdd,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                // The picked tool names itself in the group below, so the control stands alone here.
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    OptionControl(option, design, overrides, enabled, chipHeight, onOption, onBlockOrder)
+                }
             }
         }
         OptionToolbar(
             options = options,
             current = current,
-            onPick = { picked = it.name },
+            onPick = { picked = it?.name ?: CONTENT_TOOL },
             modifier = Modifier.fillMaxWidth().height(TOOLBAR_HEIGHT).padding(horizontal = TOOLBAR_SIDE_INSET),
         )
     }
@@ -306,11 +340,12 @@ private fun OptionControl(
     }
 }
 
+// A null [current] is Content.
 @Composable
 private fun OptionToolbar(
     options: List<CardOption>,
-    current: CardOption,
-    onPick: (CardOption) -> Unit,
+    current: CardOption?,
+    onPick: (CardOption?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     ScrollableChoiceRow(
@@ -319,16 +354,25 @@ private fun OptionToolbar(
         horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val count = options.size + 1
         options.forEachIndexed { index, option ->
             ToolItem(
                 icon = optionIcon(option),
                 label = stringResource(toolLabel(option)),
                 description = stringResource(optionLabel(option)),
                 selected = option == current,
-                shapes = connectedButtonShapes(index, options.size),
+                shapes = connectedButtonShapes(index, count),
                 onClick = { onPick(option) },
             )
         }
+        ToolItem(
+            icon = Icons.Outlined.Dashboard,
+            label = stringResource(MR.string.profile_card_tool_content),
+            description = stringResource(MR.string.profile_card_option_content),
+            selected = current == null,
+            shapes = connectedButtonShapes(options.size, count),
+            onClick = { onPick(null) },
+        )
     }
 }
 
@@ -374,36 +418,6 @@ private fun ToolItem(
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun OptionsEmptyState(design: String, modifier: Modifier = Modifier) {
-    val name = stringResource(designLabel(design))
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = modifier.padding(horizontal = CAPTION_INSET),
-    ) {
-        CookieBadge(
-            icon = Icons.Outlined.Tune,
-            container = MaterialTheme.colorScheme.secondaryContainer,
-            content = MaterialTheme.colorScheme.onSecondaryContainer,
-            size = 56.dp,
-            iconSize = 24.dp,
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = stringResource(MR.string.profile_card_options_empty_title, name),
-                style = MaterialTheme.typography.titleMediumEmphasized,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = stringResource(MR.string.profile_card_options_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

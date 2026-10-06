@@ -39,7 +39,13 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import id.homebase.api.client.drives.AccessControlList
+import id.homebase.api.client.profile.ProfileAttribute
+import id.homebase.api.client.profile.ProfileAttributeTypes
+import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.theme.HomebaseTheme
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.test.Test
@@ -216,6 +222,52 @@ class ProfileCardEditorShotsTest {
         Shot("k6-e21-font-scale-order", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, fontScale = 1.6f, act = tool("Section order")),
         Shot("k6-e22-virtual-family", fixedFriends.copy(selectedAudience = family)),
     )
+
+    private fun attribute(type: String, key: String, value: String, visibility: ProfileVisibility, circles: List<String>? = null) = ProfileAttribute(
+        id = Uuid.random(),
+        type = type,
+        versionTag = Uuid.random(),
+        visibility = visibility,
+        data = JsonObject(mapOf(key to JsonPrimitive(value))),
+        acl = AccessControlList(requiredSecurityGroup = visibility.wireValue, circleIdList = circles),
+    )
+
+    private val contentCircles = listOf(
+        CardCircle(FAMILY_CIRCLE_ID, "Family"),
+        CardCircle(FRIENDS_CIRCLE_ID, "Friends"),
+        CardCircle(WORK_CIRCLE_ID, "Work"),
+    )
+    private val contentAttributes = listOf(
+        attribute(ProfileAttributeTypes.NAME, ProfileAttributeTypes.KEY_GIVEN_NAME, "Samwise Gamgee", ProfileVisibility.ANONYMOUS),
+        attribute(ProfileAttributeTypes.BIO_SUMMARY, ProfileAttributeTypes.KEY_SHORT_BIO, "Gardener, cook, second breakfast enthusiast", ProfileVisibility.ANONYMOUS),
+        attribute(ProfileAttributeTypes.PHONE, ProfileAttributeTypes.KEY_PHONE, "+14155550123", ProfileVisibility.CONNECTED, listOf(FRIENDS_CIRCLE_ID)),
+        attribute(ProfileAttributeTypes.LINK, ProfileAttributeTypes.KEY_LINK_TARGET, "https://shire.example/rosie", ProfileVisibility.CONNECTED, listOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID)),
+        attribute(ProfileAttributeTypes.INSTAGRAM, ProfileAttributeTypes.KEY_INSTAGRAM, "samwise", ProfileVisibility.OWNER),
+    )
+    private val friendsCard = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
+    private val contentBase = base.copy(
+        attributes = contentAttributes,
+        circles = contentCircles,
+        cards = listOf(public, card(friendsCard)),
+    )
+    private val contentTool = tool("What this card shows")
+
+    private val contentShots = listOf(
+        Shot("k9-content-public", contentBase, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
+        Shot("k9-content-friends", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
+        Shot("k9-content-friends-small", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = 360, heightDp = 640, act = contentTool),
+        Shot("k9-content-font-scale", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, fontScale = 1.6f, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
+        Shot("k9-content-rtl", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, rtl = true, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
+        Shot("k9-content-empty", base, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
+        Shot("k9-content-wide", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = 900, heightDp = 820, act = contentTool),
+    )
+
+    @Test
+    fun contentToolRendersOnThePublicAndACircleCard() {
+        for (dark in listOf(false, true)) {
+            for (shot in contentShots) render(shot, dark)
+        }
+    }
 
     @Test
     fun fixedCircleCardsRenderEveryState() {

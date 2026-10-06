@@ -1,8 +1,12 @@
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class, ExperimentalUuidApi::class)
 
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.animation.AnimatedContent
+import id.homebase.core.ui.screens.profile.ProfileAudience
+import id.homebase.resources.profile_card_content_save_failed
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.MoreVert
@@ -175,6 +179,7 @@ fun ProfileCardEditorScreen(
     val errCard = stringResource(MR.string.profile_card_error)
     val errSave = stringResource(MR.string.profile_card_design_save_failed)
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
+    val errContent = stringResource(MR.string.profile_card_content_save_failed)
 
     LaunchedEffect(viewModel) { viewModel.startHost() }
     DisposableEffect(viewModel) {
@@ -211,6 +216,7 @@ fun ProfileCardEditorScreen(
                 ProfileCardEvent.DesignSaveFailed -> launch { snackbarHostState.showSnackbar(errSave) }
                 ProfileCardEvent.CardFailed -> launch { snackbarHostState.showSnackbar(errCard) }
                 ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
+                ProfileCardEvent.ContentSaveFailed -> launch { snackbarHostState.showSnackbar(errContent) }
                 is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed, ProfileCardEvent.ResetFailed -> Unit
             }
         }
@@ -229,6 +235,9 @@ fun ProfileCardEditorScreen(
             onEditProfile = onEditProfile,
             snackbarHostState = snackbarHostState,
             onRequestDesignAccess = viewModel::onPublishRetry,
+            onContentToggle = viewModel::onContentToggled,
+            onContentAudience = viewModel::onContentAudienceChanged,
+            onContentAdd = viewModel::onContentAdded,
         ) { layoutWidth ->
             val backdrop by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
             val designCover by viewModel.designCover.collectAsStateWithLifecycle()
@@ -263,6 +272,9 @@ internal fun ProfileCardEditorContent(
     onEditProfile: () -> Unit,
     snackbarHostState: SnackbarHostState,
     onRequestDesignAccess: () -> Unit = {},
+    onContentToggle: (Uuid, Boolean) -> Unit = { _, _ -> },
+    onContentAudience: (Uuid, ProfileAudience) -> Unit = { _, _ -> },
+    onContentAdd: (String, Map<String, String>) -> Unit = { _, _ -> },
     preview: @Composable BoxScope.(layoutWidth: Dp) -> Unit,
 ) {
     Surface(color = MaterialTheme.colorScheme.surfaceDim, contentColor = MaterialTheme.colorScheme.onSurface) {
@@ -290,6 +302,9 @@ internal fun ProfileCardEditorContent(
                     onBlockOrder = onBlockOrder,
                     onSave = onSave,
                     onAppOnly = onRequestDesignAccess,
+                    onContentToggle = onContentToggle,
+                    onContentAudience = onContentAudience,
+                    onContentAdd = onContentAdd,
                     metrics = metrics,
                     shape = shape,
                     modifier = modifier,
@@ -472,6 +487,9 @@ private fun EditorPanel(
     onBlockOrder: (List<String>) -> Unit,
     onSave: () -> Unit,
     onAppOnly: () -> Unit,
+    onContentToggle: (Uuid, Boolean) -> Unit,
+    onContentAudience: (Uuid, ProfileAudience) -> Unit,
+    onContentAdd: (String, Map<String, String>) -> Unit,
     metrics: PanelMetrics,
     shape: Shape,
     modifier: Modifier = Modifier,
@@ -483,7 +501,12 @@ private fun EditorPanel(
     val grow = fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     // Grows with the text so a large font scale shortens the preview rather than clipping the controls.
     val optionsNeeded = CAPTION_LINE * fontScale + CHIP_HEIGHT * grow + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
-    val body = maxOf(metrics.body, optionsNeeded)
+    var contentOpen by remember { mutableStateOf(false) }
+    val body by animateDpAsState(
+        if (contentOpen) maxOf(CARD_CONTENT_BODY_HEIGHT, optionsNeeded) else maxOf(metrics.body, optionsNeeded),
+        motion.defaultSpatialSpec(),
+    )
+    val items = uiState.contentItems
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = shape,
@@ -536,6 +559,16 @@ private fun EditorPanel(
                         enabled = !isSaving,
                         onOption = onOption,
                         onBlockOrder = onBlockOrder,
+                        content = CardContentTool(
+                            card = uiState.selectedAudience,
+                            items = items,
+                            circles = uiState.circles,
+                            enabled = !uiState.isContentBusy,
+                            onToggle = onContentToggle,
+                            onAudience = onContentAudience,
+                            onAdd = onContentAdd,
+                            onOpen = { contentOpen = it },
+                        ),
                         gap = metrics.gap,
                         modifier = Modifier.fillMaxSize(),
                     )
