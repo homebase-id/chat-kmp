@@ -22,6 +22,11 @@ class CardPreferences(private val databaseManager: DatabaseManager) {
         _design.value = design
     }
 
+    suspend fun clearDesign() {
+        keyValue.deleteByKey(DESIGN_KEY)
+        _design.value = null
+    }
+
     suspend fun setTapShareEnabled(enabled: Boolean) {
         if (_tapShareEnabled.value == enabled) return
         keyValue.upsertValue(TAP_SHARE_KEY, byteArrayOf(if (enabled) 1 else 0))

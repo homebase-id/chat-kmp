@@ -37,12 +37,13 @@ import kotlinx.serialization.json.put
 
 /**
  * The real ProfileRepository + providers over a Ktor MockEngine that decrypts what the app PUTs.
- * [circleCards] false plays a server from before circle cards, which drops `circleIds`; true plays one that
- * refuses them on anything but Connected, as the real one does.
+ * [cardType] false plays a server from before the profile_card type, which rejects every card write (the type and
+ * `circleIds` shipped together in odin-core 6e0032f24, so no server keeps one without the other); true plays one that
+ * refuses `circleIds` on anything but Connected, as the real one does.
  */
 class CardWireHarness(
     private val deleteReply: (Int) -> Reply? = { null },
-    private val circleCards: Boolean = true,
+    private val cardType: Boolean = true,
     private val putReply: (Int) -> Reply = { Reply.Ok },
 ) {
     sealed interface Reply {
@@ -65,7 +66,7 @@ class CardWireHarness(
     /** Ids of the attributes the fake server currently holds. */
     val storedIds: List<String> get() = synchronized(stored) { stored.keys.toList() }
 
-    /** What the fake server holds, as stored: `circleIds` is gone when [circleCards] is false. */
+    /** What the fake server holds, as stored. */
     val storedBodies: List<JsonObject> get() = synchronized(stored) { stored.values.map { it.body } }
 
     fun seed(id: Uuid, versionTag: Uuid, type: String, visibility: String, data: JsonObject, priority: Int, circleIds: List<String>?) {
@@ -127,14 +128,16 @@ class CardWireHarness(
                 recorded += body
                 val scoped = body.jsonObject["circleIds"] != null
                 val putNumber = putCount.incrementAndGet()
-                val reply = if (circleCards && scoped && body.jsonObject["visibility"]?.jsonPrimitive?.content != "connected") {
+                val reply = if (!cardType) {
+                    Reply.Problem(400, UNKNOWN_CARD_TYPE_400)
+                } else if (scoped && body.jsonObject["visibility"]?.jsonPrimitive?.content != "connected") {
                     Reply.Problem(400, CIRCLES_NEED_CONNECTED_400)
                 } else {
                     putReply(putNumber)
                 }
                 when (reply) {
                     Reply.Ok -> {
-                        val obj = if (circleCards || !scoped) body.jsonObject else JsonObject(body.jsonObject - "circleIds")
+                        val obj = body.jsonObject
                         val id = obj["id"]?.jsonPrimitive?.content ?: Uuid.random().toString()
                         val tag = Uuid.random().toString()
                         synchronized(stored) { stored[id] = Stored(id, tag, obj) }
@@ -223,9 +226,6 @@ internal class FakeCardStore(var attributes: List<ProfileAttribute> = emptyList(
     var saveCalls = 0
     var gate: CompletableDeferred<Unit>? = null
     var failWith: Exception? = null
-    var dropCircleIds = false
-    var circlesOnAnyVisibility = false
-    var serverCircleId: (String) -> String = { it }
     // false plays a 404: the attribute was already gone.
     var deleteResult = true
     var deleteThrows: Exception? = null
@@ -236,11 +236,11 @@ internal class FakeCardStore(var attributes: List<ProfileAttribute> = emptyList(
         saveCalls++
         gate?.await()
         failWith?.let { throw it }
-        if (!dropCircleIds && !circlesOnAnyVisibility && circleIds.isNotEmpty() && visibility != ProfileVisibility.CONNECTED) throw circlesNeedConnected()
+        if (circleIds.isNotEmpty() && visibility != ProfileVisibility.CONNECTED) throw circlesNeedConnected()
         writes += Write(data, visibility, id, versionTag, priority, circleIds)
         val written = ProfileWriteResponse(id ?: Uuid.random(), Uuid.random())
         if (keepWrites) {
-            val stored = circleIds.map(serverCircleId).takeIf { it.isNotEmpty() && !dropCircleIds }
+            val stored = circleIds.takeIf { it.isNotEmpty() }
             attributes = attributes.filter { it.id != id } +
                 profileCardAttribute(data, visibility, stored, priority, id = written.id, versionTag = written.versionTag)
         }

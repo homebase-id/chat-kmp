@@ -22,7 +22,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.platform.LocalDensity
@@ -31,11 +30,14 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.click
-import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
@@ -94,11 +96,8 @@ class ProfileCardEditorShotsTest {
     private fun appOnly(state: ProfileCardUiState) = state.copy(designAccessMissing = true, designAccessDeclined = true)
 
     private fun tool(description: String): ComposeUiTest.() -> Unit = {
-        // A mouse click, then the pointer leaves, so no hover highlight is left on whatever ends up under it.
-        onNodeWithContentDescription(description).performMouseInput {
-            click()
-            moveTo(Offset(-PARK_PX, -PARK_PX))
-        }
+        // The semantic click reaches a tool scrolled out of view and leaves no hover highlight behind.
+        onNodeWithContentDescription(description).performSemanticsAction(SemanticsActions.OnClick)
         mainClock.advanceTimeBy(SETTLE_MS)
     }
 
@@ -150,9 +149,16 @@ class ProfileCardEditorShotsTest {
         Shot("42-redmi-poster-colours", base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
     )
 
-    private fun circles(n: Int) = List(n) { CardCircle("c$it", CIRCLE_NAMES[it % CIRCLE_NAMES.size], memberCount = it * 3 % 11) }
-
-    private class ViewerShot(val name: String, val state: ProfileCardUiState, val act: ComposeUiTest.() -> Unit = {}, val popup: Boolean = false)
+    private class ViewerShot(
+        val name: String,
+        val state: ProfileCardUiState,
+        val act: ComposeUiTest.() -> Unit = {},
+        val popup: Boolean = false,
+        val fontScale: Float = 1f,
+        val rtl: Boolean = false,
+        val widthDp: Int = PHONE_W,
+        val heightDp: Int = PHONE_H,
+    )
 
     private val work = CardAudience.Circle("c1", "Work")
     private val emergency = CardAudience.Circle("c3", "Emergency Location Access")
@@ -167,28 +173,93 @@ class ProfileCardEditorShotsTest {
         ViewerShot("v05-menu", withCircle, act = { onNodeWithContentDescription("Card for Work. Choose another card.").performClick() }, popup = true),
     )
 
+    private val family = CardAudience.Circle("f", "Family")
+    private fun virtual(audience: CardAudience) = card(audience).copy(id = Uuid.NIL)
+    private val fixedSet = listOf(public, virtual(family), card(friends, CardDesign.COLLAGE), virtual(work))
+    private val fixedFriends = base.copy(cards = fixedSet, selectedAudience = friends)
+    private val fixedReadOnly = fixedFriends.copy(circleCardsSupported = false)
+    private fun menu(label: String, readOnly: Boolean = false): ComposeUiTest.() -> Unit = {
+        onNodeWithContentDescription("Card for $label. Choose another card." + if (readOnly) " Read-only" else "", substring = true).performClick()
+    }
+    private fun click(description: String): ComposeUiTest.() -> Unit = { onNodeWithContentDescription(description).performClick() }
+    private fun clickText(text: String): ComposeUiTest.() -> Unit = { onNodeWithText(text).performClick() }
+    private val fixedPublic = base.copy(cards = fixedSet, hasLocalPublicDesign = true)
+
+    private val fixedViewerShots = listOf(
+        ViewerShot("k6-v01-menu-circle-saved", fixedFriends, act = menu("Friends")),
+        ViewerShot("k6-v02-menu-public-virtual", base.copy(cards = listOf(virtual(CardAudience.Public)) + fixedSet.drop(1)), act = menu("Public")),
+        ViewerShot("k6-v03-menu-circle-virtual", fixedFriends.copy(selectedAudience = family), act = menu("Family")),
+        ViewerShot("k6-v04-menu-read-only", fixedReadOnly, act = menu("Friends", readOnly = true)),
+        ViewerShot("k6-v05-read-only", fixedReadOnly),
+        ViewerShot("k6-v05b-read-only-why", fixedReadOnly, act = clickText("Why can't I edit?")),
+        ViewerShot("k6-v06-single-card", base.copy(cards = listOf(public))),
+        ViewerShot("k6-v07-menu-long-circle", base.copy(cards = fixedSet + card(longCircle), selectedAudience = longCircle), act = menu(longCircle.label)),
+        ViewerShot("k6-v08-virtual-circle", fixedFriends.copy(selectedAudience = family)),
+        ViewerShot("k6-v09-reset-from-toolbar", fixedFriends, act = click("Reset to default design")),
+        ViewerShot("k6-v10-public-saved", fixedPublic),
+        ViewerShot("k6-v11-font-scale", fixedFriends, fontScale = 1.6f),
+        ViewerShot("k6-v12-rtl-read-only", fixedReadOnly, rtl = true),
+        ViewerShot("k6-v13-long-circle-small", base.copy(cards = fixedSet + card(longCircle), selectedAudience = longCircle), widthDp = 360, heightDp = 640),
+        ViewerShot("k6-v14-swiped-to-work", fixedFriends, act = { onNodeWithContentDescription("Card for Friends. Choose another card.").performTouchInput { swipeLeft() } }),
+        ViewerShot("k6-v15-public-virtual", base.copy(cards = listOf(virtual(CardAudience.Public)) + fixedSet.drop(1))),
+        ViewerShot("k6-v16-rtl-menu", fixedFriends, rtl = true, act = menu("Friends")),
+    )
+
+    private val fixedEditorShots = listOf(
+        Shot("k6-e01-circle-design", fixedFriends),
+        Shot("k6-e02-read-only-design", fixedReadOnly.copy(previewDesign = CardDesign.POSTER)),
+        Shot("k6-e03-read-only-customise", fixedReadOnly, EditorStep.Customise),
+        Shot("k6-e04-read-only-font-scale", fixedReadOnly, fontScale = 1.6f),
+        Shot("k6-e05-read-only-small", fixedReadOnly, widthDp = 360, heightDp = 640),
+        Shot("k6-e06-font-scale-design", fixedFriends, fontScale = 1.6f),
+        Shot("k6-e07-small-design", fixedFriends, widthDp = 360, heightDp = 640),
+        Shot("k6-e08-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise),
+        Shot("k6-e09-customise-heading", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, act = tool("Heading font")),
+        Shot("k6-e10-customise-empty", base.copy(previewDesign = "zine"), EditorStep.Customise),
+        Shot("k6-e11-long-circle", base.copy(cards = fixedSet + card(longCircle), selectedAudience = longCircle)),
+        Shot("k6-e12-public-unsaved", base.copy(cards = listOf(virtual(CardAudience.Public)) + fixedSet.drop(1), previewDesign = CardDesign.POSTER)),
+        Shot("k6-e13-loading", fixedFriends.copy(isCardReady = false), preview = Preview.Loading),
+        Shot("k6-e14-load-failed", fixedFriends.copy(loadFailed = true), preview = Preview.LoadFailed),
+        Shot("k6-e15-small-font-scale", fixedFriends, fontScale = 1.3f, widthDp = 360, heightDp = 640),
+        Shot("k6-e16-small-font-scale-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, fontScale = 1.3f, widthDp = 360, heightDp = 640),
+        Shot("k6-e17-customise-order", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, act = tool("Section order")),
+        Shot("k6-e18-small-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, widthDp = 360, heightDp = 640),
+        Shot("k6-e19-rtl-read-only", fixedReadOnly, rtl = true),
+        Shot("k6-e20-rtl-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, rtl = true, act = tool("Section order")),
+        Shot("k6-e21-font-scale-order", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, fontScale = 1.6f, act = tool("Section order")),
+        Shot("k6-e22-virtual-family", fixedFriends.copy(selectedAudience = family)),
+    )
+
+    @Test
+    fun fixedCircleCardsRenderEveryState() {
+        for (dark in listOf(false, true)) {
+            for (shot in fixedViewerShots) renderViewer(shot, dark)
+            for (shot in fixedEditorShots) render(shot, dark)
+            renderPopup("k6-d01-reset-public", dark) { ResetCardDialog(audience = CardAudience.Public, onReset = {}, onDismiss = {}) }
+            renderPopup("k6-d02-reset-circle", dark) { ResetCardDialog(audience = friends, onReset = {}, onDismiss = {}) }
+            renderPopup("k6-d03-reset-long", dark) { ResetCardDialog(audience = longCircle, onReset = {}, onDismiss = {}) }
+            renderPopup("k6-d04-read-only", dark) { ReadOnlyCardDialog(onDismiss = {}) }
+        }
+    }
+
     @Test
     fun viewerChromeRendersEveryState() {
         for (dark in listOf(false, true)) {
             for (shot in viewerShots) renderViewer(shot, dark)
-            renderPopup("v06-delete-dialog", dark) { DeleteCardDialog(label = "Work", onDelete = {}, onDismiss = {}) }
+            renderPopup("v06-reset-dialog", dark) { ResetCardDialog(audience = work, onReset = {}, onDismiss = {}) }
             renderPopup("v07-access-dialog", dark) { DesignAccessDialog(onContinue = {}, onDismiss = {}) }
             renderPopup("v03-share-public-confirm", dark) {
                 SharePublicCardDialog(circleLabel = "Acquaintances", saveInsteadOfShare = false, onConfirm = {}, onDismiss = {})
             }
-            renderSheet("v08-add-circle", dark, CirclePicker(circles(12), withCard = setOf("c1", "c4"), loading = false))
-            renderSheet("v09-add-circle-few", dark, CirclePicker(circles(3), withCard = setOf("c0"), loading = false))
-            renderSheet("v10-add-circle-loading", dark, CirclePicker())
-            renderSheet("v11-add-circle-all-taken", dark, CirclePicker(circles(2), withCard = setOf("c0", "c1"), loading = false))
-            renderSheet("v12-add-circle-redmi", dark, CirclePicker(circles(12), withCard = setOf("c1", "c4"), loading = false), REDMI_W, REDMI_H)
-            renderSheet("v15-add-circle-redmi-few", dark, CirclePicker(circles(4), withCard = setOf("c1"), loading = false), REDMI_W, REDMI_H)
-            renderSheet("v16-add-circle-load-failed", dark, CirclePicker(loading = false, failed = true), REDMI_W, REDMI_H)
         }
     }
 
     @Composable
-    private fun themed(dark: Boolean, content: @Composable () -> Unit) {
-        CompositionLocalProvider(LocalDensity provides Density(SCALE, 1f)) {
+    private fun themed(dark: Boolean, fontScale: Float = 1f, rtl: Boolean = false, content: @Composable () -> Unit) {
+        CompositionLocalProvider(
+            LocalDensity provides Density(SCALE, fontScale),
+            LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
+        ) {
             HomebaseTheme(darkTheme = dark, updatesSystemChrome = false) {
                 CardExpressiveTheme(content)
             }
@@ -196,28 +267,35 @@ class ProfileCardEditorShotsTest {
     }
 
     private fun renderViewer(shot: ViewerShot, dark: Boolean) = runDesktopComposeUiTest(
-        width = (PHONE_W * SCALE).toInt(),
-        height = (PHONE_H * SCALE).toInt(),
+        width = (shot.widthDp * SCALE).toInt(),
+        height = (shot.heightDp * SCALE).toInt(),
     ) {
         mainClock.autoAdvance = false
         setContent {
-            themed(dark) {
-                Box(Modifier.fillMaxSize().background(Color(CardDesign.baseArgb(shot.state.design)))) {
+            themed(dark, shot.fontScale, shot.rtl) {
+                var state by remember { mutableStateOf(shot.state) }
+                Box(Modifier.fillMaxSize().background(Color(CardDesign.baseArgb(state.design)))) {
                     SheetTopChrome(
-                        uiState = shot.state,
-                        onSelectCard = {},
-                        circleActions = CircleCardActions({}, {}, {}, {}),
+                        uiState = state,
+                        onSelectCard = { state = state.copy(selectedAudience = it) },
                         onClose = {},
                         bandDrag = Modifier,
                         handleDrag = Modifier,
                         modifier = Modifier.align(Alignment.TopCenter),
                     )
                     CardBottomChrome(
-                        isExporting = shot.state.isExporting,
+                        audience = state.selectedAudience,
+                        page = state.cards.indexOfFirst { it.audience == state.selectedAudience },
+                        pages = if (state.hasCardMenu) state.cards.size else 0,
+                        isExporting = state.isExporting,
                         canShare = true,
                         saveInsteadOfShare = false,
+                        readOnly = state.isCircleReadOnly,
+                        showsReset = state.showsReset,
+                        canReset = state.canReset,
                         onShare = {},
                         onEdit = {},
+                        onReset = {},
                         extraActions = {},
                     )
                 }
@@ -240,39 +318,6 @@ class ProfileCardEditorShotsTest {
                 content()
             }
         }
-        mainClock.advanceTimeBy(SETTLE_MS)
-        save(name, dark)
-    }
-
-    private fun renderSheet(
-        name: String,
-        dark: Boolean,
-        picker: CirclePicker,
-        widthDp: Int = PHONE_W,
-        heightDp: Int = PHONE_H,
-        act: ComposeUiTest.() -> Unit = {},
-    ) = runDesktopComposeUiTest(
-        width = (widthDp * SCALE).toInt(),
-        height = (heightDp * SCALE).toInt(),
-    ) {
-        mainClock.autoAdvance = false
-        setContent {
-            themed(dark) {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f)), contentAlignment = Alignment.BottomCenter) {
-                    Surface(
-                        shape = MaterialTheme.shapes.extraLarge,
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        modifier = Modifier.fillMaxWidth().heightIn(max = (heightDp * 0.9f).dp),
-                    ) {
-                        Box(Modifier.padding(top = 48.dp)) {
-                            CirclePickerContent(picker = picker, onPick = {})
-                        }
-                    }
-                }
-            }
-        }
-        mainClock.advanceTimeBy(SETTLE_MS)
-        act(this)
         mainClock.advanceTimeBy(SETTLE_MS)
         save(name, dark)
     }
@@ -368,7 +413,5 @@ class ProfileCardEditorShotsTest {
         const val REDMI_W = 393
         const val REDMI_H = 800
         const val SETTLE_MS = 1_500L
-        const val PARK_PX = 100_000f
-        val CIRCLE_NAMES = listOf("Acquaintances", "Chat", "Emergency Location Access", "Family", "Feed", "Friends", "HomePage", "Moments", "Recovery", "Vault", "Webdrop", "Work")
     }
 }
