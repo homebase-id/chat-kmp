@@ -101,7 +101,7 @@ data class ProfileCardUiState(
     val hasUnsavedChanges: Boolean
         get() = (previewDesign != null && previewDesign != baseDesign) ||
             (previewOverrides != null && previewOverrides != savedOverrides)
-    val hasCardMenu: Boolean get() = !isExporting
+    val hasCardMenu: Boolean get() = !isExporting && cards.size > 1
     val isCircleReadOnly: Boolean get() = isCircleSelected && !circleCardsSupported
     private val hasStoredCard: Boolean
         get() = selectedCard?.let { !it.isDefault || (it.audience == CardAudience.Public && hasLocalPublicDesign) } ?: false

@@ -3,6 +3,9 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -237,30 +240,17 @@ internal fun CardOptionsPanel(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.TopStart,
         ) { option ->
-            // The caption names the tool picked below, so every tool can stay an icon at any text size.
+            // The picked tool names itself in the toolbar, so only a gesture hint needs a caption here.
             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(horizontal = CAPTION_INSET),
-                ) {
+                if (option == CardOption.BLOCK_ORDER) {
                     Text(
-                        text = stringResource(optionLabel(option)),
-                        style = MaterialTheme.typography.labelLarge,
+                        text = stringResource(MR.string.profile_card_option_block_order_hint),
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
+                        modifier = Modifier.padding(horizontal = CAPTION_INSET),
                     )
-                    if (option == CardOption.BLOCK_ORDER) {
-                        Text(
-                            text = stringResource(MR.string.profile_card_option_block_order_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
                 }
                 Box(modifier = Modifier.fillMaxWidth().heightIn(min = SWATCH_TARGET), contentAlignment = Alignment.Center) {
                     OptionControl(option, design, overrides, enabled, chipHeight, onOption, onBlockOrder)
@@ -362,6 +352,7 @@ private fun OptionToolbar(
     }
 }
 
+// The picked tool grows its own label, so the row stays icons yet always says what is being changed.
 @Composable
 private fun ToolItem(
     icon: ImageVector,
@@ -372,20 +363,40 @@ private fun ToolItem(
     val motion = MaterialTheme.motionScheme
     val colors = MaterialTheme.colorScheme
     val corner by animateDpAsState(if (selected) 14.dp else TOOL_SIZE / 2, motion.fastSpatialSpec())
-    val inset by animateDpAsState(if (selected) 2.dp else 6.dp, motion.fastSpatialSpec())
-    val fill by animateColorAsState(if (selected) colors.secondary else colors.surfaceContainerHighest, motion.fastEffectsSpec())
-    val ink by animateColorAsState(if (selected) colors.onSecondary else colors.onSurfaceVariant, motion.fastEffectsSpec())
+    val fill by animateColorAsState(if (selected) colors.secondaryContainer else colors.surfaceContainerHighest, motion.fastEffectsSpec())
+    val ink by animateColorAsState(if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant, motion.fastEffectsSpec())
     Box(
         modifier = Modifier
-            .size(TOOL_SIZE)
+            .heightIn(min = TOOL_SIZE)
+            .widthIn(min = TOOL_SIZE)
             .revealWhenSelected(selected)
             .selectable(selected = selected, role = Role.Tab, onClick = onClick)
-            .semantics { contentDescription = description }
-            .padding(inset)
-            .background(fill, RoundedCornerShape(corner)),
+            .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(imageVector = icon, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .padding(4.dp)
+                .background(fill, RoundedCornerShape(corner))
+                .heightIn(min = TOOL_SIZE - 8.dp)
+                .padding(horizontal = 9.dp),
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
+            AnimatedVisibility(
+                visible = selected,
+                enter = expandHorizontally(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                exit = shrinkHorizontally(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            ) {
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = ink,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 8.dp, end = 4.dp),
+                )
+            }
+        }
     }
 }
 
@@ -611,7 +622,7 @@ private fun Swatch(
         Box(
             modifier = Modifier
                 .size(SWATCH_SIZE + 8.dp)
-                .border(2.5.dp, ring.copy(alpha = progress), CircleShape)
+                .border(2.5.dp, ring.copy(alpha = progress), shape)
                 .padding(4.dp)
                 .clip(shape)
                 .background(fill)

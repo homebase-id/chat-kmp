@@ -3,6 +3,18 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material3.FilledTonalButton
+import id.homebase.resources.ok
+import id.homebase.resources.profile_card_more_actions
+import id.homebase.resources.profile_card_own_design
+import id.homebase.resources.profile_card_public_everyone
+import id.homebase.resources.profile_card_read_only
+import id.homebase.resources.profile_card_read_only_title
+import id.homebase.resources.profile_card_read_only_why
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -369,7 +381,6 @@ fun ProfileCardScreen(
                 SheetTopChrome(
                     uiState = uiState,
                     onSelectCard = viewModel::onCardSelected,
-                    circleActions = CircleCardActions(onReset = viewModel::onResetCardConfirmed),
                     onClose = leave,
                     // Over a band the whole strip drags; floating over the card only the handle does, so the card keeps its taps.
                     bandDrag = if (bands.top) dismissDrag else Modifier,
@@ -377,11 +388,15 @@ fun ProfileCardScreen(
                     modifier = Modifier.align(Alignment.TopCenter),
                 )
                 CardBottomChrome(
+                    audience = uiState.selectedAudience,
                     isExporting = uiState.isExporting,
                     canShare = uiState.canShare,
                     saveInsteadOfShare = saveInsteadOfShare,
+                    readOnly = uiState.isCircleReadOnly,
+                    canReset = uiState.canReset,
                     onShare = { if (uiState.isCircleSelected) confirmPublicShare = true else viewModel.onShareClicked() },
                     onEdit = onEdit,
+                    onReset = viewModel::onResetCardConfirmed,
                     extraActions = { nfc?.let { CardNfcAction(it) } },
                 )
             }
@@ -435,13 +450,21 @@ internal fun SharePublicCardDialog(circleLabel: String, saveInsteadOfShare: Bool
 
 @Composable
 internal fun BoxScope.CardBottomChrome(
+    audience: CardAudience,
     isExporting: Boolean,
     canShare: Boolean,
     saveInsteadOfShare: Boolean,
+    readOnly: Boolean,
+    canReset: Boolean,
     onShare: () -> Unit,
     onEdit: () -> Unit,
+    onReset: () -> Unit,
     extraActions: @Composable () -> Unit,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
+    var confirmReset by remember { mutableStateOf(false) }
+    var explainReadOnly by remember { mutableStateOf(false) }
+    val motion = MaterialTheme.motionScheme
     Box(
         modifier = Modifier
             .align(Alignment.BottomCenter)
@@ -470,18 +493,68 @@ internal fun BoxScope.CardBottomChrome(
                 onClick = onShare,
             )
             extraActions()
+            if (canReset) {
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(MR.string.profile_card_more_actions))
+                    }
+                    DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false },
+                        shape = MaterialTheme.shapes.large,
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(MR.string.profile_card_reset_card)) },
+                            leadingIcon = { Icon(Icons.Outlined.RestartAlt, contentDescription = null) },
+                            onClick = {
+                                menuOpen = false
+                                confirmReset = true
+                            },
+                        )
+                    }
+                }
+            }
             Spacer(Modifier.width(4.dp))
-            Button(
-                onClick = onEdit,
-                shapes = ButtonDefaults.shapes(),
-                contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
-            ) {
-                Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                Text(stringResource(MR.string.profile_card_edit), maxLines = 1)
+            // Read-only keeps the slot but turns quiet, so nothing promises an edit that can't be kept.
+            AnimatedContent(
+                targetState = readOnly,
+                transitionSpec = {
+                    fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
+                },
+            ) { locked ->
+                if (locked) {
+                    FilledTonalButton(
+                        onClick = { explainReadOnly = true },
+                        shapes = ButtonDefaults.shapes(),
+                        contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
+                    ) {
+                        Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text(stringResource(MR.string.profile_card_read_only_why), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                } else {
+                    Button(
+                        onClick = onEdit,
+                        shapes = ButtonDefaults.shapes(),
+                        contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
+                    ) {
+                        Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text(stringResource(MR.string.profile_card_edit), maxLines = 1)
+                    }
+                }
             }
         }
     }
+    if (confirmReset) {
+        ResetCardDialog(
+            audience = audience,
+            onReset = { confirmReset = false; onReset() },
+            onDismiss = { confirmReset = false },
+        )
+    }
+    if (explainReadOnly) ReadOnlyCardDialog(onDismiss = { explainReadOnly = false })
 }
 
 @Composable
@@ -562,7 +635,6 @@ private fun CardBandsLayout(
 internal fun SheetTopChrome(
     uiState: ProfileCardUiState,
     onSelectCard: (CardAudience) -> Unit,
-    circleActions: CircleCardActions,
     onClose: () -> Unit,
     bandDrag: Modifier,
     handleDrag: Modifier,
@@ -582,7 +654,7 @@ internal fun SheetTopChrome(
                 traversalIndex = -1f
             },
         content = {
-            AudienceBadge(uiState = uiState, onSelect = onSelectCard, circleActions = circleActions)
+            AudienceBadge(uiState = uiState, onSelect = onSelectCard)
             ChromeIconButton(onClick = onClose) {
                 Icon(
                     imageVector = Icons.Filled.Close,
@@ -636,31 +708,20 @@ internal fun audienceLabel(audience: CardAudience): String = when (audience) {
 internal fun audienceIcon(audience: CardAudience) =
     if (audience is CardAudience.Circle) Icons.Outlined.Groups else Icons.Outlined.Public
 
-internal class CircleCardActions(val onReset: () -> Unit)
-
 @Composable
 internal fun AudienceBadge(
     uiState: ProfileCardUiState,
     onSelect: (CardAudience) -> Unit,
-    circleActions: CircleCardActions,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    var confirmReset by remember { mutableStateOf(false) }
     val selected = uiState.selectedAudience
     val label = audienceLabel(selected)
     val hasMenu = uiState.hasCardMenu
-    val description = if (hasMenu) {
-        stringResource(MR.string.profile_card_audience_switch, label)
-    } else {
-        stringResource(MR.string.profile_card_audience_description, label)
-    }
-    val isCircle = selected is CardAudience.Circle
-    val colors = MaterialTheme.colorScheme
-    // Same audience colours as the editor's title: a circle card reads tertiary, the public one stays neutral.
-    val spec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
-    val container by animateColorAsState(if (isCircle) colors.tertiaryContainer else chromePillColor(), spec)
-    val content by animateColorAsState(if (isCircle) colors.onTertiaryContainer else colors.onSurface, spec)
+    val readOnly = uiState.isCircleReadOnly
+    val named = stringResource(if (hasMenu) MR.string.profile_card_audience_switch else MR.string.profile_card_audience_description, label)
+    val readOnlyLabel = stringResource(MR.string.profile_card_read_only)
+    val description = if (readOnly) "$named $readOnlyLabel" else named
     Box(modifier = modifier) {
         Box(
             contentAlignment = Alignment.Center,
@@ -668,36 +729,13 @@ internal fun AudienceBadge(
                 .clearAndSetSemantics { contentDescription = description }
                 .minimumInteractiveComponentSize(),
         ) {
-            Surface(shape = CircleShape, color = container, contentColor = content, shadowElevation = 2.dp) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .height(CHROME_CONTROL_SIZE)
-                        .padding(start = 10.dp, end = if (hasMenu) 6.dp else 14.dp),
-                ) {
-                    Icon(imageVector = audienceIcon(selected), contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 6.dp).weight(1f, fill = false),
-                    )
-                    if (hasMenu) {
-                        Icon(
-                            imageVector = Icons.Filled.ArrowDropDown,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-            }
+            AudienceChip(audience = selected, locked = readOnly, opensMenu = hasMenu)
         }
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             shape = MaterialTheme.shapes.large,
-            containerColor = colors.surfaceContainerLow,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
             modifier = Modifier.widthIn(min = MENU_MIN_WIDTH, max = MENU_MAX_WIDTH).padding(horizontal = MENU_INSET),
         ) {
             uiState.cards.forEach { card ->
@@ -710,29 +748,54 @@ internal fun AudienceBadge(
                     },
                 )
             }
-            if (uiState.canReset) {
-                HorizontalDivider(
-                    color = colors.outlineVariant,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = MENU_INSET),
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(MR.string.profile_card_reset_card)) },
-                    leadingIcon = { Icon(Icons.Outlined.RestartAlt, contentDescription = null) },
-                    onClick = {
-                        expanded = false
-                        confirmReset = true
-                    },
-                    modifier = Modifier.clip(MENU_ITEM_SHAPE),
-                )
-            }
         }
     }
-    if (confirmReset) {
-        ResetCardDialog(
-            label = label,
-            onReset = { confirmReset = false; circleActions.onReset() },
-            onDismiss = { confirmReset = false },
-        )
+}
+
+/** Public reads secondary, a circle tertiary, wherever a card's audience is shown. */
+@Composable
+internal fun AudienceChip(
+    audience: CardAudience,
+    modifier: Modifier = Modifier,
+    locked: Boolean = false,
+    opensMenu: Boolean = false,
+    elevated: Boolean = true,
+    maxLines: Int = 1,
+) {
+    val isCircle = audience is CardAudience.Circle
+    val colors = MaterialTheme.colorScheme
+    val motion = MaterialTheme.motionScheme
+    val container by animateColorAsState(if (isCircle) colors.tertiaryContainer else colors.secondaryContainer, motion.defaultEffectsSpec())
+    val content by animateColorAsState(if (isCircle) colors.onTertiaryContainer else colors.onSecondaryContainer, motion.defaultEffectsSpec())
+    Surface(
+        shape = CircleShape,
+        color = container,
+        contentColor = content,
+        shadowElevation = if (elevated) 2.dp else 0.dp,
+        modifier = modifier,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .animateContentSize(motion.defaultSpatialSpec())
+                .heightIn(min = CHROME_CONTROL_SIZE)
+                .padding(start = 12.dp, end = if (opensMenu) 6.dp else 16.dp, top = 4.dp, bottom = 4.dp),
+        ) {
+            Icon(imageVector = audienceIcon(audience), contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(
+                text = audienceLabel(audience),
+                style = MaterialTheme.typography.labelLargeEmphasized,
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 8.dp).weight(1f, fill = false),
+            )
+            if (locked) {
+                Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.padding(start = 6.dp).size(16.dp))
+            }
+            if (opensMenu) {
+                Icon(imageVector = Icons.Filled.ArrowDropDown, contentDescription = null, modifier = Modifier.size(20.dp))
+            }
+        }
     }
 }
 
@@ -756,7 +819,11 @@ private fun CardMenuItem(card: ProfileCard, selected: Boolean, onClick: () -> Un
         else -> colors.onSecondaryContainer
     }
     val corner by animateDpAsState(if (selected) MENU_SELECTED_CORNER else MENU_ITEM_CORNER, MaterialTheme.motionScheme.fastSpatialSpec())
-    val followsPublic = isCircle && card.isDefault
+    val subtitle = when {
+        !isCircle -> MR.string.profile_card_public_everyone
+        card.isDefault -> MR.string.profile_card_follows_public
+        else -> MR.string.profile_card_own_design
+    }
     DropdownMenuItem(
         text = {
             Column {
@@ -766,15 +833,13 @@ private fun CardMenuItem(card: ProfileCard, selected: Boolean, onClick: () -> Un
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (followsPublic) {
-                    Text(
-                        text = stringResource(MR.string.profile_card_follows_public),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (selected) ink else colors.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                Text(
+                    text = stringResource(subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (selected) ink else colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         },
         leadingIcon = { Icon(audienceIcon(card.audience), contentDescription = null) },
@@ -793,13 +858,19 @@ private fun CardMenuItem(card: ProfileCard, selected: Boolean, onClick: () -> Un
     )
 }
 
+// A fixed headline, so a long circle name sits in the body and the dialog keeps one shape.
 @Composable
-internal fun ResetCardDialog(label: String, onReset: () -> Unit, onDismiss: () -> Unit) {
+internal fun ResetCardDialog(audience: CardAudience, onReset: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Outlined.RestartAlt, contentDescription = null) },
-        title = { Text(stringResource(MR.string.profile_card_reset_title, label), textAlign = TextAlign.Center) },
-        text = { Text(stringResource(MR.string.profile_card_reset_message)) },
+        title = { Text(stringResource(MR.string.profile_card_reset_title), textAlign = TextAlign.Center) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                AudienceChip(audience = audience, elevated = false, maxLines = 2)
+                Text(stringResource(MR.string.profile_card_reset_message))
+            }
+        },
         confirmButton = {
             Button(onClick = onReset, shapes = ButtonDefaults.shapes()) {
                 Text(stringResource(MR.string.profile_card_reset_confirm))
@@ -807,6 +878,19 @@ internal fun ResetCardDialog(label: String, onReset: () -> Unit, onDismiss: () -
         },
         dismissButton = {
             TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
+        },
+    )
+}
+
+@Composable
+internal fun ReadOnlyCardDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
+        title = { Text(stringResource(MR.string.profile_card_read_only_title), textAlign = TextAlign.Center) },
+        text = { Text(stringResource(MR.string.profile_card_circle_unsupported)) },
+        confirmButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.ok)) }
         },
     )
 }
