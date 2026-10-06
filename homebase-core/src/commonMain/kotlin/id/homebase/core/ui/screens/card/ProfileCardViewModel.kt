@@ -104,7 +104,7 @@ data class ProfileCardUiState(
     val hasCardMenu: Boolean get() = !isExporting
     val isCircleReadOnly: Boolean get() = isCircleSelected && !circleCardsSupported
     private val hasStoredCard: Boolean
-        get() = selectedCard?.let { it.id != Uuid.NIL || (it.audience == CardAudience.Public && hasLocalPublicDesign) } ?: false
+        get() = selectedCard?.let { !it.isDefault || (it.audience == CardAudience.Public && hasLocalPublicDesign) } ?: false
     val canReset: Boolean get() = hasStoredCard && !isExporting && !isCardBusy && !isSavingDesign && !isCircleReadOnly
     val isCircleSelected: Boolean get() = selectedAudience is CardAudience.Circle
     val cardTopArgb: Int? get() = edges[design]?.topArgb

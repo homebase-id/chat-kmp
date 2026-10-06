@@ -5,6 +5,11 @@ package id.homebase.core.ui.screens.card
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MenuDefaults
+import androidx.compose.ui.semantics.selected
+import id.homebase.resources.profile_card_follows_public
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloat
@@ -172,6 +177,12 @@ private val TOOLBAR_BAND_HEIGHT = 88.dp
 private val CHROME_GAP = 8.dp
 private val CHROME_CONTROL_SIZE = 40.dp
 private val MAX_SHEET_PULL = 32.dp
+private val MENU_MIN_WIDTH = 224.dp
+private val MENU_MAX_WIDTH = 320.dp
+private val MENU_INSET = 4.dp
+private val MENU_ITEM_CORNER = 12.dp
+private val MENU_SELECTED_CORNER = 20.dp
+private val MENU_ITEM_SHAPE = RoundedCornerShape(MENU_ITEM_CORNER)
 private val DISMISS_DRAG_DISTANCE = 96.dp
 private const val DISMISS_FLING_VELOCITY = 1500f
 private const val SKELETON_ALPHA_LOW = 0.35f
@@ -682,16 +693,17 @@ internal fun AudienceBadge(
                 }
             }
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            shape = MaterialTheme.shapes.large,
+            containerColor = colors.surfaceContainerLow,
+            modifier = Modifier.widthIn(min = MENU_MIN_WIDTH, max = MENU_MAX_WIDTH).padding(horizontal = MENU_INSET),
+        ) {
             uiState.cards.forEach { card ->
-                DropdownMenuItem(
-                    text = { Text(audienceLabel(card.audience)) },
-                    leadingIcon = { Icon(audienceIcon(card.audience), contentDescription = null) },
-                    trailingIcon = if (card.audience == selected) {
-                        { Icon(Icons.Filled.Check, contentDescription = null) }
-                    } else {
-                        null
-                    },
+                CardMenuItem(
+                    card = card,
+                    selected = card.audience == selected,
                     onClick = {
                         expanded = false
                         onSelect(card.audience)
@@ -699,7 +711,10 @@ internal fun AudienceBadge(
                 )
             }
             if (uiState.canReset) {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                HorizontalDivider(
+                    color = colors.outlineVariant,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = MENU_INSET),
+                )
                 DropdownMenuItem(
                     text = { Text(stringResource(MR.string.profile_card_reset_card)) },
                     leadingIcon = { Icon(Icons.Outlined.RestartAlt, contentDescription = null) },
@@ -707,6 +722,7 @@ internal fun AudienceBadge(
                         expanded = false
                         confirmReset = true
                     },
+                    modifier = Modifier.clip(MENU_ITEM_SHAPE),
                 )
             }
         }
@@ -718,6 +734,63 @@ internal fun AudienceBadge(
             onDismiss = { confirmReset = false },
         )
     }
+}
+
+// The chosen card fills with its audience's colour, matching the pill that opened the menu.
+@Composable
+private fun CardMenuItem(card: ProfileCard, selected: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val isCircle = card.audience is CardAudience.Circle
+    val spec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
+    val fill by animateColorAsState(
+        when {
+            !selected -> Color.Transparent
+            isCircle -> colors.tertiaryContainer
+            else -> colors.secondaryContainer
+        },
+        spec,
+    )
+    val ink = when {
+        !selected -> colors.onSurface
+        isCircle -> colors.onTertiaryContainer
+        else -> colors.onSecondaryContainer
+    }
+    val corner by animateDpAsState(if (selected) MENU_SELECTED_CORNER else MENU_ITEM_CORNER, MaterialTheme.motionScheme.fastSpatialSpec())
+    val followsPublic = isCircle && card.isDefault
+    DropdownMenuItem(
+        text = {
+            Column {
+                Text(
+                    text = audienceLabel(card.audience),
+                    style = if (selected) MaterialTheme.typography.labelLargeEmphasized else MaterialTheme.typography.labelLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (followsPublic) {
+                    Text(
+                        text = stringResource(MR.string.profile_card_follows_public),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (selected) ink else colors.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        },
+        leadingIcon = { Icon(audienceIcon(card.audience), contentDescription = null) },
+        trailingIcon = if (selected) {
+            { Icon(Icons.Filled.Check, contentDescription = null) }
+        } else {
+            null
+        },
+        colors = MenuDefaults.itemColors(textColor = ink, leadingIconColor = ink, trailingIconColor = ink),
+        onClick = onClick,
+        modifier = Modifier
+            .padding(vertical = 1.dp)
+            .clip(RoundedCornerShape(corner))
+            .background(fill)
+            .semantics { this.selected = selected },
+    )
 }
 
 @Composable

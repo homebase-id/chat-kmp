@@ -2334,6 +2334,7 @@
     <string name="profile_card_reset_title">Reset the %1$s card?</string>
     <string name="profile_card_reset_message">The card goes back to its default design. Your profile details aren't changed.</string>
     <string name="profile_card_reset_confirm">Reset</string>
+    <string name="profile_card_follows_public">Same as your public card</string>
     <string name="profile_card_share_public">Share public card</string>
     <string name="profile_card_save_public">Save public card</string>
     <string name="profile_card_share_public_title">Share your public card?</string>

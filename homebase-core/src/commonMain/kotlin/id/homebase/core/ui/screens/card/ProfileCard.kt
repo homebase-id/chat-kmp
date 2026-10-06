@@ -60,6 +60,8 @@ data class ProfileCard(
     val priority: Int = PUBLIC_CARD_PRIORITY,
     val extra: JsonObject = JsonObject(emptyMap()),
 ) {
+    val isDefault: Boolean get() = id == Uuid.NIL
+
     /** A null [overrides] keeps this card's; either way a design change drops what the new design doesn't expose. */
     fun withDesign(design: String, overrides: CardOverrides? = null): ProfileCard {
         val kept = overrides ?: this.overrides

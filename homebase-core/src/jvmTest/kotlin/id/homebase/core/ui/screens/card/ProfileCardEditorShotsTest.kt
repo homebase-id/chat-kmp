@@ -165,6 +165,44 @@ class ProfileCardEditorShotsTest {
         ViewerShot("v05-menu", withCircle, act = { onNodeWithContentDescription("Card for Work. Choose another card.").performClick() }, popup = true),
     )
 
+    private val family = CardAudience.Circle("f", "Family")
+    private fun virtual(audience: CardAudience) = card(audience).copy(id = Uuid.NIL)
+    private val fixedSet = listOf(public, virtual(family), card(friends, CardDesign.COLLAGE), virtual(work))
+    private val fixedFriends = base.copy(cards = fixedSet, selectedAudience = friends)
+    private val fixedReadOnly = fixedFriends.copy(circleCardsSupported = false)
+    private fun menu(label: String): ComposeUiTest.() -> Unit = {
+        onNodeWithContentDescription("Card for $label. Choose another card.").performClick()
+    }
+
+    private val fixedViewerShots = listOf(
+        ViewerShot("k6-v01-menu-circle-saved", fixedFriends, act = menu("Friends")),
+        ViewerShot("k6-v02-menu-public-virtual", base.copy(cards = listOf(virtual(CardAudience.Public)) + fixedSet.drop(1)), act = menu("Public")),
+        ViewerShot("k6-v03-menu-circle-virtual", fixedFriends.copy(selectedAudience = family), act = menu("Family")),
+        ViewerShot("k6-v04-menu-read-only", fixedReadOnly, act = menu("Friends")),
+        ViewerShot("k6-v05-read-only", fixedReadOnly),
+        ViewerShot("k6-v06-single-card", base.copy(cards = listOf(public)), act = menu("Public")),
+        ViewerShot("k6-v07-menu-long-circle", base.copy(cards = fixedSet + card(longCircle), selectedAudience = longCircle), act = menu(longCircle.label)),
+    )
+
+    private val fixedEditorShots = listOf(
+        Shot("k6-e01-circle-design", fixedFriends),
+        Shot("k6-e02-read-only-design", fixedReadOnly.copy(previewDesign = CardDesign.POSTER)),
+        Shot("k6-e03-read-only-customise", fixedReadOnly, EditorStep.Customise),
+        Shot("k6-e04-read-only-font-scale", fixedReadOnly, fontScale = 1.6f),
+        Shot("k6-e05-read-only-small", fixedReadOnly, widthDp = 360, heightDp = 640),
+    )
+
+    @Test
+    fun fixedCircleCardsRenderEveryState() {
+        for (dark in listOf(false, true)) {
+            for (shot in fixedViewerShots) renderViewer(shot, dark)
+            for (shot in fixedEditorShots) render(shot, dark)
+            renderPopup("k6-d01-reset-public", dark) { ResetCardDialog(label = "Public", onReset = {}, onDismiss = {}) }
+            renderPopup("k6-d02-reset-circle", dark) { ResetCardDialog(label = "Friends", onReset = {}, onDismiss = {}) }
+            renderPopup("k6-d03-reset-long", dark) { ResetCardDialog(label = longCircle.label, onReset = {}, onDismiss = {}) }
+        }
+    }
+
     @Test
     fun viewerChromeRendersEveryState() {
         for (dark in listOf(false, true)) {

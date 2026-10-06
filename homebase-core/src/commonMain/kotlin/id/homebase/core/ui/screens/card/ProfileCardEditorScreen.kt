@@ -46,6 +46,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
@@ -456,14 +457,7 @@ private fun EditorPanel(
                 onStep = onStep,
                 modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp),
             )
-            if (uiState.isCircleReadOnly) {
-                Text(
-                    text = stringResource(MR.string.profile_card_circle_unsupported),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                )
-            }
+            if (uiState.isCircleReadOnly) ReadOnlyNotice(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
             AnimatedContent(
                 targetState = step,
                 transitionSpec = {
@@ -493,6 +487,27 @@ private fun EditorPanel(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ReadOnlyNotice(modifier: Modifier = Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = MaterialTheme.shapes.large,
+        modifier = modifier,
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(
+                text = stringResource(MR.string.profile_card_circle_unsupported),
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }
