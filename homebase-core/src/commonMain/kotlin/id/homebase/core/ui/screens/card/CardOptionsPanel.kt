@@ -3,14 +3,6 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.material.icons.outlined.Dashboard
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.rememberUpdatedState
-import id.homebase.core.ui.screens.profile.ProfileAudience
-import id.homebase.resources.profile_card_option_content
-import id.homebase.resources.profile_card_tool_content
-import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
@@ -29,17 +21,23 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.material.icons.outlined.DragIndicator
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.LineHeightStyle
+import id.homebase.core.ui.screens.profile.ProfileAudience
+import id.homebase.resources.profile_card_option_content
 import id.homebase.resources.profile_card_tool_accent
+import id.homebase.resources.profile_card_tool_content
 import id.homebase.resources.profile_card_tool_heading
 import id.homebase.resources.profile_card_tool_body
 import id.homebase.resources.profile_card_tool_portrait
@@ -188,6 +186,8 @@ import id.homebase.resources.profile_card_socials_bar
 import id.homebase.resources.profile_card_socials_glyphs
 import id.homebase.resources.profile_card_socials_handles
 import id.homebase.resources.profile_card_socials_wordmark
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.Font
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -213,7 +213,6 @@ private const val REVEAL_MARGIN = 0.6f
 private val BLOCK_TILE_SPACING = 6.dp
 private val BLOCK_TILE_CORNER = 12.dp
 
-/** What the Content tool needs of the selected card; [onOpen] tells the panel to make room while the tool is picked. */
 internal class CardContentTool(
     val card: CardAudience,
     val items: List<CardContentItem>,

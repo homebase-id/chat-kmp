@@ -162,7 +162,6 @@ interface ProfileCardSource {
     val supportsCircleCards: Boolean
     suspend fun circles(): List<CardCircle>
     suspend fun saveCircleCard(card: ProfileCard): ProfileCard?
-    /** Writes one profile attribute at [audience] through the profile repository, returning what the server holds. */
     suspend fun saveProfileAttribute(type: String, data: JsonObject, audience: ProfileAudience, existing: ProfileAttribute?): ProfileAttribute
     suspend fun resetPublicCard()
     suspend fun resetCircleCard(card: ProfileCard)
@@ -516,7 +515,6 @@ class ProfileCardViewModel(
         writeContent(attribute.type, attribute.data, audience, attribute)
     }
 
-    /** [updates] are data keys to values, as `ProfileEditViewModel.TYPE_FIELDS` names them; a link is its own record, any other type fills the one the profile has. */
     fun onContentAdded(type: String, updates: Map<String, String>) {
         val state = _uiState.value
         if (state.isContentBusy) return

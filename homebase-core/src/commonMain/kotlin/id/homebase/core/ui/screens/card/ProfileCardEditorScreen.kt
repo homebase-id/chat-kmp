@@ -3,10 +3,6 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.animation.AnimatedContent
-import id.homebase.core.ui.screens.profile.ProfileAudience
-import id.homebase.resources.profile_card_content_save_failed
-import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.MoreVert
@@ -14,6 +10,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
+import id.homebase.core.ui.screens.profile.ProfileAudience
+import id.homebase.resources.profile_card_content_save_failed
 import id.homebase.resources.profile_card_more_actions
 import id.homebase.resources.profile_card_read_only
 import id.homebase.resources.profile_card_read_only_reason
@@ -141,6 +139,8 @@ import id.homebase.resources.profile_card_step_count
 import id.homebase.resources.profile_card_step_customise
 import id.homebase.resources.profile_card_step_design_title
 import id.homebase.resources.save
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 

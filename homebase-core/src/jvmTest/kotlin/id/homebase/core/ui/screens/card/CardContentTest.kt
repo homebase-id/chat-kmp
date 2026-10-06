@@ -20,6 +20,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -27,13 +28,13 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-/** The real ProfileCardViewModel and ProfileRepository over the fake transport: what the Content tool writes is what the server then serves each card. */
 class CardContentTest {
 
     private val dispatcher = UnconfinedTestDispatcher()
@@ -51,7 +52,7 @@ class CardContentTest {
     private class Rig(val wire: CardWireHarness, val host: FakeHost, val vm: ProfileCardViewModel)
 
     private fun JsonObject.str(vararg path: String): String? {
-        var node: kotlinx.serialization.json.JsonElement = this
+        var node: JsonElement = this
         for (key in path) node = (node as? JsonObject)?.get(key) ?: return null
         return node.jsonPrimitive.content
     }
@@ -72,7 +73,7 @@ class CardContentTest {
         val host = FakeHost()
         val vm = ProfileCardViewModel(source) { host }.also { it.startHost() }
         vm.await { it.attributes.isNotEmpty() && it.cards.size == 4 }
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (host.rendered.isEmpty()) kotlinx.coroutines.delay(10) } }
+        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (host.rendered.isEmpty()) delay(10) } }
         return Rig(wire, host, vm)
     }
 
@@ -88,7 +89,7 @@ class CardContentTest {
         vm.await { !it.isContentBusy }
         val before = wire.puts
         block()
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts == before) kotlinx.coroutines.delay(10) } }
+        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts == before) delay(10) } }
         vm.await { !it.isContentBusy }
     }
 

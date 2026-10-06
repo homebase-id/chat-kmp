@@ -79,7 +79,6 @@ private enum class AddKind(val type: String) {
 
 internal val CARD_CONTENT_BODY_HEIGHT = 256.dp
 
-/** Every profile item with a switch for the selected card, and shortcuts that add a new one already shown on it. */
 @Composable
 internal fun CardContentPanel(
     card: CardAudience,

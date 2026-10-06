@@ -15,7 +15,6 @@ import id.homebase.core.ui.screens.profile.profileNameValue
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-/** One profile item as the Content tool lists it; [shown] is whether the selected card shows it, [locked] that it can't be turned off from there. */
 internal data class CardContentItem(
     val id: Uuid,
     val type: String,
@@ -45,17 +44,11 @@ internal fun CardAudience.shows(audience: ProfileAudience): Boolean = when (this
     is CardAudience.Circle -> audience.isOnCard(id)
 }
 
-/** What a card with no circle list of its own starts a new item at: Public on the Public card, otherwise just that circle. */
 internal fun CardAudience.newItemAudience(): ProfileAudience = when (this) {
     CardAudience.Public -> ProfileAudience.Public
     is CardAudience.Circle -> ProfileAudience.Circles(setOf(id))
 }
 
-/**
- * The audience that makes an item with this one shown ([on]) or not on [card], or null when that is already so or can't be done
- * from there. On a circle card only that circle changes, and a Public item is fixed on. Off on the Public card goes back to
- * [previous], the audience it had before the card made it Public, or to Only me.
- */
 internal fun ProfileAudience.shownOn(card: CardAudience, on: Boolean, previous: ProfileAudience?): ProfileAudience? = when (card) {
     CardAudience.Public -> when {
         on -> ProfileAudience.Public.takeIf { this != ProfileAudience.Public }
@@ -76,7 +69,6 @@ internal fun ProfileAudience.shownOn(card: CardAudience, on: Boolean, previous: 
     }
 }
 
-/** Name, bio, phone, email, every link, then each social, as the one record per type the profile editor edits. */
 internal fun cardContentItems(attributes: List<ProfileAttribute>, circles: List<CardCircle>, card: CardAudience): List<CardContentItem> {
     val loaded = LoadedProfileAttributes.from(attributes)
     fun item(attribute: ProfileAttribute, text: String?): CardContentItem? {
