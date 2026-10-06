@@ -118,7 +118,7 @@ class ProfileEditShotsTest {
         Shot("k8-09-long-circle", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", "f", "fr")), filled.copy(circles = circles + climbing)), heightDp = FULL_H),
         Shot("k8-09b-long-circle-open", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", "f")), filled.copy(circles = circles + climbing)), listOf("Phone")),
         Shot("k8-10-link-open", filled, listOf("Recipes")),
-        Shot("k8-11-empty-profile", empty, heightDp = FULL_H),
+        Shot("k8-11-empty-profile", empty),
         Shot("k8-12-loading", ProfileEditUiState()),
         Shot("k8-13-load-failed", ProfileEditUiState(isLoading = false, loadFailed = true)),
         Shot("k8-14-font-scale", filled, fontScale = 1.6f),
@@ -134,7 +134,12 @@ class ProfileEditShotsTest {
         Shot("k8-24-audience-popover", filled, listOf("cd:Visible to Family. Change")),
         Shot("k8-25-audience-popover-rtl", filled, listOf("cd:Visible to Family. Change"), rtl = true),
         Shot("k8-26-custom-label", filled.copy(values = filled.values + (ProfileField.EMAIL_LABEL to "Hobbit post")), listOf("Email")),
-        Shot("k8-27-legacy-every-connection-open", filled.copy(circles = emptyList(), audiences = filled.audiences + (ProfileAttributeTypes.PHONE to ProfileAudience.Circles(emptySet()))), heightDp = FULL_H),
+        // A legacy Connected record with no circles loads as every Contacts circle picked.
+        Shot("k8-27-legacy-all-circles-open", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("f", "fr", "w"))), listOf("Phone")),
+        Shot("k8-28-birthday-picker", filled, listOf("Birthday", "cd:Birthday")),
+        Shot("k8-29-popover-other-circles", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("f"), setOf("x1")))
+            .copy(otherCircleNames = mapOf("x1" to "Book club")), listOf("cd:Visible to Family, Book club. Change")),
+        Shot("k8-30-focused-font-scale", filled, listOf("Family"), fontScale = 1.6f),
     )
 
     @Test

@@ -1944,7 +1944,6 @@
     <string name="profile_edit_load_failed_desc">Tjek din forbindelse, og prøv igen.</string>
     <string name="profile_edit_empty_desc">Start med det grundlæggende. Hver oplysning indtastes én gang, og du vælger, hvilke kort der viser den.</string>
     <string name="profile_edit_add_named">Tilføj %1$s</string>
-    <string name="profile_edit_not_on_card">Ikke på dette kort</string>
     <string name="profile_edit_cards_show_all">Vis alle</string>
     <string name="profile_edit_card_shows">Viser %1$s</string>
     <string name="profile_edit_audience_all_connections">Alle forbindelser</string>
@@ -1960,4 +1959,7 @@
     <string name="profile_edit_label_work">Arbejde</string>
     <string name="profile_edit_label_personal">Privat</string>
     <string name="profile_edit_label_custom">Anden</string>
+    <string name="profile_edit_audience_other_circles">Andre cirkler</string>
+    <string name="profile_edit_not_on_card">Ikke på %1$s</string>
+    <string name="profile_edit_birthday_pick">Vælg en dato</string>
 </resources>

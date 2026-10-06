@@ -52,7 +52,7 @@ import org.jetbrains.compose.resources.stringResource
 fun PhoneNumberField(
     e164Value: String,
     onValueChange: (String) -> Unit,
-    label: String,
+    label: String?,
     modifier: Modifier = Modifier,
     isError: Boolean = false,
     errorText: String? = null,
@@ -79,7 +79,7 @@ fun PhoneNumberField(
                 national = it.filter { ch -> ch.isDigit() || ch == ' ' }
                 emit(country, national)
             },
-            label = { Text(label) },
+            label = label?.let { { Text(it) } },
             singleLine = true,
             textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
             leadingIcon = {

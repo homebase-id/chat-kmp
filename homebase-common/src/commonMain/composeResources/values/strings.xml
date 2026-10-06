@@ -2635,7 +2635,6 @@
     <string name="profile_edit_load_failed_desc">Check your connection, then try again.</string>
     <string name="profile_edit_empty_desc">Start with the basics. Each one is entered once, and you choose which cards show it.</string>
     <string name="profile_edit_add_named">Add %1$s</string>
-    <string name="profile_edit_not_on_card">Not on this card</string>
     <string name="profile_edit_cards_show_all">Show all</string>
     <string name="profile_edit_card_shows">Shows %1$s</string>
     <string name="profile_edit_audience_all_connections">All connections</string>
@@ -2651,4 +2650,7 @@
     <string name="profile_edit_label_work">Work</string>
     <string name="profile_edit_label_personal">Personal</string>
     <string name="profile_edit_label_custom">Custom</string>
+    <string name="profile_edit_audience_other_circles">Other circles</string>
+    <string name="profile_edit_not_on_card">Not on %1$s</string>
+    <string name="profile_edit_birthday_pick">Pick a date</string>
 </resources>

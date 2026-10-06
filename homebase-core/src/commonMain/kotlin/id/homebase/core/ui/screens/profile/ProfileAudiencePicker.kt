@@ -12,6 +12,14 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialShapes
+import androidx.compose.material3.ToggleButtonShapes
+import androidx.compose.material3.toShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -88,6 +96,7 @@ import id.homebase.resources.profile_edit_audience_circles_none
 import id.homebase.resources.profile_edit_audience_only_me
 import id.homebase.resources.profile_edit_audience_only_me_hint
 import id.homebase.resources.profile_edit_audience_other_circle
+import id.homebase.resources.profile_edit_audience_other_circles
 import id.homebase.resources.profile_edit_audience_public_hint
 import id.homebase.resources.profile_edit_audience_title
 import id.homebase.resources.profile_edit_visibility_circles
@@ -109,21 +118,74 @@ private val ProfileAudience.kind: AudienceKind
         is ProfileAudience.Circles -> AudienceKind.Circles
     }
 
-/** A tonal role per audience for the pills that report it; picking always uses the one selection colour. */
-private class AudienceColors(val container: Color, val content: Color, val icon: Color)
+/**
+ * A role per audience for the pills that report it: Public filled, circles tonal with an edge,
+ * Only me muted. Picking always uses the one selection colour.
+ */
+private class AudienceColors(val container: Color, val content: Color, val icon: Color, val edge: Color? = null)
 
 @Composable
 private fun AudienceKind.colors(): AudienceColors {
     val c = MaterialTheme.colorScheme
     return when (this) {
         AudienceKind.Public -> AudienceColors(c.primaryContainer, c.onPrimaryContainer, c.primary)
-        AudienceKind.Circles -> AudienceColors(c.secondaryContainer, c.onSecondaryContainer, c.secondary)
+        AudienceKind.Circles -> AudienceColors(c.secondaryContainer, c.onSecondaryContainer, c.secondary, edge = c.outline)
         AudienceKind.OnlyMe -> AudienceColors(c.surfaceContainerHighest, c.onSurfaceVariant, c.onSurfaceVariant)
     }
 }
 
-/** Past this scale the three labels need the whole segment, so the icons step aside. */
-private const val SEGMENT_ICON_MAX_FONT_SCALE = 1.25f
+/** Past this scale a connected row can't fit its labels, so its segments stack. */
+private const val STACK_FONT_SCALE = 1.25f
+
+/** Stacked segments keep the connected language: round outer ends, tight inner joins, a pill when picked. */
+private fun stackedButtonShapes(index: Int, count: Int): ToggleButtonShapes {
+    val outer = 24.dp
+    val inner = 6.dp
+    val top = if (index == 0) outer else inner
+    val bottom = if (index == count - 1) outer else inner
+    return ToggleButtonShapes(
+        shape = RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom),
+        pressedShape = RoundedCornerShape(inner),
+        checkedShape = CircleShape,
+    )
+}
+
+/**
+ * A connected single-select group: one row of joined segments, stacked when the text is large.
+ * [item] gets the segment's shapes and the modifier that sizes it.
+ */
+@Composable
+internal fun ConnectedChoices(
+    count: Int,
+    modifier: Modifier = Modifier,
+    item: @Composable (index: Int, shapes: ToggleButtonShapes, sizing: Modifier) -> Unit,
+) {
+    if (LocalDensity.current.fontScale >= STACK_FONT_SCALE) {
+        Column(
+            modifier = modifier.fillMaxWidth().selectableGroup(),
+            verticalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+        ) {
+            repeat(count) { item(it, stackedButtonShapes(it, count), Modifier.fillMaxWidth().heightIn(min = 48.dp)) }
+        }
+    } else {
+        Row(
+            modifier = modifier.fillMaxWidth().selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+        ) {
+            repeat(count) { item(it, connectedButtonShapes(it, count), Modifier.weight(1f).heightIn(min = 48.dp)) }
+        }
+    }
+}
+
+/** A small caption that names a group of choices, so two groups in one panel can't be mistaken for each other. */
+@Composable
+internal fun ChoiceCaption(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLargeEmphasized,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
 
 /**
  * The one audience control every detail uses: Public | Circles | Only me, with a chip per Contacts
@@ -137,55 +199,42 @@ internal fun AudiencePicker(
     onChange: (ProfileAudience) -> Unit,
     modifier: Modifier = Modifier,
     otherCircles: List<CardCircle> = emptyList(),
+    showTitle: Boolean = true,
 ) {
     val motion = MaterialTheme.motionScheme
-    val showIcons = LocalDensity.current.fontScale < SEGMENT_ICON_MAX_FONT_SCALE
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(
-            text = stringResource(MR.string.profile_edit_audience_title),
-            style = MaterialTheme.typography.labelLargeEmphasized,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().selectableGroup(),
-            horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-        ) {
-            AudienceKind.entries.forEachIndexed { index, kind ->
-                ToggleButton(
-                    checked = audience.kind == kind,
-                    onCheckedChange = {
-                        when (kind) {
-                            AudienceKind.Public -> onChange(ProfileAudience.Public)
-                            AudienceKind.OnlyMe -> onChange(ProfileAudience.OnlyMe)
-                            AudienceKind.Circles ->
-                                if (audience !is ProfileAudience.Circles) onChange(ProfileAudience.Circles(circles.map { it.id }.toSet()))
-                        }
-                    },
-                    shapes = connectedButtonShapes(index, AudienceKind.entries.size),
-                    colors = ToggleButtonDefaults.toggleButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp)
-                        .semantics { role = Role.RadioButton },
-                ) {
-                    if (showIcons) {
-                        Icon(
-                            kind.icon,
-                            contentDescription = null,
-                            modifier = Modifier.padding(end = 6.dp).size(ToggleButtonDefaults.IconSize),
-                        )
+        if (showTitle) ChoiceCaption(stringResource(MR.string.profile_edit_audience_title))
+        ConnectedChoices(count = AudienceKind.entries.size) { index, shapes, sizing ->
+            val kind = AudienceKind.entries[index]
+            ToggleButton(
+                checked = audience.kind == kind,
+                onCheckedChange = {
+                    when (kind) {
+                        AudienceKind.Public -> onChange(ProfileAudience.Public)
+                        AudienceKind.OnlyMe -> onChange(ProfileAudience.OnlyMe)
+                        AudienceKind.Circles ->
+                            if (audience !is ProfileAudience.Circles) onChange(ProfileAudience.Circles(circles.map { it.id }.toSet()))
                     }
-                    Text(
-                        text = stringResource(kind.label),
-                        style = MaterialTheme.typography.labelLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                },
+                shapes = shapes,
+                colors = ToggleButtonDefaults.toggleButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+                contentPadding = PaddingValues(horizontal = 8.dp),
+                modifier = sizing.semantics { role = Role.RadioButton },
+            ) {
+                Icon(
+                    kind.icon,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 6.dp).size(ToggleButtonDefaults.IconSize),
+                )
+                Text(
+                    text = stringResource(kind.label),
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
         val selection = audience as? ProfileAudience.Circles
@@ -195,28 +244,44 @@ internal fun AudiencePicker(
             exit = shrinkVertically(motion.defaultSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
         ) {
             val picked = selection ?: ProfileAudience.Circles(emptySet())
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                circles.forEach { circle ->
-                    CircleChip(
-                        name = circle.name,
-                        selected = circle.id in picked.ids,
-                        onToggle = { on ->
-                            onChange(picked.copy(ids = if (on) picked.ids + circle.id else picked.ids - circle.id))
-                        },
-                    )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (circles.isNotEmpty()) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        circles.forEach { circle ->
+                            CircleChip(
+                                name = circle.name,
+                                selected = circle.id in picked.ids,
+                                onToggle = { on ->
+                                    onChange(picked.copy(ids = if (on) picked.ids + circle.id else picked.ids - circle.id))
+                                },
+                            )
+                        }
+                    }
                 }
-                otherCircles.forEach { circle ->
-                    CircleChip(
-                        name = circle.name,
-                        tag = stringResource(MR.string.profile_edit_audience_other_circle),
-                        selected = circle.id in picked.otherIds,
-                        onToggle = { on ->
-                            onChange(picked.copy(otherIds = if (on) picked.otherIds + circle.id else picked.otherIds - circle.id))
-                        },
+                if (otherCircles.isNotEmpty()) {
+                    Text(
+                        text = stringResource(MR.string.profile_edit_audience_other_circles),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
                     )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        otherCircles.forEach { circle ->
+                            CircleChip(
+                                name = circle.name,
+                                selected = circle.id in picked.otherIds,
+                                onToggle = { on ->
+                                    onChange(picked.copy(otherIds = if (on) picked.otherIds + circle.id else picked.otherIds - circle.id))
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -243,8 +308,9 @@ private fun AudienceHint(audience: ProfileAudience, noCircles: Boolean) {
 }
 
 @Composable
-private fun CircleChip(name: String, selected: Boolean, onToggle: (Boolean) -> Unit, tag: String? = null) {
+private fun CircleChip(name: String, selected: Boolean, onToggle: (Boolean) -> Unit) {
     val motion = MaterialTheme.motionScheme
+    val colors = MaterialTheme.colorScheme
     WithTooltip(name) {
         ToggleButton(
             checked = selected,
@@ -255,23 +321,28 @@ private fun CircleChip(name: String, selected: Boolean, onToggle: (Boolean) -> U
                 checkedShape = CircleShape,
             ),
             colors = ToggleButtonDefaults.toggleButtonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                containerColor = colors.surfaceContainerHighest,
+                contentColor = colors.onSurface,
+                checkedContainerColor = colors.secondaryContainer,
+                checkedContentColor = colors.onSecondaryContainer,
             ),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            // An unpicked circle keeps an edge, so picked vs not reads by shape and fill, not by the tick alone.
+            border = if (selected) null else BorderStroke(1.dp, colors.outlineVariant),
+            contentPadding = PaddingValues(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
             modifier = Modifier.widthIn(max = 280.dp).heightIn(min = 48.dp).semantics { role = Role.Checkbox },
         ) {
-            AnimatedVisibility(
-                visible = selected,
-                enter = expandHorizontally(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()),
-                exit = shrinkHorizontally(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
-            ) {
+            AnimatedContent(
+                targetState = selected,
+                transitionSpec = {
+                    (scaleIn(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec())) togetherWith
+                        (scaleOut(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()))
+                },
+            ) { on ->
                 Icon(
-                    Icons.Outlined.Check,
+                    if (on) Icons.Outlined.Check else Icons.Outlined.Groups,
                     contentDescription = null,
-                    modifier = Modifier.padding(end = 6.dp).size(ToggleButtonDefaults.IconSize),
+                    tint = if (on) LocalContentColor.current else colors.secondary,
+                    modifier = Modifier.padding(end = 8.dp).size(ToggleButtonDefaults.IconSize),
                 )
             }
             Text(
@@ -281,15 +352,6 @@ private fun CircleChip(name: String, selected: Boolean, onToggle: (Boolean) -> U
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            if (tag != null) {
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    tag,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = LocalContentColor.current.copy(alpha = 0.72f),
-                    maxLines = 1,
-                )
-            }
         }
     }
 }
@@ -328,8 +390,9 @@ internal fun AudienceBadge(
             }
         }
     }
+    val edge = colors.edge?.let { BorderStroke(1.dp, it) }
     if (onClick == null) {
-        Surface(shape = CircleShape, color = colors.container, contentColor = colors.content, modifier = modifier, content = content)
+        Surface(shape = CircleShape, color = colors.container, contentColor = colors.content, border = edge, modifier = modifier, content = content)
     } else {
         val description = stringResource(MR.string.profile_edit_audience_change, summary)
         Box(
@@ -344,7 +407,7 @@ internal fun AudienceBadge(
                 },
             contentAlignment = Alignment.CenterStart,
         ) {
-            Surface(onClick = onClick, shape = CircleShape, color = colors.container, contentColor = colors.content, content = content)
+            Surface(onClick = onClick, shape = CircleShape, color = colors.container, contentColor = colors.content, border = edge, content = content)
         }
     }
 }
@@ -411,6 +474,8 @@ private class AnchoredPopoverPosition(private val gap: Int, private val margin: 
  */
 @Composable
 internal fun AudiencePopover(
+    title: String,
+    icon: ImageVector,
     initial: ProfileAudience,
     circles: List<CardCircle>,
     otherNames: Map<String, String>,
@@ -442,8 +507,15 @@ internal fun AudiencePopover(
                 shadowElevation = 6.dp,
                 modifier = Modifier.padding(horizontal = 16.dp).widthIn(max = 440.dp),
             ) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AudiencePicker(audience = draft, circles = circles, onChange = { draft = it }, otherCircles = others)
+                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    PanelHeader(icon = icon, title = title, subtitle = stringResource(MR.string.profile_edit_audience_title))
+                    AudiencePicker(
+                        audience = draft,
+                        circles = circles,
+                        onChange = { draft = it },
+                        otherCircles = others,
+                        showTitle = false,
+                    )
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
                             Text(stringResource(MR.string.cancel))
@@ -462,6 +534,41 @@ internal fun AudiencePopover(
                 }
             }
         }
+    }
+}
+
+/** A detail's icon in a cookie badge beside its name: the header of its editor and of its audience popover. */
+@Composable
+internal fun PanelHeader(icon: ImageVector, title: String, subtitle: String? = null, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        CookieIcon(icon, filled = true)
+        Spacer(Modifier.width(16.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(text = title, style = MaterialTheme.typography.titleLargeEmphasized, color = colors.onSurface)
+            if (subtitle != null) {
+                Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** An icon in the scalloped badge the add sheet and the cards use; [filled] for a panel's header, tonal for a row. */
+@Composable
+internal fun CookieIcon(icon: ImageVector, modifier: Modifier = Modifier, filled: Boolean = false) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        modifier = modifier
+            .size(44.dp)
+            .background(if (filled) colors.secondary else colors.secondaryContainer, MaterialShapes.Cookie9Sided.toShape()),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (filled) colors.onSecondary else colors.onSecondaryContainer,
+            modifier = Modifier.size(22.dp),
+        )
     }
 }
 

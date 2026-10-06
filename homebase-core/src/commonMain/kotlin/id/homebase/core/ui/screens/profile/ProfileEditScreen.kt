@@ -8,6 +8,36 @@
 
 package id.homebase.core.ui.screens.profile
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import id.homebase.core.util.formatMediumDate
+import id.homebase.resources.ok
+import id.homebase.resources.profile_edit_label
+import id.homebase.resources.profile_edit_birthday_pick
+import id.homebase.resources.profile_edit_not_on_card
+import id.homebase.resources.profile_edit_visibility_public
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.atTime
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Instant
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterExitState
@@ -508,6 +538,8 @@ private fun ProfileForm(
     val cards = remember(uiState.circles) { listOf(EditorCard(null)) + uiState.circles.map { EditorCard(it) } }
     val focusCard = cards.firstOrNull { it.key == selectedCard }
     fun onFocusedCard(audience: ProfileAudience) = focusCard == null || audience.isOnCard(focusCard.circle?.id)
+    val focusName = focusCard?.let { it.circle?.name ?: stringResource(MR.string.profile_edit_visibility_public) }
+    fun hiddenOn(audience: ProfileAudience): String? = focusName?.takeUnless { onFocusedCard(audience) }
     fun pulseCardsOf(audience: ProfileAudience) {
         pulse = CardPulse(pulse.tick + 1, cards.filter { audience.isOnCard(it.circle?.id) }.map { it.key }.toSet())
     }
@@ -591,7 +623,13 @@ private fun ProfileForm(
             )
             ATTRIBUTE_SPECS.forEach { spec ->
                 val display = displayValueFor(spec.type, uiState.values)
-                    ?.let { if (spec.type == ProfileAttributeTypes.PHONE) formatPhoneForDisplay(it) else it }
+                    ?.let {
+                        when (spec.type) {
+                            ProfileAttributeTypes.PHONE -> formatPhoneForDisplay(it)
+                            ProfileAttributeTypes.BIRTHDAY -> formatBirthday(it) ?: it
+                            else -> it
+                        }
+                    }
                 val snapshot = openRows[spec.type]
                 if (display != null || snapshot != null || spec.type in CORE_TYPES) {
                     val audience = uiState.audience(spec.type)
@@ -614,7 +652,7 @@ private fun ProfileForm(
                             pulseCardsOf(picked)
                         },
                         editing = snapshot != null,
-                        dimmed = !onFocusedCard(audience),
+                        hiddenOn = hiddenOn(audience),
                         onOpen = {
                             openRows[spec.type] = RowSnapshot(fields.associateWith { uiState.value(it) }, audience)
                         },
@@ -656,7 +694,7 @@ private fun ProfileForm(
                 openLinks = openLinks,
                 popoverFor = popoverFor,
                 onPopover = { popoverFor = it },
-                isOnFocusedCard = ::onFocusedCard,
+                hiddenOn = ::hiddenOn,
                 onSaved = ::pulseCardsOf,
                 onAction = onAction,
             )
@@ -665,7 +703,8 @@ private fun ProfileForm(
         }
 
         AnimatedVisibility(
-            visible = !anyOpen,
+            // The audience popover floats over this corner, so the FAB steps aside while it is up.
+            visible = !anyOpen && popoverFor == null,
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
             enter = scaleIn(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()),
             exit = scaleOut(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
@@ -790,7 +829,7 @@ private fun EditableFieldGroup(
     onClosePopover: () -> Unit,
     onSaveAudience: (ProfileAudience) -> Unit,
     editing: Boolean,
-    dimmed: Boolean,
+    hiddenOn: String?,
     onOpen: () -> Unit,
     onCancel: () -> Unit,
     onSave: () -> Unit,
@@ -805,39 +844,68 @@ private fun EditableFieldGroup(
     val motion = MaterialTheme.motionScheme
     val colors = MaterialTheme.colorScheme
     // The open row lifts into a rounded container; the corner and inset ride the spatial spring so it morphs rather than snaps.
-    val inset by animateDpAsState(if (editing) 8.dp else 0.dp, motion.defaultSpatialSpec())
-    val corner by animateDpAsState(if (editing) 28.dp else 0.dp, motion.defaultSpatialSpec())
-    val fill by animateFloatAsState(if (editing) 1f else 0f, motion.defaultEffectsSpec())
-    val alpha by animateFloatAsState(if (dimmed && !editing) DIMMED_ALPHA else 1f, motion.defaultEffectsSpec())
+    val isPlaceholder = displayValue.isNullOrBlank()
+    // An empty detail is a tonal "add" tile; a filled one is flat until opened.
+    val tile = editing || isPlaceholder
+    val inset by animateDpAsState(
+        when {
+            editing -> 8.dp
+            isPlaceholder -> 16.dp
+            else -> 0.dp
+        },
+        motion.defaultSpatialSpec(),
+    )
+    val corner by animateDpAsState(
+        when {
+            editing -> 28.dp
+            isPlaceholder -> 20.dp
+            else -> 0.dp
+        },
+        motion.defaultSpatialSpec(),
+    )
+    val fillColor by animateColorAsState(
+        when {
+            editing -> colors.surfaceContainer
+            isPlaceholder -> colors.surfaceContainerLow
+            else -> colors.surface.copy(alpha = 0f)
+        },
+        motion.defaultEffectsSpec(),
+    )
+    val dimmed = hiddenOn != null && !editing
+    val alpha by animateFloatAsState(if (dimmed) DIMMED_ALPHA else 1f, motion.defaultEffectsSpec())
     val shape = RoundedCornerShape(corner)
     val bringIntoView = remember { BringIntoViewRequester() }
-    val isPlaceholder = displayValue.isNullOrBlank()
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .bringIntoViewRequester(bringIntoView)
-            .padding(horizontal = inset, vertical = inset / 2)
+            .padding(horizontal = inset, vertical = if (tile) 4.dp else 0.dp)
             .graphicsLayer { this.alpha = alpha }
-            .background(colors.surfaceContainer.copy(alpha = fill), shape),
+            .background(fillColor, shape)
+            .clip(shape),
     ) {
         ListItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (editing) Modifier else Modifier.clickable(onClick = onOpen)),
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-            leadingContent = {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = if (editing || isPlaceholder) colors.primary else colors.onSurfaceVariant,
-                )
+            leadingContent = if (editing) {
+                null
+            } else {
+                {
+                    if (isPlaceholder) {
+                        CookieIcon(icon)
+                    } else {
+                        Icon(icon, contentDescription = null, tint = colors.onSurfaceVariant)
+                    }
+                }
             },
-            overlineContent = if (editing || isPlaceholder) null else { { Text(label) } },
+            overlineContent = if (tile) null else { { Text(label) } },
             headlineContent = {
                 when {
-                    editing -> Text(label, style = MaterialTheme.typography.titleMediumEmphasized)
-                    isPlaceholder -> Text(label, color = colors.primary)
+                    editing -> PanelHeader(icon = icon, title = label)
+                    isPlaceholder -> Text(label, style = MaterialTheme.typography.titleMediumEmphasized, color = colors.onSurface)
                     else -> Text(displayValue, color = colors.onSurface)
                 }
             },
@@ -848,6 +916,8 @@ private fun EditableFieldGroup(
                         AudienceBadge(audience = audience, circles = circles, otherNames = otherNames, onClick = onOpenPopover)
                         if (popoverOpen) {
                             AudiencePopover(
+                                title = label,
+                                icon = icon,
                                 initial = audience,
                                 circles = circles,
                                 otherNames = otherNames,
@@ -860,16 +930,19 @@ private fun EditableFieldGroup(
             } else {
                 null
             },
-            trailingContent = if (!editing && isPlaceholder) {
-                {
-                    Icon(
-                        Icons.Filled.Add,
-                        contentDescription = stringResource(MR.string.profile_edit_add_named, label),
-                        tint = colors.primary,
-                    )
+            trailingContent = when {
+                editing -> null
+                isPlaceholder -> {
+                    {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = stringResource(MR.string.profile_edit_add_named, label),
+                            tint = colors.primary,
+                        )
+                    }
                 }
-            } else {
-                null
+                hiddenOn != null -> { { NotOnCardMarker(hiddenOn) } }
+                else -> null
             },
         )
         AnimatedVisibility(
@@ -907,6 +980,30 @@ private fun EditableFieldGroup(
     }
 }
 
+/** Why a row is dimmed while a card is focused: it is not on that card. */
+@Composable
+private fun NotOnCardMarker(cardName: String) {
+    Row(
+        modifier = Modifier.widthIn(max = 132.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            Icons.Outlined.VisibilityOff,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(16.dp),
+        )
+        Text(
+            text = stringResource(MR.string.profile_edit_not_on_card, cardName),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 @Composable
 private fun EditorActions(canSave: Boolean, onSave: () -> Unit, onCancel: () -> Unit, onRemove: (() -> Unit)?) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -937,7 +1034,7 @@ private fun LinksSection(
     openLinks: MutableMap<String, LinkDraft>,
     popoverFor: String?,
     onPopover: (String?) -> Unit,
-    isOnFocusedCard: (ProfileAudience) -> Boolean,
+    hiddenOn: (ProfileAudience) -> String?,
     onSaved: (ProfileAudience) -> Unit,
     onAction: (ProfileEditAction) -> Unit,
 ) {
@@ -965,7 +1062,7 @@ private fun LinksSection(
                 onSaved(picked)
             },
             editing = snapshot != null,
-            dimmed = !isOnFocusedCard(link.audience),
+            hiddenOn = hiddenOn(link.audience),
             onOpen = { openLinks[key] = link },
             onCancel = {
                 snapshot?.let { s ->
@@ -1034,6 +1131,7 @@ private fun ConflictRow(value: String, audience: String, onDiscard: () -> Unit) 
 private fun ProfileField(
     value: String,
     label: String,
+    showLabel: Boolean = true,
     placeholder: String? = null,
     keyboardType: KeyboardType = KeyboardType.Text,
     isError: Boolean = false,
@@ -1049,7 +1147,7 @@ private fun ProfileField(
         onValueChange = onChange,
         // Addresses and URLs read left to right in every locale.
         textStyle = if (ltr) LocalTextStyle.current.copy(textDirection = TextDirection.Ltr) else LocalTextStyle.current,
-        label = { Text(label) },
+        label = if (showLabel) { { Text(label) } } else null,
         placeholder = placeholder?.let { { Text(it) } },
         singleLine = maxLines == 1,
         minLines = minLines,
@@ -1057,7 +1155,8 @@ private fun ProfileField(
         isError = isError,
         supportingText = if (isError && errorText != null) { { Text(errorText) } } else null,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        modifier = modifier,
+        // The panel header names a lone field, so the label moves into its semantics.
+        modifier = if (showLabel) modifier else modifier.semantics { contentDescription = label },
     )
 }
 
@@ -1218,6 +1317,7 @@ private fun AttributeFields(
             ProfileField(
                 value(ProfileField.NICKNAME),
                 stringResource(MR.string.profile_edit_nickname),
+                showLabel = false,
                 modifier = Modifier.fillMaxWidth(),
             ) { onChange(ProfileField.NICKNAME, it) }
         }
@@ -1226,6 +1326,7 @@ private fun AttributeFields(
             ProfileField(
                 value(ProfileField.STATUS),
                 stringResource(MR.string.profile_edit_status),
+                showLabel = false,
                 modifier = Modifier.fillMaxWidth(),
             ) { onChange(ProfileField.STATUS, it) }
         }
@@ -1234,6 +1335,7 @@ private fun AttributeFields(
             ProfileField(
                 value(ProfileField.BIO),
                 stringResource(MR.string.profile_edit_bio),
+                showLabel = false,
                 minLines = 3,
                 maxLines = 6,
                 modifier = Modifier.fillMaxWidth(),
@@ -1241,16 +1343,7 @@ private fun AttributeFields(
         }
 
         ProfileAttributeTypes.BIRTHDAY -> {
-            val birthdayValue = value(ProfileField.BIRTHDAY)
-            ProfileField(
-                value = birthdayValue,
-                label = stringResource(MR.string.profile_edit_birthday),
-                placeholder = stringResource(MR.string.profile_edit_birthday_hint),
-                isError = birthdayValue.isNotBlank() &&
-                    !ContactFieldValidation.isValidBirthday(birthdayValue),
-                errorText = stringResource(MR.string.contactbook_error_birthday),
-                modifier = Modifier.fillMaxWidth(),
-            ) { onChange(ProfileField.BIRTHDAY, it) }
+            BirthdayField(value(ProfileField.BIRTHDAY)) { onChange(ProfileField.BIRTHDAY, it) }
         }
 
         ProfileAttributeTypes.EMAIL -> {
@@ -1258,6 +1351,7 @@ private fun AttributeFields(
             ProfileField(
                 value = emailValue,
                 label = stringResource(MR.string.profile_edit_email),
+                showLabel = false,
                 keyboardType = KeyboardType.Email,
                 ltr = true,
                 isError = emailValue.isNotBlank() && !ContactFieldValidation.isValidEmail(emailValue),
@@ -1273,13 +1367,14 @@ private fun AttributeFields(
 
         ProfileAttributeTypes.PHONE -> {
             val phoneValue = value(ProfileField.PHONE)
+            val phoneLabel = stringResource(MR.string.profile_edit_phone)
             PhoneNumberField(
                 e164Value = phoneValue,
                 onValueChange = { onChange(ProfileField.PHONE, it) },
-                label = stringResource(MR.string.profile_edit_phone),
+                label = null,
                 isError = phoneValue.isNotBlank() && !ContactFieldValidation.isValidPhone(phoneValue),
                 errorText = stringResource(MR.string.contactbook_error_phone),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().semantics { contentDescription = phoneLabel },
             )
             LabelChips(
                 value = value(ProfileField.PHONE_LABEL),
@@ -1325,6 +1420,7 @@ private fun AttributeFields(
             ProfileField(
                 value(ProfileField.TWITTER),
                 stringResource(MR.string.profile_edit_twitter),
+                showLabel = false,
                 modifier = Modifier.fillMaxWidth(),
             ) { onChange(ProfileField.TWITTER, it) }
         }
@@ -1332,6 +1428,7 @@ private fun AttributeFields(
             ProfileField(
                 value(ProfileField.FACEBOOK),
                 stringResource(MR.string.profile_edit_facebook),
+                showLabel = false,
                 modifier = Modifier.fillMaxWidth(),
             ) { onChange(ProfileField.FACEBOOK, it) }
         }
@@ -1339,6 +1436,7 @@ private fun AttributeFields(
             ProfileField(
                 value(ProfileField.INSTAGRAM),
                 stringResource(MR.string.profile_edit_instagram),
+                showLabel = false,
                 modifier = Modifier.fillMaxWidth(),
             ) { onChange(ProfileField.INSTAGRAM, it) }
         }
@@ -1346,6 +1444,7 @@ private fun AttributeFields(
             ProfileField(
                 value(ProfileField.TIKTOK),
                 stringResource(MR.string.profile_edit_tiktok),
+                showLabel = false,
                 modifier = Modifier.fillMaxWidth(),
             ) { onChange(ProfileField.TIKTOK, it) }
         }
@@ -1353,6 +1452,7 @@ private fun AttributeFields(
             ProfileField(
                 value(ProfileField.LINKEDIN),
                 stringResource(MR.string.profile_edit_linkedin),
+                showLabel = false,
                 modifier = Modifier.fillMaxWidth(),
             ) { onChange(ProfileField.LINKEDIN, it) }
         }
@@ -1360,8 +1460,8 @@ private fun AttributeFields(
 }
 
 /**
- * A detail's label as one tap: preset chips, plus Custom for anything else, which opens a field.
- * Tapping the picked chip again clears the label.
+ * A detail's label as one tap: a connected group of presets plus Custom, which opens a field.
+ * Tapping the picked segment again clears the label.
  */
 @Composable
 private fun LabelChips(
@@ -1373,39 +1473,40 @@ private fun LabelChips(
     val names = presets.map { stringResource(it) }
     var custom by remember { mutableStateOf(value.isNotBlank() && names.none { it.equals(value, ignoreCase = true) }) }
     val motion = MaterialTheme.motionScheme
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            names.forEach { name ->
-                val picked = !custom && name.equals(value, ignoreCase = true)
-                FilterChip(
-                    selected = picked,
-                    onClick = {
-                        custom = false
-                        onChange(if (picked) "" else name)
-                    },
-                    label = { Text(name) },
-                    leadingIcon = if (picked) {
-                        { Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+    val colors = ToggleButtonDefaults.toggleButtonColors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+        checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ChoiceCaption(stringResource(MR.string.profile_edit_label))
+        ConnectedChoices(count = names.size + 1) { index, shapes, sizing ->
+            val isCustom = index == names.size
+            val picked = if (isCustom) custom else !custom && names[index].equals(value, ignoreCase = true)
+            ToggleButton(
+                checked = picked,
+                onCheckedChange = {
+                    if (isCustom) {
+                        custom = !custom
+                        if (!custom || names.any { it.equals(value, ignoreCase = true) }) onChange("")
                     } else {
-                        null
-                    },
+                        custom = false
+                        onChange(if (picked) "" else names[index])
+                    }
+                },
+                shapes = shapes,
+                colors = colors,
+                contentPadding = PaddingValues(horizontal = 8.dp),
+                modifier = sizing.semantics { role = Role.RadioButton },
+            ) {
+                Text(
+                    text = if (isCustom) stringResource(MR.string.profile_edit_label_custom) else names[index],
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            FilterChip(
-                selected = custom,
-                onClick = {
-                    custom = !custom
-                    if (!custom || names.any { it.equals(value, ignoreCase = true) }) onChange("")
-                },
-                label = { Text(stringResource(MR.string.profile_edit_label_custom)) },
-                leadingIcon = {
-                    Icon(
-                        if (custom) Icons.Outlined.Check else Icons.Outlined.Edit,
-                        contentDescription = null,
-                        modifier = Modifier.size(FilterChipDefaults.IconSize),
-                    )
-                },
-            )
         }
         AnimatedVisibility(
             visible = custom,
@@ -1413,6 +1514,70 @@ private fun LabelChips(
             exit = shrinkVertically(motion.defaultSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
         ) {
             ProfileField(value = value, label = customLabel, modifier = Modifier.fillMaxWidth(), onChange = onChange)
+        }
+    }
+}
+
+/** The ISO birthday as the locale writes dates; null when it is not a valid date. */
+internal fun formatBirthday(iso: String): String? {
+    val date = runCatching { LocalDate.parse(iso.trim()) }.getOrNull() ?: return null
+    // Noon keeps any time zone from turning the day over.
+    return formatMediumDate(date.atTime(12, 0).toInstant(TimeZone.currentSystemDefault()))
+}
+
+/** A birthday is picked from the calendar, never typed; a stored value that is not a date still shows, flagged. */
+@Composable
+private fun BirthdayField(value: String, onChange: (String) -> Unit) {
+    var picking by remember { mutableStateOf(false) }
+    val label = stringResource(MR.string.profile_edit_birthday)
+    val invalid = value.isNotBlank() && !ContactFieldValidation.isValidBirthday(value)
+    Box(modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = if (value.isBlank()) "" else formatBirthday(value) ?: value,
+            onValueChange = {},
+            readOnly = true,
+            singleLine = true,
+            placeholder = { Text(stringResource(MR.string.profile_edit_birthday_pick)) },
+            leadingIcon = { Icon(Icons.Outlined.CalendarMonth, contentDescription = null) },
+            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
+            isError = invalid,
+            supportingText = if (invalid) { { Text(stringResource(MR.string.contactbook_error_birthday)) } } else null,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        // Over the whole field, so any tap opens the calendar instead of placing a cursor.
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(MaterialTheme.shapes.extraSmall)
+                .clickable(role = Role.Button, onClickLabel = label) { picking = true }
+                .semantics { contentDescription = label },
+        )
+    }
+    if (picking) {
+        val initial = remember(value) {
+            runCatching { LocalDate.parse(value.trim()) }.getOrNull()
+                ?.atStartOfDayIn(TimeZone.UTC)?.toEpochMilliseconds()
+        }
+        val state = rememberDatePickerState(initialSelectedDateMillis = initial)
+        DatePickerDialog(
+            onDismissRequest = { picking = false },
+            confirmButton = {
+                TextButton(
+                    enabled = state.selectedDateMillis != null,
+                    onClick = {
+                        // The picker answers in UTC midnight of the picked day.
+                        state.selectedDateMillis?.let {
+                            onChange(Instant.fromEpochMilliseconds(it).toLocalDateTime(TimeZone.UTC).date.toString())
+                        }
+                        picking = false
+                    },
+                ) { Text(stringResource(MR.string.ok)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { picking = false }) { Text(stringResource(MR.string.cancel)) }
+            },
+        ) {
+            DatePicker(state = state)
         }
     }
 }

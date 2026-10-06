@@ -187,7 +187,7 @@ internal fun ProfileCardsStrip(
 /** A picked card's corners open up on the spatial spring, so the selection reads as a change of shape, not an outline. */
 @Composable
 private fun tileCorner(selected: Boolean): Dp =
-    animateDpAsState(if (selected) 44.dp else 28.dp, MaterialTheme.motionScheme.defaultSpatialSpec()).value
+    animateDpAsState(if (selected) 40.dp else 20.dp, MaterialTheme.motionScheme.defaultSpatialSpec()).value
 
 @Composable
 private fun cardLabel(card: EditorCard): String =
@@ -226,7 +226,9 @@ private fun CardTile(
             pulseLevel.animateTo(0f, motion.slowSpatialSpec())
         }
     }
-    val ring = 4.dp * pulseLevel.value
+    val focusRing by animateDpAsState(if (selected) 3.dp else 0.dp, motion.defaultSpatialSpec())
+    val ring = maxOf(focusRing, 4.dp * pulseLevel.value)
+    val ringColor = if (selected) colors.primary else accent
     // The other cards step back with the same dimming the details off the picked card get.
     val alpha by animateFloatAsState(if (muted) MUTED_TILE_ALPHA else 1f, motion.defaultEffectsSpec())
     val badgeTurn by animateFloatAsState(if (selected) BADGE_TURN_DEGREES else 0f, motion.defaultSpatialSpec())
@@ -238,8 +240,10 @@ private fun CardTile(
     Box(
         modifier = modifier
             .graphicsLayer { this.alpha = alpha }
+            // The tile's own shape, not only the carousel mask, so the morph shows even where the mask lags.
+            .clip(RoundedCornerShape(corner))
             .background(container)
-            .border(ring, if (ring > 0.dp) accent else Color.Transparent, RoundedCornerShape(corner))
+            .border(ring, if (ring > 0.dp) ringColor else Color.Transparent, RoundedCornerShape(corner))
             .selectable(selected = selected, role = Role.Tab, onClick = onClick),
     ) {
         Column(
