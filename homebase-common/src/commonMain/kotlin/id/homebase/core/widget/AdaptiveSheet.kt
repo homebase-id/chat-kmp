@@ -8,6 +8,8 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.BottomSheetDefaults
@@ -33,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -157,11 +160,14 @@ fun AdaptiveSheet(
         val sheetScope = remember(sheetState) {
             AdaptiveSheetScope(sheetState, scope, currentOnDismiss, dismissing)
         }
+        val screenIme = WindowInsets.ime
         ModalBottomSheet(
             onDismissRequest = onDismiss,
             sheetState = sheetState,
             sheetGesturesEnabled = dismissible,
-            contentWindowInsets = contentWindowInsets,
+            contentWindowInsets = {
+                KeyboardLiftedSheetInsets(contentWindowInsets(), screenIme, WindowInsets.ime, WindowInsets.navigationBars)
+            },
             properties = ModalBottomSheetProperties(
                 shouldDismissOnBackPress = dismissible,
                 shouldDismissOnClickOutside = dismissible,
@@ -169,5 +175,22 @@ fun AdaptiveSheet(
         ) {
             sheetScope.content()
         }
+    }
+}
+
+/**
+ * On iOS the sheet's layer is lifted onto the keyboard, so inside it the IME reads zero while the home
+ * indicator still reads its full inset, padding a strip of sheet above the keys. Read at layout time.
+ */
+internal class KeyboardLiftedSheetInsets(
+    private val base: WindowInsets,
+    private val screenIme: WindowInsets,
+    private val sheetIme: WindowInsets,
+    private val navigationBars: WindowInsets,
+) : WindowInsets by base {
+    override fun getBottom(density: Density): Int {
+        val bottom = base.getBottom(density)
+        val lifted = screenIme.getBottom(density) > 0 && sheetIme.getBottom(density) == 0
+        return if (lifted) (bottom - navigationBars.getBottom(density)).coerceAtLeast(0) else bottom
     }
 }
