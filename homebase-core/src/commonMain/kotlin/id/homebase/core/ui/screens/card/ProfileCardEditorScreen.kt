@@ -601,7 +601,7 @@ private fun EditorPanel(
         if (contentOpen) maxOf(contentBody, optionsNeeded) else maxOf(metrics.body, optionsNeeded),
         motion.defaultSpatialSpec(),
     )
-    val items = uiState.contentItems
+    val items = remember(uiState.attributes, uiState.circles, uiState.selectedAudience) { uiState.contentItems }
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = shape,

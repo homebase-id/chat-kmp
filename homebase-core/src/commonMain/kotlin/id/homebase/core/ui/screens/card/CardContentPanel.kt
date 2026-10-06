@@ -58,7 +58,6 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
-import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -244,7 +243,6 @@ internal fun CardContentPanel(
     }
 }
 
-// Carries the audience pill's own colours and glyph, so the list reads as that card's.
 @Composable
 private fun AudienceHeading(card: CardAudience) {
     val text = when (card) {
@@ -255,14 +253,13 @@ private fun AudienceHeading(card: CardAudience) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) { heading() },
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(HEADING_BADGE_SIZE)
-                .background(audienceContainer(card), MaterialShapes.Cookie9Sided.toShape()),
-        ) {
-            Icon(audienceIcon(card), contentDescription = null, tint = onAudienceContainer(card), modifier = Modifier.size(20.dp))
-        }
+        CookieBadge(
+            icon = audienceIcon(card),
+            container = audienceContainer(card),
+            content = onAudienceContainer(card),
+            size = HEADING_BADGE_SIZE,
+            iconSize = 20.dp,
+        )
         Spacer(Modifier.width(12.dp))
         Text(
             text = text,
@@ -391,7 +388,6 @@ private fun ContentRow(
     }
     // Numbers, addresses and links stay on one line: wrapping them on punctuation makes a different number.
     val prose = item.type in PROSE_TYPES
-    // The row being written reads as settling; the value itself stays legible.
     val supporting by animateColorAsState(
         if (pending) colors.onSurface.copy(alpha = PENDING_TEXT_ALPHA) else colors.onSurfaceVariant,
         motion.defaultEffectsSpec(),
@@ -571,7 +567,6 @@ private fun AudienceSheet(
                 otherCircles = otherCirclesOf(item.audience, draft, names = emptyMap()),
                 showTitle = false,
             )
-            // Said once here, where the choice is made, so the row's hint can stay short.
             if (item.audience == ProfileAudience.Public) {
                 Text(
                     text = stringResource(MR.string.profile_card_content_public_off_note),
@@ -668,13 +663,6 @@ private fun addLabel(kind: AddKind) = when (kind) {
     AddKind.Social -> MR.string.profile_edit_add_group_social
     AddKind.Bio -> MR.string.profile_edit_bio
 }
-
-private fun addIcon(kind: AddKind): ImageVector = typeIcon(
-    when (kind) {
-        AddKind.Social -> ProfileAttributeTypes.INSTAGRAM
-        else -> kind.type
-    },
-)
 
 private fun typeIcon(type: String): ImageVector =
     ATTRIBUTE_SPECS.firstOrNull { it.type == type }?.icon ?: Icons.Outlined.Link
