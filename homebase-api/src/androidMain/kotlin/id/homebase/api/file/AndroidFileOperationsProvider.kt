@@ -4,163 +4,93 @@ import android.content.Context
 import androidx.core.net.toUri
 import io.ktor.client.request.forms.InputProvider
 import io.ktor.utils.io.streams.asInput
-import java.io.File
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
-import java.io.FileOutputStream
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
+import okio.FileSystem
+import java.io.File
 
 class AndroidFileOperationsProvider(
     val context: Context,
-) : FileOperationsProvider {
-    override fun openFileInput(path: String): InputProvider {
-        return InputProvider {
-            if (path.startsWith("content://") || path.startsWith("content:")) {
-                val uri = path.toUri()
-                context.contentResolver.openInputStream(uri)?.asInput()
-                    ?: throw IllegalArgumentException("Unable to open content URI: $path")
-            } else {
-                File(path).inputStream().asInput()
-            }
-        }
-    }
+) : OkioFileOperationsProvider(FileSystem.SYSTEM, context.cacheDir.absolutePath) {
 
-    override suspend fun readFileBytes(path: String): ByteArray = withContext(Dispatchers.IO) {
-        if (path.startsWith("content://") || path.startsWith("content:")) {
-            val uri = path.toUri()
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: throw IllegalArgumentException("Unable to read content URI: $path")
-        } else {
-            File(path).readBytes()
-        }
-    }
+    private fun isContentUri(path: String) = path.startsWith("content:")
 
-    override fun readFileAsFlow(path: String, chunkSize: Int): kotlinx.coroutines.flow.Flow<ByteArray> =
-        kotlinx.coroutines.flow.flow {
-            val stream = if (path.startsWith("content://") || path.startsWith("content:")) {
-                context.contentResolver.openInputStream(path.toUri())
-                    ?: throw IllegalArgumentException("Unable to open content URI: $path")
-            } else {
-                File(path).inputStream()
-            }
-            stream.use {
-                val buf = ByteArray(chunkSize)
-                while (true) {
-                    val n = it.read(buf, 0, buf.size)
-                    if (n <= 0) break
-                    emit(buf.copyOf(n))
+    private fun openContentStream(path: String) =
+        context.contentResolver.openInputStream(path.toUri())
+            ?: throw IllegalArgumentException("Unable to open content URI: $path")
+
+    override fun openFileInput(path: String): InputProvider =
+        if (isContentUri(path)) InputProvider { openContentStream(path).asInput() }
+        else super.openFileInput(path)
+
+    override suspend fun readFileBytes(path: String): ByteArray =
+        if (isContentUri(path)) withContext(Dispatchers.IO) { openContentStream(path).use { it.readBytes() } }
+        else super.readFileBytes(path)
+
+    override fun readFileAsFlow(path: String, chunkSize: Int): Flow<ByteArray> =
+        if (isContentUri(path)) {
+            flow {
+                openContentStream(path).use {
+                    val buf = ByteArray(chunkSize)
+                    while (true) {
+                        val n = it.read(buf, 0, buf.size)
+                        if (n <= 0) break
+                        emit(buf.copyOf(n))
+                    }
                 }
-            }
-        }
+            }.flowOn(Dispatchers.IO)
+        } else super.readFileAsFlow(path, chunkSize)
 
     override suspend fun readFileHeaderBytes(path: String, maxBytes: Int): ByteArray =
-        withContext(Dispatchers.IO) {
-            val stream = if (path.startsWith("content://") || path.startsWith("content:")) {
-                context.contentResolver.openInputStream(path.toUri())
-                    ?: throw IllegalArgumentException("Unable to open content URI: $path")
-            } else {
-                File(path).inputStream()
-            }
-            stream.use {
-                val buf = ByteArray(maxBytes)
-                var off = 0
-                while (off < maxBytes) {
-                    val n = it.read(buf, off, maxBytes - off)
-                    if (n <= 0) break
-                    off += n
-                }
-                if (off == maxBytes) buf else buf.copyOf(off)
-            }
-        }
-
-    override fun deleteTempFile(path: String): Boolean {
-        return runCatching {
-            if (path.startsWith("content://") || path.startsWith("content:")) {
-                // You generally do NOT own content URIs — never delete them
-                false
-            } else {
-                val file = File(path)
-
-                if (!file.exists() || file.isDirectory) {
-                    true
-                } else if (file.delete()) {
-                    true
-                } else {
-                    // No deleteOnExit on Android — JVM exit is not reliable
-                    false
+        if (isContentUri(path)) {
+            withContext(Dispatchers.IO) {
+                openContentStream(path).use {
+                    val buf = ByteArray(maxBytes)
+                    var off = 0
+                    while (off < maxBytes) {
+                        val n = it.read(buf, off, maxBytes - off)
+                        if (n <= 0) break
+                        off += n
+                    }
+                    if (off == maxBytes) buf else buf.copyOf(off)
                 }
             }
-        }.getOrDefault(false)
-    }
+        } else super.readFileHeaderBytes(path, maxBytes)
 
-    override fun getCacheDirectory(): String = context.cacheDir.absolutePath
+    // You generally do NOT own content URIs — never delete them.
+    override fun deleteTempFile(path: String): Boolean =
+        if (isContentUri(path)) false else super.deleteTempFile(path)
 
     override fun getFileSize(path: String): Long {
-        if (path.startsWith("content://") || path.startsWith("content:")) {
-            val uri = path.toUri()
+        if (!isContentUri(path)) return super.getFileSize(path)
+        context.contentResolver.query(path.toUri(), null, null, null, null)?.use { cursor ->
+            val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+            if (sizeIndex >= 0 && cursor.moveToFirst()) return cursor.getLong(sizeIndex)
+        }
+        return 0L
+    }
 
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
-
-                if (sizeIndex >= 0 && cursor.moveToFirst()) {
-                    return cursor.getLong(sizeIndex)
-                }
+    // getFileSize's SIZE-column query returns 0 for a valid URI that doesn't expose
+    // OpenableColumns.SIZE, so opening the stream is the authoritative check; it also
+    // surfaces a revoked grant (SecurityException) as "missing".
+    override suspend fun sourceExists(path: String): Boolean =
+        if (isContentUri(path)) {
+            withContext(Dispatchers.IO) {
+                runCatching { openContentStream(path).use { true } }.getOrDefault(false)
             }
-
-            return 0L
-        }
-
-        return File(path).length()
-    }
-
-    override suspend fun sourceExists(path: String): Boolean = withContext(Dispatchers.IO) {
-        if (path.startsWith("content://") || path.startsWith("content:")) {
-            // getFileSize's SIZE-column query returns 0 for a perfectly valid URI that
-            // doesn't expose OpenableColumns.SIZE, so don't gate on size here. Opening
-            // the stream is the authoritative "still readable?" check and also surfaces
-            // a revoked grant (SecurityException) as "missing".
-            runCatching {
-                context.contentResolver.openInputStream(path.toUri())?.use { true } ?: false
-            }.getOrDefault(false)
-        } else {
-            File(path).exists()
-        }
-    }
-
-    override suspend fun writeBytesToTempFile(
-        bytes: ByteArray, prefix: String, suffix: String
-    ): String = writeBytesIn(CacheAudit.UPLOAD_TEMP_DIR_NAME, bytes, prefix, suffix)
+        } else super.sourceExists(path)
 
     // Encrypted, ready-to-transmit payloads live in the durable staging dir (#842) — under
-    // noBackupFilesDir, NOT cacheDir: cacheDir is OS-reclaimable under storage pressure, which
-    // deleted staged payloads out from under long-lived outbox rows (the ENOENT retry loop).
-    // noBackupFilesDir (not filesDir) because the outbox DB is excluded from backup rules — a
-    // future backup enablement must not restore staged files whose rows didn't ride along.
-    // The interface default routes writeBytesToOutboxTempFile through this dir.
+    // noBackupFilesDir, NOT cacheDir (OS-reclaimable under storage pressure). Not filesDir:
+    // the outbox DB is excluded from backup, so staged files must not be restored without rows.
     override fun getOutboxStagingDirectory(): String =
         File(context.noBackupFilesDir, OUTBOX_STAGING_DIR_NAME).apply { mkdirs() }.absolutePath
 
-    private suspend fun writeBytesIn(
-        dirName: String, bytes: ByteArray, prefix: String, suffix: String
-    ): String = withContext(Dispatchers.IO) {
-        val tempDir = File(AppCacheDirs.scratchPath(context.cacheDir.absolutePath, dirName)).apply { mkdirs() }
-        val file = File.createTempFile(prefix, suffix, tempDir)
-        file.writeBytes(bytes)
-        file.path
-    }
-
-    override suspend fun writeBytesToShareOutboundFile(
-        bytes: ByteArray, suffix: String
-    ): String = withContext(Dispatchers.IO) {
-        val dir = File(AppCacheDirs.scratchPath(context.cacheDir.absolutePath, SHARE_OUTBOUND_DIR_NAME)).apply { mkdirs() }
-        val file = File.createTempFile("share_", suffix, dir)
-        file.writeBytes(bytes)
-        file.path
-    }
-
     override suspend fun resolveToFilePath(path: String): String {
-        if (!path.startsWith("content://") && !path.startsWith("content:")) return path
+        if (!isContentUri(path)) return path
         return withContext(Dispatchers.IO) {
             val uri = path.toUri()
             val ext = context.contentResolver.getType(uri)
@@ -174,31 +104,12 @@ class AndroidFileOperationsProvider(
         }
     }
 
-    override suspend fun writeStream(
-        path: String,
-        data: Flow<ByteArray>
-    ) = withContext(Dispatchers.IO) {
-
-        if (path.startsWith("content://") || path.startsWith("content:")) {
-
-            val uri = path.toUri()
-
-            context.contentResolver.openOutputStream(uri)?.use { out ->
-                data.collect { chunk ->
-                    out.write(chunk)
-                }
+    override suspend fun writeStream(path: String, data: Flow<ByteArray>) {
+        if (!isContentUri(path)) return super.writeStream(path, data)
+        withContext(Dispatchers.IO) {
+            context.contentResolver.openOutputStream(path.toUri())?.use { out ->
+                data.collect { chunk -> out.write(chunk) }
             } ?: throw IllegalArgumentException("Unable to open content URI for write: $path")
-
-        } else {
-
-            val file = File(path)
-            file.parentFile?.mkdirs()
-            FileOutputStream(file).use { out ->
-                data.collect { chunk ->
-                    out.write(chunk)
-                }
-            }
-
         }
     }
 }

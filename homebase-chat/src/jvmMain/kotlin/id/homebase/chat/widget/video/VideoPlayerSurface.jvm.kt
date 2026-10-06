@@ -54,6 +54,8 @@ import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.resources.MR
+import id.homebase.resources.cd_pause_video
+import id.homebase.resources.cd_play_video
 import id.homebase.resources.cd_video_frame
 import id.homebase.resources.video_error_generic
 import id.homebase.resources.vlc_required
@@ -84,7 +86,7 @@ import kotlin.time.measureTimedValue
 
 private sealed interface VpsState {
     data object Loading : VpsState
-    data class Playing(val videoPath: String) : VpsState
+    data class Playing(val videoPath: String, val aspectRatio: Float? = null) : VpsState
     data class Error(val message: String) : VpsState
 }
 
@@ -108,9 +110,6 @@ actual fun VideoPlayerSurface(
     @Suppress("UNUSED_PARAMETER") paused: Boolean,
     onError: (String) -> Unit,
 ) {
-    // VLC-J's CallbackMediaPlayerComponent paints to a Swing canvas with no
-    // built-in transport UI of its own (host renders controls). Param is
-    // accepted for API parity with the mobile actuals.
     // ponytail: no keep-screen-awake on Desktop. There is no portable JDK API to
     // inhibit display sleep — it needs per-OS native calls (Windows
     // SetThreadExecutionState / macOS IOPMAssertion / Linux org.freedesktop.ScreenSaver)
@@ -169,9 +168,9 @@ actual fun VideoPlayerSurface(
                                 if (highWater < 1f) onProgress(highWater)
                             }
                         }
-                        // Await the preload so the first segment is cached before VLC starts.
+                        // Await the preload so the first segment is cached before the player starts.
                         // If MediaItem's preload was cancelled when the chat list left composition,
-                        // this is the only path that drives real progress — VLC's own data-source
+                        // this is the only path that drives real progress — the player's own segment
                         // fetches bypass onDownloadProgress entirely.
                         // The preloader reads our own drive, so for a followed identity it would fetch the
                         // wrong file. Playback warms the chunk cache itself; only progress goes dark.
@@ -182,35 +181,9 @@ actual fun VideoPlayerSurface(
                                 .joinToString("\n")
                         )
 
-                        val totalSize = content.metadata.fileSize
-                        val server = HttpServer.create(InetSocketAddress(0), 0).apply {
-                        createContext("/") { exchange ->
-                            val name = exchange.requestURI.path.trimStart('/')
-                            if (name.endsWith(".m3u8")) {
-                                val fileBytes = File(dir, name).readBytes()
-                                exchange.responseHeaders.add("Content-Type", HLS_PLAYLIST_CONTENT_TYPE)
-                                exchange.sendResponseHeaders(200, fileBytes.size.toLong())
-                                exchange.responseBody.use { it.write(fileBytes) }
-                                return@createContext
-                            }
-
-                            // .ts range requests — fetch and decrypt the requested chunk on demand
-                            exchange.responseHeaders.add("Content-Type", "video/mp2t")
-                            exchange.responseHeaders.add("Accept-Ranges", "bytes")
-                            val rangeHeader = exchange.requestHeaders.getFirst("Range")
-                            val start: Long
-                            val end: Long
-                            if (rangeHeader != null) {
-                                val parts = rangeHeader.removePrefix("bytes=").split("-")
-                                start = parts[0].toLong()
-                                end = if (parts[1].isNotEmpty()) parts[1].toLong() else totalSize - 1
-                            } else {
-                                start = 0
-                                end = totalSize - 1
-                            }
-                            val length = end - start + 1
-                            Logger.d(tag = "VideoHLS") { "vlc chunk request: fileId=${data.fileId} key=${data.payloadKey} chunkStart=$start chunkLength=$length name=$name" }
-                            val bytes = runBlocking {
+                        val server = startLocalHlsServer(dir, content.metadata.fileSize) { start, length ->
+                            Logger.d(tag = "VideoHLS") { "hls chunk request: fileId=${data.fileId} key=${data.payloadKey} chunkStart=$start chunkLength=$length" }
+                            runBlocking {
                                 videoAccess.getPayloadBytesDecrypted(
                                     driveId = data.driveId,
                                     fileId = data.fileId,
@@ -220,21 +193,14 @@ actual fun VideoPlayerSurface(
                                     chunkLength = length,
                                 )?.bytes
                             }
-                            if (bytes == null) {
-                                exchange.sendResponseHeaders(500, -1)
-                                exchange.responseBody.close()
-                                return@createContext
-                            }
-                            exchange.responseHeaders.add("Content-Range", "bytes $start-$end/$totalSize")
-                            exchange.sendResponseHeaders(206, bytes.size.toLong())
-                            exchange.responseBody.use { it.write(bytes) }
                         }
-                        executor = Executors.newFixedThreadPool(4)
-                        start()
-                    }
                         httpServer = server
                         progressJob.cancel()
-                        state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
+                        val m = content.metadata
+                        state = VpsState.Playing(
+                            "http://localhost:${server.address.port}/index.m3u8",
+                            if (m.widthPx > 0 && m.heightPx > 0) m.widthPx.toFloat() / m.heightPx else null,
+                        )
                     }
                     is VideoContent.Mp4Bytes -> error("Mp4Bytes is the web-only variant — resolveVideoContent was given fileOps")
                     is VideoContent.Mp4File -> {
@@ -263,8 +229,9 @@ actual fun VideoPlayerSurface(
         when (val s = state) {
             VpsState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             is VpsState.Error -> Text(text = s.message, modifier = Modifier.align(Alignment.Center))
-            is VpsState.Playing -> VlcjPlayer(
+            is VpsState.Playing -> DesktopVideoPlayer(
                 videoPath = s.videoPath,
+                aspectRatio = s.aspectRatio,
                 modifier = Modifier.fillMaxSize(),
                 onFirstFrameRendered = {
                     onProgress(1f)
@@ -276,6 +243,49 @@ actual fun VideoPlayerSurface(
             )
         }
     }
+}
+
+// Serves the playlist from [dir] and every segment as a byte range of the single payload.
+internal fun startLocalHlsServer(
+    dir: File,
+    totalSize: Long,
+    fetchRange: (start: Long, length: Long) -> ByteArray?,
+): HttpServer = HttpServer.create(InetSocketAddress(0), 0).apply {
+    createContext("/") { exchange ->
+        val name = exchange.requestURI.path.trimStart('/')
+        if (name.endsWith(".m3u8")) {
+            val fileBytes = File(dir, name).readBytes()
+            exchange.responseHeaders.add("Content-Type", HLS_PLAYLIST_CONTENT_TYPE)
+            exchange.sendResponseHeaders(200, fileBytes.size.toLong())
+            exchange.responseBody.use { it.write(fileBytes) }
+            return@createContext
+        }
+
+        exchange.responseHeaders.add("Content-Type", "video/mp2t")
+        exchange.responseHeaders.add("Accept-Ranges", "bytes")
+        val rangeHeader = exchange.requestHeaders.getFirst("Range")
+        val start: Long
+        val end: Long
+        if (rangeHeader != null) {
+            val parts = rangeHeader.removePrefix("bytes=").split("-")
+            start = parts[0].toLong()
+            end = if (parts[1].isNotEmpty()) parts[1].toLong() else totalSize - 1
+        } else {
+            start = 0
+            end = totalSize - 1
+        }
+        val bytes = NativeLoadActivity.track { fetchRange(start, end - start + 1) }
+        if (bytes == null) {
+            exchange.sendResponseHeaders(500, -1)
+            exchange.responseBody.close()
+            return@createContext
+        }
+        exchange.responseHeaders.add("Content-Range", "bytes $start-$end/$totalSize")
+        exchange.sendResponseHeaders(206, bytes.size.toLong())
+        exchange.responseBody.use { it.write(bytes) }
+    }
+    executor = Executors.newFixedThreadPool(4)
+    start()
 }
 
 // Discovery dlopens libvlccore; a broken or ABI-mismatched JNA raises UnsatisfiedLinkError,
@@ -518,50 +528,70 @@ internal fun VlcjPlayer(
             CircularProgressIndicator()
         }
 
-        if (showControls) Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .background(Color.Black.copy(alpha = 0.5f))
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            IconButton(onClick = {
+        if (showControls) TransportBar(
+            isPlaying = isPlaying,
+            position = position,
+            duration = duration,
+            onTogglePlay = {
                 if (isPlaying) {
                     mediaPlayer.controls().setPause(true)
                 } else {
                     mediaPlayer.controls().play()
                 }
                 isPlaying = !isPlaying
-            }) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    tint = Color.White,
-                )
-            }
-            Text(
-                text = formatMs(position.toLong()),
-                color = Color.White,
-                fontSize = 12.sp,
-            )
-            SeekBar(
-                fraction = if (duration > 0f) position / duration else 0f,
-                onSeek = { fraction ->
-                    isSeeking = true
-                    position = fraction * duration
-                    mediaPlayer.controls().setTime(position.toLong())
-                },
-                onSeekFinished = { isSeeking = false },
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = formatMs(duration.toLong()),
-                color = Color.White,
-                fontSize = 12.sp,
+            },
+            onSeek = { fraction ->
+                isSeeking = true
+                position = fraction * duration
+                mediaPlayer.controls().setTime(position.toLong())
+            },
+            onSeekFinished = { isSeeking = false },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+}
+
+@Composable
+internal fun TransportBar(
+    isPlaying: Boolean,
+    position: Float,
+    duration: Float,
+    onTogglePlay: () -> Unit,
+    onSeek: (Float) -> Unit,
+    onSeekFinished: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Color.Black.copy(alpha = 0.5f))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        IconButton(onClick = onTogglePlay) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = stringResource(if (isPlaying) MR.string.cd_pause_video else MR.string.cd_play_video),
+                tint = Color.White,
             )
         }
+        Text(
+            text = formatMs(position.toLong()),
+            color = Color.White,
+            fontSize = 12.sp,
+        )
+        SeekBar(
+            fraction = if (duration > 0f) position / duration else 0f,
+            onSeek = onSeek,
+            onSeekFinished = onSeekFinished,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = formatMs(duration.toLong()),
+            color = Color.White,
+            fontSize = 12.sp,
+        )
     }
 }
 
