@@ -30,6 +30,8 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.isRoot
@@ -253,13 +255,29 @@ class ProfileCardEditorShotsTest {
     )
     private val contentTool = tool("What this card shows")
     private val familyCard = CardAudience.Circle(FAMILY_CIRCLE_ID, "Family")
+    private val workCard = CardAudience.Circle(WORK_CIRCLE_ID, "Work")
     private val longContentCircle = CardCircle("c-long", "Climbing partners from the Tuesday bouldering gym night")
     private val longContentCard = CardAudience.Circle(longContentCircle.id, longContentCircle.name)
     private val fullAttributes = listOf(
         attribute(ProfileAttributeTypes.EMAIL, ProfileAttributeTypes.KEY_EMAIL, "sam@shire.example", ProfileVisibility.ANONYMOUS),
         attribute(ProfileAttributeTypes.TWITTER, ProfileAttributeTypes.KEY_TWITTER, "samwise", ProfileVisibility.ANONYMOUS),
         attribute(ProfileAttributeTypes.LINKEDIN, ProfileAttributeTypes.KEY_LINKEDIN, "samwise-gamgee", ProfileVisibility.CONNECTED, listOf(WORK_CIRCLE_ID)),
+        attribute(ProfileAttributeTypes.FACEBOOK, ProfileAttributeTypes.KEY_FACEBOOK, "sam.gamgee", ProfileVisibility.CONNECTED),
     )
+    private val firstSwitch: ComposeUiTest.() -> Unit = {
+        onAllNodesWithContentDescription("on this card", substring = true).onFirst().performSemanticsAction(SemanticsActions.OnClick)
+        mainClock.advanceTimeBy(SETTLE_MS)
+    }
+    private val openLockedRow: ComposeUiTest.() -> Unit = {
+        onAllNodesWithContentDescription("Public, shown on every card", substring = true).onFirst().performSemanticsAction(SemanticsActions.OnClick)
+        mainClock.advanceTimeBy(SETTLE_MS)
+    }
+    private val scrollToEnd: ComposeUiTest.() -> Unit = {
+        mainClock.autoAdvance = true
+        onNodeWithText("sam.gamgee").performScrollTo()
+        mainClock.autoAdvance = false
+        mainClock.advanceTimeBy(SETTLE_MS)
+    }
 
     private val contentShots = listOf(
         Shot("k9-content-public", contentBase, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
@@ -270,10 +288,13 @@ class ProfileCardEditorShotsTest {
         Shot("k9-content-empty", base, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
         Shot("k9-content-wide", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = 900, heightDp = 820, act = contentTool),
         Shot("k9-content-family", contentBase.copy(cards = listOf(public, card(familyCard)), selectedAudience = familyCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-busy", contentBase.copy(selectedAudience = friendsCard, isContentBusy = true), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
+        Shot("k9-content-busy", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); firstSwitch() }),
         Shot("k9-content-long-circle", contentBase.copy(circles = contentCircles + longContentCircle, cards = listOf(public, card(longContentCard)), selectedAudience = longContentCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-everything", contentBase.copy(attributes = contentAttributes + fullAttributes), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-public-hint", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); onAllNodesWithText("Public, shown on every card").onFirst().performSemanticsAction(SemanticsActions.OnClick); mainClock.advanceTimeBy(SETTLE_MS) }),
+        Shot("k9-content-everything", contentBase.copy(attributes = contentAttributes + fullAttributes), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); scrollToEnd() }),
+        Shot("k9-content-everything-work", contentBase.copy(attributes = contentAttributes + fullAttributes, cards = listOf(public, card(workCard)), selectedAudience = workCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); scrollToEnd() }),
+        Shot("k9-content-wide-everything", contentBase.copy(attributes = contentAttributes + fullAttributes, selectedAudience = friendsCard), EditorStep.Customise, widthDp = 900, heightDp = 820, act = contentTool),
+        Shot("k9-content-small-font-scale", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, fontScale = 1.3f, widthDp = 360, heightDp = 640, act = contentTool),
+        Shot("k9-content-public-hint", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); openLockedRow() }),
     )
 
     @Test
@@ -400,8 +421,9 @@ class ProfileCardEditorShotsTest {
                 HomebaseTheme(darkTheme = dark, updatesSystemChrome = false) {
                     CardExpressiveTheme {
                         var step by remember { mutableStateOf(shot.step) }
+                        var uiState by remember { mutableStateOf(shot.state) }
                         ProfileCardEditorContent(
-                            uiState = shot.state,
+                            uiState = uiState,
                             step = step,
                             onStep = { step = it },
                             onBack = { step = EditorStep.Design },
@@ -411,6 +433,8 @@ class ProfileCardEditorShotsTest {
                             onSave = {},
                             onEditProfile = {},
                             snackbarHostState = remember { SnackbarHostState() },
+                            // A toggle leaves the save in flight, so the busy state shows on the row that was changed.
+                            onContentToggle = { _, _ -> uiState = uiState.copy(isContentBusy = true) },
                         ) { layoutWidth ->
                             when (shot.preview) {
                                 Preview.Ready -> StandInCard(shot.state.design, shot.state.overrides.palette, Modifier.fillMaxSize().laidOutAt(layoutWidth))

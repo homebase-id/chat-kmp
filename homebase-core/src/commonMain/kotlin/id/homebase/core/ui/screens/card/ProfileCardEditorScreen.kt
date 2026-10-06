@@ -160,6 +160,11 @@ private val DESIGN_STRIP_INSET = 20.dp
 private val CAPTION_LINE = 20.dp
 // The card keeps at least the rest of the height, so the controls never shrink it out of being the hero.
 private const val PANEL_MAX_SHARE = 0.55f
+private const val CONTENT_BODY_SHARE = 0.58f
+private const val CONTENT_PANEL_MAX_SHARE = 0.74f
+private const val LARGE_TEXT_CONTENT_SHARE = 0.12f
+// Top bar, the row's padding and the panel's own header and edges, which the wide Content list fills the rest beside.
+private val WIDE_CONTENT_CHROME = 220.dp
 private const val DISABLED_TILE_ALPHA = 0.38f
 private const val UNSELECTED_TILE_SCALE = 0.92f
 private const val LARGE_TILE_GROWTH = 1.25f
@@ -287,7 +292,16 @@ internal fun ProfileCardEditorContent(
             }
             // The viewer's sheet width: the preview lays the card out there and scales it down, so it wraps like the saved card.
             val cardWidth = minOf(maxWidth, WIDE_SHEET_MAX_WIDTH)
-            val panelMaxHeight = maxHeight * PANEL_MAX_SHARE
+            var contentOpen by remember { mutableStateOf(false) }
+            val textGrowth = (LocalDensity.current.fontScale - 1f).coerceIn(0f, 1f)
+            // The Content step is a list to read through, so it takes the room and the card steps back to a whole, smaller preview.
+            val contentBody = if (wide) {
+                maxHeight - WIDE_CONTENT_CHROME
+            } else {
+                // Large text makes every row taller, so the list takes more of the height to keep several rows in view.
+                maxOf(CARD_CONTENT_BODY_HEIGHT, maxHeight * (CONTENT_BODY_SHARE + LARGE_TEXT_CONTENT_SHARE * textGrowth))
+            }
+            val panelMaxHeight = maxHeight * if (contentOpen) CONTENT_PANEL_MAX_SHARE + LARGE_TEXT_CONTENT_SHARE * textGrowth else PANEL_MAX_SHARE
             val previewEdge by cardEdgeColor(
                 uiState.cardBottomArgb ?: uiState.overrides.palette?.ground?.let(::hexToArgb),
                 uiState.design,
@@ -305,6 +319,9 @@ internal fun ProfileCardEditorContent(
                     onContentToggle = onContentToggle,
                     onContentAudience = onContentAudience,
                     onContentAdd = onContentAdd,
+                    contentOpen = contentOpen,
+                    onContentOpen = { contentOpen = it },
+                    contentBody = contentBody,
                     metrics = metrics,
                     shape = shape,
                     modifier = modifier,
@@ -343,9 +360,9 @@ internal fun ProfileCardEditorContent(
                     }
                 } else {
                     CardPreviewFrame(
-                        keepProportions = false,
+                        keepProportions = contentOpen,
                         // A failure sits on a neutral plate, which a fade in the card's colour would only stain.
-                        fadeInto = if (uiState.loadFailed || uiState.cardFailed) null else ({ previewEdge }),
+                        fadeInto = if (uiState.loadFailed || uiState.cardFailed || contentOpen) null else ({ previewEdge }),
                         modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = PREVIEW_SIDE_INSET, vertical = metrics.gap),
                     ) { preview(cardWidth) }
                     panel(
@@ -364,11 +381,11 @@ internal fun ProfileCardEditorContent(
 }
 
 /** [body] is shared by both steps so the card above never resizes when the step changes. */
-private class PanelMetrics(val body: Dp, val content: Dp, val gap: Dp, val edge: Dp) {
+private class PanelMetrics(val body: Dp, val gap: Dp, val edge: Dp) {
     companion object {
-        val Regular = PanelMetrics(body = 144.dp, content = CARD_CONTENT_BODY_HEIGHT, gap = 8.dp, edge = 16.dp)
-        val Compact = PanelMetrics(body = 144.dp, content = CARD_CONTENT_BODY_HEIGHT, gap = 8.dp, edge = 8.dp)
-        val Wide = PanelMetrics(body = 236.dp, content = CARD_CONTENT_WIDE_BODY_HEIGHT, gap = 12.dp, edge = 24.dp)
+        val Regular = PanelMetrics(body = 144.dp, gap = 8.dp, edge = 16.dp)
+        val Compact = PanelMetrics(body = 144.dp, gap = 8.dp, edge = 8.dp)
+        val Wide = PanelMetrics(body = 236.dp, gap = 12.dp, edge = 24.dp)
     }
 }
 
@@ -490,6 +507,9 @@ private fun EditorPanel(
     onContentToggle: (Uuid, Boolean) -> Unit,
     onContentAudience: (Uuid, ProfileAudience) -> Unit,
     onContentAdd: (String, Map<String, String>) -> Unit,
+    contentOpen: Boolean,
+    onContentOpen: (Boolean) -> Unit,
+    contentBody: Dp,
     metrics: PanelMetrics,
     shape: Shape,
     modifier: Modifier = Modifier,
@@ -501,9 +521,8 @@ private fun EditorPanel(
     val grow = fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     // Grows with the text so a large font scale shortens the preview rather than clipping the controls.
     val optionsNeeded = CAPTION_LINE * fontScale + CHIP_HEIGHT * grow + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
-    var contentOpen by remember { mutableStateOf(false) }
     val body by animateDpAsState(
-        if (contentOpen) maxOf(metrics.content, optionsNeeded) else maxOf(metrics.body, optionsNeeded),
+        if (contentOpen) maxOf(contentBody, optionsNeeded) else maxOf(metrics.body, optionsNeeded),
         motion.defaultSpatialSpec(),
     )
     val items = uiState.contentItems
@@ -567,7 +586,7 @@ private fun EditorPanel(
                             onToggle = onContentToggle,
                             onAudience = onContentAudience,
                             onAdd = onContentAdd,
-                            onOpen = { contentOpen = it },
+                            onOpen = onContentOpen,
                         ),
                         gap = metrics.gap,
                         modifier = Modifier.fillMaxSize(),

@@ -390,7 +390,13 @@ private fun ToolItem(
             checked = selected,
             onCheckedChange = { onClick() },
             shapes = shapes,
-            colors = ToggleButtonDefaults.tonalToggleButtonColors(),
+            // Quiet at rest and a tonal pill when picked, so the picked tool never outweighs the step's own action.
+            colors = ToggleButtonDefaults.tonalToggleButtonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            ),
             contentPadding = PaddingValues(horizontal = 14.dp),
             modifier = Modifier
                 .revealWhenSelected(selected)
@@ -756,17 +762,20 @@ internal fun ScrollableChoiceRow(
 
 // Masks content under a gradient at whichever ends can still scroll, so hidden rows read as "more this way".
 @Composable
-private fun Modifier.fadingEdges(scroll: ScrollState): Modifier {
+internal fun Modifier.fadingEdges(scroll: ScrollState, vertical: Boolean = false): Modifier {
     val fade = with(LocalDensity.current) { FADE_LENGTH.toPx() }
-    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val rtl = !vertical && LocalLayoutDirection.current == LayoutDirection.Rtl
     return graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
         .drawWithContent {
             drawContent()
             val atStart = scroll.value > 0
             val atEnd = scroll.value < scroll.maxValue
-            val extent = size.width
-            fun mask(fromEdge: Float, towardInside: Float) =
+            val extent = if (vertical) size.height else size.width
+            fun mask(fromEdge: Float, towardInside: Float) = if (vertical) {
+                Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = fromEdge, endY = towardInside)
+            } else {
                 Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), startX = fromEdge, endX = towardInside)
+            }
             // Horizontal scroll runs from the end side in RTL, so "start" is the right edge there.
             val startEdge = if (rtl) extent else 0f
             val endEdge = if (rtl) 0f else extent
