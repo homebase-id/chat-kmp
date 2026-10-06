@@ -16,9 +16,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LocalTextStyle
@@ -32,22 +37,24 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import id.homebase.api.util.cleanDomain
+import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.widget.HomebaseIdField
 import id.homebase.resources.MR
+import id.homebase.resources.copied
 import id.homebase.resources.login_error_details_copy
 import id.homebase.resources.login_error_details_hide
 import id.homebase.resources.login_error_details_show
@@ -57,6 +64,7 @@ import id.homebase.resources.login_sign_in_button
 import id.homebase.resources.login_try_again_button
 import id.homebase.resources.timeout_in_seconds
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -285,7 +293,9 @@ private enum class ButtonContent { Busy, TryAgain, SignIn }
 @Composable
 private fun ErrorDetails(details: String) {
     var expanded by remember { mutableStateOf(false) }
-    val clipboard = LocalClipboardManager.current
+    var copied by remember(details) { mutableStateOf(false) }
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     val motion = MaterialTheme.motionScheme
 
     Spacer(modifier = Modifier.height(4.dp))
@@ -322,10 +332,21 @@ private fun ErrorDetails(details: String) {
                     )
                 }
                 TextButton(
-                    onClick = { clipboard.setText(AnnotatedString(details)) },
+                    onClick = {
+                        scope.launch { clipboard.setClipEntry(clipEntryOf(details)) }
+                        copied = true
+                    },
                     modifier = Modifier.align(Alignment.End).testTag("error_details_copy"),
                 ) {
-                    Text(stringResource(MR.string.login_error_details_copy))
+                    if (copied) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(ButtonDefaults.IconSize),
+                        )
+                        Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                    }
+                    Text(stringResource(if (copied) MR.string.copied else MR.string.login_error_details_copy))
                 }
             }
         }

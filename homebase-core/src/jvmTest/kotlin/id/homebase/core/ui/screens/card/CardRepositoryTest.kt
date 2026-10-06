@@ -1,0 +1,307 @@
+package id.homebase.core.ui.screens.card
+
+import id.homebase.api.client.ClientException
+import id.homebase.api.client.ProblemDetails
+import id.homebase.api.client.profile.ProfileAttributeTypes
+import id.homebase.api.client.profile.ProfileVisibility
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+
+class CardRepositoryTest {
+
+    private fun unknownType() = ClientException(
+        status = 400,
+        message = "Unknown profile attribute type 9832dc5dd4ba12dd60acb853e7588f49",
+        correlationId = null,
+        problem = ProblemDetails(status = 400, title = "Unknown profile attribute type 9832dc5dd4ba12dd60acb853e7588f49"),
+    )
+
+    @Test
+    fun publicCardRoundTripsWithUnknownExtraKeys() {
+        val data = Json.parseToJsonElement(
+            """{"design":"poster","overrides":{"socials":"bar"},"future":{"a":1}}""",
+        ) as JsonObject
+        val card = ProfileCard.from(profileCardAttribute(data))!!
+
+        assertEquals(CardAudience.Public, card.audience)
+        assertEquals("poster", card.design)
+        assertEquals(CardOverrides(socials = "bar"), card.overrides)
+        assertEquals(data, card.toData())
+    }
+
+    @Test
+    fun circleCardRoundTripsWithItsLabelAndPriority() {
+        val data = buildJsonObject { put("design", "dossier"); put("label", "Friends") }
+        val card = ProfileCard.from(profileCardAttribute(data, ProfileVisibility.CONNECTED, listOf("c1"), priority = 2))!!
+
+        assertEquals(CardAudience.Circle("c1", "Friends"), card.audience)
+        assertEquals(2, card.priority)
+        assertEquals(data, card.toData())
+    }
+
+    @Test
+    fun anUnknownDesignIsKeptVerbatim() {
+        val data = buildJsonObject { put("design", "hologram") }
+        assertEquals(data, ProfileCard.from(profileCardAttribute(data))!!.toData())
+    }
+
+    @Test
+    fun aCardWithoutADesignOrOfAnotherTypeIsNotACard() {
+        assertNull(ProfileCard.from(profileCardAttribute(JsonObject(emptyMap()))))
+        assertNull(ProfileCard.from(profileCardAttribute(buildJsonObject { put("design", "poster") }).copy(type = ProfileAttributeTypes.NAME)))
+    }
+
+    @Test
+    fun aFirstSaveCreatesTheAnonymousCardAtPublicPriority() = runTest {
+        val store = FakeCardStore()
+        assertTrue(CardRepository(store).savePublic(CardDesign.POSTER))
+
+        val write = store.writes.single()
+        assertEquals(ProfileVisibility.ANONYMOUS, write.visibility)
+        assertEquals(PUBLIC_CARD_PRIORITY, write.priority)
+        assertNull(write.id)
+        assertEquals(JsonPrimitive("poster"), write.data["design"])
+        assertFalse("label" in write.data)
+    }
+
+    @Test
+    fun aLaterSaveEditsTheExistingCardKeepingItsOverridesAndExtras() = runTest {
+        val existing = profileCardAttribute(
+            Json.parseToJsonElement("""{"design":"board","overrides":{"socials":"bar"},"future":1}""") as JsonObject,
+        )
+        val store = FakeCardStore(listOf(existing))
+        CardRepository(store).savePublic(CardDesign.COLLAGE)
+
+        val write = store.writes.single()
+        assertEquals(existing.id, write.id)
+        assertEquals(existing.versionTag, write.versionTag)
+        assertEquals(
+            Json.parseToJsonElement("""{"future":1,"design":"collage","overrides":{"socials":"bar"}}"""),
+            write.data,
+        )
+    }
+
+    @Test
+    fun switchingTheDesignDropsOverridesTheNewDesignDoesNotExpose() = runTest {
+        val existing = profileCardAttribute(
+            Json.parseToJsonElement(
+                """{"design":"dossier","overrides":{"palette":{"accent":"#ABCDEF"},"socials":"bar","portraits":[{"shape":"circle"}]}}""",
+            ) as JsonObject,
+        )
+        val store = FakeCardStore(listOf(existing))
+        CardRepository(store).savePublic(CardDesign.POSTER)
+
+        assertEquals(
+            Json.parseToJsonElement("""{"design":"poster","overrides":{"socials":"bar"}}"""),
+            store.writes.single().data,
+        )
+    }
+
+    @Test
+    fun cardsListsPublicAndCircleCards() = runTest {
+        val store = FakeCardStore(
+            listOf(
+                profileCardAttribute(buildJsonObject { put("design", "board") }),
+                profileCardAttribute(buildJsonObject { put("design", "poster"); put("label", "Fam") }, ProfileVisibility.CONNECTED, listOf("c"), 0),
+            ),
+        )
+        val cards = CardRepository(store).cards()
+
+        assertEquals(2, cards.size)
+        assertIs<CardAudience.Circle>(cards.single { it.priority == 0 }.audience)
+        assertEquals("board", cards.publicCard()?.design)
+    }
+
+    @Test
+    fun anUnsupportedServerIsRememberedAndNeverSurfacesAnError() = runTest {
+        val store = FakeCardStore().apply { failWith = unknownType() }
+        val repo = CardRepository(store)
+
+        assertFalse(repo.savePublic(CardDesign.POSTER))
+
+        store.failWith = IllegalStateException("must not be called again")
+        assertFalse(repo.savePublic(CardDesign.BOARD))
+        assertTrue(store.writes.isEmpty())
+    }
+
+    @Test
+    fun anyOtherFailureStillSurfaces() = runTest {
+        val store = FakeCardStore().apply {
+            failWith = ClientException(status = 400, message = "Bad", correlationId = null, problem = ProblemDetails(title = "Bad"))
+        }
+        var thrown: Exception? = null
+        try { CardRepository(store).savePublic(CardDesign.POSTER) } catch (e: ClientException) { thrown = e }
+        assertNotNull(thrown)
+    }
+
+    @Test
+    fun aConnectedCardWithNoCirclesOrSeveralIsNotACard() {
+        val data = buildJsonObject { put("design", "board") }
+        val none = profileCardAttribute(data, ProfileVisibility.CONNECTED, circles = emptyList())
+        val two = profileCardAttribute(data, ProfileVisibility.CONNECTED, circles = listOf("a", "b"))
+
+        assertTrue(listOf(none, two).profileCards().isEmpty())
+        assertNull(listOf(none, two).profileCards().publicCard())
+    }
+
+    @Test
+    fun anAuthenticatedCardIsNotThePublicCard() {
+        val data = buildJsonObject { put("design", "board") }
+        val cards = listOf(profileCardAttribute(data, ProfileVisibility.AUTHENTICATED)).profileCards()
+
+        assertNull(cards.publicCard())
+    }
+
+    private val friends = CardAudience.Circle("c-friends", "Friends")
+
+    @Test
+    fun addingACircleCardWritesItConnectedWithItsCircleLabelAndNextFreePriority() = runTest {
+        val store = FakeCardStore(
+            listOf(
+                profileCardAttribute(buildJsonObject { put("design", "board") }),
+                profileCardAttribute(buildJsonObject { put("design", "poster"); put("label", "Fam") }, ProfileVisibility.CONNECTED, listOf("c-fam"), 3),
+            ),
+        ).apply { keepWrites = true }
+
+        val result = CardRepository(store).addCircle(friends, CardDesign.DOSSIER, CardOverrides(socials = "bar"))
+
+        val write = store.writes.single()
+        assertEquals(ProfileVisibility.CONNECTED, write.visibility)
+        assertEquals(listOf("c-friends"), write.circleIds)
+        assertEquals(4, write.priority)
+        assertNull(write.id)
+        assertEquals(JsonPrimitive("Friends"), write.data["label"])
+        assertEquals(JsonPrimitive("dossier"), write.data["design"])
+        val added = assertIs<AddCircleCardResult.Added>(result).card
+        assertEquals(friends, added.audience)
+        assertEquals(4, added.priority)
+    }
+
+    @Test
+    fun aFirstCircleCardTakesPriorityZero() = runTest {
+        val store = FakeCardStore(listOf(profileCardAttribute(buildJsonObject { put("design", "board") }))).apply { keepWrites = true }
+        CardRepository(store).addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY)
+        assertEquals(0, store.writes.single().priority)
+    }
+
+    @Test
+    fun aServerThatDropsCircleIdsOnlyEverSeesAnOwnerOnlyCardWhichIsRemovedAndRemembered() = runTest {
+        val store = FakeCardStore(listOf(profileCardAttribute(buildJsonObject { put("design", "board") })))
+            .apply { keepWrites = true; dropCircleIds = true }
+        val repo = CardRepository(store)
+        assertTrue(repo.supportsCircleCards)
+
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY))
+
+        assertEquals(listOf(ProfileVisibility.OWNER), store.writes.map { it.visibility })
+        assertEquals(1, store.deleted.size)
+        assertEquals(1, store.attributes.size)
+        assertEquals(ProfileVisibility.ANONYMOUS, store.attributes.single().visibility)
+        assertFalse(repo.supportsCircleCards)
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY))
+        assertEquals(1, store.writes.size)
+    }
+
+    @Test
+    fun aThrowingCleanupOfTheOwnerOnlyCardIsNotAFailure() = runTest {
+        val store = FakeCardStore(listOf(profileCardAttribute(buildJsonObject { put("design", "board") })))
+            .apply { keepWrites = true; dropCircleIds = true; deleteThrows = IllegalStateException("offline") }
+        val repo = CardRepository(store)
+
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY))
+
+        assertFalse(repo.supportsCircleCards)
+        assertEquals(ProfileVisibility.OWNER, store.attributes.single { it.visibility != ProfileVisibility.ANONYMOUS }.visibility)
+        assertTrue(repo.cards().none { it.audience is CardAudience.Circle })
+    }
+
+    @Test
+    fun theUnsupportedAnswerIsRememberedForTheSessionButNotTheNext() = runTest {
+        val store = FakeCardStore(listOf(profileCardAttribute(buildJsonObject { put("design", "board") })))
+            .apply { keepWrites = true; dropCircleIds = true }
+        val repo = CardRepository(store)
+        repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY)
+
+        assertFalse(repo.supportsCircleCards)
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY))
+        assertEquals(1, store.writes.size)
+
+        assertTrue(CardRepository(store).supportsCircleCards)
+    }
+
+    @Test
+    fun aServerThatKeepsCirclesOnAnOwnerCardGetsItPromotedInPlace() = runTest {
+        val store = FakeCardStore(listOf(profileCardAttribute(buildJsonObject { put("design", "board") })))
+            .apply { keepWrites = true; circlesOnAnyVisibility = true }
+
+        val added = assertIs<AddCircleCardResult.Added>(CardRepository(store).addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY)).card
+
+        assertEquals(listOf(ProfileVisibility.OWNER, ProfileVisibility.CONNECTED), store.writes.map { it.visibility })
+        assertNull(store.writes[0].id)
+        assertEquals(added.id, store.writes[1].id)
+        assertEquals(listOf("c-friends"), store.writes[1].circleIds)
+        assertEquals(listOf(added), store.attributes.profileCards().filter { it.audience is CardAudience.Circle })
+    }
+
+    @Test
+    fun aStrayCardAlreadyGoneOnTheServerCountsAsRemoved() = runTest {
+        val store = FakeCardStore(listOf(profileCardAttribute(buildJsonObject { put("design", "board") })))
+            .apply { keepWrites = true; dropCircleIds = true; deleteResult = false }
+        val repo = CardRepository(store)
+
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY))
+        assertFalse(repo.supportsCircleCards)
+    }
+
+    @Test
+    fun anAddOnAServerWithoutTheCardTypeIsUnsupportedAndQuiet() = runTest {
+        val store = FakeCardStore().apply { failWith = unknownType() }
+        val repo = CardRepository(store)
+        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, CardDesign.BOARD, CardOverrides.EMPTY))
+        assertFalse(repo.supportsCircleCards)
+    }
+
+    @Test
+    fun editingACircleCardRewritesItInPlaceWithItsCircle() = runTest {
+        val existing = profileCardAttribute(buildJsonObject { put("design", "poster"); put("label", "Friends") }, ProfileVisibility.CONNECTED, listOf("c-friends"), 2)
+        val store = FakeCardStore(listOf(existing))
+        val card = ProfileCard.from(existing)!!.copy(design = CardDesign.COLLAGE)
+
+        assertTrue(CardRepository(store).saveCircle(card))
+
+        val write = store.writes.single()
+        assertEquals(existing.id, write.id)
+        assertEquals(existing.versionTag, write.versionTag)
+        assertEquals(2, write.priority)
+        assertEquals(listOf("c-friends"), write.circleIds)
+        assertEquals(JsonPrimitive("collage"), write.data["design"])
+        assertEquals(JsonPrimitive("Friends"), write.data["label"])
+    }
+
+    @Test
+    fun deletingACircleCardRemovesItAndThePublicCardCannotBeDeleted() = runTest {
+        val circle = profileCardAttribute(buildJsonObject { put("design", "poster") }, ProfileVisibility.CONNECTED, listOf("c-friends"), 0)
+        val public = profileCardAttribute(buildJsonObject { put("design", "board") })
+        val store = FakeCardStore(listOf(public, circle))
+        val repo = CardRepository(store)
+
+        assertTrue(repo.delete(ProfileCard.from(circle)!!))
+        assertEquals(listOf(circle.id), store.deleted)
+
+        var refused = false
+        try { repo.delete(ProfileCard.from(public)!!) } catch (e: IllegalArgumentException) { refused = true }
+        assertTrue(refused)
+        assertEquals(1, store.deleted.size)
+    }
+}

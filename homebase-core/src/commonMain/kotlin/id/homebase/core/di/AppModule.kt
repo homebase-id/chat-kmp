@@ -108,6 +108,8 @@ import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactService
 import id.homebase.core.ui.screens.card.CardPreferences
+import id.homebase.core.ui.screens.card.CardRepository
+import id.homebase.core.ui.screens.card.ProfileRepositoryCardStore
 import id.homebase.core.ui.screens.card.CardTapShare
 import id.homebase.core.ui.screens.card.DefaultProfileCardSource
 import id.homebase.core.ui.screens.card.ProfileCardSource
@@ -715,6 +717,7 @@ val appModule = module {
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
                 get<CardPreferences>().reset()
+                get<CardRepository>().reset()
                 get<ContactRepository>().apply { reset(); start() }
                 // Hydrate the saved-stickers tray for the new identity (mirror Vault).
                 get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
@@ -855,6 +858,7 @@ val appModule = module {
     singleOf(::HomebaseImageLoader)
     factoryOf(::DefaultProfileCardSource) bind ProfileCardSource::class
     singleOf(::CardPreferences)
+    single { CardRepository(ProfileRepositoryCardStore(get())) }
     singleOf(::CardTapShare)
     singleOf(::ChatMessageActionService)
     singleOf(::DiceRollPreferences)

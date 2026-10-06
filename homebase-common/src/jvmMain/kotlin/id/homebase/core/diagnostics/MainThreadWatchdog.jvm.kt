@@ -12,7 +12,7 @@ import java.util.concurrent.Executors
  * [Thread.getAllStackTraces] takes a one-shot snapshot of every thread's stack, so we read the
  * EDT's frames without having to interrupt it.
  */
-internal actual fun captureMainThreadStackTrace(maxFrames: Int): String? {
+actual fun captureMainThreadStackTrace(maxFrames: Int): String? {
     val edt = Thread.getAllStackTraces().entries
         .firstOrNull { it.key.name.startsWith("AWT-EventQueue") }
         ?: return null

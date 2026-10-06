@@ -34,6 +34,8 @@ object ProfileAttributeTypes {
     /** The short bio the public site's card shows; read-only here. */
     const val BIO_SUMMARY = "1d89f51a6e4240748d6b60916c0eec9a"
     const val LINK = "2a304a1348456ccd2234cd71a81bd338"
+    /** A profile card (`toGuidId("profile_card")`); the public card is the Anonymous one. */
+    const val PROFILE_CARD = "9832dc5dd4ba12dd60acb853e7588f49"
 
     // --- data keys: Name ---
     const val KEY_GIVEN_NAME = "givenName"

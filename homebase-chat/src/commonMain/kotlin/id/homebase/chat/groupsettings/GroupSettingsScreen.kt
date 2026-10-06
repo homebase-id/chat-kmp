@@ -628,6 +628,7 @@ fun GroupSettingsUi(
                             GroupFilesDiagnosticBlock(
                                 diagnostic = uiState.filesDiagnostic,
                                 selfDomain = uiState.currentOdinId?.domainName,
+                                snackbarHostState = snackbarHostState,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
                             )
                         }

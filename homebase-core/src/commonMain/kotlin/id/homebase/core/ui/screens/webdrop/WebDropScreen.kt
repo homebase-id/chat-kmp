@@ -27,15 +27,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import id.homebase.core.clipboard.rememberCopyToClipboard
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.ui.screens.webdrop.components.WebDropComposeSheet
@@ -56,7 +58,8 @@ fun WebDropScreen(
     onNavigateBack: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val clipboard = LocalClipboardManager.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
     val uriHandler = getUriHandler()
 
     LaunchedEffect(Unit) {
@@ -65,15 +68,16 @@ fun WebDropScreen(
                 WebDropUiEvent.CloseOnboarding -> onNavigateBack()
                 is WebDropUiEvent.ShareLink -> {
                     // Desktop/web shareText is a no-op; the sheet's copy button is the fallback.
-                    clipboard.setText(AnnotatedString(event.url))
+                    copyToClipboard(event.url)
                     uriHandler.shareText(event.url)
                 }
-                is WebDropUiEvent.CopyLink -> clipboard.setText(AnnotatedString(event.url))
+                is WebDropUiEvent.CopyLink -> copyToClipboard(event.url)
             }
         }
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {

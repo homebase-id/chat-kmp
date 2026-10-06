@@ -238,6 +238,8 @@ struct iOSApp: App {
 
         // Inject Crashlytics bridge into the Kotlin framework
         CrashlyticsBridgeHolder.shared.setBridge(bridge: CrashlyticsBridgeImpl())
+
+        ContinuedProcessingBridgeHolder.shared.bridge = ContinuedProcessingBridgeImpl()
     }
     
     var body: some Scene {

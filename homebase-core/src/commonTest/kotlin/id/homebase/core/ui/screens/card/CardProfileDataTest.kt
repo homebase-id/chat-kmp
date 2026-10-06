@@ -4,6 +4,7 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.common.OdinId
 import id.homebase.core.ui.screens.profile.ProfileEditViewModel
 import id.homebase.core.ui.screens.profile.ProfileField
 import id.homebase.core.ui.screens.profile.visiblePhoto
@@ -300,7 +301,8 @@ class CardProfileDataTest {
         )
         val json = cardJson.encodeToString(CardPayload.serializer(), built)
         val root = cardJson.parseToJsonElement(json).jsonObject
-        assertEquals(setOf("design", "data"), root.keys)
+        assertEquals(setOf("design", "data", "audience"), root.keys)
+        assertEquals(JsonPrimitive("public"), root.getValue("audience").jsonObject["kind"])
         assertEquals(JsonPrimitive("poster"), root["design"])
         val data = root.getValue("data").jsonObject
         assertEquals(
@@ -343,5 +345,134 @@ class CardProfileDataTest {
             data.getValue("posts").jsonArray.single(),
         )
         assertFalse("null" in json)
+    }
+
+    private val circleX = "0f2c1a8e-5b3d-4e6f-9a1b-2c3d4e5f6a7b"
+    private val circleY = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+
+    private fun circleRecord(type: String, key: String, value: String, vararg circles: String) = record(
+        type,
+        ProfileVisibility.CONNECTED,
+        mapOf(key to JsonPrimitive(value)),
+        AccessControlList("connected", circleIdList = circles.toList()),
+    )
+
+    private fun circlePayload(attributes: List<ProfileAttribute>, circle: String) = buildCardPayload(
+        odinId = odinId,
+        attributes = attributes,
+        design = CardDesign.BOARD,
+        photoSrc = null,
+        headerSrc = null,
+        tagLine = null,
+        audience = CardAudience.Circle(circle, "Circle"),
+    )
+
+    @Test
+    fun aFieldRestrictedToACircleIsInThatCirclesCardOnly() {
+        val attributes = records(ProfileVisibility.ANONYMOUS, ProfileField.STATUS to "Public status") + listOf(
+            circleRecord(ProfileAttributeTypes.TWITTER, ProfileAttributeTypes.KEY_TWITTER, "inner_circle", circleX),
+        )
+
+        assertEquals(listOf(CardSocial(type = "twitter", username = "inner_circle")), circlePayload(attributes, circleX).data.socials)
+        assertEquals(emptyList(), circlePayload(attributes, circleY).data.socials)
+        assertEquals(emptyList(), payload(attributes).data.socials)
+        assertEquals("Public status", circlePayload(attributes, circleX).data.headline)
+    }
+
+    @Test
+    fun aCircleCardPrefersTheCircleValueAndFallsBackToPublicOtherwise() {
+        val attributes = records(ProfileVisibility.ANONYMOUS, ProfileField.GIVEN_NAME to "Frodo") + records(
+            ProfileVisibility.CONNECTED,
+            ProfileField.GIVEN_NAME to "Mr. Frodo",
+        ).map { it.copy(acl = AccessControlList("connected", circleIdList = listOf(circleX))) }
+
+        assertEquals("Mr. Frodo", circlePayload(attributes, circleX).data.firstName)
+        assertEquals("Frodo", circlePayload(attributes, circleY).data.firstName)
+        assertEquals("Frodo", payload(attributes).data.firstName)
+    }
+
+    @Test
+    fun ownerOnlyAndIdentityLimitedRecordsNeverReachACircleCard() {
+        val attributes = records(ProfileVisibility.OWNER, ProfileField.STATUS to "Owner only") + record(
+            ProfileAttributeTypes.TWITTER,
+            ProfileVisibility.CONNECTED,
+            mapOf(ProfileAttributeTypes.KEY_TWITTER to JsonPrimitive("just_sam")),
+            AccessControlList("connected", odinIdList = listOf(OdinId("sam.dotyou.cloud"))),
+        )
+        val data = circlePayload(attributes, circleX).data
+        assertNull(data.headline)
+        assertEquals(emptyList(), data.socials)
+    }
+
+    @Test
+    fun aCircleCardSeesLinksAndBioForItsCircle() {
+        val attributes = listOf(
+            link("Public", "https://a.example"),
+            link("Circle", "https://b.example", ProfileVisibility.CONNECTED, acl = AccessControlList("connected", circleIdList = listOf(circleX))),
+            bio(ProfileVisibility.CONNECTED, "For friends", AccessControlList("connected", circleIdList = listOf(circleX))),
+        )
+        assertEquals(2, circlePayload(attributes, circleX).data.links.size)
+        assertEquals(1, circlePayload(attributes, circleY).data.links.size)
+        assertEquals(1, payload(attributes).data.links.size)
+        assertEquals("For friends", circlePayload(attributes, circleX).data.bio)
+        assertNull(payload(attributes).data.bio)
+    }
+
+    @Test
+    fun thePublicPayloadIsByteIdenticalToTheOneBeforeCircleCards() {
+        val onlyFrodo = AccessControlList("anonymous", odinIdList = listOf(OdinId("sam.dotyou.cloud")))
+        val inCircleX = AccessControlList("connected", circleIdList = listOf(circleX))
+        fun attr(type: String, key: String, value: String, tier: ProfileVisibility, acl: AccessControlList = AccessControlList(tier.wireValue)) =
+            record(type, tier, mapOf(key to JsonPrimitive(value)), acl)
+        fun name(value: String, tier: ProfileVisibility, acl: AccessControlList = AccessControlList(tier.wireValue)) =
+            attr(ProfileAttributeTypes.NAME, ProfileAttributeTypes.KEY_GIVEN_NAME, value, tier, acl)
+        fun status(value: String, tier: ProfileVisibility, acl: AccessControlList = AccessControlList(tier.wireValue)) =
+            attr(ProfileAttributeTypes.STATUS, ProfileAttributeTypes.KEY_STATUS, value, tier, acl)
+
+        val publicPhoto = photo(ProfileVisibility.ANONYMOUS)
+        val attributes = listOf(
+            name("Frodo", ProfileVisibility.ANONYMOUS),
+            name("Mr. Frodo", ProfileVisibility.AUTHENTICATED),
+            name("Frodo of the Shire", ProfileVisibility.CONNECTED),
+            name("Circle Frodo", ProfileVisibility.CONNECTED, inCircleX),
+            name("Sam's Frodo", ProfileVisibility.ANONYMOUS, onlyFrodo),
+            name("Owner Frodo", ProfileVisibility.OWNER),
+            status("Bag End, the Shire", ProfileVisibility.ANONYMOUS),
+            status("Auth status", ProfileVisibility.AUTHENTICATED),
+            status("Vetted status", ProfileVisibility.CONNECTED),
+            status("Circle status", ProfileVisibility.CONNECTED, inCircleX),
+            status("Sam status", ProfileVisibility.ANONYMOUS, onlyFrodo),
+            status("Owner status", ProfileVisibility.OWNER),
+            attr(ProfileAttributeTypes.TWITTER, ProfileAttributeTypes.KEY_TWITTER, "https://x.com/frodo", ProfileVisibility.ANONYMOUS),
+            attr(ProfileAttributeTypes.INSTAGRAM, ProfileAttributeTypes.KEY_INSTAGRAM, "frodo_insta", ProfileVisibility.CONNECTED),
+            attr(ProfileAttributeTypes.LINKEDIN, ProfileAttributeTypes.KEY_LINKEDIN, "frodo-li", ProfileVisibility.CONNECTED, inCircleX),
+            attr(ProfileAttributeTypes.FACEBOOK, ProfileAttributeTypes.KEY_FACEBOOK, "frodo.fb", ProfileVisibility.ANONYMOUS, onlyFrodo),
+            attr(ProfileAttributeTypes.TIKTOK, ProfileAttributeTypes.KEY_TIKTOK, "frodo_tt", ProfileVisibility.OWNER),
+            bio(ProfileVisibility.ANONYMOUS, "Ring-bearer."),
+            bio(ProfileVisibility.CONNECTED, "Ring-bearer, fond of mushrooms."),
+            bio(ProfileVisibility.CONNECTED, "Fellowship only.", inCircleX),
+            bio(ProfileVisibility.OWNER, "Still has the ring."),
+            link("Blog", "https://frodo.dotyou.cloud/posts", priority = 2),
+            link("Shop", "https://shire.me/shop", ProfileVisibility.ANONYMOUS, priority = 1),
+            link("Vetted", "https://shire.me/vetted", ProfileVisibility.CONNECTED, priority = 3),
+            link("Fellowship", "https://shire.me/fellowship", ProfileVisibility.CONNECTED, priority = 4, acl = inCircleX),
+            link("Sam", "https://shire.me/sam", ProfileVisibility.ANONYMOUS, priority = 5, acl = onlyFrodo),
+            link("Owner", "https://shire.me/owner", ProfileVisibility.OWNER, priority = 6),
+            publicPhoto,
+            photo(ProfileVisibility.CONNECTED),
+        )
+        assertEquals(publicPhoto, attributes.visiblePhoto(ProfileVisibility.ANONYMOUS))
+
+        val built = buildCardPayload(
+            odinId, attributes, CardDesign.BOARD,
+            photoSrc = "data:image/jpeg;base64,AAAA", headerSrc = null, tagLine = null,
+        )
+        assertEquals(EXPECTED_PRE_K5_PUBLIC_JSON, built.toJson())
+    }
+
+    private companion object {
+        // Captured from the code at 970553fbc, before circle cards.
+        const val EXPECTED_PRE_K5_PUBLIC_JSON =
+            """{"design":"board","data":{"odinId":"frodo.dotyou.cloud","firstName":"Frodo","displayName":"Frodo","headline":"Bag End, the Shire","bio":"Ring-bearer.","photo":{"src":"data:image/jpeg;base64,AAAA"},"links":[{"id":"1","text":"Shop","target":"https://shire.me/shop"},{"id":"2","text":"Blog","target":"https://frodo.dotyou.cloud/posts"}],"socials":[{"type":"twitter","username":"frodo"}],"posts":[]},"audience":{"kind":"public"}}"""
     }
 }

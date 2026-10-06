@@ -26,7 +26,13 @@ class LinkPreviewImageSizeTest {
 
     private val title = "Image Title"
 
-    private fun assertImageSize(cardWidth: Dp, thumbWidth: Int, thumbHeight: Int, expectedHeight: Dp) =
+    private fun assertImageSize(
+        cardWidth: Dp,
+        thumbWidth: Int,
+        thumbHeight: Int,
+        expectedHeight: Dp,
+        wideMaxHeight: Dp? = null,
+    ) =
         runComposeUiTest {
             setContent {
                 MaterialTheme {
@@ -52,6 +58,7 @@ class LinkPreviewImageSizeTest {
                                 content = onePxPngBase64,
                             ),
                             isUploading = true,
+                            wideImageMaxHeight = wideMaxHeight ?: 180.dp,
                         )
                     }
                 }
@@ -65,7 +72,16 @@ class LinkPreviewImageSizeTest {
     fun wideImageOnNarrowCard_followsAspectRatio() = assertImageSize(300.dp, 20, 10, 150.dp)
 
     @Test
-    fun wideImageOnWideCard_spansWidthAtCappedHeight() = assertImageSize(500.dp, 20, 10, 180.dp)
+    fun wideImageOnWideCard_withoutWideCap_spansWidthAtCappedHeight() = assertImageSize(500.dp, 20, 10, 180.dp)
+
+    @Test
+    fun wideImageOnBlockCaptionCard_followsAspectRatio() = assertImageSize(880.dp, 20, 10, 440.dp, wideMaxHeight = 480.dp)
+
+    @Test
+    fun squareImageOnPhoneBlockCard_keepsPhoneCap() = assertImageSize(380.dp, 10, 10, 180.dp, wideMaxHeight = 480.dp)
+
+    @Test
+    fun veryWideImageOnBlockCaptionCard() = assertImageSize(880.dp, 100, 10, 220.dp, wideMaxHeight = 480.dp)
 
     @Test
     fun veryWideImage_clampsToFourToOne() = assertImageSize(300.dp, 100, 10, 75.dp)
