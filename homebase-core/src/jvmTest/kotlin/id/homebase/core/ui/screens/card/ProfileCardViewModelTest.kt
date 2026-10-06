@@ -79,7 +79,7 @@ class ProfileCardViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private class FakeHost : CardHost {
+    internal class FakeHost : CardHost {
         val emitted = MutableSharedFlow<CardEvent>(extraBufferCapacity = 16)
         override val events: SharedFlow<CardEvent> = emitted
         override val isLoaded = MutableStateFlow(true)
@@ -113,7 +113,7 @@ class ProfileCardViewModelTest {
         fun send(event: CardEvent) = check(emitted.tryEmit(event))
     }
 
-    private class FakeSource(
+    internal class FakeSource(
         var attributes: List<ProfileAttribute>,
         private val defaults: suspend () -> CardSiteDefaults = { CardSiteDefaults(design = CardDesign.POSTER) },
         private val posts: suspend () -> List<CardPostEntry> = { emptyList() },
@@ -222,7 +222,7 @@ class ProfileCardViewModelTest {
         data = JsonObject(mapOf(ProfileAttributeTypes.KEY_GIVEN_NAME to JsonPrimitive(givenName))),
     )
 
-    private val profile = listOf(
+    internal val profile = listOf(
         name(ProfileVisibility.ANONYMOUS, "Frodo"),
         name(ProfileVisibility.CONNECTED, "Mr. Frodo"),
         photo(ProfileVisibility.ANONYMOUS, "pub_photo"),
@@ -1008,12 +1008,12 @@ class ProfileCardViewModelTest {
     private fun cardAttribute(card: ProfileCard, visibility: ProfileVisibility, circleId: String? = null) =
         profileCardAttribute(card.toData(), visibility, circleId?.let { listOf(it) }, card.priority)
 
-    private val publicCardAttribute = cardAttribute(
+    internal val publicCardAttribute = cardAttribute(
         ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, CardDesign.BOARD),
         ProfileVisibility.ANONYMOUS,
     )
 
-    private fun circleCardAttribute(id: String, label: String, design: String, priority: Int, overrides: CardOverrides = CardOverrides.EMPTY) =
+    internal fun circleCardAttribute(id: String, label: String, design: String, priority: Int, overrides: CardOverrides = CardOverrides.EMPTY) =
         cardAttribute(
             ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Circle(id, label), design, overrides, priority),
             ProfileVisibility.CONNECTED,
@@ -1063,6 +1063,59 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun introTilesAreStillsOfEachRealCardAndTheHostGoesBackToTheViewedCard() = runTest(dispatcher) {
+        val host = FakeHost()
+        host.onRender = { host.send(CardEvent.Ready(layout = it.design, ms = 1)) }
+        host.onPaintRequest = { host.send(CardEvent.Painted) }
+        val vm = viewModel(
+            host,
+            FakeSource(profile + publicCardAttribute + circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 0, CardOverrides.EMPTY)),
+        )
+        val before = host.rendered.size
+
+        vm.captureIntroTiles()
+
+        val labels = host.rendered.drop(before).map { it.audience?.label ?: "public" }
+        assertEquals(listOf("public", "Family", "Friends", "public"), labels)
+        assertEquals(setOf("public", FAMILY_CIRCLE_ID.lowercase(), FRIENDS_CIRCLE_ID.lowercase()), vm.introTiles.value.keys)
+        assertEquals(CardDesign.DOSSIER, host.rendered.drop(before)[2].design)
+
+        val rendersAfterFirstPass = host.rendered.size
+        vm.captureIntroTiles()
+        assertEquals(rendersAfterFirstPass, host.rendered.size)
+    }
+
+    @Test
+    fun noSnapshotLeavesTheTilesAsPlaceholders() = runTest(dispatcher) {
+        val fake = FakeHost()
+        fake.onRender = { fake.send(CardEvent.Ready(layout = it.design, ms = 1)) }
+        fake.onPaintRequest = { fake.send(CardEvent.Painted) }
+        val host = object : CardHost by fake {
+            override suspend fun snapshot(): ImageBitmap? = null
+        }
+        val vm = viewModel(host, FakeSource(profile))
+
+        vm.captureIntroTiles()
+
+        assertTrue(vm.introTiles.value.isEmpty())
+    }
+
+    @Test
+    fun capturingStopsOnceTheViewerOpens() = runTest(dispatcher) {
+        val host = FakeHost()
+        host.onRender = { host.send(CardEvent.Ready(layout = it.design, ms = 1)) }
+        host.onPaintRequest = { host.send(CardEvent.Painted) }
+        val vm = viewModel(host, FakeSource(profile))
+        vm.onCardOpened(CardAudience.Public)
+        val before = host.rendered.size
+
+        vm.captureIntroTiles()
+
+        assertEquals(before, host.rendered.size)
+        assertTrue(vm.introTiles.value.isEmpty())
+    }
+
+    @Test
     fun switchingCardChangesAudienceDesignAndOverrides() = runTest(dispatcher) {
         val host = FakeHost()
         val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
@@ -1075,7 +1128,7 @@ class ProfileCardViewModelTest {
         assertEquals(CardDesign.BOARD, vm.uiState.value.design)
         assertTrue(vm.uiState.value.overrides.isEmpty())
 
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
 
         assertEquals(friends, vm.uiState.value.selectedAudience)
         assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
@@ -1089,7 +1142,7 @@ class ProfileCardViewModelTest {
         assertTrue(payload.toJson().contains(""""overrides":{"palette":{"accent":"#ff0000"}}"""))
         assertTrue(payload.toJson().contains(""""audience":{"kind":"circle","label":"Friends"}"""))
 
-        vm.onCardSelected(CardAudience.Public)
+        vm.onCardOpened(CardAudience.Public)
 
         assertEquals(CardDesign.BOARD, vm.uiState.value.design)
         assertTrue(vm.uiState.value.overrides.isEmpty())
@@ -1180,7 +1233,7 @@ class ProfileCardViewModelTest {
         val vm = viewModel(host, FakeSource(profile + publicCardAttribute))
         val renders = host.rendered.size
 
-        vm.onCardSelected(CardAudience.Circle("nope", "Nope"))
+        vm.onCardOpened(CardAudience.Circle("nope", "Nope"))
 
         assertEquals(CardAudience.Public, vm.uiState.value.selectedAudience)
         assertEquals(renders, host.rendered.size)
@@ -1204,7 +1257,7 @@ class ProfileCardViewModelTest {
         val host = FakeHost()
         val source = FakeSource(profile + publicCardAttribute + circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 0))
         val vm = viewModel(host, source)
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
 
         vm.onScreenShown()
         advanceUntilIdle()
@@ -1219,7 +1272,7 @@ class ProfileCardViewModelTest {
         val host = FakeHost()
         val source = FakeSource(profile + publicCardAttribute + circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 0))
         val vm = viewModel(host, source)
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         assertEquals("circle", host.rendered.last().audience?.kind)
 
         source.circleList = listOf(family)
@@ -1238,7 +1291,7 @@ class ProfileCardViewModelTest {
         val source = FakeSource(profile + publicCardAttribute + circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 0))
         val vm = viewModel(host, source)
         host.send(CardEvent.Ready(layout = CardDesign.BOARD, ms = 1))
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         host.send(CardEvent.Ready(layout = CardDesign.DOSSIER, ms = 1))
         assertEquals("circle", host.rendered.last().audience?.kind)
 
@@ -1270,7 +1323,7 @@ class ProfileCardViewModelTest {
         )
         val vm = viewModel(host, source)
         host.send(CardEvent.Ready(layout = CardDesign.BOARD, ms = 1))
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         host.send(CardEvent.Ready(layout = CardDesign.DOSSIER, ms = 1))
 
         val atExport = mutableListOf<CardPayload>()
@@ -1283,7 +1336,7 @@ class ProfileCardViewModelTest {
         vm.onShareClicked()
         assertTrue(vm.uiState.value.isExporting)
 
-        vm.onCardSelected(CardAudience.Circle(FAMILY_CIRCLE_ID, "Family"))
+        vm.onCardOpened(CardAudience.Circle(FAMILY_CIRCLE_ID, "Family"))
         assertEquals(friends, vm.uiState.value.selectedAudience)
 
         host.send(CardEvent.Ready(layout = CardDesign.BOARD, ms = 1))
@@ -1312,7 +1365,7 @@ class ProfileCardViewModelTest {
         )
         val vm = viewModel(host, source)
         host.send(CardEvent.Ready(layout = CardDesign.BOARD, ms = 1))
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         host.send(CardEvent.Ready(layout = CardDesign.DOSSIER, ms = 1))
 
         val atExport = mutableListOf<CardPayload>()
@@ -1374,7 +1427,7 @@ class ProfileCardViewModelTest {
         val store = FakeCardStore(keepWrites = true, attributes = listOf(public))
         val (vm, _, host) = circleVm(store)
 
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
         assertEquals(overrides, vm.uiState.value.overrides)
         assertEquals(CardDesign.DOSSIER, host.rendered.last().design)
@@ -1398,7 +1451,7 @@ class ProfileCardViewModelTest {
     fun savingASecondTimeAfterTheFirstUpdatesTheSameAttribute() = runTest(dispatcher) {
         val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute))
         val (vm, _, _) = circleVm(store)
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         vm.onDesignSelected(CardDesign.POSTER)
         vm.onSaveDesign()
         advanceUntilIdle()
@@ -1431,7 +1484,7 @@ class ProfileCardViewModelTest {
         val (vm, _, _) = circleVm(store)
         val familyCard = CardAudience.Circle(FAMILY_CIRCLE_ID, "Family")
         assertEquals(10, vm.uiState.value.cards.first { it.audience == familyCard }.priority)
-        vm.onCardSelected(familyCard)
+        vm.onCardOpened(familyCard)
         vm.onDesignSelected(CardDesign.POSTER)
         vm.onSaveDesign()
         advanceUntilIdle()
@@ -1482,7 +1535,7 @@ class ProfileCardViewModelTest {
             failWith = ClientException(status = 400, message = unknownCardType, correlationId = null, problem = ProblemDetails(status = 400, title = unknownCardType))
         }
         val (vm, _, _) = circleVm(store)
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         vm.onDesignSelected(CardDesign.POSTER)
         val event = async { vm.events.first() }
 
@@ -1501,7 +1554,7 @@ class ProfileCardViewModelTest {
     fun editingACircleCardSavesItScopedAndNeverTouchesThePublicCard() = runTest(dispatcher) {
         val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.BOARD, 2)))
         val (vm, source, host) = circleVm(store)
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
 
         vm.onDesignSelected(CardDesign.POSTER)
         vm.onOptionSelected(CardOption.SOCIALS_STYLE, "bar")
@@ -1532,7 +1585,7 @@ class ProfileCardViewModelTest {
     fun anOptionChangeOnACircleCardRendersBeforeSave() = runTest(dispatcher) {
         val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.POSTER, 0)))
         val (vm, _, host) = circleVm(store)
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         advanceUntilIdle()
 
         vm.onOptionSelected(CardOption.SOCIALS_STYLE, "bar")
@@ -1546,7 +1599,7 @@ class ProfileCardViewModelTest {
     fun aFailedCircleCardSaveKeepsThePreview() = runTest(dispatcher) {
         val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.BOARD, 0)))
         val (vm, _, _) = circleVm(store)
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         vm.onDesignSelected(CardDesign.POSTER)
         store.failWith = IllegalStateException("offline")
         val event = async { vm.events.first() }
@@ -1564,7 +1617,7 @@ class ProfileCardViewModelTest {
         val circle = circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 20)
         val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circle))
         val (vm, _, host) = circleVm(store)
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
 
         vm.onResetCardConfirmed()
@@ -1604,7 +1657,7 @@ class ProfileCardViewModelTest {
         val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 20)))
             .apply { deleteThrows = IllegalStateException("offline") }
         val (vm, _, _) = circleVm(store)
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         val event = async { vm.events.first() }
 
         vm.onResetCardConfirmed()
@@ -1632,7 +1685,7 @@ class ProfileCardViewModelTest {
     @Test
     fun aNeverSavedCircleCardCannotBeReset() = runTest(dispatcher) {
         val (vm, _, _) = circleVm(FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute)))
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         assertEquals(Uuid.NIL, vm.uiState.value.selectedCard?.id)
         assertFalse(vm.uiState.value.canReset)
     }
@@ -1641,7 +1694,7 @@ class ProfileCardViewModelTest {
     fun aStoredCircleCardCanBeReset() = runTest(dispatcher) {
         val circle = circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 20)
         val (vm, _, _) = circleVm(FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circle)))
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         assertTrue(vm.uiState.value.canReset)
     }
 
@@ -1692,7 +1745,7 @@ class ProfileCardViewModelTest {
         val wire = CardWireHarness()
         val (vm, host) = wireCircleVm(wire, listOf(publicCardAttribute))
         awaitUntil { vm.uiState.value.cards.size == 3 }
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         vm.onDesignSelected(CardDesign.POSTER)
 
         vm.onSaveDesign()
@@ -1714,7 +1767,7 @@ class ProfileCardViewModelTest {
         val circle = circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.BOARD, 2)
         val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute, circle))
         awaitUntil { vm.uiState.value.cards.size == 3 }
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         vm.onDesignSelected(CardDesign.POSTER)
 
         vm.onSaveDesign()
@@ -1734,7 +1787,7 @@ class ProfileCardViewModelTest {
         val wire = CardWireHarness(cardType = false)
         val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute))
         awaitUntil { vm.uiState.value.cards.size == 3 }
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         vm.onDesignSelected(CardDesign.POSTER)
         val event = async { vm.events.first() }
 
@@ -1752,7 +1805,7 @@ class ProfileCardViewModelTest {
         val circle = circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 20)
         val (vm, host) = wireCircleVm(wire, listOf(publicCardAttribute, circle))
         awaitUntil { vm.uiState.value.cards.size == 3 }
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
 
         vm.onResetCardConfirmed()
         awaitUntil { wire.deletes == 1 && !vm.uiState.value.isCardBusy && vm.uiState.value.design == CardDesign.BOARD }
@@ -1769,7 +1822,7 @@ class ProfileCardViewModelTest {
         val circle = circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 20)
         val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute, circle))
         awaitUntil { vm.uiState.value.cards.size == 3 }
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         wire.removeForTest(circle.id)
 
         vm.onResetCardConfirmed()
@@ -1784,7 +1837,7 @@ class ProfileCardViewModelTest {
         val circle = circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 20)
         val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute, circle))
         awaitUntil { vm.uiState.value.cards.size == 3 }
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         val event = async { vm.events.first() }
 
         vm.onResetCardConfirmed()
@@ -1803,11 +1856,11 @@ class ProfileCardViewModelTest {
         val vm = viewModel(host, FakeSource(attributes))
 
         assertEquals("Frodo", host.rendered.last().data.firstName)
-        vm.onCardSelected(friends)
+        vm.onCardOpened(friends)
         assertEquals("Friend Frodo", host.rendered.last().data.firstName)
-        vm.onCardSelected(CardAudience.Circle(FAMILY_CIRCLE_ID, "Family"))
+        vm.onCardOpened(CardAudience.Circle(FAMILY_CIRCLE_ID, "Family"))
         assertEquals("Family Frodo", host.rendered.last().data.firstName)
-        vm.onCardSelected(CardAudience.Public)
+        vm.onCardOpened(CardAudience.Public)
         assertEquals("Frodo", host.rendered.last().data.firstName)
     }
 

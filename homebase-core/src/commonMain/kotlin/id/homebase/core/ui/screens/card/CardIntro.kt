@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,6 +35,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import id.homebase.core.util.isDesktopOrWeb
+import kotlinx.coroutines.flow.first
+import kotlin.math.max
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -47,6 +60,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import id.homebase.resources.MR
 import id.homebase.resources.close
 import id.homebase.resources.profile_edit_load_failed
@@ -58,32 +72,57 @@ import org.jetbrains.compose.resources.stringResource
 private val INTRO_MIN_TILE_WIDTH = 150.dp
 private val INTRO_MAX_WIDTH = 960.dp
 private val INTRO_TILE_CORNER = 20.dp
+private val CAPTURE_HOST_WIDTH = 240.dp
+private val CAPTURE_LAYOUT_WIDTH = 360.dp
+private val TILE_ICON_SIZE = 18.sp
 
-/** Every fixed card side by side, each titled by its circle; the pick opens the viewer. Tiles are native schematics, so four cost no WebView. */
+/**
+ * Every fixed card side by side, each titled by its circle; the pick opens the viewer. Each tile is a still of the
+ * user's real card, taken from the one shared host through [onCapture]; until it lands the tile is a schematic.
+ */
 @Composable
 @Suppress("DEPRECATION")
 internal fun CardIntro(
     uiState: ProfileCardUiState,
+    tiles: Map<String, ImageBitmap>,
+    host: CardHost?,
+    revision: Int,
     onOpen: (CardAudience) -> Unit,
     onClose: () -> Unit,
     onRetry: () -> Unit,
-    onPainted: (titles: List<String>) -> Unit,
+    onCapture: suspend () -> Unit,
+    onTilePainted: (CardAudience) -> Unit,
 ) {
     BackHandler(onBack = onClose)
-    val titles = uiState.cards.map { audienceLabel(it.audience) }
-    LaunchedEffect(titles) {
-        if (titles.isNotEmpty()) {
-            withFrameNanos { }
-            onPainted(titles)
-        }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    // Attaching the WebView costs frames, which would swallow the enter transition.
+    var attached by remember { mutableStateOf(false) }
+    LaunchedEffect(lifecycle) {
+        lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.RESUMED) }
+        attached = true
     }
+    // Desktop and web hand back no snapshot, and their native view cannot sit under Compose content.
+    val capturing = host != null && attached && !uiState.viewing && uiState.cards.isNotEmpty() && !isDesktopOrWeb()
+    LaunchedEffect(capturing, host, revision, uiState.cards) {
+        if (capturing) onCapture()
+    }
+    val fontScale = LocalDensity.current.fontScale
     CardExpressiveTheme {
         Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer)) {
+            // Occluded by the opaque content below: it only has to be attached and laid out for the snapshot.
+            if (capturing && host != null) {
+                CardHostView(
+                    host = host,
+                    modifier = Modifier.size(width = CAPTURE_HOST_WIDTH, height = CAPTURE_HOST_WIDTH / CARD_THUMB_ASPECT),
+                    layoutWidth = CAPTURE_LAYOUT_WIDTH,
+                )
+            }
             Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .widthIn(max = INTRO_MAX_WIDTH)
-                    .fillMaxSize(),
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surfaceContainer),
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -113,7 +152,8 @@ internal fun CardIntro(
                         ContainedLoadingIndicator()
                     }
                     else -> LazyVerticalGrid(
-                        columns = GridCells.Adaptive(INTRO_MIN_TILE_WIDTH),
+                        // Large type needs a wider tile, or a circle name breaks mid-word.
+                        columns = GridCells.Adaptive(INTRO_MIN_TILE_WIDTH * max(1f, fontScale)),
                         contentPadding = PaddingValues(16.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                         verticalArrangement = Arrangement.spacedBy(20.dp),
@@ -122,7 +162,12 @@ internal fun CardIntro(
                             .windowInsetsPadding(WindowInsets.navigationBars),
                     ) {
                         items(uiState.cards, key = { audienceKey(it.audience) }) { card ->
-                            IntroTile(card = card, onClick = { onOpen(card.audience) })
+                            IntroTile(
+                                card = card,
+                                still = tiles[audienceKey(card.audience)],
+                                onClick = { onOpen(card.audience) },
+                                onPainted = { onTilePainted(card.audience) },
+                            )
                         }
                     }
                 }
@@ -131,17 +176,28 @@ internal fun CardIntro(
     }
 }
 
-private fun audienceKey(audience: CardAudience): String = when (audience) {
+internal fun audienceKey(audience: CardAudience): String = when (audience) {
     CardAudience.Public -> "public"
     is CardAudience.Circle -> audience.id.lowercase()
 }
 
 @Composable
-private fun IntroTile(card: ProfileCard, onClick: () -> Unit) {
+private fun IntroTile(card: ProfileCard, still: ImageBitmap?, onClick: () -> Unit, onPainted: () -> Unit) {
     val title = audienceLabel(card.audience)
     val open = stringResource(MR.string.profile_card_intro_open, title)
     val palette = card.overrides.palette
     val shape = RoundedCornerShape(INTRO_TILE_CORNER)
+    val cardModifier = Modifier
+        .fillMaxWidth()
+        .aspectRatio(CARD_THUMB_ASPECT)
+        .clip(shape)
+        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+    LaunchedEffect(still) {
+        if (still != null) {
+            withFrameNanos { }
+            onPainted()
+        }
+    }
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
@@ -151,7 +207,11 @@ private fun IntroTile(card: ProfileCard, onClick: () -> Unit) {
             .padding(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(audienceIcon(card.audience), contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(
+                audienceIcon(card.audience),
+                contentDescription = null,
+                modifier = Modifier.size(with(LocalDensity.current) { TILE_ICON_SIZE.toDp() }),
+            )
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMediumEmphasized,
@@ -159,15 +219,15 @@ private fun IntroTile(card: ProfileCard, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        CardDesignThumbnail(
-            design = card.design,
-            groundOverride = palette?.ground?.let { Color(hexToArgb(it)) },
-            inkOverride = palette?.ink?.let { Color(hexToArgb(it)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(CARD_THUMB_ASPECT)
-                .clip(shape)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
-        )
+        if (still != null) {
+            Image(bitmap = still, contentDescription = null, contentScale = ContentScale.Crop, modifier = cardModifier)
+        } else {
+            CardDesignThumbnail(
+                design = card.design,
+                groundOverride = palette?.ground?.let { Color(hexToArgb(it)) },
+                inkOverride = palette?.ink?.let { Color(hexToArgb(it)) },
+                modifier = cardModifier,
+            )
+        }
     }
 }

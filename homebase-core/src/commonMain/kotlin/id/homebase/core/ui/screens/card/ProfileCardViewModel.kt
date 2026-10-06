@@ -71,6 +71,7 @@ private const val TAG = "ProfileCard"
 
 private val EXPORT_TIMEOUT = 30.seconds
 private val PAINT_TIMEOUT = 1.5.seconds
+private val INTRO_READY_TIMEOUT = 5.seconds
 
 class CardCover(val design: String, val image: ImageBitmap)
 
@@ -326,6 +327,12 @@ class ProfileCardViewModel(
     private var publishJob: Job? = null
     private var shownBefore = false
     private var shownAt: TimeMark? = null
+    private val tilesLogged = mutableSetOf<String>()
+    private val tilePayloads = mutableMapOf<String, CardPayload>()
+    private val _introTiles = MutableStateFlow<Map<String, ImageBitmap>>(emptyMap())
+    val introTiles: StateFlow<Map<String, ImageBitmap>> = _introTiles.asStateFlow()
+    private val _introRevision = MutableStateFlow(0)
+    val introRevision: StateFlow<Int> = _introRevision.asStateFlow()
     private var hostJob: Job? = null
     private var loadJob: Job? = null
     private var postsJob: Job? = null
@@ -391,16 +398,12 @@ class ProfileCardViewModel(
         _uiState.update { it.copy(isSwitchingDesign = true) }
     }
 
-    fun onCardSelected(audience: CardAudience) {
-        if (_uiState.value.isExporting) return
-        selectAudience(audience)
-    }
-
     /** The intro's pick: the card opens in the viewer. */
     fun onCardOpened(audience: CardAudience) {
         val state = _uiState.value
-        if (state.isExporting || state.cards.none { it.audience.isSameAs(audience) }) return
-        selectAudience(state.cards.first { it.audience.isSameAs(audience) }.audience)
+        val card = state.cards.firstOrNull { it.audience.isSameAs(audience) }
+        if (state.isExporting || card == null) return
+        selectAudience(card.audience)
         _uiState.update { it.copy(viewing = true) }
     }
 
@@ -408,11 +411,55 @@ class ProfileCardViewModel(
         _uiState.update { it.copy(viewing = false) }
     }
 
-    fun onIntroPainted(titles: List<String>) {
+    fun onIntroTilePainted(audience: CardAudience) {
         val shown = shownAt ?: return
-        shownAt = null
-        val total = shown.elapsedNow()
-        titles.forEach { Logger.i(tag = TAG) { "card intro first paint: \"$it\" ${total.inWholeMilliseconds}ms (${titles.size} cards, all in one frame)" } }
+        if (!tilesLogged.add(audienceKey(audience))) return
+        Logger.i(tag = TAG) {
+            "card intro first paint: \"${audience.logName()}\" ${shown.elapsedNow().inWholeMilliseconds}ms (${_uiState.value.cards.size} cards)"
+        }
+    }
+
+    private fun CardAudience.logName() = when (this) {
+        CardAudience.Public -> "Public"
+        is CardAudience.Circle -> label
+    }
+
+    /**
+     * Renders each card into the one shared host and keeps a still of it for the intro's tile. Stills that already
+     * match the card's current payload are kept; the host goes back to the card the viewer shows when done or cancelled.
+     */
+    suspend fun captureIntroTiles() {
+        val host = _host.value ?: return
+        host.isLoaded.first { it }
+        var touched = false
+        try {
+            for (card in _uiState.value.cards) {
+                if (_uiState.value.viewing || _uiState.value.isExporting) return
+                val key = audienceKey(card.audience)
+                val design = if (card.audience == CardAudience.Public) _uiState.value.savedDesign else card.design
+                val payload = payloadFor(design, card.audience) ?: return
+                if (tilePayloads[key] == payload && key in _introTiles.value) continue
+                val ready = withTimeoutOrNull(INTRO_READY_TIMEOUT) {
+                    host.events.onSubscription { touched = true; host.render(payload) }.first { it is CardEvent.Ready }
+                }
+                if (ready == null) {
+                    Logger.w(tag = TAG) { "card intro: no ready reply for ${card.audience.logName()}" }
+                    continue
+                }
+                withTimeoutOrNull(PAINT_TIMEOUT) {
+                    host.events.onSubscription { host.requestPaint() }.first { it is CardEvent.Painted }
+                }
+                val image = attempt("capturing the ${card.audience.logName()} intro tile") { host.snapshot() }
+                if (image == null) {
+                    Logger.i(tag = TAG) { "card intro: no snapshot for ${card.audience.logName()}, tile stays a placeholder" }
+                    return
+                }
+                tilePayloads[key] = payload
+                _introTiles.update { it + (key to image) }
+            }
+        } finally {
+            if (touched) lastRendered?.let(host::render)
+        }
     }
 
     private fun selectAudience(audience: CardAudience) {
@@ -590,6 +637,7 @@ class ProfileCardViewModel(
     /** Picks up profile edits made since the pre-warm; the warm card shows until they land. */
     fun onScreenShown() {
         shownAt = TimeSource.Monotonic.markNow()
+        tilesLogged.clear()
         startHost()
         // A publish that failed with the grant in place has no button of its own; each showing retries it.
         if (designAccess == null && publishJob?.isActive != true) unpublishedDesign?.let(::publishDesign)
@@ -816,6 +864,7 @@ class ProfileCardViewModel(
         val state = _uiState.value
         _cover.update { cover -> cover?.takeIf { it.design == state.savedDesign } }
         if (content == null) return
+        _introRevision.update { it + 1 }
         renderJob?.cancel()
         renderJob = viewModelScope.launch {
             val payload = payloadFor(state.design, state.selectedAudience) ?: return@launch

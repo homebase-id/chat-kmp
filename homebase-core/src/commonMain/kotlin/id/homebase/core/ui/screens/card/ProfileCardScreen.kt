@@ -274,12 +274,19 @@ fun ProfileCardScreen(
         if (viewing) {
             ProfileCardViewer(viewModel = viewModel, onBack = viewModel::onIntroReturned, onEdit = onEdit)
         } else {
+            val tiles by viewModel.introTiles.collectAsStateWithLifecycle()
+            val revision by viewModel.introRevision.collectAsStateWithLifecycle()
+            val host by viewModel.host.collectAsStateWithLifecycle()
             CardIntro(
                 uiState = uiState,
+                tiles = tiles,
+                host = host,
+                revision = revision,
                 onOpen = viewModel::onCardOpened,
                 onClose = onBack,
                 onRetry = viewModel::onRetry,
-                onPainted = viewModel::onIntroPainted,
+                onCapture = viewModel::captureIntroTiles,
+                onTilePainted = viewModel::onIntroTilePainted,
             )
         }
     }
