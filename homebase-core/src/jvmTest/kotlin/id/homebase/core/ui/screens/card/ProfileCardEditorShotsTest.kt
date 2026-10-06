@@ -36,8 +36,6 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
@@ -170,7 +168,6 @@ class ProfileCardEditorShotsTest {
         ViewerShot("v04-exporting", withCircle.copy(isExporting = true)),
         ViewerShot("v13-long-circle", base.copy(cards = listOf(public, card(emergency)), selectedAudience = emergency)),
         ViewerShot("v14-long-circle-tiny", base.copy(cards = listOf(public, card(longCircle)), selectedAudience = longCircle)),
-        ViewerShot("v05-menu", withCircle, act = { onNodeWithContentDescription("Card for Work. Choose another card.").performClick() }, popup = true),
     )
 
     private val family = CardAudience.Circle("f", "Family")
@@ -178,31 +175,21 @@ class ProfileCardEditorShotsTest {
     private val fixedSet = listOf(public, virtual(family), card(friends, CardDesign.COLLAGE), virtual(work))
     private val fixedFriends = base.copy(cards = fixedSet, selectedAudience = friends)
     private val fixedReadOnly = fixedFriends.copy(circleCardsSupported = false)
-    private fun menu(label: String, readOnly: Boolean = false): ComposeUiTest.() -> Unit = {
-        onNodeWithContentDescription("Card for $label. Choose another card." + if (readOnly) " Read-only" else "", substring = true).performClick()
-    }
     private fun click(description: String): ComposeUiTest.() -> Unit = { onNodeWithContentDescription(description).performClick() }
     private fun clickText(text: String): ComposeUiTest.() -> Unit = { onNodeWithText(text).performClick() }
     private val fixedPublic = base.copy(cards = fixedSet, hasLocalPublicDesign = true)
 
     private val fixedViewerShots = listOf(
-        ViewerShot("k6-v01-menu-circle-saved", fixedFriends, act = menu("Friends")),
-        ViewerShot("k6-v02-menu-public-virtual", base.copy(cards = listOf(virtual(CardAudience.Public)) + fixedSet.drop(1)), act = menu("Public")),
-        ViewerShot("k6-v03-menu-circle-virtual", fixedFriends.copy(selectedAudience = family), act = menu("Family")),
-        ViewerShot("k6-v04-menu-read-only", fixedReadOnly, act = menu("Friends", readOnly = true)),
         ViewerShot("k6-v05-read-only", fixedReadOnly),
         ViewerShot("k6-v05b-read-only-why", fixedReadOnly, act = clickText("Why can't I edit?")),
         ViewerShot("k6-v06-single-card", base.copy(cards = listOf(public))),
-        ViewerShot("k6-v07-menu-long-circle", base.copy(cards = fixedSet + card(longCircle), selectedAudience = longCircle), act = menu(longCircle.label)),
         ViewerShot("k6-v08-virtual-circle", fixedFriends.copy(selectedAudience = family)),
         ViewerShot("k6-v09-reset-from-toolbar", fixedFriends, act = click("Reset to default design")),
         ViewerShot("k6-v10-public-saved", fixedPublic),
         ViewerShot("k6-v11-font-scale", fixedFriends, fontScale = 1.6f),
         ViewerShot("k6-v12-rtl-read-only", fixedReadOnly, rtl = true),
         ViewerShot("k6-v13-long-circle-small", base.copy(cards = fixedSet + card(longCircle), selectedAudience = longCircle), widthDp = 360, heightDp = 640),
-        ViewerShot("k6-v14-swiped-to-work", fixedFriends, act = { onNodeWithContentDescription("Card for Friends. Choose another card.").performTouchInput { swipeLeft() } }),
         ViewerShot("k6-v15-public-virtual", base.copy(cards = listOf(virtual(CardAudience.Public)) + fixedSet.drop(1))),
-        ViewerShot("k6-v16-rtl-menu", fixedFriends, rtl = true, act = menu("Friends")),
     )
 
     private val fixedEditorShots = listOf(
@@ -277,7 +264,6 @@ class ProfileCardEditorShotsTest {
                 Box(Modifier.fillMaxSize().background(Color(CardDesign.baseArgb(state.design)))) {
                     SheetTopChrome(
                         uiState = state,
-                        onSelectCard = { state = state.copy(selectedAudience = it) },
                         onClose = {},
                         bandDrag = Modifier,
                         handleDrag = Modifier,
@@ -285,8 +271,6 @@ class ProfileCardEditorShotsTest {
                     )
                     CardBottomChrome(
                         audience = state.selectedAudience,
-                        page = state.cards.indexOfFirst { it.audience == state.selectedAudience },
-                        pages = if (state.hasCardMenu) state.cards.size else 0,
                         isExporting = state.isExporting,
                         canShare = true,
                         saveInsteadOfShare = false,

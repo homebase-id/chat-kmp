@@ -2341,8 +2341,10 @@
     <string name="profile_card_edit">Edit card</string>
     <string name="profile_card_audience_public">Public</string>
     <string name="profile_card_audience_circle">Circle</string>
+    <string name="profile_card_intro_title">Your cards</string>
+    <string name="profile_card_intro_hint">Pick a card to view, share or edit it.</string>
+    <string name="profile_card_intro_open">Open the %1$s card</string>
     <string name="profile_card_audience_description">Card for %1$s</string>
-    <string name="profile_card_audience_switch">Card for %1$s. Choose another card.</string>
     <string name="profile_card_reset_failed">Couldn't reset this card.</string>
     <string name="profile_card_circle_unsupported">Your Homebase server can't keep a separate card for each circle yet, so circle cards can't be changed.</string>
     <string name="profile_card_reset_card">Reset to default design</string>
@@ -2350,9 +2352,6 @@
     <string name="profile_card_reset_message_public">Your public card goes back to the site's default design. Your profile details aren't changed.</string>
     <string name="profile_card_reset_message_circle">%1$s will see your public card again. Your profile details aren't changed.</string>
     <string name="profile_card_reset_confirm">Reset</string>
-    <string name="profile_card_follows_public">Same as your public card</string>
-    <string name="profile_card_own_design">Custom design</string>
-    <string name="profile_card_public_everyone">Anyone can see it</string>
     <string name="profile_card_more_actions">More card actions</string>
     <string name="profile_card_read_only">Read-only</string>
     <string name="profile_card_read_only_why">Why can't I edit?</string>

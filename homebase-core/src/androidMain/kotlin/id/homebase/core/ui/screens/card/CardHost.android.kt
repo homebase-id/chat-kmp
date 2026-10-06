@@ -48,7 +48,6 @@ internal class AndroidCardHost(context: Context, pageUrl: String) : CardHostBase
     // Lets the pre-created WebView borrow the showing Activity, then drop it so it doesn't leak.
     private val contextWrapper = MutableContextWrapper(appContext)
     private var attachments = 0
-    private var coverBitmap: Bitmap? = null
 
     var webView by mutableStateOf(newWebView())
         private set
@@ -83,16 +82,13 @@ internal class AndroidCardHost(context: Context, pageUrl: String) : CardHostBase
         if (!view.isAttachedToWindow || view.width == 0 || view.height == 0) return null
         val width = view.width / COVER_DOWNSCALE
         val height = view.height / COVER_DOWNSCALE
-        val bitmap = coverBitmap?.takeIf { it.width == width && it.height == height }
-            ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { coverBitmap = it }
-        bitmap.eraseColor(Color.TRANSPARENT)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         // Draws the WebView alone, so the chrome floating over it stays out of the cover.
         view.draw(Canvas(bitmap).apply { scale(1f / COVER_DOWNSCALE, 1f / COVER_DOWNSCALE) })
         return bitmap.asImageBitmap()
     }
 
     override fun release() {
-        coverBitmap = null
         webView.removeJavascriptInterface(JS_BRIDGE_NAME)
         (webView.parent as? ViewGroup)?.removeView(webView)
         webView.destroy()
