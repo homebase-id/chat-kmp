@@ -25,7 +25,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.scaleIn
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import kotlinx.coroutines.delay
@@ -125,6 +124,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.util.getUriHandler
@@ -155,7 +157,10 @@ private val ACTION_HEIGHT = ButtonDefaults.MinHeight
 private val APP_ONLY_LABEL_MIN_ROOM = 216.dp
 private val COMPACT_HEIGHT = 760.dp
 private val WIDE_LAYOUT_MIN_WIDTH = 840.dp
-private val WIDE_PANEL_WIDTH = 420.dp
+private val WIDE_PANEL_WIDTH = 440.dp
+// Room for every tool and the picked one's name once the window can spare it.
+private val ROOMY_PANEL_WIDTH = 488.dp
+private val ROOMY_LAYOUT_MIN_WIDTH = 1080.dp
 private val PREVIEW_MAX_WIDTH = 440.dp
 private val PREVIEW_SIDE_INSET = 16.dp
 private val PREVIEW_FADE_HEIGHT = 40.dp
@@ -178,6 +183,9 @@ private const val HERO_PULSE_SCALE = 0.97f
 private const val SAVED_NOTE_MS = 4_000L
 // Top bar, the row's padding and the panel's own header and edges, which the wide Content list fills the rest beside.
 private val WIDE_CONTENT_CHROME = 220.dp
+// The wide panel's top and bottom edges, step header and gap, around the Content list.
+private val WIDE_PANEL_CHROME = 24.dp * 2 + 48.dp + 12.dp
+private val WIDE_CHIP_GAP = 12.dp
 private const val DISABLED_TILE_ALPHA = 0.38f
 private const val UNSELECTED_TILE_SCALE = 0.92f
 private const val LARGE_TILE_GROWTH = 1.25f
@@ -298,6 +306,7 @@ internal fun ProfileCardEditorContent(
     Surface(color = MaterialTheme.colorScheme.surfaceDim, contentColor = MaterialTheme.colorScheme.onSurface) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val wide = maxWidth >= WIDE_LAYOUT_MIN_WIDTH
+            val widePanelWidth = if (maxWidth >= ROOMY_LAYOUT_MIN_WIDTH) ROOMY_PANEL_WIDTH else WIDE_PANEL_WIDTH
             val metrics = when {
                 wide -> PanelMetrics.Wide
                 maxHeight < COMPACT_HEIGHT -> PanelMetrics.Compact
@@ -314,8 +323,13 @@ internal fun ProfileCardEditorContent(
                 maxHeight * (CONTENT_PANEL_MAX_SHARE + LARGE_TEXT_CONTENT_SHARE * textGrowth),
                 maxHeight - TOP_BAR_HEIGHT * grow - maxOf(CONTENT_HERO_MIN, maxHeight * (CONTENT_HERO_SHARE - LARGE_TEXT_HERO_GIVE * textGrowth)) - metrics.gap * 2,
             )
+            val density = LocalDensity.current
+            var wideCard by remember { mutableStateOf(IntSize.Zero) }
+            var wideChipHeight by remember { mutableIntStateOf(0) }
             val contentBody = if (wide) {
-                maxHeight - WIDE_CONTENT_CHROME
+                // The panel ends where the card does, so both columns share a bottom line.
+                val column = with(density) { (wideChipHeight + wideCard.height).toDp() } + WIDE_CHIP_GAP
+                if (wideCard.height > 0) column - WIDE_PANEL_CHROME * grow else maxHeight - WIDE_CONTENT_CHROME
             } else {
                 contentPanelMax - metrics.edge * 2 - ACTION_HEIGHT * grow - metrics.gap
             }
@@ -363,13 +377,14 @@ internal fun ProfileCardEditorContent(
             ) {
                 EditorTopBar(
                     audience = uiState.selectedAudience,
+                    showsChip = !wide,
                     readOnly = uiState.isCircleReadOnly,
                     unsaved = uiState.isUnsavedCard,
                     onBack = onBack,
                     onEditProfile = onEditProfile,
                 )
                 if (wide) {
-                    // One group, top-aligned: the card and its controls start on the same line.
+                    // Two columns that start and end on the same lines: the audience over its card, and the panel beside them.
                     Row(
                         modifier = Modifier
                             .weight(1f)
@@ -379,12 +394,33 @@ internal fun ProfileCardEditorContent(
                         horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.Top,
                     ) {
-                        CardPreviewFrame(
-                            keepProportions = true,
-                            alignment = Alignment.TopEnd,
+                        Column(
                             modifier = Modifier.weight(1f, fill = false).fillMaxHeight(),
-                        ) { preview(cardWidth) }
-                        panel(Modifier.width(WIDE_PANEL_WIDTH), MaterialTheme.shapes.extraLargeIncreased)
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(WIDE_CHIP_GAP),
+                        ) {
+                            val chipDescription = stringResource(MR.string.profile_card_audience_editing, audienceLabel(uiState.selectedAudience))
+                            AudienceChip(
+                                audience = uiState.selectedAudience,
+                                locked = uiState.isCircleReadOnly,
+                                unsaved = uiState.isUnsavedCard,
+                                elevated = false,
+                                modifier = Modifier
+                                    .widthIn(max = with(density) { wideCard.width.toDp() }.takeIf { it > 0.dp } ?: Dp.Unspecified)
+                                    .onSizeChanged { wideChipHeight = it.height }
+                                    .clearAndSetSemantics { contentDescription = chipDescription },
+                            )
+                            CardPreviewFrame(
+                                keepProportions = true,
+                                alignment = Alignment.TopCenter,
+                                onCardSize = { wideCard = it },
+                                modifier = Modifier.weight(1f),
+                            ) { preview(cardWidth) }
+                        }
+                        panel(
+                            Modifier.width(widePanelWidth),
+                            MaterialTheme.shapes.extraLargeIncreased,
+                        )
                     }
                 } else {
                     CardPreviewFrame(
@@ -437,6 +473,7 @@ private fun CardPreviewFrame(
     shape: Shape = MaterialTheme.shapes.extraLargeIncreased,
     alignment: Alignment = Alignment.Center,
     fadeInto: (() -> Color)? = null,
+    onCardSize: ((IntSize) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(modifier = modifier, contentAlignment = alignment) {
@@ -447,6 +484,7 @@ private fun CardPreviewFrame(
                     if (keepProportions) Modifier.aspectRatio(CARD_THUMB_ASPECT, matchHeightConstraintsFirst = true)
                     else Modifier.fillMaxSize(),
                 )
+                .then(if (onCardSize != null) Modifier.onSizeChanged(onCardSize) else Modifier)
                 .clip(shape)
                 // Sets the card off the page when its own colour is close to the backdrop's.
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
@@ -472,6 +510,7 @@ private fun CardPreviewFrame(
 @Composable
 private fun EditorTopBar(
     audience: CardAudience,
+    showsChip: Boolean,
     readOnly: Boolean,
     unsaved: Boolean,
     onBack: () -> Unit,
@@ -503,9 +542,9 @@ private fun EditorTopBar(
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 8.dp)
-                    .clearAndSetSemantics { contentDescription = chipDescription },
+                    .clearAndSetSemantics { if (showsChip) contentDescription = chipDescription },
             ) {
-                AudienceChip(audience = audience, locked = readOnly, unsaved = unsaved, elevated = false)
+                if (showsChip) AudienceChip(audience = audience, locked = readOnly, unsaved = unsaved, elevated = false)
             }
             Box {
                 IconButton(onClick = { menuOpen = true }) {
@@ -591,7 +630,7 @@ private fun EditorPanel(
                 onAppOnly = onAppOnly,
                 onSave = onSave,
                 onStep = onStep,
-                modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
             )
             AnimatedContent(
                 targetState = step,
@@ -622,6 +661,7 @@ private fun EditorPanel(
                             items = items,
                             circles = uiState.circles,
                             enabled = !uiState.isContentBusy,
+                            failures = uiState.contentFailures,
                             onToggle = onContentToggle,
                             onAudience = onContentAudience,
                             onAdd = onContentAdd,
@@ -755,25 +795,24 @@ private fun ContentSavedNote(saves: Int) {
         delay(SAVED_NOTE_MS)
         shown = false
     }
+    // A confirmation, not a control: no container, so nothing here looks tappable.
     AnimatedVisibility(
         visible = shown,
-        enter = fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.fastSpatialSpec(), initialScale = 0.8f),
+        enter = fadeIn(motion.defaultEffectsSpec()),
         exit = fadeOut(motion.defaultEffectsSpec()),
     ) {
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.heightIn(min = 36.dp).padding(start = 10.dp, end = 14.dp),
-            ) {
-                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text(stringResource(MR.string.profile_card_content_saved), style = MaterialTheme.typography.labelLarge, maxLines = 1)
-            }
+            Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+            Text(
+                stringResource(MR.string.profile_card_content_saved),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
         }
     }
 }

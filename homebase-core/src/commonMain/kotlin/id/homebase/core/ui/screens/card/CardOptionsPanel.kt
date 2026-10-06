@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonShapes
@@ -203,10 +204,13 @@ private val INK_DOT_SIZE = 12.dp
 private val SHAPE_SEGMENT_MIN_WIDTH = 56.dp
 private val GLYPH_SIZE = 20.dp
 private val TOOL_SIZE = 48.dp
+private val TOOL_LABEL_GAP = 8.dp
 private val FADE_LENGTH = 24.dp
 private val OPTION_SIDE_INSET = 16.dp
 // Seven tools fit a 360dp phone at this inset.
-private val TOOLBAR_SIDE_INSET = 8.dp
+private val TOOLBAR_SIDE_INSET = 4.dp
+// Without room for its name, the picked tool still reads wider than the rest.
+private val PICKED_TOOL_GROWTH = 20.dp
 private val SWATCH_ROW_INSET = OPTION_SIDE_INSET - 4.dp
 private val CAPTION_INSET = 24.dp
 private const val REVEAL_MARGIN = 0.6f
@@ -218,6 +222,7 @@ internal class CardContentTool(
     val items: List<CardContentItem>,
     val circles: List<CardCircle>,
     val enabled: Boolean,
+    val failures: Int,
     val onToggle: (Uuid, Boolean) -> Unit,
     val onAudience: (Uuid, ProfileAudience) -> Unit,
     val onAdd: (String, Map<String, String>) -> Unit,
@@ -264,6 +269,7 @@ internal fun CardOptionsPanel(
                     items = content.items,
                     circles = content.circles,
                     enabled = content.enabled,
+                    failures = content.failures,
                     onToggle = content.onToggle,
                     onAudience = content.onAudience,
                     onAdd = content.onAdd,
@@ -340,6 +346,7 @@ private fun OptionControl(
 }
 
 // A null [current] is Content.
+// When every tool fits it sits still and whole, naming the picked one only if there's room; otherwise the row scrolls.
 @Composable
 private fun OptionToolbar(
     options: List<CardOption>,
@@ -347,31 +354,51 @@ private fun OptionToolbar(
     onPick: (CardOption?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ScrollableChoiceRow(
-        modifier = modifier,
-        contentPadding = OPTION_SIDE_INSET,
-        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val count = options.size + 1
-        options.forEachIndexed { index, option ->
-            ToolItem(
-                icon = optionIcon(option),
-                label = stringResource(toolLabel(option)),
-                description = stringResource(optionLabel(option)),
-                selected = option == current,
-                shapes = connectedButtonShapes(index, count),
-                onClick = { onPick(option) },
+    val count = options.size + 1
+    val labels = options.map { stringResource(toolLabel(it)) } + stringResource(MR.string.profile_card_tool_content)
+    val descriptions = options.map { stringResource(optionLabel(it)) } + stringResource(MR.string.profile_card_option_content)
+    val icons = options.map(::optionIcon) + Icons.Outlined.Dashboard
+    val pickedIndex = current?.let(options::indexOf) ?: options.size
+    val measurer = rememberTextMeasurer()
+    val labelStyle = MaterialTheme.typography.labelLarge
+    val density = LocalDensity.current
+    BoxWithConstraints(modifier = modifier, contentAlignment = Alignment.Center) {
+        val iconsRow = TOOL_SIZE * count + ButtonGroupDefaults.ConnectedSpaceBetween * (count - 1)
+        val labelRoom = with(density) { measurer.measure(labels[pickedIndex], labelStyle).size.width.toDp() } + TOOL_LABEL_GAP
+        val fits = iconsRow <= maxWidth
+        val named = !fits || iconsRow + labelRoom <= maxWidth
+        val pickedMin = if (named) TOOL_SIZE else TOOL_SIZE + (maxWidth - iconsRow).coerceIn(0.dp, PICKED_TOOL_GROWTH)
+        val tools: @Composable RowScope.() -> Unit = {
+            for (index in 0 until count) {
+                ToolItem(
+                    icon = icons[index],
+                    label = labels[index],
+                    description = descriptions[index],
+                    selected = index == pickedIndex,
+                    named = named,
+                    minWidth = if (index == pickedIndex) pickedMin else TOOL_SIZE,
+                    shapes = connectedButtonShapes(index, count),
+                    onClick = { onPick(options.getOrNull(index)) },
+                )
+            }
+        }
+        val arrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween, Alignment.CenterHorizontally)
+        if (fits) {
+            Row(
+                modifier = Modifier.fillMaxWidth().selectableGroup(),
+                horizontalArrangement = arrangement,
+                verticalAlignment = Alignment.CenterVertically,
+                content = tools,
+            )
+        } else {
+            ScrollableChoiceRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = OPTION_SIDE_INSET,
+                horizontalArrangement = arrangement,
+                verticalAlignment = Alignment.CenterVertically,
+                content = tools,
             )
         }
-        ToolItem(
-            icon = Icons.Outlined.Dashboard,
-            label = stringResource(MR.string.profile_card_tool_content),
-            description = stringResource(MR.string.profile_card_option_content),
-            selected = current == null,
-            shapes = connectedButtonShapes(options.size, count),
-            onClick = { onPick(null) },
-        )
     }
 }
 
@@ -381,6 +408,8 @@ private fun ToolItem(
     label: String,
     description: String,
     selected: Boolean,
+    named: Boolean,
+    minWidth: Dp,
     shapes: ToggleButtonShapes,
     onClick: () -> Unit,
 ) {
@@ -401,7 +430,7 @@ private fun ToolItem(
             modifier = Modifier
                 .revealWhenSelected(selected)
                 .height(TOOL_SIZE)
-                .widthIn(min = TOOL_SIZE)
+                .widthIn(min = minWidth)
                 .clearAndSetSemantics {
                     contentDescription = description
                     role = Role.Tab
@@ -411,7 +440,7 @@ private fun ToolItem(
         ) {
             Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(20.dp))
             AnimatedVisibility(
-                visible = selected,
+                visible = selected && named,
                 enter = expandHorizontally(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()),
                 exit = shrinkHorizontally(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
             ) {
@@ -420,7 +449,7 @@ private fun ToolItem(
                     style = MaterialTheme.typography.labelLarge,
                     maxLines = 1,
                     softWrap = false,
-                    modifier = Modifier.padding(start = 8.dp),
+                    modifier = Modifier.padding(start = TOOL_LABEL_GAP),
                 )
             }
         }

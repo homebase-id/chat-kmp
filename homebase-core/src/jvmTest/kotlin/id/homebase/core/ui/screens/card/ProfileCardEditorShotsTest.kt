@@ -35,7 +35,11 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
@@ -75,6 +79,7 @@ class ProfileCardEditorShotsTest {
         val widthDp: Int = PHONE_W,
         val heightDp: Int = PHONE_H,
         val completesToggle: Boolean = false,
+        val failsToggle: Boolean = false,
         val act: ComposeUiTest.() -> Unit = {},
     )
 
@@ -273,9 +278,14 @@ class ProfileCardEditorShotsTest {
         onAllNodesWithContentDescription("Change who can see", substring = true).onFirst().performSemanticsAction(SemanticsActions.OnClick)
         mainClock.advanceTimeBy(SETTLE_MS)
     }
+    private val pickCircles: ComposeUiTest.() -> Unit = {
+        onAllNodesWithText("Circles").onFirst().performSemanticsAction(SemanticsActions.OnClick)
+        mainClock.advanceTimeBy(SETTLE_MS)
+    }
     private val scrollToEnd: ComposeUiTest.() -> Unit = {
         mainClock.autoAdvance = true
-        onNodeWithText("sam.gamgee").performScrollTo()
+        onAllNodes(hasScrollAction() and hasAnyDescendant(hasContentDescription("Add to this card: Bio"))).onLast()
+            .performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 100_000f) }
         mainClock.autoAdvance = false
         mainClock.advanceTimeBy(SETTLE_MS)
     }
@@ -298,6 +308,10 @@ class ProfileCardEditorShotsTest {
         Shot("k9-content-saved", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, completesToggle = true, act = { contentTool(); firstSwitch() }),
         Shot("k9-content-everything-top", contentBase.copy(attributes = contentAttributes + fullAttributes), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
         Shot("k9-content-public-hint", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); openLockedRow() }),
+        Shot("k9-content-public-hint-circles", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); openLockedRow(); pickCircles() }),
+        Shot("k9-content-error", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, failsToggle = true, act = { contentTool(); firstSwitch() }),
+        Shot("k9-content-error-rtl", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, rtl = true, widthDp = REDMI_W, heightDp = REDMI_H, failsToggle = true, act = { contentTool(); firstSwitch() }),
+        Shot("k9-content-wide-public", contentBase.copy(attributes = contentAttributes + fullAttributes), EditorStep.Customise, widthDp = 1200, heightDp = 800, act = contentTool),
     )
 
     @Test
@@ -438,7 +452,11 @@ class ProfileCardEditorShotsTest {
                             snackbarHostState = remember { SnackbarHostState() },
                             // A toggle leaves the save in flight, so the busy state shows on the row that was changed.
                             onContentToggle = { _, _ ->
-                                uiState = if (shot.completesToggle) uiState.copy(contentSaves = uiState.contentSaves + 1) else uiState.copy(isContentBusy = true)
+                                uiState = when {
+                                    shot.completesToggle -> uiState.copy(contentSaves = uiState.contentSaves + 1)
+                                    shot.failsToggle -> uiState.copy(contentFailures = uiState.contentFailures + 1)
+                                    else -> uiState.copy(isContentBusy = true)
+                                }
                             },
                         ) { layoutWidth ->
                             when (shot.preview) {

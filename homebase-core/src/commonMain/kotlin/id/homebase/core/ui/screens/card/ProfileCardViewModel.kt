@@ -107,6 +107,7 @@ data class ProfileCardUiState(
     val circles: List<CardCircle> = emptyList(),
     val isContentBusy: Boolean = false,
     val contentSaves: Int = 0,
+    val contentFailures: Int = 0,
 ) {
     internal val contentItems: List<CardContentItem> get() = cardContentItems(attributes, circles, selectedAudience)
 
@@ -531,7 +532,7 @@ class ProfileCardViewModel(
         viewModelScope.launch {
             val saved = attempt("saving profile content $type") { source.saveProfileAttribute(type, data, audience, existing) }
             if (saved == null) {
-                _uiState.update { it.copy(isContentBusy = false) }
+                _uiState.update { it.copy(isContentBusy = false, contentFailures = it.contentFailures + 1) }
                 _events.tryEmit(ProfileCardEvent.ContentSaveFailed)
                 return@launch
             }

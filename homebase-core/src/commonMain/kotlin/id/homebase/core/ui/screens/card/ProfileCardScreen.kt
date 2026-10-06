@@ -750,11 +750,11 @@ internal fun AudienceTitle(uiState: ProfileCardUiState, modifier: Modifier = Mod
 }
 
 @Composable
-private fun audienceContainer(audience: CardAudience): Color =
+internal fun audienceContainer(audience: CardAudience): Color =
     if (audience is CardAudience.Circle) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer
 
 @Composable
-private fun onAudienceContainer(audience: CardAudience): Color =
+internal fun onAudienceContainer(audience: CardAudience): Color =
     if (audience is CardAudience.Circle) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
 
 @Composable
