@@ -234,16 +234,27 @@ fun ProfileCardScreen(
     onBack: () -> Unit,
     onEdit: () -> Unit,
 ) {
+    LaunchedEffect(viewModel) { viewModel.onScreenShown() }
+    IntroViewerSwitch(viewModel = viewModel, onBack = onBack) { onClose ->
+        ProfileCardViewer(viewModel = viewModel, onBack = onClose, onEdit = onEdit)
+    }
+}
+
+@Composable
+internal fun IntroViewerSwitch(
+    viewModel: ProfileCardViewModel,
+    onBack: () -> Unit,
+    viewer: @Composable (onClose: () -> Unit) -> Unit,
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val motion = MaterialTheme.motionScheme
-    LaunchedEffect(viewModel) { viewModel.onScreenShown() }
     AnimatedContent(
         targetState = uiState.viewing,
         transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
         modifier = Modifier.fillMaxSize(),
     ) { viewing ->
         if (viewing) {
-            ProfileCardViewer(viewModel = viewModel, onBack = viewModel::onIntroReturned, onEdit = onEdit)
+            viewer(viewModel::onIntroReturned)
         } else {
             val tiles by viewModel.introTiles.collectAsStateWithLifecycle()
             val revision by viewModel.introRevision.collectAsStateWithLifecycle()

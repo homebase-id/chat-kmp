@@ -1,7 +1,5 @@
 package id.homebase.core.ui.screens.card
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.boundsInRoot
@@ -68,28 +66,14 @@ class ProfileCardScreenFlowTest {
             val viewModel = ProfileCardViewModel(source) { error("the JVM WebView slot is not part of this flow") }
             setContent {
                 HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
-                    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-                    Box(Modifier.fillMaxSize()) {
-                        if (uiState.viewing) {
-                            SheetTopChrome(
-                                uiState = uiState,
-                                onClose = viewModel::onIntroReturned,
-                                bandDrag = Modifier,
-                                handleDrag = Modifier,
-                            )
-                        } else {
-                            CardIntro(
-                                uiState = uiState,
-                                tiles = emptyMap(),
-                                host = null,
-                                revision = 0,
-                                onOpen = viewModel::onCardOpened,
-                                onClose = {},
-                                onRetry = viewModel::onRetry,
-                                onCapture = {},
-                                onTilePainted = {},
-                            )
-                        }
+                    IntroViewerSwitch(viewModel = viewModel, onBack = {}) { onClose ->
+                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                        SheetTopChrome(
+                            uiState = uiState,
+                            onClose = onClose,
+                            bandDrag = Modifier,
+                            handleDrag = Modifier,
+                        )
                     }
                 }
             }
