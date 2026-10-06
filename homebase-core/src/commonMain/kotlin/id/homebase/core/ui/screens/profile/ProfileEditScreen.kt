@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import id.homebase.core.util.formatMediumDate
+import id.homebase.core.util.rememberImeOffsetState
 import id.homebase.resources.ok
 import id.homebase.resources.profile_edit_label
 import id.homebase.resources.profile_edit_birthday_pick
@@ -63,7 +64,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -141,6 +141,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -541,6 +543,7 @@ private fun ProfileForm(
     }
 
     val scroll = rememberScrollState()
+    val ime = rememberImeOffsetState()
     // Large text leaves no room beside the FAB's label, so it stays a round button there.
     val roomyText = LocalDensity.current.fontScale < FAB_LABEL_MAX_FONT_SCALE
     val fabExpanded = roomyText && (!scroll.canScrollBackward || scroll.lastScrolledBackward)
@@ -549,7 +552,8 @@ private fun ProfileForm(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .imePadding()
+                // Raw imePadding() leaves a home-indicator-high gap above the keyboard on iOS.
+                .padding(bottom = with(ime.density) { ime.pureImeBottomPx.toDp() })
                 .verticalScroll(scroll),
         ) {
             ProfileCardsStrip(
@@ -1441,6 +1445,8 @@ private fun LabelChips(
 ) {
     val names = presets.map { stringResource(it) }
     var custom by remember { mutableStateOf(value.isNotBlank() && names.none { it.equals(value, ignoreCase = true) }) }
+    var focusCustom by remember { mutableStateOf(false) }
+    val customField = remember { FocusRequester() }
     val motion = MaterialTheme.motionScheme
     val colors = ToggleButtonDefaults.toggleButtonColors(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -1458,6 +1464,7 @@ private fun LabelChips(
                 onCheckedChange = {
                     if (isCustom) {
                         custom = !custom
+                        focusCustom = custom
                         if (!custom || names.any { it.equals(value, ignoreCase = true) }) onChange("")
                     } else {
                         custom = false
@@ -1482,7 +1489,14 @@ private fun LabelChips(
             enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
             exit = shrinkVertically(motion.defaultSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
         ) {
-            ProfileField(value = value, label = customLabel, modifier = Modifier.fillMaxWidth(), onChange = onChange)
+            // Focused once fully open, so it lands above the keyboard rather than growing under it.
+            LaunchedEffect(Unit) {
+                if (!focusCustom) return@LaunchedEffect
+                snapshotFlow { transition.currentState == EnterExitState.Visible }.first { it }
+                customField.requestFocus()
+                focusCustom = false
+            }
+            ProfileField(value = value, label = customLabel, modifier = Modifier.fillMaxWidth().focusRequester(customField), onChange = onChange)
         }
     }
 }
