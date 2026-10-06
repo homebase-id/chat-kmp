@@ -7,6 +7,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonPrimitive
@@ -84,7 +86,7 @@ class CardWireTest {
             priority = 3,
         )
 
-        assertTrue(wire.cardRepository().saveCircle(card))
+        assertNotNull(wire.cardRepository().saveCircle(card))
 
         val body = wire.putBodies.single().jsonObject
         assertEquals(ProfileVisibility.CONNECTED.wireValue, body["visibility"]?.jsonPrimitive?.content)
@@ -99,58 +101,30 @@ class CardWireTest {
     private fun CardWireHarness.visibilities() = putBodies.map { it.jsonObject["visibility"]?.jsonPrimitive?.content }
 
     @Test
-    fun onAServerWithoutCircleCardsNoPutIsEverConnectedAndTheDraftIsRemoved() = runTest {
+    fun onAServerThatRejectsCircleIdsTheCardIsNeverStoredAndNoSecondPutIsSent() = runTest {
         val wire = CardWireHarness(circleCards = false)
         val repo = wire.cardRepository()
+        val card = ProfileCard(kotlin.uuid.Uuid.NIL, kotlin.uuid.Uuid.NIL, friends, "poster", priority = 20)
 
-        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, "poster", CardOverrides.EMPTY))
-        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, "poster", CardOverrides.EMPTY))
+        assertNull(repo.saveCircle(card))
+        assertNull(repo.saveCircle(card))
 
-        assertEquals(listOf<String?>("owner"), wire.visibilities())
-        assertEquals(1, wire.deletes)
+        assertEquals(1, wire.puts)
         assertTrue(wire.storedIds.isEmpty())
         assertFalse(repo.supportsCircleCards)
+        assertTrue(wire.cardRepository().supportsCircleCards)
     }
 
     @Test
-    fun onASupportingServerTheStoredCardEndsConnectedWithExactlyOneCircle() = runTest {
+    fun resettingACircleCardSendsADeleteForItsAttributeOnly() = runTest {
         val wire = CardWireHarness()
-
-        val added = wire.cardRepository().addCircle(friends, "poster", CardOverrides.EMPTY)
-
-        assertEquals(friends, (added as AddCircleCardResult.Added).card.audience)
-        assertEquals(listOf<String?>("owner", "connected"), wire.visibilities())
-        val stored = wire.storedBodies.single()
-        assertEquals("connected", stored["visibility"]?.jsonPrimitive?.content)
-        assertEquals(listOf("c-friends"), stored["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
-        assertEquals(added.card.id.toString(), wire.storedIds.single())
-    }
-
-    @Test
-    fun aFailedCleanupOfTheOwnerOnlyDraftIsNotAnError() = runTest {
-        val wire = CardWireHarness(deleteReply = { CardWireHarness.Reply.Problem(500, """{"title":"boom","status":500}""") }, circleCards = false)
         val repo = wire.cardRepository()
+        val saved = assertNotNull(repo.saveCircle(ProfileCard(kotlin.uuid.Uuid.NIL, kotlin.uuid.Uuid.NIL, friends, "poster", priority = 20)))
+        repo.savePublic("board")
 
-        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, "poster", CardOverrides.EMPTY))
+        repo.resetCircle(saved)
 
-        assertEquals(1, wire.deletes)
-        assertEquals("owner", wire.storedBodies.single()["visibility"]?.jsonPrimitive?.content)
-        assertTrue(repo.cards().isEmpty())
-    }
-
-    @Test
-    fun theUnsupportedAnswerIsRememberedForTheSessionButNotTheNext() = runTest {
-        val wire = CardWireHarness(circleCards = false)
-        val repo = wire.cardRepository()
-        repo.addCircle(friends, "poster", CardOverrides.EMPTY)
-
-        assertFalse(repo.supportsCircleCards)
-        assertEquals(AddCircleCardResult.Unsupported, repo.addCircle(friends, "poster", CardOverrides.EMPTY))
-        assertEquals(1, wire.puts)
-
-        val relaunched = wire.cardRepository()
-        assertTrue(relaunched.supportsCircleCards)
-        relaunched.addCircle(friends, "poster", CardOverrides.EMPTY)
-        assertEquals(2, wire.puts)
+        assertEquals(listOf(saved.id.toString()), wire.deletedIds.toList())
+        assertEquals(1, wire.storedIds.size)
     }
 }

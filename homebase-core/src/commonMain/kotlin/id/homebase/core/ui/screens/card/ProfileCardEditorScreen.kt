@@ -115,6 +115,7 @@ import id.homebase.resources.profile_card_discard_keep
 import id.homebase.resources.profile_card_discard_message
 import id.homebase.resources.profile_card_discard_title
 import id.homebase.resources.profile_card_edit_profile
+import id.homebase.resources.profile_card_circle_unsupported
 import id.homebase.resources.profile_card_error
 import id.homebase.resources.profile_card_step_count
 import id.homebase.resources.profile_card_step_customise
@@ -150,6 +151,7 @@ fun ProfileCardEditorScreen(
     val uriHandler = getUriHandler()
     val errCard = stringResource(MR.string.profile_card_error)
     val errSave = stringResource(MR.string.profile_card_design_save_failed)
+    val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
 
     LaunchedEffect(viewModel) { viewModel.startHost() }
     DisposableEffect(viewModel) {
@@ -185,8 +187,8 @@ fun ProfileCardEditorScreen(
                 ProfileCardEvent.DesignSaved -> onBack()
                 ProfileCardEvent.DesignSaveFailed -> launch { snackbarHostState.showSnackbar(errSave) }
                 ProfileCardEvent.CardFailed -> launch { snackbarHostState.showSnackbar(errCard) }
-                is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed,
-                ProfileCardEvent.CircleCardFailed, ProfileCardEvent.CircleCardsUnsupported -> Unit
+                ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
+                is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed, ProfileCardEvent.CircleCardFailed -> Unit
             }
         }
     }
@@ -454,6 +456,14 @@ private fun EditorPanel(
                 onStep = onStep,
                 modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp),
             )
+            if (uiState.isCircleReadOnly) {
+                Text(
+                    text = stringResource(MR.string.profile_card_circle_unsupported),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                )
+            }
             AnimatedContent(
                 targetState = step,
                 transitionSpec = {

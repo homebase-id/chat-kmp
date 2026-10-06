@@ -13,6 +13,19 @@ import kotlinx.serialization.json.JsonPrimitive
 
 const val PUBLIC_CARD_PRIORITY = 1000
 
+private val FIXED_CIRCLE_PRIORITIES = mapOf("family" to 10, "friends" to 20, "work" to 30)
+private const val OTHER_CIRCLE_PRIORITY = 40
+
+/** Family, Friends and Work keep fixed slots so a viewer in several circles gets the closest card; any other circle follows in name order. */
+internal fun fixedCirclePriorities(circles: List<CardCircle>): Map<String, Int> {
+    val others = circles.filter { it.name.trim().lowercase() !in FIXED_CIRCLE_PRIORITIES }
+        .sortedWith(compareBy({ it.name.lowercase() }, { it.id.lowercase() }))
+    return buildMap {
+        circles.forEach { c -> FIXED_CIRCLE_PRIORITIES[c.name.trim().lowercase()]?.let { put(c.id, it) } }
+        others.forEachIndexed { i, c -> put(c.id, OTHER_CIRCLE_PRIORITY + i) }
+    }
+}
+
 private const val KEY_DESIGN = "design"
 private const val KEY_OVERRIDES = "overrides"
 

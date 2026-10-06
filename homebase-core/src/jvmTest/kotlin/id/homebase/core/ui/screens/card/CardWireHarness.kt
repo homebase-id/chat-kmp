@@ -37,7 +37,7 @@ import kotlinx.serialization.json.put
 
 /**
  * The real ProfileRepository + providers over a Ktor MockEngine that decrypts what the app PUTs.
- * [circleCards] false plays a server from before circle cards, which drops `circleIds`; true plays one that
+ * [circleCards] false plays a server from before circle cards, which rejects `circleIds`; true plays one that
  * refuses them on anything but Connected, as the real one does.
  */
 class CardWireHarness(
@@ -127,7 +127,9 @@ class CardWireHarness(
                 recorded += body
                 val scoped = body.jsonObject["circleIds"] != null
                 val putNumber = putCount.incrementAndGet()
-                val reply = if (circleCards && scoped && body.jsonObject["visibility"]?.jsonPrimitive?.content != "connected") {
+                val reply = if (!circleCards && scoped) {
+                    Reply.Problem(400, CIRCLE_IDS_REJECTED_400)
+                } else if (circleCards && scoped && body.jsonObject["visibility"]?.jsonPrimitive?.content != "connected") {
                     Reply.Problem(400, CIRCLES_NEED_CONNECTED_400)
                 } else {
                     putReply(putNumber)
@@ -178,6 +180,8 @@ class CardWireHarness(
             """{"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1","title":"Unknown profile attribute type 9832dc5dd4ba12dd60acb853e7588f49","status":400,"errorCode":"argumentError","correlationId":"abc"}"""
         const val CIRCLES_NEED_CONNECTED_400 =
             """{"title":"CircleIds can only be set when visibility is Connected","status":400,"errorCode":"argumentError"}"""
+        const val CIRCLE_IDS_REJECTED_400 =
+            """{"title":"Unknown field circleIds","status":400,"errorCode":"argumentError"}"""
         const val UNKNOWN_PHOTO_TYPE_400 =
             """{"title":"Unknown profile attribute type 5c1bfc6b6a0b4ed88b1c1f5a5b4e0f3a","status":400,"errorCode":"argumentError"}"""
     }

@@ -126,17 +126,19 @@ class ProfileCardViewModelTest {
         var liveCards: (suspend () -> List<ProfileAttribute>)? = null
         override suspend fun attributes() = attributes + liveCards?.invoke().orEmpty()
 
-        var circleList: List<CardCircle> = emptyList()
+        var circleList: List<CardCircle> = listOf(CardCircle("c1", "Friends", 5), CardCircle("c2", "Family", 3))
         var circlesFail = false
         override val supportsCircleCards: Boolean get() = cardRepository?.supportsCircleCards ?: true
         override suspend fun circles(): List<CardCircle> {
             check(!circlesFail) { "circles unavailable" }
             return circleList
         }
-        override suspend fun addCircleCard(circle: CardAudience.Circle, design: String, overrides: CardOverrides) =
-            cardRepository!!.addCircle(circle, design, overrides)
         override suspend fun saveCircleCard(card: ProfileCard) = cardRepository!!.saveCircle(card)
-        override suspend fun deleteCircleCard(card: ProfileCard) = cardRepository!!.delete(card)
+        override suspend fun resetPublicCard() = cardRepository!!.resetPublic()
+        override suspend fun resetCircleCard(card: ProfileCard) = cardRepository!!.resetCircle(card)
+        override suspend fun clearSavedDesign() {
+            savedDesigns.clear()
+        }
         override suspend fun siteDefaults(odinId: OdinId): CardSiteDefaults {
             siteDefaultLoads++
             return defaults()
@@ -1020,7 +1022,7 @@ class ProfileCardViewModelTest {
     @Test
     fun aSinglePublicCardShowsPublicAndIsNotSwitchable() = runTest(dispatcher) {
         val host = FakeHost()
-        val vm = viewModel(host, FakeSource(profile + publicCardAttribute))
+        val vm = viewModel(host, FakeSource(profile + publicCardAttribute).apply { circleList = emptyList() })
 
         val state = vm.uiState.value
         assertEquals(CardAudience.Public, state.selectedAudience)
@@ -1031,7 +1033,7 @@ class ProfileCardViewModelTest {
 
     @Test
     fun noStoredCardStillShowsPublic() = runTest(dispatcher) {
-        val vm = viewModel(FakeHost(), FakeSource(profile))
+        val vm = viewModel(FakeHost(), FakeSource(profile).apply { circleList = emptyList() })
 
         assertEquals(listOf<CardAudience>(CardAudience.Public), vm.uiState.value.cards.map { it.audience })
     }
@@ -1045,7 +1047,7 @@ class ProfileCardViewModelTest {
             host,
             FakeSource(profile + publicCardAttribute + circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0, overrides)),
         )
-        assertEquals(2, vm.uiState.value.cards.size)
+        assertEquals(3, vm.uiState.value.cards.size)
         assertEquals(CardDesign.BOARD, vm.uiState.value.design)
         assertTrue(vm.uiState.value.overrides.isEmpty())
 
@@ -1163,29 +1165,14 @@ class ProfileCardViewModelTest {
     private val friends = CardAudience.Circle("c1", "Friends")
 
     @Test
-    fun circleCardsListAfterPublicInPriorityOrderWhateverTheAttributeOrder() = runTest(dispatcher) {
-        val vm = viewModel(
-            FakeHost(),
-            FakeSource(
-                profile + circleCardAttribute("c3", "Third", CardDesign.POSTER, 2) + publicCardAttribute +
-                    circleCardAttribute("c1", "First", CardDesign.DOSSIER, 0) + circleCardAttribute("c2", "Second", CardDesign.COLLAGE, 1),
-            ),
-        )
-
-        assertEquals(
-            listOf<CardAudience>(CardAudience.Public, CardAudience.Circle("c1", "First"), CardAudience.Circle("c2", "Second"), CardAudience.Circle("c3", "Third")),
-            vm.uiState.value.cards.map { it.audience },
-        )
-    }
-
-    @Test
-    fun aCircleCardWithAnUnknownDesignIsLeftOut() = runTest(dispatcher) {
+    fun aCircleCardWithAnUnknownDesignShowsThePublicDesignUntilItsNextSave() = runTest(dispatcher) {
         val vm = viewModel(
             FakeHost(),
             FakeSource(profile + publicCardAttribute + circleCardAttribute("c1", "Friends", "hologram", 0) + circleCardAttribute("c2", "Family", CardDesign.POSTER, 1)),
         )
 
-        assertEquals(listOf<CardAudience>(CardAudience.Public, CardAudience.Circle("c2", "Family")), vm.uiState.value.cards.map { it.audience })
+        assertEquals(listOf<CardAudience>(CardAudience.Public, CardAudience.Circle("c2", "Family"), friends), vm.uiState.value.cards.map { it.audience })
+        assertEquals(CardDesign.BOARD, vm.uiState.value.cards.last().design)
     }
 
     @Test
@@ -1211,7 +1198,7 @@ class ProfileCardViewModelTest {
         vm.onCardSelected(friends)
         assertEquals("circle", host.rendered.last().audience?.kind)
 
-        source.attributes = profile + publicCardAttribute
+        source.circleList = listOf(family)
         vm.onScreenShown()
         advanceUntilIdle()
 
@@ -1342,112 +1329,116 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun addingACircleCardStartsFromThePublicCardSelectsItAndSavesItScoped() = runTest(dispatcher) {
-        val store = FakeCardStore(keepWrites = true, attributes = listOf(cardAttribute(ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, CardDesign.DOSSIER, CardOverrides(socials = "bar")), ProfileVisibility.ANONYMOUS)))
-        val (vm, _, host) = circleVm(store)
-        assertTrue(vm.uiState.value.canAddCircleCard)
+    fun theCardSetIsPublicPlusOneCardPerContactsCircleInPriorityOrder() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute))
+        val work = CardCircle("c3", "Work", 1)
+        val (vm, _, _) = circleVm(store) { circleList = listOf(work, friendsCircle, family) }
 
-        vm.onAddCardClicked()
-        assertEquals(listOf("c1", "c2"), vm.uiState.value.circlePicker?.circles?.map { it.id })
-        vm.onCircleChosen("c1")
+        assertEquals(
+            listOf<CardAudience>(CardAudience.Public, CardAudience.Circle("c2", "Family"), friends, CardAudience.Circle("c3", "Work")),
+            vm.uiState.value.cards.map { it.audience },
+        )
+        assertEquals(listOf(PUBLIC_CARD_PRIORITY, 10, 20, 30), vm.uiState.value.cards.map { it.priority })
+        assertTrue(store.writes.isEmpty())
+    }
+
+    @Test
+    fun anUnsavedCircleCardShowsThePublicDesignAndOverridesAndIsWrittenOnFirstSave() = runTest(dispatcher) {
+        val overrides = CardOverrides(socials = "bar")
+        val public = cardAttribute(ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, CardDesign.DOSSIER, overrides), ProfileVisibility.ANONYMOUS)
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(public))
+        val (vm, _, host) = circleVm(store)
+
+        vm.onCardSelected(friends)
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
+        assertEquals(overrides, vm.uiState.value.overrides)
+        assertEquals(CardDesign.DOSSIER, host.rendered.last().design)
+        assertTrue(store.writes.isEmpty())
+
+        vm.onDesignSelected(CardDesign.POSTER)
+        vm.onSaveDesign()
         advanceUntilIdle()
 
         val save = store.writes.single()
-        assertEquals(ProfileVisibility.CONNECTED, save.visibility)
+        assertNull(save.id)
+        assertEquals(20, save.priority)
         assertEquals(listOf("c1"), save.circleIds)
-        assertEquals(0, save.priority)
+        assertEquals(ProfileVisibility.CONNECTED, save.visibility)
         assertEquals(JsonPrimitive("Friends"), save.data["label"])
-        assertEquals(JsonPrimitive(CardDesign.DOSSIER), save.data["design"])
-        assertEquals("bar", (save.data["overrides"] as JsonObject)["socials"]?.jsonPrimitive?.content)
-        assertNull(vm.uiState.value.circlePicker)
-        assertEquals(CardAudience.Circle("c1", "Friends"), vm.uiState.value.selectedAudience)
-        assertEquals(2, vm.uiState.value.cards.size)
-        assertEquals("circle", host.rendered.last().audience?.kind)
-        assertEquals("Friends", host.rendered.last().audience?.label)
+        assertEquals(JsonPrimitive(CardDesign.POSTER), save.data["design"])
+        assertEquals(friends, vm.uiState.value.selectedAudience)
     }
 
     @Test
-    fun aNewCircleCardStaysSelectedWhenTheServerSpellsItsCircleIdDifferently() = runTest(dispatcher) {
-        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute)).apply { serverCircleId = { it.replace("-", "").lowercase() } }
-        val (vm, _, host) = circleVm(store) { circleList = listOf(CardCircle("AB12-CD34", "Work", memberCount = 2)) }
-
-        vm.onAddCardClicked()
-        vm.onCircleChosen("AB12-CD34")
+    fun savingASecondTimeAfterTheFirstUpdatesTheSameAttribute() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute))
+        val (vm, _, _) = circleVm(store)
+        vm.onCardSelected(friends)
+        vm.onDesignSelected(CardDesign.POSTER)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+        vm.onDesignSelected(CardDesign.COLLAGE)
+        vm.onSaveDesign()
         advanceUntilIdle()
 
-        val selected = assertIs<CardAudience.Circle>(vm.uiState.value.selectedAudience)
-        assertEquals("ab12cd34", selected.id)
-        assertEquals(selected, vm.uiState.value.selectedCard?.audience)
-        assertEquals("circle", host.rendered.last().audience?.kind)
-        assertEquals("Work", host.rendered.last().audience?.label)
+        assertEquals(2, store.writes.size)
+        assertNotNull(store.writes[1].id)
+        assertEquals(1, store.attributes.count { it.acl.circleIdList != null })
     }
 
     @Test
-    fun aCircleThatAlreadyHasACardIsListedButCannotBePicked() = runTest(dispatcher) {
-        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circleCardAttribute("c1", "Friends", CardDesign.POSTER, 0)))
+    fun aCircleCardOnACircleThatIsNotContactsOwnedIsNeitherShownNorDeleted() = runTest(dispatcher) {
+        val leftover = circleCardAttribute("c-chat", "Chat", CardDesign.POSTER, 0)
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, leftover))
         val (vm, _, _) = circleVm(store)
-
-        vm.onAddCardClicked()
-
-        val picker = assertNotNull(vm.uiState.value.circlePicker)
-        assertEquals(listOf("c1", "c2"), picker.circles.map { it.id })
-        assertEquals(setOf("c1"), picker.withCard)
-        assertEquals(listOf(5, 3), picker.circles.map { it.memberCount })
-        assertTrue(picker.hasChoice)
-        vm.onCircleChosen("c1")
+        vm.onDesignSelected(CardDesign.POSTER)
+        vm.onSaveDesign()
         advanceUntilIdle()
-        assertTrue(store.writes.isEmpty())
-        assertEquals(picker, vm.uiState.value.circlePicker)
+
+        assertTrue(vm.uiState.value.cards.none { (it.audience as? CardAudience.Circle)?.id == "c-chat" })
+        assertTrue(store.deleted.isEmpty())
+        assertTrue(leftover.id in store.attributes.map { it.id })
     }
 
     @Test
-    fun aFailedCircleListSurfacesInThePickerInsteadOfHanging() = runTest(dispatcher) {
-        val (vm, _, _) = circleVm(FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute))) { circlesFail = true }
-
-        vm.onAddCardClicked()
-
-        assertEquals(CirclePicker(loading = false, failed = true), vm.uiState.value.circlePicker)
-        vm.onAddCardDismissed()
-        assertNull(vm.uiState.value.circlePicker)
-    }
-
-    @Test
-    fun aServerThatDropsCircleIdsHidesTheAddActionAndLeavesNoStrayCard() = runTest(dispatcher) {
-        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute)).apply { dropCircleIds = true }
+    fun aStoredCircleCardWithAnotherPriorityIsRewrittenWithTheFixedOneOnItsNextSave() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circleCardAttribute("c2", "Family", CardDesign.BOARD, 7)))
         val (vm, _, _) = circleVm(store)
+        val familyCard = CardAudience.Circle("c2", "Family")
+        assertEquals(10, vm.uiState.value.cards.first { it.audience == familyCard }.priority)
+        vm.onCardSelected(familyCard)
+        vm.onDesignSelected(CardDesign.POSTER)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        assertEquals(10, store.writes.single().priority)
+    }
+
+    @Test
+    fun aDisabledOrNonContactsCircleGetsNoCardBecauseTheSourceFiltersIt() = runTest(dispatcher) {
+        val (vm, _, _) = circleVm(FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute))) { circleList = emptyList() }
+        assertEquals(listOf<CardAudience>(CardAudience.Public), vm.uiState.value.cards.map { it.audience })
+    }
+
+    @Test
+    fun aServerThatRejectsCircleIdsMakesTheCircleCardsReadOnlyWithOneMessage() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute)).apply {
+            failWith = ClientException(status = 400, message = "Unknown field circleIds", correlationId = null, problem = ProblemDetails(status = 400, title = "Unknown field circleIds"))
+        }
+        val (vm, _, _) = circleVm(store)
+        vm.onCardSelected(friends)
+        vm.onDesignSelected(CardDesign.POSTER)
         val event = async { vm.events.first() }
 
-        vm.onAddCardClicked()
-        vm.onCircleChosen("c1")
+        vm.onSaveDesign()
         advanceUntilIdle()
 
         assertEquals(ProfileCardEvent.CircleCardsUnsupported, event.await())
         assertFalse(vm.uiState.value.circleCardsSupported)
-        assertFalse(vm.uiState.value.canAddCircleCard)
-        assertEquals(listOf(CardAudience.Public), vm.uiState.value.cards.map { it.audience })
-        assertEquals(listOf(publicCardAttribute.id), store.attributes.map { it.id })
-
-        vm.onAddCardClicked()
-        assertNull(vm.uiState.value.circlePicker)
-    }
-
-    @Test
-    fun aServerWithoutTheCardTypeHidesTheAddActionToo() = runTest(dispatcher) {
-        val store = FakeCardStore(keepWrites = true).apply {
-            failWith = ClientException(
-                status = 400,
-                message = "Unknown profile attribute type 9832dc5dd4ba12dd60acb853e7588f49",
-                correlationId = null,
-                problem = ProblemDetails(status = 400, title = "Unknown profile attribute type 9832dc5dd4ba12dd60acb853e7588f49"),
-            )
-        }
-        val (vm, _, _) = circleVm(store)
-
-        vm.onAddCardClicked()
-        vm.onCircleChosen("c2")
-        advanceUntilIdle()
-
-        assertFalse(vm.uiState.value.canAddCircleCard)
+        assertTrue(vm.uiState.value.isCircleReadOnly)
+        assertFalse(vm.uiState.value.canSaveDesign)
+        assertFalse(vm.uiState.value.canReset)
+        assertEquals(1, store.saveCalls)
     }
 
     @Test
@@ -1466,7 +1457,7 @@ class ProfileCardViewModelTest {
         assertEquals(ProfileCardEvent.DesignSaved, event.await())
         val save = store.writes.single()
         assertEquals(listOf("c1"), save.circleIds)
-        assertEquals(2, save.priority)
+        assertEquals(20, save.priority)
         assertEquals(ProfileVisibility.CONNECTED, save.visibility)
         assertEquals(JsonPrimitive(CardDesign.POSTER), save.data["design"])
         assertEquals(JsonPrimitive("Friends"), save.data["label"])
@@ -1513,51 +1504,59 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun deletingACircleCardRemovesItAndFallsBackToThePublicCard() = runTest(dispatcher) {
-        val circle = circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0)
+    fun resettingACircleCardRemovesItsAttributeAndShowsTheDefault() = runTest(dispatcher) {
+        val circle = circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 20)
         val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circle))
         val (vm, _, host) = circleVm(store)
         vm.onCardSelected(friends)
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
 
-        vm.onDeleteCardConfirmed()
+        vm.onResetCardConfirmed()
         advanceUntilIdle()
 
         assertEquals(listOf(circle.id), store.deleted)
-        assertEquals(CardAudience.Public, vm.uiState.value.selectedAudience)
-        assertEquals(listOf<CardAudience>(CardAudience.Public), vm.uiState.value.cards.map { it.audience })
-        assertEquals("public", host.rendered.last().audience?.kind)
-        assertTrue(vm.uiState.value.canAddCircleCard)
+        assertEquals(friends, vm.uiState.value.selectedAudience)
+        assertEquals(3, vm.uiState.value.cards.size)
+        assertEquals(CardDesign.BOARD, vm.uiState.value.design)
+        assertEquals(Uuid.NIL, vm.uiState.value.selectedCard?.id)
+        assertEquals(CardDesign.BOARD, host.rendered.last().design)
     }
 
     @Test
-    fun aThrowingDeleteOfACircleCardKeepsItAndReports() = runTest(dispatcher) {
-        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0)))
+    fun resettingThePublicCardRemovesItAndFallsBackToTheSiteDefault() = runTest(dispatcher) {
+        val store = FakeCardStore(
+            keepWrites = true,
+            attributes = listOf(cardAttribute(ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, CardDesign.DOSSIER, CardOverrides(socials = "bar")), ProfileVisibility.ANONYMOUS)),
+        )
+        val (vm, source, host) = circleVm(store)
+        source.savedDesigns += CardDesign.DOSSIER
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
+
+        vm.onResetCardConfirmed()
+        advanceUntilIdle()
+
+        assertEquals(1, store.deleted.size)
+        assertTrue(store.attributes.none { it.type == ProfileAttributeTypes.PROFILE_CARD })
+        assertTrue(source.savedDesigns.isEmpty())
+        assertEquals(CardDesign.POSTER, vm.uiState.value.design)
+        assertTrue(vm.uiState.value.overrides.isEmpty())
+        assertEquals(CardDesign.POSTER, host.rendered.last().design)
+    }
+
+    @Test
+    fun aThrowingResetKeepsTheCardAndReports() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 20)))
             .apply { deleteThrows = IllegalStateException("offline") }
         val (vm, _, _) = circleVm(store)
         vm.onCardSelected(friends)
         val event = async { vm.events.first() }
 
-        vm.onDeleteCardConfirmed()
+        vm.onResetCardConfirmed()
         advanceUntilIdle()
 
         assertEquals(ProfileCardEvent.CircleCardFailed, event.await())
-        assertEquals(friends, vm.uiState.value.selectedAudience)
-        assertEquals(2, vm.uiState.value.cards.size)
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
         assertFalse(vm.uiState.value.isCardBusy)
-    }
-
-    @Test
-    fun deletingACardTheServerNoLongerHasDropsItInsteadOfReportingAnError() = runTest(dispatcher) {
-        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0))).apply { deleteResult = false }
-        val (vm, _, host) = circleVm(store)
-        vm.onCardSelected(friends)
-
-        vm.onDeleteCardConfirmed()
-        advanceUntilIdle()
-
-        assertEquals(CardAudience.Public, vm.uiState.value.selectedAudience)
-        assertEquals(listOf<CardAudience>(CardAudience.Public), vm.uiState.value.cards.map { it.audience })
-        assertEquals("public", host.rendered.last().audience?.kind)
     }
 
     private suspend fun awaitUntil(condition: () -> Boolean) = withContext(Dispatchers.Default) {
@@ -1578,87 +1577,36 @@ class ProfileCardViewModelTest {
         return viewModel(host, source) to host
     }
 
-    @Test
-    fun addingACircleCardOverTheWireSendsCircleIdsAndReadsTheCardBack() = runTest(dispatcher) {
-        val wire = CardWireHarness()
-        val (vm, host) = wireCircleVm(wire, listOf(publicCardAttribute))
-
-        vm.onAddCardClicked()
-        vm.onCircleChosen("c1")
-        // The switch renders in a coroutine launched after selectedAudience flips, so wait for the render too.
-        awaitUntil {
-            vm.uiState.value.selectedAudience == CardAudience.Circle("c1", "Friends") && !vm.uiState.value.isCardBusy &&
-                host.rendered.lastOrNull()?.audience?.kind == "circle"
-        }
-
-        assertEquals(listOf(JsonPrimitive("owner"), JsonPrimitive("connected")), wire.putBodies.map { it.jsonObject["visibility"] })
-        val put = wire.putBodies.last().jsonObject
-        assertEquals(JsonPrimitive("connected"), put["visibility"])
-        assertEquals(Json.parseToJsonElement("""["c1"]"""), put["circleIds"])
-        assertEquals(JsonPrimitive(0), put["priority"])
-        assertEquals(JsonPrimitive("Friends"), put["data"]!!.jsonObject["label"])
-        assertEquals(2, vm.uiState.value.cards.size)
-        assertEquals(2, wire.storedIds.size)
-        assertTrue(vm.uiState.value.canAddCircleCard)
-        assertEquals("circle", host.rendered.last().audience?.kind)
-    }
-
-    private suspend fun CoroutineScope.chooseCircleOverWire(vm: ProfileCardViewModel): Deferred<ProfileCardEvent> {
-        awaited(async { vm.uiState.first { it.cards.isNotEmpty() } })
-        val event = async { vm.events.first() }
-        vm.onAddCardClicked()
-        awaited(async { vm.uiState.first { it.circlePicker?.loading == false } })
-        vm.onCircleChosen("c1")
-        return event
-    }
-
     private suspend fun <T> awaited(deferred: Deferred<T>) =
         withContext(Dispatchers.Default) { withTimeout(10.seconds) { deferred.await() } }
 
     @Test
-    fun onAWireServerWithoutCircleCardsNoConnectedPutIsEverSentAndTheAddHides() = runTest(dispatcher) {
-        val wire = CardWireHarness(circleCards = false)
-        val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute))
-        val event = chooseCircleOverWire(vm)
+    fun firstSaveOfACircleCardOverTheWireSendsCircleIdsAndTheFixedPriority() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val (vm, host) = wireCircleVm(wire, listOf(publicCardAttribute))
+        awaitUntil { vm.uiState.value.cards.size == 3 }
+        vm.onCardSelected(friends)
+        vm.onDesignSelected(CardDesign.POSTER)
 
-        assertEquals(ProfileCardEvent.CircleCardsUnsupported, awaited(event))
-        assertTrue(wire.putBodies.isNotEmpty())
-        assertTrue(wire.putBodies.none { it.jsonObject["visibility"] == JsonPrimitive("connected") })
-        assertEquals(listOf(publicCardAttribute.id.toString()), wire.storedIds)
-        assertFalse(vm.uiState.value.canAddCircleCard)
+        vm.onSaveDesign()
+        wire.awaitPuts(1)
+        awaitUntil { !vm.uiState.value.isSavingDesign }
+
+        val put = wire.putBodies.single().jsonObject
+        assertEquals(JsonPrimitive("connected"), put["visibility"])
+        assertEquals(Json.parseToJsonElement("""["c1"]"""), put["circleIds"])
+        assertEquals(JsonPrimitive(20), put["priority"])
+        assertEquals(JsonPrimitive("Friends"), put["data"]!!.jsonObject["label"])
+        assertEquals(2, wire.storedIds.size)
+        assertEquals("circle", host.rendered.last().audience?.kind)
     }
 
     @Test
-    fun aFailedCleanupOfTheOwnerOnlyDraftReportsUnsupportedNotFailed() = runTest(dispatcher) {
-        val wire = CardWireHarness(deleteReply = { CardWireHarness.Reply.Problem(500, """{"title":"boom","status":500}""") }, circleCards = false)
-        val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute))
-        val event = chooseCircleOverWire(vm)
-
-        assertEquals(ProfileCardEvent.CircleCardsUnsupported, awaited(event))
-        assertEquals(1, wire.deletes)
-        assertEquals(listOf(CardAudience.Public), vm.uiState.value.cards.map { it.audience })
-    }
-
-    @Test
-    fun theUnsupportedAnswerIsReProbedOnTheNextLaunch() = runTest(dispatcher) {
-        val wire = CardWireHarness(circleCards = false)
-        val (first, _) = wireCircleVm(wire, listOf(publicCardAttribute))
-        val event = chooseCircleOverWire(first)
-        assertEquals(ProfileCardEvent.CircleCardsUnsupported, awaited(event))
-
-        val (relaunched, _) = wireCircleVm(wire, listOf(publicCardAttribute))
-        awaited(async { relaunched.uiState.first { it.cards.isNotEmpty() } })
-
-        assertTrue(relaunched.uiState.value.circleCardsSupported)
-        assertTrue(relaunched.uiState.value.canAddCircleCard)
-    }
-
-    @Test
-    fun editingACircleCardOverTheWireEditsThatAttributeInPlace() = runTest(dispatcher) {
+    fun editingACircleCardOverTheWireEditsThatAttributeInPlaceWithTheFixedPriority() = runTest(dispatcher) {
         val wire = CardWireHarness()
         val circle = circleCardAttribute("c1", "Friends", CardDesign.BOARD, 2)
         val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute, circle))
-        awaitUntil { vm.uiState.value.cards.size == 2 }
+        awaitUntil { vm.uiState.value.cards.size == 3 }
         vm.onCardSelected(friends)
         vm.onDesignSelected(CardDesign.POSTER)
 
@@ -1669,71 +1617,73 @@ class ProfileCardViewModelTest {
         assertEquals(JsonPrimitive(circle.id.toString()), put["id"])
         assertEquals(JsonPrimitive(circle.versionTag.toString()), put["expectedVersionTag"])
         assertEquals(Json.parseToJsonElement("""["c1"]"""), put["circleIds"])
-        assertEquals(JsonPrimitive(2), put["priority"])
+        assertEquals(JsonPrimitive(20), put["priority"])
         assertEquals(JsonPrimitive(CardDesign.POSTER), put["data"]!!.jsonObject["design"])
         assertEquals(2, wire.storedIds.size)
     }
 
     @Test
-    fun deletingACircleCardOverTheWireSendsTheDeleteAndFallsBackToPublic() = runTest(dispatcher) {
+    fun onAWireServerThatRejectsCircleIdsOnlyOnePutIsSentAndTheCircleCardsGoReadOnly() = runTest(dispatcher) {
+        val wire = CardWireHarness(circleCards = false)
+        val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute))
+        awaitUntil { vm.uiState.value.cards.size == 3 }
+        vm.onCardSelected(friends)
+        vm.onDesignSelected(CardDesign.POSTER)
+        val event = async { vm.events.first() }
+
+        vm.onSaveDesign()
+
+        assertEquals(ProfileCardEvent.CircleCardsUnsupported, awaited(event))
+        assertEquals(1, wire.puts)
+        assertEquals(listOf(publicCardAttribute.id.toString()), wire.storedIds)
+        assertTrue(vm.uiState.value.isCircleReadOnly)
+    }
+
+    @Test
+    fun resettingACircleCardOverTheWireSendsTheDeleteAndShowsTheDefault() = runTest(dispatcher) {
         val wire = CardWireHarness()
-        val circle = circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0)
+        val circle = circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 20)
         val (vm, host) = wireCircleVm(wire, listOf(publicCardAttribute, circle))
-        awaitUntil { vm.uiState.value.cards.size == 2 }
+        awaitUntil { vm.uiState.value.cards.size == 3 }
         vm.onCardSelected(friends)
 
-        vm.onDeleteCardConfirmed()
-        awaitUntil { vm.uiState.value.cards.size == 1 && !vm.uiState.value.isCardBusy }
+        vm.onResetCardConfirmed()
+        awaitUntil { wire.deletes == 1 && !vm.uiState.value.isCardBusy && vm.uiState.value.design == CardDesign.BOARD }
 
         assertEquals(listOf(circle.id.toString()), wire.deletedIds.toList())
         assertEquals(listOf(publicCardAttribute.id.toString()), wire.storedIds)
-        assertEquals(CardAudience.Public, vm.uiState.value.selectedAudience)
-        assertEquals("public", host.rendered.last().audience?.kind)
+        assertEquals(friends, vm.uiState.value.selectedAudience)
+        assertEquals("circle", host.rendered.last().audience?.kind)
     }
 
     @Test
-    fun aWire404OnDeleteDropsTheCardWithoutAnError() = runTest(dispatcher) {
+    fun aWire404OnResetCountsAsResetWithoutAnError() = runTest(dispatcher) {
         val wire = CardWireHarness()
-        val circle = circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0)
+        val circle = circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 20)
         val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute, circle))
-        awaitUntil { vm.uiState.value.cards.size == 2 }
+        awaitUntil { vm.uiState.value.cards.size == 3 }
         vm.onCardSelected(friends)
-        // Another device deleted the card after this one loaded it.
         wire.removeForTest(circle.id)
 
-        vm.onDeleteCardConfirmed()
-        awaitUntil { vm.uiState.value.cards.size == 1 && !vm.uiState.value.isCardBusy }
+        vm.onResetCardConfirmed()
+        awaitUntil { wire.deletes == 1 && !vm.uiState.value.isCardBusy && vm.uiState.value.design == CardDesign.BOARD }
 
-        assertEquals(1, wire.deletes)
-        assertEquals(CardAudience.Public, vm.uiState.value.selectedAudience)
-    }
-
-    @Test
-    fun aWire500OnDeleteKeepsTheCardAndReports() = runTest(dispatcher) {
-        val wire = CardWireHarness(deleteReply = { CardWireHarness.Reply.Problem(500, """{"title":"boom","status":500}""") })
-        val circle = circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0)
-        val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute, circle))
-        awaitUntil { vm.uiState.value.cards.size == 2 }
-        vm.onCardSelected(friends)
-        val event = async { vm.events.first() }
-
-        vm.onDeleteCardConfirmed()
-
-        assertEquals(ProfileCardEvent.CircleCardFailed, awaited(event))
-        assertEquals(2, vm.uiState.value.cards.size)
         assertEquals(friends, vm.uiState.value.selectedAudience)
     }
 
     @Test
-    fun thePublicCardCanNotBeDeleted() = runTest(dispatcher) {
-        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 0)))
-        val (vm, _, _) = circleVm(store)
+    fun aWire500OnResetKeepsTheCardAndReports() = runTest(dispatcher) {
+        val wire = CardWireHarness(deleteReply = { CardWireHarness.Reply.Problem(500, """{"title":"boom","status":500}""") })
+        val circle = circleCardAttribute("c1", "Friends", CardDesign.DOSSIER, 20)
+        val (vm, _) = wireCircleVm(wire, listOf(publicCardAttribute, circle))
+        awaitUntil { vm.uiState.value.cards.size == 3 }
+        vm.onCardSelected(friends)
+        val event = async { vm.events.first() }
 
-        vm.onDeleteCardConfirmed()
-        advanceUntilIdle()
+        vm.onResetCardConfirmed()
 
-        assertTrue(store.deleted.isEmpty())
-        assertEquals(2, vm.uiState.value.cards.size)
+        assertEquals(ProfileCardEvent.CircleCardFailed, awaited(event))
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
     }
 
     @Test

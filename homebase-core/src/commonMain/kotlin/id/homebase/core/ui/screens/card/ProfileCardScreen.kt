@@ -42,7 +42,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.filled.Close
@@ -128,20 +128,16 @@ import id.homebase.resources.profile_edit_retry
 import id.homebase.resources.close
 import id.homebase.resources.cancel
 import id.homebase.resources.delete
-import id.homebase.resources.profile_card_add_circle_card
-import id.homebase.resources.profile_card_add_circle_title
-import id.homebase.resources.profile_card_add_circle_hint
-import id.homebase.resources.profile_card_add_circle_none
-import id.homebase.resources.profile_card_add_circle_load_failed
-import id.homebase.resources.profile_card_delete_card
-import id.homebase.resources.profile_card_delete_title
-import id.homebase.resources.profile_card_delete_message
 import id.homebase.resources.profile_card_circle_failed
 import id.homebase.resources.profile_card_circle_unsupported
 import id.homebase.resources.file_saved_to
 import id.homebase.resources.profile_card_audience_circle
 import id.homebase.resources.profile_card_audience_description
 import id.homebase.resources.profile_card_audience_public
+import id.homebase.resources.profile_card_reset_card
+import id.homebase.resources.profile_card_reset_title
+import id.homebase.resources.profile_card_reset_message
+import id.homebase.resources.profile_card_reset_confirm
 import id.homebase.resources.profile_card_audience_switch
 import id.homebase.resources.profile_card_design_board
 import id.homebase.resources.profile_card_design_collage
@@ -167,9 +163,6 @@ import id.homebase.resources.profile_card_access_body
 import id.homebase.resources.profile_card_access_continue
 import id.homebase.resources.profile_card_access_later
 import id.homebase.resources.profile_card_access_title
-import id.homebase.resources.profile_card_add_circle_has_card
-import id.homebase.resources.profile_card_add_circle_no_circles
-import id.homebase.resources.profile_card_circle_members
 import id.homebase.resources.profile_card_save_public
 import id.homebase.resources.profile_card_share_public
 import id.homebase.resources.profile_card_share_public_message
@@ -386,12 +379,7 @@ fun ProfileCardScreen(
                 SheetTopChrome(
                     uiState = uiState,
                     onSelectCard = viewModel::onCardSelected,
-                    circleActions = CircleCardActions(
-                        onAdd = viewModel::onAddCardClicked,
-                        onPick = viewModel::onCircleChosen,
-                        onDismissPicker = viewModel::onAddCardDismissed,
-                        onDelete = viewModel::onDeleteCardConfirmed,
-                    ),
+                    circleActions = CircleCardActions(onReset = viewModel::onResetCardConfirmed),
                     onClose = leave,
                     // Over a band the whole strip drags; floating over the card only the handle does, so the card keeps its taps.
                     bandDrag = if (bands.top) dismissDrag else Modifier,
@@ -658,12 +646,7 @@ internal fun audienceLabel(audience: CardAudience): String = when (audience) {
 internal fun audienceIcon(audience: CardAudience) =
     if (audience is CardAudience.Circle) Icons.Outlined.Groups else Icons.Outlined.Public
 
-internal class CircleCardActions(
-    val onAdd: () -> Unit,
-    val onPick: (String) -> Unit,
-    val onDismissPicker: () -> Unit,
-    val onDelete: () -> Unit,
-)
+internal class CircleCardActions(val onReset: () -> Unit)
 
 @Composable
 internal fun AudienceBadge(
@@ -673,7 +656,7 @@ internal fun AudienceBadge(
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
+    var confirmReset by remember { mutableStateOf(false) }
     val selected = uiState.selectedAudience
     val label = audienceLabel(selected)
     val hasMenu = uiState.hasCardMenu
@@ -736,183 +719,44 @@ internal fun AudienceBadge(
                     },
                 )
             }
-            if (uiState.canAddCircleCard) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(MR.string.profile_card_add_circle_card)) },
-                    leadingIcon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                    onClick = {
-                        expanded = false
-                        circleActions.onAdd()
-                    },
-                )
-            }
-            if (uiState.isCircleSelected && !uiState.isCardBusy) {
+            if (uiState.canReset) {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 DropdownMenuItem(
-                    text = { Text(stringResource(MR.string.profile_card_delete_card)) },
-                    leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
-                    colors = MenuDefaults.itemColors(
-                        textColor = MaterialTheme.colorScheme.error,
-                        leadingIconColor = MaterialTheme.colorScheme.error,
-                    ),
+                    text = { Text(stringResource(MR.string.profile_card_reset_card)) },
+                    leadingIcon = { Icon(Icons.Outlined.RestartAlt, contentDescription = null) },
                     onClick = {
                         expanded = false
-                        confirmDelete = true
+                        confirmReset = true
                     },
                 )
             }
         }
     }
-    uiState.circlePicker?.let { picker ->
-        CirclePickerSheet(picker = picker, onPick = circleActions.onPick, onDismiss = circleActions.onDismissPicker)
-    }
-    if (confirmDelete) {
-        DeleteCardDialog(
+    if (confirmReset) {
+        ResetCardDialog(
             label = label,
-            onDelete = { confirmDelete = false; circleActions.onDelete() },
-            onDismiss = { confirmDelete = false },
+            onReset = { confirmReset = false; circleActions.onReset() },
+            onDismiss = { confirmReset = false },
         )
     }
 }
 
 @Composable
-internal fun DeleteCardDialog(label: String, onDelete: () -> Unit, onDismiss: () -> Unit) {
+internal fun ResetCardDialog(label: String, onReset: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
-            onDismissRequest = onDismiss,
-            icon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
-            title = { Text(stringResource(MR.string.profile_card_delete_title, label), textAlign = TextAlign.Center) },
-            text = { Text(stringResource(MR.string.profile_card_delete_message)) },
-            confirmButton = {
-                Button(
-                    onClick = onDelete,
-                    shapes = ButtonDefaults.shapes(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError,
-                    ),
-                ) {
-                    Text(stringResource(MR.string.delete))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
-            },
-        )
-}
-
-@Composable
-private fun CirclePickerSheet(picker: CirclePicker, onPick: (String) -> Unit, onDismiss: () -> Unit) {
-    AdaptiveSheet(onDismiss = onDismiss, expandFully = picker.circles.size > PICKER_HALF_SHEET_ROWS) {
-        CirclePickerContent(picker = picker, onPick = { id -> dismiss { onPick(id) } })
-    }
-}
-
-@Composable
-internal fun CirclePickerContent(picker: CirclePicker, onPick: (String) -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp)) {
-        Text(
-            text = stringResource(MR.string.profile_card_add_circle_title),
-            style = MaterialTheme.typography.headlineSmallEmphasized,
-            modifier = Modifier.padding(horizontal = 24.dp).semantics { heading() },
-        )
-        val message = when {
-            picker.loading -> null
-            picker.failed -> MR.string.profile_card_add_circle_load_failed
-            picker.circles.isEmpty() -> MR.string.profile_card_add_circle_no_circles
-            !picker.hasChoice -> MR.string.profile_card_add_circle_none
-            else -> MR.string.profile_card_add_circle_hint
-        }
-        message?.let {
-            Text(
-                text = stringResource(it),
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.onSurfaceVariant,
-                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp),
-            )
-        }
-        when {
-            picker.loading -> Box(Modifier.fillMaxWidth().height(PICKER_ROW_HEIGHT * 2), contentAlignment = Alignment.Center) {
-                LoadingIndicator()
-            }
-            picker.circles.isNotEmpty() -> {
-                val listState = rememberLazyListState()
-                LazyColumn(
-                    state = listState,
-                    contentPadding = PaddingValues(top = 12.dp),
-                    modifier = Modifier.weight(1f, fill = false).verticalFadingEdges(listState),
-                ) {
-                    items(picker.circles, key = { it.id }) { circle ->
-                        CirclePickerRow(circle = circle, hasCard = circle.id in picker.withCard, onPick = { onPick(circle.id) })
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CirclePickerRow(circle: CardCircle, hasCard: Boolean, onPick: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    val muted = colors.onSurface.copy(alpha = DISABLED_ALPHA)
-    ListItem(
-        headlineContent = { Text(circle.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        supportingContent = {
-            Text(pluralStringResource(MR.plurals.profile_card_circle_members, circle.memberCount, circle.memberCount))
-        },
-        leadingContent = {
-            Box(
-                modifier = Modifier
-                    .size(PICKER_AVATAR)
-                    .background(if (hasCard) colors.surfaceContainerHighest else colors.tertiaryContainer, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Groups,
-                    contentDescription = null,
-                    tint = if (hasCard) muted else colors.onTertiaryContainer,
-                    modifier = Modifier.size(20.dp),
-                )
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.RestartAlt, contentDescription = null) },
+        title = { Text(stringResource(MR.string.profile_card_reset_title, label), textAlign = TextAlign.Center) },
+        text = { Text(stringResource(MR.string.profile_card_reset_message)) },
+        confirmButton = {
+            Button(onClick = onReset, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(MR.string.profile_card_reset_confirm))
             }
         },
-        trailingContent = if (hasCard) {
-            {
-                Text(
-                    text = stringResource(MR.string.profile_card_add_circle_has_card),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.onSurfaceVariant,
-                )
-            }
-        } else null,
-        colors = ListItemDefaults.colors(
-            containerColor = Color.Transparent,
-            headlineColor = if (hasCard) muted else colors.onSurface,
-            supportingColor = if (hasCard) muted else colors.onSurfaceVariant,
-        ),
-        modifier = Modifier
-            .heightIn(min = PICKER_ROW_HEIGHT)
-            .clickable(enabled = !hasCard, onClick = onPick)
-            .padding(horizontal = 8.dp),
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
+        },
     )
-}
-
-// Masks rows under a gradient at whichever end can still scroll, so the list never stops on a hard cut mid-row.
-@Composable
-private fun Modifier.verticalFadingEdges(state: LazyListState): Modifier {
-    val fade = with(LocalDensity.current) { PICKER_FADE.toPx() }
-    return graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-        .drawWithContent {
-            drawContent()
-            if (state.canScrollBackward) {
-                drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = 0f, endY = fade), blendMode = BlendMode.DstIn)
-            }
-            if (state.canScrollForward) {
-                drawRect(
-                    Brush.verticalGradient(listOf(Color.Black, Color.Transparent), startY = size.height - fade, endY = size.height),
-                    blendMode = BlendMode.DstIn,
-                )
-            }
-        }
 }
 
 @Composable

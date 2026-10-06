@@ -171,18 +171,11 @@ class ProfileCardEditorShotsTest {
     fun viewerChromeRendersEveryState() {
         for (dark in listOf(false, true)) {
             for (shot in viewerShots) renderViewer(shot, dark)
-            renderPopup("v06-delete-dialog", dark) { DeleteCardDialog(label = "Work", onDelete = {}, onDismiss = {}) }
+            renderPopup("v06-reset-dialog", dark) { ResetCardDialog(label = "Work", onReset = {}, onDismiss = {}) }
             renderPopup("v07-access-dialog", dark) { DesignAccessDialog(onContinue = {}, onDismiss = {}) }
             renderPopup("v03-share-public-confirm", dark) {
                 SharePublicCardDialog(circleLabel = "Acquaintances", saveInsteadOfShare = false, onConfirm = {}, onDismiss = {})
             }
-            renderSheet("v08-add-circle", dark, CirclePicker(circles(12), withCard = setOf("c1", "c4"), loading = false))
-            renderSheet("v09-add-circle-few", dark, CirclePicker(circles(3), withCard = setOf("c0"), loading = false))
-            renderSheet("v10-add-circle-loading", dark, CirclePicker())
-            renderSheet("v11-add-circle-all-taken", dark, CirclePicker(circles(2), withCard = setOf("c0", "c1"), loading = false))
-            renderSheet("v12-add-circle-redmi", dark, CirclePicker(circles(12), withCard = setOf("c1", "c4"), loading = false), REDMI_W, REDMI_H)
-            renderSheet("v15-add-circle-redmi-few", dark, CirclePicker(circles(4), withCard = setOf("c1"), loading = false), REDMI_W, REDMI_H)
-            renderSheet("v16-add-circle-load-failed", dark, CirclePicker(loading = false, failed = true), REDMI_W, REDMI_H)
         }
     }
 
@@ -206,7 +199,7 @@ class ProfileCardEditorShotsTest {
                     SheetTopChrome(
                         uiState = shot.state,
                         onSelectCard = {},
-                        circleActions = CircleCardActions({}, {}, {}, {}),
+                        circleActions = CircleCardActions({}),
                         onClose = {},
                         bandDrag = Modifier,
                         handleDrag = Modifier,
@@ -240,39 +233,6 @@ class ProfileCardEditorShotsTest {
                 content()
             }
         }
-        mainClock.advanceTimeBy(SETTLE_MS)
-        save(name, dark)
-    }
-
-    private fun renderSheet(
-        name: String,
-        dark: Boolean,
-        picker: CirclePicker,
-        widthDp: Int = PHONE_W,
-        heightDp: Int = PHONE_H,
-        act: ComposeUiTest.() -> Unit = {},
-    ) = runDesktopComposeUiTest(
-        width = (widthDp * SCALE).toInt(),
-        height = (heightDp * SCALE).toInt(),
-    ) {
-        mainClock.autoAdvance = false
-        setContent {
-            themed(dark) {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f)), contentAlignment = Alignment.BottomCenter) {
-                    Surface(
-                        shape = MaterialTheme.shapes.extraLarge,
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        modifier = Modifier.fillMaxWidth().heightIn(max = (heightDp * 0.9f).dp),
-                    ) {
-                        Box(Modifier.padding(top = 48.dp)) {
-                            CirclePickerContent(picker = picker, onPick = {})
-                        }
-                    }
-                }
-            }
-        }
-        mainClock.advanceTimeBy(SETTLE_MS)
-        act(this)
         mainClock.advanceTimeBy(SETTLE_MS)
         save(name, dark)
     }
