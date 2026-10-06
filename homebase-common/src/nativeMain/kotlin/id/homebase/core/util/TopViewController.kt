@@ -14,6 +14,8 @@ import platform.darwin.dispatch_time
 private const val KEY_WINDOW_POLL_NS = 50_000_000L
 private const val KEY_WINDOW_MAX_POLLS = 100
 
+private val log = Logger.withTag("TopViewController")
+
 // keyWindow is a Compose Popup's own window while a DropdownMenu is open; anything presented on it dies with the popup.
 internal fun topViewController(): UIViewController? {
     var presenter: UIViewController =
@@ -38,7 +40,7 @@ internal fun presentWhenMainWindowIsKey(attempt: Int = 0, present: (UIViewContro
     if (mainWindow != null && !mainWindow.isKeyWindow()) {
         if (attempt >= KEY_WINDOW_MAX_POLLS) {
             val keyWindow = UIApplication.sharedApplication.keyWindow
-            Logger.withTag("TopViewController").w {
+            log.w {
                 "main window never became key after $attempt polls; not presenting " +
                     "(mainWindow.isKeyWindow=${mainWindow.isKeyWindow()}, keyWindow=${keyWindow?.let { it::class.simpleName }})"
             }
@@ -49,6 +51,5 @@ internal fun presentWhenMainWindowIsKey(attempt: Int = 0, present: (UIViewContro
         }
         return
     }
-    Logger.withTag("TopViewController").i { "main window key after $attempt polls" }
     topViewController()?.let(present)
 }
