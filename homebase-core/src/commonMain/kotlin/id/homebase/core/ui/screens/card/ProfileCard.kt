@@ -13,15 +13,22 @@ import kotlinx.serialization.json.JsonPrimitive
 
 const val PUBLIC_CARD_PRIORITY = 1000
 
-private val FIXED_CIRCLE_PRIORITIES = mapOf("family" to 10, "friends" to 20, "work" to 30)
+const val FAMILY_CIRCLE_ID = "cefc4f7cbc8c34762e0f76703e7e174e"
+const val FRIENDS_CIRCLE_ID = "3d594614f445f6b00014e9b77730b833"
+const val WORK_CIRCLE_ID = "0f9263536b9fc61ada745644735bfd8f"
+
+private val FIXED_CIRCLE_PRIORITIES = listOf(FAMILY_CIRCLE_ID to 10, FRIENDS_CIRCLE_ID to 20, WORK_CIRCLE_ID to 30)
 private const val OTHER_CIRCLE_PRIORITY = 40
 
-/** Family, Friends and Work keep fixed slots so a viewer in several circles gets the closest card; any other circle follows in name order. */
+private fun CardCircle.fixedPriority(): Int? =
+    FIXED_CIRCLE_PRIORITIES.firstOrNull { compareStringUuId(it.first, id) }?.second
+
+/** Family, Friends and Work keep fixed slots by circle id, so a rename can't move them; any other circle follows in name order. */
 internal fun fixedCirclePriorities(circles: List<CardCircle>): Map<String, Int> {
-    val others = circles.filter { it.name.trim().lowercase() !in FIXED_CIRCLE_PRIORITIES }
+    val others = circles.filter { it.fixedPriority() == null }
         .sortedWith(compareBy({ it.name.lowercase() }, { it.id.lowercase() }))
     return buildMap {
-        circles.forEach { c -> FIXED_CIRCLE_PRIORITIES[c.name.trim().lowercase()]?.let { put(c.id, it) } }
+        circles.forEach { c -> c.fixedPriority()?.let { put(c.id, it) } }
         others.forEachIndexed { i, c -> put(c.id, OTHER_CIRCLE_PRIORITY + i) }
     }
 }

@@ -261,14 +261,22 @@ class CardRepositoryTest {
     @Test
     fun fixedPrioritiesPutFamilyFriendsWorkFirstThenOthersByName() {
         val circles = listOf(
-            CardCircle("w", "Work"), CardCircle("z", "Zed"), CardCircle("a", "Acquaintances"),
-            CardCircle("fr", "friends"), CardCircle("fa", "Family"),
+            CardCircle(WORK_CIRCLE_ID, "Work"), CardCircle("z", "Zed"), CardCircle("a", "Acquaintances"),
+            CardCircle(FRIENDS_CIRCLE_ID, "friends"), CardCircle(FAMILY_CIRCLE_ID, "Family"),
         )
         val p = fixedCirclePriorities(circles)
-        assertEquals(10, p["fa"])
-        assertEquals(20, p["fr"])
-        assertEquals(30, p["w"])
+        assertEquals(10, p[FAMILY_CIRCLE_ID])
+        assertEquals(20, p[FRIENDS_CIRCLE_ID])
+        assertEquals(30, p[WORK_CIRCLE_ID])
         assertEquals(40, p["a"])
         assertEquals(41, p["z"])
+    }
+
+    @Test
+    fun aRenamedFamilyCircleStillGetsPriorityTenAndDashedIdsMatch() {
+        val dashed = "cefc4f7c-bc8c-3476-2e0f-76703e7e174e"
+        val p = fixedCirclePriorities(listOf(CardCircle(dashed, "Familie"), CardCircle("a", "Aunts")))
+        assertEquals(10, p[dashed])
+        assertEquals(40, p["a"])
     }
 }
