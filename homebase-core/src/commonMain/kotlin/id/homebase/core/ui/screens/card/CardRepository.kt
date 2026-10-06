@@ -93,7 +93,7 @@ class CardRepository(private val store: CardAttributeStore) {
 
     suspend fun resetCircle(card: ProfileCard) {
         require(card.audience is CardAudience.Circle) { "not a circle card" }
-        if (card.id != Uuid.NIL) store.delete(card.id, card.versionTag)
+        if (!card.isDefault) store.delete(card.id, card.versionTag)
     }
 
     private suspend fun saveOrUnsupported(
