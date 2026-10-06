@@ -823,7 +823,7 @@ private fun EditableFieldGroup(
 ) {
     val motion = MaterialTheme.motionScheme
     val colors = MaterialTheme.colorScheme
-    // The open row lifts into a rounded container; the corner and inset ride the spatial spring so it morphs rather than snaps.
+    // The open row lifts into a rounded container. Inset and corner floor at 0.dp, so they ride the non-bouncy effects spring.
     val isPlaceholder = displayValue.isNullOrBlank()
     // An empty detail is a tonal "add" tile; a filled one is flat until opened.
     val tile = editing || isPlaceholder
@@ -833,7 +833,7 @@ private fun EditableFieldGroup(
             isPlaceholder -> 16.dp
             else -> 0.dp
         },
-        motion.defaultSpatialSpec(),
+        motion.defaultEffectsSpec(),
     )
     val corner by animateDpAsState(
         when {
@@ -841,7 +841,7 @@ private fun EditableFieldGroup(
             isPlaceholder -> 20.dp
             else -> 0.dp
         },
-        motion.defaultSpatialSpec(),
+        motion.defaultEffectsSpec(),
     )
     val fillColor by animateColorAsState(
         when {
