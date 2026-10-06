@@ -1585,7 +1585,11 @@ class ProfileCardViewModelTest {
 
         vm.onAddCardClicked()
         vm.onCircleChosen("c1")
-        awaitUntil { vm.uiState.value.selectedAudience == CardAudience.Circle("c1", "Friends") && !vm.uiState.value.isCardBusy }
+        // The switch renders in a coroutine launched after selectedAudience flips, so wait for the render too.
+        awaitUntil {
+            vm.uiState.value.selectedAudience == CardAudience.Circle("c1", "Friends") && !vm.uiState.value.isCardBusy &&
+                host.rendered.lastOrNull()?.audience?.kind == "circle"
+        }
 
         assertEquals(listOf(JsonPrimitive("owner"), JsonPrimitive("connected")), wire.putBodies.map { it.jsonObject["visibility"] })
         val put = wire.putBodies.last().jsonObject
