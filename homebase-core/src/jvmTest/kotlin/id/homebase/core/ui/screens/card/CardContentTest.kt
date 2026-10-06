@@ -123,6 +123,20 @@ class CardContentTest {
     }
 
     @Test
+    fun nameCannotBeSwitchedOffThePublicCard() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val rig = rig(wire)
+        rig.open(CardAudience.Public)
+
+        val name = rig.item(ProfileAttributeTypes.NAME)
+        assertTrue(name.required && name.shown)
+        rig.vm.onContentToggled(name.id, false)
+
+        assertFalse(rig.vm.uiState.value.isContentBusy)
+        assertEquals(0, wire.puts)
+    }
+
+    @Test
     fun emailAddedFromTheWorkCardIsOneAttributeVisibleToWorkOnly() = runTest(dispatcher) {
         val wire = CardWireHarness()
         val rig = rig(wire)

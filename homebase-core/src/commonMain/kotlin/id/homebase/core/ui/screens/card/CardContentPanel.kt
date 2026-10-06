@@ -12,14 +12,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.stateDescription
+import androidx.graphics.shapes.Morph
+import id.homebase.resources.profile_card_content_change_audience
+import id.homebase.resources.profile_card_content_name_required
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -33,8 +40,6 @@ import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ButtonGroupDefaults
-import androidx.compose.material3.ButtonShapes
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
@@ -46,7 +51,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,7 +60,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -81,14 +84,12 @@ import id.homebase.core.ui.screens.profile.ProfileField
 import id.homebase.core.ui.screens.profile.isAttributeValid
 import id.homebase.core.ui.screens.profile.otherCirclesOf
 import id.homebase.core.widget.AdaptiveSheet
-import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
 import id.homebase.resources.profile_card_content_add_title
 import id.homebase.resources.profile_card_content_add_visible
 import id.homebase.resources.profile_card_content_empty
 import id.homebase.resources.profile_card_content_on_card
 import id.homebase.resources.profile_card_content_public_hint
-import id.homebase.resources.profile_card_content_public_note
 import id.homebase.resources.profile_card_content_switch
 import id.homebase.resources.profile_edit_add_group_social
 import id.homebase.resources.profile_edit_audience_title
@@ -111,17 +112,12 @@ private enum class AddKind(val type: String) {
     Bio(ProfileAttributeTypes.BIO_SUMMARY),
 }
 
-internal val CARD_CONTENT_BODY_HEIGHT = 288.dp
-
 private val SECTION_INSET = 16.dp
 private val GROUP_OUTER_CORNER = 20.dp
 private val GROUP_INNER_CORNER = 4.dp
 private val ROW_GAP = 2.dp
 private val BADGE_SIZE = 40.dp
 private val BADGE_GAP = 16.dp
-private const val PENDING_DIM = 0.5f
-// A ninth of a turn: the cookie rolls onto its next scallop as it fills, so the badge visibly changes state.
-private const val BADGE_TURN = 40f
 
 @Composable
 internal fun CardContentPanel(
@@ -148,31 +144,35 @@ internal fun CardContentPanel(
         }
     }
 
-    Column(modifier = modifier) {
-        SectionTitle(
-            title = stringResource(MR.string.profile_card_content_on_card, audienceLabel(card)),
-            note = if (items.any { it.locked }) stringResource(MR.string.profile_card_content_public_note) else null,
+    // The title and shortcuts scroll away with the list, so a short screen gives its height to the rows.
+    val scroll = rememberScrollState()
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .fadingEdges(scroll, vertical = true)
+            .verticalScroll(scroll)
+            .padding(horizontal = SECTION_INSET)
+            .padding(bottom = 8.dp),
+    ) {
+        Text(
+            text = stringResource(MR.string.profile_card_content_on_card, audienceLabel(card)),
+            style = MaterialTheme.typography.titleMediumEmphasized,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 8.dp).semantics { heading() },
         )
         if (addable.isNotEmpty()) {
-            AddRow(kinds = addable, enabled = enabled, onAdd = { adding = it })
+            AddRow(kinds = addable, wrap = items.isEmpty(), onAdd = { adding = it })
         }
-        val scroll = rememberScrollState()
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .fadingEdges(scroll, vertical = true)
-                .verticalScroll(scroll)
-                .padding(horizontal = SECTION_INSET, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(ROW_GAP),
-        ) {
+        Spacer(Modifier.height(8.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
             if (items.isEmpty()) EmptyContent()
             items.forEachIndexed { index, item ->
                 ContentRow(
                     item = item,
                     enabled = enabled,
                     pending = !enabled && pending == item.id,
-                    dimmed = !enabled && pending != item.id,
                     shape = groupedShape(index, items.size),
                     onOpenAudience = { audienceFor = item.id },
                     onToggle = {
@@ -207,56 +207,37 @@ internal fun CardContentPanel(
     }
 }
 
+// Independent actions, so separate tonal buttons rather than a connected group, which here means "pick one".
+// With nothing listed they wrap so every shortcut shows; otherwise one scrolling line keeps the rows in view.
 @Composable
-private fun SectionTitle(title: String, note: String?) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(start = SECTION_INSET + 8.dp, end = SECTION_INSET + 8.dp, bottom = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMediumEmphasized,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (note != null) {
-            Text(
-                text = note,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-// Pinned above the list, so adding is in reach however long the list grows.
-@Composable
-private fun AddRow(kinds: List<AddKind>, enabled: Boolean, onAdd: (AddKind) -> Unit) {
+private fun AddRow(kinds: List<AddKind>, wrap: Boolean, onAdd: (AddKind) -> Unit) {
     val title = stringResource(MR.string.profile_card_content_add_title)
-    ScrollableChoiceRow(
-        modifier = Modifier.fillMaxWidth().semantics { contentDescription = title },
-        contentPadding = SECTION_INSET,
-        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        kinds.forEachIndexed { index, kind ->
-            val shapes = connectedButtonShapes(index, kinds.size)
+    val buttons: @Composable () -> Unit = {
+        kinds.forEach { kind ->
             val label = stringResource(addLabel(kind))
             FilledTonalButton(
                 onClick = { onAdd(kind) },
-                enabled = enabled,
-                shapes = ButtonShapes(shapes.shape, shapes.pressedShape),
-                contentPadding = PaddingValues(start = 12.dp, end = 16.dp),
+                shapes = ButtonDefaults.shapes(),
+                contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
                 modifier = Modifier
-                    .heightIn(min = 48.dp)
+                    .minimumInteractiveComponentSize()
                     .semantics { contentDescription = "$title: $label" },
             ) {
-                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                Spacer(Modifier.width(6.dp))
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(ButtonDefaults.MinHeight)))
+                Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(ButtonDefaults.MinHeight)))
                 Text(label, maxLines = 1, softWrap = false)
             }
         }
+    }
+    val spacing = Arrangement.spacedBy(8.dp)
+    if (wrap) {
+        FlowRow(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = spacing) { buttons() }
+    } else {
+        val scroll = rememberScrollState()
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp).fadingEdges(scroll).horizontalScroll(scroll),
+            horizontalArrangement = spacing,
+        ) { buttons() }
     }
 }
 
@@ -291,12 +272,13 @@ private fun groupedShape(index: Int, count: Int) = RoundedCornerShape(
     bottomEnd = if (index == count - 1) GROUP_OUTER_CORNER else GROUP_INNER_CORNER,
 )
 
+private val PROSE_TYPES = setOf(ProfileAttributeTypes.NAME, ProfileAttributeTypes.BIO_SUMMARY)
+
 @Composable
 private fun ContentRow(
     item: CardContentItem,
     enabled: Boolean,
     pending: Boolean,
-    dimmed: Boolean,
     shape: Shape,
     onOpenAudience: () -> Unit,
     onToggle: (Boolean) -> Unit,
@@ -304,55 +286,66 @@ private fun ContentRow(
     val colors = MaterialTheme.colorScheme
     val label = stringResource(typeLabel(item.type))
     val switchLabel = stringResource(MR.string.profile_card_content_switch, item.text)
-    val lockedLabel = stringResource(MR.string.profile_card_content_public_hint)
-    val alpha by animateFloatAsState(if (dimmed) PENDING_DIM else 1f, MaterialTheme.motionScheme.defaultEffectsSpec())
-    // A locked row opens its audience as a whole: the only way to take it off this card is to make it not Public.
+    val fixed = item.locked || item.required
+    val changeAudience = stringResource(MR.string.profile_card_content_change_audience, label)
+    val hint = stringResource(MR.string.profile_card_content_public_hint)
+    // A locked row is one button that says why and opens the audience: the only way off a circle card is to stop being Public.
     val toggle = if (item.locked) {
         Modifier
             .clickable(enabled = enabled, role = Role.Button, onClick = onOpenAudience)
-            .semantics { contentDescription = "$label, ${item.text}. $lockedLabel" }
+            .semantics {
+                contentDescription = "$changeAudience. ${item.text}"
+                stateDescription = hint
+            }
+    } else if (item.required) {
+        Modifier.semantics(mergeDescendants = true) {}
     } else {
         Modifier
             .toggleable(value = item.shown, enabled = enabled, role = Role.Switch, onValueChange = onToggle)
             .semantics { contentDescription = switchLabel }
     }
-    Surface(color = colors.surfaceContainerHigh, shape = shape, modifier = Modifier.fillMaxWidth().alpha(alpha)) {
+    // Numbers, addresses and links stay on one line: wrapping them on punctuation makes a different number.
+    val prose = item.type in PROSE_TYPES
+    Surface(color = colors.surfaceContainerHigh, shape = shape, modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = toggle.heightIn(min = 64.dp).padding(start = 12.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+            modifier = toggle.heightIn(min = 64.dp).padding(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ShownBadge(icon = typeIcon(item.type), shown = item.shown)
             Spacer(Modifier.width(BADGE_GAP))
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (item.locked) PublicTag()
-                }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     text = item.text,
                     // User content keeps its own direction; a phone number has none, so it falls back to LTR rather than reversing.
                     style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr),
                     color = colors.onSurface,
-                    maxLines = 2,
+                    maxLines = if (prose) 2 else 1,
+                    softWrap = prose,
                     overflow = TextOverflow.Ellipsis,
                 )
+                when {
+                    item.locked -> RowHint(icon = Icons.Outlined.Public, text = hint, action = true)
+                    item.required -> RowHint(icon = Icons.Filled.Lock, text = stringResource(MR.string.profile_card_content_name_required), action = false)
+                }
             }
             Spacer(Modifier.width(12.dp))
             Switch(
                 checked = item.shown,
                 onCheckedChange = null,
-                enabled = enabled || pending,
                 thumbContent = {
                     when {
                         pending -> LoadingIndicator(modifier = Modifier.size(SwitchDefaults.IconSize))
-                        item.locked -> Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize))
+                        fixed -> Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize))
                         item.shown -> Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize))
                     }
                 },
@@ -361,40 +354,46 @@ private fun ContentRow(
     }
 }
 
+// The row's own reason; an [action] hint is primary, since tapping the row changes it.
 @Composable
-private fun PublicTag() {
-    val colors = MaterialTheme.colorScheme
-    Surface(shape = CircleShape, color = colors.primaryContainer, contentColor = colors.onPrimaryContainer) {
-        Row(
-            modifier = Modifier.padding(start = 6.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Icon(Icons.Outlined.Public, contentDescription = null, modifier = Modifier.size(12.dp))
-            Text(stringResource(MR.string.profile_edit_visibility_public), style = MaterialTheme.typography.labelSmall, maxLines = 1)
-        }
+private fun RowHint(icon: ImageVector, text: String, action: Boolean) {
+    val color = if (action) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.padding(top = 2.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.padding(top = 1.dp).size(14.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium.copy(textDirection = TextDirection.Content),
+            color = color,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
-// One cookie either way: outlined when off, filling and rolling onto its next scallop on a spatial spring when on.
+// Off is an outlined circle, on is a filled cookie: the badge morphs between them on the spatial spring as the switch flips.
 @Composable
 private fun ShownBadge(icon: ImageVector, shown: Boolean) {
     val motion = MaterialTheme.motionScheme
     val colors = MaterialTheme.colorScheme
-    val shape = MaterialShapes.Cookie9Sided.toShape()
+    val morph = remember { Morph(MaterialShapes.Circle, MaterialShapes.Cookie9Sided) }
     val progress by animateFloatAsState(if (shown) 1f else 0f, motion.defaultSpatialSpec())
+    val fill by animateColorAsState(if (shown) colors.secondary else colors.surfaceContainerHigh, motion.defaultEffectsSpec())
     val tint by animateColorAsState(if (shown) colors.onSecondary else colors.onSurfaceVariant, motion.defaultEffectsSpec())
+    val shape = MorphShape(morph, progress.coerceIn(0f, 1f))
     Box(modifier = Modifier.size(BADGE_SIZE), contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
                 .matchParentSize()
                 .graphicsLayer {
-                    rotationZ = BADGE_TURN * progress
                     val pop = 0.9f + 0.1f * progress
                     scaleX = pop
                     scaleY = pop
                 }
-                .background(colors.secondary.copy(alpha = progress.coerceIn(0f, 1f)), shape)
+                .background(fill, shape)
                 .border(1.5.dp, colors.outline.copy(alpha = (1f - progress).coerceIn(0f, 1f)), shape),
         )
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))

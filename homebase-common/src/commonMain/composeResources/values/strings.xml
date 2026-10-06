@@ -2369,7 +2369,9 @@
     <string name="profile_card_tool_content">Content</string>
     <string name="profile_card_option_content">What this card shows</string>
     <string name="profile_card_content_public_hint">Public, shown on every card</string>
-    <string name="profile_card_content_public_note">Public items show on every card.</string>
+    <string name="profile_card_content_change_audience">Change who can see %1$s</string>
+    <string name="profile_card_content_name_required">Always on the Public card</string>
+    <string name="profile_card_content_saved">Saved to profile</string>
     <string name="profile_card_content_switch">Show %1$s on this card</string>
     <string name="profile_card_content_empty">Nothing else on this card yet. Add something above.</string>
     <string name="profile_card_content_on_card">On the %1$s card</string>

@@ -22,6 +22,8 @@ internal data class CardContentItem(
     val audience: ProfileAudience,
     val shown: Boolean,
     val locked: Boolean,
+    // The Public card can't render without a name, so it can't be switched off there.
+    val required: Boolean = false,
 )
 
 internal val CARD_SOCIAL_TYPES = listOf(
@@ -81,6 +83,7 @@ internal fun cardContentItems(attributes: List<ProfileAttribute>, circles: List<
             audience = audience,
             shown = card.shows(audience),
             locked = card is CardAudience.Circle && audience == ProfileAudience.Public,
+            required = card == CardAudience.Public && attribute.type == ProfileAttributeTypes.NAME && card.shows(audience),
         )
     }
     return LEADING_TYPES.mapNotNull { type -> loaded.byType[type]?.let { item(it, contentText(it)) } } +

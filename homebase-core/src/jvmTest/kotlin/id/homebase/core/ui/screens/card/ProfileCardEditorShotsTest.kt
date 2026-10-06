@@ -74,6 +74,7 @@ class ProfileCardEditorShotsTest {
         val rtl: Boolean = false,
         val widthDp: Int = PHONE_W,
         val heightDp: Int = PHONE_H,
+        val completesToggle: Boolean = false,
         val act: ComposeUiTest.() -> Unit = {},
     )
 
@@ -269,7 +270,7 @@ class ProfileCardEditorShotsTest {
         mainClock.advanceTimeBy(SETTLE_MS)
     }
     private val openLockedRow: ComposeUiTest.() -> Unit = {
-        onAllNodesWithContentDescription("Public, shown on every card", substring = true).onFirst().performSemanticsAction(SemanticsActions.OnClick)
+        onAllNodesWithContentDescription("Change who can see", substring = true).onFirst().performSemanticsAction(SemanticsActions.OnClick)
         mainClock.advanceTimeBy(SETTLE_MS)
     }
     private val scrollToEnd: ComposeUiTest.() -> Unit = {
@@ -294,6 +295,8 @@ class ProfileCardEditorShotsTest {
         Shot("k9-content-everything-work", contentBase.copy(attributes = contentAttributes + fullAttributes, cards = listOf(public, card(workCard)), selectedAudience = workCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); scrollToEnd() }),
         Shot("k9-content-wide-everything", contentBase.copy(attributes = contentAttributes + fullAttributes, selectedAudience = friendsCard), EditorStep.Customise, widthDp = 900, heightDp = 820, act = contentTool),
         Shot("k9-content-small-font-scale", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, fontScale = 1.3f, widthDp = 360, heightDp = 640, act = contentTool),
+        Shot("k9-content-saved", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, completesToggle = true, act = { contentTool(); firstSwitch() }),
+        Shot("k9-content-everything-top", contentBase.copy(attributes = contentAttributes + fullAttributes), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
         Shot("k9-content-public-hint", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); openLockedRow() }),
     )
 
@@ -434,7 +437,9 @@ class ProfileCardEditorShotsTest {
                             onEditProfile = {},
                             snackbarHostState = remember { SnackbarHostState() },
                             // A toggle leaves the save in flight, so the busy state shows on the row that was changed.
-                            onContentToggle = { _, _ -> uiState = uiState.copy(isContentBusy = true) },
+                            onContentToggle = { _, _ ->
+                                uiState = if (shot.completesToggle) uiState.copy(contentSaves = uiState.contentSaves + 1) else uiState.copy(isContentBusy = true)
+                            },
                         ) { layoutWidth ->
                             when (shot.preview) {
                                 Preview.Ready -> StandInCard(shot.state.design, shot.state.overrides.palette, Modifier.fillMaxSize().laidOutAt(layoutWidth))

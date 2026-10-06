@@ -106,6 +106,7 @@ data class ProfileCardUiState(
     val attributes: List<ProfileAttribute> = emptyList(),
     val circles: List<CardCircle> = emptyList(),
     val isContentBusy: Boolean = false,
+    val contentSaves: Int = 0,
 ) {
     internal val contentItems: List<CardContentItem> get() = cardContentItems(attributes, circles, selectedAudience)
 
@@ -500,7 +501,7 @@ class ProfileCardViewModel(
     fun onContentToggled(id: Uuid, on: Boolean) {
         val state = _uiState.value
         if (state.isContentBusy) return
-        val item = state.contentItems.firstOrNull { it.id == id } ?: return
+        val item = state.contentItems.firstOrNull { it.id == id }?.takeUnless { it.required } ?: return
         val attribute = state.attributes.firstOrNull { it.id == id } ?: return
         val next = item.audience.shownOn(state.selectedAudience, on, audiencesBeforePublic[id]) ?: return
         if (on && state.selectedAudience == CardAudience.Public) audiencesBeforePublic[id] = item.audience
@@ -535,7 +536,9 @@ class ProfileCardViewModel(
                 return@launch
             }
             content = content?.let { c -> c.copy(attributes = c.attributes.filterNot { it.id == saved.id } + saved) }
-            _uiState.update { it.copy(isContentBusy = false, attributes = it.attributes.filterNot { a -> a.id == saved.id } + saved) }
+            _uiState.update {
+                it.copy(isContentBusy = false, contentSaves = it.contentSaves + 1, attributes = it.attributes.filterNot { a -> a.id == saved.id } + saved)
+            }
             render()
         }
     }
