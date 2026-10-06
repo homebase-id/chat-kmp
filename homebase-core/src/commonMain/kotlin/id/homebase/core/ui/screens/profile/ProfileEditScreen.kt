@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import id.homebase.core.util.formatMediumDate
+import id.homebase.core.util.pureImePadding
 import id.homebase.core.util.rememberImeOffsetState
 import id.homebase.resources.ok
 import id.homebase.resources.profile_edit_label
@@ -553,7 +554,7 @@ private fun ProfileForm(
             modifier = Modifier
                 .fillMaxSize()
                 // Raw imePadding() leaves a home-indicator-high gap above the keyboard on iOS.
-                .padding(bottom = with(ime.density) { ime.pureImeBottomPx.toDp() })
+                .pureImePadding(ime)
                 .verticalScroll(scroll),
         ) {
             ProfileCardsStrip(

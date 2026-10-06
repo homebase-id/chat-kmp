@@ -6,7 +6,11 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 
@@ -47,6 +51,15 @@ data class ImeOffsetState(
     val pureImeBottomPx: Int get() = pureImeBottomPx(imeInsets, navBarInsets, density)
     val imeBottomPx: Int get() = imeInsets.getBottom(density)
     val isImeVisible: Boolean get() = imeBottomPx > 0
+}
+
+/** Pads the bottom by [ImeOffsetState.pureImeBottomPx], read at layout so the keyboard animation doesn't recompose. */
+fun Modifier.pureImePadding(state: ImeOffsetState): Modifier = layout { measurable, constraints ->
+    val bottom = state.pureImeBottomPx
+    val placeable = measurable.measure(constraints.offset(vertical = -bottom))
+    layout(constraints.constrainWidth(placeable.width), constraints.constrainHeight(placeable.height + bottom)) {
+        placeable.place(0, 0)
+    }
 }
 
 @Composable
