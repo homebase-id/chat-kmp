@@ -159,4 +159,57 @@ class ProfileEditAudienceWireTest {
         assertIs<ProfileEditEvent.Error>(vm.act(ProfileEditAction.SaveAttribute(ProfileAttributeTypes.PHONE)))
         assertEquals(0, harness.puts)
     }
+
+    @Test
+    fun leftoverRecordFromTheTwoTierEditorIsRemovedSoTheEditedAudienceIsTheOnlyOne() = runBlocking {
+        val harness = CardWireHarness()
+        val publicId = Uuid.random()
+        harness.seed(publicId, Uuid.random(), ProfileAttributeTypes.PHONE, "anonymous", phoneData(), 0, null)
+        val otherPhone = "+14155550777"
+        harness.seed(
+            Uuid.random(), Uuid.random(), ProfileAttributeTypes.PHONE, "connected",
+            JsonObject(mapOf(ProfileAttributeTypes.KEY_PHONE to JsonPrimitive(otherPhone))), 0, null,
+        )
+        val vm = viewModel(harness)
+
+        vm.onAction(ProfileEditAction.AudienceChanged(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID))))
+        assertIs<ProfileEditEvent.AttributeSaved>(vm.act(ProfileEditAction.SaveAttribute(ProfileAttributeTypes.PHONE)))
+
+        assertEquals(1, harness.deletes)
+        assertEquals(listOf(publicId.toString()), harness.storedIds)
+        val stored = harness.profileRepository().loadAttributes()
+        fun phoneOn(audience: CardAudience) = stored.visibleValues(audience.aclFilter())[ProfileField.PHONE]
+        assertEquals(phone, phoneOn(CardAudience.Circle(FAMILY_CIRCLE_ID, "Family")))
+        assertEquals("", phoneOn(CardAudience.Circle(WORK_CIRCLE_ID, "Work")))
+        assertEquals("", phoneOn(CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")))
+        assertEquals("", phoneOn(CardAudience.Public))
+        assertEquals(1, vm.state.value.attributes.count { it.type == ProfileAttributeTypes.PHONE })
+    }
+
+    @Test
+    fun editingOnlyTheValueKeepsStoredCirclesTheEditorHasNoChipFor() = runBlocking {
+        val harness = CardWireHarness()
+        val userCircle = Uuid.random().toString()
+        harness.seed(Uuid.random(), Uuid.random(), ProfileAttributeTypes.PHONE, "connected", phoneData(), 0, listOf(FAMILY_CIRCLE_ID, userCircle))
+        val vm = viewModel(harness)
+
+        vm.onAction(ProfileEditAction.FieldChanged(ProfileField.PHONE, "+14155550199"))
+        assertIs<ProfileEditEvent.AttributeSaved>(vm.act(ProfileEditAction.SaveAttribute(ProfileAttributeTypes.PHONE)))
+
+        val put = harness.lastPut()
+        assertEquals("connected", put["visibility"]!!.jsonPrimitive.content)
+        assertEquals(setOf(FAMILY_CIRCLE_ID, userCircle), put["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet())
+    }
+
+    @Test
+    fun recordSharedOnlyWithNonContactsCirclesStaysSavableAndKeepsThem() = runBlocking {
+        val harness = CardWireHarness()
+        val userCircle = Uuid.random().toString()
+        harness.seed(Uuid.random(), Uuid.random(), ProfileAttributeTypes.PHONE, "connected", phoneData(), 0, listOf(userCircle))
+        val vm = viewModel(harness)
+
+        vm.onAction(ProfileEditAction.FieldChanged(ProfileField.PHONE, "+14155550199"))
+        assertIs<ProfileEditEvent.AttributeSaved>(vm.act(ProfileEditAction.SaveAttribute(ProfileAttributeTypes.PHONE)))
+        assertEquals(listOf(userCircle), harness.lastPut()["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
 }

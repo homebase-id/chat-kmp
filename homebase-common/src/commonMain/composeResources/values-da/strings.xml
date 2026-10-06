@@ -1763,11 +1763,7 @@
     <string name="profile_edit_linkedin">LinkedIn</string>
 
     <string name="profile_edit_visibility_public">Offentlig</string>
-    <string name="profile_edit_visibility_connected">Godkendt</string>
     <string name="profile_edit_visibility_circles">Kredse</string>
-    <string name="profile_edit_public_hint">Synlig for alle, også personer du ikke er forbundet med.</string>
-    <string name="profile_edit_connected_fallback_hint">Lad feltet stå tomt for i stedet at vise godkendte kontakter din offentlige værdi.</string>
-    <string name="profile_edit_circles_fallback_hint">Lad feltet stå tomt for i stedet at vise dine kredse din offentlige værdi.</string>
     <string name="profile_edit_preview_enter">Forhåndsvisning</string>
     <string name="profile_edit_preview_exit">Tilbage til redigering</string>
     <string name="profile_edit_preview_section_public">Offentlig</string>
@@ -1810,11 +1806,9 @@
     <string name="profile_avatar_edit_title">Skift foto</string>
     <string name="cd_profile_avatar_change_photo">Skift foto</string>
     <string name="profile_avatar_edit_acl_anonymous">Offentligt foto</string>
-    <string name="profile_avatar_edit_acl_connected">Foto til godkendte</string>
-    <string name="profile_avatar_edit_acl_circles">Foto til kredse</string>
     <string name="profile_avatar_edit_anonymous_desc">Synligt for alle, også personer du ikke er forbundet med.</string>
-    <string name="profile_avatar_edit_connected_desc">Kun synligt for godkendte kontakter — kan være et andet foto end dit offentlige.</string>
-    <string name="profile_avatar_edit_circles_desc">Kun synligt for personer i dine kredse — kan være et andet foto end dit offentlige.</string>
+    <string name="profile_avatar_edit_acl_only_me">Foto kun til mig</string>
+    <string name="profile_avatar_edit_only_me_desc">Kun synligt for dig. Kredse kan endnu ikke vælges for fotos.</string>
     <string name="profile_avatar_edit_upload">Gem</string>
     <string name="profile_avatar_edit_remove">Fjern</string>
     <string name="profile_avatar_edit_error_upload">Kunne ikke uploade dit foto. Prøv igen.</string>

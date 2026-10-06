@@ -14,8 +14,7 @@ import kotlin.uuid.Uuid
 /**
  * Dedicated screen for managing the owner's profile photo — separate from the standard-profile
  * text-attribute editor ([ProfileEditUiState]). Manages two independent photo slots, one per
- * [ProfileVisibility] tier: [anonymous] (the public avatar) and [connected] (shown only to
- * connections) — the backend supports every tier, but this screen only exposes the two the
+ * [ProfileVisibility] tier: [anonymous] (the public avatar) and [onlyMe] (an Owner-visibility photo only the owner sees) — the backend supports every tier, but this screen only exposes the two the
  * product wants surfaced today.
  */
 @Immutable
@@ -26,9 +25,7 @@ data class ProfileAvatarEditUiState(
     val currentAvatar: OwnerSession? = null,
     val isLoading: Boolean = true,
     val anonymous: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.ANONYMOUS),
-    val connected: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.CONNECTED),
-    /** Dark launch: off keeps main's "Vetted" wording. */
-    val reviewEnabled: Boolean = false,
+    val onlyMe: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.OWNER),
 )
 
 /** One [ProfileVisibility] tier's photo slot: what's currently stored, and any in-flight edit. */

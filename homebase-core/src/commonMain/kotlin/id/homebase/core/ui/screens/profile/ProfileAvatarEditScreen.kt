@@ -58,11 +58,9 @@ import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.profile_avatar_edit_acl_anonymous
-import id.homebase.resources.profile_avatar_edit_acl_circles
-import id.homebase.resources.profile_avatar_edit_acl_connected
 import id.homebase.resources.profile_avatar_edit_anonymous_desc
-import id.homebase.resources.profile_avatar_edit_circles_desc
-import id.homebase.resources.profile_avatar_edit_connected_desc
+import id.homebase.resources.profile_avatar_edit_acl_only_me
+import id.homebase.resources.profile_avatar_edit_only_me_desc
 import id.homebase.resources.profile_avatar_edit_error_delete
 import id.homebase.resources.profile_avatar_edit_error_too_large
 import id.homebase.resources.profile_avatar_edit_error_upload
@@ -90,8 +88,8 @@ fun ProfileAvatarEditScreen(
     val anonymousPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
         file?.let { viewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.ANONYMOUS, it)) }
     }
-    val connectedPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
-        file?.let { viewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.CONNECTED, it)) }
+    val onlyMePicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
+        file?.let { viewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.OWNER, it)) }
     }
 
     LaunchedEffect(Unit) {
@@ -139,20 +137,14 @@ fun ProfileAvatarEditScreen(
             Spacer(Modifier.height(24.dp))
 
             PhotoTierSection(
-                title = stringResource(
-                    if (uiState.reviewEnabled) MR.string.profile_avatar_edit_acl_circles
-                    else MR.string.profile_avatar_edit_acl_connected
-                ),
-                description = stringResource(
-                    if (uiState.reviewEnabled) MR.string.profile_avatar_edit_circles_desc
-                    else MR.string.profile_avatar_edit_connected_desc
-                ),
-                tier = uiState.connected,
-                onPick = { connectedPicker.launch() },
-                onRemove = { viewModel.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.CONNECTED)) },
-                onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED)) },
+                title = stringResource(MR.string.profile_avatar_edit_acl_only_me),
+                description = stringResource(MR.string.profile_avatar_edit_only_me_desc),
+                tier = uiState.onlyMe,
+                onPick = { onlyMePicker.launch() },
+                onRemove = { viewModel.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.OWNER)) },
+                onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.OWNER)) },
             ) {
-                ExistingAvatarContent(uiState.connected.existing, "ProfileAvatarEditScreen")
+                ExistingAvatarContent(uiState.onlyMe.existing, "ProfileAvatarEditScreen")
             }
         }
     }

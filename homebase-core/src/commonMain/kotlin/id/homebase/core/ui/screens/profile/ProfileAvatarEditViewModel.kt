@@ -60,7 +60,7 @@ private val AVATAR_THUMBNAIL_INSTRUCTION = ThumbnailInstruction(
 )
 
 /**
- * Drives the dedicated avatar-edit screen: two independent photo slots (Anonymous, Connected).
+ * Drives the dedicated avatar-edit screen: two independent photo slots (Anonymous, Only me).
  * Each slot's flow is pick → crop (via the same [id.homebase.imageeditor.ui.CropScreen] chat
  * attachments use, locked to a square aspect) → upload via
  * `PUT /api/v2/profile/attributes/photo` ([ProfileRepository.uploadPhoto]) → delete.
@@ -70,11 +70,10 @@ class ProfileAvatarEditViewModel(
     private val profileRepository: ProfileRepository,
     private val cropResultBus: CropResultBus,
     private val fileOperationsProvider: FileOperationsProvider,
-    developerPreferences: id.homebase.core.settings.DeveloperPreferences,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
-        ProfileAvatarEditUiState(reviewEnabled = developerPreferences.connectionReviewEnabled.value),
+        ProfileAvatarEditUiState(),
     )
     val state: StateFlow<ProfileAvatarEditUiState> = _state.asStateFlow()
 
@@ -113,8 +112,8 @@ class ProfileAvatarEditViewModel(
                     anonymous = it.anonymous.copy(
                         existing = existing.firstOrNull { a -> a.visibility == ProfileVisibility.ANONYMOUS },
                     ),
-                    connected = it.connected.copy(
-                        existing = existing.firstOrNull { a -> a.visibility == ProfileVisibility.CONNECTED },
+                    onlyMe = it.onlyMe.copy(
+                        existing = existing.firstOrNull { a -> a.visibility == ProfileVisibility.OWNER },
                     ),
                 )
             }
@@ -134,7 +133,7 @@ class ProfileAvatarEditViewModel(
         _state.update {
             when (visibility) {
                 ProfileVisibility.ANONYMOUS -> it.copy(anonymous = block(it.anonymous))
-                ProfileVisibility.CONNECTED -> it.copy(connected = block(it.connected))
+                ProfileVisibility.OWNER -> it.copy(onlyMe = block(it.onlyMe))
                 else -> it
             }
         }
@@ -142,7 +141,7 @@ class ProfileAvatarEditViewModel(
 
     private fun tierState(visibility: ProfileVisibility): PhotoTierUiState = when (visibility) {
         ProfileVisibility.ANONYMOUS -> _state.value.anonymous
-        ProfileVisibility.CONNECTED -> _state.value.connected
+        ProfileVisibility.OWNER -> _state.value.onlyMe
         else -> error("Unsupported profile photo tier: $visibility")
     }
 
@@ -237,7 +236,7 @@ class ProfileAvatarEditViewModel(
                 refreshTier(visibility)
                 // Best-effort refresh so Settings picks up a new Anonymous photo — the public
                 // sitedata.json this reads from may lag briefly server-side, and won't reflect a
-                // CONNECTED-visibility photo at all (expected — that's not publicly readable).
+                // Only-me photo at all (expected — that is not publicly readable).
                 // Invalidate the cached image bytes ourselves first — see
                 // OwnerSessionRepository.reloadAfterOwnPublish's doc for why the
                 // publicProfileContentPublished websocket echo of this same upload arrives too

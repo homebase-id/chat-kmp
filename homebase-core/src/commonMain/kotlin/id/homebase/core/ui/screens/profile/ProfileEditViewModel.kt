@@ -24,6 +24,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * Drives the owner's standard-profile editor. Each attribute type is one [ProfileAttribute] whose
@@ -31,7 +32,7 @@ import kotlin.uuid.ExperimentalUuidApi
  *
  * Load reads every standard-profile attribute and the Contacts circles. If a type has several
  * records (the old two-tier editor wrote a Public and a Connected one), the Public one is edited
- * and the others are left untouched on the server.
+ * and, once an edit is saved, the others are deleted so exactly one record decides the audience.
  *
  * Save: there's no screen-wide Save — [saveAttribute] persists one type at a time. It rebuilds
  * that record's `data` (merging the edited keys over the keys we read so unmodelled fields
@@ -58,6 +59,9 @@ class ProfileEditViewModel(
 
     /** Each loaded record's audience, to tell a real audience change from an untouched legacy one. */
     private var loadedAudiences: Map<String, ProfileAudience> = emptyMap()
+
+    /** Leftover records of a type that the next saved edit of that type deletes. */
+    private var extras: Map<String, List<ProfileAttribute>> = emptyMap()
 
     init {
         load()
@@ -88,6 +92,7 @@ class ProfileEditViewModel(
 
             val result = LoadedProfileAttributes.from(attributes)
             loaded = result.byType
+            extras = result.extras
             loadedAudiences = result.byType.mapValues { (_, attribute) -> attribute.audience(circles) }
             _state.update { it.withLoaded(result, circles) }
         }
@@ -103,7 +108,11 @@ class ProfileEditViewModel(
         val existing = loaded[type]
         val edit = attributeEditFor(current, existing, loadedAudiences[type], type)
         if (edit == null) {
-            _events.tryEmit(ProfileEditEvent.AttributeSaved(type))
+            if (type in cleanupDue && extras[type].orEmpty().isNotEmpty()) {
+                viewModelScope.launch { finishSave(type) }
+            } else {
+                _events.tryEmit(ProfileEditEvent.AttributeSaved(type))
+            }
             return
         }
 
@@ -129,12 +138,10 @@ class ProfileEditViewModel(
                 loaded = loaded + (type to newAttr)
                 loadedAudiences = loadedAudiences + (type to edit.audience)
                 _state.update {
-                    it.copy(
-                        savingAttributes = it.savingAttributes - type,
-                        attributes = it.attributes.filterNot { stored -> stored.id == newAttr.id } + newAttr,
-                    )
+                    it.copy(attributes = it.attributes.filterNot { stored -> stored.id == newAttr.id } + newAttr)
                 }
-                _events.tryEmit(ProfileEditEvent.AttributeSaved(type))
+                cleanupDue += type
+                finishSave(type)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ForbiddenException) {
@@ -146,6 +153,35 @@ class ProfileEditViewModel(
                 _events.tryEmit(ProfileEditEvent.Error)
             }
         }
+    }
+
+    private val cleanupDue = mutableSetOf<String>()
+
+    /** Deletes the leftover records of [type] after its edit was written, then reports the save. */
+    private suspend fun finishSave(type: String) {
+        val leftovers = extras[type].orEmpty()
+        val deleted = mutableSetOf<Uuid>()
+        var failed = false
+        for (attribute in leftovers) {
+            val ok = try {
+                repository.delete(attribute.id, attribute.versionTag)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e) { "Failed to remove leftover profile attribute $type" }
+                false
+            }
+            if (ok) deleted += attribute.id else failed = true
+        }
+        extras = extras + (type to leftovers.filter { it.id !in deleted })
+        if (!failed) cleanupDue -= type
+        _state.update {
+            it.copy(
+                savingAttributes = it.savingAttributes - type,
+                attributes = it.attributes.filterNot { stored -> stored.id in deleted },
+            )
+        }
+        _events.tryEmit(if (failed) ProfileEditEvent.Error else ProfileEditEvent.AttributeSaved(type))
     }
 
     companion object {
@@ -262,14 +298,21 @@ class ProfileEditViewModel(
 internal class LoadedProfileAttributes(
     val byType: Map<String, ProfileAttribute>,
     val all: List<ProfileAttribute>,
+    val extras: Map<String, List<ProfileAttribute>>,
 ) {
     companion object {
-        fun from(attributes: List<ProfileAttribute>): LoadedProfileAttributes = LoadedProfileAttributes(
-            byType = attributes.groupBy { it.type }.mapValues { (_, attrs) ->
+        fun from(attributes: List<ProfileAttribute>): LoadedProfileAttributes {
+            val byType = attributes.groupBy { it.type }.mapValues { (_, attrs) ->
                 attrs.firstOrNull { it.visibility == ProfileVisibility.ANONYMOUS } ?: attrs.first()
-            },
-            all = attributes,
-        )
+            }
+            return LoadedProfileAttributes(
+                byType = byType,
+                all = attributes,
+                extras = attributes.groupBy { it.type }
+                    .mapValues { (type, attrs) -> attrs.filter { it.id != byType[type]?.id } }
+                    .filterValues { it.isNotEmpty() },
+            )
+        }
     }
 }
 

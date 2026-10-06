@@ -65,11 +65,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.staticCompositionLocalOf
-import id.homebase.resources.profile_edit_circles_fallback_hint
 import id.homebase.resources.profile_edit_preview_section_vetted
 import id.homebase.resources.profile_edit_preview_section_vetted_desc
-import id.homebase.resources.profile_edit_visibility_circles
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -109,7 +106,6 @@ import id.homebase.resources.profile_edit_address_label_hint
 import id.homebase.resources.profile_edit_birthday
 import id.homebase.resources.profile_edit_birthday_hint
 import id.homebase.resources.profile_edit_city
-import id.homebase.resources.profile_edit_connected_fallback_hint
 import id.homebase.resources.profile_edit_country
 import id.homebase.resources.profile_edit_email
 import id.homebase.resources.profile_edit_email_label
@@ -137,7 +133,6 @@ import id.homebase.resources.profile_edit_preview_section_public
 import id.homebase.resources.profile_edit_preview_section_public_desc
 import id.homebase.resources.profile_edit_preview_section_circles
 import id.homebase.resources.profile_edit_preview_section_circles_desc
-import id.homebase.resources.profile_edit_public_hint
 import id.homebase.resources.profile_edit_retry
 import id.homebase.resources.profile_edit_status
 import id.homebase.resources.profile_edit_surname
@@ -147,7 +142,7 @@ import id.homebase.resources.profile_edit_twitter
 import id.homebase.resources.profile_avatar_edit_error_delete
 import id.homebase.resources.profile_avatar_edit_error_too_large
 import id.homebase.resources.profile_avatar_edit_error_upload
-import id.homebase.resources.profile_edit_visibility_connected
+import id.homebase.resources.profile_edit_audience_only_me
 import id.homebase.resources.profile_edit_visibility_public
 import id.homebase.resources.save
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -180,8 +175,8 @@ fun ProfileEditScreen(
     val anonymousPhotoPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
         file?.let { avatarViewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.ANONYMOUS, it)) }
     }
-    val connectedPhotoPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
-        file?.let { avatarViewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.CONNECTED, it)) }
+    val onlyMePhotoPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
+        file?.let { avatarViewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.OWNER, it)) }
     }
 
     LaunchedEffect(Unit) {
@@ -268,7 +263,7 @@ fun ProfileEditScreen(
                                 avatarUiState = avatarUiState,
                                 onAvatarAction = avatarViewModel::onAction,
                                 onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
-                                onPickConnectedPhoto = { connectedPhotoPicker.launch() },
+                                onPickOnlyMePhoto = { onlyMePhotoPicker.launch() },
                                 modifier = Modifier.fillMaxSize(),
                             )
                             AnimatedVisibility(
@@ -325,7 +320,7 @@ private fun ProfileForm(
     avatarUiState: ProfileAvatarEditUiState,
     onAvatarAction: (ProfileAvatarEditAction) -> Unit,
     onPickAnonymousPhoto: () -> Unit,
-    onPickConnectedPhoto: () -> Unit,
+    onPickOnlyMePhoto: () -> Unit,
     modifier: Modifier,
 ) {
     // Keeps a row mounted (and visible) for the whole edit session once it has a value. Blank
@@ -358,14 +353,11 @@ private fun ProfileForm(
                 onPickPhoto = onPickAnonymousPhoto,
             )
             PhotoBlock(
-                label = stringResource(
-                    if (uiState.reviewEnabled) MR.string.profile_edit_visibility_circles
-                    else MR.string.profile_edit_visibility_connected
-                ),
-                tier = ProfileVisibility.CONNECTED,
-                photoState = if (avatarUiState.isLoading) null else avatarUiState.connected,
+                label = stringResource(MR.string.profile_edit_audience_only_me),
+                tier = ProfileVisibility.OWNER,
+                photoState = if (avatarUiState.isLoading) null else avatarUiState.onlyMe,
                 onAvatarAction = onAvatarAction,
-                onPickPhoto = onPickConnectedPhoto,
+                onPickPhoto = onPickOnlyMePhoto,
             )
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp))

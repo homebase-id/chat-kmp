@@ -23,6 +23,7 @@ import id.homebase.resources.profile_edit_audience_circles_empty
 import id.homebase.resources.profile_edit_audience_circles_hint
 import id.homebase.resources.profile_edit_audience_circles_none
 import id.homebase.resources.profile_edit_audience_only_me
+import id.homebase.resources.profile_edit_audience_other_circles
 import id.homebase.resources.profile_edit_audience_only_me_hint
 import id.homebase.resources.profile_edit_audience_public_hint
 import id.homebase.resources.profile_edit_audience_title
@@ -80,13 +81,20 @@ internal fun AudiencePicker(
                         FilterChip(
                             selected = selected,
                             onClick = {
-                                onChange(ProfileAudience.Circles(if (selected) audience.ids - circle.id else audience.ids + circle.id))
+                                onChange(audience.copy(ids = if (selected) audience.ids - circle.id else audience.ids + circle.id))
                             },
                             label = { Text(circle.name) },
                         )
                     }
                 }
             }
+        }
+        if (audience is ProfileAudience.Circles && audience.otherIds.isNotEmpty()) {
+            Text(
+                text = stringResource(MR.string.profile_edit_audience_other_circles, audience.otherIds.size),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         val isEmptySelection = !audience.isSavable
         Text(

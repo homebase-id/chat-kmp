@@ -12,10 +12,14 @@ sealed interface ProfileAudience {
     data object Public : ProfileAudience
     data object OnlyMe : ProfileAudience
 
-    /** Ids are taken from the Contacts-app circle list, never from the server's spelling. */
-    data class Circles(val ids: Set<String>) : ProfileAudience
+    /**
+     * [ids] come from the Contacts-app circle list, never from the server's spelling. [otherIds]
+     * are stored circles the editor has no chip for (user-made, other apps'); they ride along on
+     * save so an edit never silently revokes them.
+     */
+    data class Circles(val ids: Set<String>, val otherIds: Set<String> = emptySet()) : ProfileAudience
 
-    val isSavable: Boolean get() = this !is Circles || ids.isNotEmpty()
+    val isSavable: Boolean get() = this !is Circles || ids.isNotEmpty() || otherIds.isNotEmpty()
 
     val visibility: ProfileVisibility
         get() = when (this) {
@@ -24,7 +28,7 @@ sealed interface ProfileAudience {
             is Circles -> ProfileVisibility.CONNECTED
         }
 
-    val circleIds: List<String> get() = (this as? Circles)?.ids?.sorted().orEmpty()
+    val circleIds: List<String> get() = (this as? Circles)?.let { it.ids + it.otherIds }?.sorted().orEmpty()
 }
 
 /** Connected with no circles means every connection, so it reads as every Contacts circle selected. */
@@ -36,7 +40,9 @@ internal fun ProfileAttribute.audience(circles: List<CardCircle>): ProfileAudien
         if (stored.isEmpty() || stored.any { compareStringUuId(it, CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE) }) {
             ProfileAudience.Circles(circles.map { it.id }.toSet())
         } else {
-            ProfileAudience.Circles(circles.filter { c -> stored.any { compareStringUuId(it, c.id) } }.map { it.id }.toSet())
+            val known = circles.filter { c -> stored.any { compareStringUuId(it, c.id) } }.map { it.id }.toSet()
+            val other = stored.filter { s -> circles.none { compareStringUuId(s, it.id) } }.toSet()
+            ProfileAudience.Circles(known, other)
         }
     }
 }
