@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -587,7 +588,8 @@ private fun AddContentSheet(
     onAdd: (String, Map<String, String>) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AdaptiveSheet(onDismiss = onDismiss) {
+    // Opens expanded: from the half-height anchor the keyboard covers the field and Save.
+    AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {
         var type by remember { mutableStateOf(if (kind == AddKind.Social) socials.firstOrNull() ?: kind.type else kind.type) }
         val values = remember(type) { mutableStateMapOf<ProfileField, String>() }
         var linkText by remember { mutableStateOf("") }
@@ -605,7 +607,11 @@ private fun AddContentSheet(
             ProfileEditViewModel.TYPE_FIELDS[type].orEmpty().associate { (field, key) -> key to values[field].orEmpty() }
         }
         Column(
-            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             PanelHeader(icon = typeIcon(type), title = stringResource(typeLabel(type)), subtitle = stringResource(MR.string.profile_card_content_add_title))
