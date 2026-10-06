@@ -38,6 +38,8 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -85,6 +87,7 @@ data class ProfileCardUiState(
     val isSwitchingDesign: Boolean = false,
     val cards: List<ProfileCard> = emptyList(),
     val selectedAudience: CardAudience = CardAudience.Public,
+    val viewing: Boolean = false,
     val previewOverrides: CardOverrides? = null,
     val circleCardsSupported: Boolean = true,
     val hasLocalPublicDesign: Boolean = false,
@@ -101,7 +104,6 @@ data class ProfileCardUiState(
     val hasUnsavedChanges: Boolean
         get() = (previewDesign != null && previewDesign != baseDesign) ||
             (previewOverrides != null && previewOverrides != savedOverrides)
-    val hasCardMenu: Boolean get() = !isExporting && cards.size > 1
     val isCircleReadOnly: Boolean get() = isCircleSelected && !circleCardsSupported
     private val hasStoredCard: Boolean
         get() = selectedCard?.let { !it.isDefault || (it.audience == CardAudience.Public && hasLocalPublicDesign) } ?: false
@@ -323,6 +325,7 @@ class ProfileCardViewModel(
     private var circles: List<CardCircle> = emptyList()
     private var publishJob: Job? = null
     private var shownBefore = false
+    private var shownAt: TimeMark? = null
     private var hostJob: Job? = null
     private var loadJob: Job? = null
     private var postsJob: Job? = null
@@ -391,6 +394,25 @@ class ProfileCardViewModel(
     fun onCardSelected(audience: CardAudience) {
         if (_uiState.value.isExporting) return
         selectAudience(audience)
+    }
+
+    /** The intro's pick: the card opens in the viewer. */
+    fun onCardOpened(audience: CardAudience) {
+        val state = _uiState.value
+        if (state.isExporting || state.cards.none { it.audience.isSameAs(audience) }) return
+        selectAudience(state.cards.first { it.audience.isSameAs(audience) }.audience)
+        _uiState.update { it.copy(viewing = true) }
+    }
+
+    fun onIntroReturned() {
+        _uiState.update { it.copy(viewing = false) }
+    }
+
+    fun onIntroPainted(titles: List<String>) {
+        val shown = shownAt ?: return
+        shownAt = null
+        val total = shown.elapsedNow()
+        titles.forEach { Logger.i(tag = TAG) { "card intro first paint: \"$it\" ${total.inWholeMilliseconds}ms (${titles.size} cards, all in one frame)" } }
     }
 
     private fun selectAudience(audience: CardAudience) {
@@ -567,6 +589,7 @@ class ProfileCardViewModel(
 
     /** Picks up profile edits made since the pre-warm; the warm card shows until they land. */
     fun onScreenShown() {
+        shownAt = TimeSource.Monotonic.markNow()
         startHost()
         // A publish that failed with the grant in place has no button of its own; each showing retries it.
         if (designAccess == null && publishJob?.isActive != true) unpublishedDesign?.let(::publishDesign)

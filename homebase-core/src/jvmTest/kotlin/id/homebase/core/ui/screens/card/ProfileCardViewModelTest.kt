@@ -1040,6 +1040,29 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun introOpensTheChosenCardInTheViewerAndBackReturnsToTheIntro() = runTest(dispatcher) {
+        val host = FakeHost()
+        val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
+        val vm = viewModel(
+            host,
+            FakeSource(profile + publicCardAttribute + circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 0, CardOverrides.EMPTY)),
+        )
+        assertFalse(vm.uiState.value.viewing)
+
+        vm.onCardOpened(friends)
+
+        assertTrue(vm.uiState.value.viewing)
+        assertEquals(friends, vm.uiState.value.selectedAudience)
+        assertEquals(CardDesign.DOSSIER, host.rendered.last().design)
+
+        vm.onIntroReturned()
+
+        assertFalse(vm.uiState.value.viewing)
+        vm.onCardOpened(CardAudience.Circle("nope", "Nope"))
+        assertFalse(vm.uiState.value.viewing)
+    }
+
+    @Test
     fun switchingCardChangesAudienceDesignAndOverrides() = runTest(dispatcher) {
         val host = FakeHost()
         val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
