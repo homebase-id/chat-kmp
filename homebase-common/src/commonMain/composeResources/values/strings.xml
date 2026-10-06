@@ -2302,7 +2302,7 @@
     <string name="profile_edit_audience_only_me_hint">Not shown on any card.</string>
     <string name="profile_edit_audience_circles_hint">Shown only on the cards of the circles you pick.</string>
     <string name="profile_edit_audience_circles_empty">Pick at least one circle.</string>
-    <string name="profile_edit_audience_circles_none">No circles yet. Family, Friends and Work appear here once your Contacts circles are set up.</string>
+    <string name="profile_edit_audience_circles_none">All your connections see this. Set up Family, Friends and Work in Contacts to pick circles.</string>
     <string name="profile_edit_photos_title">Photos</string>
     <string name="profile_edit_photos_desc">Photos can be Public or Only me for now.</string>
     <string name="profile_edit_details_title">Details</string>
@@ -2628,7 +2628,7 @@
     <string name="camera_ae_af_lock">AE/AF lock</string>
     <string name="profile_edit_cards_title">Your cards</string>
     <string name="profile_edit_cards_desc">Tap a card to see which details it shows.</string>
-    <string name="profile_edit_cards_focus">Showing what the %1$s card shows. Tap it again to see everything.</string>
+    <string name="profile_edit_cards_focus">Showing what the %1$s card shows.</string>
     <string name="profile_edit_card_no_details">Nothing on it yet</string>
     <string name="profile_edit_action_preview">Preview as a visitor</string>
     <string name="profile_edit_action_cards">My cards</string>
@@ -2636,4 +2636,19 @@
     <string name="profile_edit_empty_desc">Start with the basics. Each one is entered once, and you choose which cards show it.</string>
     <string name="profile_edit_add_named">Add %1$s</string>
     <string name="profile_edit_not_on_card">Not on this card</string>
+    <string name="profile_edit_cards_show_all">Show all</string>
+    <string name="profile_edit_card_shows">Shows %1$s</string>
+    <string name="profile_edit_audience_all_connections">All connections</string>
+    <string name="profile_edit_audience_other_circle">Other circle</string>
+    <string name="profile_edit_audience_change">Visible to %1$s. Change</string>
+    <string name="profile_edit_photo_public_caption">Shown on every card</string>
+    <string name="profile_edit_photo_only_me_caption">Only you see this</string>
+    <string name="profile_edit_add_group_about">About you</string>
+    <string name="profile_edit_add_group_social">Social</string>
+    <string name="profile_edit_label">Label</string>
+    <string name="profile_edit_label_mobile">Mobile</string>
+    <string name="profile_edit_label_home">Home</string>
+    <string name="profile_edit_label_work">Work</string>
+    <string name="profile_edit_label_personal">Personal</string>
+    <string name="profile_edit_label_custom">Custom</string>
 </resources>

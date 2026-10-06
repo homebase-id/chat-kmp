@@ -111,6 +111,7 @@ import id.homebase.core.ui.screens.card.CardPreferences
 import id.homebase.core.ui.screens.card.CardRepository
 import id.homebase.core.ui.screens.card.ProfileRepositoryCardStore
 import id.homebase.core.ui.screens.card.CardTapShare
+import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.core.ui.screens.card.DefaultProfileCardSource
 import id.homebase.core.ui.screens.card.ProfileCardSource
 import id.homebase.core.ui.screens.card.ProfileCardViewModel
@@ -1242,7 +1243,14 @@ val appModule = module {
     viewModelOf(::SettingsViewModel)
     viewModel {
         val cards = get<ProfileCardSource>()
-        ProfileEditViewModel(get(), get<DeveloperPreferences>().connectionReviewEnabled.value) { cards.circles() }
+        val connections = get<ConnectionNetworkProvider>()
+        ProfileEditViewModel(
+            get(),
+            get<DeveloperPreferences>().connectionReviewEnabled.value,
+            loadCircleNames = {
+                connections.getCirclesWithMembers(includeSystemCircle = false).associate { it.circle.id to it.circle.name }
+            },
+        ) { cards.circles() }
     }
     viewModelOf(::ProfileAvatarEditViewModel)
     viewModel { ProfileCardViewModel(get(), ::createCardHost) }

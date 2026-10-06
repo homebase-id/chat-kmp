@@ -10,6 +10,7 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.util.compareStringUuId
 import id.homebase.core.ui.screens.card.CardCircle
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,6 +47,8 @@ import kotlin.uuid.Uuid
 class ProfileEditViewModel(
     private val repository: ProfileRepository,
     reviewEnabled: Boolean,
+    /** Every circle's name by id; read only when a detail is shared with circles that have no card. */
+    private val loadCircleNames: suspend () -> Map<String, String> = { emptyMap() },
     private val loadCircles: suspend () -> List<CardCircle>,
 ) : ViewModel() {
 
@@ -83,6 +86,7 @@ class ProfileEditViewModel(
             is ProfileEditAction.LinkChanged -> updateLink(action.key) { it.copy(text = action.text, target = action.target) }
             is ProfileEditAction.LinkAudienceChanged -> updateLink(action.key) { it.copy(audience = action.audience) }
             is ProfileEditAction.SaveLink -> saveLink(action.key)
+            is ProfileEditAction.RemoveLink -> removeLink(action.key)
             is ProfileEditAction.DiscardConflict -> discardConflict(action.type, action.id)
             ProfileEditAction.RetryLoadClicked -> load()
             ProfileEditAction.BackClicked -> _events.tryEmit(ProfileEditEvent.Back)
@@ -109,13 +113,34 @@ class ProfileEditViewModel(
             loadedLinks = result.links.associateBy { it.id.toString() }
             loadedLinkAudiences = result.links.associate { it.id.toString() to it.audience(circles) }
             _state.update { it.withLoaded(result, circles) }
+            nameOtherCircles()
         }
+    }
+
+    private suspend fun nameOtherCircles() {
+        val s = _state.value
+        val others = (s.audiences.values + s.links.map { it.audience })
+            .flatMap { (it as? ProfileAudience.Circles)?.otherIds.orEmpty() }
+            .toSet()
+        if (others.isEmpty()) return
+        val names = try {
+            loadCircleNames()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e) { "Failed to load circle names" }
+            return
+        }
+        val named = others.mapNotNull { id ->
+            names.entries.firstOrNull { compareStringUuId(it.key, id) }?.let { id to it.value }
+        }.toMap()
+        _state.update { it.copy(otherCircleNames = named) }
     }
 
     private fun saveAttribute(type: String) {
         val current = _state.value
         val audience = current.audience(type)
-        if (!audience.isSavable) {
+        if (!audience.isSavableWith(current.circles)) {
             _events.tryEmit(ProfileEditEvent.Error)
             return
         }
@@ -143,7 +168,7 @@ class ProfileEditViewModel(
 
     private fun saveLink(key: String) {
         val draft = _state.value.links.firstOrNull { it.key == key } ?: return
-        if (!draft.isValid) {
+        if (!draft.isValid(_state.value.circles)) {
             _events.tryEmit(ProfileEditEvent.Error)
             return
         }
@@ -164,6 +189,40 @@ class ProfileEditViewModel(
             _state.update { s ->
                 s.copy(
                     links = s.links.map { if (it.key == key) it.copy(key = newKey) else it },
+                    savingAttributes = s.savingAttributes - key,
+                )
+            }
+            _events.tryEmit(ProfileEditEvent.AttributeSaved(key))
+        }
+    }
+
+    private fun removeLink(key: String) {
+        val existing = loadedLinks[key]
+        if (existing == null) {
+            _state.update { s -> s.copy(links = s.links.filterNot { it.key == key }) }
+            return
+        }
+        _state.update { it.copy(savingAttributes = it.savingAttributes + key) }
+        viewModelScope.launch {
+            val ok = try {
+                repository.delete(existing.id, existing.versionTag)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e) { "Failed to remove profile link" }
+                false
+            }
+            if (!ok) {
+                _state.update { it.copy(savingAttributes = it.savingAttributes - key) }
+                _events.tryEmit(ProfileEditEvent.Error)
+                return@launch
+            }
+            loadedLinks = loadedLinks - key
+            loadedLinkAudiences = loadedLinkAudiences - key
+            _state.update { s ->
+                s.copy(
+                    links = s.links.filterNot { it.key == key },
+                    attributes = s.attributes.filterNot { it.id == existing.id },
                     savingAttributes = s.savingAttributes - key,
                 )
             }

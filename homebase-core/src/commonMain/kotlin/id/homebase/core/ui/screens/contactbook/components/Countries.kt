@@ -15,18 +15,27 @@ private fun codePointToString(cp: Int): String {
     return charArrayOf((0xD800 + (c shr 10)).toChar(), (0xDC00 + (c and 0x3FF)).toChar()).concatToString()
 }
 
-/** Finds the country whose dial code is the longest prefix of an E.164 [number] (without '+'). */
-fun countryForE164(number: String): Country? {
+// A number alone can't tell countries that share a dial code apart; without a region hint, the plan's main country wins.
+private val SHARED_DIAL_CODE_HOME = mapOf("1" to "US", "7" to "RU")
+
+/**
+ * Finds the country whose dial code is the longest prefix of an E.164 [number] (without '+'). When
+ * countries share that code, [region] picks among them, else the code's main country.
+ */
+fun countryForE164(number: String, region: String? = null): Country? {
     val digits = number.removePrefix("+")
-    return countries
-        .filter { digits.startsWith(it.dialCode) }
-        .maxByOrNull { it.dialCode.length }
+    val matches = countries.filter { digits.startsWith(it.dialCode) }
+    val longest = matches.maxOfOrNull { it.dialCode.length } ?: return null
+    val tied = matches.filter { it.dialCode.length == longest }
+    return tied.firstOrNull { it.iso == region?.uppercase() }
+        ?: tied.firstOrNull { it.iso == SHARED_DIAL_CODE_HOME[it.dialCode] }
+        ?: tied.first()
 }
 
 /** Splits a stored E.164 value into (country, nationalDigits); null country if it can't be matched. */
-fun splitE164(value: String): Pair<Country?, String> {
+fun splitE164(value: String, region: String? = null): Pair<Country?, String> {
     if (!value.startsWith("+")) return null to value.filter { it.isDigit() }
-    val country = countryForE164(value)
+    val country = countryForE164(value, region)
     val national = if (country != null) value.removePrefix("+").removePrefix(country.dialCode) else ""
     return country to national.filter { it.isDigit() }
 }

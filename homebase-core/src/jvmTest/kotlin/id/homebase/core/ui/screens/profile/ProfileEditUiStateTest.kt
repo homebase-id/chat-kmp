@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.profile
 
+import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.core.ui.screens.card.CardCircle
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -9,8 +10,28 @@ import kotlin.test.assertTrue
 class ProfileEditUiStateTest {
 
     @Test
-    fun anUnsetAttributeStartsPublic() {
-        assertEquals(ProfileAudience.Public, ProfileEditUiState().audience("phone"))
+    fun anUnsetNameOrBioStartsPublic() {
+        assertEquals(ProfileAudience.Public, ProfileEditUiState().audience(ProfileAttributeTypes.NAME))
+        assertEquals(ProfileAudience.Public, ProfileEditUiState().audience(ProfileAttributeTypes.BIO_SUMMARY))
+    }
+
+    @Test
+    fun anUnsetPersonalDetailStartsWithTheContactsCircles() {
+        val circles = listOf(CardCircle("f", "Family"), CardCircle("w", "Work"))
+        for (type in listOf(ProfileAttributeTypes.PHONE, ProfileAttributeTypes.EMAIL, ProfileAttributeTypes.BIRTHDAY, ProfileAttributeTypes.ADDRESS)) {
+            assertEquals(ProfileAudience.Circles(setOf("f", "w")), ProfileEditUiState(circles = circles).audience(type), type)
+        }
+    }
+
+    @Test
+    fun anUnsetPersonalDetailWithoutCirclesStartsOnlyMe() {
+        assertEquals(ProfileAudience.OnlyMe, ProfileEditUiState().audience(ProfileAttributeTypes.PHONE))
+    }
+
+    @Test
+    fun everyConnectionIsSavableOnlyWithoutContactsCircles() {
+        assertTrue(ProfileAudience.Circles(emptySet()).isSavableWith(emptyList()))
+        assertFalse(ProfileAudience.Circles(emptySet()).isSavableWith(listOf(CardCircle("f", "Family"))))
     }
 
     @Test

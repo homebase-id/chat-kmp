@@ -3,6 +3,7 @@
     ExperimentalMaterial3ExpressiveApi::class,
     ExperimentalUuidApi::class,
     ExperimentalAnimationApi::class,
+    ExperimentalLayoutApi::class,
 )
 
 package id.homebase.core.ui.screens.profile
@@ -47,7 +48,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Cake
 import androidx.compose.material.icons.outlined.Call
@@ -57,7 +57,28 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Mood
+import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.Tag
+import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material.icons.outlined.WorkOutline
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextDirection
+import id.homebase.resources.profile_edit_photo_public_caption
+import id.homebase.resources.profile_edit_photo_only_me_caption
+import id.homebase.resources.profile_edit_add_group_about
+import id.homebase.resources.profile_edit_add_group_social
+import id.homebase.resources.profile_edit_label_custom
+import id.homebase.resources.profile_edit_label_home
+import id.homebase.resources.profile_edit_label_mobile
+import id.homebase.resources.profile_edit_label_personal
+import id.homebase.resources.profile_edit_label_work
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Person
@@ -132,7 +153,6 @@ import id.homebase.resources.profile_edit_additional_name
 import id.homebase.resources.profile_edit_address1
 import id.homebase.resources.profile_edit_address2
 import id.homebase.resources.profile_edit_address_label
-import id.homebase.resources.profile_edit_address_label_hint
 import id.homebase.resources.profile_edit_bio
 import id.homebase.resources.profile_edit_birthday
 import id.homebase.resources.profile_edit_birthday_hint
@@ -145,7 +165,6 @@ import id.homebase.resources.profile_edit_details_desc
 import id.homebase.resources.profile_edit_details_title
 import id.homebase.resources.profile_edit_email
 import id.homebase.resources.profile_edit_email_label
-import id.homebase.resources.profile_edit_email_label_hint
 import id.homebase.resources.profile_edit_empty_desc
 import id.homebase.resources.profile_edit_error_forbidden
 import id.homebase.resources.profile_edit_error_save
@@ -161,7 +180,6 @@ import id.homebase.resources.profile_edit_load_failed_desc
 import id.homebase.resources.profile_edit_nickname
 import id.homebase.resources.profile_edit_phone
 import id.homebase.resources.profile_edit_phone_label
-import id.homebase.resources.profile_edit_phone_label_hint
 import id.homebase.resources.profile_edit_photos_desc
 import id.homebase.resources.profile_edit_photos_title
 import id.homebase.resources.profile_edit_postcode
@@ -247,6 +265,27 @@ fun ProfileEditScreen(
 
 @Composable
 internal fun ProfileEditContent(
+    uiState: ProfileEditUiState,
+    avatarUiState: ProfileAvatarEditUiState,
+    previewMode: Boolean,
+    onTogglePreview: () -> Unit,
+    onOpenCard: (() -> Unit)?,
+    onAction: (ProfileEditAction) -> Unit,
+    onAvatarAction: (ProfileAvatarEditAction) -> Unit,
+    onPickAnonymousPhoto: () -> Unit,
+    onPickOnlyMePhoto: () -> Unit,
+    snackbarHostState: SnackbarHostState,
+) {
+    ProfileExpressiveType {
+        ProfileEditScaffold(
+            uiState, avatarUiState, previewMode, onTogglePreview, onOpenCard, onAction, onAvatarAction,
+            onPickAnonymousPhoto, onPickOnlyMePhoto, snackbarHostState,
+        )
+    }
+}
+
+@Composable
+private fun ProfileEditScaffold(
     uiState: ProfileEditUiState,
     avatarUiState: ProfileAvatarEditUiState,
     previewMode: Boolean,
@@ -490,16 +529,21 @@ private fun ProfileForm(
         val specs = present.filter { uiState.audience(it.type).isOnCard(id) }
         val links = savedLinks.filter { it.audience.isOnCard(id) }
         val name = profileNameValue(uiState.values)?.takeIf { uiState.audience(ProfileAttributeTypes.NAME).isOnCard(id) }
-        val icons = (specs.map { it.icon } + if (links.isEmpty()) emptyList() else listOf(Icons.Outlined.Link)).distinct()
-        return CardContents(name, icons, specs.size + links.size)
+        val labels = specs.map { it.labelRes } + if (links.isEmpty()) emptyList() else listOf(MR.string.profile_edit_link)
+        return CardContents(name, labels, specs.size + links.size)
     }
 
+    val scroll = rememberScrollState()
+    // Large text leaves no room beside the FAB's label, so it stays a round button there.
+    val roomyText = LocalDensity.current.fontScale < FAB_LABEL_MAX_FONT_SCALE
+    val fabExpanded = roomyText && (!scroll.canScrollBackward || scroll.lastScrolledBackward)
+    var popoverFor by remember { mutableStateOf<String?>(null) }
     Box(modifier = modifier) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .imePadding()
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(scroll),
         ) {
             ProfileCardsStrip(
                 cards = cards,
@@ -510,7 +554,7 @@ private fun ProfileForm(
             )
 
             Spacer(Modifier.height(32.dp))
-            SectionHeader(stringResource(MR.string.profile_edit_photos_title))
+            SectionHeader(stringResource(MR.string.profile_edit_photos_title), stringResource(MR.string.profile_edit_photos_desc))
             if (!avatarUiState.isLoading) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -518,6 +562,7 @@ private fun ProfileForm(
                 ) {
                     PhotoBlock(
                         audience = ProfileAudience.Public,
+                        caption = stringResource(MR.string.profile_edit_photo_public_caption),
                         tier = ProfileVisibility.ANONYMOUS,
                         photoState = avatarUiState.anonymous,
                         onAvatarAction = onAvatarAction,
@@ -527,6 +572,7 @@ private fun ProfileForm(
                     )
                     PhotoBlock(
                         audience = ProfileAudience.OnlyMe,
+                        caption = stringResource(MR.string.profile_edit_photo_only_me_caption),
                         tier = ProfileVisibility.OWNER,
                         photoState = avatarUiState.onlyMe,
                         onAvatarAction = onAvatarAction,
@@ -536,12 +582,6 @@ private fun ProfileForm(
                     )
                 }
             }
-            Text(
-                text = stringResource(MR.string.profile_edit_photos_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
-            )
             ConnectionsPhotoBlock(avatarUiState.connected, onAvatarAction)
 
             Spacer(Modifier.height(32.dp))
@@ -562,6 +602,17 @@ private fun ProfileForm(
                         displayValue = display,
                         audience = audience,
                         circles = uiState.circles,
+                        otherNames = uiState.otherCircleNames,
+                        snapshotAudience = snapshot?.audience,
+                        popoverOpen = popoverFor == spec.type,
+                        onOpenPopover = { popoverFor = spec.type },
+                        onClosePopover = { popoverFor = null },
+                        onSaveAudience = { picked ->
+                            popoverFor = null
+                            onAction(ProfileEditAction.AudienceChanged(spec.type, picked))
+                            onAction(ProfileEditAction.SaveAttribute(spec.type))
+                            pulseCardsOf(picked)
+                        },
                         editing = snapshot != null,
                         dimmed = !onFocusedCard(audience),
                         onOpen = {
@@ -589,7 +640,7 @@ private fun ProfileForm(
                             null
                         },
                         onAudienceChange = { onAction(ProfileEditAction.AudienceChanged(spec.type, it)) },
-                        canSave = isAttributeValid(spec.type) { uiState.value(it) } && audience.isSavable,
+                        canSave = isAttributeValid(spec.type) { uiState.value(it) } && audience.isSavableWith(uiState.circles),
                         conflicts = uiState.conflicts[spec.type].orEmpty(),
                         conflictType = spec.type,
                         onDiscardConflict = { onAction(ProfileEditAction.DiscardConflict(spec.type, it)) },
@@ -603,12 +654,14 @@ private fun ProfileForm(
             LinksSection(
                 uiState = uiState,
                 openLinks = openLinks,
+                popoverFor = popoverFor,
+                onPopover = { popoverFor = it },
                 isOnFocusedCard = ::onFocusedCard,
                 onSaved = ::pulseCardsOf,
                 onAction = onAction,
             )
-            // Clears the extended FAB so the last row can scroll above it.
-            Spacer(Modifier.height(96.dp))
+            // Clears the FAB (56dp) and its 16dp margin, plus a rhythm step, so the last row scrolls above it.
+            Spacer(Modifier.height(104.dp))
         }
 
         AnimatedVisibility(
@@ -617,10 +670,12 @@ private fun ProfileForm(
             enter = scaleIn(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()),
             exit = scaleOut(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
         ) {
+            val addLabel = stringResource(MR.string.profile_edit_add_attribute)
             ExtendedFloatingActionButton(
                 onClick = { showAddSheet = true },
-                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                text = { Text(stringResource(MR.string.profile_edit_add_attribute)) },
+                expanded = fabExpanded,
+                icon = { Icon(Icons.Filled.Add, contentDescription = if (fabExpanded) null else addLabel) },
+                text = { Text(addLabel) },
             )
         }
     }
@@ -646,6 +701,7 @@ private fun ProfileForm(
 @Composable
 private fun PhotoBlock(
     audience: ProfileAudience,
+    caption: String,
     tier: ProfileVisibility,
     photoState: PhotoTierUiState,
     onAvatarAction: (ProfileAvatarEditAction) -> Unit,
@@ -679,7 +735,15 @@ private fun PhotoBlock(
         ) {
             ExistingAvatarContent(photoState.existing, "ProfileEditScreen")
         }
-        AudienceBadge(audience = audience, circles = emptyList())
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            AudienceBadge(audience = audience, circles = emptyList())
+            Text(
+                text = caption,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
@@ -691,7 +755,7 @@ private fun SectionHeader(title: String, description: String? = null) {
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLargeEmphasized,
+            style = MaterialTheme.typography.titleMediumEmphasized,
             color = MaterialTheme.colorScheme.onSurface,
         )
         if (description != null) {
@@ -704,7 +768,8 @@ private fun SectionHeader(title: String, description: String? = null) {
     }
 }
 
-private const val DIMMED_ALPHA = 0.38f
+private const val DIMMED_ALPHA = 0.6f
+private const val FAB_LABEL_MAX_FONT_SCALE = 1.3f
 
 /**
  * One detail, contact-detail style: icon, label, value and who sees it. Open, it lifts into a
@@ -718,6 +783,12 @@ private fun EditableFieldGroup(
     displayValue: String?,
     audience: ProfileAudience,
     circles: List<CardCircle>,
+    otherNames: Map<String, String>,
+    snapshotAudience: ProfileAudience?,
+    popoverOpen: Boolean,
+    onOpenPopover: () -> Unit,
+    onClosePopover: () -> Unit,
+    onSaveAudience: (ProfileAudience) -> Unit,
     editing: Boolean,
     dimmed: Boolean,
     onOpen: () -> Unit,
@@ -771,7 +842,21 @@ private fun EditableFieldGroup(
                 }
             },
             supportingContent = if (!editing && !isPlaceholder) {
-                { AudienceBadge(audience, circles, modifier = Modifier.padding(top = 8.dp)) }
+                {
+                    // The popover anchors to this box, so it opens against the pill that summoned it.
+                    Box(modifier = Modifier.padding(top = 2.dp)) {
+                        AudienceBadge(audience = audience, circles = circles, otherNames = otherNames, onClick = onOpenPopover)
+                        if (popoverOpen) {
+                            AudiencePopover(
+                                initial = audience,
+                                circles = circles,
+                                otherNames = otherNames,
+                                onSave = onSaveAudience,
+                                onDismiss = onClosePopover,
+                            )
+                        }
+                    }
+                }
             } else {
                 null
             },
@@ -790,7 +875,7 @@ private fun EditableFieldGroup(
         AnimatedVisibility(
             visible = editing,
             enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            exit = shrinkVertically(motion.defaultSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
         ) {
             LaunchedEffect(Unit) {
                 snapshotFlow { transition.currentState == EnterExitState.Visible }.first { it }
@@ -803,11 +888,16 @@ private fun EditableFieldGroup(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
-                AudiencePicker(audience = audience, circles = circles, onChange = onAudienceChange)
+                AudiencePicker(
+                    audience = audience,
+                    circles = circles,
+                    onChange = onAudienceChange,
+                    otherCircles = otherCirclesOf(snapshotAudience ?: audience, audience, names = otherNames),
+                )
                 conflicts.forEach { record ->
                     ConflictRow(
                         value = conflictValue(conflictType, record),
-                        audience = audienceSummary(record.audience(circles), circles),
+                        audience = audienceSummary(record.audience(circles), circles, otherNames),
                         onDiscard = { onDiscardConflict(record.id) },
                     )
                 }
@@ -845,6 +935,8 @@ private fun EditorActions(canSave: Boolean, onSave: () -> Unit, onCancel: () -> 
 private fun LinksSection(
     uiState: ProfileEditUiState,
     openLinks: MutableMap<String, LinkDraft>,
+    popoverFor: String?,
+    onPopover: (String?) -> Unit,
     isOnFocusedCard: (ProfileAudience) -> Boolean,
     onSaved: (ProfileAudience) -> Unit,
     onAction: (ProfileEditAction) -> Unit,
@@ -861,6 +953,17 @@ private fun LinksSection(
             displayValue = display,
             audience = link.audience,
             circles = uiState.circles,
+            otherNames = uiState.otherCircleNames,
+            snapshotAudience = snapshot?.audience,
+            popoverOpen = popoverFor == key,
+            onOpenPopover = { onPopover(key) },
+            onClosePopover = { onPopover(null) },
+            onSaveAudience = { picked ->
+                onPopover(null)
+                onAction(ProfileEditAction.LinkAudienceChanged(key, picked))
+                onAction(ProfileEditAction.SaveLink(key))
+                onSaved(picked)
+            },
             editing = snapshot != null,
             dimmed = !isOnFocusedCard(link.audience),
             onOpen = { openLinks[key] = link },
@@ -876,9 +979,12 @@ private fun LinksSection(
                 onSaved(link.audience)
                 openLinks.remove(key)
             },
-            onRemove = null,
+            onRemove = {
+                onAction(ProfileEditAction.RemoveLink(key))
+                openLinks.remove(key)
+            },
             onAudienceChange = { onAction(ProfileEditAction.LinkAudienceChanged(key, it)) },
-            canSave = link.isValid,
+            canSave = link.isValid(uiState.circles),
         ) {
             ProfileField(
                 link.text,
@@ -889,6 +995,7 @@ private fun LinksSection(
                 link.target,
                 stringResource(MR.string.profile_edit_link_target),
                 keyboardType = KeyboardType.Uri,
+                ltr = true,
                 modifier = Modifier.fillMaxWidth(),
             ) { onAction(ProfileEditAction.LinkChanged(key, link.text, it)) }
         }
@@ -933,12 +1040,15 @@ private fun ProfileField(
     errorText: String? = null,
     minLines: Int = 1,
     maxLines: Int = 1,
+    ltr: Boolean = false,
     modifier: Modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
     onChange: (String) -> Unit,
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
+        // Addresses and URLs read left to right in every locale.
+        textStyle = if (ltr) LocalTextStyle.current.copy(textDirection = TextDirection.Ltr) else LocalTextStyle.current,
         label = { Text(label) },
         placeholder = placeholder?.let { { Text(it) } },
         singleLine = maxLines == 1,
@@ -952,22 +1062,27 @@ private fun ProfileField(
 }
 
 /** One attribute type the "add detail" sheet can offer; its editable fields live in [AttributeFields]. */
-internal data class AttributeSpec(val type: String, val icon: ImageVector, val labelRes: StringResource)
+internal data class AttributeSpec(
+    val type: String,
+    val icon: ImageVector,
+    val labelRes: StringResource,
+    val social: Boolean = false,
+)
 
 internal val ATTRIBUTE_SPECS = listOf(
     AttributeSpec(ProfileAttributeTypes.NAME, Icons.Outlined.Person, MR.string.contactbook_detail_name),
     AttributeSpec(ProfileAttributeTypes.NICKNAME, Icons.Outlined.Badge, MR.string.profile_edit_nickname),
-    AttributeSpec(ProfileAttributeTypes.STATUS, Icons.Outlined.Info, MR.string.profile_edit_status),
+    AttributeSpec(ProfileAttributeTypes.STATUS, Icons.Outlined.Mood, MR.string.profile_edit_status),
     AttributeSpec(ProfileAttributeTypes.BIRTHDAY, Icons.Outlined.Cake, MR.string.profile_edit_birthday),
     AttributeSpec(ProfileAttributeTypes.BIO_SUMMARY, Icons.AutoMirrored.Outlined.Notes, MR.string.profile_edit_bio),
     AttributeSpec(ProfileAttributeTypes.EMAIL, Icons.Outlined.Email, MR.string.profile_edit_email),
     AttributeSpec(ProfileAttributeTypes.PHONE, Icons.Outlined.Call, MR.string.profile_edit_phone),
     AttributeSpec(ProfileAttributeTypes.ADDRESS, Icons.Outlined.LocationOn, MR.string.contactbook_detail_location),
-    AttributeSpec(ProfileAttributeTypes.TWITTER, Icons.Outlined.AlternateEmail, MR.string.profile_edit_twitter),
-    AttributeSpec(ProfileAttributeTypes.FACEBOOK, Icons.Outlined.AlternateEmail, MR.string.profile_edit_facebook),
-    AttributeSpec(ProfileAttributeTypes.INSTAGRAM, Icons.Outlined.AlternateEmail, MR.string.profile_edit_instagram),
-    AttributeSpec(ProfileAttributeTypes.TIKTOK, Icons.Outlined.AlternateEmail, MR.string.profile_edit_tiktok),
-    AttributeSpec(ProfileAttributeTypes.LINKEDIN, Icons.Outlined.AlternateEmail, MR.string.profile_edit_linkedin),
+    AttributeSpec(ProfileAttributeTypes.TWITTER, Icons.Outlined.Tag, MR.string.profile_edit_twitter, social = true),
+    AttributeSpec(ProfileAttributeTypes.FACEBOOK, Icons.Outlined.ThumbUp, MR.string.profile_edit_facebook, social = true),
+    AttributeSpec(ProfileAttributeTypes.INSTAGRAM, Icons.Outlined.PhotoCamera, MR.string.profile_edit_instagram, social = true),
+    AttributeSpec(ProfileAttributeTypes.TIKTOK, Icons.Outlined.MusicNote, MR.string.profile_edit_tiktok, social = true),
+    AttributeSpec(ProfileAttributeTypes.LINKEDIN, Icons.Outlined.WorkOutline, MR.string.profile_edit_linkedin, social = true),
 )
 
 /** Whether [type] has a value in [values]; the rows and the add sheet's "missing" list both read it. */
@@ -1004,26 +1119,52 @@ internal fun AddAttributeSheet(
         ) {
             Text(
                 text = stringResource(MR.string.profile_edit_add_attribute_title),
-                style = MaterialTheme.typography.titleLargeEmphasized,
+                style = MaterialTheme.typography.headlineSmallEmphasized,
                 modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 8.dp),
             )
-            missing.forEach { spec ->
-                AddAttributeRow(spec.icon, stringResource(spec.labelRes)) { dismiss { onPick(spec) } }
+            val (social, about) = missing.partition { it.social }
+            if (about.isNotEmpty()) {
+                AddSheetGroup(stringResource(MR.string.profile_edit_add_group_about))
+                about.forEach { spec ->
+                    AddAttributeRow(spec.icon, stringResource(spec.labelRes), social = false) { dismiss { onPick(spec) } }
+                }
             }
-            AddAttributeRow(Icons.Outlined.Link, stringResource(MR.string.profile_edit_link)) { dismiss { onPickLink() } }
+            AddSheetGroup(stringResource(MR.string.profile_edit_add_group_social))
+            social.forEach { spec ->
+                AddAttributeRow(spec.icon, stringResource(spec.labelRes), social = true) { dismiss { onPick(spec) } }
+            }
+            AddAttributeRow(Icons.Outlined.Link, stringResource(MR.string.profile_edit_link), social = true) { dismiss { onPickLink() } }
         }
     }
 }
 
 @Composable
-private fun AddAttributeRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun AddSheetGroup(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelLargeEmphasized,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
+private fun AddAttributeRow(icon: ImageVector, label: String, social: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
     ListItem(
         leadingContent = {
             Box(
-                modifier = Modifier.size(40.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(if (social) colors.tertiaryContainer else colors.secondaryContainer, MaterialShapes.Cookie9Sided.toShape()),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = if (social) colors.onTertiaryContainer else colors.onSecondaryContainer,
+                    modifier = Modifier.size(22.dp),
+                )
             }
         },
         headlineContent = { Text(label) },
@@ -1118,15 +1259,15 @@ private fun AttributeFields(
                 value = emailValue,
                 label = stringResource(MR.string.profile_edit_email),
                 keyboardType = KeyboardType.Email,
+                ltr = true,
                 isError = emailValue.isNotBlank() && !ContactFieldValidation.isValidEmail(emailValue),
                 errorText = stringResource(MR.string.contactbook_error_email),
                 modifier = Modifier.fillMaxWidth(),
             ) { onChange(ProfileField.EMAIL, it) }
-            ProfileField(
+            LabelChips(
                 value = value(ProfileField.EMAIL_LABEL),
-                label = stringResource(MR.string.profile_edit_email_label),
-                placeholder = stringResource(MR.string.profile_edit_email_label_hint),
-                modifier = Modifier.fillMaxWidth(),
+                presets = listOf(MR.string.profile_edit_label_personal, MR.string.profile_edit_label_work),
+                customLabel = stringResource(MR.string.profile_edit_email_label),
             ) { onChange(ProfileField.EMAIL_LABEL, it) }
         }
 
@@ -1140,20 +1281,18 @@ private fun AttributeFields(
                 errorText = stringResource(MR.string.contactbook_error_phone),
                 modifier = Modifier.fillMaxWidth(),
             )
-            ProfileField(
+            LabelChips(
                 value = value(ProfileField.PHONE_LABEL),
-                label = stringResource(MR.string.profile_edit_phone_label),
-                placeholder = stringResource(MR.string.profile_edit_phone_label_hint),
-                modifier = Modifier.fillMaxWidth(),
+                presets = listOf(MR.string.profile_edit_label_mobile, MR.string.profile_edit_label_home, MR.string.profile_edit_label_work),
+                customLabel = stringResource(MR.string.profile_edit_phone_label),
             ) { onChange(ProfileField.PHONE_LABEL, it) }
         }
 
         ProfileAttributeTypes.ADDRESS -> {
-            ProfileField(
+            LabelChips(
                 value = value(ProfileField.ADDRESS_LABEL),
-                label = stringResource(MR.string.profile_edit_address_label),
-                placeholder = stringResource(MR.string.profile_edit_address_label_hint),
-                modifier = Modifier.fillMaxWidth(),
+                presets = listOf(MR.string.profile_edit_label_home, MR.string.profile_edit_label_work),
+                customLabel = stringResource(MR.string.profile_edit_address_label),
             ) { onChange(ProfileField.ADDRESS_LABEL, it) }
             ProfileField(
                 value = value(ProfileField.ADDRESS1),
@@ -1216,6 +1355,64 @@ private fun AttributeFields(
                 stringResource(MR.string.profile_edit_linkedin),
                 modifier = Modifier.fillMaxWidth(),
             ) { onChange(ProfileField.LINKEDIN, it) }
+        }
+    }
+}
+
+/**
+ * A detail's label as one tap: preset chips, plus Custom for anything else, which opens a field.
+ * Tapping the picked chip again clears the label.
+ */
+@Composable
+private fun LabelChips(
+    value: String,
+    presets: List<StringResource>,
+    customLabel: String,
+    onChange: (String) -> Unit,
+) {
+    val names = presets.map { stringResource(it) }
+    var custom by remember { mutableStateOf(value.isNotBlank() && names.none { it.equals(value, ignoreCase = true) }) }
+    val motion = MaterialTheme.motionScheme
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            names.forEach { name ->
+                val picked = !custom && name.equals(value, ignoreCase = true)
+                FilterChip(
+                    selected = picked,
+                    onClick = {
+                        custom = false
+                        onChange(if (picked) "" else name)
+                    },
+                    label = { Text(name) },
+                    leadingIcon = if (picked) {
+                        { Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+                    } else {
+                        null
+                    },
+                )
+            }
+            FilterChip(
+                selected = custom,
+                onClick = {
+                    custom = !custom
+                    if (!custom || names.any { it.equals(value, ignoreCase = true) }) onChange("")
+                },
+                label = { Text(stringResource(MR.string.profile_edit_label_custom)) },
+                leadingIcon = {
+                    Icon(
+                        if (custom) Icons.Outlined.Check else Icons.Outlined.Edit,
+                        contentDescription = null,
+                        modifier = Modifier.size(FilterChipDefaults.IconSize),
+                    )
+                },
+            )
+        }
+        AnimatedVisibility(
+            visible = custom,
+            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+            exit = shrinkVertically(motion.defaultSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+        ) {
+            ProfileField(value = value, label = customLabel, modifier = Modifier.fillMaxWidth(), onChange = onChange)
         }
     }
 }

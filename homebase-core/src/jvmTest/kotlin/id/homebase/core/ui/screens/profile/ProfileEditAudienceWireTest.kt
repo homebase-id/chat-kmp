@@ -15,6 +15,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.uuid.ExperimentalUuidApi
@@ -106,6 +107,7 @@ class ProfileEditAudienceWireTest {
         val harness = CardWireHarness()
         val vm = viewModel(harness)
         vm.onAction(ProfileEditAction.FieldChanged(ProfileField.PHONE, phone))
+        vm.onAction(ProfileEditAction.AudienceChanged(ProfileAttributeTypes.PHONE, ProfileAudience.Public))
         vm.act(ProfileEditAction.SaveAttribute(ProfileAttributeTypes.PHONE))
         assertEquals("anonymous", harness.lastPut()["visibility"]!!.jsonPrimitive.content)
         assertNull(harness.lastPut()["circleIds"])
@@ -287,6 +289,32 @@ class ProfileEditAudienceWireTest {
             ProfileAudience.Circles(setOf(WORK_CIRCLE_ID)),
             reloaded.state.value.links.first { it.text == "Docs" }.audience,
         )
+    }
+
+    @Test
+    fun aNewPhoneSavesToTheContactsCirclesUnlessPickedOtherwise() = runBlocking {
+        val harness = CardWireHarness()
+        val vm = viewModel(harness)
+        vm.onAction(ProfileEditAction.FieldChanged(ProfileField.PHONE, phone))
+        vm.act(ProfileEditAction.SaveAttribute(ProfileAttributeTypes.PHONE))
+        assertEquals("connected", harness.lastPut()["visibility"]!!.jsonPrimitive.content)
+        assertEquals(circles.map { it.id }.sorted(), harness.lastPut()["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    @Test
+    fun removingASavedLinkDeletesItsRecord() = runBlocking {
+        val harness = CardWireHarness()
+        val vm = viewModel(harness)
+        vm.onAction(ProfileEditAction.AddLink)
+        val draft = vm.state.value.links.single().key
+        vm.onAction(ProfileEditAction.LinkChanged(draft, "Recipes", "https://sam.kitchen"))
+        vm.act(ProfileEditAction.SaveLink(draft))
+        val saved = vm.state.value.links.single().key
+
+        assertIs<ProfileEditEvent.AttributeSaved>(vm.act(ProfileEditAction.RemoveLink(saved)))
+        assertEquals(1, harness.deletes)
+        assertTrue(vm.state.value.links.isEmpty())
+        assertTrue(viewModel(harness).state.value.links.isEmpty())
     }
 
     @Test

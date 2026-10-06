@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.profile
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE
 import id.homebase.api.client.profile.ProfileAttribute
+import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.util.compareStringUuId
 import id.homebase.core.ui.screens.card.CardCircle
@@ -21,6 +22,9 @@ sealed interface ProfileAudience {
 
     val isSavable: Boolean get() = this !is Circles || ids.isNotEmpty() || otherIds.isNotEmpty()
 
+    /** With no Contacts circles to pick from, Circles means every connection, which the server stores as Connected with no circles. */
+    fun isSavableWith(circles: List<CardCircle>): Boolean = isSavable || (this is Circles && circles.isEmpty())
+
     val visibility: ProfileVisibility
         get() = when (this) {
             Public -> ProfileVisibility.ANONYMOUS
@@ -29,6 +33,15 @@ sealed interface ProfileAudience {
         }
 
     val circleIds: List<String> get() = (this as? Circles)?.let { it.ids + it.otherIds }?.sorted().orEmpty()
+}
+
+private val PUBLIC_BY_DEFAULT = setOf(ProfileAttributeTypes.NAME, ProfileAttributeTypes.BIO_SUMMARY)
+
+/** A detail nobody has set yet: name and bio start Public; anything personal starts with the Contacts circles, or Only me without them. */
+internal fun defaultAudience(type: String, circles: List<CardCircle>): ProfileAudience = when {
+    type in PUBLIC_BY_DEFAULT -> ProfileAudience.Public
+    circles.isEmpty() -> ProfileAudience.OnlyMe
+    else -> ProfileAudience.Circles(circles.map { it.id }.toSet())
 }
 
 /** Connected with no circles means every connection, so it reads as every Contacts circle selected. */

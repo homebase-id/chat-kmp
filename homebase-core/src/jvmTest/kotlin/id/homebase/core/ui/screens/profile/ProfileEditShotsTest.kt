@@ -14,6 +14,7 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
@@ -41,6 +42,9 @@ class ProfileEditShotsTest {
 
     private val outDir: File? = System.getenv("CARD_SHOTS_DIR")?.let(::File)?.also { it.mkdirs() }
 
+    /** Comma-separated shot-name prefixes; renders only those, for quick iteration on one state. */
+    private val only: List<String> = System.getenv("CARD_SHOTS_ONLY")?.split(',')?.map { it.trim() }.orEmpty()
+
     private val family = CardCircle("f", "Family")
     private val friends = CardCircle("fr", "Friends")
     private val work = CardCircle("w", "Work")
@@ -58,6 +62,7 @@ class ProfileEditShotsTest {
             ProfileField.BIRTHDAY to "1980-04-06",
             ProfileField.EMAIL to "sam@bagend.me",
             ProfileField.PHONE to "+14155550123",
+            ProfileField.PHONE_LABEL to "Mobile",
             ProfileField.CITY to "Hobbiton",
             ProfileField.COUNTRY to "The Shire",
             ProfileField.INSTAGRAM to "samwise",
@@ -103,7 +108,12 @@ class ProfileEditShotsTest {
         Shot("k8-04-bio-public", filled, listOf("Bio")),
         Shot("k8-05-birthday-only-me", filled, listOf("Birthday")),
         Shot("k8-06-no-circle-picked", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(emptySet())), listOf("Phone")),
-        Shot("k8-07-other-circles", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("f"), setOf("x1", "x2"))), listOf("Phone")),
+        Shot(
+            "k8-07-other-circles",
+            with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("f"), setOf("x1", "x2")))
+                .copy(otherCircleNames = mapOf("x1" to "Book club", "x2" to "Hiking crew")),
+            listOf("Phone"),
+        ),
         Shot("k8-08-no-contacts-circles", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(emptySet()), filled.copy(circles = emptyList())), listOf("Phone")),
         Shot("k8-09-long-circle", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", "f", "fr")), filled.copy(circles = circles + climbing)), heightDp = FULL_H),
         Shot("k8-09b-long-circle-open", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", "f")), filled.copy(circles = circles + climbing)), listOf("Phone")),
@@ -121,12 +131,16 @@ class ProfileEditShotsTest {
         Shot("k8-21-add-from-empty", empty, listOf("Phone")),
         Shot("k8-22-add-from-empty-no-circles", empty.copy(circles = emptyList()), listOf("Phone")),
         Shot("k8-23-add-status", filled, listOf("Add detail", "Status")),
+        Shot("k8-24-audience-popover", filled, listOf("cd:Visible to Family. Change")),
+        Shot("k8-25-audience-popover-rtl", filled, listOf("cd:Visible to Family. Change"), rtl = true),
+        Shot("k8-26-custom-label", filled.copy(values = filled.values + (ProfileField.EMAIL_LABEL to "Hobbit post")), listOf("Email")),
+        Shot("k8-27-legacy-every-connection-open", filled.copy(circles = emptyList(), audiences = filled.audiences + (ProfileAttributeTypes.PHONE to ProfileAudience.Circles(emptySet()))), heightDp = FULL_H),
     )
 
     @Test
     fun profileEditorRendersEveryState() {
         for (dark in listOf(false, true)) {
-            for (shot in shots) render(shot, dark)
+            for (shot in shots) if (only.isEmpty() || only.any { shot.name.startsWith(it) }) render(shot, dark)
         }
     }
 
@@ -176,7 +190,11 @@ class ProfileEditShotsTest {
         for (label in shot.clicks) {
             // A scroll waits on its own animation frames, which a paused clock never delivers.
             mainClock.autoAdvance = true
-            val node = onAllNodesWithText(label, useUnmergedTree = true).onFirst()
+            val node = if (label.startsWith(BY_DESCRIPTION)) {
+                onAllNodesWithContentDescription(label.removePrefix(BY_DESCRIPTION), useUnmergedTree = true).onFirst()
+            } else {
+                onAllNodesWithText(label, useUnmergedTree = true).onFirst()
+            }
             // Floating chrome (the extended FAB, a sheet) has no scrolling parent to bring it into view.
             runCatching { node.performScrollTo() }
             node.performClick()
@@ -213,5 +231,6 @@ class ProfileEditShotsTest {
         const val PHONE_H = 892
         const val SETTLE_MS = 1_500L
         const val FULL_H = 1_900
+        const val BY_DESCRIPTION = "cd:"
     }
 }

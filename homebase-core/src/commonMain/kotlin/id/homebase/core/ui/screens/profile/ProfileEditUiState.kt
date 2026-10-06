@@ -31,6 +31,9 @@ data class ProfileEditUiState(
     /** The Contacts-app circles a detail can be shown to. */
     val circles: List<CardCircle> = emptyList(),
 
+    /** Names of stored circles that have no card (user-made, other apps'), by the id the records hold. */
+    val otherCircleNames: Map<String, String> = emptyMap(),
+
     /** One entry per stored link record plus any not yet saved; a profile can have many. */
     val links: List<LinkDraft> = emptyList(),
 
@@ -47,8 +50,7 @@ data class ProfileEditUiState(
 ) {
     fun value(field: ProfileField): String = values[field].orEmpty()
 
-    /** An attribute nobody has set yet starts Public, as the old editor did. */
-    fun audience(type: String): ProfileAudience = audiences[type] ?: ProfileAudience.Public
+    fun audience(type: String): ProfileAudience = audiences[type] ?: defaultAudience(type, circles)
 
     /** What a viewer at [tier] sees of the saved profile; an edit shows here once it is saved. */
     fun visibleValues(tier: ProfileVisibility): Map<ProfileField, String> = attributes.visibleValues(tier)
@@ -70,7 +72,7 @@ data class LinkDraft(
     val target: String = "",
     val audience: ProfileAudience = ProfileAudience.Public,
 ) {
-    val isValid: Boolean get() = target.isNotBlank() && audience.isSavable
+    fun isValid(circles: List<CardCircle>): Boolean = target.isNotBlank() && audience.isSavableWith(circles)
 }
 
 sealed interface ProfileEditAction {
@@ -78,6 +80,7 @@ sealed interface ProfileEditAction {
     data class LinkChanged(val key: String, val text: String, val target: String) : ProfileEditAction
     data class LinkAudienceChanged(val key: String, val audience: ProfileAudience) : ProfileEditAction
     data class SaveLink(val key: String) : ProfileEditAction
+    data class RemoveLink(val key: String) : ProfileEditAction
     /** Deletes a record that disagrees with the edited one, after the user has seen its value. */
     data class DiscardConflict(val type: String, val id: Uuid) : ProfileEditAction
     data class FieldChanged(val field: ProfileField, val value: String) : ProfileEditAction

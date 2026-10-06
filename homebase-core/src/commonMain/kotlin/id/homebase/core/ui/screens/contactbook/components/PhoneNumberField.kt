@@ -21,7 +21,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.runtime.LaunchedEffect
@@ -62,7 +61,7 @@ fun PhoneNumberField(
 ) {
     val region = Locale.current.region
     // Seed country/national from the incoming value once; the field owns them after.
-    val seeded = remember { splitE164(e164Value) }
+    val seeded = remember { splitE164(e164Value, region) }
     var country by remember { mutableStateOf(seeded.first ?: defaultCountryFor(region)) }
     var national by remember { mutableStateOf(seeded.second) }
     var pickerOpen by remember { mutableStateOf(false) }
@@ -72,44 +71,40 @@ fun PhoneNumberField(
     // Once per row lifetime: rows are keyed, so this never re-emits or reseeds a sibling.
     LaunchedEffect(Unit) { seededE164(e164Value, country)?.let(onValueChange) }
 
-    OutlinedTextField(
-        value = national,
-        onValueChange = {
-            national = it.filter { ch -> ch.isDigit() || ch == ' ' }
-            emit(country, national)
-        },
-        label = { Text(label) },
-        singleLine = true,
-        // Digits stay left-to-right in RTL and sit against the prefix, which mirrors as one unit.
-        textStyle = LocalTextStyle.current.copy(
-            textDirection = TextDirection.Ltr,
-            textAlign = if (LocalLayoutDirection.current == LayoutDirection.Rtl) TextAlign.End else TextAlign.Start,
-        ),
-        leadingIcon = {
-            val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+    // A phone number reads left to right in every locale, prefix first, so the whole field stays LTR.
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        OutlinedTextField(
+            value = national,
+            onValueChange = {
+                national = it.filter { ch -> ch.isDigit() || ch == ' ' }
+                emit(country, national)
+            },
+            label = { Text(label) },
+            singleLine = true,
+            textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
+            leadingIcon = {
                 Row(
                     modifier = Modifier
                         .clickable { pickerOpen = true }
-                        .padding(start = if (rtl) 4.dp else 12.dp, end = if (rtl) 12.dp else 4.dp),
+                        .padding(start = 12.dp, end = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val codeLabel = "${country.flag} +${country.dialCode}"
                     Text(codeLabel)
                     Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
                 }
-            }
-        },
-        trailingIcon = trailingIcon,
-        isError = isError,
-        supportingText = when {
-            isError && errorText != null -> { { Text(errorText) } }
-            supportingText != null -> { { Text(supportingText) } }
-            else -> null
-        },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-        modifier = modifier,
-    )
+            },
+            trailingIcon = trailingIcon,
+            isError = isError,
+            supportingText = when {
+                isError && errorText != null -> { { Text(errorText) } }
+                supportingText != null -> { { Text(supportingText) } }
+                else -> null
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            modifier = modifier,
+        )
+    }
 
     if (pickerOpen) {
         CountryPickerSheet(

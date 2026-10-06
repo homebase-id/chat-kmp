@@ -1768,7 +1768,7 @@
     <string name="profile_edit_audience_only_me_hint">Vises ikke på nogen kort.</string>
     <string name="profile_edit_audience_circles_hint">Vises kun på kortene for de kredse, du vælger.</string>
     <string name="profile_edit_audience_circles_empty">Vælg mindst én kreds.</string>
-    <string name="profile_edit_audience_circles_none">Ingen kredse endnu. Familie, Venner og Arbejde vises her, når dine Kontakter-kredse er sat op.</string>
+    <string name="profile_edit_audience_circles_none">Alle dine forbindelser kan se dette. Opret Familie, Venner og Arbejde i Kontakter for at vælge kredse.</string>
     <string name="profile_edit_photos_title">Fotos</string>
     <string name="profile_edit_photos_desc">Fotos kan indtil videre være offentlige eller kun til mig.</string>
     <string name="profile_edit_details_title">Oplysninger</string>
@@ -1937,7 +1937,7 @@
     <string name="settings_media_mirror_front_description">Gem selfies og videoer fra frontkameraet, som de ser ud i forhåndsvisningen.</string>
     <string name="profile_edit_cards_title">Dine kort</string>
     <string name="profile_edit_cards_desc">Tryk på et kort for at se, hvilke oplysninger det viser.</string>
-    <string name="profile_edit_cards_focus">Viser det, kortet %1$s viser. Tryk igen for at se alt.</string>
+    <string name="profile_edit_cards_focus">Viser det, kortet %1$s viser.</string>
     <string name="profile_edit_card_no_details">Intet på det endnu</string>
     <string name="profile_edit_action_preview">Forhåndsvis som besøgende</string>
     <string name="profile_edit_action_cards">Mine kort</string>
@@ -1945,4 +1945,19 @@
     <string name="profile_edit_empty_desc">Start med det grundlæggende. Hver oplysning indtastes én gang, og du vælger, hvilke kort der viser den.</string>
     <string name="profile_edit_add_named">Tilføj %1$s</string>
     <string name="profile_edit_not_on_card">Ikke på dette kort</string>
+    <string name="profile_edit_cards_show_all">Vis alle</string>
+    <string name="profile_edit_card_shows">Viser %1$s</string>
+    <string name="profile_edit_audience_all_connections">Alle forbindelser</string>
+    <string name="profile_edit_audience_other_circle">Anden kreds</string>
+    <string name="profile_edit_audience_change">Synlig for %1$s. Skift</string>
+    <string name="profile_edit_photo_public_caption">Vises på alle kort</string>
+    <string name="profile_edit_photo_only_me_caption">Kun du kan se dette</string>
+    <string name="profile_edit_add_group_about">Om dig</string>
+    <string name="profile_edit_add_group_social">Sociale medier</string>
+    <string name="profile_edit_label">Etiket</string>
+    <string name="profile_edit_label_mobile">Mobil</string>
+    <string name="profile_edit_label_home">Hjem</string>
+    <string name="profile_edit_label_work">Arbejde</string>
+    <string name="profile_edit_label_personal">Privat</string>
+    <string name="profile_edit_label_custom">Anden</string>
 </resources>
