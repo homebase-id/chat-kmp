@@ -32,7 +32,7 @@ kotlin {
         compileSdk = libs.versions.android.targetSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
         androidResources.enable = true
-        withHostTest {}
+        withHostTest { isIncludeAndroidResources = true }
         // Enables `src/androidInstrumentedTest/` for emulator-on-device tests
         // (currently used by CompressVideoAndroidInstrumentedTest, which is
         // @Ignore'd until CI emulator infra lands). Locally runnable with:
@@ -324,6 +324,9 @@ kotlin {
                 exclude(group = "org.xerial", module = "sqlite-jdbc")
             }
             implementation(libs.sqlite.jdbc.crypt)
+            implementation(libs.junit)
+            implementation(libs.robolectric)
+            implementation(libs.androidx.test.core)
         }
         // Android instrumented (on-device) tests for things that need real
         // platform implementations — e.g. CompressVideoAndroidInstrumentedTest
