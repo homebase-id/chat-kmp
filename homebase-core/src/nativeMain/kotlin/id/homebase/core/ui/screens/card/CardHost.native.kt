@@ -14,11 +14,16 @@ import id.homebase.core.image.NativeImageDecoder
 import kotlin.coroutines.resume
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCSignatureOverride
+import kotlinx.cinterop.readValue
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import platform.CoreGraphics.CGAffineTransformIdentity
+import platform.CoreGraphics.CGAffineTransformMakeScale
+import platform.CoreGraphics.CGPointMake
 import platform.CoreGraphics.CGRectMake
+import platform.CoreGraphics.CGRectZero
 import platform.Foundation.NSError
 import platform.Foundation.NSHTTPURLResponse
 import platform.Foundation.NSNumber
@@ -27,6 +32,7 @@ import platform.Foundation.NSURLRequest
 import platform.UIKit.UIColor
 import platform.UIKit.UIImage
 import platform.UIKit.UIScrollViewContentInsetAdjustmentBehavior
+import platform.UIKit.UIView
 import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationAction
 import platform.WebKit.WKNavigationActionPolicy
@@ -52,14 +58,38 @@ actual fun createCardHost(odinId: String): CardHost = IosCardHost(cardPageUrl(od
 @Composable
 actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?) {
     val cardHost = host as IosCardHost
-    // UIKit views ignore a graphicsLayer; page zoom reflows the page as a browser's zoom would, viewport units included.
+    // UIKit views ignore a graphicsLayer, and pageZoom leaves the page laid out at the frame's width, so scale the view itself.
     BoxWithConstraints(modifier = modifier) {
-        val zoom = layoutWidth?.let { pageScale(maxWidth.value, it.value) } ?: 1f
+        val scale = layoutWidth?.let { pageScale(maxWidth.value, it.value) } ?: 1f
         UIKitView(
-            factory = { cardHost.webView },
+            factory = { cardHost.container },
             modifier = Modifier.fillMaxSize(),
-            update = { view -> zoom.toDouble().let { if (view.pageZoom != it) view.pageZoom = it } },
+            update = { it.scale = scale.toDouble() },
         )
+    }
+}
+
+internal class ScaledContainer(private val content: UIView) : UIView(frame = CGRectZero.readValue()) {
+    var scale = 1.0
+        set(value) {
+            if (field == value) return
+            field = value
+            setNeedsLayout()
+        }
+
+    init {
+        setClipsToBounds(true)
+        content.layer.setAnchorPoint(CGPointMake(0.0, 0.0))
+        addSubview(content)
+    }
+
+    override fun layoutSubviews() {
+        super.layoutSubviews()
+        val (width, height) = bounds.useContents { size.width to size.height }
+        content.setTransform(CGAffineTransformIdentity.readValue())
+        content.setBounds(CGRectMake(0.0, 0.0, width / scale, height / scale))
+        content.layer.setPosition(CGPointMake(0.0, 0.0))
+        content.setTransform(CGAffineTransformMakeScale(scale, scale))
     }
 }
 
@@ -97,6 +127,8 @@ internal class IosCardHost(pageUrl: String) : CardHostBase(pageUrl) {
         navigationDelegate = navigationPolicy
     }
 
+    val container = ScaledContainer(webView)
+
     init {
         loadPage()
     }
@@ -125,7 +157,7 @@ internal class IosCardHost(pageUrl: String) : CardHostBase(pageUrl) {
         webView.configuration.userContentController.removeScriptMessageHandlerForName(MESSAGE_HANDLER)
         webView.navigationDelegate = null
         webView.stopLoading()
-        webView.removeFromSuperview()
+        container.removeFromSuperview()
     }
 }
 
