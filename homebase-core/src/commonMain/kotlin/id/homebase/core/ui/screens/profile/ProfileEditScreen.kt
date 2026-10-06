@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalUuidApi::class)
 
 package id.homebase.core.ui.screens.profile
 
@@ -6,13 +6,26 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,8 +62,8 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -58,9 +71,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -80,7 +90,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.profile.ProfileAttribute
@@ -174,7 +183,6 @@ fun ProfileEditScreen(
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
     val avatarUiState by avatarViewModel.state.collectAsStateWithLifecycle()
-    val motion = MaterialTheme.motionScheme
     val snackbarHostState = remember { SnackbarHostState() }
     var previewMode by remember { mutableStateOf(false) }
 
@@ -214,14 +222,42 @@ fun ProfileEditScreen(
         }
     }
 
+    ProfileEditContent(
+        uiState = uiState,
+        avatarUiState = avatarUiState,
+        previewMode = previewMode,
+        onTogglePreview = { previewMode = !previewMode },
+        onOpenCard = onOpenCard,
+        onAction = viewModel::onAction,
+        onAvatarAction = avatarViewModel::onAction,
+        onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
+        onPickOnlyMePhoto = { onlyMePhotoPicker.launch() },
+        snackbarHostState = snackbarHostState,
+    )
+}
+
+@Composable
+internal fun ProfileEditContent(
+    uiState: ProfileEditUiState,
+    avatarUiState: ProfileAvatarEditUiState,
+    previewMode: Boolean,
+    onTogglePreview: () -> Unit,
+    onOpenCard: (() -> Unit)?,
+    onAction: (ProfileEditAction) -> Unit,
+    onAvatarAction: (ProfileAvatarEditAction) -> Unit,
+    onPickAnonymousPhoto: () -> Unit,
+    onPickOnlyMePhoto: () -> Unit,
+    snackbarHostState: SnackbarHostState,
+) {
+    val motion = MaterialTheme.motionScheme
     Scaffold(
         topBar = {
             SettingsTopBar(
                 title = stringResource(MR.string.profile_edit_title),
-                onBack = { viewModel.onAction(ProfileEditAction.BackClicked) },
+                onBack = { onAction(ProfileEditAction.BackClicked) },
                 actions = {
                     if (!uiState.isLoading && !uiState.loadFailed) {
-                        IconButton(onClick = { previewMode = !previewMode }) {
+                        IconButton(onClick = onTogglePreview) {
                             Crossfade(
                                 targetState = previewMode,
                                 animationSpec = motion.fastEffectsSpec(),
@@ -253,7 +289,7 @@ fun ProfileEditScreen(
             uiState.isLoading -> LoadingState(Modifier.fillMaxSize().padding(padding))
             uiState.loadFailed -> LoadFailedState(
                 modifier = Modifier.fillMaxSize().padding(padding),
-                onRetry = { viewModel.onAction(ProfileEditAction.RetryLoadClicked) },
+                onRetry = { onAction(ProfileEditAction.RetryLoadClicked) },
             )
             else -> {
                 AnimatedContent(
@@ -271,11 +307,11 @@ fun ProfileEditScreen(
                         Box(modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
                             ProfileForm(
                                 uiState = uiState,
-                                onAction = viewModel::onAction,
+                                onAction = onAction,
                                 avatarUiState = avatarUiState,
-                                onAvatarAction = avatarViewModel::onAction,
-                                onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
-                                onPickOnlyMePhoto = { onlyMePhotoPicker.launch() },
+                                onAvatarAction = onAvatarAction,
+                                onPickAnonymousPhoto = onPickAnonymousPhoto,
+                                onPickOnlyMePhoto = onPickOnlyMePhoto,
                                 modifier = Modifier.fillMaxSize(),
                             )
                             AnimatedVisibility(
@@ -295,7 +331,7 @@ fun ProfileEditScreen(
 }
 
 @Composable
-private fun LoadingState(modifier: Modifier) {
+internal fun LoadingState(modifier: Modifier) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         CircularProgressIndicator()
     }
@@ -306,15 +342,20 @@ internal fun LoadFailedState(modifier: Modifier, onRetry: () -> Unit) {
     Column(
         modifier = modifier.padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
     ) {
+        Icon(
+            imageVector = Icons.Outlined.ErrorOutline,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(48.dp),
+        )
         Text(
             text = stringResource(MR.string.profile_edit_load_failed),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
         )
-        Spacer(Modifier.height(12.dp))
-        TextButton(onClick = onRetry) {
+        FilledTonalButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
             Text(stringResource(MR.string.profile_edit_retry))
         }
     }
@@ -343,6 +384,7 @@ private fun ProfileForm(
 
     val missingAttributes = ATTRIBUTE_SPECS.filter { displayValueFor(it.type, uiState.values) == null }
     val hasMissing = missingAttributes.isNotEmpty()
+    val anyRowOpen = editingRows.values.any { it }
     val motion = MaterialTheme.motionScheme
 
     Box(modifier = modifier) {
@@ -357,24 +399,33 @@ private fun ProfileForm(
                 stringResource(MR.string.profile_edit_photos_title),
                 stringResource(MR.string.profile_edit_photos_desc),
             )
-            PhotoBlock(
-                label = stringResource(MR.string.profile_edit_visibility_public),
-                tier = ProfileVisibility.ANONYMOUS,
-                photoState = if (avatarUiState.isLoading) null else avatarUiState.anonymous,
-                onAvatarAction = onAvatarAction,
-                onPickPhoto = onPickAnonymousPhoto,
-            )
-            PhotoBlock(
-                label = stringResource(MR.string.profile_edit_audience_only_me),
-                tier = ProfileVisibility.OWNER,
-                photoState = if (avatarUiState.isLoading) null else avatarUiState.onlyMe,
-                onAvatarAction = onAvatarAction,
-                onPickPhoto = onPickOnlyMePhoto,
-            )
+            if (!avatarUiState.isLoading) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    PhotoBlock(
+                        audience = ProfileAudience.Public,
+                        tier = ProfileVisibility.ANONYMOUS,
+                        photoState = avatarUiState.anonymous,
+                        onAvatarAction = onAvatarAction,
+                        onPickPhoto = onPickAnonymousPhoto,
+                        modifier = Modifier.weight(1f),
+                    )
+                    PhotoBlock(
+                        audience = ProfileAudience.OnlyMe,
+                        tier = ProfileVisibility.OWNER,
+                        photoState = avatarUiState.onlyMe,
+                        onAvatarAction = onAvatarAction,
+                        onPickPhoto = onPickOnlyMePhoto,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
 
             ConnectionsPhotoBlock(avatarUiState.connected, onAvatarAction)
 
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp))
+            Spacer(Modifier.height(24.dp))
 
             Column(
                 modifier = Modifier.fillMaxWidth().animateContentSize(motion.defaultSpatialSpec()),
@@ -416,7 +467,7 @@ private fun ProfileForm(
         }
 
         AnimatedVisibility(
-            visible = hasMissing,
+            visible = hasMissing && !anyRowOpen,
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
             enter = scaleIn(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()),
             exit = scaleOut(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
@@ -461,23 +512,22 @@ private fun ProfileForm(
 /** One photo slot. Tapping the photo reveals the camera badge and Remove button; Save collapses them again. */
 @Composable
 private fun PhotoBlock(
-    label: String,
+    audience: ProfileAudience,
     tier: ProfileVisibility,
-    photoState: PhotoTierUiState?,
+    photoState: PhotoTierUiState,
     onAvatarAction: (ProfileAvatarEditAction) -> Unit,
     onPickPhoto: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    if (photoState == null) return
     var photoRevealed by remember { mutableStateOf(false) }
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = modifier
+            .clip(MaterialTheme.shapes.extraLarge)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         PhotoTierSection(
             tier = photoState,
             onPick = onPickPhoto,
@@ -492,26 +542,25 @@ private fun PhotoBlock(
         ) {
             ExistingAvatarContent(photoState.existing, "ProfileEditScreen")
         }
+        AudienceBadge(audience = audience, circles = emptyList())
     }
 }
 
 @Composable
 private fun SectionHeader(title: String, description: String) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
-            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.titleLargeEmphasized,
+            color = MaterialTheme.colorScheme.onSurface,
         )
         Text(
             text = description,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
         )
     }
 }
@@ -542,71 +591,81 @@ private fun EditableFieldGroup(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val editing = editingRows[rowKey] == true
-    val saveVisibility = remember { MutableTransitionState(editing) }
-    saveVisibility.targetState = editing
     val notSet = stringResource(MR.string.profile_edit_field_not_set)
+    val motion = MaterialTheme.motionScheme
+    // The open row lifts into a rounded container; the corner and inset ride the spatial spring so it morphs rather than snaps.
+    val inset by animateDpAsState(if (editing) 8.dp else 0.dp, motion.defaultSpatialSpec())
+    val corner by animateDpAsState(if (editing) 28.dp else 0.dp, motion.defaultSpatialSpec())
+    val fill by animateFloatAsState(if (editing) 1f else 0f, motion.defaultEffectsSpec())
+    val shape = RoundedCornerShape(corner)
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = inset, vertical = inset / 2)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = fill), shape),
+    ) {
         ListItem(
             modifier = Modifier
                 .fillMaxWidth()
-                .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())
                 .then(if (editing) Modifier else Modifier.clickable { editingRows[rowKey] = true }),
-            leadingContent = { Icon(icon, contentDescription = null) },
-            overlineContent = { Text(label) },
-            headlineContent = {
-                Text(
-                    text = displayValue?.ifBlank { null } ?: notSet,
-                    color = if (displayValue.isNullOrBlank()) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            leadingContent = {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = if (editing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },
-            supportingContent = if (!editing && !displayValue.isNullOrBlank()) {
-                { Text(audienceSummary(audience, circles)) }
-            } else {
-                null
-            },
-            trailingContent = if (saveVisibility.currentState || saveVisibility.targetState) {
-                {
-                    val motion = MaterialTheme.motionScheme
-                    AnimatedVisibility(
-                        visibleState = saveVisibility,
-                        enter = fadeIn(motion.fastEffectsSpec()) + scaleIn(motion.fastSpatialSpec()),
-                        exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec()),
-                    ) {
-                        TextButton(
-                            enabled = canSave,
-                            onClick = {
-                                onSave()
-                                editingRows[rowKey] = false
-                            },
-                        ) {
-                            Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(stringResource(MR.string.save))
-                        }
-                    }
+            overlineContent = if (editing) null else { { Text(label) } },
+            headlineContent = {
+                when {
+                    editing -> Text(label, style = MaterialTheme.typography.titleMediumEmphasized)
+                    displayValue.isNullOrBlank() -> Text(notSet, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else -> Text(displayValue, color = MaterialTheme.colorScheme.onSurface)
                 }
+            },
+            supportingContent = if (!editing && !displayValue.isNullOrBlank()) {
+                { AudienceBadge(audience, circles, modifier = Modifier.padding(top = 6.dp)) }
             } else {
                 null
             },
         )
-        AnimatedVisibility(visible = editing) {
+        AnimatedVisibility(
+            visible = editing,
+            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+        ) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 content()
-                AudiencePicker(audience = audience, circles = circles, onChange = onAudienceChange)
+                AudiencePicker(
+                    audience = audience,
+                    circles = circles,
+                    onChange = onAudienceChange,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
                 conflicts.forEach { record ->
                     ConflictRow(
                         value = conflictValue(conflictType, record),
                         audience = audienceSummary(record.audience(circles), circles),
                         onDiscard = { onDiscardConflict(record.id) },
                     )
+                }
+                Button(
+                    enabled = canSave,
+                    onClick = {
+                        onSave()
+                        editingRows[rowKey] = false
+                    },
+                    modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp),
+                ) {
+                    Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                    Text(stringResource(MR.string.save))
                 }
             }
         }
@@ -711,9 +770,9 @@ private fun ProfileField(
 
 /** One attribute type the "add attribute" FAB can offer — icon/label only; the actual editable
  *  fields for each [type] live in [ProfileForm]'s per-attribute rows. */
-private data class AttributeSpec(val type: String, val icon: ImageVector, val labelRes: StringResource)
+internal data class AttributeSpec(val type: String, val icon: ImageVector, val labelRes: StringResource)
 
-private val ATTRIBUTE_SPECS = listOf(
+internal val ATTRIBUTE_SPECS = listOf(
     AttributeSpec(ProfileAttributeTypes.NAME, Icons.Outlined.Person, MR.string.contactbook_detail_name),
     AttributeSpec(ProfileAttributeTypes.NICKNAME, Icons.Outlined.Badge, MR.string.profile_edit_nickname),
     AttributeSpec(ProfileAttributeTypes.STATUS, Icons.Outlined.Info, MR.string.profile_edit_status),
@@ -790,7 +849,7 @@ private fun AddAttributeRow(spec: AttributeSpec, onClick: () -> Unit) {
  * existing row's inline editor which writes through [ProfileEditAction.FieldChanged] as you type.
  */
 @Composable
-private fun AddAttributeDialog(
+internal fun AddAttributeDialog(
     spec: AttributeSpec,
     circles: List<CardCircle>,
     onSave: (ProfileAudience, Map<ProfileField, String>) -> Unit,
