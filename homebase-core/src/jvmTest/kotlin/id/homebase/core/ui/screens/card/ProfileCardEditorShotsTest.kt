@@ -37,6 +37,8 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
@@ -196,12 +198,15 @@ class ProfileCardEditorShotsTest {
         ViewerShot("k6-v05b-read-only-why", fixedReadOnly, act = clickText("Why can't I edit?")),
         ViewerShot("k6-v06-single-card", base.copy(cards = listOf(public))),
         ViewerShot("k6-v07-menu-long-circle", base.copy(cards = fixedSet + card(longCircle), selectedAudience = longCircle), act = menu(longCircle.label)),
-        ViewerShot("k6-v08-overflow-circle", fixedFriends, act = click("More card actions")),
-        ViewerShot("k6-v09-reset-from-overflow", fixedFriends, act = { click("More card actions")(); mainClock.advanceTimeBy(SETTLE_MS); clickText("Reset to default design")() }),
+        ViewerShot("k6-v08-virtual-circle", fixedFriends.copy(selectedAudience = family)),
+        ViewerShot("k6-v09-reset-from-toolbar", fixedFriends, act = click("Reset to default design")),
         ViewerShot("k6-v10-public-saved", fixedPublic),
         ViewerShot("k6-v11-font-scale", fixedFriends, fontScale = 1.6f),
         ViewerShot("k6-v12-rtl-read-only", fixedReadOnly, rtl = true),
         ViewerShot("k6-v13-long-circle-small", base.copy(cards = fixedSet + card(longCircle), selectedAudience = longCircle), widthDp = 360, heightDp = 640),
+        ViewerShot("k6-v14-swiped-to-work", fixedFriends, act = { onNodeWithContentDescription("Card for Friends. Choose another card.").performTouchInput { swipeLeft() } }),
+        ViewerShot("k6-v15-public-virtual", base.copy(cards = listOf(virtual(CardAudience.Public)) + fixedSet.drop(1))),
+        ViewerShot("k6-v16-rtl-menu", fixedFriends, rtl = true, act = menu("Friends")),
     )
 
     private val fixedEditorShots = listOf(
@@ -220,6 +225,10 @@ class ProfileCardEditorShotsTest {
         Shot("k6-e13-loading", fixedFriends.copy(isCardReady = false), preview = Preview.Loading),
         Shot("k6-e14-load-failed", fixedFriends.copy(loadFailed = true), preview = Preview.LoadFailed),
         Shot("k6-e15-small-font-scale", fixedFriends, fontScale = 1.3f, widthDp = 360, heightDp = 640),
+        Shot("k6-e16-small-font-scale-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, fontScale = 1.3f, widthDp = 360, heightDp = 640),
+        Shot("k6-e17-customise-order", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, act = tool("Section order")),
+        Shot("k6-e18-small-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, widthDp = 360, heightDp = 640),
+        Shot("k6-e19-rtl-read-only", fixedReadOnly, rtl = true),
     )
 
     @Test
@@ -265,22 +274,24 @@ class ProfileCardEditorShotsTest {
         mainClock.autoAdvance = false
         setContent {
             themed(dark, shot.fontScale, shot.rtl) {
-                Box(Modifier.fillMaxSize().background(Color(CardDesign.baseArgb(shot.state.design)))) {
+                var state by remember { mutableStateOf(shot.state) }
+                Box(Modifier.fillMaxSize().background(Color(CardDesign.baseArgb(state.design)))) {
                     SheetTopChrome(
-                        uiState = shot.state,
-                        onSelectCard = {},
+                        uiState = state,
+                        onSelectCard = { state = state.copy(selectedAudience = it) },
                         onClose = {},
                         bandDrag = Modifier,
                         handleDrag = Modifier,
                         modifier = Modifier.align(Alignment.TopCenter),
                     )
                     CardBottomChrome(
-                        audience = shot.state.selectedAudience,
-                        isExporting = shot.state.isExporting,
+                        audience = state.selectedAudience,
+                        isExporting = state.isExporting,
                         canShare = true,
                         saveInsteadOfShare = false,
-                        readOnly = shot.state.isCircleReadOnly,
-                        canReset = shot.state.canReset,
+                        readOnly = state.isCircleReadOnly,
+                        showsReset = state.showsReset,
+                        canReset = state.canReset,
                         onShare = {},
                         onEdit = {},
                         onReset = {},

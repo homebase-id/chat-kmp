@@ -13,6 +13,8 @@ import androidx.compose.material3.toShape
 import id.homebase.resources.profile_card_more_actions
 import id.homebase.resources.profile_card_read_only
 import id.homebase.resources.profile_card_read_only_line
+import id.homebase.resources.profile_card_design_locked_title
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -71,7 +73,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -109,6 +110,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -426,17 +428,6 @@ private fun EditorTopBar(
                 }
             }
         }
-        if (readOnly) {
-            Text(
-                text = stringResource(MR.string.profile_card_read_only_line),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 32.dp, end = 32.dp, bottom = 4.dp),
-            )
-        }
     }
 }
 
@@ -474,6 +465,7 @@ private fun EditorPanel(
                 .padding(top = metrics.edge, bottom = metrics.edge),
             verticalArrangement = Arrangement.spacedBy(metrics.gap),
         ) {
+            if (uiState.isCircleReadOnly) ReadOnlyNotice(Modifier.padding(horizontal = 16.dp))
             StepHeader(
                 step = step,
                 design = design,
@@ -500,8 +492,9 @@ private fun EditorPanel(
                 when (shown) {
                     EditorStep.Design -> DesignStrip(
                         selected = design,
-                        enabled = !isSaving && !uiState.isCircleReadOnly,
+                        enabled = !isSaving && !uiState.isCircleReadOnly && !uiState.loadFailed,
                         locked = uiState.isCircleReadOnly,
+                        dimmed = uiState.isCircleReadOnly || uiState.loadFailed,
                         onSelect = onSelect,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -512,7 +505,6 @@ private fun EditorPanel(
                         onOption = onOption,
                         onBlockOrder = onBlockOrder,
                         gap = metrics.gap,
-                        onTryAnotherDesign = { if (!isSaving) onStep(EditorStep.Design) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -554,11 +546,8 @@ private fun StepHeader(
             DesignStepHeader(
                 designName = designName,
                 count = count,
-                isSaving = isSaving,
-                canSave = canSave,
                 canCustomise = canCustomise,
                 readOnly = readOnly,
-                onSave = save,
                 onCustomise = { if (!isSaving) onStep(EditorStep.Customise) },
             )
             return@AnimatedContent
@@ -628,81 +617,91 @@ private fun StepHeader(
     }
 }
 
-// Large text stacks the title over a full-width Customise, so neither wraps into the other.
+// Customise is the step's one action and leads on to Save. Large text keeps it inline as an icon, so the title keeps its line
+// and the card keeps its height.
 @Composable
 private fun DesignStepHeader(
     designName: String,
     count: String,
-    isSaving: Boolean,
-    canSave: Boolean,
     canCustomise: Boolean,
     readOnly: Boolean,
-    onSave: () -> Unit,
     onCustomise: () -> Unit,
 ) {
-    val stacked = LocalDensity.current.fontScale >= LARGE_TEXT_SCALE
-    val title = if (readOnly) designName else stringResource(MR.string.profile_card_step_design_title)
-    val titleText: @Composable (Modifier) -> Unit = { modifier ->
+    val compact = LocalDensity.current.fontScale >= LARGE_TEXT_SCALE
+    val title = if (readOnly) {
+        stringResource(MR.string.profile_card_design_locked_title, designName)
+    } else {
+        stringResource(MR.string.profile_card_step_design_title)
+    }
+    val customise = stringResource(MR.string.profile_card_step_customise)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = ACTION_HEIGHT),
+    ) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleLargeEmphasized,
-            maxLines = if (stacked) 2 else 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            autoSize = if (stacked) null else TextAutoSize.StepBased(
+            autoSize = TextAutoSize.StepBased(
                 minFontSize = MaterialTheme.typography.titleSmall.fontSize,
                 maxFontSize = MaterialTheme.typography.titleLargeEmphasized.fontSize,
             ),
-            modifier = modifier.semantics {
+            modifier = Modifier.weight(1f).semantics {
                 heading()
                 contentDescription = "$title, $count"
             },
         )
-    }
-    val actions: @Composable (Modifier) -> Unit = { customiseModifier ->
-        // Icon-only so the title keeps its room; Customise stays the one labelled, filled action here.
-        if (canSave || isSaving) {
-            val description = stringResource(MR.string.save)
-            FilledTonalIconButton(
-                onClick = onSave,
-                shapes = IconButtonDefaults.shapes(),
-                modifier = Modifier.size(ACTION_HEIGHT).semantics { contentDescription = description },
+        when {
+            readOnly -> Unit
+            compact -> WithTooltip(customise) {
+                FilledIconButton(
+                    onClick = onCustomise,
+                    enabled = canCustomise,
+                    shapes = IconButtonDefaults.shapes(),
+                    modifier = Modifier.size(IconButtonDefaults.mediumContainerSize()),
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = customise)
+                }
+            }
+            else -> Button(
+                onClick = onCustomise,
+                enabled = canCustomise,
+                shapes = ButtonDefaults.shapes(),
+                contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
+                modifier = Modifier.heightIn(min = ACTION_HEIGHT),
             ) {
-                SaveGlyph(isSaving = isSaving, size = ButtonDefaults.iconSizeFor(ACTION_HEIGHT))
+                ActionLabel(customise)
+                Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
+                )
             }
-        }
-        Button(
-            onClick = onCustomise,
-            enabled = canCustomise,
-            shapes = ButtonDefaults.shapes(),
-            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-            modifier = customiseModifier.heightIn(min = ACTION_HEIGHT),
-        ) {
-            ActionLabel(stringResource(MR.string.profile_card_step_customise))
-            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = null,
-                modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
-            )
         }
     }
-    when {
-        readOnly -> Box(Modifier.fillMaxWidth().heightIn(min = ACTION_HEIGHT), contentAlignment = Alignment.CenterStart) {
-            titleText(Modifier)
-        }
-        stacked -> Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            titleText(Modifier)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                actions(Modifier.weight(1f))
-            }
-        }
-        else -> Row(
+}
+
+@Composable
+private fun ReadOnlyNotice(modifier: Modifier = Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = MaterialTheme.shapes.large,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth().heightIn(min = ACTION_HEIGHT),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
-            titleText(Modifier.weight(1f))
-            actions(Modifier)
+            Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(
+                text = stringResource(MR.string.profile_card_read_only_line),
+                style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
+            )
         }
     }
 }
@@ -770,6 +769,7 @@ private fun DesignStrip(
     selected: String,
     enabled: Boolean,
     locked: Boolean,
+    dimmed: Boolean,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -800,6 +800,7 @@ private fun DesignStrip(
                 selected = design == selected,
                 enabled = enabled,
                 locked = locked,
+                dimmed = dimmed,
                 labelHeight = labelHeight,
                 onClick = {
                     onSelect(design)
@@ -834,6 +835,7 @@ private fun DesignTile(
     selected: Boolean,
     enabled: Boolean,
     locked: Boolean,
+    dimmed: Boolean,
     labelHeight: Dp,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -846,7 +848,7 @@ private fun DesignTile(
     val scale by animateFloatAsState(if (selected) 1f else UNSELECTED_TILE_SCALE, motion.defaultSpatialSpec())
     val ring by animateDpAsState(if (selected) 3.dp else 1.dp, motion.fastSpatialSpec())
     val badge by animateFloatAsState(if (selected) 1f else 0f, motion.fastSpatialSpec())
-    val dim = if (locked && !selected) LOCKED_TILE_ALPHA else 1f
+    val dim = if (dimmed && !selected) LOCKED_TILE_ALPHA else 1f
     val shape = RoundedCornerShape(corner)
     val label = stringResource(designLabel(design))
     val labelStyle = if (selected) typography.labelLargeEmphasized else typography.labelLarge

@@ -3,9 +3,6 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -59,7 +56,6 @@ import id.homebase.resources.profile_card_colours_blueprint
 import id.homebase.resources.profile_card_colours_sand
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -78,14 +74,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
@@ -184,7 +177,7 @@ import id.homebase.resources.profile_card_socials_bar
 import id.homebase.resources.profile_card_socials_glyphs
 import id.homebase.resources.profile_card_socials_handles
 import id.homebase.resources.profile_card_socials_wordmark
-import id.homebase.resources.profile_card_try_another_design
+import id.homebase.resources.profile_card_option_caption_hint
 import org.jetbrains.compose.resources.Font
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -202,6 +195,8 @@ private val GLYPH_SIZE = 20.dp
 private val TOOL_SIZE = 48.dp
 private val FADE_LENGTH = 24.dp
 private val OPTION_SIDE_INSET = 16.dp
+// Seven tools fit a 360dp phone at this inset.
+private val TOOLBAR_SIDE_INSET = 8.dp
 private val SWATCH_ROW_INSET = OPTION_SIDE_INSET - 4.dp
 private val CAPTION_INSET = 24.dp
 private const val REVEAL_MARGIN = 0.6f
@@ -217,13 +212,12 @@ internal fun CardOptionsPanel(
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
     gap: Dp,
-    onTryAnotherDesign: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spec = CardDesignSpecs.of(design)
     val options = CardOption.entries.filter { spec != null && it in spec.options }
     if (options.isEmpty()) {
-        OptionsEmptyState(design = design, onTryAnotherDesign = onTryAnotherDesign, gap = gap, modifier = modifier)
+        OptionsEmptyState(design = design, modifier = modifier)
         return
     }
     var picked by rememberSaveable(design) { mutableStateOf(options.first().name) }
@@ -240,18 +234,20 @@ internal fun CardOptionsPanel(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.TopStart,
         ) { option ->
-            // The picked tool names itself in the toolbar, so only a gesture hint needs a caption here.
+            // The toolbar is icons only, so the picked tool is named here, with its gesture hint where it has one.
             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)) {
-                if (option == CardOption.BLOCK_ORDER) {
-                    Text(
-                        text = stringResource(MR.string.profile_card_option_block_order_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = CAPTION_INSET),
-                    )
-                }
+                Text(
+                    text = if (option == CardOption.BLOCK_ORDER) {
+                        stringResource(MR.string.profile_card_option_caption_hint, stringResource(optionLabel(option)), stringResource(MR.string.profile_card_option_block_order_hint))
+                    } else {
+                        stringResource(optionLabel(option))
+                    },
+                    style = MaterialTheme.typography.labelLargeEmphasized,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = CAPTION_INSET),
+                )
                 Box(modifier = Modifier.fillMaxWidth().heightIn(min = SWATCH_TARGET), contentAlignment = Alignment.Center) {
                     OptionControl(option, design, overrides, enabled, chipHeight, onOption, onBlockOrder)
                 }
@@ -261,7 +257,7 @@ internal fun CardOptionsPanel(
             options = options,
             current = current,
             onPick = { picked = it.name },
-            modifier = Modifier.fillMaxWidth().height(TOOLBAR_HEIGHT).padding(horizontal = OPTION_SIDE_INSET),
+            modifier = Modifier.fillMaxWidth().height(TOOLBAR_HEIGHT).padding(horizontal = TOOLBAR_SIDE_INSET),
         )
     }
 }
@@ -352,7 +348,7 @@ private fun OptionToolbar(
     }
 }
 
-// The picked tool grows its own label, so the row stays icons yet always says what is being changed.
+// Icons only, so every tool fits on a phone; the picked one morphs into a filled squircle and each names itself in a tooltip.
 @Composable
 private fun ToolItem(
     icon: ImageVector,
@@ -365,85 +361,59 @@ private fun ToolItem(
     val corner by animateDpAsState(if (selected) 14.dp else TOOL_SIZE / 2, motion.fastSpatialSpec())
     val fill by animateColorAsState(if (selected) colors.secondaryContainer else colors.surfaceContainerHighest, motion.fastEffectsSpec())
     val ink by animateColorAsState(if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant, motion.fastEffectsSpec())
-    Box(
-        modifier = Modifier
-            .heightIn(min = TOOL_SIZE)
-            .widthIn(min = TOOL_SIZE)
-            .revealWhenSelected(selected)
-            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
-            .semantics { contentDescription = description },
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+    WithTooltip(description) {
+        Box(
             modifier = Modifier
-                .padding(4.dp)
-                .background(fill, RoundedCornerShape(corner))
-                .heightIn(min = TOOL_SIZE - 8.dp)
-                .padding(horizontal = 9.dp),
+                .size(TOOL_SIZE)
+                .revealWhenSelected(selected)
+                .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+                .semantics { contentDescription = description },
+            contentAlignment = Alignment.Center,
         ) {
-            Icon(imageVector = icon, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
-            AnimatedVisibility(
-                visible = selected,
-                enter = expandHorizontally(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-                exit = shrinkHorizontally(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            Box(
+                modifier = Modifier
+                    .size(TOOL_SIZE - 8.dp)
+                    .background(fill, RoundedCornerShape(corner)),
+                contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = ink,
-                    maxLines = 1,
-                    modifier = Modifier.padding(start = 8.dp, end = 4.dp),
-                )
+                Icon(imageVector = icon, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
             }
         }
     }
 }
 
 @Composable
-private fun OptionsEmptyState(
-    design: String,
-    onTryAnotherDesign: () -> Unit,
-    gap: Dp,
-    modifier: Modifier = Modifier,
-) {
+private fun OptionsEmptyState(design: String, modifier: Modifier = Modifier) {
     val name = stringResource(designLabel(design))
-    Column(modifier = modifier.padding(horizontal = CAPTION_INSET), verticalArrangement = Arrangement.spacedBy(gap, Alignment.CenterVertically)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .background(MaterialTheme.colorScheme.secondaryContainer, MaterialShapes.Cookie9Sided.toShape()),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Tune,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = stringResource(MR.string.profile_card_options_empty_title, name),
-                    style = MaterialTheme.typography.titleMediumEmphasized,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = stringResource(MR.string.profile_card_options_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        FilledTonalButton(
-            onClick = onTryAnotherDesign,
-            shapes = ButtonDefaults.shapes(),
-            modifier = Modifier.align(Alignment.End).heightIn(min = CHIP_HEIGHT),
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = modifier.padding(horizontal = CAPTION_INSET),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .background(MaterialTheme.colorScheme.secondaryContainer, MaterialShapes.Cookie9Sided.toShape()),
+            contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Outlined.SwapHoriz, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-            Text(stringResource(MR.string.profile_card_try_another_design), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Icon(
+                imageVector = Icons.Outlined.Tune,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = stringResource(MR.string.profile_card_options_empty_title, name),
+                style = MaterialTheme.typography.titleMediumEmphasized,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = stringResource(MR.string.profile_card_options_empty),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -833,7 +803,7 @@ private fun optionIcon(option: CardOption): ImageVector = when (option) {
     CardOption.DISPLAY_FONT -> Icons.Outlined.Title
     CardOption.TEXT_FONT -> Icons.Outlined.FormatSize
     CardOption.PORTRAIT_SHAPE -> Icons.Outlined.AccountCircle
-    CardOption.SOCIALS_STYLE -> Icons.Outlined.Share
+    CardOption.SOCIALS_STYLE -> Icons.Outlined.AlternateEmail
     CardOption.BLOCK_ORDER -> Icons.Outlined.ViewAgenda
 }
 
