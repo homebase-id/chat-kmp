@@ -36,4 +36,8 @@
         <item quantity="one">Sending to %1$d conversation…</item>
         <item quantity="other">Sending to %1$d conversations…</item>
     </plurals>
+    <plurals name="profile_edit_audience_other_circles">
+        <item quantity="one">%1$d other circle not listed here keeps access</item>
+        <item quantity="other">%1$d other circles not listed here keep access</item>
+    </plurals>
 </resources>

@@ -58,6 +58,8 @@ import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.profile_avatar_edit_acl_anonymous
+import id.homebase.resources.profile_avatar_edit_acl_connected
+import id.homebase.resources.profile_avatar_edit_connected_desc
 import id.homebase.resources.profile_avatar_edit_anonymous_desc
 import id.homebase.resources.profile_avatar_edit_acl_only_me
 import id.homebase.resources.profile_avatar_edit_only_me_desc
@@ -146,6 +148,8 @@ fun ProfileAvatarEditScreen(
             ) {
                 ExistingAvatarContent(uiState.onlyMe.existing, "ProfileAvatarEditScreen")
             }
+
+            ConnectionsPhotoBlock(uiState.connected, viewModel::onAction)
         }
     }
 }
@@ -278,6 +282,42 @@ internal fun PhotoTierSection(
                 } else {
                     Text(stringResource(MR.string.profile_avatar_edit_upload))
                 }
+            }
+        }
+    }
+}
+
+/** An older connections-only photo: shown only while one is stored, with a one-tap Remove. */
+@Composable
+internal fun ConnectionsPhotoBlock(tier: PhotoTierUiState, onAction: (ProfileAvatarEditAction) -> Unit) {
+    if (tier.existing == null) return
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            text = stringResource(MR.string.profile_avatar_edit_acl_connected),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            text = stringResource(MR.string.profile_avatar_edit_connected_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Box(modifier = Modifier.size(96.dp).clip(CircleShape)) {
+                ExistingAvatarContent(tier.existing, "ConnectionsPhotoBlock")
+            }
+            TextButton(
+                enabled = !tier.isDeleting,
+                onClick = {
+                    onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.CONNECTED))
+                    onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED))
+                },
+            ) {
+                Text(stringResource(MR.string.profile_avatar_edit_remove))
             }
         }
     }

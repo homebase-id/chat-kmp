@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalUuidApi::class)
+
 package id.homebase.core.ui.screens.profile
 
 import androidx.compose.runtime.Immutable
@@ -5,6 +7,8 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.drives.isVisibleToCircle
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.screens.card.CardCircle
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * Form state for the owner's standard-profile editor. Each detail is entered once ([values]) and
@@ -26,6 +30,12 @@ data class ProfileEditUiState(
 
     /** The Contacts-app circles a detail can be shown to. */
     val circles: List<CardCircle> = emptyList(),
+
+    /** One entry per stored link record plus any not yet saved; a profile can have many. */
+    val links: List<LinkDraft> = emptyList(),
+
+    /** Records of a type that disagree with the one edited (type to records); they stay until the user removes them. */
+    val conflicts: Map<String, List<ProfileAttribute>> = emptyMap(),
 
     /** Every stored attribute (photos included), as last read or saved; [ProfilePreview] reads it. */
     val attributes: List<ProfileAttribute> = emptyList(),
@@ -52,7 +62,24 @@ data class ProfileEditUiState(
     fun isSaving(type: String): Boolean = type in savingAttributes
 }
 
+/** [key] is the record id once saved, a local placeholder before. */
+@Immutable
+data class LinkDraft(
+    val key: String,
+    val text: String = "",
+    val target: String = "",
+    val audience: ProfileAudience = ProfileAudience.Public,
+) {
+    val isValid: Boolean get() = target.isNotBlank() && audience.isSavable
+}
+
 sealed interface ProfileEditAction {
+    data object AddLink : ProfileEditAction
+    data class LinkChanged(val key: String, val text: String, val target: String) : ProfileEditAction
+    data class LinkAudienceChanged(val key: String, val audience: ProfileAudience) : ProfileEditAction
+    data class SaveLink(val key: String) : ProfileEditAction
+    /** Deletes a record that disagrees with the edited one, after the user has seen its value. */
+    data class DiscardConflict(val type: String, val id: Uuid) : ProfileEditAction
     data class FieldChanged(val field: ProfileField, val value: String) : ProfileEditAction
     data class AudienceChanged(val type: String, val audience: ProfileAudience) : ProfileEditAction
     /** Persists just this one attribute type — fired by a row's checkmark. */
@@ -64,7 +91,7 @@ sealed interface ProfileEditAction {
 /** Identifies which form field an edit targets, keeping the action surface flat. */
 enum class ProfileField {
     GIVEN_NAME, SURNAME, ADDITIONAL_NAME,
-    NICKNAME, STATUS, BIRTHDAY,
+    NICKNAME, STATUS, BIRTHDAY, BIO,
     EMAIL, EMAIL_LABEL,
     PHONE, PHONE_LABEL,
     ADDRESS_LABEL, ADDRESS1, ADDRESS2, POSTCODE, CITY, COUNTRY,

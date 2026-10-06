@@ -37,13 +37,13 @@ internal fun ProfileAttribute.audience(circles: List<CardCircle>): ProfileAudien
     ProfileVisibility.OWNER -> ProfileAudience.OnlyMe
     ProfileVisibility.CONNECTED, ProfileVisibility.AUTHENTICATED -> {
         val stored = acl.circleIdList.orEmpty()
-        if (stored.isEmpty() || stored.any { compareStringUuId(it, CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE) }) {
-            ProfileAudience.Circles(circles.map { it.id }.toSet())
-        } else {
-            val known = circles.filter { c -> stored.any { compareStringUuId(it, c.id) } }.map { it.id }.toSet()
-            val other = stored.filter { s -> circles.none { compareStringUuId(s, it.id) } }.toSet()
-            ProfileAudience.Circles(known, other)
-        }
+        val allIds = circles.map { it.id }.toSet()
+        val everyConnection = stored.isEmpty() || stored.any { compareStringUuId(it, CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE) }
+        val other = stored
+            .filter { s -> circles.none { compareStringUuId(s, it.id) } && !compareStringUuId(s, CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE) }
+            .toSet()
+        val known = circles.filter { c -> stored.any { compareStringUuId(it, c.id) } }.map { it.id }.toSet()
+        ProfileAudience.Circles(if (everyConnection) allIds else known, other)
     }
 }
 

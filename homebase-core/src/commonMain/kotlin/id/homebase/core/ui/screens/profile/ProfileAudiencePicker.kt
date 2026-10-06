@@ -29,6 +29,8 @@ import id.homebase.resources.profile_edit_audience_public_hint
 import id.homebase.resources.profile_edit_audience_title
 import id.homebase.resources.profile_edit_visibility_circles
 import id.homebase.resources.profile_edit_visibility_public
+import org.jetbrains.compose.resources.pluralStringResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /** The one audience control every detail uses: Public | Circles | Only me, with a chip per Contacts circle when Circles. */
@@ -91,7 +93,7 @@ internal fun AudiencePicker(
         }
         if (audience is ProfileAudience.Circles && audience.otherIds.isNotEmpty()) {
             Text(
-                text = stringResource(MR.string.profile_edit_audience_other_circles, audience.otherIds.size),
+                text = pluralStringResource(MR.plurals.profile_edit_audience_other_circles, audience.otherIds.size, audience.otherIds.size),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

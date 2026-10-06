@@ -26,6 +26,8 @@ data class ProfileAvatarEditUiState(
     val isLoading: Boolean = true,
     val anonymous: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.ANONYMOUS),
     val onlyMe: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.OWNER),
+    /** A photo an earlier version saved for connections. It can no longer be added, only removed. */
+    val connected: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.CONNECTED),
 )
 
 /** One [ProfileVisibility] tier's photo slot: what's currently stored, and any in-flight edit. */

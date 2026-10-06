@@ -1762,6 +1762,25 @@
     <string name="profile_edit_tiktok">TikTok</string>
     <string name="profile_edit_linkedin">LinkedIn</string>
 
+    <string name="profile_edit_audience_title">Hvem kan se dette</string>
+    <string name="profile_edit_audience_only_me">Kun mig</string>
+    <string name="profile_edit_audience_public_hint">Vises på alle kort, også det offentlige kort.</string>
+    <string name="profile_edit_audience_only_me_hint">Vises ikke på nogen kort.</string>
+    <string name="profile_edit_audience_circles_hint">Vises kun på kortene for de kredse, du vælger.</string>
+    <string name="profile_edit_audience_circles_empty">Vælg mindst én kreds.</string>
+    <string name="profile_edit_audience_circles_none">Der er ingen kredse at vælge imellem.</string>
+    <string name="profile_edit_photos_title">Fotos</string>
+    <string name="profile_edit_photos_desc">Fotos kan være offentlige eller kun til mig. Kredse kan endnu ikke vælges for fotos.</string>
+    <string name="profile_edit_details_title">Oplysninger</string>
+    <string name="profile_edit_details_desc">Indtast hver oplysning én gang, og vælg derefter, hvilke kort der viser den.</string>
+    <string name="profile_edit_bio">Biografi</string>
+    <string name="profile_edit_link">Link</string>
+    <string name="profile_edit_link_text">Linktitel</string>
+    <string name="profile_edit_link_target">Linkadresse</string>
+    <string name="profile_edit_link_add">Tilføj et link</string>
+    <string name="profile_edit_conflict_title">En anden værdi er gemt: %1$s</string>
+    <string name="profile_edit_conflict_detail">Synlig for: %1$s. Den vises ikke ovenfor og bliver, til du fjerner den.</string>
+    <string name="profile_edit_conflict_remove">Fjern den</string>
     <string name="profile_edit_visibility_public">Offentlig</string>
     <string name="profile_edit_visibility_circles">Kredse</string>
     <string name="profile_edit_preview_enter">Forhåndsvisning</string>
@@ -1807,6 +1826,8 @@
     <string name="cd_profile_avatar_change_photo">Skift foto</string>
     <string name="profile_avatar_edit_acl_anonymous">Offentligt foto</string>
     <string name="profile_avatar_edit_anonymous_desc">Synligt for alle, også personer du ikke er forbundet med.</string>
+    <string name="profile_avatar_edit_acl_connected">Foto til forbindelser</string>
+    <string name="profile_avatar_edit_connected_desc">En tidligere version gemte dette foto til dine forbindelser. Fotos er nu offentlige eller kun til dig, så fjern det for at erstatte det.</string>
     <string name="profile_avatar_edit_acl_only_me">Foto kun til mig</string>
     <string name="profile_avatar_edit_only_me_desc">Kun synligt for dig. Kredse kan endnu ikke vælges for fotos.</string>
     <string name="profile_avatar_edit_upload">Gem</string>

@@ -2299,7 +2299,6 @@
     <string name="profile_edit_audience_title">Who can see this</string>
     <string name="profile_edit_audience_only_me">Only me</string>
     <string name="profile_edit_audience_public_hint">Shown on every card, including the Public card.</string>
-    <string name="profile_edit_audience_other_circles">Also kept for %1$d other circle(s) not listed here.</string>
     <string name="profile_edit_audience_only_me_hint">Not shown on any card.</string>
     <string name="profile_edit_audience_circles_hint">Shown only on the cards of the circles you pick.</string>
     <string name="profile_edit_audience_circles_empty">Pick at least one circle.</string>
@@ -2308,6 +2307,14 @@
     <string name="profile_edit_photos_desc">Photos can be Public or Only me. Circles can't be chosen for photos yet.</string>
     <string name="profile_edit_details_title">Details</string>
     <string name="profile_edit_details_desc">Enter each detail once, then choose which cards show it.</string>
+    <string name="profile_edit_bio">Bio</string>
+    <string name="profile_edit_link">Link</string>
+    <string name="profile_edit_link_text">Link title</string>
+    <string name="profile_edit_link_target">Link address</string>
+    <string name="profile_edit_link_add">Add a link</string>
+    <string name="profile_edit_conflict_title">Another value is stored: %1$s</string>
+    <string name="profile_edit_conflict_detail">Visible to: %1$s. It is not shown above and stays until you remove it.</string>
+    <string name="profile_edit_conflict_remove">Remove it</string>
     <string name="profile_edit_preview_enter">Preview</string>
     <string name="profile_edit_preview_exit">Back to editing</string>
     <string name="profile_edit_preview_section_public">Public</string>
@@ -2459,6 +2466,8 @@
     <string name="cd_profile_avatar_change_photo">Change photo</string>
     <string name="profile_avatar_edit_acl_anonymous">Public photo</string>
     <string name="profile_avatar_edit_anonymous_desc">Visible to anyone, even people you're not connected to.</string>
+    <string name="profile_avatar_edit_acl_connected">Connections photo</string>
+    <string name="profile_avatar_edit_connected_desc">An earlier version saved this photo for your connections. Photos are now Public or Only me, so remove it to replace it.</string>
     <string name="profile_avatar_edit_acl_only_me">Only me photo</string>
     <string name="profile_avatar_edit_only_me_desc">Visible only to you. Circles can't be chosen for photos yet.</string>
     <string name="profile_avatar_edit_upload">Save</string>

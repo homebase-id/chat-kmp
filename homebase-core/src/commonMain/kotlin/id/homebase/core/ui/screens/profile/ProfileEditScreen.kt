@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,7 +41,9 @@ import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.AlertDialog
@@ -80,6 +83,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
@@ -120,6 +124,14 @@ import id.homebase.resources.profile_edit_linkedin
 import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_edit_nickname
 import id.homebase.resources.profile_edit_photos_title
+import id.homebase.resources.profile_edit_bio
+import id.homebase.resources.profile_edit_link
+import id.homebase.resources.profile_edit_link_add
+import id.homebase.resources.profile_edit_link_target
+import id.homebase.resources.profile_edit_link_text
+import id.homebase.resources.profile_edit_conflict_detail
+import id.homebase.resources.profile_edit_conflict_remove
+import id.homebase.resources.profile_edit_conflict_title
 import id.homebase.resources.profile_edit_photos_desc
 import id.homebase.resources.profile_edit_details_title
 import id.homebase.resources.profile_edit_details_desc
@@ -360,6 +372,8 @@ private fun ProfileForm(
                 onPickPhoto = onPickOnlyMePhoto,
             )
 
+            ConnectionsPhotoBlock(avatarUiState.connected, onAvatarAction)
+
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp))
 
             Column(
@@ -375,15 +389,19 @@ private fun ProfileForm(
                     if (display != null || editingRows[spec.type] == true) {
                         val audience = uiState.audience(spec.type)
                         EditableFieldGroup(
-                            type = spec.type,
+                            rowKey = spec.type,
                             icon = spec.icon,
                             label = stringResource(spec.labelRes),
                             displayValue = display,
                             audience = audience,
                             circles = uiState.circles,
                             editingRows = editingRows,
-                            onAction = onAction,
+                            onAudienceChange = { onAction(ProfileEditAction.AudienceChanged(spec.type, it)) },
+                            onSave = { onAction(ProfileEditAction.SaveAttribute(spec.type)) },
                             canSave = isAttributeValid(spec.type) { uiState.value(it) } && audience.isSavable,
+                            conflicts = uiState.conflicts[spec.type].orEmpty(),
+                            conflictType = spec.type,
+                            onDiscardConflict = { onAction(ProfileEditAction.DiscardConflict(spec.type, it)) },
                         ) {
                             AttributeFields(spec.type, { uiState.value(it) }) { field, v ->
                                 onAction(ProfileEditAction.FieldChanged(field, v))
@@ -392,6 +410,7 @@ private fun ProfileForm(
                     }
                 }
             }
+            LinksSection(uiState = uiState, editingRows = editingRows, onAction = onAction)
             // Clearance so the last row isn't hidden behind the floating action button.
             Spacer(Modifier.height(88.dp))
         }
@@ -507,18 +526,22 @@ private fun SectionHeader(title: String, description: String) {
  */
 @Composable
 private fun EditableFieldGroup(
-    type: String,
+    rowKey: String,
     icon: ImageVector,
     label: String,
     displayValue: String?,
     audience: ProfileAudience,
     circles: List<CardCircle>,
     editingRows: SnapshotStateMap<String, Boolean>,
-    onAction: (ProfileEditAction) -> Unit,
+    onAudienceChange: (ProfileAudience) -> Unit,
+    onSave: () -> Unit,
     canSave: Boolean,
+    conflicts: List<ProfileAttribute> = emptyList(),
+    conflictType: String = "",
+    onDiscardConflict: (Uuid) -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val editing = editingRows[type] == true
+    val editing = editingRows[rowKey] == true
     val saveVisibility = remember { MutableTransitionState(editing) }
     saveVisibility.targetState = editing
     val notSet = stringResource(MR.string.profile_edit_field_not_set)
@@ -528,7 +551,7 @@ private fun EditableFieldGroup(
             modifier = Modifier
                 .fillMaxWidth()
                 .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())
-                .then(if (editing) Modifier else Modifier.clickable { editingRows[type] = true }),
+                .then(if (editing) Modifier else Modifier.clickable { editingRows[rowKey] = true }),
             leadingContent = { Icon(icon, contentDescription = null) },
             overlineContent = { Text(label) },
             headlineContent = {
@@ -557,8 +580,8 @@ private fun EditableFieldGroup(
                         TextButton(
                             enabled = canSave,
                             onClick = {
-                                onAction(ProfileEditAction.SaveAttribute(type))
-                                editingRows[type] = false
+                                onSave()
+                                editingRows[rowKey] = false
                             },
                         ) {
                             Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -577,13 +600,88 @@ private fun EditableFieldGroup(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 content()
-                AudiencePicker(
-                    audience = audience,
-                    circles = circles,
-                    onChange = { onAction(ProfileEditAction.AudienceChanged(type, it)) },
-                )
+                AudiencePicker(audience = audience, circles = circles, onChange = onAudienceChange)
+                conflicts.forEach { record ->
+                    ConflictRow(
+                        value = conflictValue(conflictType, record),
+                        audience = audienceSummary(record.audience(circles), circles),
+                        onDiscard = { onDiscardConflict(record.id) },
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun LinksSection(
+    uiState: ProfileEditUiState,
+    editingRows: SnapshotStateMap<String, Boolean>,
+    onAction: (ProfileEditAction) -> Unit,
+) {
+    val label = stringResource(MR.string.profile_edit_link)
+    uiState.links.forEach { link ->
+        val savedKey = link.key
+        EditableFieldGroup(
+            rowKey = savedKey,
+            icon = Icons.Outlined.Link,
+            label = label,
+            displayValue = link.text.ifBlank { link.target }.ifBlank { null },
+            audience = link.audience,
+            circles = uiState.circles,
+            editingRows = editingRows,
+            onAudienceChange = { onAction(ProfileEditAction.LinkAudienceChanged(savedKey, it)) },
+            onSave = { onAction(ProfileEditAction.SaveLink(savedKey)) },
+            canSave = link.isValid,
+        ) {
+            ProfileField(
+                link.text,
+                stringResource(MR.string.profile_edit_link_text),
+                modifier = Modifier.fillMaxWidth(),
+            ) { onAction(ProfileEditAction.LinkChanged(savedKey, it, link.target)) }
+            ProfileField(
+                link.target,
+                stringResource(MR.string.profile_edit_link_target),
+                keyboardType = KeyboardType.Uri,
+                modifier = Modifier.fillMaxWidth(),
+            ) { onAction(ProfileEditAction.LinkChanged(savedKey, link.text, it)) }
+        }
+    }
+    TextButton(
+        onClick = { onAction(ProfileEditAction.AddLink) },
+        modifier = Modifier.padding(horizontal = 8.dp),
+    ) {
+        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(stringResource(MR.string.profile_edit_link_add))
+    }
+}
+
+/** What a record that disagrees with the edited one holds, for showing the user before they discard it. */
+private fun conflictValue(type: String, record: ProfileAttribute): String =
+    ProfileEditViewModel.TYPE_FIELDS[type].orEmpty()
+        .mapNotNull { (_, key) -> record.string(key)?.ifBlank { null } }
+        .joinToString(", ")
+
+@Composable
+private fun ConflictRow(value: String, audience: String, onDiscard: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(MR.string.profile_edit_conflict_title, value),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = stringResource(MR.string.profile_edit_conflict_detail, audience),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        TextButton(onClick = onDiscard) { Text(stringResource(MR.string.profile_edit_conflict_remove)) }
     }
 }
 
@@ -620,6 +718,7 @@ private val ATTRIBUTE_SPECS = listOf(
     AttributeSpec(ProfileAttributeTypes.NICKNAME, Icons.Outlined.Badge, MR.string.profile_edit_nickname),
     AttributeSpec(ProfileAttributeTypes.STATUS, Icons.Outlined.Info, MR.string.profile_edit_status),
     AttributeSpec(ProfileAttributeTypes.BIRTHDAY, Icons.Outlined.Cake, MR.string.profile_edit_birthday),
+    AttributeSpec(ProfileAttributeTypes.BIO_SUMMARY, Icons.AutoMirrored.Outlined.Notes, MR.string.profile_edit_bio),
     AttributeSpec(ProfileAttributeTypes.EMAIL, Icons.Outlined.Email, MR.string.profile_edit_email),
     AttributeSpec(ProfileAttributeTypes.PHONE, Icons.Outlined.Call, MR.string.profile_edit_phone),
     AttributeSpec(ProfileAttributeTypes.ADDRESS, Icons.Outlined.LocationOn, MR.string.contactbook_detail_location),
@@ -638,6 +737,7 @@ private fun displayValueFor(type: String, values: Map<ProfileField, String>): St
     ProfileAttributeTypes.NICKNAME -> values[ProfileField.NICKNAME]?.ifBlank { null }
     ProfileAttributeTypes.STATUS -> values[ProfileField.STATUS]?.ifBlank { null }
     ProfileAttributeTypes.BIRTHDAY -> values[ProfileField.BIRTHDAY]?.ifBlank { null }
+    ProfileAttributeTypes.BIO_SUMMARY -> values[ProfileField.BIO]?.ifBlank { null }
     ProfileAttributeTypes.EMAIL -> values[ProfileField.EMAIL]?.ifBlank { null }
     ProfileAttributeTypes.PHONE -> values[ProfileField.PHONE]?.ifBlank { null }
     ProfileAttributeTypes.ADDRESS -> profileAddressValue(values)
@@ -782,6 +882,14 @@ private fun AttributeFields(
                 stringResource(MR.string.profile_edit_status),
                 modifier = Modifier.fillMaxWidth(),
             ) { onChange(ProfileField.STATUS, it) }
+        }
+
+        ProfileAttributeTypes.BIO_SUMMARY -> {
+            ProfileField(
+                value(ProfileField.BIO),
+                stringResource(MR.string.profile_edit_bio),
+                modifier = Modifier.fillMaxWidth(),
+            ) { onChange(ProfileField.BIO, it) }
         }
 
         ProfileAttributeTypes.BIRTHDAY -> {

@@ -115,6 +115,9 @@ class ProfileAvatarEditViewModel(
                     onlyMe = it.onlyMe.copy(
                         existing = existing.firstOrNull { a -> a.visibility == ProfileVisibility.OWNER },
                     ),
+                    connected = it.connected.copy(
+                        existing = existing.firstOrNull { a -> a.visibility == ProfileVisibility.CONNECTED },
+                    ),
                 )
             }
         }
@@ -134,6 +137,7 @@ class ProfileAvatarEditViewModel(
             when (visibility) {
                 ProfileVisibility.ANONYMOUS -> it.copy(anonymous = block(it.anonymous))
                 ProfileVisibility.OWNER -> it.copy(onlyMe = block(it.onlyMe))
+                ProfileVisibility.CONNECTED -> it.copy(connected = block(it.connected))
                 else -> it
             }
         }
@@ -142,6 +146,7 @@ class ProfileAvatarEditViewModel(
     private fun tierState(visibility: ProfileVisibility): PhotoTierUiState = when (visibility) {
         ProfileVisibility.ANONYMOUS -> _state.value.anonymous
         ProfileVisibility.OWNER -> _state.value.onlyMe
+        ProfileVisibility.CONNECTED -> _state.value.connected
         else -> error("Unsupported profile photo tier: $visibility")
     }
 
