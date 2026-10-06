@@ -46,7 +46,12 @@ class DesktopVideoBackendJvmTest {
     @AfterTest
     fun stopServer() {
         server?.stop(0)
+        nativeLibraryLoad = defaultNativeLibraryLoad
+        nativeBackendAvailable = defaultNativeBackendAvailable
     }
+
+    private val defaultNativeLibraryLoad = nativeLibraryLoad
+    private val defaultNativeBackendAvailable = nativeBackendAvailable
 
     @Test
     fun h264Mp4File() = playsThroughChooser(File(fixtures, "h264.mp4").absolutePath)
@@ -165,8 +170,50 @@ class DesktopVideoBackendJvmTest {
         }) { scene -> awaitTrue(scene, 3_000) { unplayable.get() } }
     }
 
+    @Test
+    fun loadFailureGoesStraightToVlcWithoutUncaughtThrowable() {
+        val uncaught = Collections.synchronizedList(mutableListOf<Throwable>())
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { _, e -> uncaught += e }
+        try {
+            nativeLibraryLoad = { throw UnsatisfiedLinkError("simulated: libNativeVideoPlayer cannot load") }
+            nativeBackendAvailable = { probeNativeBackend() }
+            val backends = Collections.synchronizedList(mutableListOf<DesktopVideoBackend>())
+            scene({
+                DesktopVideoPlayer(
+                    videoPath = File(fixtures, "h264.mp4").absolutePath,
+                    modifier = Modifier.fillMaxSize(),
+                    onBackendChosen = { backends += it },
+                )
+            }) { scene ->
+                awaitTrue(scene, 5_000) { backends.isNotEmpty() }
+                Thread.sleep(500)
+                assertEquals(listOf(DesktopVideoBackend.VLC), backends.toList())
+            }
+            assertTrue(uncaught.isEmpty(), "uncaught: $uncaught")
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(previous)
+        }
+    }
+
+    @Test
+    fun unsupportedInputFallsBackToVlc() {
+        val backends = Collections.synchronizedList(mutableListOf<DesktopVideoBackend>())
+        scene({
+            DesktopVideoPlayer(
+                videoPath = "/nonexistent/clip.mp4",
+                modifier = Modifier.fillMaxSize(),
+                onBackendChosen = { backends += it },
+            )
+        }) { scene ->
+            awaitTrue(scene, 5_000) { DesktopVideoBackend.VLC in backends }
+            assertEquals(listOf(DesktopVideoBackend.NATIVE, DesktopVideoBackend.VLC), backends.toList())
+        }
+    }
+
     private fun playsThroughChooser(uri: String) {
         val firstFrame = AtomicBoolean(false)
+        val backends = Collections.synchronizedList(mutableListOf<DesktopVideoBackend>())
         scene({
             DesktopVideoPlayer(
                 videoPath = uri,
@@ -174,9 +221,11 @@ class DesktopVideoBackendJvmTest {
                 showControls = false,
                 muted = true,
                 onFirstFrameRendered = { firstFrame.set(true) },
+                onBackendChosen = { backends += it },
             )
         }) { scene ->
             awaitTrue(scene, 10_000) { firstFrame.get() }
+            assertEquals(listOf(DesktopVideoBackend.NATIVE), backends.toList(), "native backend must render the fixture without falling back to VLC")
             awaitTrue(scene, 2_000) { centreSeg(scene) != Seg.BLANK }
             val seg = centreSeg(scene)
             assertTrue(seg == Seg.RED || seg == Seg.LIME, "first frame should be the red/lime opening, was $seg")
