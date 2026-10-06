@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.profile
 
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,20 +44,10 @@ class ProfileEditCancelMotionTest {
     }
 
     @Test
-    fun deselectingACardSpringsTheFocusRingWithoutCrashing() = runDesktopComposeUiTest(width = 824, height = 1784) {
-        mainClock.autoAdvance = false
-        setContent { screen(filled.copy(circles = listOf(CardCircle("f", "Family")))) }
-        mainClock.advanceTimeBy(1_500)
-        mainClock.autoAdvance = true
-        onAllNodesWithText("Family", useUnmergedTree = true).onFirst().also { runCatching { it.performScrollTo() } }.performClick()
-        waitForIdle()
-        mainClock.autoAdvance = false
-        mainClock.advanceTimeBy(1_500)
-        onAllNodesWithText("Show all", useUnmergedTree = true).onFirst().performClick()
-        repeat(100) { mainClock.advanceTimeBy(16) }
-    }
+    fun deselectingACardSpringsTheFocusRingWithoutCrashing() =
+        openThenClose("Family", "Show all", filled.copy(circles = listOf(CardCircle("f", "Family"))))
 
-    @androidx.compose.runtime.Composable
+    @Composable
     private fun screen(state: ProfileEditUiState) {
         CompositionLocalProvider(LocalDensity provides Density(2f, 1f)) {
             HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
@@ -81,16 +72,18 @@ class ProfileEditCancelMotionTest {
         }
     }
 
-    private fun cancel(label: String, state: ProfileEditUiState = filled) = runDesktopComposeUiTest(width = 824, height = 1784) {
+    private fun cancel(label: String, state: ProfileEditUiState = filled) = openThenClose(label, "Cancel", state)
+
+    private fun openThenClose(open: String, close: String, state: ProfileEditUiState) = runDesktopComposeUiTest(width = 824, height = 1784) {
         mainClock.autoAdvance = false
         setContent { screen(state) }
         mainClock.advanceTimeBy(1_500)
         mainClock.autoAdvance = true
-        onAllNodesWithText(label, useUnmergedTree = true).onFirst().also { runCatching { it.performScrollTo() } }.performClick()
+        onAllNodesWithText(open, useUnmergedTree = true).onFirst().also { runCatching { it.performScrollTo() } }.performClick()
         waitForIdle()
         mainClock.autoAdvance = false
         mainClock.advanceTimeBy(1_500)
-        onAllNodesWithText("Cancel", useUnmergedTree = true).onFirst().performClick()
+        onAllNodesWithText(close, useUnmergedTree = true).onFirst().performClick()
         repeat(100) { mainClock.advanceTimeBy(16) }
     }
 }
