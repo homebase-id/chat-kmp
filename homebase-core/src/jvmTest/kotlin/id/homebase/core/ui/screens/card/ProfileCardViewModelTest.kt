@@ -15,12 +15,15 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttributeTypes
+import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.ArgbImage
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.youauth.MissingPermissionsResult
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.ui.screens.profile.ProfileAudience
+import id.homebase.core.ui.screens.profile.saveWithAudience
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.AfterTest
@@ -135,6 +138,13 @@ class ProfileCardViewModelTest {
             return circleList
         }
         override suspend fun saveCircleCard(card: ProfileCard) = cardRepository!!.saveCircle(card)
+        var profileRepository: ProfileRepository? = null
+        override suspend fun saveProfileAttribute(
+            type: String,
+            data: JsonObject,
+            audience: ProfileAudience,
+            existing: ProfileAttribute?,
+        ) = profileRepository!!.saveWithAudience(type, data, audience, existing)
         override suspend fun resetPublicCard() = cardRepository!!.resetPublic()
         override suspend fun resetCircleCard(card: ProfileCard) = cardRepository!!.resetCircle(card)
         override suspend fun clearSavedDesign() {

@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalUuidApi::class)
 
 package id.homebase.core.ui.screens.card
 
@@ -21,17 +21,24 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.material.icons.outlined.DragIndicator
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.LineHeightStyle
+import id.homebase.core.ui.screens.profile.ProfileAudience
+import id.homebase.resources.profile_card_option_content
 import id.homebase.resources.profile_card_tool_accent
+import id.homebase.resources.profile_card_tool_content
 import id.homebase.resources.profile_card_tool_heading
 import id.homebase.resources.profile_card_tool_body
 import id.homebase.resources.profile_card_tool_portrait
@@ -87,7 +94,6 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Title
-import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -172,8 +178,6 @@ import id.homebase.resources.profile_card_option_move_up
 import id.homebase.resources.profile_card_option_portrait_shape
 import id.homebase.resources.profile_card_option_socials_style
 import id.homebase.resources.profile_card_option_text_font
-import id.homebase.resources.profile_card_options_empty
-import id.homebase.resources.profile_card_options_empty_title
 import id.homebase.resources.profile_card_shape_circle
 import id.homebase.resources.profile_card_shape_ellipse
 import id.homebase.resources.profile_card_shape_rounded
@@ -182,6 +186,8 @@ import id.homebase.resources.profile_card_socials_bar
 import id.homebase.resources.profile_card_socials_glyphs
 import id.homebase.resources.profile_card_socials_handles
 import id.homebase.resources.profile_card_socials_wordmark
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.Font
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -197,17 +203,34 @@ private val INK_DOT_SIZE = 12.dp
 private val SHAPE_SEGMENT_MIN_WIDTH = 56.dp
 private val GLYPH_SIZE = 20.dp
 private val TOOL_SIZE = 48.dp
+private val TOOL_LABEL_GAP = 8.dp
 private val FADE_LENGTH = 24.dp
 private val OPTION_SIDE_INSET = 16.dp
 // Seven tools fit a 360dp phone at this inset.
-private val TOOLBAR_SIDE_INSET = 8.dp
+private val TOOLBAR_SIDE_INSET = 4.dp
+// Without room for its name, the picked tool still reads wider than the rest.
+private val PICKED_TOOL_GROWTH = 20.dp
 private val SWATCH_ROW_INSET = OPTION_SIDE_INSET - 4.dp
 private val CAPTION_INSET = 24.dp
 private const val REVEAL_MARGIN = 0.6f
 private val BLOCK_TILE_SPACING = 6.dp
 private val BLOCK_TILE_CORNER = 12.dp
 
-/** Every control comes from the design's [CardDesignSpec]; there is no per-design screen. */
+internal class CardContentTool(
+    val card: CardAudience,
+    val items: List<CardContentItem>,
+    val circles: List<CardCircle>,
+    val enabled: Boolean,
+    val failures: Int,
+    val onToggle: (Uuid, Boolean) -> Unit,
+    val onAudience: (Uuid, ProfileAudience) -> Unit,
+    val onAdd: (String, Map<String, String>) -> Unit,
+    val onOpen: (Boolean) -> Unit,
+)
+
+private const val CONTENT_TOOL = "CONTENT"
+
+/** Every control comes from the design's [CardDesignSpec]; Content, which every design has, comes last. */
 @Composable
 internal fun CardOptionsPanel(
     design: String,
@@ -215,38 +238,53 @@ internal fun CardOptionsPanel(
     enabled: Boolean,
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
+    content: CardContentTool,
     gap: Dp,
     modifier: Modifier = Modifier,
 ) {
     val spec = CardDesignSpecs.of(design)
     val options = CardOption.entries.filter { spec != null && it in spec.options }
-    if (options.isEmpty()) {
-        OptionsEmptyState(design = design, modifier = modifier)
-        return
-    }
-    var picked by rememberSaveable(design) { mutableStateOf(options.first().name) }
-    val current = options.firstOrNull { it.name == picked } ?: options.first()
+    var picked by rememberSaveable(design) { mutableStateOf(options.firstOrNull()?.name ?: CONTENT_TOOL) }
+    val current = options.firstOrNull { it.name == picked }
     val motion = MaterialTheme.motionScheme
     val chipHeight = CHIP_HEIGHT * LocalDensity.current.fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
+    val onOpen by rememberUpdatedState(content.onOpen)
+    LaunchedEffect(current == null) { onOpen(current == null) }
+    DisposableEffect(Unit) { onDispose { onOpen(false) } }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
         AnimatedContent(
-            targetState = current,
+            targetState = picked,
             transitionSpec = {
                 (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
                     .togetherWith(fadeOut(motion.fastEffectsSpec()))
             },
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.TopStart,
-        ) { option ->
-            // The picked tool names itself in the group below, so the control stands alone here.
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                OptionControl(option, design, overrides, enabled, chipHeight, onOption, onBlockOrder)
+        ) { shown ->
+            val option = options.firstOrNull { it.name == shown }
+            if (option == null) {
+                CardContentPanel(
+                    card = content.card,
+                    items = content.items,
+                    circles = content.circles,
+                    enabled = content.enabled,
+                    failures = content.failures,
+                    onToggle = content.onToggle,
+                    onAudience = content.onAudience,
+                    onAdd = content.onAdd,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                // The picked tool names itself in the group below, so the control stands alone here.
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    OptionControl(option, design, overrides, enabled, chipHeight, onOption, onBlockOrder)
+                }
             }
         }
         OptionToolbar(
             options = options,
             current = current,
-            onPick = { picked = it.name },
+            onPick = { picked = it?.name ?: CONTENT_TOOL },
             modifier = Modifier.fillMaxWidth().height(TOOLBAR_HEIGHT).padding(horizontal = TOOLBAR_SIDE_INSET),
         )
     }
@@ -306,27 +344,58 @@ private fun OptionControl(
     }
 }
 
+// A null [current] is Content.
+// When every tool fits it sits still and whole, naming the picked one only if there's room; otherwise the row scrolls.
 @Composable
 private fun OptionToolbar(
     options: List<CardOption>,
-    current: CardOption,
-    onPick: (CardOption) -> Unit,
+    current: CardOption?,
+    onPick: (CardOption?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ScrollableChoiceRow(
-        modifier = modifier,
-        contentPadding = OPTION_SIDE_INSET,
-        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        options.forEachIndexed { index, option ->
-            ToolItem(
-                icon = optionIcon(option),
-                label = stringResource(toolLabel(option)),
-                description = stringResource(optionLabel(option)),
-                selected = option == current,
-                shapes = connectedButtonShapes(index, options.size),
-                onClick = { onPick(option) },
+    val count = options.size + 1
+    val labels = options.map { stringResource(toolLabel(it)) } + stringResource(MR.string.profile_card_tool_content)
+    val descriptions = options.map { stringResource(optionLabel(it)) } + stringResource(MR.string.profile_card_option_content)
+    val icons = options.map(::optionIcon) + Icons.Outlined.Dashboard
+    val pickedIndex = current?.let(options::indexOf) ?: options.size
+    val measurer = rememberTextMeasurer()
+    val labelStyle = MaterialTheme.typography.labelLarge
+    val density = LocalDensity.current
+    BoxWithConstraints(modifier = modifier, contentAlignment = Alignment.Center) {
+        val iconsRow = TOOL_SIZE * count + ButtonGroupDefaults.ConnectedSpaceBetween * (count - 1)
+        val labelRoom = with(density) { measurer.measure(labels[pickedIndex], labelStyle).size.width.toDp() } + TOOL_LABEL_GAP
+        val fits = iconsRow <= maxWidth
+        val named = !fits || iconsRow + labelRoom <= maxWidth
+        val pickedMin = if (named) TOOL_SIZE else TOOL_SIZE + (maxWidth - iconsRow).coerceIn(0.dp, PICKED_TOOL_GROWTH)
+        val tools: @Composable RowScope.() -> Unit = {
+            for (index in 0 until count) {
+                ToolItem(
+                    icon = icons[index],
+                    label = labels[index],
+                    description = descriptions[index],
+                    selected = index == pickedIndex,
+                    named = named,
+                    minWidth = if (index == pickedIndex) pickedMin else TOOL_SIZE,
+                    shapes = connectedButtonShapes(index, count),
+                    onClick = { onPick(options.getOrNull(index)) },
+                )
+            }
+        }
+        val arrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween, Alignment.CenterHorizontally)
+        if (fits) {
+            Row(
+                modifier = Modifier.fillMaxWidth().selectableGroup(),
+                horizontalArrangement = arrangement,
+                verticalAlignment = Alignment.CenterVertically,
+                content = tools,
+            )
+        } else {
+            ScrollableChoiceRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = OPTION_SIDE_INSET,
+                horizontalArrangement = arrangement,
+                verticalAlignment = Alignment.CenterVertically,
+                content = tools,
             )
         }
     }
@@ -338,6 +407,8 @@ private fun ToolItem(
     label: String,
     description: String,
     selected: Boolean,
+    named: Boolean,
+    minWidth: Dp,
     shapes: ToggleButtonShapes,
     onClick: () -> Unit,
 ) {
@@ -347,12 +418,18 @@ private fun ToolItem(
             checked = selected,
             onCheckedChange = { onClick() },
             shapes = shapes,
-            colors = ToggleButtonDefaults.tonalToggleButtonColors(),
+            // Quiet at rest and a tonal pill when picked, so the picked tool never outweighs the step's own action.
+            colors = ToggleButtonDefaults.tonalToggleButtonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            ),
             contentPadding = PaddingValues(horizontal = 14.dp),
             modifier = Modifier
                 .revealWhenSelected(selected)
                 .height(TOOL_SIZE)
-                .widthIn(min = TOOL_SIZE)
+                .widthIn(min = minWidth)
                 .clearAndSetSemantics {
                     contentDescription = description
                     role = Role.Tab
@@ -362,7 +439,7 @@ private fun ToolItem(
         ) {
             Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(20.dp))
             AnimatedVisibility(
-                visible = selected,
+                visible = selected && named,
                 enter = expandHorizontally(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()),
                 exit = shrinkHorizontally(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
             ) {
@@ -371,39 +448,9 @@ private fun ToolItem(
                     style = MaterialTheme.typography.labelLarge,
                     maxLines = 1,
                     softWrap = false,
-                    modifier = Modifier.padding(start = 8.dp),
+                    modifier = Modifier.padding(start = TOOL_LABEL_GAP),
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun OptionsEmptyState(design: String, modifier: Modifier = Modifier) {
-    val name = stringResource(designLabel(design))
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = modifier.padding(horizontal = CAPTION_INSET),
-    ) {
-        CookieBadge(
-            icon = Icons.Outlined.Tune,
-            container = MaterialTheme.colorScheme.secondaryContainer,
-            content = MaterialTheme.colorScheme.onSecondaryContainer,
-            size = 56.dp,
-            iconSize = 24.dp,
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = stringResource(MR.string.profile_card_options_empty_title, name),
-                style = MaterialTheme.typography.titleMediumEmphasized,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = stringResource(MR.string.profile_card_options_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
@@ -600,7 +647,7 @@ private fun Swatch(
     }
 }
 
-private class MorphShape(private val morph: Morph, private val progress: Float) : Shape {
+internal class MorphShape(private val morph: Morph, private val progress: Float) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
         val path = Path()
         var first = true
@@ -721,7 +768,7 @@ private fun Modifier.revealWhenSelected(selected: Boolean): Modifier {
 }
 
 @Composable
-private fun ScrollableChoiceRow(
+internal fun ScrollableChoiceRow(
     modifier: Modifier = Modifier,
     contentPadding: Dp = 0.dp,
     horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
@@ -743,17 +790,20 @@ private fun ScrollableChoiceRow(
 
 // Masks content under a gradient at whichever ends can still scroll, so hidden rows read as "more this way".
 @Composable
-private fun Modifier.fadingEdges(scroll: ScrollState): Modifier {
+internal fun Modifier.fadingEdges(scroll: ScrollState, vertical: Boolean = false): Modifier {
     val fade = with(LocalDensity.current) { FADE_LENGTH.toPx() }
-    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val rtl = !vertical && LocalLayoutDirection.current == LayoutDirection.Rtl
     return graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
         .drawWithContent {
             drawContent()
             val atStart = scroll.value > 0
             val atEnd = scroll.value < scroll.maxValue
-            val extent = size.width
-            fun mask(fromEdge: Float, towardInside: Float) =
+            val extent = if (vertical) size.height else size.width
+            fun mask(fromEdge: Float, towardInside: Float) = if (vertical) {
+                Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = fromEdge, endY = towardInside)
+            } else {
                 Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), startX = fromEdge, endX = towardInside)
+            }
             // Horizontal scroll runs from the end side in RTL, so "start" is the right edge there.
             val startEdge = if (rtl) extent else 0f
             val endEdge = if (rtl) 0f else extent

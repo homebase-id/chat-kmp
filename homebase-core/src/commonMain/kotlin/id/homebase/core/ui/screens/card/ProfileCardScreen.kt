@@ -321,7 +321,7 @@ private fun ProfileCardViewer(
                 ProfileCardEvent.ShareFailed -> launch { snackbarHostState.showSnackbar(errShare) }
                 ProfileCardEvent.ResetFailed -> launch { snackbarHostState.showSnackbar(errReset) }
                 ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
-                ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed -> Unit
+                ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed, ProfileCardEvent.ContentSaveFailed -> Unit
             }
         }
     }
@@ -750,11 +750,11 @@ internal fun AudienceTitle(uiState: ProfileCardUiState, modifier: Modifier = Mod
 }
 
 @Composable
-private fun audienceContainer(audience: CardAudience): Color =
+internal fun audienceContainer(audience: CardAudience): Color =
     if (audience is CardAudience.Circle) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer
 
 @Composable
-private fun onAudienceContainer(audience: CardAudience): Color =
+internal fun onAudienceContainer(audience: CardAudience): Color =
     if (audience is CardAudience.Circle) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
 
 @Composable

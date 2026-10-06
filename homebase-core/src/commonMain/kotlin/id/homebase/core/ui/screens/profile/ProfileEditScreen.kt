@@ -985,7 +985,7 @@ private fun NotOnCardMarker(cardName: String) {
 }
 
 @Composable
-private fun EditorActions(canSave: Boolean, onSave: () -> Unit, onCancel: () -> Unit, onRemove: (() -> Unit)?) {
+internal fun EditorActions(canSave: Boolean, onSave: () -> Unit, onCancel: () -> Unit, onRemove: (() -> Unit)?) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         if (onRemove != null) {
             val removeLabel = stringResource(MR.string.remove)
@@ -1108,7 +1108,7 @@ private fun ConflictRow(value: String, audience: String, onDiscard: () -> Unit) 
 }
 
 @Composable
-private fun ProfileField(
+internal fun ProfileField(
     value: String,
     label: String,
     showLabel: Boolean = true,
@@ -1250,7 +1250,7 @@ private fun AddAttributeRow(icon: ImageVector, label: String, social: Boolean, o
 /** Whether [type]'s current draft is well-formed enough to save — only Email/Phone/Birthday
  *  constrain format; every other attribute type accepts anything (including blank, which just
  *  no-ops). */
-private fun isAttributeValid(type: String, value: (ProfileField) -> String): Boolean = when (type) {
+internal fun isAttributeValid(type: String, value: (ProfileField) -> String): Boolean = when (type) {
     ProfileAttributeTypes.EMAIL -> ContactFieldValidation.isValidEmail(value(ProfileField.EMAIL))
     ProfileAttributeTypes.PHONE -> ContactFieldValidation.isValidPhone(value(ProfileField.PHONE))
     ProfileAttributeTypes.BIRTHDAY ->
@@ -1263,7 +1263,7 @@ private fun isAttributeValid(type: String, value: (ProfileField) -> String): Boo
  * existing row's inline editor and a newly added one share the exact same field UI.
  */
 @Composable
-private fun AttributeFields(
+internal fun AttributeFields(
     type: String,
     value: (ProfileField) -> String,
     onChange: (ProfileField, String) -> Unit,
