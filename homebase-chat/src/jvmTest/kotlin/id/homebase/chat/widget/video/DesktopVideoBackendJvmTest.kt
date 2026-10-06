@@ -211,6 +211,30 @@ class DesktopVideoBackendJvmTest {
         }
     }
 
+    @Test
+    fun slowSegmentBeyondWatchdogStaysOnNative() {
+        val port = startHlsServer(File(fixtures, "hls"), segmentDelayMs = 3_000)
+        val firstFrame = AtomicBoolean(false)
+        val backends = Collections.synchronizedList(mutableListOf<DesktopVideoBackend>())
+        scene({
+            NativeAvPlayer(
+                videoPath = "http://localhost:$port/index.m3u8",
+                aspectRatio = null,
+                modifier = Modifier.fillMaxSize(),
+                showControls = false,
+                muted = true,
+                onFirstFrameRendered = { firstFrame.set(true) },
+                onUnplayable = { backends += DesktopVideoBackend.VLC },
+                watchdogMs = 1_000,
+            )
+        }) { scene ->
+            backends += DesktopVideoBackend.NATIVE
+            awaitTrue(scene, 20_000) { firstFrame.get() || DesktopVideoBackend.VLC in backends }
+            assertEquals(listOf(DesktopVideoBackend.NATIVE), backends.toList(), "slow segment must not trigger the VLC fallback")
+            assertTrue(firstFrame.get(), "first frame never arrived")
+        }
+    }
+
     private fun playsThroughChooser(uri: String) {
         val firstFrame = AtomicBoolean(false)
         val backends = Collections.synchronizedList(mutableListOf<DesktopVideoBackend>())
@@ -281,7 +305,7 @@ class DesktopVideoBackendJvmTest {
         error("condition not met within $timeoutMs ms")
     }
 
-    private fun startHlsServer(dir: File): Int {
+    private fun startHlsServer(dir: File, segmentDelayMs: Long = 0): Int {
         val segment = File(dir, "stream.ts")
         val totalSize = segment.length()
         val s = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0).apply {
@@ -302,6 +326,7 @@ class DesktopVideoBackendJvmTest {
                     parts[0].toLong() to (if (parts[1].isNotEmpty()) parts[1].toLong() else totalSize - 1)
                 } else 0L to totalSize - 1
                 rangeRequests += "$name:$start-$end"
+                NativeLoadActivity.track { Thread.sleep(segmentDelayMs) }
                 val bytes = segment.readBytes().copyOfRange(start.toInt(), (end + 1).toInt())
                 exchange.responseHeaders.add("Content-Range", "bytes $start-$end/$totalSize")
                 exchange.sendResponseHeaders(206, bytes.size.toLong())
