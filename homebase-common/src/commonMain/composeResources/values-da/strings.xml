@@ -1860,9 +1860,9 @@
     <string name="webdrop_ttl_thirty_days">30 dage</string>
     <string name="webdrop_files_count">%1$d filer</string>
     <string name="webdrop_status_waiting">Venter på at blive åbnet</string>
-    <string name="webdrop_status_opened">Åbnet - selvdestruerer om %1$s</string>
+    <string name="webdrop_status_opened">Åbnet · selvdestruerer om %1$s</string>
     <string name="webdrop_status_expires">Selvdestruerer om %1$s</string>
-    <string name="webdrop_status_removed">Væk</string>
+    <string name="webdrop_status_removed">Destrueret · linket virker ikke længere</string>
     <string name="webdrop_revoke">Tilbagekald link</string>
     <string name="webdrop_row_clear">Fjern fra listen</string>
     <string name="webdrop_for_someone">Til en bestemt person?</string>

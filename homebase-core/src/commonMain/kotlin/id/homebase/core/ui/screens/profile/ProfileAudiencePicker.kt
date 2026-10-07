@@ -156,6 +156,7 @@ private fun stackedButtonShapes(index: Int, count: Int): ToggleButtonShapes {
 internal fun ConnectedChoices(
     count: Int,
     modifier: Modifier = Modifier,
+    weight: (index: Int) -> Float = { 1f },
     item: @Composable (index: Int, shapes: ToggleButtonShapes, sizing: Modifier) -> Unit,
 ) {
     if (LocalDensity.current.fontScale >= STACK_FONT_SCALE) {
@@ -170,7 +171,7 @@ internal fun ConnectedChoices(
             modifier = modifier.fillMaxWidth().selectableGroup(),
             horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
         ) {
-            repeat(count) { item(it, connectedButtonShapes(it, count), Modifier.weight(1f).heightIn(min = 48.dp)) }
+            repeat(count) { item(it, connectedButtonShapes(it, count), Modifier.weight(weight(it)).heightIn(min = 48.dp)) }
         }
     }
 }

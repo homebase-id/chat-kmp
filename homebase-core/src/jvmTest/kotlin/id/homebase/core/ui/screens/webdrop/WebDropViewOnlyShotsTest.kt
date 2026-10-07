@@ -68,12 +68,17 @@ class WebDropViewOnlyShotsTest {
         val content: @Composable () -> Unit,
     )
 
-    private fun picked(name: String) = PickedDropFile(path = "/tmp/$name", name = name, contentType = "image/jpeg", size = 0)
+    private fun picked(name: String, type: String = "image/jpeg", size: Long = 0) =
+        PickedDropFile(path = "/tmp/$name", name = name, contentType = type, size = size)
 
-    private val files = listOf(picked("passport-scan.jpg"), picked("lease-agreement-signed.pdf"))
+    private val files = listOf(
+        picked("passport-scan.jpg", size = 2_480_000),
+        picked("lease-agreement-signed.pdf", "application/pdf", 312_000),
+    )
     private val longFiles = listOf(
-        picked("Quarterly board pack - confidential - final final v7 (Henrietta's edits).pdf"),
+        picked("Quarterly board pack - confidential - final final v7 (Henrietta's edits).pdf", "application/pdf", 8_900_000),
         picked("IMG_20260912_181155_HDR.jpg"),
+        picked("handover-walkthrough.mov", "video/quicktime", 48_000_000),
     )
     private val compose = WebDropUiState(composeOpen = true, pickedFiles = files)
 
@@ -113,6 +118,7 @@ class WebDropViewOnlyShotsTest {
             row(receipt("Tax return 2025", viewOnly = true), DropStatus.Opened(soon)),
             row(receipt("Holiday photos", viewOnly = null, ttl = 1), DropStatus.Expiring(soon)),
             row(receipt("Lease scan", viewOnly = true), DropStatus.Removed),
+            row(receipt("Old invoices", viewOnly = null), DropStatus.Removed),
         )
 
     private val longRows
@@ -133,15 +139,36 @@ class WebDropViewOnlyShotsTest {
         Shot("02-sheet-view-only-off") { Sheet(compose) },
         Shot("03-sheet-view-only-on") { Sheet(compose.copy(viewOnly = true)) },
         Shot("04-sheet-view-only-ttl") { Sheet(compose.copy(viewOnly = true, ttlChoice = WebDropTtlChoice.SevenDays)) },
-        Shot("05-sheet-for-someone") {
-            Sheet(compose.copy(viewOnly = true, introExpanded = true, recipientName = "Rosie Cotton"))
+        Shot("05-sheet-for-someone", heightDp = 1200) {
+            Sheet(
+                compose.copy(
+                    viewOnly = true, introExpanded = true, recipientName = "Rosie Cotton",
+                    conditions = setOf("recipient_only"), theme = "mission",
+                )
+            )
         },
         Shot("06-sheet-creating") { Sheet(compose.copy(viewOnly = true, isCreating = true)) },
         Shot("07-sheet-error") { Sheet(compose.copy(viewOnly = true, error = WebDropError.CreateFailed)) },
-        Shot("08-sheet-link-ready") { Sheet(compose.copy(viewOnly = true, createdUrl = "https://frodo.dotyou.cloud/apps/web-drop/d/3f2a#k=abc")) },
+        Shot("07b-sheet-error-unreadable") {
+            Sheet(compose.copy(error = WebDropError.SourceUnreadable("lease-agreement-signed.pdf")))
+        },
+        Shot("08-sheet-link-ready") { Sheet(compose.copy(viewOnly = true, createdUrl = LINK)) },
+        Shot("08b-sheet-link-ready-timed") {
+            Sheet(compose.copy(viewOnly = true, ttlChoice = WebDropTtlChoice.SevenDays, createdUrl = LINK))
+        },
+        Shot("08c-sheet-link-ready-plain") { Sheet(compose.copy(createdUrl = LINK)) },
         Shot("09-sheet-long-names") { Sheet(compose.copy(pickedFiles = longFiles, viewOnly = true)) },
         Shot("10-sheet-font-scale", fontScale = 1.6f) { Sheet(compose.copy(viewOnly = true)) },
-        Shot("11-sheet-rtl", rtl = true) { Sheet(compose.copy(viewOnly = true)) },
+        Shot("10b-sheet-font-scale-expanded", fontScale = 1.6f, heightDp = 1600) {
+            Sheet(compose.copy(viewOnly = true, introExpanded = true, recipientName = "Rosie Cotton", ttlChoice = WebDropTtlChoice.OneDay))
+        },
+        Shot("11-sheet-rtl", rtl = true) { Sheet(compose.copy(viewOnly = true, ttlChoice = WebDropTtlChoice.SevenDays)) },
+        Shot("11b-sheet-rtl-expanded", rtl = true, heightDp = 1200) {
+            Sheet(compose.copy(viewOnly = true, introExpanded = true, theme = "clean"))
+        },
+        Shot("11c-sheet-rtl-link-ready", rtl = true) {
+            Sheet(compose.copy(viewOnly = true, ttlChoice = WebDropTtlChoice.SevenDays, createdUrl = LINK))
+        },
         Shot("12-sheet-small", widthDp = 360, heightDp = 640) { Sheet(compose.copy(viewOnly = true)) },
         Shot("20-rows") { Rows(rowSet) },
         Shot("21-rows-long-names") { Rows(longRows) },
@@ -189,6 +216,7 @@ class WebDropViewOnlyShotsTest {
     }
 
     private companion object {
+        const val LINK = "https://frodo.dotyou.cloud/apps/web-drop/d/3f2a91c0-7d1e-4b0a-9a55-1e2f#k=abcdef0123456789"
         const val SCALE = 2f
         const val PHONE_W = 412
         const val PHONE_H = 892

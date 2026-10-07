@@ -1,16 +1,15 @@
 package id.homebase.core.ui.screens.webdrop.components
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -21,84 +20,98 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.LocalFireDepartment
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.LoadingIndicator
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import co.touchlab.kermit.Logger
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.core.files.materializeForUpload
+import id.homebase.core.ui.screens.vault.pathCompat
+import id.homebase.core.ui.screens.webdrop.WebDropError
 import id.homebase.core.ui.screens.webdrop.WebDropUiAction
 import id.homebase.core.ui.screens.webdrop.WebDropUiState
-import id.homebase.core.ui.screens.webdrop.WebDropError
 import id.homebase.core.ui.screens.webdrop.model.PickedDropFile
 import id.homebase.core.ui.screens.webdrop.model.WebDropTtlChoice
-import id.homebase.core.ui.screens.vault.pathCompat
 import id.homebase.core.util.contentType
-import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.webdrop.WebDropProtocol
 import id.homebase.resources.MR
-import id.homebase.resources.webdrop_add_files
 import id.homebase.resources.webdrop_compose_title
-import id.homebase.resources.webdrop_copy
-import id.homebase.resources.webdrop_create
-import id.homebase.resources.webdrop_error_create
-import id.homebase.resources.webdrop_error_source_unreadable
-import id.homebase.resources.webdrop_error_too_many
-import id.homebase.resources.webdrop_for_someone
-import id.homebase.resources.webdrop_recipient_name
-import id.homebase.resources.webdrop_condition_recipient_only
 import id.homebase.resources.webdrop_condition_no_retention
 import id.homebase.resources.webdrop_condition_personal_data
-import id.homebase.resources.webdrop_theme_mission
-import id.homebase.resources.webdrop_theme_clean
-import id.homebase.resources.webdrop_theme_choplifter
+import id.homebase.resources.webdrop_condition_recipient_only
+import id.homebase.resources.webdrop_copy
+import id.homebase.resources.webdrop_create
+import id.homebase.resources.webdrop_creating
+import id.homebase.resources.webdrop_error_create
+import id.homebase.resources.webdrop_error_create_hint
+import id.homebase.resources.webdrop_error_source_unreadable
+import id.homebase.resources.webdrop_error_too_many
+import id.homebase.resources.webdrop_expires_after
 import id.homebase.resources.webdrop_link_ready
+import id.homebase.resources.webdrop_link_ready_timed
+import id.homebase.resources.webdrop_recipient_name
 import id.homebase.resources.webdrop_share
 import id.homebase.resources.webdrop_terms_header
+import id.homebase.resources.webdrop_theme_choplifter
+import id.homebase.resources.webdrop_theme_clean
+import id.homebase.resources.webdrop_theme_header
+import id.homebase.resources.webdrop_theme_mission
+import id.homebase.resources.webdrop_theme_supporting
+import id.homebase.resources.webdrop_try_again
 import id.homebase.resources.webdrop_ttl_burn
-import id.homebase.resources.webdrop_ttl_one_day
-import id.homebase.resources.webdrop_ttl_seven_days
-import id.homebase.resources.webdrop_ttl_thirty_days
+import id.homebase.resources.webdrop_view_only_badge
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name
-import org.jetbrains.compose.resources.stringResource
-import androidx.compose.runtime.rememberCoroutineScope
-import org.koin.compose.koinInject
+import io.github.vinceglb.filekit.size
 import kotlinx.coroutines.launch
-import id.homebase.core.files.materializeForUpload
-import id.homebase.api.file.FileOperationsProvider
-import co.touchlab.kermit.Logger
+import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 
-private const val MAX_NAME_CHARS = 40
 private const val TAG = "WebDropComposeSheet"
+private const val DIMMED_ALPHA = 0.38f
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
+private val Themes = listOf(
+    WebDropProtocol.ThemeMission to MR.string.webdrop_theme_mission,
+    WebDropProtocol.ThemeClean to MR.string.webdrop_theme_clean,
+    WebDropProtocol.ThemeChoplifter to MR.string.webdrop_theme_choplifter,
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WebDropComposeSheet(
     uiState: WebDropUiState,
@@ -132,7 +145,7 @@ fun WebDropComposeSheet(
                                 path = snapshot.pathCompat,
                                 name = file.name,
                                 contentType = contentType,
-                                size = 0,
+                                size = runCatching { snapshot.size() }.getOrDefault(0L),
                             )
                         }
                     )
@@ -145,235 +158,285 @@ fun WebDropComposeSheet(
         onDismissRequest = { onAction(WebDropUiAction.ComposeDismissed) },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp),
-        ) {
+        WebDropType {
             val motion = MaterialTheme.motionScheme
             AnimatedContent(
                 targetState = uiState.createdUrl,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 32.dp),
                 transitionSpec = {
                     (fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()))
                         .using(SizeTransform(clip = false) { _, _ -> motion.defaultSpatialSpec() })
                 },
             ) { url ->
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = stringResource(
-                            if (url != null) MR.string.webdrop_link_ready
-                            else MR.string.webdrop_compose_title
-                        ),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    if (url != null) {
-                        Text(
-                            text = url,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        if (uiState.viewOnly) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            WebDropViewOnlyBadge()
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilledTonalButton(
-                                onClick = { onAction(WebDropUiAction.CopyLinkClicked(url)) },
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Icon(imageVector = Icons.Outlined.ContentCopy, contentDescription = null)
-                                Text(stringResource(MR.string.webdrop_copy))
-                            }
-                            OutlinedButton(
-                                onClick = { onAction(WebDropUiAction.ShareClicked(url)) },
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Icon(imageVector = Icons.Outlined.Share, contentDescription = null)
-                                Text(stringResource(MR.string.webdrop_share))
-                            }
-                        }
-                        return@Column
-                    }
-
-                    uiState.pickedFiles.forEach { file ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = file.name.truncateToCodePoints(MAX_NAME_CHARS),
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.weight(1f),
-                            )
-                            IconButton(onClick = { onAction(WebDropUiAction.RemovePickedFile(file.path)) }) {
-                                Icon(imageVector = Icons.Default.Close, contentDescription = null)
-                            }
-                        }
-                    }
-
-                    OutlinedButton(
-                        onClick = { filePicker.launch() },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = null)
-                        Text(stringResource(MR.string.webdrop_add_files))
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TtlChip(uiState, WebDropTtlChoice.BurnAfterOpen, MR.string.webdrop_ttl_burn, onAction)
-                        TtlChip(uiState, WebDropTtlChoice.OneDay, MR.string.webdrop_ttl_one_day, onAction)
-                        TtlChip(uiState, WebDropTtlChoice.SevenDays, MR.string.webdrop_ttl_seven_days, onAction)
-                        TtlChip(uiState, WebDropTtlChoice.ThirtyDays, MR.string.webdrop_ttl_thirty_days, onAction)
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    WebDropViewOnlyRow(
-                        checked = uiState.viewOnly,
-                        onCheckedChange = { onAction(WebDropUiAction.ViewOnlyToggled(it)) },
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    val chevronRotation = animateFloatAsState(
-                        targetValue = if (uiState.introExpanded) 180f else 0f,
-                        animationSpec = motion.defaultSpatialSpec(),
-                        label = "introChevron",
-                    )
-                    TextButton(onClick = { onAction(WebDropUiAction.ToggleIntroSection) }) {
-                        Text(stringResource(MR.string.webdrop_for_someone))
-                        Icon(
-                            imageVector = Icons.Default.ExpandMore,
-                            contentDescription = null,
-                            modifier = Modifier.graphicsLayer { rotationZ = chevronRotation.value },
-                        )
-                    }
-
-                    AnimatedVisibility(
-                        visible = uiState.introExpanded,
-                        enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-                        exit = shrinkVertically(motion.defaultSpatialSpec()) + fadeOut(motion.defaultEffectsSpec()),
-                    ) {
-                        Column {
-                            OutlinedTextField(
-                                value = uiState.recipientName,
-                                onValueChange = { onAction(WebDropUiAction.RecipientNameChanged(it)) },
-                                label = { Text(stringResource(MR.string.webdrop_recipient_name)) },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = stringResource(MR.string.webdrop_terms_header),
-                                style = MaterialTheme.typography.labelLarge,
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            ConditionRow(uiState, WebDropProtocol.ConditionRecipientOnly, MR.string.webdrop_condition_recipient_only, onAction)
-                            ConditionRow(uiState, WebDropProtocol.ConditionNoRetention, MR.string.webdrop_condition_no_retention, onAction)
-                            ConditionRow(uiState, WebDropProtocol.ConditionPersonalData, MR.string.webdrop_condition_personal_data, onAction)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                ThemeChip(uiState, WebDropProtocol.ThemeMission, MR.string.webdrop_theme_mission, onAction)
-                                ThemeChip(uiState, WebDropProtocol.ThemeClean, MR.string.webdrop_theme_clean, onAction)
-                                ThemeChip(uiState, WebDropProtocol.ThemeChoplifter, MR.string.webdrop_theme_choplifter, onAction)
-                            }
-                        }
-                    }
-
-                    uiState.error?.let { error ->
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = when (error) {
-                                WebDropError.CreateFailed -> stringResource(MR.string.webdrop_error_create)
-                                WebDropError.TooManyFiles ->
-                                    stringResource(MR.string.webdrop_error_too_many, WebDropProtocol.MaxFilesPerDrop)
-                                is WebDropError.SourceUnreadable ->
-                                    stringResource(MR.string.webdrop_error_source_unreadable, error.fileName)
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = { onAction(WebDropUiAction.CreateClicked) },
-                        enabled = uiState.pickedFiles.isNotEmpty() && !uiState.isCreating,
-                        shapes = ButtonDefaults.shapes(),
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                    ) {
-                        Crossfade(
-                            targetState = uiState.isCreating,
-                            animationSpec = motion.fastEffectsSpec(),
-                        ) { creating ->
-                            if (creating) {
-                                LoadingIndicator(modifier = Modifier.size(32.dp))
-                            } else {
-                                Text(stringResource(MR.string.webdrop_create))
-                            }
-                        }
-                    }
+                if (url != null) {
+                    LinkReadyStep(url = url, uiState = uiState, onAction = onAction)
+                } else {
+                    ComposeStep(uiState = uiState, onAction = onAction, onAddFiles = { filePicker.launch() })
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
 @Composable
-private fun ConditionRow(
+private fun ComposeStep(
     uiState: WebDropUiState,
-    id: String,
-    label: org.jetbrains.compose.resources.StringResource,
     onAction: (WebDropUiAction) -> Unit,
+    onAddFiles: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(
-            checked = id in uiState.conditions,
-            onCheckedChange = { onAction(WebDropUiAction.ConditionToggled(id)) },
-        )
+    val motion = MaterialTheme.motionScheme
+    val editable = !uiState.isCreating
+    val inputsAlpha by animateFloatAsState(if (editable) 1f else DIMMED_ALPHA, motion.defaultEffectsSpec())
+    val hasFiles = uiState.pickedFiles.isNotEmpty()
+
+    Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = stringResource(label),
-            style = MaterialTheme.typography.bodyMedium,
+            text = stringResource(MR.string.webdrop_compose_title),
+            style = MaterialTheme.typography.headlineSmallEmphasized,
+            color = MaterialTheme.colorScheme.onSurface,
         )
+        Spacer(Modifier.height(16.dp))
+
+        Column(
+            modifier = Modifier.fillMaxWidth().graphicsLayer { alpha = inputsAlpha },
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            if (!hasFiles) {
+                FileDropZone(maxFiles = WebDropProtocol.MaxFilesPerDrop, onClick = onAddFiles)
+            } else {
+                Column {
+                    uiState.pickedFiles.forEach { file ->
+                        PickedFileRow(
+                            file = file,
+                            enabled = editable,
+                            onRemove = { onAction(WebDropUiAction.RemovePickedFile(file.path)) },
+                        )
+                    }
+                    AddMoreRow(
+                        enabled = editable && uiState.pickedFiles.size < WebDropProtocol.MaxFilesPerDrop,
+                        onClick = onAddFiles,
+                    )
+                }
+            }
+
+            ExpiryPicker(
+                selected = uiState.ttlChoice,
+                enabled = editable,
+                onPick = { onAction(WebDropUiAction.TtlChosen(it)) },
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                WebDropViewOnlyRow(
+                    checked = uiState.viewOnly,
+                    enabled = editable,
+                    onCheckedChange = { onAction(WebDropUiAction.ViewOnlyToggled(it)) },
+                )
+                ForSomeoneRow(
+                    expanded = uiState.introExpanded,
+                    enabled = editable,
+                    onToggle = { onAction(WebDropUiAction.ToggleIntroSection) },
+                )
+            }
+
+            Reveal(visible = uiState.introExpanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = uiState.recipientName,
+                        onValueChange = { onAction(WebDropUiAction.RecipientNameChanged(it)) },
+                        label = { Text(stringResource(MR.string.webdrop_recipient_name)) },
+                        singleLine = true,
+                        enabled = editable,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    SectionCaption(
+                        text = stringResource(MR.string.webdrop_terms_header),
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    Column {
+                        listOf(
+                            WebDropProtocol.ConditionRecipientOnly to MR.string.webdrop_condition_recipient_only,
+                            WebDropProtocol.ConditionNoRetention to MR.string.webdrop_condition_no_retention,
+                            WebDropProtocol.ConditionPersonalData to MR.string.webdrop_condition_personal_data,
+                        ).forEach { (id, label) ->
+                            ConditionRow(
+                                label = stringResource(label),
+                                checked = id in uiState.conditions,
+                                enabled = editable,
+                                onToggle = { onAction(WebDropUiAction.ConditionToggled(id)) },
+                            )
+                        }
+                    }
+                    SectionCaption(
+                        text = stringResource(MR.string.webdrop_theme_header),
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    Text(
+                        text = stringResource(MR.string.webdrop_theme_supporting),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    ThemePicker(
+                        themes = Themes,
+                        selected = uiState.theme,
+                        enabled = editable,
+                        onPick = { onAction(WebDropUiAction.ThemeChosen(it)) },
+                    )
+                }
+            }
+        }
+
+        val error = uiState.error
+        Reveal(visible = error != null) {
+            if (error != null) {
+                Box(Modifier.padding(top = 16.dp)) {
+                    ErrorBanner(
+                        message = when (error) {
+                            WebDropError.CreateFailed -> stringResource(MR.string.webdrop_error_create)
+                            WebDropError.TooManyFiles ->
+                                stringResource(MR.string.webdrop_error_too_many, WebDropProtocol.MaxFilesPerDrop)
+                            is WebDropError.SourceUnreadable ->
+                                stringResource(MR.string.webdrop_error_source_unreadable, error.fileName)
+                        },
+                        hint = if (error == WebDropError.CreateFailed) stringResource(MR.string.webdrop_error_create_hint) else null,
+                    )
+                }
+            }
+        }
+
+        Reveal(visible = hasFiles) {
+            CreateButton(
+                creating = uiState.isCreating,
+                retry = error == WebDropError.CreateFailed,
+                onClick = { onAction(WebDropUiAction.CreateClicked) },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun CreateButton(creating: Boolean, retry: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Button(
+        onClick = onClick,
+        enabled = !creating,
+        shapes = ButtonDefaults.shapes(),
+        // Creating keeps the filled look: the spinner and label are the feedback, not a grey slab.
+        colors = ButtonDefaults.buttonColors(
+            disabledContainerColor = colors.primary,
+            disabledContentColor = colors.onPrimary,
+        ),
+        modifier = Modifier.fillMaxWidth().padding(top = 24.dp).heightIn(min = 56.dp),
+    ) {
+        Crossfade(targetState = creating, animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) { busy ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (busy) {
+                    LoadingIndicator(modifier = Modifier.size(28.dp), color = colors.onPrimary)
+                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                    Text(stringResource(MR.string.webdrop_creating))
+                } else {
+                    Text(stringResource(if (retry) MR.string.webdrop_try_again else MR.string.webdrop_create))
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
+@Composable
+private fun LinkReadyStep(url: String, uiState: WebDropUiState, onAction: (WebDropUiAction) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val burn = uiState.ttlChoice == WebDropTtlChoice.BurnAfterOpen
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Box(
+            modifier = Modifier.size(56.dp).background(colors.primaryContainer, MaterialShapes.Cookie9Sided.toShape()),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.Link, contentDescription = null, tint = colors.onPrimaryContainer)
+        }
+        Text(
+            text = stringResource(if (burn) MR.string.webdrop_link_ready else MR.string.webdrop_link_ready_timed),
+            style = MaterialTheme.typography.headlineSmallEmphasized,
+            color = colors.onSurface,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SummaryPill(
+                icon = if (burn) Icons.Outlined.LocalFireDepartment else Icons.Outlined.Schedule,
+                text = if (burn) {
+                    stringResource(MR.string.webdrop_ttl_burn)
+                } else {
+                    stringResource(MR.string.webdrop_expires_after, stringResource(uiState.ttlChoice.label))
+                },
+            )
+            if (uiState.viewOnly) {
+                SummaryPill(
+                    icon = Icons.Outlined.Visibility,
+                    text = stringResource(MR.string.webdrop_view_only_badge),
+                    container = colors.tertiaryContainer,
+                    content = colors.onTertiaryContainer,
+                )
+            }
+        }
+        Text(
+            text = url,
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.MiddleEllipsis,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(colors.surfaceContainerHigh, RoundedCornerShape(16.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        )
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(
+                onClick = { onAction(WebDropUiAction.CopyLinkClicked(url)) },
+                shapes = ButtonDefaults.shapes(),
+                modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+            ) {
+                Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                Text(stringResource(MR.string.webdrop_copy), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            FilledTonalButton(
+                onClick = { onAction(WebDropUiAction.ShareClicked(url)) },
+                shapes = ButtonDefaults.shapes(),
+                modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+            ) {
+                Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                Text(stringResource(MR.string.webdrop_share), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
     }
 }
 
 @Composable
-private fun ThemeChip(
-    uiState: WebDropUiState,
-    id: String,
-    label: org.jetbrains.compose.resources.StringResource,
-    onAction: (WebDropUiAction) -> Unit,
+private fun SummaryPill(
+    icon: ImageVector,
+    text: String,
+    container: Color = MaterialTheme.colorScheme.secondaryContainer,
+    content: Color = MaterialTheme.colorScheme.onSecondaryContainer,
 ) {
-    FilterChip(
-        selected = uiState.theme == id,
-        onClick = { onAction(WebDropUiAction.ThemeChosen(if (uiState.theme == id) null else id)) },
-        label = { Text(stringResource(label)) },
-    )
-}
-
-@Composable
-private fun TtlChip(
-    uiState: WebDropUiState,
-    choice: WebDropTtlChoice,
-    label: org.jetbrains.compose.resources.StringResource,
-    onAction: (WebDropUiAction) -> Unit,
-) {
-    FilterChip(
-        selected = uiState.ttlChoice == choice,
-        onClick = { onAction(WebDropUiAction.TtlChosen(choice)) },
-        label = { Text(stringResource(label)) },
-    )
+    Row(
+        modifier = Modifier
+            .background(container, CircleShape)
+            .padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
+        Text(text = text, style = MaterialTheme.typography.labelLarge, color = content)
+    }
 }

@@ -50,14 +50,15 @@ fun WebDropViewOnlyRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val motion = MaterialTheme.motionScheme
     val colors = MaterialTheme.colorScheme
-    val progress by animateFloatAsState(if (checked) 1f else 0f, motion.fastSpatialSpec())
+    val progress by animateFloatAsState(if (checked) 1f else 0f, motion.defaultSpatialSpec())
     val corner by animateDpAsState(if (checked) 28.dp else 16.dp, motion.defaultSpatialSpec())
     val container by animateColorAsState(
         if (checked) colors.tertiaryContainer else colors.surfaceContainerHigh,
-        motion.defaultEffectsSpec(),
+        motion.defaultSpatialSpec(),
     )
     val content by animateColorAsState(
         if (checked) colors.onTertiaryContainer else colors.onSurface,
@@ -80,7 +81,7 @@ fun WebDropViewOnlyRow(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(corner))
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange),
     ) {
         Row(
             modifier = Modifier.heightIn(min = 72.dp).padding(horizontal = 16.dp, vertical = 14.dp),
@@ -107,6 +108,13 @@ fun WebDropViewOnlyRow(
             Switch(
                 checked = checked,
                 onCheckedChange = null,
+                enabled = enabled,
+                colors = SwitchDefaults.colors(
+                    checkedTrackColor = colors.tertiary,
+                    checkedThumbColor = colors.onTertiary,
+                    checkedIconColor = colors.tertiary,
+                    checkedBorderColor = colors.tertiary,
+                ),
                 thumbContent = if (checked) {
                     { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize)) }
                 } else {
