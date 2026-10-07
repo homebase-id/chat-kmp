@@ -37,7 +37,9 @@ fun Modifier.dismissKeyboardOnTap(): Modifier = composed {
     this.pointerInput(Unit) {
         awaitPointerEventScope {
             while (true) {
-                val down = awaitPointerEvent(PointerEventPass.Final)
+                // Initial, not Final: a child that takes focus on this press (a bubble's
+                // SelectionContainer on desktop) must keep it, not be cleared right after.
+                val down = awaitPointerEvent(PointerEventPass.Initial)
                 if (down.changes.any { it.pressed && !it.previousPressed }) {
                     focusManager.clearFocus()
                 }

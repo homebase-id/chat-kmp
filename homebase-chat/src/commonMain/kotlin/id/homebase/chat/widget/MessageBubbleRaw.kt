@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material3.Icon
@@ -84,6 +85,7 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.stripComposerLineBreakArtifacts
@@ -758,15 +760,17 @@ fun MessageBubbleRaw(
                     ) {
                         // No onTextLayout: the block renderer reports none, and the
                         // timestamp is placed below as its own row (next).
-                        ChatMarkdown(
-                            content = bodyText,
-                            modifier = Modifier.testTag(ChatBubbleTestTags.CAPTION),
-                            color = contentColor,
-                            style = MaterialTheme.typography.bodyLarge,
-                            searchQuery = effectiveSearchQuery,
-                            isCurrentSearchResult = isCurrentSearchResult,
-                            mentions = mentionContext,
-                        )
+                        SelectableOnDesktop(enabled = !message.isDeleted) {
+                            ChatMarkdown(
+                                content = bodyText,
+                                modifier = Modifier.testTag(ChatBubbleTestTags.CAPTION),
+                                color = contentColor,
+                                style = MaterialTheme.typography.bodyLarge,
+                                searchQuery = effectiveSearchQuery,
+                                isCurrentSearchResult = isCurrentSearchResult,
+                                mentions = mentionContext,
+                            )
+                        }
                     }
                     if (message.hasMore && onShowMoreClick != null) {
                         Box(
@@ -900,18 +904,20 @@ fun MessageBubbleRaw(
                                             tint = contentColor,
                                         )
                                     }
-                                    ChatMarkdown(
-                                        content = bodyText,
-                                        modifier = Modifier.testTag(ChatBubbleTestTags.CAPTION),
-                                        color = contentColor,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        searchQuery = effectiveSearchQuery,
-                                        isCurrentSearchResult = isCurrentSearchResult,
-                                        mentions = mentionContext,
-                                        maxLines = bodyMaxLines,
-                                        overflow = TextOverflow.Ellipsis,
-                                        onTextLayout = { textLayoutResult = it },
-                                    )
+                                    SelectableOnDesktop(enabled = !message.isDeleted) {
+                                        ChatMarkdown(
+                                            content = bodyText,
+                                            modifier = Modifier.testTag(ChatBubbleTestTags.CAPTION),
+                                            color = contentColor,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            searchQuery = effectiveSearchQuery,
+                                            isCurrentSearchResult = isCurrentSearchResult,
+                                            mentions = mentionContext,
+                                            maxLines = bodyMaxLines,
+                                            overflow = TextOverflow.Ellipsis,
+                                            onTextLayout = { textLayoutResult = it },
+                                        )
+                                    }
                                 }
                             }
                             // Single custom-Layout slot for the one-way "Read more"
@@ -1275,6 +1281,11 @@ private fun BoxScope.MediaTimestampOverlay(
             }
         }
     }
+}
+
+@Composable
+private fun SelectableOnDesktop(enabled: Boolean, content: @Composable () -> Unit) {
+    if (enabled && isDesktopOrWeb()) SelectionContainer(content = content) else content()
 }
 
 /**
