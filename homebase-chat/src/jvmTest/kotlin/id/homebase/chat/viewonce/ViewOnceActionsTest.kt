@@ -90,7 +90,7 @@ class ViewOnceActionsTest {
             val s = scenario(this, fixture)
 
             assertTrue(!s.actions.isConsumed(s.messageId))
-            s.actions.onViewerClosed(s.stored())
+            s.actions.onViewerClosed(s.conversationId, s.messageId)
             assertTrue(s.actions.isConsumed(s.messageId))
 
             val reactionRow = assertNotNull(
@@ -206,7 +206,7 @@ class ViewOnceActionsTest {
             val s = scenario(this, fixture)
             val message = s.stored()
 
-            s.actions.onScreenshot(message)
+            s.actions.onScreenshot(message.conversationId, message.id)
             val shotRow = assertNotNull(fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, s.shotKey()))
             assertEquals(DriveOutboxUploader.SetReactions, shotRow.uploadType)
             assertTrue(
@@ -217,7 +217,7 @@ class ViewOnceActionsTest {
             fixture.dbm.outbox.deleteByRowId(shotRow.rowId)
             assertEquals(0L, fixture.dbm.outbox.count())
 
-            s.actions.onScreenshot(message)
+            s.actions.onScreenshot(message.conversationId, message.id)
             assertEquals(0L, fixture.dbm.outbox.count(), "the guard, not outbox replacement, stops the repeat")
         }
     }
@@ -242,8 +242,8 @@ class ViewOnceActionsTest {
             val s = scenario(this, fixture)
             val message = s.stored()
 
-            s.actions.onScreenshot(message)
-            s.actions.onViewerClosed(message)
+            s.actions.onScreenshot(message.conversationId, message.id)
+            s.actions.onViewerClosed(message.conversationId, message.id)
 
             val openedRow = assertNotNull(
                 fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, reactionRowKey(s.messageId)),

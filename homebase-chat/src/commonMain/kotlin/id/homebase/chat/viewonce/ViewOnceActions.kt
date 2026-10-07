@@ -24,19 +24,18 @@ class ViewOnceActions(
     private val shotSent = mutableSetOf<Uuid>()
 
     /** At most once per viewer session; a failed enqueue frees the next screenshot to try again. */
-    suspend fun onScreenshot(message: MessageUiModel) = onScreenshot(message.conversationId, message.id)
-
     suspend fun onScreenshot(conversationId: Uuid, messageId: Uuid) {
         if (!shotMutex.withLock { shotSent.add(messageId) }) return
+        suspend fun free() = shotMutex.withLock { shotSent.remove(messageId) }
         try {
             val outcome = actionService.setReactions(conversationId, messageId, ViewOnceSignal.screenshotChange())
             Logger.i(TAG) { "screenshot msg=$messageId signal=$outcome" }
-            if (outcome != MutationOutcome.Queued) shotMutex.withLock { shotSent.remove(messageId) }
+            if (outcome != MutationOutcome.Queued) free()
         } catch (e: CancellationException) {
-            shotMutex.withLock { shotSent.remove(messageId) }
+            free()
             throw e
         } catch (e: Exception) {
-            shotMutex.withLock { shotSent.remove(messageId) }
+            free()
             Logger.e(TAG, e) { "screenshot signal failed msg=$messageId" }
         }
     }
@@ -46,8 +45,6 @@ class ViewOnceActions(
     suspend fun isConsumed(messageId: Uuid): Boolean = claimMutex.withLock { messageId in claimed }
 
     private suspend fun release(messageId: Uuid) = claimMutex.withLock { claimed.remove(messageId) }
-
-    suspend fun onViewerClosed(message: MessageUiModel) = onViewerClosed(message.conversationId, message.id)
 
     /** `_vo` first, then the soft delete, which the outbox holds back until the `_vo` row has drained. */
     suspend fun onViewerClosed(conversationId: Uuid, messageId: Uuid) {

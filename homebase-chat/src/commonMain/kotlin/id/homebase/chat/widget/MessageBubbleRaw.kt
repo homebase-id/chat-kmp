@@ -311,18 +311,18 @@ fun MessageBubbleRaw(
             val contentColor =
                 if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
                 else MaterialTheme.colorScheme.onSurface
-            val viewOnceState = remember(message, sentByYou) {
-                // sentByYou already settled authorship; hand stateOf an identity that agrees with it.
-                val me = if (sentByYou) message.originalAuthor else null
-                ViewOnceRules.stateOf(message, Clock.System.now().toEpochMilliseconds(), me)
+            // sentByYou already settled authorship; hand the rules an identity that agrees with it.
+            val viewOnceMe = if (sentByYou) message.originalAuthor else null
+            val viewOnceState = remember(message, viewOnceMe) {
+                ViewOnceRules.stateOf(message, Clock.System.now().toEpochMilliseconds(), viewOnceMe)
             }
             ViewOnceBubble(
                 descriptor = content.descriptor,
                 isOutgoing = sentByYou,
                 state = viewOnceState,
                 openedCount = if (sentByYou) ViewOnceRules.openedCount(message) else 0,
-                screenshotTaken = remember(message, sentByYou) {
-                    ViewOnceRules.screenshotTaken(message, if (sentByYou) message.originalAuthor else null)
+                screenshotTaken = remember(message, viewOnceMe) {
+                    ViewOnceRules.screenshotTaken(message, viewOnceMe)
                 },
                 canView = isMobile(),
                 onOpen = remember(message, viewOnceState, sentByYou, displayOnly) {

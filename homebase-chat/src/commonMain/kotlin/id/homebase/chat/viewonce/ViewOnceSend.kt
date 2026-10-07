@@ -27,7 +27,7 @@ suspend fun buildViewOnceBundle(
 ): PayloadBundle = MessageAttachmentBuilder.buildSingle(
     attachment = attachment,
     fileOperationsProvider = fileOperationsProvider,
-    payloadKey = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}0",
+    payloadKey = VIEW_ONCE_PAYLOAD_KEY,
     mediaQuality = mediaQuality,
 ).withoutThumbnails()
 
