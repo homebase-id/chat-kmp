@@ -1308,7 +1308,6 @@ internal fun MessageUiModel.toReplyPreview(): ReplyPreview {
             viewOnce == null && payloads.replyQuoteMediaPayloads().firstOrNull()?.isVisualMedia() == true
         },
         context = (messageContent as? MessageContent.Event)?.descriptor
-            ?.let { ReplyContext.event(it.startUtcMs) }
-            ?: viewOnce?.descriptor?.kind?.let { ReplyContext.viewOnce(it) },
+            ?.let { ReplyContext.event(it.startUtcMs) },
     )
 }

@@ -74,8 +74,11 @@ class ViewOnceTombstoneMapperTest {
             previewThumbnailJson = thumb,
         )
 
-        val model = assertNotNull(mapToMessageData(header, ownerCredentials()))
+        val model = assertNotNull(
+            mapToMessageData(header, ownerCredentials(), displayNameResolver = { "Resolved Contact" }),
+        )
 
+        assertEquals(VO_SENDER, model.displayName)
         assertNull(model.messageContent)
         assertEquals("Deleted File", model.content)
         assertTrue(model.isDeleted)

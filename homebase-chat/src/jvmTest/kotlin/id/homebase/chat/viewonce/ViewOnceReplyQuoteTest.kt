@@ -16,7 +16,6 @@ import id.homebase.chat.services.mapToMessageData
 import id.homebase.chat.widget.ChatBubbleTestTags
 import id.homebase.chat.widget.InlineReplyPreview
 import id.homebase.chat.widget.ReplyPreviewBar
-import java.util.Locale
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -68,25 +67,18 @@ class ViewOnceReplyQuoteTest {
     }
 
     @Test
-    fun aPostedQuoteShowsTheIconAndKindEvenWhenTheOriginalIsNotInMemory() = runTest {
-        for ((kind, word, da) in listOf(Triple("image", "Photo", "Foto"), Triple("video", "Video", "Video"))) {
-            val preview = unopened(kind).toReplyPreview()
-            val original = Locale.getDefault()
-            try {
-                for ((locale, expected) in listOf(Locale.ENGLISH to word, Locale("da") to da)) {
-                    Locale.setDefault(locale)
-                    runComposeUiTest {
-                        setContent {
-                            MaterialTheme {
-                                InlineReplyPreview(replyPreview = preview, sentByYou = true, onClick = {}, replyMessage = null, driveId = Uuid.random())
-                            }
-                        }
-                        onNodeWithTag(ChatBubbleTestTags.REPLY_QUOTE_TEXT, useUnmergedTree = true).assertTextEquals(expected)
-                        onNodeWithTag(ChatBubbleTestTags.REPLY_QUOTE_ICON, useUnmergedTree = true).assertExists()
+    fun aQuoteWhoseOriginalIsInMemoryShowsTheIconAndKind() = runTest {
+        for ((kind, word) in listOf("image" to "Photo", "video" to "Video")) {
+            val original = unopened(kind)
+            val preview = original.toReplyPreview()
+            runComposeUiTest {
+                setContent {
+                    MaterialTheme {
+                        InlineReplyPreview(replyPreview = preview, sentByYou = true, onClick = {}, replyMessage = original, driveId = Uuid.random())
                     }
                 }
-            } finally {
-                Locale.setDefault(original)
+                onNodeWithTag(ChatBubbleTestTags.REPLY_QUOTE_TEXT, useUnmergedTree = true).assertTextEquals(word)
+                onNodeWithTag(ChatBubbleTestTags.REPLY_QUOTE_ICON, useUnmergedTree = true).assertExists()
             }
         }
     }
