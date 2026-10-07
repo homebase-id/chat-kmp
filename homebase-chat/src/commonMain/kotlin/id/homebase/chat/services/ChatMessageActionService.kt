@@ -228,9 +228,12 @@ class ChatMessageActionService(
         }
     }
 
-    private companion object {
-        const val TAG = "MarkAsRead"
-        const val REACTIONS_TAG = "ChatReactions"
+    internal companion object {
+        fun reactionSetRowKey(messageId: Uuid, scope: String): Uuid =
+            Md5.toGuidId("reaction-set:$messageId:$scope")
+
+        private const val TAG = "MarkAsRead"
+        private const val REACTIONS_TAG = "ChatReactions"
     }
 
     suspend fun toggleReaction(conversationId: Uuid, messageId: Uuid, emoji: String):
@@ -264,7 +267,7 @@ class ChatMessageActionService(
             return MutationOutcome.Refused(IllegalArgumentException("invalid reaction code"))
         }
         val toJson = { code: String -> OdinSystemSerializer.serialize(ReactionContent(emoji = code)) }
-        val rowKey = Md5.toGuidId("reaction-set:$messageId:${change.scope}")
+        val rowKey = reactionSetRowKey(messageId, change.scope)
         val outcome = optimisticWriter.setReactions(
             driveId = chatDrive,
             uniqueId = messageId,
@@ -281,9 +284,20 @@ class ChatMessageActionService(
 
     // -------------------- DELETE --------------------
 
+    /** The stored row's state, not a caller's possibly stale copy: a queued delete tombstones it at once. */
+    suspend fun isDeletedLocally(messageId: Uuid): Boolean {
+        val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+        return dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, chatDrive, messageId)?.isSoftDeleted() == true
+    }
+
+    /**
+     * [runAfter] is an outbox row key (see [reactionSetRowKey]) the server delete must wait for,
+     * for a caller whose earlier queued write would otherwise race the delete and lose.
+     */
     suspend fun deleteMessage(
         messageId: Uuid,
-        deleteForEveryone: Boolean
+        deleteForEveryone: Boolean,
+        runAfter: Uuid? = null,
     ) {
         val msg = messageLookup.getMessage(messageId) ?: return
 
@@ -340,7 +354,7 @@ class ChatMessageActionService(
             null
         }
 
-        optimisticWriter.deleteFile(chatDrive, messageId, recipients, hardDelete)
+        optimisticWriter.deleteFile(chatDrive, messageId, recipients, hardDelete, runAfter)
     }
 
     

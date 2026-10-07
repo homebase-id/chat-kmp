@@ -16,6 +16,10 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.viewonce.ViewOnceActions
+import id.homebase.chat.viewonce.viewOnceViewerFor
+import kotlin.time.Clock
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
@@ -56,6 +60,7 @@ internal class MediaDownloadHandler(
     private val driveFileProvider: DriveFileProvider,
     private val fileOperationsProvider: FileOperationsProvider,
     private val chatMessageActionService: ChatMessageActionService,
+    private val viewOnceActions: ViewOnceActions,
     private val chatMessageStream: ChatMessageStream,
     private val localVideoContextStore: LocalAttachmentContextStore,
     private val sendEvent: (ConversationListUiEvent) -> Unit,
@@ -319,9 +324,23 @@ internal class MediaDownloadHandler(
         sendEvent(SaveFileToDevice(filePath, fileName))
     }
 
+    fun handleViewOnceViewerClosed(action: ConversationListUiAction.ViewOnceViewerClosed) {
+        // The viewer's own scope is already gone by now; the view model's outlives it.
+        scope.launch { viewOnceActions.onViewerClosed(action.conversationId, action.messageId) }
+    }
+
     fun handleMediaClicked(action: ConversationListUiAction.MediaClicked) {
         scope.launch {
             try {
+                // A view-once item never takes the generic viewer: it would cache, share and save.
+                if (action.message.messageContent is MessageContent.ViewOnce) {
+                    viewOnceViewerFor(
+                        message = action.message,
+                        nowMs = Clock.System.now().toEpochMilliseconds(),
+                        myOdinId = uiState.value.ownerSession?.odinId,
+                    )?.let { viewer -> messagesUiState.update { it.copy(fullScreenOverlay = viewer) } }
+                    return@launch
+                }
                 val selectedPayload =
                     action.message.payloads?.firstOrNull { it.key == action.payloadKey }
                         ?: return@launch

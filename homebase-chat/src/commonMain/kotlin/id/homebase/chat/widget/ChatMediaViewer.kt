@@ -13,6 +13,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.ShareMedia
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MessageListUiState
+import id.homebase.chat.viewonce.ViewOnceViewer
 
 /**
  * Rendered either inside the messages pane (single-pane, where the shared-element scopes come
@@ -53,6 +54,14 @@ internal fun ChatMediaViewer(
                 )
             },
             uploadStatus = data.uploadMessageId?.let { uiState.uploadProgress[it] },
+        )
+
+        is FullScreenOverlay.ViewOnceViewer -> ViewOnceViewer(
+            data = data,
+            onViewerClosed = {
+                onUiAction(ConversationListUiAction.ViewOnceViewerClosed(data.conversationId, data.messageId))
+            },
+            onDismiss = { onUiAction(CloseFullScreenOverlay) },
         )
 
         is FullScreenOverlay.PdfViewerData -> ChatPdfViewer(

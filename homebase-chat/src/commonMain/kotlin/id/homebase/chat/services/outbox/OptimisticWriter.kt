@@ -517,6 +517,7 @@ class OptimisticWriter(
         uniqueId: Uuid,
         recipients: List<OdinId>?,
         hardDelete: Boolean = false,
+        dependencyUniqueId: Uuid? = null,
     ): MutationOutcome = writeDelete(driveId, uniqueId) { original ->
         outboxSync.tryEnqueue(
             request = DeleteLocalFilesByFileIdRequest(
@@ -524,7 +525,8 @@ class OptimisticWriter(
                 fileIds = listOf(original.fileId),
                 recipients = recipients,
                 hardDelete = hardDelete,
-            )
+            ),
+            dependencyUniqueId = dependencyUniqueId,
         )
     }
 
@@ -672,10 +674,17 @@ class OptimisticWriter(
             gate("delete", uniqueId) { enqueue(existingFile) }?.let { return it }
         }
 
+        // A view-once tombstone's age (updated - created) decides Opened vs Expired, so it carries
+        // the real delete time, as the server's own tombstone does.
+        val deletedAt = if (existingFile.fileMetadata.appData.dataType == ChatProtocol.ChatViewOnceMessageDataType) {
+            maxOf(existingFile.optimisticStamp(), UnixTimeUtc())
+        } else {
+            existingFile.optimisticStamp()
+        }
         val deletedFile = existingFile.copy(
             fileState = FileState.Deleted,
             fileMetadata = existingFile.fileMetadata.copy(
-                updated = existingFile.optimisticStamp(),
+                updated = deletedAt,
                 payloads = emptyList(),
                 appData = existingFile.fileMetadata.appData.copy(
                     content = "",

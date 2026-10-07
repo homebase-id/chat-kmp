@@ -573,6 +573,7 @@ fun MomentDetailPane(
                     is FullScreenOverlay.VideoPlayerData -> "video"
                     is FullScreenOverlay.AttachmentData -> "attachment"
                     is FullScreenOverlay.PdfViewerData -> "pdf"
+                    is FullScreenOverlay.ViewOnceViewer -> "viewOnce"
                 }
             },
             transitionSpec = {
@@ -626,6 +627,10 @@ fun MomentDetailPane(
 
                 is FullScreenOverlay.PdfViewerData -> {
                     // Not used by moments — PDFs are chat-only.
+                }
+
+                is FullScreenOverlay.ViewOnceViewer -> {
+                    // Chat-only; the moments VM never emits this variant.
                 }
             }
         }

@@ -361,6 +361,18 @@ sealed interface FullScreenOverlay {
         val processingAttachmentIds: Set<Uuid> = emptySet(),
     ) : FullScreenOverlay
 
+    /** A received view-once item. Carries no title, caption or timestamp: the viewer shows only the media. */
+    @Immutable
+    data class ViewOnceViewer(
+        val messageId: Uuid,
+        val conversationId: Uuid,
+        val fileId: Uuid,
+        val payload: PayloadDescriptor,
+        val keyHeader: KeyHeader,
+        /** [id.homebase.chat.viewonce.ViewOnceDescriptor.KIND_IMAGE] or KIND_VIDEO. */
+        val kind: String,
+    ) : FullScreenOverlay.MediaViewer
+
     @Immutable
     data class VideoPlayerData(
         val fileId: Uuid,

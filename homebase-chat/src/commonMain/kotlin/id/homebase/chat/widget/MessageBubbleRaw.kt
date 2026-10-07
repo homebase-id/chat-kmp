@@ -81,7 +81,9 @@ import id.homebase.chat.poll.PollBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.viewonce.ViewOnceBubble
+import id.homebase.chat.viewonce.VIEW_ONCE_PAYLOAD_KEY
 import id.homebase.chat.viewonce.ViewOnceRules
+import id.homebase.chat.viewonce.ViewOnceState
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -320,6 +322,14 @@ fun MessageBubbleRaw(
                 state = viewOnceState,
                 openedCount = if (sentByYou) ViewOnceRules.openedCount(message) else 0,
                 openOnPhone = !isMobile(),
+                onOpen = remember(message, viewOnceState, sentByYou, displayOnly) {
+                    val payload = message.payloads?.firstOrNull { it.key == VIEW_ONCE_PAYLOAD_KEY }
+                    if (payload != null && !sentByYou && !displayOnly && isMobile() &&
+                        viewOnceState == ViewOnceState.Unopened
+                    ) {
+                        { onMediaClick(payload) }
+                    } else null
+                },
                 shape = remember(sentByYou, clusterPosition) { messageBubbleShape(sentByYou, clusterPosition) },
                 containerColor = containerColor,
                 contentColor = contentColor,

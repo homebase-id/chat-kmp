@@ -99,10 +99,11 @@ fun ViewOnceBubble(
     val consumed = state == ViewOnceState.Opened || state == ViewOnceState.Expired
     // The sender never opens its own copy, and a consumed or desktop copy has nothing left to open.
     val canOpen = onOpen != null && descriptor != null && !isOutgoing && !consumed && !openOnPhone
+    // A consumed item renders from state alone: its tombstone carries no descriptor.
     val badge = when {
-        descriptor == null -> Badge.Unparseable
         state == ViewOnceState.Expired -> Badge.Expired
         state == ViewOnceState.Opened -> Badge.Opened
+        descriptor == null -> Badge.Unparseable
         isOutgoing -> Badge.Sent
         canOpen && phase == ViewOnceOpenPhase.Opening -> Badge.Opening
         canOpen && phase == ViewOnceOpenPhase.Failed -> Badge.Failed
@@ -118,11 +119,6 @@ fun ViewOnceBubble(
     val subtitle: String?
     val subtitleColor: Color
     when {
-        descriptor == null -> {
-            title = stringResource(MR.string.chat_view_once_unparseable)
-            subtitle = null
-            subtitleColor = mutedColor
-        }
         consumed -> {
             title = when {
                 state == ViewOnceState.Expired -> stringResource(MR.string.chat_view_once_expired)
@@ -130,6 +126,11 @@ fun ViewOnceBubble(
                 else -> stringResource(MR.string.chat_view_once_opened)
             }
             subtitle = kindLabel
+            subtitleColor = mutedColor
+        }
+        descriptor == null -> {
+            title = stringResource(MR.string.chat_view_once_unparseable)
+            subtitle = null
             subtitleColor = mutedColor
         }
         else -> {
@@ -210,11 +211,11 @@ fun ViewOnceBubble(
                 ) {
                     Text(
                         text = title,
-                        style = if (descriptor == null) MaterialTheme.typography.bodyMedium.withContentDirection()
+                        style = if (badge == Badge.Unparseable) MaterialTheme.typography.bodyMedium.withContentDirection()
                         else MaterialTheme.typography.titleMediumEmphasized.withContentDirection(),
                         color = when {
-                            descriptor == null -> colors.onSurfaceVariant
                             consumed -> mutedColor
+                            descriptor == null -> colors.onSurfaceVariant
                             else -> contentColor
                         },
                     )

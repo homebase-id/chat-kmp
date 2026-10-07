@@ -127,6 +127,9 @@ sealed interface ConversationListUiAction {
 
     data object CloseFullScreenOverlay : ConversationListUiAction
 
+    /** The view-once viewer went away, by any route; consumes the item. */
+    data class ViewOnceViewerClosed(val conversationId: Uuid, val messageId: Uuid) : ConversationListUiAction
+
     /**
      * Persist where the user is reading in this conversation. The anchor is
      * the uniqueId of the topmost visible message (resolved by the pane from

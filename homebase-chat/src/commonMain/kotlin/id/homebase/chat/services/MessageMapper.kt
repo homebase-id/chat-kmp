@@ -169,6 +169,10 @@ suspend fun mapToMessageData(
             else
                 minOf(UnixTimeUtc(appData.userDate!!), metadata.created)
 
+            // The tombstone has no content: the bubble renders from state, and nothing of the
+            // payload may stay reachable, even on an optimistic local tombstone.
+            val isViewOnce = appData.dataType == ChatProtocol.ChatViewOnceMessageDataType
+
             return MessageUiModel(
                 id = appData.uniqueId ?: header.fileId,
                 globalTransitId = metadata.globalTransitId,
@@ -187,8 +191,8 @@ suspend fun mapToMessageData(
                 content = "Deleted File",
                 messageAppData = MessageAppData(),
                 reactionPreview = reactionPreview,
-                previewThumbnail = metadata.appData.previewThumbnail,
-                payloads = metadata.payloads?.toPersistentList(),
+                previewThumbnail = if (isViewOnce) null else metadata.appData.previewThumbnail,
+                payloads = if (isViewOnce) null else metadata.payloads?.toPersistentList(),
                 keyHeader = header.keyHeader,
                 isDeleted = true,
                 versionTag = versionTag,
@@ -197,6 +201,7 @@ suspend fun mapToMessageData(
                 isPinned = isPinned,
                 isAutoPinDismissed = isAutoPinDismissed,
                 isManuallyPinned = isManuallyPinned,
+                messageContent = if (isViewOnce) MessageContent.ViewOnce(descriptor = null) else null,
                 hasMore = hasMore
             )
         }

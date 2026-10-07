@@ -60,6 +60,8 @@ import id.homebase.core.location.emergency.EmergencyLocateService
 import id.homebase.core.location.emergency.EmergencyLocateStore
 import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.viewonce.ViewOnceActions
+import id.homebase.chat.viewonce.ViewOncePayloadLoader
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMediaAutoSaveService
 import id.homebase.chat.services.ChatMessageStream
@@ -850,6 +852,7 @@ val appModule = module {
             stream.autoPinTypedMessage = { messageId, dependencyUniqueId ->
                 get<ChatMessageActionService>().pinMessage(messageId, dependencyUniqueId)
             }
+            stream.sweepViewOnce = { messages, nowMs -> get<ViewOnceActions>().sweep(messages, nowMs) }
         }
     }
     single<MessageLookup> { get<ChatMessageStream>() }
@@ -862,6 +865,8 @@ val appModule = module {
     single { CardRepository(ProfileRepositoryCardStore(get())) }
     singleOf(::CardTapShare)
     singleOf(::ChatMessageActionService)
+    single { ViewOnceActions(get(), get()) }
+    single { ViewOncePayloadLoader(get()) { driveId, fileId -> get<HomebaseImageLoader>().evictFile(driveId, fileId) } }
     singleOf(::DiceRollPreferences)
     singleOf(::EventReminderPreferences)
     // Explicit `single` (not `singleOf`) — the ctor's `now` clock arg is an intentional Kotlin
@@ -997,6 +1002,7 @@ val appModule = module {
             chatMessageStream = get(),
             chatMessageSenderService = get(),
             chatMessageActionService = get(),
+            viewOnceActions = get(),
             conversationService = get(),
             userPreferences = get(),
             fileOperationsProvider = get(),

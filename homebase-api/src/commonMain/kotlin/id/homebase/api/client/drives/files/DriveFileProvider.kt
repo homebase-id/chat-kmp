@@ -158,6 +158,7 @@ public class DriveFileProvider(
         key: String,
         onDownloadProgress: ((Float) -> Unit)?,
     ) {
+        if (driveCache.isEphemeral(fileId)) return
         driveCache.getPayloadBytesRaw(driveId, fileId, key, onDownloadProgress = onDownloadProgress)
     }
 
@@ -172,6 +173,7 @@ public class DriveFileProvider(
         chunkLength: Long,
         onDownloadProgress: ((Float) -> Unit)?,
     ) {
+        if (driveCache.isEphemeral(fileId)) return
         driveCache.getPayloadBytesRaw(
             driveId = driveId,
             fileId = fileId,
@@ -183,6 +185,18 @@ public class DriveFileProvider(
             onDownloadProgress = onDownloadProgress,
         )
     }
+
+    /** Network-only fetch + in-memory decrypt; see [DriveFileProviderCached.getPayloadBytesDecryptedFromNetwork]. */
+    suspend fun getPayloadBytesDecryptedFromNetwork(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        keyHeader: KeyHeader,
+    ): BytesResponse = driveCache.getPayloadBytesDecryptedFromNetwork(driveId, fileId, key, keyHeader)
+
+    suspend fun markPayloadEphemeral(fileId: Uuid) = driveCache.markEphemeral(fileId)
+
+    suspend fun evictFile(driveId: Uuid, fileId: Uuid, key: String) = driveCache.evictFile(driveId, fileId, key)
 
     override suspend fun getPayloadBytesDecrypted(
         driveId: Uuid,
