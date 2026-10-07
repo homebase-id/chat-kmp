@@ -66,7 +66,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.ripple
 import androidx.compose.ui.semantics.Role
-import androidx.compose.material3.minimumInteractiveComponentSize
 import id.homebase.resources.cd_view_once_toggle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -1223,6 +1222,7 @@ private fun EmojiToggleButton(
 }
 
 const val VIEW_ONCE_TOGGLE_TAG = "viewOnceToggle"
+private val VIEW_ONCE_TOGGLE_TARGET = 48.dp
 
 // Outlined circle off, filled squircle on: shape, fill and outline travel together on the motion scheme, as one control.
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -1246,8 +1246,9 @@ private fun ViewOnceCaptionToggle(toggle: ViewOnceToggle) {
     val glyph by animateColorAsState(if (toggle.checked) colors.onPrimary else colors.onSurfaceVariant, motion.defaultEffectsSpec())
     val shape = RoundedCornerShape(corner)
     Box(
+        // minimumInteractiveComponentSize measured 32dp in the editor's trailing slot, so the target is sized explicitly.
         modifier = Modifier
-            .minimumInteractiveComponentSize()
+            .size(VIEW_ONCE_TOGGLE_TARGET)
             .testTag(VIEW_ONCE_TOGGLE_TAG)
             .toggleable(
                 value = toggle.checked,

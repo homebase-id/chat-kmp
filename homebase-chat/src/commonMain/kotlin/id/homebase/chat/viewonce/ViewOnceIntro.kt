@@ -16,8 +16,10 @@ import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.ui.graphics.vector.ImageVector
 import id.homebase.resources.chat_view_once_close
 import id.homebase.resources.chat_view_once_intro_row_disappears
@@ -116,7 +118,7 @@ internal fun ViewOnceIntroContent(isVideo: Boolean, onOk: () -> Unit, modifier: 
                 modifier = Modifier.padding(top = 24.dp).testTag(VIEW_ONCE_INTRO_TITLE_TAG),
             )
             Column(Modifier.padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                ViewOnceIntroRow(ViewOnceRingIcon, stringResource(MR.string.chat_view_once_intro_row_disappears))
+                ViewOnceIntroRow(Icons.Outlined.VisibilityOff, stringResource(MR.string.chat_view_once_intro_row_disappears))
                 ViewOnceIntroRow(Icons.Outlined.Lock, stringResource(MR.string.chat_view_once_intro_row_protected))
             }
             Button(
@@ -131,15 +133,16 @@ internal fun ViewOnceIntroContent(isVideo: Boolean, onOk: () -> Unit, modifier: 
                 Text(stringResource(MR.string.chat_view_once_intro_ok))
             }
         }
-        IconButton(
+        FilledTonalIconButton(
             onClick = onOk,
-            modifier = Modifier.align(Alignment.TopEnd).padding(end = 8.dp).testTag(VIEW_ONCE_INTRO_CLOSE_TAG),
+            shapes = IconButtonDefaults.shapes(),
+            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = colors.surfaceContainerHighest,
+                contentColor = colors.onSurfaceVariant,
+            ),
+            modifier = Modifier.align(Alignment.TopEnd).padding(end = 12.dp).size(48.dp).testTag(VIEW_ONCE_INTRO_CLOSE_TAG),
         ) {
-            Icon(
-                Icons.Default.Close,
-                contentDescription = stringResource(MR.string.chat_view_once_close),
-                tint = colors.onSurfaceVariant,
-            )
+            Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.chat_view_once_close))
         }
     }
 }

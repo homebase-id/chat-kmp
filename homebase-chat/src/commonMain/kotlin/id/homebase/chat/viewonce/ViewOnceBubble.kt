@@ -37,9 +37,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -49,6 +51,7 @@ import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import id.homebase.resources.MR
 import id.homebase.resources.cd_view_once_open
 import id.homebase.resources.cd_view_once_toggle
@@ -104,7 +107,6 @@ fun ViewOnceBubble(
     val colors = MaterialTheme.colorScheme
     val motion = MaterialTheme.motionScheme
     val consumed = state == ViewOnceState.Opened || state == ViewOnceState.Expired
-    val container by animateColorAsState(if (consumed) colors.surfaceContainerHigh else containerColor, motion.defaultEffectsSpec())
     val content by animateColorAsState(if (consumed) colors.onSurfaceVariant else contentColor, motion.defaultEffectsSpec())
     // The sender never opens its own copy, and a consumed or desktop copy has nothing left to open.
     val canOpen = onOpen != null && descriptor != null && !isOutgoing && !consumed && canView
@@ -155,7 +157,18 @@ fun ViewOnceBubble(
 
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val pressScale by animateFloatAsState(if (pressed) 0.97f else 1f, motion.fastSpatialSpec())
+    val pressScale by animateFloatAsState(if (pressed) 0.96f else 1f, motion.fastSpatialSpec())
+    val container by animateColorAsState(
+        when {
+            // M3 pressed state layer over the highest container, so the press reads in light theme too.
+            pressed -> colors.onSurface.copy(alpha = PRESSED_STATE_ALPHA).compositeOver(colors.surfaceContainerHighest)
+            consumed -> colors.surfaceContainerHigh
+            else -> containerColor
+        },
+        if (pressed) motion.fastEffectsSpec() else motion.defaultEffectsSpec(),
+    )
+    // The glyph carries the meaning, so it grows with the label at large font scales.
+    val glyphSize = with(LocalDensity.current) { GLYPH_SIZE.toDp() }
     val openLabel = stringResource(MR.string.cd_view_once_open)
     val viewOnceLabel = stringResource(MR.string.cd_view_once_toggle)
     val sentLabel = if (isOutgoing && !consumed && descriptor != null) stringResource(MR.string.chat_view_once_sent) else null
@@ -232,11 +245,11 @@ fun ViewOnceBubble(
         FooterCentredOrBelow(footer = { footer(content) }) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(GLYPH_SIZE), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(glyphSize), contentAlignment = Alignment.Center) {
                         if (glyph == null) {
-                            ViewOnceLoadingIndicator(GLYPH_SIZE)
+                            ViewOnceLoadingIndicator(glyphSize)
                         } else {
-                            Icon(glyph, contentDescription = null, tint = glyphTint, modifier = Modifier.size(GLYPH_SIZE))
+                            Icon(glyph, contentDescription = null, tint = glyphTint, modifier = Modifier.size(glyphSize))
                         }
                     }
                     Text(
@@ -262,7 +275,7 @@ fun ViewOnceBubble(
                 }
                 val lines = status + listOfNotNull(shotNote)
                 if (lines.isNotEmpty()) {
-                    Column(Modifier.padding(start = GLYPH_SIZE + 8.dp, top = 2.dp)) {
+                    Column(Modifier.padding(start = glyphSize + 8.dp, top = 2.dp)) {
                         lines.forEachIndexed { index, line ->
                             Text(
                                 text = line,
@@ -288,8 +301,9 @@ internal fun ViewOnceLoadingIndicator(size: Dp, modifier: Modifier = Modifier) {
     LoadingIndicator(modifier = modifier.size(size), color = MaterialTheme.colorScheme.primary)
 }
 
-private val GLYPH_SIZE = 22.dp
+private val GLYPH_SIZE = 22.sp
 private const val STATUS_ALPHA = 0.72f
+private const val PRESSED_STATE_ALPHA = 0.10f
 
 // The timestamp sits beside the content on its vertical centre, and drops below when that would squeeze it.
 @Composable

@@ -36,7 +36,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.MoreVert
@@ -46,6 +45,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -78,7 +78,6 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -92,6 +91,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -107,6 +107,7 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.widget.quickReactions
 import id.homebase.core.util.SecureWindowEffect
+import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.rememberScreenCaptureObserver
 import id.homebase.resources.MR
 import id.homebase.resources.cd_view_once_toggle
@@ -124,6 +125,7 @@ import id.homebase.resources.chat_view_once_unmute
 import id.homebase.resources.chat_view_once_viewer_failed_body
 import id.homebase.resources.chat_view_once_viewer_failed_title
 import id.homebase.resources.delete
+import id.homebase.resources.info
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -146,6 +148,8 @@ const val VIEW_ONCE_VIEWER_PLAY_TAG = "viewOnceViewerPlay"
 const val VIEW_ONCE_VIEWER_ELAPSED_TAG = "viewOnceViewerElapsed"
 const val VIEW_ONCE_VIEWER_REMAINING_TAG = "viewOnceViewerRemaining"
 const val VIEW_ONCE_VIEWER_INFO_TAG = "viewOnceViewerInfo"
+const val VIEW_ONCE_VIEWER_MENU_INFO_TAG = "viewOnceViewerMenuInfo"
+const val VIEW_ONCE_VIEWER_TITLE_TAG = "viewOnceViewerTitle"
 
 /**
  * Full-screen viewer for one received view-once item. It has no save, share, forward or paging,
@@ -242,6 +246,8 @@ fun ViewOnceViewer(
     var muted by remember(data.messageId) { mutableStateOf(false) }
     ViewOnceViewerFrame(
         isVideo = isVideo,
+        senderName = data.senderName,
+        sentAt = data.sentAt?.let { formatTimestamp(it) },
         caption = remember(data.caption) { data.caption?.let { markdownToPlainPreview(it, ViewOnceDescriptor.MAX_CAPTION_CODEPOINTS) }?.takeIf { it.isNotBlank() } },
         mediaShown = shown && !failed && !screenCaptured,
         failed = failed,
@@ -318,6 +324,8 @@ internal fun ViewOnceViewerFrame(
     failed: Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    senderName: String? = null,
+    sentAt: String? = null,
     positionMs: () -> Long = { 0L },
     durationMs: Long? = null,
     playing: Boolean = true,
@@ -343,31 +351,44 @@ internal fun ViewOnceViewerFrame(
                 .pointerInput(mediaShown) { detectTapGestures { if (mediaShown) chromeRequested = !chromeRequested } },
         ) {
             body(Modifier.fillMaxSize())
-            // Back is the way out of every state, so the top bar is never part of what a tap hides.
-            ViewOnceViewerTopBar(onClose = onClose, onInfo = { infoOpen = true }, modifier = Modifier.align(Alignment.TopCenter))
-            if (!failed) {
-                AnimatedVisibility(
-                    visible = chromeVisible,
-                    enter = fadeIn(motion.defaultEffectsSpec()),
-                    exit = fadeOut(motion.defaultEffectsSpec()),
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                ) {
-                    ViewOnceViewerBottomBar(
-                        isVideo = isVideo,
-                        caption = caption,
-                        positionMs = positionMs,
-                        durationMs = durationMs,
-                        playing = playing,
-                        onTogglePlay = onTogglePlay,
-                        muted = muted,
-                        onMutedChange = onMutedChange,
-                        reactions = reactions,
-                        onReact = onReact,
-                        onReply = onReply,
-                        onDelete = onDelete,
-                        showDelete = mediaShown,
-                    )
-                }
+            AnimatedVisibility(
+                visible = chromeVisible,
+                enter = fadeIn(motion.defaultEffectsSpec()),
+                exit = fadeOut(motion.defaultEffectsSpec()),
+                modifier = Modifier.align(Alignment.TopCenter),
+            ) {
+                ChromeScrim(fromTop = true, modifier = Modifier.fillMaxWidth().height(TOP_SCRIM))
+            }
+            // Back is the way out of every state, so it is never part of what a tap hides.
+            ViewOnceViewerTopBar(
+                senderName = senderName,
+                sentAt = sentAt,
+                titleVisible = chromeVisible,
+                onClose = onClose,
+                onInfo = { infoOpen = true },
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+            AnimatedVisibility(
+                visible = chromeVisible,
+                enter = fadeIn(motion.defaultEffectsSpec()),
+                exit = fadeOut(motion.defaultEffectsSpec()),
+                modifier = Modifier.align(Alignment.BottomCenter),
+            ) {
+                ViewOnceViewerBottomBar(
+                    isVideo = isVideo,
+                    caption = caption?.takeUnless { failed },
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    playing = playing,
+                    onTogglePlay = onTogglePlay?.takeIf { mediaShown },
+                    muted = muted,
+                    onMutedChange = onMutedChange?.takeIf { mediaShown },
+                    reactions = reactions,
+                    onReact = onReact,
+                    onReply = onReply,
+                    onInfo = { infoOpen = true },
+                    onDelete = onDelete.takeIf { mediaShown },
+                )
             }
             if (infoOpen) ViewOnceIntroSheet(isVideo = isVideo, onDismiss = { infoOpen = false })
         }
@@ -376,6 +397,17 @@ internal fun ViewOnceViewerFrame(
 
 @Composable
 private fun chromeContainer(): Color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = CHROME_ALPHA)
+
+@Composable
+private fun ChromeScrim(fromTop: Boolean, modifier: Modifier = Modifier) {
+    val scrim = MaterialTheme.colorScheme.scrim
+    val stops = if (fromTop) {
+        arrayOf(0f to scrim.copy(alpha = SCRIM_ALPHA), 1f to scrim.copy(alpha = 0f))
+    } else {
+        arrayOf(0f to scrim.copy(alpha = 0f), 0.45f to scrim.copy(alpha = SCRIM_ALPHA * 0.75f), 1f to scrim.copy(alpha = SCRIM_ALPHA))
+    }
+    Box(modifier.background(Brush.verticalGradient(colorStops = stops)))
+}
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -398,21 +430,62 @@ private fun ChromeCircleButton(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ViewOnceViewerTopBar(onClose: () -> Unit, onInfo: () -> Unit, modifier: Modifier = Modifier) {
+private fun ViewOnceViewerTopBar(
+    senderName: String?,
+    sentAt: String?,
+    titleVisible: Boolean,
+    onClose: () -> Unit,
+    onInfo: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = MaterialTheme.colorScheme
+    val motion = MaterialTheme.motionScheme
     val markLabel = stringResource(MR.string.cd_view_once_toggle)
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(0f to colors.scrim.copy(alpha = 0.6f), 1f to colors.scrim.copy(alpha = 0f)))
             .statusBarsPadding()
-            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 28.dp),
+            .padding(start = 12.dp, end = 12.dp, top = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ChromeCircleButton(onClick = onClose, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_CLOSE_TAG)) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.chat_view_once_close))
         }
-        Spacer(Modifier.weight(1f))
+        Box(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+            if (senderName != null) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = titleVisible,
+                    enter = fadeIn(motion.defaultEffectsSpec()),
+                    exit = fadeOut(motion.defaultEffectsSpec()),
+                ) {
+                    Surface(shape = CircleShape, color = chromeContainer(), contentColor = colors.onSurface) {
+                        Column(
+                            Modifier
+                                .heightIn(min = CHROME_SIZE)
+                                .padding(horizontal = 18.dp, vertical = 6.dp)
+                                .semantics(mergeDescendants = true) {}
+                                .testTag(VIEW_ONCE_VIEWER_TITLE_TAG),
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Text(
+                                text = senderName,
+                                style = MaterialTheme.typography.titleSmall.copy(textDirection = TextDirection.Content),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (sentAt != null) {
+                                Text(
+                                    text = sentAt,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = colors.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
         ChromeCircleButton(onClick = onInfo, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_INFO_TAG)) {
             Icon(ViewOnceIcon, contentDescription = markLabel, modifier = Modifier.size(IconButtonDefaults.mediumIconSize))
         }
@@ -433,154 +506,160 @@ private fun ViewOnceViewerBottomBar(
     reactions: List<String>,
     onReact: (String) -> Unit,
     onReply: () -> Unit,
-    onDelete: () -> Unit,
-    showDelete: Boolean,
+    onInfo: () -> Unit,
+    onDelete: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
-    val scrim = colors.scrim
     val motion = MaterialTheme.motionScheme
     var picking by remember { mutableStateOf(false) }
     var reacted by remember { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .drawBehind {
-                // The fade lives in the top padding; from there down the scrim is solid enough to read a caption over white.
-                val fade = (BOTTOM_FADE.toPx() / size.height).coerceIn(0f, 1f)
-                drawRect(
-                    Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0f to scrim.copy(alpha = 0f),
-                            fade to scrim.copy(alpha = SCRIM_ALPHA),
-                            1f to scrim.copy(alpha = SCRIM_ALPHA),
-                        ),
-                    ),
+    Box(modifier.fillMaxWidth()) {
+        ChromeScrim(fromTop = false, modifier = Modifier.matchParentSize())
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .widthIn(max = BOTTOM_BAR_MAX_WIDTH)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(start = 12.dp, end = 12.dp, top = BOTTOM_FADE, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (caption != null) {
+                Text(
+                    text = caption,
+                    style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
+                    color = colors.onSurface,
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp)
+                        .heightIn(max = 160.dp)
+                        .verticalScroll(rememberScrollState())
+                        .testTag(VIEW_ONCE_VIEWER_CAPTION_TAG),
                 )
             }
-            .navigationBarsPadding()
-            .padding(start = 12.dp, end = 12.dp, top = BOTTOM_FADE, bottom = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (caption != null) {
-            Text(
-                text = caption,
-                style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
-                color = colors.onSurface,
-                modifier = Modifier
-                    .padding(horizontal = 8.dp)
-                    .heightIn(max = 160.dp)
-                    .verticalScroll(rememberScrollState())
-                    .testTag(VIEW_ONCE_VIEWER_CAPTION_TAG),
-            )
-        }
-        if (isVideo && onTogglePlay != null) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ChromeCircleButton(onClick = onTogglePlay, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_PLAY_TAG)) {
-                    Icon(
-                        if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = stringResource(if (playing) MR.string.chat_view_once_pause else MR.string.chat_view_once_play),
-                    )
-                }
-                val duration = durationMs?.takeIf { it > 0 }
-                val position = positionMs().coerceAtLeast(0L).let { if (duration != null) it.coerceAtMost(duration) else it }
-                PlaybackTime(formatPlaybackTime(position), Modifier.testTag(VIEW_ONCE_VIEWER_ELAPSED_TAG))
-                if (duration != null) {
-                    val smooth by rememberPlaybackProgress(positionMs, duration)
-                    LinearProgressIndicator(
-                        progress = { smooth },
-                        color = colors.primary,
-                        trackColor = colors.onSurface.copy(alpha = 0.24f),
-                        gapSize = 0.dp,
-                        drawStopIndicator = {},
-                        modifier = Modifier.weight(1f).height(3.dp).testTag(VIEW_ONCE_VIEWER_PROGRESS_TAG),
-                    )
-                    PlaybackTime("-" + formatPlaybackTime(duration - position), Modifier.testTag(VIEW_ONCE_VIEWER_REMAINING_TAG))
-                } else {
-                    Spacer(Modifier.weight(1f))
+            if (isVideo && onTogglePlay != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChromeCircleButton(onClick = onTogglePlay, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_PLAY_TAG)) {
+                        Icon(
+                            if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = stringResource(if (playing) MR.string.chat_view_once_pause else MR.string.chat_view_once_play),
+                        )
+                    }
+                    if (onMutedChange != null) {
+                        ChromeCircleButton(onClick = { onMutedChange(!muted) }, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_MUTE_TAG)) {
+                            Icon(
+                                if (muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                                contentDescription = stringResource(if (muted) MR.string.chat_view_once_unmute else MR.string.chat_view_once_mute),
+                            )
+                        }
+                    }
+                    val duration = durationMs?.takeIf { it > 0 }
+                    val position = positionMs().coerceAtLeast(0L).let { if (duration != null) it.coerceAtMost(duration) else it }
+                    PlaybackTime(formatPlaybackTime(position), Modifier.padding(start = 4.dp).testTag(VIEW_ONCE_VIEWER_ELAPSED_TAG))
+                    if (duration != null) {
+                        val smooth by rememberPlaybackProgress(positionMs, duration)
+                        LinearProgressIndicator(
+                            progress = { smooth },
+                            color = colors.primary,
+                            trackColor = colors.onSurface.copy(alpha = 0.24f),
+                            gapSize = 0.dp,
+                            drawStopIndicator = {},
+                            modifier = Modifier.weight(1f).height(4.dp).testTag(VIEW_ONCE_VIEWER_PROGRESS_TAG),
+                        )
+                        PlaybackTime("-" + formatPlaybackTime(duration - position), Modifier.testTag(VIEW_ONCE_VIEWER_REMAINING_TAG))
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                    }
                 }
             }
-        }
-        AnimatedVisibility(
-            visible = picking,
-            enter = fadeIn(motion.defaultEffectsSpec()) + expandVertically(motion.defaultSpatialSpec()),
-            exit = fadeOut(motion.fastEffectsSpec()) + shrinkVertically(motion.fastSpatialSpec()),
-        ) {
-            Surface(shape = CircleShape, color = chromeContainer()) {
-                Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    reactions.forEachIndexed { index, emoji ->
-                        Box(
-                            Modifier
-                                .minimumInteractiveComponentSize()
-                                .clip(CircleShape)
-                                .clickable {
-                                    reacted = emoji
-                                    picking = false
-                                    onReact(emoji)
-                                }
-                                .semantics { contentDescription = emoji }
-                                .testTag("$VIEW_ONCE_VIEWER_REACTION_TAG_PREFIX$index"),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(text = emoji.withEmojiFont(), style = MaterialTheme.typography.headlineSmall)
+            AnimatedVisibility(
+                visible = picking,
+                enter = fadeIn(motion.defaultEffectsSpec()) + expandVertically(motion.defaultSpatialSpec()),
+                exit = fadeOut(motion.fastEffectsSpec()) + shrinkVertically(motion.fastSpatialSpec()),
+            ) {
+                Surface(shape = CircleShape, color = chromeContainer()) {
+                    Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        reactions.forEachIndexed { index, emoji ->
+                            Box(
+                                Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        reacted = emoji
+                                        picking = false
+                                        onReact(emoji)
+                                    }
+                                    .semantics { contentDescription = emoji }
+                                    .testTag("$VIEW_ONCE_VIEWER_REACTION_TAG_PREFIX$index"),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(text = emoji.withEmojiFont(), style = MaterialTheme.typography.headlineSmall)
+                            }
                         }
                     }
                 }
             }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val emojiLabel = stringResource(MR.string.chat_message_emoji_options)
-            ChromeCircleButton(onClick = { if (reacted == null) picking = !picking }, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_REACT_TAG)) {
-                val current = reacted
-                if (current == null) {
-                    Icon(Icons.Outlined.EmojiEmotions, contentDescription = emojiLabel)
-                } else {
-                    Text(text = current.withEmojiFont(), style = MaterialTheme.typography.titleLarge)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val emojiLabel = stringResource(MR.string.chat_message_emoji_options)
+                ChromeCircleButton(onClick = { if (reacted == null) picking = !picking }, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_REACT_TAG)) {
+                    val current = reacted
+                    if (current == null) {
+                        Icon(Icons.Outlined.EmojiEmotions, contentDescription = emojiLabel)
+                    } else {
+                        Text(text = current.withEmojiFont(), style = MaterialTheme.typography.titleLarge)
+                    }
                 }
-            }
-            Surface(
-                onClick = onReply,
-                shape = CircleShape,
-                color = chromeContainer(),
-                contentColor = colors.onSurface,
-                modifier = Modifier.weight(1f).height(CHROME_SIZE).testTag(VIEW_ONCE_VIEWER_REPLY_TAG),
-            ) {
-                Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null, modifier = Modifier.size(IconButtonDefaults.smallIconSize))
-                    Text(
-                        text = stringResource(MR.string.chat_message_reply),
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(start = 10.dp),
-                    )
+                Surface(
+                    onClick = onReply,
+                    shape = CircleShape,
+                    color = chromeContainer(),
+                    contentColor = colors.onSurface,
+                    modifier = Modifier.weight(1f).heightIn(min = CHROME_SIZE).testTag(VIEW_ONCE_VIEWER_REPLY_TAG),
+                ) {
+                    // A field, like the composer, not an arrow: mirrored for RTL the reply arrow is the forward arrow.
+                    Box(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), contentAlignment = Alignment.CenterStart) {
+                        Text(
+                            text = stringResource(MR.string.chat_message_reply),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = colors.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
-            }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (isVideo && onMutedChange != null) {
                 Box {
                     ChromeCircleButton(onClick = { menuOpen = true }, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_MORE_TAG)) {
                         Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.string.chat_view_once_more))
                     }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false },
+                        shape = MaterialTheme.shapes.large,
+                        containerColor = colors.surfaceContainerHigh,
+                    ) {
                         DropdownMenuItem(
-                            text = { Text(stringResource(if (muted) MR.string.chat_view_once_unmute else MR.string.chat_view_once_mute)) },
-                            leadingIcon = {
-                                Icon(if (muted) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff, contentDescription = null)
-                            },
+                            text = { Text(stringResource(MR.string.info)) },
+                            leadingIcon = { Icon(Icons.Outlined.Info, contentDescription = null) },
                             onClick = {
                                 menuOpen = false
-                                onMutedChange(!muted)
+                                onInfo()
                             },
-                            modifier = Modifier.testTag(VIEW_ONCE_VIEWER_MUTE_TAG),
+                            modifier = Modifier.testTag(VIEW_ONCE_VIEWER_MENU_INFO_TAG),
                         )
+                        // An item that never rendered is not used up, so it can't be deleted from here either.
+                        if (onDelete != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(MR.string.delete), color = colors.error) },
+                                leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = colors.error) },
+                                onClick = {
+                                    menuOpen = false
+                                    onDelete()
+                                },
+                                modifier = Modifier.testTag(VIEW_ONCE_VIEWER_DELETE_TAG),
+                            )
+                        }
                     }
-                }
-            }
-            Spacer(Modifier.weight(1f))
-            if (showDelete) {
-                ChromeCircleButton(onClick = onDelete, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_DELETE_TAG)) {
-                    Icon(Icons.Outlined.Delete, contentDescription = stringResource(MR.string.delete))
                 }
             }
         }
@@ -643,7 +722,7 @@ internal fun ViewOnceViewerLoading(modifier: Modifier = Modifier) {
 internal fun ViewOnceViewerFailed(onRetry: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     Column(
-        modifier = modifier.verticalScroll(rememberScrollState()).padding(horizontal = 32.dp, vertical = 24.dp),
+        modifier = modifier.verticalScroll(rememberScrollState()).padding(start = 32.dp, end = 32.dp, top = 88.dp, bottom = 120.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -711,9 +790,11 @@ internal fun ViewOnceViewerImage(bitmap: ImageBitmap) {
 
 private const val POSITION_TICK_MS = 500
 private const val CHROME_ALPHA = 0.62f
-private const val SCRIM_ALPHA = 0.72f
+private const val SCRIM_ALPHA = 0.64f
 private val CHROME_SIZE = 48.dp
-private val BOTTOM_FADE = 56.dp
+private val BOTTOM_FADE = 72.dp
+private val TOP_SCRIM = 160.dp
+private val BOTTOM_BAR_MAX_WIDTH = 640.dp
 
 private class CloseOnce {
     private var done = false

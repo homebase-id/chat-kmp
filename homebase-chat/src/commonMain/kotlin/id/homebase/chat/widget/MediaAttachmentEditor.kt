@@ -728,6 +728,8 @@ private fun MediaAttachmentEditorContent(
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_CONTAINER_ALPHA),
+                        disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_CONTENT_ALPHA),
                     )
                 ) {
                     Icon(
@@ -742,7 +744,9 @@ private fun MediaAttachmentEditorContent(
                     onClick = addAction,
                     enabled = addMoreEnabled,
                     colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_CONTAINER_ALPHA),
+                        disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_CONTENT_ALPHA),
                     )
                 ) {
                     Icon(
@@ -970,3 +974,7 @@ private fun PdfAttachmentPreview(
         }
     }
 }
+
+// M3 disabled-state opacities: the add buttons stay legible as "not now" instead of vanishing into the strip.
+private const val DISABLED_CONTAINER_ALPHA = 0.12f
+private const val DISABLED_CONTENT_ALPHA = 0.38f

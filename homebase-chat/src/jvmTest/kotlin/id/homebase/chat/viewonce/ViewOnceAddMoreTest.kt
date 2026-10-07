@@ -22,6 +22,14 @@ import org.koin.dsl.module
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.unit.dp
+import com.mohamedrejeb.richeditor.model.rememberRichTextState
+import id.homebase.chat.widget.MessageTextFieldForAttachment
+import id.homebase.chat.widget.VIEW_ONCE_TOGGLE_TAG
+import id.homebase.chat.widget.ViewOnceToggle
 import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalTestApi::class)
@@ -72,5 +80,26 @@ class ViewOnceAddMoreTest {
     @Test
     fun withTheToggleOffBothAddMoreButtonsWork() {
         assertEquals(listOf(true, true), addButtonsEnabled(addMoreEnabled = true))
+    }
+
+    @Test
+    fun theCaptionBarToggleIsAFullTouchTargetInBothStates() {
+        for (checked in listOf(false, true)) runDesktopComposeUiTest {
+            setContent {
+                KoinIsolatedContext(koin) {
+                    MaterialTheme {
+                        MessageTextFieldForAttachment(
+                            state = rememberRichTextState(),
+                            onSendMessage = {},
+                            viewOnceToggle = ViewOnceToggle(checked) {},
+                            showFormattingToolbar = false,
+                        )
+                    }
+                }
+            }
+            waitForIdle()
+            val bounds = onNodeWithTag(VIEW_ONCE_TOGGLE_TAG).getBoundsInRoot()
+            assertTrue(bounds.right - bounds.left >= 48.dp && bounds.bottom - bounds.top >= 48.dp, "checked=$checked: $bounds")
+        }
     }
 }

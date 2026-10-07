@@ -62,6 +62,7 @@ import id.homebase.resources.MR
 import id.homebase.chat.widget.MessageTimestampFooter
 import id.homebase.chat.widget.messageBubbleShape
 import id.homebase.core.util.formatMessageTimestamp
+import id.homebase.core.util.formatTimestamp
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
@@ -125,6 +126,8 @@ class ViewOnceShotsTest {
             val muted: Boolean = false,
             val caption: String? = null,
             val picking: Boolean = false,
+            val chromeHidden: Boolean = false,
+            val sender: String = "Alice",
         ) : Scene
         data class Intro(val video: Boolean) : Scene
         data class Toast(val kind: ViewOnceToastKind) : Scene
@@ -182,6 +185,10 @@ class ViewOnceShotsTest {
             Shot("v14-viewer-video-caption-reactions", Scene.Viewer(ViewerStage.Shown, video = true, caption = "Dinner at the harbour", picking = true)),
             Shot("v11-viewer-photo-caption", Scene.Viewer(ViewerStage.Shown, caption = "Don't show anyone. The view from the ridge before the rain came in.")),
             Shot("v12-viewer-photo-landscape-top-edge", Scene.Viewer(ViewerStage.Shown), widthDp = 960, heightDp = 540),
+            Shot("v8-viewer-photo-chrome-hidden", Scene.Viewer(ViewerStage.Shown, chromeHidden = true)),
+            Shot("v10-viewer-video-chrome-hidden", Scene.Viewer(ViewerStage.Shown, video = true, chromeHidden = true)),
+            Shot("v13-viewer-group-long-name-font-scale", Scene.Viewer(ViewerStage.Shown, video = true, sender = "Bartholomew Featherstonehaugh-Wolfeschlegelsteinhausen"), fontScale = 1.6f),
+            Shot("v15-viewer-video-loading", Scene.Viewer(ViewerStage.Loading, video = true)),
             Shot("i1-intro-photo", Scene.Intro(video = false), heightDp = 620),
             Shot("i2-intro-video-font-scale-rtl", Scene.Intro(video = true), fontScale = 1.6f, rtl = true, heightDp = 820),
             Shot("t1-toast-photo", Scene.Toast(ViewOnceToastKind.Photo), heightDp = 160, settleMs = 500),
@@ -419,6 +426,8 @@ class ViewOnceShotsTest {
         ViewOnceViewerFrame(
             isVideo = scene.video,
             caption = scene.caption,
+            senderName = scene.sender,
+            sentAt = formatTimestamp(Instant.fromEpochMilliseconds(Clock.System.now().toEpochMilliseconds() - 12 * 60_000L)),
             mediaShown = scene.stage == ViewerStage.Shown,
             failed = scene.stage == ViewerStage.Failed,
             onClose = {},
@@ -487,6 +496,10 @@ class ViewOnceShotsTest {
         if ((shot.scene as? Scene.States)?.pressFirst == true) {
             mainClock.advanceTimeBy(500)
             onNodeWithTag(FIRST_ROW).performTouchInput { down(center) }
+        }
+        if ((shot.scene as? Scene.Viewer)?.chromeHidden == true) {
+            mainClock.advanceTimeBy(500)
+            onNodeWithTag(VIEW_ONCE_VIEWER_IMAGE_TAG).performClick()
         }
         if ((shot.scene as? Scene.Viewer)?.picking == true) {
             mainClock.advanceTimeBy(500)

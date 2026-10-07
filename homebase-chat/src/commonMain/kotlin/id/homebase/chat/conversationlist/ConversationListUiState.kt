@@ -362,7 +362,7 @@ sealed interface FullScreenOverlay {
         val processingAttachmentIds: Set<Uuid> = emptySet(),
     ) : FullScreenOverlay
 
-    /** A received view-once item. Carries no title or timestamp: the viewer shows the media and its optional caption. */
+    /** A received view-once item: the media, its optional caption, and who sent it when, since the thread can't be scrolled back to check. */
     @Immutable
     data class ViewOnceViewer(
         val messageId: Uuid,
@@ -374,6 +374,8 @@ sealed interface FullScreenOverlay {
         val kind: String,
         /** Shown only inside the viewer, as the last thing read from the descriptor. */
         val caption: String? = null,
+        val senderName: String? = null,
+        val sentAt: Instant? = null,
     ) : FullScreenOverlay.MediaViewer
 
     @Immutable

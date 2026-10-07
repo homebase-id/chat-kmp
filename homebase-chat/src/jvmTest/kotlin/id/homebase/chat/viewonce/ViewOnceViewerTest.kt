@@ -20,6 +20,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertTextEquals
@@ -117,7 +118,7 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun aPhotoViewerOffersOnlyBackReactReplyAndDelete_andNeverSaveShareOrForward() = runSkikoComposeUiTest {
+    fun aPhotoViewerOffersOnlyBackReactReplyAndAMenuOfInfoAndDelete_andNeverSaveShareOrForward() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
         awaitShown()
@@ -125,10 +126,14 @@ class ViewOnceViewerTest {
         assertEquals(
             setOf(
                 VIEW_ONCE_VIEWER_CLOSE_TAG, VIEW_ONCE_VIEWER_INFO_TAG, VIEW_ONCE_VIEWER_REACT_TAG,
-                VIEW_ONCE_VIEWER_REPLY_TAG, VIEW_ONCE_VIEWER_DELETE_TAG,
+                VIEW_ONCE_VIEWER_REPLY_TAG, VIEW_ONCE_VIEWER_MORE_TAG,
             ),
             tagsOfClickables(),
         )
+        onNodeWithTag(VIEW_ONCE_VIEWER_MORE_TAG).performClick()
+        waitForIdle()
+        assertTrue(present(VIEW_ONCE_VIEWER_MENU_INFO_TAG))
+        assertTrue(present(VIEW_ONCE_VIEWER_DELETE_TAG))
         assertEquals(1, server.requests)
         assertEquals(0L, runBlocking { server.cachedBytes() })
         assertNoSaveShareForward()
@@ -181,6 +186,9 @@ class ViewOnceViewerTest {
             }
         }
         waitForIdle()
+        onNodeWithTag(VIEW_ONCE_VIEWER_MORE_TAG).performClick()
+        waitForIdle()
+        assertTrue(present(VIEW_ONCE_VIEWER_MENU_INFO_TAG))
         assertTrue(!present(VIEW_ONCE_VIEWER_DELETE_TAG), "Delete must not exist before the media renders")
     }
 
@@ -195,6 +203,8 @@ class ViewOnceViewerTest {
         assertTrue(!present(VIEW_ONCE_VIEWER_DELETE_TAG))
         gate.complete(Unit)
         awaitShown()
+        waitForIdle()
+        onNodeWithTag(VIEW_ONCE_VIEWER_MORE_TAG).performClick()
         waitForIdle()
         assertTrue(present(VIEW_ONCE_VIEWER_DELETE_TAG))
     }
@@ -220,6 +230,8 @@ class ViewOnceViewerTest {
         show(server)
         awaitShown()
 
+        onNodeWithTag(VIEW_ONCE_VIEWER_MORE_TAG).performClick()
+        waitForIdle()
         onNodeWithTag(VIEW_ONCE_VIEWER_DELETE_TAG).performClick()
         waitForIdle()
         present = false
@@ -536,33 +548,26 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun aVideoViewerMenuHoldsOnlyMute() = runSkikoComposeUiTest {
-        var muted = false
+    fun aVideoViewerMutesFromAButtonBesidePauseThatSaysWhichStateItIsIn() = runSkikoComposeUiTest {
+        var muted by mutableStateOf(false)
         setContent {
             MaterialTheme {
                 ViewOnceViewerFrame(
                     isVideo = true, mediaShown = true, failed = false, onClose = {}, muted = muted,
-                    onMutedChange = { muted = it },
+                    onMutedChange = { muted = it }, onTogglePlay = {},
                 ) { fill -> Box(fill.testTag("player")) }
             }
         }
         waitForIdle()
-        val clickablesBefore = onAllNodes(hasClickAction()).fetchSemanticsNodes().size
-        onNodeWithTag(VIEW_ONCE_VIEWER_MORE_TAG).performClick()
-        waitForIdle()
-        assertTrue(present(VIEW_ONCE_VIEWER_MUTE_TAG))
-        assertEquals(
-            1, onAllNodes(hasClickAction()).fetchSemanticsNodes().size - clickablesBefore,
-            "opening the menu adds exactly one item, Mute",
-        )
-        assertEquals(1, onAllNodes(hasTestTag(VIEW_ONCE_VIEWER_DELETE_TAG)).fetchSemanticsNodes().size, "Delete stays the single bar button, not a menu item")
+        onNode(hasTestTag(VIEW_ONCE_VIEWER_MUTE_TAG) and hasContentDescription("Mute")).assertExists()
         onNodeWithTag(VIEW_ONCE_VIEWER_MUTE_TAG).performClick()
         waitForIdle()
         assertTrue(muted)
+        onNode(hasTestTag(VIEW_ONCE_VIEWER_MUTE_TAG) and hasContentDescription("Unmute")).assertExists()
     }
 
     @Test
-    fun aNonVideoFrameHasNoMoreButton() = runSkikoComposeUiTest {
+    fun aPhotoFrameHasTheSameMenuAsAVideoButNoMute() = runSkikoComposeUiTest {
         setContent {
             MaterialTheme {
                 ViewOnceViewerFrame(
@@ -572,7 +577,23 @@ class ViewOnceViewerTest {
         }
         waitForIdle()
         assertTrue(present("player"))
-        assertTrue(!present(VIEW_ONCE_VIEWER_MORE_TAG))
+        assertTrue(present(VIEW_ONCE_VIEWER_MORE_TAG))
+        assertTrue(!present(VIEW_ONCE_VIEWER_MUTE_TAG))
+    }
+
+    @Test
+    fun theTopBarSaysWhoSentItAndWhen() = runSkikoComposeUiTest {
+        setContent {
+            MaterialTheme {
+                ViewOnceViewerFrame(
+                    isVideo = false, mediaShown = true, failed = false, onClose = {},
+                    senderName = "Alice", sentAt = "10:53",
+                ) { fill -> Box(fill) }
+            }
+        }
+        waitForIdle()
+        onNodeWithText("Alice").assertExists()
+        onNodeWithText("10:53").assertExists()
     }
 
     @Test
@@ -592,7 +613,7 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun aFailedLoadShowsOnlyBackAndTheOneInfoIcon() = runSkikoComposeUiTest {
+    fun aFailedLoadStillLetsTheRecipientReplyAndReact_butNotDelete() = runSkikoComposeUiTest {
         setContent {
             MaterialTheme {
                 ViewOnceViewerFrame(isVideo = false, mediaShown = false, failed = true, onClose = {}) { fill -> Box(fill) }
@@ -600,6 +621,10 @@ class ViewOnceViewerTest {
         }
         waitForIdle()
         assertTrue(present(VIEW_ONCE_VIEWER_CLOSE_TAG))
-        assertTrue(!present(VIEW_ONCE_VIEWER_REPLY_TAG))
+        assertTrue(present(VIEW_ONCE_VIEWER_REPLY_TAG))
+        assertTrue(present(VIEW_ONCE_VIEWER_REACT_TAG))
+        onNodeWithTag(VIEW_ONCE_VIEWER_MORE_TAG).performClick()
+        waitForIdle()
+        assertTrue(!present(VIEW_ONCE_VIEWER_DELETE_TAG))
     }
 }
