@@ -72,7 +72,7 @@ fun ReplyPreviewBar(
     accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
     val currentOdinId = LocalCurrentOdinId.current
-    val quotesProtectedMedia = message.messageContent.isReplyQuoteImageSuppressed()
+    val quotesProtectedMedia = message.messageContent.isProtectedMedia()
     val mediaPayloads = remember(message.payloads, quotesProtectedMedia) {
         if (quotesProtectedMedia) emptyList() else message.payloads.replyQuoteMediaPayloads()
     }

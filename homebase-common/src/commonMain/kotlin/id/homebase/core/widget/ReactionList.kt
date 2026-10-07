@@ -166,7 +166,7 @@ private fun extractEmoji(reactionContent: String): String? {
 }
 
 private val BaseQuickReactions = listOf("❤️", "👍", "👎", "😂", "😮", "😢")
-const val QUICK_REACTION_COUNT = 6
+private const val QUICK_REACTION_COUNT = 6
 
 fun quickReactions(userDefaults: List<String>): List<String> =
     (userDefaults + BaseQuickReactions).distinctByEmoji().take(QUICK_REACTION_COUNT)

@@ -1025,6 +1025,7 @@
     <string name="chat_view_once_opening">Opening…</string>
     <string name="chat_view_once_failed">Couldn't load</string>
     <string name="chat_view_once_opened">Opened</string>
+    <string name="chat_view_once_opened_by">Opened by %1$d</string>
     <string name="chat_view_once_expired">Expired</string>
     <string name="chat_view_once_open_on_phone">Open on your phone</string>
     <string name="chat_view_once_open_on_phone_title">Open this on your phone</string>

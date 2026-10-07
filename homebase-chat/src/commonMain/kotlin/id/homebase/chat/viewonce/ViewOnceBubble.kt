@@ -65,15 +65,11 @@ import id.homebase.resources.chat_view_once_open_on_phone_title
 import id.homebase.resources.chat_view_once_opened
 import id.homebase.resources.chat_view_once_opened_by
 import id.homebase.resources.chat_view_once_opening
-import id.homebase.resources.chat_view_once_photo
 import id.homebase.resources.chat_view_once_sent
 import id.homebase.resources.chat_view_once_retry
 import id.homebase.resources.chat_view_once_unavailable
-import id.homebase.resources.chat_view_once_unparseable
 import id.homebase.resources.chat_view_once_update_to_open
-import id.homebase.resources.chat_view_once_video
 import id.homebase.resources.ok
-import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 enum class ViewOnceOpenPhase { Idle, Opening, Failed }
@@ -109,20 +105,14 @@ fun ViewOnceBubble(
     val consumed = state == ViewOnceState.Opened || state == ViewOnceState.Expired
     val content by animateColorAsState(if (consumed) colors.onSurfaceVariant else contentColor, motion.defaultEffectsSpec())
     // The sender never opens its own copy, and a consumed or desktop copy has nothing left to open.
-    val canOpen = onOpen != null && descriptor != null && !isOutgoing && !consumed && canView
-    val openOnPhone = !canView && descriptor != null && !isOutgoing && !consumed
+    val openable = descriptor != null && !isOutgoing && !consumed
+    val canOpen = openable && onOpen != null && canView
+    val openOnPhone = openable && !canView
     var explainOnPhone by remember { mutableStateOf(false) }
     val opening = canOpen && phase == ViewOnceOpenPhase.Opening
     val failed = canOpen && phase == ViewOnceOpenPhase.Failed
 
-    // A consumed tombstone may have lost its kind; the generic word still says what the pill was.
-    val kindLabel = stringResource(
-        when (descriptor?.kind) {
-            ViewOnceDescriptor.KIND_VIDEO -> MR.string.chat_view_once_video
-            ViewOnceDescriptor.KIND_IMAGE -> MR.string.chat_view_once_photo
-            else -> MR.string.chat_view_once_unparseable
-        },
-    )
+    val kindLabel = stringResource(descriptor.kindLabel())
     val title: String
     val second: String?
     val status: String?
@@ -130,7 +120,7 @@ fun ViewOnceBubble(
         consumed -> {
             title = when {
                 state == ViewOnceState.Expired -> stringResource(MR.string.chat_view_once_expired)
-                isOutgoing && isGroup && openedCount >= 1 -> pluralStringResource(MR.plurals.chat_view_once_opened_by, openedCount, openedCount)
+                isOutgoing && isGroup && openedCount >= 1 -> stringResource(MR.string.chat_view_once_opened_by, openedCount)
                 else -> stringResource(MR.string.chat_view_once_opened)
             }
             second = kindLabel
@@ -183,8 +173,7 @@ fun ViewOnceBubble(
 
     val glyphTint = when {
         failed -> colors.error
-        consumed -> content
-        !isOutgoing && canOpen -> colors.primary
+        canOpen -> colors.primary
         else -> content
     }
     val glyph: ImageVector = when {
@@ -193,6 +182,11 @@ fun ViewOnceBubble(
         else -> ViewOnceIcon
     }
     val statusColor = if (failed) colors.error else content.copy(alpha = STATUS_ALPHA)
+    val onClick: (() -> Unit)? = when {
+        canOpen && !opening -> onOpen
+        openOnPhone -> { { explainOnPhone = true } }
+        else -> null
+    }
 
     Column(
         modifier = modifier
@@ -200,27 +194,17 @@ fun ViewOnceBubble(
             .clip(shape)
             .background(container)
             .then(
-                when {
-                    canOpen && !opening -> Modifier.combinedClickable(
+                onClick?.let {
+                    Modifier.combinedClickable(
                         interactionSource = interaction,
                         indication = null,
                         onClickLabel = openLabel,
                         role = Role.Button,
-                        onClick = onOpen,
+                        onClick = it,
                         onLongClick = onLongClick,
                         onDoubleClick = onDoubleClick,
                     )
-                    openOnPhone -> Modifier.combinedClickable(
-                        interactionSource = interaction,
-                        indication = null,
-                        onClickLabel = openLabel,
-                        role = Role.Button,
-                        onClick = { explainOnPhone = true },
-                        onLongClick = onLongClick,
-                        onDoubleClick = onDoubleClick,
-                    )
-                    else -> Modifier
-                },
+                } ?: Modifier,
             )
             .animateContentSize(motion.defaultSpatialSpec())
             .semantics(mergeDescendants = true) {

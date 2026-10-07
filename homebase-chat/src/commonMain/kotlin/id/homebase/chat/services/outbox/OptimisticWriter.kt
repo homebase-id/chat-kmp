@@ -35,7 +35,7 @@ import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.viewonce.viewOnceTombstoneContent
+import id.homebase.api.sync.database.TombstoneRetention
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.chat.services.convo.ConversationAppDataJson
@@ -690,7 +690,7 @@ class OptimisticWriter(
                 payloads = emptyList(),
                 appData = existingFile.fileMetadata.appData.copy(
                     content = if (existingFile.fileMetadata.appData.dataType == ChatProtocol.ChatViewOnceMessageDataType) {
-                        viewOnceTombstoneContent(existingFile.fileMetadata.appData.content)
+                        TombstoneRetention.viewOnceKindOnly(existingFile.fileMetadata.appData.content)
                     } else "",
                     previewThumbnail = null,
                     // Belt-and-suspenders: HomebaseFile.isSoftDeleted() checks BOTH

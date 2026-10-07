@@ -131,12 +131,7 @@ const val VIEW_ONCE_VIEWER_REMAINING_TAG = "viewOnceViewerRemaining"
 const val VIEW_ONCE_VIEWER_INFO_TAG = "viewOnceViewerInfo"
 const val VIEW_ONCE_VIEWER_TITLE_TAG = "viewOnceViewerTitle"
 
-/**
- * Full-screen viewer for one received view-once item. It has no save, share, forward or paging,
- * and it reads the payload only through [loader]. However it ends (back, reply, the app
- * leaving the foreground, or leaving composition) [onViewerClosed] runs exactly once, and only
- * if the media was actually shown: an item that never loaded is not used up. Reacting never ends it.
- */
+/** However the viewer ends, [onViewerClosed] runs once, and only if the media was shown: an item that never loaded is not used up. */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun ViewOnceViewer(
@@ -155,8 +150,7 @@ fun ViewOnceViewer(
     val screenCaptured by captureObserver(onScreenshot)
     val isVideo = data.kind == ViewOnceDescriptor.KIND_VIDEO
     var imagePath by remember(data.messageId) { mutableStateOf<String?>(null) }
-    var imageShown by remember(data.messageId) { mutableStateOf(false) }
-    var videoShown by remember(data.messageId) { mutableStateOf(false) }
+    var mediaShown by remember(data.messageId) { mutableStateOf(false) }
     var failed by remember(data.messageId) { mutableStateOf(false) }
     var videoReady by remember(data.messageId) { mutableStateOf(false) }
     var attempt by remember(data.messageId) { mutableIntStateOf(0) }
@@ -165,7 +159,7 @@ fun ViewOnceViewer(
     var ended by remember(data.messageId) { mutableStateOf(false) }
     var replayToken by remember(data.messageId) { mutableIntStateOf(0) }
     val durationMs = remember(data.payload) { (data.payload.descriptorInfo() as? DescriptorContent.VideoFile)?.durationMs }
-    val hold = remember(data.messageId) { CloseOnce() }
+    val hold = remember(data.messageId) { OnceFlag() }
     val latestOnDismiss by rememberUpdatedState(onDismiss)
 
     LaunchedEffect(data.messageId, attempt) {
@@ -196,9 +190,9 @@ fun ViewOnceViewer(
         }
     }
 
-    val shown by rememberUpdatedState(imageShown || videoShown)
+    val shown by rememberUpdatedState(mediaShown)
     val latestOnClosed by rememberUpdatedState(onViewerClosed)
-    val closeGuard = remember(data.messageId) { CloseOnce() }
+    val closeGuard = remember(data.messageId) { OnceFlag() }
     fun consumeOnce() {
         if (closeGuard.claim() && shown) {
             loader.markConsumed(data.fileId)
@@ -270,20 +264,20 @@ fun ViewOnceViewer(
                     paused = paused,
                     replayToken = replayToken,
                     onEnded = { ended = true },
-                    onFirstFrame = { videoShown = true },
+                    onFirstFrame = { mediaShown = true },
                     onPositionUpdate = { positionMs = it },
                     onError = { failed = true },
                 )
-                if (!videoShown) ViewOnceViewerLoading(fill)
+                if (!mediaShown) ViewOnceViewerLoading(fill)
             }
             imagePath != null -> {
                 ViewOnceViewerImage(
                     path = imagePath!!,
                     onTap = toggleChrome,
-                    onLoaded = { imageShown = true },
+                    onLoaded = { mediaShown = true },
                     onError = { failed = true },
                 )
-                if (!imageShown) ViewOnceViewerLoading(fill)
+                if (!mediaShown) ViewOnceViewerLoading(fill)
             }
             else -> ViewOnceViewerLoading(fill)
         }
@@ -327,24 +321,19 @@ internal fun ViewOnceViewerFrame(
     body: @Composable BoxScope.(fill: Modifier, toggleChrome: () -> Unit) -> Unit,
 ) {
     HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
-        val motion = MaterialTheme.motionScheme
         var topRequested by remember { mutableStateOf(true) }
         var infoOpen by remember { mutableStateOf(false) }
         LaunchedEffect(playing) { if (!playing) topRequested = true }
         val topVisible = topRequested || !mediaShown
+        val toggleChrome = { if (mediaShown) topRequested = !topRequested }
         Box(
             modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.scrim)
-                .pointerInput(mediaShown) { detectTapGestures { if (mediaShown) topRequested = !topRequested } },
+                .pointerInput(mediaShown) { detectTapGestures { toggleChrome() } },
         ) {
-            body(Modifier.fillMaxSize()) { if (mediaShown) topRequested = !topRequested }
-            AnimatedVisibility(
-                visible = topVisible,
-                enter = fadeIn(motion.defaultEffectsSpec()),
-                exit = fadeOut(motion.defaultEffectsSpec()),
-                modifier = Modifier.align(Alignment.TopCenter),
-            ) {
+            body(Modifier.fillMaxSize(), toggleChrome)
+            FadeVisibility(visible = topVisible, modifier = Modifier.align(Alignment.TopCenter)) {
                 ChromeScrim(fromTop = true, modifier = Modifier.fillMaxWidth().height(TOP_SCRIM))
             }
             ViewOnceViewerTopBar(
@@ -372,6 +361,12 @@ internal fun ViewOnceViewerFrame(
             if (infoOpen) ViewOnceIntroSheet(isVideo = isVideo, onDismiss = { infoOpen = false })
         }
     }
+}
+
+@Composable
+private fun FadeVisibility(visible: Boolean, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val spec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    AnimatedVisibility(visible = visible, enter = fadeIn(spec), exit = fadeOut(spec), modifier = modifier) { content() }
 }
 
 @Composable
@@ -418,7 +413,6 @@ private fun ViewOnceViewerTopBar(
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
-    val motion = MaterialTheme.motionScheme
     val markLabel = stringResource(MR.string.cd_view_once_toggle)
     Row(
         modifier = modifier
@@ -432,11 +426,7 @@ private fun ViewOnceViewerTopBar(
         }
         Box(Modifier.weight(1f).padding(horizontal = 8.dp)) {
             if (senderName != null) {
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = titleVisible,
-                    enter = fadeIn(motion.defaultEffectsSpec()),
-                    exit = fadeOut(motion.defaultEffectsSpec()),
-                ) {
+                FadeVisibility(visible = titleVisible) {
                     Surface(shape = CircleShape, color = chromeContainer(), contentColor = colors.onSurface) {
                         Column(
                             Modifier
@@ -465,11 +455,7 @@ private fun ViewOnceViewerTopBar(
                 }
             }
         }
-        androidx.compose.animation.AnimatedVisibility(
-            visible = titleVisible,
-            enter = fadeIn(motion.defaultEffectsSpec()),
-            exit = fadeOut(motion.defaultEffectsSpec()),
-        ) {
+        FadeVisibility(visible = titleVisible) {
             ChromeCircleButton(onClick = onInfo, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_INFO_TAG)) {
                 Icon(ViewOnceIcon, contentDescription = markLabel, modifier = Modifier.size(IconButtonDefaults.mediumIconSize))
             }
@@ -723,7 +709,7 @@ private val TOP_SCRIM = 160.dp
 private val CAPTION_MAX_HEIGHT = 160.dp
 private val BOTTOM_BAR_MAX_WIDTH = 640.dp
 
-private class CloseOnce {
+private class OnceFlag {
     private var done = false
 
     val isClaimed: Boolean get() = done

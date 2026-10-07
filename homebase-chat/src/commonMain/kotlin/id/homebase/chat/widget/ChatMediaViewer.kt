@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiAction.CloseFullScreenOverlay
 import id.homebase.chat.conversationlist.ConversationListUiAction.DeleteMessage
@@ -65,7 +66,7 @@ internal fun ChatMediaViewer(
             onScreenshot = {
                 onUiAction(ConversationListUiAction.ViewOnceScreenshot(data.conversationId, data.messageId))
             },
-            reactions = quickReactions(uiState.userDefaultReactions),
+            reactions = remember(uiState.userDefaultReactions) { quickReactions(uiState.userDefaultReactions) },
             onReact = { emoji ->
                 onUiAction(ConversationListUiAction.ViewOnceReact(data.conversationId, data.messageId, emoji))
             },

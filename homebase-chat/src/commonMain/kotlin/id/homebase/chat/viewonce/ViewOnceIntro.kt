@@ -214,27 +214,24 @@ fun rememberViewOnceComposerState(preferences: UserPreferences = koinInject()): 
 @Composable
 fun ViewOnceToast(message: ViewOnceToastMessage?, modifier: Modifier = Modifier) {
     var shown by remember { mutableStateOf<ViewOnceToastMessage?>(null) }
+    // Keeps the last kind through the exit animation instead of collapsing to nothing mid-fade.
+    var lastKind by remember { mutableStateOf(ViewOnceToastKind.Off) }
     LaunchedEffect(message) {
+        if (message != null) lastKind = message.kind
         shown = message
         if (message != null) {
             delay(VIEW_ONCE_TOAST_MS)
             shown = null
         }
     }
-    val toastPhoto = stringResource(MR.string.chat_view_once_toast_photo)
-    val toastVideo = stringResource(MR.string.chat_view_once_toast_video)
-    val toastOff = stringResource(MR.string.chat_view_once_toast_off)
-    // Keeps the last text through the exit animation instead of collapsing to nothing mid-fade.
-    var last by remember { mutableStateOf("") }
-    var lastOff by remember { mutableStateOf(false) }
-    shown?.let {
-        lastOff = it.kind == ViewOnceToastKind.Off
-        last = when (it.kind) {
-            ViewOnceToastKind.Photo -> toastPhoto
-            ViewOnceToastKind.Video -> toastVideo
-            ViewOnceToastKind.Off -> toastOff
-        }
-    }
+    val lastOff = lastKind == ViewOnceToastKind.Off
+    val last = stringResource(
+        when (lastKind) {
+            ViewOnceToastKind.Photo -> MR.string.chat_view_once_toast_photo
+            ViewOnceToastKind.Video -> MR.string.chat_view_once_toast_video
+            ViewOnceToastKind.Off -> MR.string.chat_view_once_toast_off
+        },
+    )
     AnimatedVisibility(
         visible = shown != null,
         enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) +

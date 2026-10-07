@@ -83,7 +83,6 @@ import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.viewonce.ViewOnceBubble
 import id.homebase.chat.viewonce.VIEW_ONCE_PAYLOAD_KEY
 import id.homebase.chat.viewonce.ViewOnceRules
-import id.homebase.chat.viewonce.ViewOnceState
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -314,21 +313,20 @@ fun MessageBubbleRaw(
                 else MaterialTheme.colorScheme.onSurface
             // sentByYou already settled authorship; hand the rules an identity that agrees with it.
             val viewOnceMe = if (sentByYou) message.originalAuthor else null
-            val viewOnceState = remember(message, viewOnceMe) {
-                ViewOnceRules.stateOf(message, Clock.System.now().toEpochMilliseconds(), viewOnceMe)
+            val (viewOnceState, openedCount) = remember(message, viewOnceMe, sentByYou) {
+                ViewOnceRules.stateOf(message, Clock.System.now().toEpochMilliseconds(), viewOnceMe) to
+                    if (sentByYou) ViewOnceRules.openedCount(message) else 0
             }
             ViewOnceBubble(
                 descriptor = content.descriptor,
                 isOutgoing = sentByYou,
                 isGroup = isGroupConversation,
                 state = viewOnceState,
-                openedCount = if (sentByYou) ViewOnceRules.openedCount(message) else 0,
+                openedCount = openedCount,
                 canView = isMobile(),
-                onOpen = remember(message, viewOnceState, sentByYou, displayOnly) {
+                onOpen = remember(message, displayOnly) {
                     val payload = message.payloads?.firstOrNull { it.key == VIEW_ONCE_PAYLOAD_KEY }
-                    if (payload != null && !sentByYou && !displayOnly && isMobile() &&
-                        viewOnceState == ViewOnceState.Unopened
-                    ) {
+                    if (payload != null && !displayOnly) {
                         { onMediaClick(payload) }
                     } else null
                 },

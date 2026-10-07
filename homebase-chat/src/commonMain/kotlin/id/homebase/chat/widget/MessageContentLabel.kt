@@ -22,7 +22,7 @@ import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
-import id.homebase.chat.viewonce.ViewOnceDescriptor
+import id.homebase.chat.viewonce.kindLabel
 import id.homebase.chat.viewonce.ViewOnceIcon
 import id.homebase.chat.viewonce.ViewOnceOpenedIcon
 import id.homebase.resources.MR
@@ -37,9 +37,6 @@ import id.homebase.resources.chat_message_multiple_media
 import id.homebase.resources.chat_message_video
 import id.homebase.resources.chat_message_voice_duration
 import id.homebase.resources.chat_preview_sticker
-import id.homebase.resources.chat_view_once_photo
-import id.homebase.resources.chat_view_once_unparseable
-import id.homebase.resources.chat_view_once_video
 import id.homebase.core.widget.formatAudioTime
 import org.jetbrains.compose.resources.stringResource
 
@@ -92,13 +89,7 @@ fun messageContentLabel(
 ): ContentLabel? {
     // Before the deleted check: a spent view-once item keeps its view-once label instead of reading as deleted; "Media" only when this device never stored the live row.
     if (messageContent is MessageContent.ViewOnce) {
-        val word = stringResource(
-            when (messageContent.descriptor?.kind) {
-                ViewOnceDescriptor.KIND_VIDEO -> MR.string.chat_view_once_video
-                ViewOnceDescriptor.KIND_IMAGE -> MR.string.chat_view_once_photo
-                else -> MR.string.chat_view_once_unparseable
-            },
-        )
+        val word = stringResource(messageContent.descriptor.kindLabel())
         return ContentLabel(word, if (viewOnceOpened ?: isDeleted) ViewOnceOpenedIcon else ViewOnceIcon)
     }
     if (isDeleted) {

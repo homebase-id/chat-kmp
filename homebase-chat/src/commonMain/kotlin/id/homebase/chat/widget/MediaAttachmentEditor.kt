@@ -1,7 +1,6 @@
 package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.material3.ButtonDefaults
@@ -83,6 +82,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
+import id.homebase.core.widget.connectedButtonShapes
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -759,11 +759,9 @@ fun MediaAttachmentEditor(
             verticalArrangement = Arrangement.spacedBy(4.dp),
             itemVerticalAlignment = Alignment.CenterVertically,
         ) {
-            val sendOptions = listOfNotNull(
-                SendOption.Quality.takeIf { toolset.showQuality },
-            )
-            // A lone download joins the send options' connected group, so the row reads as one toolbar.
-            val saveJoinsGroup = sendOptions.isNotEmpty() && toolset.showSave && onlyTool(toolset)
+            val showQuality = toolset.showQuality
+            // A lone download joins the quality toggle's connected group, so the row reads as one toolbar.
+            val saveJoinsGroup = showQuality && toolset.showSave && onlyTool(toolset)
             // Not composed when empty: FlowRow would still space a zero-width slot and push the group off the edge.
             if (!saveJoinsGroup) AnimatedContent(
                 targetState = currentAttachment?.takeIf { toolset.showToolbar },
@@ -780,14 +778,13 @@ fun MediaAttachmentEditor(
                     // Same height and connected shapes as the send options, so the row reads as one toolbar.
                     Row(horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
                         toolButtons.forEachIndexed { index, tool ->
-                            ConnectedToolButton(tool, sendOptionShapes(index, toolButtons.size))
+                            ConnectedToolButton(tool, connectedButtonShapes(index, toolButtons.size))
                         }
                     }
                 }
             }
-            if (sendOptions.isNotEmpty()) {
-                val groupSize = sendOptions.size + if (saveJoinsGroup) 1 else 0
-                val offset = groupSize - sendOptions.size
+            if (showQuality) {
+                val groupSize = if (saveJoinsGroup) 2 else 1
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
                     verticalAlignment = Alignment.CenterVertically,
@@ -795,19 +792,14 @@ fun MediaAttachmentEditor(
                     if (saveJoinsGroup && currentAttachment != null) {
                         ConnectedToolButton(
                             EditorTool(Icons.Default.Download, MR.string.save) { onSaveFile!!(currentAttachment) },
-                            sendOptionShapes(0, groupSize),
+                            connectedButtonShapes(0, groupSize),
                         )
                     }
-                    sendOptions.forEachIndexed { index, option ->
-                        val shapes = sendOptionShapes(index + offset, groupSize)
-                        when (option) {
-                            SendOption.Quality -> MediaQualityToggle(
-                                isHigh = mediaQuality == MediaQuality.HIGH,
-                                onClick = { onToggleMediaQuality!!() },
-                                shapes = shapes,
-                            )
-                        }
-                    }
+                    MediaQualityToggle(
+                        isHigh = mediaQuality == MediaQuality.HIGH,
+                        onClick = { onToggleMediaQuality!!() },
+                        shapes = connectedButtonShapes(groupSize - 1, groupSize),
+                    )
                 }
             }
         }
@@ -824,8 +816,6 @@ fun MediaAttachmentEditor(
         }
     }
 }
-
-private enum class SendOption { Quality }
 
 private class EditorTool(val icon: ImageVector, val label: StringResource, val onClick: () -> Unit)
 
@@ -872,20 +862,6 @@ private val CLOSE_BAND = 72.dp
 
 private fun onlyTool(tools: EditorToolset): Boolean =
     listOf(tools.showCrop, tools.showDraw, tools.showSave).count { it } == 1
-
-// Outer corners are full and morph to a squircle when checked; inner corners stay connected, so the pair always reads as one group.
-private fun sendOptionShapes(index: Int, count: Int): ToggleButtonShapes {
-    fun shape(outer: CornerSize, inner: CornerSize): RoundedCornerShape {
-        val start = if (index == 0) outer else inner
-        val end = if (index == count - 1) outer else inner
-        return RoundedCornerShape(topStart = start, bottomStart = start, topEnd = end, bottomEnd = end)
-    }
-    return ToggleButtonShapes(
-        shape = shape(CornerSize(50), CornerSize(8.dp)),
-        pressedShape = shape(CornerSize(12.dp), CornerSize(4.dp)),
-        checkedShape = shape(CornerSize(16.dp), CornerSize(8.dp)),
-    )
-}
 
 @Composable
 private fun sendOptionColors() = ToggleButtonDefaults.toggleButtonColors(

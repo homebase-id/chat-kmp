@@ -425,8 +425,10 @@ fun ConversationMessagesPane(
                                     onSendMessage = {
                                         onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments, viewOnce))
                                     },
-                                    viewOnceToggle = viewOnceToggleFor(data.attachments, viewOnce) {
-                                        viewOnceState.toggle(viewOnceIsVideo, viewOnceEligible)
+                                    viewOnceToggle = remember(data.attachments, viewOnce, viewOnceState, viewOnceIsVideo, viewOnceEligible) {
+                                        viewOnceToggleFor(data.attachments, viewOnce) {
+                                            viewOnceState.toggle(viewOnceIsVideo, viewOnceEligible)
+                                        }
                                     },
                                     onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
                                     onPasteImage = { imageBytes ->

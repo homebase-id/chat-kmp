@@ -1,5 +1,6 @@
 package id.homebase.chat.viewonce
 
+import id.homebase.api.sync.database.TombstoneRetention
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
@@ -81,16 +82,16 @@ class ViewOnceDescriptorTest {
 
     @Test
     fun tombstoneContent_keepsTheKindAndDropsTheCaption() {
-        val kept = viewOnceTombstoneContent(
+        val kept = TombstoneRetention.viewOnceKindOnly(
             MessageContentParser.serialize(
                 MessageContent.ViewOnce(ViewOnceDescriptor(ViewOnceDescriptor.KIND_VIDEO, caption = "gone"))
             )
         )
         assertTrue("gone" !in kept)
         assertEquals(ViewOnceDescriptor.KIND_VIDEO, (MessageContentParser.parse(216, kept) as MessageContent.ViewOnce).descriptor?.kind)
-        assertEquals("", viewOnceTombstoneContent(null))
-        assertEquals("", viewOnceTombstoneContent("{not json"))
-        assertEquals("", viewOnceTombstoneContent("""{"kind":"gif"}"""))
+        assertEquals("", TombstoneRetention.viewOnceKindOnly(null))
+        assertEquals("", TombstoneRetention.viewOnceKindOnly("{not json"))
+        assertEquals("", TombstoneRetention.viewOnceKindOnly("""{"kind":"gif"}"""))
     }
 
     @Test

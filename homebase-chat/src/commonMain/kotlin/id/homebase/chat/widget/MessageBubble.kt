@@ -1031,7 +1031,7 @@ private fun rememberPendingStale(since: Instant, threshold: Duration = 1.minutes
  */
 fun String.hasContent(): Boolean = stripComposerLineBreakArtifacts().isNotEmpty()
 
-internal fun MessageContent?.isReplyQuoteImageSuppressed(): Boolean =
+internal fun MessageContent?.isProtectedMedia(): Boolean =
     this is MessageContent.ViewOnce || this is MessageContent.Unknown
 
 /**
@@ -1058,7 +1058,7 @@ fun InlineReplyPreview(
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
-    val quotesProtectedMedia = replyMessage?.messageContent.isReplyQuoteImageSuppressed()
+    val quotesProtectedMedia = replyMessage?.messageContent.isProtectedMedia()
     val mediaPayloads = remember(replyMessage?.payloads, quotesProtectedMedia) {
         if (quotesProtectedMedia) emptyList() else replyMessage?.payloads.replyQuoteMediaPayloads()
     }
@@ -1066,7 +1066,7 @@ fun InlineReplyPreview(
     val showThumbnail = replyMessage == null || mediaPayloads.firstOrNull()?.isVisualMedia() == true
 
     val imageData: HomebaseImageData? = remember(replyPreview, replyMessage, driveId) {
-        if (replyMessage == null || driveId == null || quotesProtectedMedia) return@remember null
+        if (replyMessage == null || driveId == null) return@remember null
         val firstVisualPayload = mediaPayloads.firstOrNull()?.takeIf { it.isVisualMedia() }
             ?: return@remember null
         firstVisualPayload.replyQuoteImageData(
@@ -1078,8 +1078,8 @@ fun InlineReplyPreview(
     }
 
     // Fallback: decode embedded base64 thumbnail if we can't build HomebaseImageData
-    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData, showThumbnail, quotesProtectedMedia) {
-        if (imageData != null || !showThumbnail || quotesProtectedMedia) return@remember null
+    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData, showThumbnail) {
+        if (imageData != null || !showThumbnail) return@remember null
         replyPreview.previewThumbnail?.content?.let { base64Content ->
             try {
                 val bytes = Base64.decode(base64Content)

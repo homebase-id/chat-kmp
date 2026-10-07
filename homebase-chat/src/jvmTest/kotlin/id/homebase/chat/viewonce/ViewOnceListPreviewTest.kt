@@ -1,5 +1,6 @@
 package id.homebase.chat.viewonce
 
+import id.homebase.api.sync.database.TombstoneRetention
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithText
@@ -92,7 +93,7 @@ class ViewOnceListPreviewTest {
                 fileState = "deleted",
                 createdMs = now - DAY_MS,
                 updatedMs = now,
-                content = viewOnceTombstoneContent(descriptorJson(kind, "gone").replace("\\\"", "\"")).replace("\"", "\\\""),
+                content = TombstoneRetention.viewOnceKindOnly(descriptorJson(kind, "gone").replace("\\\"", "\"")).replace("\"", "\\\""),
                 payloadsJson = "null",
             ),
             ownerCredentials(),
