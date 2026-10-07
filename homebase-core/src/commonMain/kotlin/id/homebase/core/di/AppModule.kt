@@ -13,6 +13,9 @@ import id.homebase.core.ui.screens.email.EmailViewModel
 import id.homebase.core.email.EmailPreferences
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
+import id.homebase.chat.viewonce.evictMemoryFor
+import id.homebase.api.file.scratchDir
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.di.apiModule
 import id.homebase.api.file.CacheAudit
 import id.homebase.api.file.CacheSweeper
@@ -866,7 +869,13 @@ val appModule = module {
     singleOf(::CardTapShare)
     singleOf(::ChatMessageActionService)
     single { ViewOnceActions(get(), get()) }
-    single { ViewOncePayloadLoader(get()) { driveId, fileId -> get<HomebaseImageLoader>().evictFile(driveId, fileId) } }
+    single {
+        ViewOncePayloadLoader(
+            driveFileProvider = get(),
+            tempDir = { get<FileOperationsProvider>().scratchDir(AppCacheDirs.VIEW_ONCE) },
+            evictLocalImage = { path -> get<ImageLoader>().evictMemoryFor(path) },
+        ) { driveId, fileId -> get<HomebaseImageLoader>().evictFile(driveId, fileId) }
+    }
     singleOf(::DiceRollPreferences)
     singleOf(::EventReminderPreferences)
     // Explicit `single` (not `singleOf`) — the ctor's `now` clock arg is an intentional Kotlin

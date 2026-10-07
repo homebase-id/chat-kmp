@@ -56,7 +56,7 @@ class ViewOnceViewerTest {
                 dispatcher.addInput(back)
                 onDispose { dispatcher.removeInput(back) }
             }
-            MaterialTheme {
+            server.Provide { MaterialTheme {
                 if (present) {
                     ViewOnceViewer(
                         data = server.viewer(),
@@ -65,13 +65,13 @@ class ViewOnceViewerTest {
                         loader = server.loader,
                     )
                 }
-            }
+            } }
         }
     }
 
     private fun SkikoComposeUiTest.showWithCapture(server: ViewOnceFakeServer, captured: androidx.compose.runtime.State<Boolean>) {
         setContent {
-            MaterialTheme {
+            server.Provide { MaterialTheme {
                 ViewOnceViewer(
                     data = server.viewer(),
                     onViewerClosed = { closed++ },
@@ -79,13 +79,13 @@ class ViewOnceViewerTest {
                     loader = server.loader,
                     captureObserver = { captured },
                 )
-            }
+            } }
         }
     }
 
     private fun SkikoComposeUiTest.showRemountable(server: ViewOnceFakeServer, data: FullScreenOverlay.ViewOnceViewer) {
         setContent {
-            MaterialTheme {
+            server.Provide { MaterialTheme {
                 if (present) {
                     key(generation) {
                         ViewOnceViewer(
@@ -96,14 +96,17 @@ class ViewOnceViewerTest {
                         )
                     }
                 }
-            }
+            } }
         }
     }
 
-    private fun SkikoComposeUiTest.awaitShown() {
+    // Shown means decoded: Coil caches the bitmap just before it reports success.
+    private fun SkikoComposeUiTest.awaitShown(server: ViewOnceFakeServer) {
         waitUntil(timeoutMillis = 10_000) {
-            onAllNodes(hasTestTag(VIEW_ONCE_VIEWER_IMAGE_TAG)).fetchSemanticsNodes().isNotEmpty()
+            onAllNodes(hasTestTag(VIEW_ONCE_VIEWER_IMAGE_TAG)).fetchSemanticsNodes().isNotEmpty() &&
+                server.tempFiles().any { server.coilKeysFor(it.absolutePath).isNotEmpty() }
         }
+        waitForIdle()
     }
 
     private fun SkikoComposeUiTest.assertNoSaveShareForward() {
@@ -120,7 +123,7 @@ class ViewOnceViewerTest {
     fun aPhotoViewerOffersOnlyBackInfoReactAndReply_andNeverSaveShareOrForward() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
-        awaitShown()
+        awaitShown(server)
 
         assertEquals(
             setOf(
@@ -149,7 +152,7 @@ class ViewOnceViewerTest {
     fun theTopRightOneOpensTheExplainerAndClosingItIsNotAView() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
-        awaitShown()
+        awaitShown(server)
 
         onNodeWithTag(VIEW_ONCE_VIEWER_INFO_TAG).performClick()
         waitForIdle()
@@ -169,7 +172,7 @@ class ViewOnceViewerTest {
     fun reactAndReplyAreThereFromTheFirstFrameBeforeTheMediaHasLoaded() = runSkikoComposeUiTest {
         setContent {
             MaterialTheme {
-                ViewOnceViewerFrame(isVideo = true, mediaShown = false, failed = false, onClose = {}) { fill -> Box(fill) }
+                ViewOnceViewerFrame(isVideo = true, mediaShown = false, failed = false, onClose = {}) { fill, _ -> Box(fill) }
             }
         }
         waitForIdle()
@@ -182,7 +185,7 @@ class ViewOnceViewerTest {
     fun backConsumesTheItemExactlyOnce() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
-        awaitShown()
+        awaitShown(server)
 
         onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).performClick()
         waitForIdle()
@@ -199,7 +202,7 @@ class ViewOnceViewerTest {
         val reacted = mutableListOf<String>()
         var replied = 0
         setContent {
-            MaterialTheme {
+            server.Provide { MaterialTheme {
                 ViewOnceViewer(
                     data = server.viewer(),
                     onViewerClosed = { closed++ },
@@ -209,9 +212,9 @@ class ViewOnceViewerTest {
                     reactions = listOf("A", "B"),
                     loader = server.loader,
                 )
-            }
+            } }
         }
-        awaitShown()
+        awaitShown(server)
 
         onNodeWithTag(VIEW_ONCE_VIEWER_REACT_TAG).performClick()
         waitForIdle()
@@ -235,10 +238,10 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun aTapHidesOnlyTheTopRow_andBackReactAndReplyNeverGoAway() = runSkikoComposeUiTest {
+    fun aTapHidesOnlyTheTopRow_andBackReactAndReplyNeverGoAway() = onEdt { runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
-        awaitShown()
+        awaitShown(server)
         val alwaysThere = listOf(
             VIEW_ONCE_VIEWER_CLOSE_TAG, VIEW_ONCE_VIEWER_REACT_TAG, VIEW_ONCE_VIEWER_REPLY_TAG,
         )
@@ -250,13 +253,13 @@ class ViewOnceViewerTest {
         onNodeWithTag(VIEW_ONCE_VIEWER_IMAGE_TAG).performClick()
         waitUntil(timeoutMillis = 5_000) { present(VIEW_ONCE_VIEWER_INFO_TAG) }
         for (tag in alwaysThere) assertTrue(present(tag), tag)
-    }
+    } }
 
     @Test
     fun theLivePathShowsTheSenderTheTimeAndTheCaptionOnItsOwnContainer() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         setContent {
-            MaterialTheme {
+            server.Provide { MaterialTheme {
                 ViewOnceViewer(
                     data = server.viewer(
                         caption = "Remember this place",
@@ -267,9 +270,9 @@ class ViewOnceViewerTest {
                     onDismiss = {},
                     loader = server.loader,
                 )
-            }
+            } }
         }
-        awaitShown()
+        awaitShown(server)
         onNodeWithText("Alice").assertExists()
         onNodeWithTag(VIEW_ONCE_VIEWER_TITLE_TAG).assertExists()
         onNodeWithTag(VIEW_ONCE_VIEWER_CAPTION_TAG).assertExists()
@@ -282,16 +285,16 @@ class ViewOnceViewerTest {
     fun theCaptionShowsInsideTheViewerAboveTheControlsAndTheViewerSaysNothingAboutViewingOnce() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         setContent {
-            MaterialTheme {
+            server.Provide { MaterialTheme {
                 ViewOnceViewer(
                     data = server.viewer(caption = "Remember this place"),
                     onViewerClosed = { closed++ },
                     onDismiss = { dismissed++ },
                     loader = server.loader,
                 )
-            }
+            } }
         }
-        awaitShown()
+        awaitShown(server)
 
         onNodeWithTag(VIEW_ONCE_VIEWER_CAPTION_TAG).assertTextEquals("Remember this place")
         val captionBottom = onNodeWithTag(VIEW_ONCE_VIEWER_CAPTION_TAG).getBoundsInRoot().bottom
@@ -308,7 +311,7 @@ class ViewOnceViewerTest {
     fun aVideoViewerSaysNothingExplanatoryEither() = runSkikoComposeUiTest {
         setContent {
             MaterialTheme {
-                ViewOnceViewerFrame(isVideo = true, mediaShown = true, failed = false, onClose = {}) { fill ->
+                ViewOnceViewerFrame(isVideo = true, mediaShown = true, failed = false, onClose = {}) { fill, _ ->
                     Box(fill.testTag("player"))
                 }
             }
@@ -324,7 +327,7 @@ class ViewOnceViewerTest {
     fun noCaptionMeansNoCaptionNode() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
-        awaitShown()
+        awaitShown(server)
         onNodeWithTag(VIEW_ONCE_VIEWER_CAPTION_TAG).assertDoesNotExist()
     }
 
@@ -333,7 +336,7 @@ class ViewOnceViewerTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         val captured = mutableStateOf(false)
         showWithCapture(server, captured)
-        awaitShown()
+        awaitShown(server)
         onNodeWithTag(VIEW_ONCE_VIEWER_BLOCKED_TAG).assertDoesNotExist()
 
         captured.value = true
@@ -351,7 +354,7 @@ class ViewOnceViewerTest {
     fun theBackGestureCountsAsClosing_andLeavingCompositionDoesNotCloseTwice() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
-        awaitShown()
+        awaitShown(server)
 
         runOnIdle { back.press() }
         waitForIdle()
@@ -366,7 +369,7 @@ class ViewOnceViewerTest {
     fun leavingCompositionAfterTheMediaWasShownConsumesTheItemEvenWithoutAClick() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
-        awaitShown()
+        awaitShown(server)
 
         present = false
         waitForIdle()
@@ -374,6 +377,25 @@ class ViewOnceViewerTest {
         assertEquals(1, closed)
         assertEquals(0, dismissed)
         waitUntil(timeoutMillis = 5_000) { server.evictedImages.isNotEmpty() && !server.cached.isEphemeral(server.fileId) }
+    }
+
+    @Test
+    fun closingDeletesThePhotosTempFileAndDropsItsDecodedImage() = runSkikoComposeUiTest {
+        val server = runBlocking { ViewOnceFakeServer().start() }
+        show(server)
+        awaitShown(server)
+        val path = server.tempFiles().single().absolutePath
+        assertTrue(path.contains("/${id.homebase.api.file.AppCacheDirs.VIEW_ONCE}/"), "the photo lives only in the view-once temp dir")
+
+        onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).performClick()
+        waitForIdle()
+        present = false
+        waitForIdle()
+
+        waitUntil(timeoutMillis = 5_000) { server.tempFiles().isEmpty() }
+        assertEquals(listOf(path), server.evictedTemps)
+        assertEquals(emptyList(), server.coilKeysFor(path), "no decoded image or tile outlives the viewer")
+        assertEquals(0L, runBlocking { server.cachedBytes() })
     }
 
     @Test
@@ -399,7 +421,7 @@ class ViewOnceViewerTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         val overlay = server.viewer()
         showRemountable(server, overlay)
-        awaitShown()
+        awaitShown(server)
         assertEquals(1, server.requests)
 
         generation++
@@ -422,10 +444,10 @@ class ViewOnceViewerTest {
         val second = server.viewer()
         secondPresent = true
         setContent {
-            MaterialTheme {
+            server.Provide { MaterialTheme {
                 if (present) ViewOnceViewer(first, onViewerClosed = {}, onDismiss = {}, loader = server.loader)
                 if (secondPresent) ViewOnceViewer(second, onViewerClosed = {}, onDismiss = {}, loader = server.loader)
-            }
+            } }
         }
         waitUntil(timeoutMillis = 10_000) {
             onAllNodes(hasTestTag(VIEW_ONCE_VIEWER_IMAGE_TAG)).fetchSemanticsNodes().size == 2
@@ -457,7 +479,7 @@ class ViewOnceViewerTest {
                     playing = playing,
                     onTogglePlay = { playing = !playing },
                     onMutedChange = {},
-                ) { fill -> Box(fill.testTag("player")) }
+                ) { fill, _ -> Box(fill.testTag("player")) }
             }
         }
         assertTrue(present(VIEW_ONCE_VIEWER_CLOSE_TAG))
@@ -549,7 +571,7 @@ class ViewOnceViewerTest {
                 ViewOnceViewerFrame(
                     isVideo = true, mediaShown = true, failed = false, onClose = {}, muted = muted,
                     onMutedChange = { muted = it }, onTogglePlay = {},
-                ) { fill -> Box(fill.testTag("player")) }
+                ) { fill, _ -> Box(fill.testTag("player")) }
             }
         }
         waitForIdle()
@@ -566,7 +588,7 @@ class ViewOnceViewerTest {
             MaterialTheme {
                 ViewOnceViewerFrame(
                     isVideo = false, mediaShown = true, failed = false, onClose = {}, onMutedChange = null,
-                ) { fill -> Box(fill.testTag("player")) }
+                ) { fill, _ -> Box(fill.testTag("player")) }
             }
         }
         waitForIdle()
@@ -583,7 +605,7 @@ class ViewOnceViewerTest {
                 ViewOnceViewerFrame(
                     isVideo = false, mediaShown = true, failed = false, onClose = {},
                     senderName = "Alice", sentAt = "10:53",
-                ) { fill -> Box(fill) }
+                ) { fill, _ -> Box(fill) }
             }
         }
         waitForIdle()
@@ -595,7 +617,7 @@ class ViewOnceViewerTest {
     fun whileLoadingOrFailedTheBackButtonStaysAndATapCannotHideIt() = runSkikoComposeUiTest {
         setContent {
             MaterialTheme {
-                ViewOnceViewerFrame(isVideo = true, mediaShown = false, failed = false, onClose = {}) { fill ->
+                ViewOnceViewerFrame(isVideo = true, mediaShown = false, failed = false, onClose = {}) { fill, _ ->
                     Box(fill.testTag("player"))
                 }
             }
@@ -611,7 +633,7 @@ class ViewOnceViewerTest {
     fun aFailedLoadStillLetsTheRecipientReplyAndReact() = runSkikoComposeUiTest {
         setContent {
             MaterialTheme {
-                ViewOnceViewerFrame(isVideo = false, mediaShown = false, failed = true, onClose = {}) { fill -> Box(fill) }
+                ViewOnceViewerFrame(isVideo = false, mediaShown = false, failed = true, onClose = {}) { fill, _ -> Box(fill) }
             }
         }
         waitForIdle()

@@ -10,6 +10,17 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.AppCacheDirs
+import id.homebase.api.client.drives.files.DriveFileHttpProvider
+import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
+import id.homebase.core.image.HomebaseImageLoader
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import coil3.ImageLoader
+import coil3.PlatformContext
+import org.koin.compose.KoinIsolatedContext
+import org.koin.dsl.koinApplication
+import org.koin.dsl.module
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -25,6 +36,13 @@ import javax.imageio.ImageIO
 import kotlin.io.encoding.Base64
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+
+// The zoomable asserts Swing's EDT, as the desktop app runs Compose there; a test that gestures on it must too.
+internal fun onEdt(block: () -> Unit) {
+    var failure: Throwable? = null
+    javax.swing.SwingUtilities.invokeAndWait { failure = runCatching(block).exceptionOrNull() }
+    failure?.let { throw it }
+}
 
 /** A drive that serves one AES-encrypted view-once payload, over the real provider and cache stack. */
 internal class ViewOnceFakeServer(
@@ -46,6 +64,22 @@ internal class ViewOnceFakeServer(
     lateinit var provider: DriveFileProvider
     var evictedImages = mutableListOf<Pair<Uuid, Uuid>>()
     lateinit var loader: ViewOncePayloadLoader
+    lateinit var homebaseImageLoader: HomebaseImageLoader
+    val coil: ImageLoader = ImageLoader.Builder(PlatformContext.INSTANCE).build()
+    val viewOnceTempDir: String get() = AppCacheDirs.scratchDir(tempDir, AppCacheDirs.VIEW_ONCE)
+    val evictedTemps = mutableListOf<String>()
+
+    fun tempFiles(): List<java.io.File> = java.io.File(viewOnceTempDir).listFiles()?.toList().orEmpty()
+
+    fun coilKeysFor(path: String): List<String> = coil.memoryCache?.keys?.map { it.key }?.filter { path in it }.orEmpty()
+
+    @Composable
+    fun Provide(content: @Composable () -> Unit) {
+        val koin = remember {
+            koinApplication { modules(module { single { coil }; single { homebaseImageLoader } }) }
+        }
+        KoinIsolatedContext(koin, content = content)
+    }
 
     suspend fun start(): ViewOnceFakeServer {
         val cipher = AesCbc.encrypt(plainImage, aes, iv)
@@ -63,7 +97,7 @@ internal class ViewOnceFakeServer(
                 headers = headersOf("payloadencrypted" to listOf("true")),
             )
         })
-        cached = DriveFileProviderCached(http, credentials, object : FileOperationsProvider {
+        val fileOps = object : FileOperationsProvider {
             override fun getCacheDirectory() = tempDir
             override fun openFileInput(path: String): InputProvider = error("unused")
             override suspend fun readFileBytes(path: String): ByteArray = error("unused")
@@ -75,9 +109,23 @@ internal class ViewOnceFakeServer(
                 val file = java.io.File(path).also { it.parentFile.mkdirs() }
                 file.outputStream().use { out -> data.collect { out.write(it) } }
             }
-        })
+        }
+        cached = DriveFileProviderCached(http, credentials, fileOps)
         provider = DriveFileProvider(http, credentials, cached)
-        loader = ViewOncePayloadLoader(provider, canView = { true }) { drive, file -> evictedImages += drive to file }
+        homebaseImageLoader = HomebaseImageLoader(
+            driveFileProvider = provider,
+            fileOperationsProvider = fileOps,
+            peerFileProvider = PeerFileByGlobalTransitProvider(http, credentials, DriveFileHttpProvider(http, credentials), cached),
+        )
+        loader = ViewOncePayloadLoader(
+            provider,
+            tempDir = { viewOnceTempDir },
+            canView = { true },
+            evictLocalImage = { path ->
+                coil.evictMemoryFor(path)
+                evictedTemps += path
+            },
+        ) { drive, file -> evictedImages += drive to file }
         return this
     }
 

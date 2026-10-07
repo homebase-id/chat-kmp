@@ -31,7 +31,6 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.hasTestTag
-import id.homebase.api.image.toImageBitmap
 import kotlinx.coroutines.runBlocking
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.Density
@@ -248,6 +247,7 @@ class ViewOnceShotsTest {
             single { UserPreferences(InMemorySettings()) }
             single { ImageLoader.Builder(PlatformContext.INSTANCE).components { add(PlatformFileFetcher.Factory()) }.build() }
             single { LocalAttachmentContextStore(EventBus(), CoroutineScope(SupervisorJob())) }
+            single { runBlocking { ViewOnceFakeServer().start() }.homebaseImageLoader }
         })
     }
 
@@ -462,7 +462,7 @@ class ViewOnceShotsTest {
 
     @Composable
     private fun ViewerScene(scene: Scene.Viewer) {
-        val frame = remember { (if (scene.video) poster else File(samples, "red-leaf.jpg")).readBytes().toImageBitmap()!! }
+        val frame = remember { (if (scene.video) poster else File(samples, "red-leaf.jpg")).absolutePath }
         ViewOnceViewerFrame(
             isVideo = scene.video,
             caption = scene.caption,
@@ -476,11 +476,11 @@ class ViewOnceShotsTest {
             muted = scene.muted,
             onMutedChange = {},
             onTogglePlay = if (scene.video) ({}) else null,
-        ) { fill ->
+        ) { fill, toggleChrome ->
             when (scene.stage) {
                 ViewerStage.Loading -> ViewOnceViewerLoading(fill)
                 ViewerStage.Failed -> ViewOnceViewerFailed(onRetry = {}, modifier = fill)
-                else -> ViewOnceViewerImage(frame)
+                else -> ViewOnceViewerImage(frame, onTap = toggleChrome)
             }
         }
     }
@@ -493,6 +493,7 @@ class ViewOnceShotsTest {
         setContent {
             Themed(dark, shot.fontScale, shot.rtl) {
                 val scene = shot.scene as Scene.Viewer
+                server.Provide {
                 ViewOnceViewer(
                     data = server.viewer(
                         caption = scene.caption,
@@ -503,6 +504,7 @@ class ViewOnceShotsTest {
                     onDismiss = {},
                     loader = server.loader,
                 )
+                }
             }
         }
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag(VIEW_ONCE_VIEWER_IMAGE_TAG)).fetchSemanticsNodes().isNotEmpty() }
@@ -511,9 +513,11 @@ class ViewOnceShotsTest {
         save(shot.name, dark)
     }
 
-    private fun render(shot: Shot, dark: Boolean): Unit = when {
-        (shot.scene as? Scene.Viewer)?.stage == ViewerStage.Live -> renderLiveViewer(shot, dark)
-        else -> renderStill(shot, dark)
+    private fun render(shot: Shot, dark: Boolean): Unit = onEdt {
+        when {
+            (shot.scene as? Scene.Viewer)?.stage == ViewerStage.Live -> renderLiveViewer(shot, dark)
+            else -> renderStill(shot, dark)
+        }
     }
 
     private fun renderStill(shot: Shot, dark: Boolean) = runDesktopComposeUiTest(

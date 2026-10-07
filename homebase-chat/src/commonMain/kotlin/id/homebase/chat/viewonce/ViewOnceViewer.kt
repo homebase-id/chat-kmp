@@ -1,7 +1,6 @@
 package id.homebase.chat.viewonce
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -9,12 +8,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -62,7 +58,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -74,13 +69,9 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -94,11 +85,12 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.file.AppCacheDirs
-import id.homebase.api.image.toImageBitmap
 import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.widget.video.VideoPlayerSurface
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.media.subsample.SubSamplingImageSource
+import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.widget.quickReactions
@@ -120,8 +112,6 @@ import id.homebase.resources.chat_view_once_unmute
 import id.homebase.resources.chat_view_once_viewer_failed_body
 import id.homebase.resources.chat_view_once_viewer_failed_title
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
@@ -164,7 +154,8 @@ fun ViewOnceViewer(
     SecureWindowEffect(active = true)
     val screenCaptured by captureObserver(onScreenshot)
     val isVideo = data.kind == ViewOnceDescriptor.KIND_VIDEO
-    var image by remember(data.messageId) { mutableStateOf<ImageBitmap?>(null) }
+    var imagePath by remember(data.messageId) { mutableStateOf<String?>(null) }
+    var imageShown by remember(data.messageId) { mutableStateOf(false) }
     var videoShown by remember(data.messageId) { mutableStateOf(false) }
     var failed by remember(data.messageId) { mutableStateOf(false) }
     var videoReady by remember(data.messageId) { mutableStateOf(false) }
@@ -191,9 +182,9 @@ fun ViewOnceViewer(
             if (isVideo) {
                 videoReady = true
             } else {
-                val bytes = loader.loadBytes(chatTargetDrive.alias, data.fileId, data.payload.key, data.keyHeader)
-                val bitmap = withContext(Dispatchers.Default) { bytes.toImageBitmap() }
-                if (bitmap == null) failed = true else image = bitmap
+                imagePath?.let(loader::deleteTempAsync)
+                imagePath = null
+                imagePath = loader.loadToTempFile(chatTargetDrive.alias, data.fileId, data.payload.key, data.keyHeader)
             }
         } catch (e: CancellationException) {
             throw e
@@ -205,7 +196,7 @@ fun ViewOnceViewer(
         }
     }
 
-    val shown by rememberUpdatedState(image != null || videoShown)
+    val shown by rememberUpdatedState(imageShown || videoShown)
     val latestOnClosed by rememberUpdatedState(onViewerClosed)
     val closeGuard = remember(data.messageId) { CloseOnce() }
     fun consumeOnce() {
@@ -218,6 +209,7 @@ fun ViewOnceViewer(
     DisposableEffect(data.messageId) {
         onDispose {
             consumeOnce()
+            imagePath?.let(loader::deleteTempAsync)
             // Only a viewer that took the hold may release it, or it would unmark a live sibling's file.
             if (hold.isClaimed) loader.evictAsync(chatTargetDrive.alias, data.fileId, data.payload.key)
         }
@@ -264,7 +256,7 @@ fun ViewOnceViewer(
         },
         onClose = ::close,
         modifier = modifier,
-    ) { fill ->
+    ) { fill, toggleChrome ->
         when {
             screenCaptured -> ViewOnceCaptureBlocked(fill)
             failed -> ViewOnceViewerFailed(onRetry = { attempt++ }, modifier = fill)
@@ -284,7 +276,15 @@ fun ViewOnceViewer(
                 )
                 if (!videoShown) ViewOnceViewerLoading(fill)
             }
-            image != null -> ViewOnceViewerImage(image!!)
+            imagePath != null -> {
+                ViewOnceViewerImage(
+                    path = imagePath!!,
+                    onTap = toggleChrome,
+                    onLoaded = { imageShown = true },
+                    onError = { failed = true },
+                )
+                if (!imageShown) ViewOnceViewerLoading(fill)
+            }
             else -> ViewOnceViewerLoading(fill)
         }
     }
@@ -324,7 +324,7 @@ internal fun ViewOnceViewerFrame(
     reactions: List<String> = quickReactions(emptyList()),
     onReact: (String) -> Unit = {},
     onReply: () -> Unit = {},
-    body: @Composable BoxScope.(fill: Modifier) -> Unit,
+    body: @Composable BoxScope.(fill: Modifier, toggleChrome: () -> Unit) -> Unit,
 ) {
     HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
         val motion = MaterialTheme.motionScheme
@@ -338,7 +338,7 @@ internal fun ViewOnceViewerFrame(
                 .background(MaterialTheme.colorScheme.scrim)
                 .pointerInput(mediaShown) { detectTapGestures { if (mediaShown) topRequested = !topRequested } },
         ) {
-            body(Modifier.fillMaxSize())
+            body(Modifier.fillMaxSize()) { if (mediaShown) topRequested = !topRequested }
             AnimatedVisibility(
                 visible = topVisible,
                 enter = fadeIn(motion.defaultEffectsSpec()),
@@ -698,32 +698,19 @@ internal fun ViewOnceViewerFailed(onRetry: () -> Unit, modifier: Modifier = Modi
 }
 
 @Composable
-internal fun ViewOnceViewerImage(bitmap: ImageBitmap) {
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
-    val reveal = remember { Animatable(0f) }
-    val revealSpec = MaterialTheme.motionScheme.slowSpatialSpec<Float>()
-    LaunchedEffect(Unit) { reveal.animateTo(1f, revealSpec) }
-    val transformState = rememberTransformableState { zoom, pan, _ ->
-        scale = (scale * zoom).coerceIn(1f, 5f)
-        offset = if (scale <= 1f) Offset.Zero else offset + pan
-    }
-    Image(
-        bitmap = bitmap,
+internal fun ViewOnceViewerImage(
+    path: String,
+    onTap: () -> Unit,
+    onLoaded: () -> Unit = {},
+    onError: () -> Unit = {},
+) {
+    ZoomableSubSamplingImage(
+        source = remember(path) { SubSamplingImageSource.LocalFile(path) },
         contentDescription = stringResource(MR.string.chat_message_image_attachment),
-        contentScale = ContentScale.Fit,
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag(VIEW_ONCE_VIEWER_IMAGE_TAG)
-            .graphicsLayer {
-                val entry = 0.92f + 0.08f * reveal.value
-                alpha = reveal.value.coerceIn(0f, 1f)
-                scaleX = scale * entry
-                scaleY = scale * entry
-                translationX = offset.x
-                translationY = offset.y
-            }
-            .transformable(transformState),
+        onTap = onTap,
+        onLoaded = onLoaded,
+        onError = onError,
+        modifier = Modifier.fillMaxSize().testTag(VIEW_ONCE_VIEWER_IMAGE_TAG),
     )
 }
 

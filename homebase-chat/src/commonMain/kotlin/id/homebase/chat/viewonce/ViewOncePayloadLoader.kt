@@ -1,18 +1,25 @@
 package id.homebase.chat.viewonce
 
 import co.touchlab.kermit.Logger
+import coil3.ImageLoader
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.coroutines.supervisedScope
+import id.homebase.api.file.systemFileSystem
 import id.homebase.core.util.isMobile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okio.Path.Companion.toPath
 import kotlin.uuid.Uuid
 
 /** Reads image bytes network-only and holds the cache-bypass mark that video playback also relies on. */
 class ViewOncePayloadLoader(
     private val driveFileProvider: DriveFileProvider,
+    private val tempDir: () -> String,
     private val canView: () -> Boolean = { isMobile() },
+    private val evictLocalImage: (path: String) -> Unit = {},
     private val evictDecodedImage: suspend (driveId: Uuid, fileId: Uuid) -> Unit,
 ) {
     private val scope = supervisedScope("view-once-loader")
@@ -41,6 +48,33 @@ class ViewOncePayloadLoader(
         return driveFileProvider
             .getPayloadBytesDecryptedFromNetwork(driveId, fileId, payloadKey, keyHeader)
             .bytes
+    }
+
+    /** The decrypted photo as an app-private temp file; [deleteTempAsync] it on close, and the startup sweep reaps any a crash left. */
+    suspend fun loadToTempFile(driveId: Uuid, fileId: Uuid, payloadKey: String, keyHeader: KeyHeader): String {
+        val bytes = loadBytes(driveId, fileId, payloadKey, keyHeader)
+        val path = withContext(ioDispatcher) { tempDir() } + "/vo_" + Uuid.random().toHexString()
+        try {
+            withContext(ioDispatcher) { systemFileSystem.write(path.toPath()) { write(bytes) } }
+        } catch (e: Throwable) {
+            // Cancelled after the write, the caller never learns the path, so it can't delete the file.
+            deleteTempAsync(path)
+            throw e
+        }
+        return path
+    }
+
+    fun deleteTempAsync(path: String) {
+        evictLocalImage(path)
+        scope.launch(ioDispatcher) {
+            try {
+                systemFileSystem.delete(path.toPath(), mustExist = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w("ViewOnceLoader", e) { "temp delete failed" }
+            }
+        }
     }
 
     private fun requireReadable(fileId: Uuid) {
@@ -72,6 +106,12 @@ class ViewOncePayloadLoader(
             }
         }
     }
+}
+
+// Zoom tiles are cached under keys derived from the image's, so a substring match takes them too.
+fun ImageLoader.evictMemoryFor(path: String) {
+    val cache = memoryCache ?: return
+    cache.keys.filter { path in it.key }.forEach(cache::remove)
 }
 
 class ViewOnceAlreadyConsumedException : IllegalStateException("view-once item already consumed")
