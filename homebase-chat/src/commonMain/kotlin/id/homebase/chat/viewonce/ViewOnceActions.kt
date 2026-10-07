@@ -66,13 +66,25 @@ class ViewOnceActions(
 
     private suspend fun release(messageId: Uuid) = claimMutex.withLock { claimed.remove(messageId) }
 
+    private suspend fun releasingOnFailure(messageId: Uuid, failure: String, block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            release(messageId)
+            throw e
+        } catch (e: Exception) {
+            release(messageId)
+            Logger.e(TAG, e) { "$failure msg=$messageId" }
+        }
+    }
+
     /**
      * The viewer's emoji row (if any), then `_vo`, then the soft delete: each row waits for the one
      * before it, because the outbox is not FIFO and a reaction sent after the delete is lost.
      */
     suspend fun onViewerClosed(conversationId: Uuid, messageId: Uuid) {
         if (!claim(messageId)) return
-        try {
+        releasingOnFailure(messageId, "viewer close failed") {
             val afterReaction = reactMutex.withLock { reacted.remove(messageId) }
                 ?.let { ChatMessageActionService.reactionSetRowKey(messageId, ViewOnceSignal.REACTION_SCOPE) }
             val outcome = actionService.setReactions(
@@ -84,12 +96,6 @@ class ViewOnceActions(
                 deleteForEveryone = false,
                 runAfter = ChatMessageActionService.reactionSetRowKey(messageId, ViewOnceSignal.OPENED_SCOPE),
             )
-        } catch (e: CancellationException) {
-            release(messageId)
-            throw e
-        } catch (e: Exception) {
-            release(messageId)
-            Logger.e(TAG, e) { "viewer close failed msg=$messageId" }
         }
     }
 
@@ -108,8 +114,8 @@ class ViewOnceActions(
             val expired = nowMs - message.created.toEpochMilliseconds() >= ViewOnceRules.MAX_LIFESPAN_MS
             if (!opened && !expired) continue
             if (!claim(message.id)) continue
-            try {
-                if (actionService.isDeletedLocally(message.id)) continue
+            releasingOnFailure(message.id, "sweep delete failed") {
+                if (actionService.isDeletedLocally(message.id)) return@releasingOnFailure
                 actionService.deleteMessage(
                     messageId = message.id,
                     deleteForEveryone = false,
@@ -117,12 +123,6 @@ class ViewOnceActions(
                         ChatMessageActionService.reactionSetRowKey(message.id, ViewOnceSignal.OPENED_SCOPE)
                     } else null,
                 )
-            } catch (e: CancellationException) {
-                release(message.id)
-                throw e
-            } catch (e: Exception) {
-                release(message.id)
-                Logger.e(TAG, e) { "sweep delete failed msg=${message.id}" }
             }
         }
     }
