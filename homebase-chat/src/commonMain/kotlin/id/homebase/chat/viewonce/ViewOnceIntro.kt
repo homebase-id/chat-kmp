@@ -4,7 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -194,15 +195,19 @@ fun ViewOnceToast(message: ViewOnceToastMessage?, modifier: Modifier = Modifier)
     }
     AnimatedVisibility(
         visible = shown != null,
-        enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) + slideInVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) { it / 2 },
-        exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) + slideOutVertically(MaterialTheme.motionScheme.fastSpatialSpec()) { it / 2 },
+        // Opaque within a few frames and held there; the room it takes opens on the same spring, so it never lands on the media.
+        enter = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()) +
+            expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec(), expandFrom = Alignment.Top) +
+            slideInVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) { it / 2 },
+        exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
+            shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec(), shrinkTowards = Alignment.Top),
         modifier = modifier,
     ) {
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.inverseSurface,
             contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-            modifier = Modifier.testTag(VIEW_ONCE_TOAST_TAG),
+            modifier = Modifier.padding(vertical = 8.dp).testTag(VIEW_ONCE_TOAST_TAG),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,

@@ -114,6 +114,8 @@ class ViewOnceShotsTest {
             val caption: String = "",
             val tapViewOnce: Boolean = false,
             val addAfterOn: AttachmentPendingFile? = null,
+            // How long the toast has been up when the frame is taken; a "set to view once" frame lands after the fade.
+            val toastAgeMs: Long = 800,
         ) : Scene
         data class Thread(val group: Boolean = false) : Scene
         data class States(val outgoing: Boolean, val pressFirst: Boolean = false) : Scene
@@ -150,6 +152,7 @@ class ViewOnceShotsTest {
             Shot("e9-editor-two-photos-after-on", Scene.Editor(listOf(image(), image()), viewOnce = true)),
             Shot("e12-editor-two-photos-tapped", Scene.Editor(listOf(image(), image()), viewOnce = false, tapViewOnce = true)),
             Shot("e13-editor-on-then-second-photo-added", Scene.Editor(listOf(image()), viewOnce = true, addAfterOn = image()), settleMs = 3_100),
+            Shot("e15-editor-toast-at-150ms", Scene.Editor(listOf(image()), viewOnce = true, toastAgeMs = 150)),
             Shot("e14-editor-toggle-off-tapped-on", Scene.Editor(listOf(image()), viewOnce = false, tapViewOnce = true), settleMs = 750),
             Shot("e10-editor-video-on-rtl-font-scale", Scene.Editor(listOf(video()), viewOnce = true), rtl = true, fontScale = 1.3f),
             Shot("e5-editor-on-font-scale", Scene.Editor(listOf(image()), viewOnce = true), fontScale = 1.6f),
@@ -219,14 +222,22 @@ class ViewOnceShotsTest {
     }
 
     @Composable
-    private fun EditorScene(scene: Scene.Editor) {
+    private fun EditorScene(scene: Scene.Editor, settleMs: Long) {
         val state = remember {
             ViewOnceComposerState(UserPreferences(InMemorySettings()).also { it.viewOnceIntroSeen = true })
-                .also { if (scene.viewOnce) it.toggle(isVideo = false) }
         }
         var attachments by remember { mutableStateOf(scene.attachments) }
+        val isVideo = attachments.singleOrNull() is AttachmentPendingFile.FileVideo
         LaunchedEffect(Unit) {
-            val extra = scene.addAfterOn ?: return@LaunchedEffect
+            val extra = scene.addAfterOn
+            if (extra == null) {
+                if (scene.viewOnce) {
+                    delay(settleMs - scene.toastAgeMs)
+                    state.toggle(isVideo)
+                }
+                return@LaunchedEffect
+            }
+            if (scene.viewOnce) state.toggle(isVideo)
             delay(VIEW_ONCE_TOAST_MS + 500)
             attachments = attachments + extra
         }
@@ -247,15 +258,15 @@ class ViewOnceShotsTest {
             onRemoveFile = {},
             onDismiss = {},
             centerImageInPage = true,
-            pagerTopEndSlot = {
-                ViewOnceToast(message = state.toast, modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp))
+            aboveStripSlot = {
+                ViewOnceToast(message = state.toast, modifier = Modifier.align(Alignment.CenterHorizontally))
             },
             bottomBar = {
                 MessageTextFieldForAttachment(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     state = caption,
                     onSendMessage = {},
-                    viewOnceToggle = if (eligible) ViewOnceToggle(viewOnce) { state.toggle(isVideo = false) } else null,
+                    viewOnceToggle = if (eligible) ViewOnceToggle(viewOnce) { state.toggle(isVideo) } else null,
                     showFormattingToolbar = false,
                 )
             },
@@ -470,11 +481,13 @@ class ViewOnceShotsTest {
         val server = runBlocking { ViewOnceFakeServer(plainImage = File(samples, "red-leaf.jpg").readBytes()).start() }
         setContent {
             Themed(dark, shot.fontScale, shot.rtl) {
-                ViewOnceViewer(data = server.viewer(), onViewerClosed = {}, onDismiss = {}, loader = server.loader)
+                ViewOnceViewer(data = server.viewer().copy(senderName = "Alice", sentAt = Instant.fromEpochMilliseconds(FIXED_TIME_MS)), onViewerClosed = {}, onDismiss = {}, loader = server.loader)
             }
         }
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag(VIEW_ONCE_VIEWER_IMAGE_TAG)).fetchSemanticsNodes().isNotEmpty() }
-        mainClock.advanceTimeBy(2_000)
+        // The first frames after opening, while the header is still up; v8 covers it stepping aside.
+        mainClock.autoAdvance = false
+        mainClock.advanceTimeBy(600)
         save(shot.name, dark)
     }
 
@@ -492,7 +505,7 @@ class ViewOnceShotsTest {
         setContent {
             Themed(dark, shot.fontScale, shot.rtl) {
                 when (val scene = shot.scene) {
-                    is Scene.Editor -> EditorScene(scene)
+                    is Scene.Editor -> EditorScene(scene, shot.settleMs)
                     is Scene.Thread -> ThreadScene(scene)
                     is Scene.States -> StatesScene(scene)
                     is Scene.Viewer -> ViewerScene(scene)

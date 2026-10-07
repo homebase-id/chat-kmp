@@ -389,11 +389,10 @@ fun ConversationMessagesPane(
                                     )
                                 )
                             },
+                            aboveStripSlot = {
+                                ViewOnceToast(message = viewOnceState.toast, modifier = Modifier.align(Alignment.CenterHorizontally))
+                            },
                             pagerTopEndSlot = {
-                                ViewOnceToast(
-                                    message = viewOnceState.toast,
-                                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
-                                )
                                 Row(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)

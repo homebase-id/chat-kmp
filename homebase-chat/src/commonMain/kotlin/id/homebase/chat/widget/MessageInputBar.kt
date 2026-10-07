@@ -58,9 +58,15 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.runtime.Immutable
 import id.homebase.chat.viewonce.ViewOnceIcon
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.ripple
+import androidx.compose.ui.semantics.Role
+import androidx.compose.material3.minimumInteractiveComponentSize
 import id.homebase.resources.cd_view_once_toggle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -1218,6 +1224,54 @@ private fun EmojiToggleButton(
 
 const val VIEW_ONCE_TOGGLE_TAG = "viewOnceToggle"
 
+// Outlined circle off, filled squircle on: shape, fill and outline travel together on the motion scheme, as one control.
+@Composable
+private fun ViewOnceCaptionToggle(toggle: ViewOnceToggle) {
+    val colors = MaterialTheme.colorScheme
+    val motion = MaterialTheme.motionScheme
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val corner by animateDpAsState(
+        when {
+            pressed -> 8.dp
+            toggle.checked -> 12.dp
+            else -> VIEW_ONCE_TOGGLE_SIZE / 2
+        },
+        motion.fastSpatialSpec(),
+    )
+    val container by animateColorAsState(if (toggle.checked) colors.primary else colors.primary.copy(alpha = 0f), motion.defaultEffectsSpec())
+    val outline by animateColorAsState(if (toggle.checked) colors.primary.copy(alpha = 0f) else colors.outline, motion.defaultEffectsSpec())
+    val glyph by animateColorAsState(if (toggle.checked) colors.onPrimary else colors.onSurfaceVariant, motion.defaultEffectsSpec())
+    val shape = RoundedCornerShape(corner)
+    Box(
+        modifier = Modifier
+            .minimumInteractiveComponentSize()
+            .testTag(VIEW_ONCE_TOGGLE_TAG)
+            .toggleable(
+                value = toggle.checked,
+                interactionSource = interaction,
+                indication = ripple(bounded = false, radius = VIEW_ONCE_TOGGLE_SIZE / 2),
+                role = Role.Switch,
+                onValueChange = { toggle.onToggle() },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(VIEW_ONCE_TOGGLE_SIZE).background(container, shape).border(1.dp, outline, shape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = ViewOnceIcon,
+                contentDescription = stringResource(MR.string.cd_view_once_toggle),
+                tint = glyph,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+private val VIEW_ONCE_TOGGLE_SIZE = 36.dp
+
 @Immutable
 class ViewOnceToggle(val checked: Boolean, val onToggle: () -> Unit)
 
@@ -1318,29 +1372,7 @@ fun MessageTextFieldForAttachment(
                     placeholder = {
                         Text(stringResource(MR.string.chat_new_message_placeholder))
                     },
-                    trailingIcon = viewOnceToggle?.let { toggle ->
-                        {
-                            FilledTonalIconToggleButton(
-                                checked = toggle.checked,
-                                onCheckedChange = { toggle.onToggle() },
-                                // Circle off, squircle on, on the motion scheme's springs: the editor's tool-group language.
-                                shapes = IconButtonDefaults.toggleableShapes(),
-                                colors = IconButtonDefaults.filledTonalIconToggleButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    checkedContainerColor = MaterialTheme.colorScheme.primary,
-                                    checkedContentColor = MaterialTheme.colorScheme.onPrimary,
-                                ),
-                                modifier = Modifier.size(IconButtonDefaults.extraSmallContainerSize()).testTag(VIEW_ONCE_TOGGLE_TAG),
-                            ) {
-                                Icon(
-                                    imageVector = ViewOnceIcon,
-                                    contentDescription = stringResource(MR.string.cd_view_once_toggle),
-                                    modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
-                                )
-                            }
-                        }
-                    },
+                    trailingIcon = viewOnceToggle?.let { toggle -> { ViewOnceCaptionToggle(toggle) } },
                     leadingIcon = {
                         IconButton(
                             onClick = {

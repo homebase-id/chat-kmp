@@ -7,6 +7,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.foundation.layout.ColumnScope
+import id.homebase.core.ui.theme.HomebaseTheme
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonShapes
@@ -216,7 +218,46 @@ fun MediaAttachmentEditor(
     revealed: Boolean = true,
     imageOverlay: @Composable BoxScope.(AttachmentPendingFile) -> Unit = {},
     pagerTopEndSlot: @Composable BoxScope.() -> Unit = {},
+    // Sits just above the attachment strip; whatever it shows takes room from the media rather than covering it.
+    aboveStripSlot: @Composable ColumnScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
+) {
+    val isFileMode = attachments.all { it is AttachmentPendingFile.File }
+    // Media is framed on black in both themes, like the camera it often comes from; documents keep the app theme.
+    if (isFileMode) {
+        MediaAttachmentEditorContent(attachments, currentPage, onPageChanged, modifier, onCropImage, onDrawImage, onTrimChange, onSaveFile, onAddFile, onAddImage, onCameraClick, onRemoveFile, mediaQuality, onToggleMediaQuality, onDismiss, collapseSecondaryChrome, centerImageInPage, revealed, imageOverlay, pagerTopEndSlot, aboveStripSlot, bottomBar)
+    } else {
+        HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
+            MediaAttachmentEditorContent(attachments, currentPage, onPageChanged, modifier, onCropImage, onDrawImage, onTrimChange, onSaveFile, onAddFile, onAddImage, onCameraClick, onRemoveFile, mediaQuality, onToggleMediaQuality, onDismiss, collapseSecondaryChrome, centerImageInPage, revealed, imageOverlay, pagerTopEndSlot, aboveStripSlot, bottomBar)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MediaAttachmentEditorContent(
+    attachments: List<AttachmentPendingFile>,
+    currentPage: Int,
+    onPageChanged: (Int) -> Unit,
+    modifier: Modifier,
+    onCropImage: ((attachmentId: Uuid) -> Unit)?,
+    onDrawImage: ((attachmentId: Uuid) -> Unit)?,
+    onTrimChange: ((attachmentId: Uuid, startMs: Long?, endMs: Long?) -> Unit)?,
+    onSaveFile: ((file: AttachmentPendingFile) -> Unit)?,
+    onAddFile: (() -> Unit)?,
+    onAddImage: (() -> Unit)?,
+    onCameraClick: (() -> Unit)?,
+    onRemoveFile: ((attachmentId: Uuid) -> Unit)?,
+    mediaQuality: MediaQuality,
+    onToggleMediaQuality: (() -> Unit)?,
+    onDismiss: (() -> Unit)?,
+    collapseSecondaryChrome: Boolean,
+    centerImageInPage: Boolean,
+    revealed: Boolean,
+    imageOverlay: @Composable BoxScope.(AttachmentPendingFile) -> Unit,
+    pagerTopEndSlot: @Composable BoxScope.() -> Unit,
+    aboveStripSlot: @Composable ColumnScope.() -> Unit,
+    bottomBar: @Composable () -> Unit,
 ) {
     val isFileMode = attachments.all { it is AttachmentPendingFile.File }
     val imageLoader: ImageLoader = koinInject()
@@ -532,6 +573,8 @@ fun MediaAttachmentEditor(
             }
         }
         } // end AnimatedContent (trim bar)
+
+        aboveStripSlot()
 
         // Attachment-strip row: thumbnails for every queued attachment with a
         // trailing "+" to add another. This row is just about managing the

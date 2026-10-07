@@ -6,19 +6,10 @@ import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.ui.semantics.ProgressBarRangeInfo
-import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.snap
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
 import id.homebase.resources.cd_view_once_toggle
@@ -40,7 +31,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.heightIn
@@ -48,8 +38,11 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.unit.IntSize
+import id.homebase.resources.chat_view_once_tap_to_retry
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.TextButton
@@ -176,7 +169,8 @@ fun ViewOnceBubble(
             },
             statusColor = if (badge == Badge.Failed) colors.error else mutedColor,
             statusInline = badge == Badge.Opening,
-            phoneIcon = badge == Badge.Unavailable && openOnPhone,
+            hint = if (badge == Badge.Failed) stringResource(MR.string.chat_view_once_tap_to_retry) else null,
+            hintColor = mutedColor,
             note = shotNote,
         )
     }
@@ -225,7 +219,7 @@ fun ViewOnceBubble(
                 } else Modifier
             )
             // After the clip and fill, so the bubble's own shape follows the growing width instead of being cut by it.
-            .animateContentSize(motion.fastSpatialSpec())
+            .animateContentSize(motion.defaultSpatialSpec())
             .heightIn(min = 48.dp)
             .semantics(mergeDescendants = true) {
                 contentDescription = viewOnceLabel
@@ -269,12 +263,13 @@ fun ViewOnceBubble(
                     }
                 }
                 // Title and status change as one unit, so a frame never pairs the new title with the old status.
+                val sizeSpring = motion.defaultSpatialSpec<IntSize>()
                 AnimatedContent(
                     targetState = text,
                     transitionSpec = {
                         (slideInVertically(motion.defaultSpatialSpec()) { it / 3 } + fadeIn(HANDOFF_IN))
                             .togetherWith(slideOutVertically(motion.fastSpatialSpec()) { -it / 3 } + fadeOut(HANDOFF_OUT))
-                            .using(SizeTransform(clip = false) { _, _ -> snap() })
+                            .using(SizeTransform(clip = false) { _, _ -> sizeSpring })
                     },
                     contentAlignment = Alignment.CenterStart,
                     modifier = Modifier.padding(start = 10.dp).weight(1f, fill = false),
@@ -290,7 +285,8 @@ private data class BubbleText(
     val status: String? = null,
     val statusColor: Color = titleColor,
     val statusInline: Boolean = false,
-    val phoneIcon: Boolean = false,
+    val hint: String? = null,
+    val hintColor: Color = titleColor,
     val spent: Boolean = false,
     val note: String? = null,
 )
@@ -318,21 +314,15 @@ private fun BubbleTextBlock(text: BubbleText) {
         } else {
             title(Modifier)
             if (text.status != null) {
-                val lineHeight = with(LocalDensity.current) { statusStyle.lineHeight.toDp() }
-                Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(top = 2.dp)) {
-                    if (text.phoneIcon) {
-                        // Sized to one line so a wrapped label keeps the icon beside its first line.
-                        Box(Modifier.padding(end = 4.dp).height(lineHeight), contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Outlined.PhoneAndroid,
-                                contentDescription = null,
-                                tint = text.statusColor,
-                                modifier = Modifier.size(lineHeight * 0.9f),
-                            )
-                        }
-                    }
-                    Text(text = text.status, style = statusStyle.withContentDirection(), color = text.statusColor)
-                }
+                Text(
+                    text = text.status,
+                    style = statusStyle.withContentDirection(),
+                    color = text.statusColor,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            if (text.hint != null) {
+                Text(text = text.hint, style = statusStyle.withContentDirection(), color = text.hintColor)
             }
         }
         if (text.note != null) {
@@ -362,7 +352,7 @@ private fun ViewOnceBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, 
         Badge.Failed -> FilledBadge(cookie, colors.errorContainer) {
             Icon(Icons.Default.Refresh, contentDescription = null, tint = colors.onErrorContainer, modifier = Modifier.size(18.dp))
         }
-        Badge.Expired -> FilledBadge(cookie, Color.Transparent) {
+        Badge.Expired -> FilledBadge(CircleShape, spentFill(isOutgoing, contentColor)) {
             val tint = if (isOutgoing) contentColor.copy(alpha = SPENT_ALPHA) else colors.onSurfaceVariant
             Icon(Icons.Outlined.TimerOff, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
         }
@@ -374,8 +364,8 @@ private fun ViewOnceBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, 
 
 /**
  * The toggle's own dashed "1" on a cookie: filled for the recipient's unopened item, the one thing in the thread
- * worth tapping, tonal on the sender's copy. Opening empties the cookie while it turns, and the "1" becomes a check
- * inside the same dashed ring.
+ * worth tapping, tonal on the sender's copy. Opening morphs the cookie into the quiet circle every spent state sits
+ * on, while the "1" turns into a check inside the same dashed ring.
  */
 @Composable
 private fun CookieBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, contentColor: Color) {
@@ -384,7 +374,7 @@ private fun CookieBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, co
     val spent = badge == Badge.Opened
     val fill by animateColorAsState(
         when {
-            spent -> Color.Transparent
+            spent -> spentFill(isOutgoing, contentColor)
             isOutgoing -> contentColor.copy(alpha = SENT_FILL_ALPHA)
             else -> colors.primary
         },
@@ -399,15 +389,13 @@ private fun CookieBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, co
         },
         motion.defaultEffectsSpec(),
     )
-    val turn by animateFloatAsState(if (spent) 1f else 0f, motion.slowSpatialSpec())
-    val digitAlpha by animateFloatAsState(if (spent) 0f else 1f, motion.fastEffectsSpec())
+    val turn by animateFloatAsState(if (spent) 1f else 0f, motion.defaultSpatialSpec())
     val invite = remember { Animatable(if (badge == Badge.Ready) 0.72f else 1f) }
     val inviteSpec = motion.slowSpatialSpec<Float>()
     LaunchedEffect(Unit) { invite.animateTo(1f, inviteSpec) }
     val morph = remember { Morph(MaterialShapes.Cookie9Sided, MaterialShapes.Circle) }
-    // Rounds out mid-turn, so the cookie visibly changes form while it empties.
-    val squish = (4f * turn * (1f - turn)).coerceIn(0f, 1f) * 0.7f
-    val shape = MorphShape(morph, maxOf(pressMorph, squish))
+    val shape = MorphShape(morph, maxOf(pressMorph, turn).coerceIn(0f, 1f))
+    val swap = turn.coerceIn(0f, 1f)
     Box(
         Modifier.size(BADGE_SIZE).graphicsLayer { scaleX = invite.value; scaleY = invite.value },
         contentAlignment = Alignment.Center,
@@ -415,17 +403,25 @@ private fun CookieBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, co
         Box(
             Modifier
                 .matchParentSize()
-                .graphicsLayer { rotationZ = turn * 120f + (1f - invite.value) * -120f }
+                .graphicsLayer { rotationZ = turn * 90f + (1f - invite.value) * -120f }
                 .background(fill, shape),
         )
-        Icon(ViewOnceIcon, contentDescription = null, tint = glyph, modifier = Modifier.size(GLYPH_SIZE).graphicsLayer { alpha = digitAlpha })
+        Icon(
+            ViewOnceIcon,
+            contentDescription = null,
+            tint = glyph,
+            modifier = Modifier.size(GLYPH_SIZE).graphicsLayer {
+                alpha = 1f - swap
+                rotationZ = turn * 90f
+            },
+        )
         Icon(
             ViewOnceOpenedIcon,
             contentDescription = null,
             tint = glyph,
             modifier = Modifier.size(GLYPH_SIZE).graphicsLayer {
-                alpha = 1f - digitAlpha
-                val pop = 0.8f + 0.2f * turn
+                alpha = swap
+                val pop = 0.7f + 0.3f * turn
                 scaleX = pop
                 scaleY = pop
             },
@@ -433,22 +429,15 @@ private fun CookieBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, co
     }
 }
 
-/** The bubble and the viewer share it: the item's own "1" cookie, turning and breathing while it opens. */
+@Composable
+private fun spentFill(isOutgoing: Boolean, contentColor: Color): Color =
+    if (isOutgoing) contentColor.copy(alpha = SPENT_FILL_ALPHA) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = SPENT_FILL_ALPHA)
+
+/** The bubble and the viewer share it, so opening reads the same in both places. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun ViewOnceLoadingIndicator(size: Dp, modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
-    val loop = rememberInfiniteTransition()
-    val angle by loop.animateFloat(0f, 360f, infiniteRepeatable(tween(LOADING_TURN_MS, easing = LinearEasing)))
-    val breathe by loop.animateFloat(0f, 1f, infiniteRepeatable(tween(LOADING_TURN_MS / 4, easing = FastOutSlowInEasing), RepeatMode.Reverse))
-    val morph = remember { Morph(MaterialShapes.Cookie9Sided, MaterialShapes.Cookie4Sided) }
-    val shape = MorphShape(morph, breathe)
-    Box(
-        modifier.size(size).semantics { progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate },
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(Modifier.matchParentSize().graphicsLayer { rotationZ = angle }.background(colors.primary, shape))
-        Icon(ViewOnceIcon, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(size * GLYPH_RATIO))
-    }
+    LoadingIndicator(modifier = modifier.size(size), color = MaterialTheme.colorScheme.primary)
 }
 
 @Composable
@@ -460,10 +449,10 @@ private val BADGE_SIZE = 32.dp
 private const val GLYPH_RATIO = 0.72f
 private val GLYPH_SIZE = BADGE_SIZE * GLYPH_RATIO
 private const val SENT_FILL_ALPHA = 0.18f
+private const val SPENT_FILL_ALPHA = 0.1f
 private const val MUTED_ALPHA = 0.8f
 private const val MAX_BADGE_GROWTH = 1.4f
 private const val SPENT_ALPHA = 0.7f
-private const val LOADING_TURN_MS = 2_400
 private val COOKIE_FAMILY = setOf(Badge.Ready, Badge.Sent, Badge.Opened)
 
 // Out, then in: the outgoing state is gone before the incoming one shows, so no frame reads as two overlapping labels.

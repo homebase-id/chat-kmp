@@ -40,6 +40,9 @@ import androidx.compose.material3.toShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.cd_view_once_toggle
@@ -353,9 +356,9 @@ private fun ViewOnceViewerHeader(onClose: () -> Unit, senderName: String?, sentA
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(0f to colors.scrim.copy(alpha = SCRIM_ALPHA), 1f to colors.scrim.copy(alpha = 0f)))
+            .background(topScrim(colors.scrim))
             .statusBarsPadding()
-            .padding(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 48.dp),
+            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 64.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         FilledTonalIconButton(
@@ -383,19 +386,24 @@ private fun ViewOnceViewerHeader(onClose: () -> Unit, senderName: String?, sentA
             if (sentAt != null) {
                 Text(
                     text = sentAt,
-                    style = MaterialTheme.typography.labelMedium,
+                    // A time like "10:53 AM" must keep its own order inside an RTL layout.
+                    style = MaterialTheme.typography.labelMedium.copy(textDirection = TextDirection.Content),
                     color = colors.onSurfaceVariant,
                     maxLines = 1,
                 )
             }
         }
-        // A mark, not a control: no container, so it doesn't invite a tap.
-        Icon(
-            ViewOnceIcon,
-            contentDescription = stringResource(MR.string.cd_view_once_toggle),
-            tint = colors.onSurface,
-            modifier = Modifier.size(24.dp),
-        )
+        // Same circle as close, so the bar's two ends match; a plain Box, so it isn't announced as a button.
+        val markLabel = stringResource(MR.string.cd_view_once_toggle)
+        Box(
+            Modifier
+                .size(CHROME_SIZE)
+                .background(chromeContainer(), CircleShape)
+                .semantics { contentDescription = markLabel },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(ViewOnceIcon, contentDescription = null, tint = colors.onSurface, modifier = Modifier.size(24.dp))
+        }
     }
 }
 
@@ -586,6 +594,13 @@ internal fun ViewOnceViewerImage(bitmap: ImageBitmap) {
 private const val POSITION_TICK_MS = 500
 private const val CHROME_ALPHA = 0.55f
 private const val SCRIM_ALPHA = 0.72f
+
+// Holds most of its weight through the name and time, so they read even on a photo that is bright at the top edge.
+private fun topScrim(scrim: Color) = Brush.verticalGradient(
+    0f to scrim.copy(alpha = 0.8f),
+    0.55f to scrim.copy(alpha = 0.6f),
+    1f to scrim.copy(alpha = 0f),
+)
 private val CHROME_SIZE = 48.dp
 
 private class CloseOnce {

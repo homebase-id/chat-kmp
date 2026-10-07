@@ -1023,7 +1023,8 @@
     <string name="chat_view_once_update_to_open">Update the app to open it</string>
     <string name="chat_view_once_unavailable">Can't be opened here</string>
     <string name="chat_view_once_opening">Opening…</string>
-    <string name="chat_view_once_failed">Couldn't load · Tap&#160;to&#160;retry</string>
+    <string name="chat_view_once_failed">Couldn't load</string>
+    <string name="chat_view_once_tap_to_retry">Tap to retry</string>
     <string name="chat_view_once_opened">Opened</string>
     <string name="chat_view_once_expired">Expired</string>
     <string name="chat_view_once_open_on_phone">Open on your phone</string>
