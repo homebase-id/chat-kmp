@@ -124,6 +124,7 @@ class ViewOnceShotsTest {
             val video: Boolean = false,
             val muted: Boolean = false,
             val caption: String? = null,
+            val picking: Boolean = false,
         ) : Scene
         data class Intro(val video: Boolean) : Scene
         data class Toast(val kind: ViewOnceToastKind) : Scene
@@ -178,7 +179,7 @@ class ViewOnceShotsTest {
             Shot("v6-viewer-photo-rtl", Scene.Viewer(ViewerStage.Shown), rtl = true),
             Shot("v7-viewer-failed-small-font-scale", Scene.Viewer(ViewerStage.Failed, video = true), fontScale = 1.6f, widthDp = 360, heightDp = 640),
             Shot("v9-viewer-video-muted-font-scale", Scene.Viewer(ViewerStage.Shown, video = true, muted = true), fontScale = 1.6f),
-            Shot("v14-viewer-video-caption", Scene.Viewer(ViewerStage.Shown, video = true, caption = "Dinner at the harbour")),
+            Shot("v14-viewer-video-caption-reactions", Scene.Viewer(ViewerStage.Shown, video = true, caption = "Dinner at the harbour", picking = true)),
             Shot("v11-viewer-photo-caption", Scene.Viewer(ViewerStage.Shown, caption = "Don't show anyone. The view from the ridge before the rain came in.")),
             Shot("v12-viewer-photo-landscape-top-edge", Scene.Viewer(ViewerStage.Shown), widthDp = 960, heightDp = 540),
             Shot("i1-intro-photo", Scene.Intro(video = false), heightDp = 620),
@@ -484,6 +485,10 @@ class ViewOnceShotsTest {
         if ((shot.scene as? Scene.States)?.pressFirst == true) {
             mainClock.advanceTimeBy(500)
             onNodeWithTag(FIRST_ROW).performTouchInput { down(center) }
+        }
+        if ((shot.scene as? Scene.Viewer)?.picking == true) {
+            mainClock.advanceTimeBy(500)
+            onNodeWithTag(VIEW_ONCE_VIEWER_REACT_TAG).performClick()
         }
         if ((shot.scene as? Scene.Editor)?.tapViewOnce == true) {
             mainClock.advanceTimeBy(500)

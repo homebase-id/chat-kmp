@@ -123,7 +123,7 @@ class ViewOnceComposerTest {
 
         onNodeWithText("This photo can be viewed once").assertExists()
         onNodeWithText("It disappears from the chat after it's closed").assertIsDisplayed()
-        onNodeWithText("It can't be shared, forwarded, copied or saved from the app").assertIsDisplayed()
+        onNodeWithText("It can't be shared, forwarded, copied or saved").assertIsDisplayed()
         onNodeWithTag(VIEW_ONCE_INTRO_CLOSE_TAG).assertIsDisplayed()
 
         onNodeWithTag(VIEW_ONCE_INTRO_OK_TAG).assertTextEquals("OK").performClick()

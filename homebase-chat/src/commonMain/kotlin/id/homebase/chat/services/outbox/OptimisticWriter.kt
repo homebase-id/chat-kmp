@@ -35,6 +35,7 @@ import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.viewonce.viewOnceTombstoneContent
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.chat.services.convo.ConversationAppDataJson
@@ -575,6 +576,7 @@ class OptimisticWriter(
         rowKey: Uuid,
         add: Set<String>,
         remove: Set<String>,
+        dependencyUniqueId: Uuid = uniqueId,
         recipients: suspend (original: HomebaseFile) -> List<OdinId>,
     ): MutationOutcome = reactionLockFor(driveId, uniqueId).withLock {
         val credentials = credentialsManager.requireActiveCredentials()
@@ -597,7 +599,7 @@ class OptimisticWriter(
                     recipients = recipients(existingFile),
                 ),
                 uniqueId = rowKey,
-                dependencyUniqueId = uniqueId,
+                dependencyUniqueId = dependencyUniqueId,
             )
         }?.let { return@withLock it }
 
@@ -687,7 +689,9 @@ class OptimisticWriter(
                 updated = deletedAt,
                 payloads = emptyList(),
                 appData = existingFile.fileMetadata.appData.copy(
-                    content = "",
+                    content = if (existingFile.fileMetadata.appData.dataType == ChatProtocol.ChatViewOnceMessageDataType) {
+                        viewOnceTombstoneContent(existingFile.fileMetadata.appData.content)
+                    } else "",
                     previewThumbnail = null,
                     // Belt-and-suspenders: HomebaseFile.isSoftDeleted() checks BOTH
                     // markers and the defragmenter's SoftDeleteArchivalMismatch

@@ -1,6 +1,7 @@
 package id.homebase.chat.services
 
 import id.homebase.api.crypto.ByteArrayUtil
+import id.homebase.api.sync.database.TombstoneRetention
 import kotlin.uuid.Uuid
 
 object ChatProtocol {
@@ -86,7 +87,7 @@ object ChatProtocol {
      * View-once photo or video: the descriptor rides in `appData.content`, the single media
      * payload under [PAYLOAD_KEY_MESSAGE_WEB]`0`. See [id.homebase.chat.viewonce.ViewOnceDescriptor].
      */
-    const val ChatViewOnceMessageDataType = 216
+    const val ChatViewOnceMessageDataType = TombstoneRetention.VIEW_ONCE_DATA_TYPE
 
     const val MessageFileType = 7878
 

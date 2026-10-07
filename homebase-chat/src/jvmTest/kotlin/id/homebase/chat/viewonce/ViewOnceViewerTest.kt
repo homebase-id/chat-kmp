@@ -116,25 +116,21 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun aPhotoViewerOffersOnlyClose_andNeverSaveShareForwardReactReplyOrDelete() = runSkikoComposeUiTest {
+    fun aPhotoViewerOffersOnlyBackReactReplyAndDelete_andNeverSaveShareOrForward() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
         awaitShown()
 
         assertEquals(
-            setOf(VIEW_ONCE_VIEWER_CLOSE_TAG),
+            setOf(
+                VIEW_ONCE_VIEWER_CLOSE_TAG, VIEW_ONCE_VIEWER_REACT_TAG, VIEW_ONCE_VIEWER_REPLY_TAG,
+                VIEW_ONCE_VIEWER_DELETE_TAG,
+            ),
             tagsOfClickables(),
         )
         assertEquals(1, server.requests)
         assertEquals(0L, runBlocking { server.cachedBytes() })
         assertNoSaveShareForward()
-        for (word in listOf("React", "Reply", "Delete", "emoji")) {
-            assertEquals(
-                0, onAllNodes(hasText(word, substring = true, ignoreCase = true) or hasContentDescription(word, substring = true, ignoreCase = true))
-                    .fetchSemanticsNodes().size,
-                word,
-            )
-        }
     }
 
     private fun SkikoComposeUiTest.tagsOfClickables(): Set<String> =
@@ -159,6 +155,62 @@ class ViewOnceViewerTest {
     }
 
     @Test
+    fun deleteConsumesTheItemExactlyOnce() = runSkikoComposeUiTest {
+        val server = runBlocking { ViewOnceFakeServer().start() }
+        show(server)
+        awaitShown()
+
+        onNodeWithTag(VIEW_ONCE_VIEWER_DELETE_TAG).performClick()
+        waitForIdle()
+        present = false
+        waitForIdle()
+
+        assertEquals(1, closed)
+        assertEquals(1, dismissed)
+    }
+
+    @Test
+    fun reactingNeverClosesOrConsumesTheViewer_andReplyConsumesItOnce() = runSkikoComposeUiTest {
+        val server = runBlocking { ViewOnceFakeServer().start() }
+        val reacted = mutableListOf<String>()
+        var replied = 0
+        setContent {
+            MaterialTheme {
+                ViewOnceViewer(
+                    data = server.viewer(),
+                    onViewerClosed = { closed++ },
+                    onDismiss = { dismissed++ },
+                    onReact = { reacted += it },
+                    onReply = { replied++ },
+                    reactions = listOf("A", "B"),
+                    loader = server.loader,
+                )
+            }
+        }
+        awaitShown()
+
+        onNodeWithTag(VIEW_ONCE_VIEWER_REACT_TAG).performClick()
+        waitForIdle()
+        onNodeWithTag("${VIEW_ONCE_VIEWER_REACTION_TAG_PREFIX}1").performClick()
+        waitForIdle()
+
+        assertEquals(listOf("B"), reacted)
+        assertEquals(0, closed, "a reaction is not a close")
+        assertEquals(0, dismissed)
+        onNodeWithTag(VIEW_ONCE_VIEWER_IMAGE_TAG).assertExists()
+        assertEquals(1, server.requests, "a reaction never fetches the payload again")
+
+        onNodeWithTag(VIEW_ONCE_VIEWER_REPLY_TAG).performClick()
+        waitForIdle()
+        present = false
+        waitForIdle()
+
+        assertEquals(1, replied)
+        assertEquals(1, closed, "replying consumes the item once, however many ways it can end")
+        assertEquals(1, dismissed)
+    }
+
+    @Test
     fun aTapTogglesTheBottomControlsAndTheBackButtonNeverGoesAway() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
@@ -166,18 +218,18 @@ class ViewOnceViewerTest {
         onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).assertExists()
 
         onNodeWithTag(VIEW_ONCE_VIEWER_IMAGE_TAG).performClick()
-        waitUntil(timeoutMillis = 5_000) { !present(VIEW_ONCE_VIEWER_HINT_TAG) }
+        waitUntil(timeoutMillis = 5_000) { !present(VIEW_ONCE_VIEWER_REPLY_TAG) }
         onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).assertExists()
 
         onNodeWithTag(VIEW_ONCE_VIEWER_IMAGE_TAG).performClick()
-        waitUntil(timeoutMillis = 5_000) { present(VIEW_ONCE_VIEWER_HINT_TAG) }
+        waitUntil(timeoutMillis = 5_000) { present(VIEW_ONCE_VIEWER_REPLY_TAG) }
         onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).assertExists()
     }
 
     private fun SkikoComposeUiTest.present(tag: String) = onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
 
     @Test
-    fun theCaptionShowsAboveTheHintAndTheHintSaysTheItemDisappears() = runSkikoComposeUiTest {
+    fun theCaptionShowsInsideTheViewerAboveTheControlsAndTheViewerSaysNothingAboutViewingOnce() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         setContent {
             MaterialTheme {
@@ -193,13 +245,17 @@ class ViewOnceViewerTest {
 
         onNodeWithTag(VIEW_ONCE_VIEWER_CAPTION_TAG).assertTextEquals("Remember this place")
         val captionBottom = onNodeWithTag(VIEW_ONCE_VIEWER_CAPTION_TAG).getBoundsInRoot().bottom
-        val hintTop = onNodeWithTag(VIEW_ONCE_VIEWER_HINT_TAG).getBoundsInRoot().top
-        assertTrue(captionBottom <= hintTop, "the caption sits above the hint")
-        onNodeWithTag(VIEW_ONCE_VIEWER_HINT_TAG).assertTextEquals("This photo disappears when you close it.")
+        val controlsTop = onNodeWithTag(VIEW_ONCE_VIEWER_REPLY_TAG).getBoundsInRoot().top
+        assertTrue(captionBottom <= controlsTop, "the caption sits above the bottom controls")
+        for (word in listOf("once", "screenshot", "disappears")) {
+            assertEquals(
+                0, onAllNodesWithText(word, substring = true, ignoreCase = true).fetchSemanticsNodes().size, word,
+            )
+        }
     }
 
     @Test
-    fun aVideoViewerSaysTheVideoDisappears() = runSkikoComposeUiTest {
+    fun aVideoViewerSaysNothingExplanatoryEither() = runSkikoComposeUiTest {
         setContent {
             MaterialTheme {
                 ViewOnceViewerFrame(isVideo = true, mediaShown = true, failed = false, onClose = {}) { fill ->
@@ -207,7 +263,11 @@ class ViewOnceViewerTest {
                 }
             }
         }
-        onNodeWithTag(VIEW_ONCE_VIEWER_HINT_TAG).assertTextEquals("This video disappears when you close it.")
+        for (word in listOf("once", "disappears")) {
+            assertEquals(
+                0, onAllNodesWithText(word, substring = true, ignoreCase = true).fetchSemanticsNodes().size, word,
+            )
+        }
     }
 
     @Test
@@ -432,6 +492,7 @@ class ViewOnceViewerTest {
             1, onAllNodes(hasClickAction()).fetchSemanticsNodes().size - clickablesBefore,
             "opening the menu adds exactly one item, Mute",
         )
+        assertEquals(1, onAllNodes(hasTestTag(VIEW_ONCE_VIEWER_DELETE_TAG)).fetchSemanticsNodes().size, "Delete stays the single bar button, not a menu item")
         onNodeWithTag(VIEW_ONCE_VIEWER_MUTE_TAG).performClick()
         waitForIdle()
         assertTrue(muted)
@@ -463,6 +524,6 @@ class ViewOnceViewerTest {
         onNodeWithTag("player").performClick()
         waitForIdle()
         assertTrue(present(VIEW_ONCE_VIEWER_CLOSE_TAG))
-        assertTrue(!present(VIEW_ONCE_VIEWER_HINT_TAG), "there is nothing to caption before the media shows")
+        assertTrue(!present(VIEW_ONCE_VIEWER_REPLY_TAG), "there is nothing to reply to before the media shows")
     }
 }

@@ -13,6 +13,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.ShareMedia
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MessageListUiState
+import id.homebase.core.widget.quickReactions
 import id.homebase.chat.viewonce.ViewOnceViewer
 
 /**
@@ -64,6 +65,11 @@ internal fun ChatMediaViewer(
             onScreenshot = {
                 onUiAction(ConversationListUiAction.ViewOnceScreenshot(data.conversationId, data.messageId))
             },
+            reactions = quickReactions(uiState.userDefaultReactions),
+            onReact = { emoji ->
+                onUiAction(ConversationListUiAction.ViewOnceReact(data.conversationId, data.messageId, emoji))
+            },
+            onReply = { onUiAction(ConversationListUiAction.ViewOnceReply(data.messageId)) },
             onDismiss = { onUiAction(CloseFullScreenOverlay) },
         )
 

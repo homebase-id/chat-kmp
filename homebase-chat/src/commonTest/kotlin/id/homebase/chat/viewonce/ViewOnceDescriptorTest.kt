@@ -80,6 +80,20 @@ class ViewOnceDescriptorTest {
     }
 
     @Test
+    fun tombstoneContent_keepsTheKindAndDropsTheCaption() {
+        val kept = viewOnceTombstoneContent(
+            MessageContentParser.serialize(
+                MessageContent.ViewOnce(ViewOnceDescriptor(ViewOnceDescriptor.KIND_VIDEO, caption = "gone"))
+            )
+        )
+        assertTrue("gone" !in kept)
+        assertEquals(ViewOnceDescriptor.KIND_VIDEO, (MessageContentParser.parse(216, kept) as MessageContent.ViewOnce).descriptor?.kind)
+        assertEquals("", viewOnceTombstoneContent(null))
+        assertEquals("", viewOnceTombstoneContent("{not json"))
+        assertEquals("", viewOnceTombstoneContent("""{"kind":"gif"}"""))
+    }
+
+    @Test
     fun malformedJson_yieldsViewOnceWithNullDescriptor_notNull() {
         val parsed = MessageContentParser.parse(216, "{not json")
         val viewOnce = assertIs<MessageContent.ViewOnce>(parsed)

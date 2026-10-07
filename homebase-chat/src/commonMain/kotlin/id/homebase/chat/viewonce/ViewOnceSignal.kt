@@ -14,11 +14,14 @@ object ViewOnceSignal {
     const val SCREENSHOT_CODE = "_vs"
     const val OPENED_SCOPE = "viewonce"
     const val SCREENSHOT_SCOPE = "viewonce_shot"
+    const val REACTION_SCOPE = "viewonce_react"
 
     private fun addOnly(scope: String, code: String) =
         ReactionSetChange(scope = scope, add = setOf(code), remove = emptySet())
 
     fun openedChange() = addOnly(OPENED_SCOPE, OPENED_CODE)
+
+    fun reactionChange(emoji: String) = addOnly(REACTION_SCOPE, emoji)
 
     fun screenshotChange() = addOnly(SCREENSHOT_SCOPE, SCREENSHOT_CODE)
 

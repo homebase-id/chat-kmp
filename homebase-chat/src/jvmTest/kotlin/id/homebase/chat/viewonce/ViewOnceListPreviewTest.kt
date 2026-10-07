@@ -86,13 +86,13 @@ class ViewOnceListPreviewTest {
         ),
     )
 
-    private suspend fun spentLocally() = assertNotNull(
+    private suspend fun spentLocally(kind: String) = assertNotNull(
         mapToMessageData(
             viewOnceHeader(
                 fileState = "deleted",
                 createdMs = now - DAY_MS,
                 updatedMs = now,
-                content = "",
+                content = viewOnceTombstoneContent(descriptorJson(kind, "gone").replace("\\\"", "\"")).replace("\"", "\\\""),
                 payloadsJson = "null",
             ),
             ownerCredentials(),
@@ -111,12 +111,14 @@ class ViewOnceListPreviewTest {
     }
 
     @Test
-    fun aSpentItemPreviewsAsMediaNotAsDeleted() = runTest {
-        val spent = lastMessageOf(spentLocally())
+    fun aSpentItemStillPreviewsAsThePhotoOrVideoNotAsDeleted() = runTest {
+        val photo = lastMessageOf(spentLocally("image"))
+        val video = lastMessageOf(spentLocally("video"))
 
-        assertTrue(spent.lastMessageIsDeleted)
-        assertEquals(viewOnceWord(MR.string.chat_view_once_unparseable), labelOf(spent)?.text)
-        assertEquals(ViewOnceOpenedIcon, labelOf(spent)?.icon)
+        assertTrue(photo.lastMessageIsDeleted)
+        assertEquals(viewOnceWord(MR.string.chat_view_once_photo), labelOf(photo)?.text)
+        assertEquals(viewOnceWord(MR.string.chat_view_once_video), labelOf(video)?.text)
+        assertEquals(ViewOnceOpenedIcon, labelOf(photo)?.icon)
     }
 
     @Test
@@ -131,10 +133,12 @@ class ViewOnceListPreviewTest {
     }
 
     @Test
-    fun theLocalTombstoneKeepsNothingOfTheDescriptor() = runTest {
-        val model = spentLocally()
+    fun theLocalTombstoneKeepsTheKindButNeverTheCaption() = runTest {
+        val model = spentLocally("video")
+        val descriptor = (model.messageContent as MessageContent.ViewOnce).descriptor
 
-        assertNull((model.messageContent as MessageContent.ViewOnce).descriptor)
+        assertEquals(ViewOnceDescriptor.KIND_VIDEO, descriptor?.kind)
+        assertNull(descriptor?.caption)
         assertNull(model.payloads)
         assertNull(model.previewThumbnail)
     }
@@ -142,7 +146,7 @@ class ViewOnceListPreviewTest {
     @Test
     fun spentItemsAreSpentAndUnopenedOnesAreNot() = runTest {
         assertFalse(ViewOnceRules.isSpent(unopened(), now, me))
-        assertTrue(ViewOnceRules.isSpent(spentLocally(), now, me))
+        assertTrue(ViewOnceRules.isSpent(spentLocally("image"), now, me))
     }
 
     private fun quote(message: MessageUiModel, expectedText: String, caption: String? = null) = runComposeUiTest {
@@ -169,10 +173,11 @@ class ViewOnceListPreviewTest {
     fun aQuoteOfAViewOnceMessageReadsPhotoOrVideoWithoutTheCaption() = runTest {
         quote(unopened("image", caption = "secret caption"), "Photo", caption = "secret caption")
         quote(unopened("video", caption = "secret caption"), "Video", caption = "secret caption")
+        quote(spentLocally("video"), "Video")
     }
 
     @Test
-    fun aSpentItemReadsMediaAfterALocalReEmitAndAfterTheServerTombstoneSync() = runTest {
+    fun aSpentItemReadsPhotoAfterALocalReEmitAndMediaAfterTheServerTombstoneSync() = runTest {
         val convo = conversation()
         val sent = unopened("image")
         val first = assertNotNull(
@@ -180,21 +185,22 @@ class ViewOnceListPreviewTest {
         )
         assertEquals(viewOnceWord(MR.string.chat_view_once_photo), labelOf(first.single())?.text)
 
-        val spent = spentLocally()
+        val spent = spentLocally("image")
         val afterOpen = assertNotNull(
             applyIncomingMessageBump(first, convo.id, spent, Instant.fromEpochMilliseconds(5), me),
         ).single()
         assertTrue(afterOpen.lastMessageIsDeleted)
-        assertEquals(viewOnceWord(MR.string.chat_view_once_unparseable), labelOf(afterOpen)?.text)
+        assertEquals(viewOnceWord(MR.string.chat_view_once_photo), labelOf(afterOpen)?.text)
         assertEquals(ViewOnceOpenedIcon, labelOf(afterOpen)?.icon)
 
         val tombstone = assertNotNull(
             mapToMessageData(serverTombstone(createdMs = now - 2 * DAY_MS, updatedMs = now - DAY_MS), ownerCredentials()),
         )
-        assertNull(
+        val afterSync = assertNotNull(
             applyIncomingMessageBump(listOf(afterOpen), convo.id, tombstone, Instant.fromEpochMilliseconds(5), me),
-            "the server tombstone reads exactly like the local one, so the row is left alone",
-        )
+        ).single()
+        assertEquals(viewOnceWord(MR.string.chat_view_once_unparseable), labelOf(afterSync)?.text, "the server tombstone has no content, so no kind word")
+        assertEquals(ViewOnceOpenedIcon, labelOf(afterSync)?.icon)
     }
 
     @Test
