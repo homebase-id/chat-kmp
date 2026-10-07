@@ -46,13 +46,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,6 +80,9 @@ import id.homebase.resources.cd_view_once_open
 import id.homebase.resources.chat_view_once_expired
 import id.homebase.resources.chat_view_once_failed
 import id.homebase.resources.chat_view_once_open_on_phone
+import id.homebase.resources.chat_view_once_open_on_phone_body
+import id.homebase.resources.chat_view_once_open_on_phone_title
+import id.homebase.resources.ok
 import id.homebase.resources.chat_view_once_opened
 import id.homebase.resources.chat_view_once_opened_by
 import id.homebase.resources.chat_view_once_opening
@@ -105,7 +112,7 @@ fun ViewOnceBubble(
     modifier: Modifier = Modifier,
     state: ViewOnceState = if (isOutgoing) ViewOnceState.Sent else ViewOnceState.Unopened,
     openedCount: Int = 0,
-    openOnPhone: Boolean = false,
+    canView: Boolean = true,
     phase: ViewOnceOpenPhase = ViewOnceOpenPhase.Idle,
     onOpen: (() -> Unit)? = null,
     authorName: String? = null,
@@ -115,7 +122,9 @@ fun ViewOnceBubble(
     val colors = MaterialTheme.colorScheme
     val consumed = state == ViewOnceState.Opened || state == ViewOnceState.Expired
     // The sender never opens its own copy, and a consumed or desktop copy has nothing left to open.
-    val canOpen = onOpen != null && descriptor != null && !isOutgoing && !consumed && !openOnPhone
+    val canOpen = onOpen != null && descriptor != null && !isOutgoing && !consumed && canView
+    val openOnPhone = !canView && descriptor != null && !isOutgoing && !consumed
+    var explainOnPhone by remember { mutableStateOf(false) }
     // A consumed item renders from state alone: its tombstone carries no descriptor.
     val badge = when {
         state == ViewOnceState.Expired -> Badge.Expired
@@ -178,6 +187,15 @@ fun ViewOnceBubble(
     val pressMorph by animateFloatAsState(if (pressed) 1f else 0f, motion.fastSpatialSpec())
     val openLabel = stringResource(MR.string.cd_view_once_open)
 
+    if (explainOnPhone) {
+        AlertDialog(
+            onDismissRequest = { explainOnPhone = false },
+            title = { Text(stringResource(MR.string.chat_view_once_open_on_phone_title)) },
+            text = { Text(stringResource(MR.string.chat_view_once_open_on_phone_body)) },
+            confirmButton = { TextButton(onClick = { explainOnPhone = false }) { Text(stringResource(MR.string.ok)) } },
+        )
+    }
+
     Column(
         modifier = modifier
             .graphicsLayer { scaleX = pressScale; scaleY = pressScale }
@@ -191,6 +209,14 @@ fun ViewOnceBubble(
                         onClickLabel = openLabel,
                         role = Role.Button,
                         onClick = onOpen!!,
+                    )
+                } else if (openOnPhone) {
+                    Modifier.clickable(
+                        interactionSource = interaction,
+                        indication = null,
+                        onClickLabel = openLabel,
+                        role = Role.Button,
+                        onClick = { explainOnPhone = true },
                     )
                 } else Modifier
             )

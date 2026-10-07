@@ -347,7 +347,7 @@ class ViewOnceShotsTest {
                         modifier = Modifier.widthIn(max = 300.dp).then(if (index == 0) Modifier.testTag(FIRST_ROW) else Modifier),
                         state = row.state,
                         openedCount = row.openedCount,
-                        openOnPhone = row.openOnPhone,
+                        canView = !row.openOnPhone,
                         phase = row.phase,
                         onOpen = if (row.tappable) ({}) else null,
                         authorName = row.author,

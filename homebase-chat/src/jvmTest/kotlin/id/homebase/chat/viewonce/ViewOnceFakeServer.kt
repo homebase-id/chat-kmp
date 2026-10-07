@@ -73,7 +73,7 @@ internal class ViewOnceFakeServer(
             override suspend fun writeStream(path: String, data: Flow<ByteArray>) = error("unused")
         })
         provider = DriveFileProvider(http, credentials, cached)
-        loader = ViewOncePayloadLoader(provider) { drive, file -> evictedImages += drive to file }
+        loader = ViewOncePayloadLoader(provider, canView = { true }) { drive, file -> evictedImages += drive to file }
         return this
     }
 

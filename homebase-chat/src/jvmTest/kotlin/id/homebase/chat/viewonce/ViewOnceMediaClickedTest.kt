@@ -19,6 +19,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.time.Clock
@@ -37,7 +38,7 @@ class ViewOnceMediaClickedTest {
     private suspend fun harness(
         scope: TestScope,
         fixture: ChatMessageActionServiceTestFixture,
-        mobile: Boolean,
+        mobile: Boolean? = null,
     ): Harness {
         val server = ViewOnceFakeServer().start()
         val service = fixture.build(scope = scope)
@@ -69,7 +70,7 @@ class ViewOnceMediaClickedTest {
             localVideoContextStore = LocalAttachmentContextStore(fixture.eventBus, scope.backgroundScope),
             sendEvent = {},
             dispatch = {},
-            onMobile = { mobile },
+            onMobile = mobile?.let { m -> { m } } ?: { id.homebase.core.util.isMobile() },
         )
         return Harness(handler, messages, server)
     }
@@ -140,5 +141,30 @@ class ViewOnceMediaClickedTest {
 
             assertNull(h.messages.value.fullScreenOverlay)
         }
+    }
+
+    @Test
+    fun onTheRealDesktopPlatformAnUnopenedIncomingCopyNeverOpensAnOverlayOrTouchesThePayload() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            assertEquals(false, id.homebase.core.util.isMobile(), "this test is only meaningful where isMobile() is false")
+            val h = harness(this, fixture)
+
+            assertNull(tap(h, incoming()))
+
+            assertEquals(0, h.server.requests)
+            assertEquals(emptyList(), h.server.requestedPaths)
+        }
+    }
+
+    @Test
+    fun theLoaderRefusesToReadPayloadBytesWhereViewingIsBlocked() = runTest {
+        val server = ViewOnceFakeServer().start()
+        val blocked = ViewOncePayloadLoader(server.provider, canView = { false }) { _, _ -> }
+
+        assertFailsWith<ViewOnceNotViewableHereException> { blocked.begin(server.fileId) }
+        assertFailsWith<ViewOnceNotViewableHereException> {
+            blocked.loadBytes(server.chatDriveId, server.fileId, VIEW_ONCE_PAYLOAD_KEY, server.keyHeader)
+        }
+        assertEquals(0, server.requests)
     }
 }

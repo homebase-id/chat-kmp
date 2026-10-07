@@ -1033,6 +1033,8 @@
     <string name="chat_view_once_opened">Opened</string>
     <string name="chat_view_once_expired">Expired</string>
     <string name="chat_view_once_open_on_phone">Open on your phone</string>
+    <string name="chat_view_once_open_on_phone_title">Open this on your phone</string>
+    <string name="chat_view_once_open_on_phone_body">View-once photos and videos can only be opened in the Homebase app on a phone or tablet. They are removed after they're opened.</string>
     <string name="chat_view_once_viewer_hint_photo">This photo disappears when you close it.</string>
     <string name="chat_view_once_viewer_hint_video">This video disappears when you close it.</string>
     <string name="chat_view_once_close">Close</string>
