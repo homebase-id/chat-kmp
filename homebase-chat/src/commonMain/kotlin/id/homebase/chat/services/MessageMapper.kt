@@ -169,8 +169,7 @@ suspend fun mapToMessageData(
             else
                 minOf(UnixTimeUtc(appData.userDate!!), metadata.created)
 
-            // The tombstone has no content: the bubble renders from state, and nothing of the
-            // payload may stay reachable, even on an optimistic local tombstone.
+            // The tombstone keeps only the kind, never the payloads or caption.
             val isViewOnce = appData.dataType == ChatProtocol.ChatViewOnceMessageDataType
 
             return MessageUiModel(

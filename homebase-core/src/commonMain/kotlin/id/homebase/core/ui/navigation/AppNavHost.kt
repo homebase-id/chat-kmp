@@ -2352,8 +2352,9 @@ private fun entryOwnsWindow(
 private fun entryShowsViewOnceViewer(entry: NavBackStackEntry): Boolean {
     if (!entry.destination.hasRoute(Route.ChatList::class)) return false
     val chat: ConversationListViewModel = koinViewModel(viewModelStoreOwner = entry)
-    val messages by chat.messagesUiState.collectAsStateWithLifecycle()
-    return showsViewOnceViewer(messages)
+    val messages = chat.messagesUiState.collectAsStateWithLifecycle()
+    val shows by remember(chat) { derivedStateOf { showsViewOnceViewer(messages.value) } }
+    return shows
 }
 
 private inline fun <reified T : Any> NavGraphBuilder.tab(

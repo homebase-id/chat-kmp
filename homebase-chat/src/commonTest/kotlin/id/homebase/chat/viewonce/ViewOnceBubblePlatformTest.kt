@@ -149,7 +149,8 @@ class ViewOnceBubblePlatformTest {
 
     @Test
     fun aGroupRecipientsOwnSpentCopyNeverReadsOpenedBy() = runComposeUiTest {
-        bubble(canView = true, isOutgoing = false, state = ViewOnceState.Opened, onOpen = null, isGroup = true, openedCount = 0)
+        bubble(canView = true, isOutgoing = false, state = ViewOnceState.Opened, onOpen = null, isGroup = true, openedCount = 2)
         onNodeWithText("Opened").assertExists()
+        onNodeWithText("Opened by 2").assertDoesNotExist()
     }
 }
