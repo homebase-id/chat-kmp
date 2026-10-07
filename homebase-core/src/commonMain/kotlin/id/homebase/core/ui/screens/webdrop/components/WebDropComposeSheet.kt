@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -28,7 +29,10 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
@@ -94,7 +98,7 @@ import co.touchlab.kermit.Logger
 private const val MAX_NAME_CHARS = 40
 private const val TAG = "WebDropComposeSheet"
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun WebDropComposeSheet(
     uiState: WebDropUiState,
@@ -173,6 +177,10 @@ fun WebDropComposeSheet(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        if (uiState.viewOnly) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            WebDropViewOnlyBadge()
+                        }
                         Spacer(modifier = Modifier.height(16.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilledTonalButton(
@@ -226,7 +234,7 @@ fun WebDropComposeSheet(
                         TtlChip(uiState, WebDropTtlChoice.ThirtyDays, MR.string.webdrop_ttl_thirty_days, onAction)
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     WebDropViewOnlyRow(
                         checked = uiState.viewOnly,
@@ -297,17 +305,18 @@ fun WebDropComposeSheet(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    FilledTonalButton(
+                    Button(
                         onClick = { onAction(WebDropUiAction.CreateClicked) },
                         enabled = uiState.pickedFiles.isNotEmpty() && !uiState.isCreating,
-                        modifier = Modifier.fillMaxWidth(),
+                        shapes = ButtonDefaults.shapes(),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                     ) {
                         Crossfade(
                             targetState = uiState.isCreating,
                             animationSpec = motion.fastEffectsSpec(),
                         ) { creating ->
                             if (creating) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                LoadingIndicator(modifier = Modifier.size(32.dp))
                             } else {
                                 Text(stringResource(MR.string.webdrop_create))
                             }

@@ -3,6 +3,8 @@ package id.homebase.core.ui.screens.webdrop.components
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.ui.screens.webdrop.model.DropRow
@@ -46,7 +49,6 @@ import id.homebase.resources.webdrop_status_expires
 import id.homebase.resources.webdrop_status_opened
 import id.homebase.resources.webdrop_status_removed
 import id.homebase.resources.webdrop_status_waiting
-import id.homebase.resources.webdrop_view_only_badge
 import kotlin.time.Instant
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
@@ -61,6 +63,7 @@ private fun formatRemaining(ms: Long): String {
     return if (hours > 0) "$hours:$mm:$ss" else "$mm:$ss"
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WebDropRowCard(
     row: DropRow,
@@ -135,6 +138,8 @@ fun WebDropRowCard(
                 Text(
                     text = row.receipt.name,
                     style = MaterialTheme.typography.titleSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                     color = if (removed) {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     } else {
@@ -146,24 +151,25 @@ fun WebDropRowCard(
                     Text(
                         text = stringResource(MR.string.webdrop_for_label, name),
                         style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = stringResource(MR.string.webdrop_files_and_age,
-                        stringResource(MR.string.webdrop_files_count, row.receipt.files.size),
-                        formatTimestamp(Instant.fromEpochMilliseconds(row.receipt.createdAt))),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (row.receipt.viewOnly == true) {
-                    Spacer(modifier = Modifier.height(2.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
-                        text = stringResource(MR.string.webdrop_view_only_badge),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.tertiary,
+                        text = stringResource(MR.string.webdrop_files_and_age,
+                            stringResource(MR.string.webdrop_files_count, row.receipt.files.size),
+                            formatTimestamp(Instant.fromEpochMilliseconds(row.receipt.createdAt))),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (row.receipt.viewOnly == true) WebDropViewOnlyBadge(muted = removed)
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
