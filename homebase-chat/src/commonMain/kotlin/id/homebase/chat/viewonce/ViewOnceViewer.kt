@@ -377,6 +377,7 @@ internal fun ViewOnceViewerFrame(
 @Composable
 private fun chromeContainer(): Color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = CHROME_ALPHA)
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ChromeCircleButton(
     onClick: () -> Unit,
@@ -385,6 +386,7 @@ private fun ChromeCircleButton(
 ) {
     FilledIconButton(
         onClick = onClick,
+        shapes = IconButtonDefaults.shapes(),
         colors = IconButtonDefaults.filledIconButtonColors(
             containerColor = chromeContainer(),
             contentColor = MaterialTheme.colorScheme.onSurface,

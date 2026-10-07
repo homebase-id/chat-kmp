@@ -263,11 +263,12 @@ fun ViewOnceBubble(
                 val lines = status + listOfNotNull(shotNote)
                 if (lines.isNotEmpty()) {
                     Column(Modifier.padding(start = GLYPH_SIZE + 8.dp, top = 2.dp)) {
-                        lines.forEach { line ->
+                        lines.forEachIndexed { index, line ->
                             Text(
                                 text = line,
                                 style = MaterialTheme.typography.bodySmall.withContentDirection(),
-                                color = statusColor,
+                                // Only the failure itself is red; the way out beneath it reads as ordinary status.
+                                color = if (index == 0) statusColor else content.copy(alpha = STATUS_ALPHA),
                             )
                         }
                     }

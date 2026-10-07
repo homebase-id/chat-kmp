@@ -426,6 +426,7 @@ class ViewOnceShotsTest {
             durationMs = 34_000L,
             muted = scene.muted,
             onMutedChange = {},
+            onTogglePlay = if (scene.video) ({}) else null,
         ) { fill ->
             when (scene.stage) {
                 ViewerStage.Loading -> ViewOnceViewerLoading(fill)
