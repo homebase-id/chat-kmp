@@ -291,6 +291,56 @@ class ViewOnceActionsTest {
     }
 
     @Test
+    fun screenshotThenCloseChainsTheShotBeforeOpenedAndTheDelete_soTheDeleteCannotDrainFirst() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val s = scenario(this, fixture)
+
+            s.actions.onScreenshot(s.conversationId, s.messageId)
+            s.actions.onViewerClosed(s.conversationId, s.messageId)
+
+            val shotRow = assertNotNull(fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, s.shotKey()))
+            val openedRow = assertNotNull(fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, reactionRowKey(s.messageId)))
+            assertEquals(s.shotKey(), openedRow.dependencyUniqueId, "_vo waits for the _vs row")
+
+            assertEquals(listOf(shotRow.rowId), fixture.drainOutbox().map { it.rowId }, "only _vs is runnable first")
+            fixture.dbm.outbox.deleteByRowId(shotRow.rowId)
+            assertEquals(listOf(openedRow.rowId), fixture.drainOutbox().map { it.rowId })
+            fixture.dbm.outbox.deleteByRowId(openedRow.rowId)
+            assertEquals(1, fixture.drainOutbox().deletes().size)
+        }
+    }
+
+    @Test
+    fun screenshotReactAndCloseDrainInTheOrderTheyHappened() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val s = scenario(this, fixture)
+
+            s.actions.onReact(s.conversationId, s.messageId, "\uD83D\uDC4D")
+            s.actions.onScreenshot(s.conversationId, s.messageId)
+            s.actions.onViewerClosed(s.conversationId, s.messageId)
+            assertEquals(4L, fixture.dbm.outbox.count())
+
+            val order = mutableListOf<Long>()
+            while (true) {
+                val runnable = fixture.drainOutbox()
+                if (runnable.isEmpty()) break
+                assertEquals(1, runnable.size, "every row waits for the one before it")
+                order += runnable.single().uploadType
+                if (runnable.single().uploadType == DriveOutboxUploader.SetReactions) {
+                    val add = OutboxSerializer.decode<SetReactionsOutboxRequest>(runnable.single()).add.single()
+                    order[order.lastIndex] = when {
+                        add.contains(ViewOnceSignal.SCREENSHOT_CODE) -> SHOT
+                        add.contains(ViewOnceSignal.OPENED_CODE) -> OPENED
+                        else -> EMOJI
+                    }
+                }
+                fixture.dbm.outbox.deleteByRowId(runnable.single().rowId)
+            }
+            assertEquals(listOf(EMOJI, SHOT, OPENED, DriveOutboxUploader.DeleteFile), order)
+        }
+    }
+
+    @Test
     fun aSecondEmojiInTheSameViewingIsIgnoredSoThePendingRowIsNeverReplaced() = runTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val s = scenario(this, fixture)
@@ -301,5 +351,11 @@ class ViewOnceActionsTest {
             assertTrue(OutboxSerializer.decode<SetReactionsOutboxRequest>(row).add.single().contains("\uD83D\uDC4D"))
             assertEquals(1L, fixture.dbm.outbox.count())
         }
+    }
+
+    private companion object {
+        const val EMOJI = -1L
+        const val SHOT = -2L
+        const val OPENED = -3L
     }
 }

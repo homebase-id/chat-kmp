@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.services.ReactionSetChange
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.outbox.MutationOutcome
 import kotlinx.coroutines.CancellationException
@@ -20,44 +21,55 @@ class ViewOnceActions(
     private val claimMutex = Mutex()
     private val claimed = mutableSetOf<Uuid>()
 
-    private val shotMutex = Mutex()
+    // The viewer's screenshot and emoji rows chain in the order they were queued, and `_vo` waits
+    // for the last of them: the outbox is not FIFO, so a delete that drains first loses them.
+    private val signalMutex = Mutex()
     private val shotSent = mutableSetOf<Uuid>()
+    private val reacted = mutableSetOf<Uuid>()
+    private val lastSignalRow = mutableMapOf<Uuid, Uuid>()
 
-    /** At most once per viewer session; a failed enqueue frees the next screenshot to try again. */
-    suspend fun onScreenshot(conversationId: Uuid, messageId: Uuid) {
-        if (!shotMutex.withLock { shotSent.add(messageId) }) return
-        suspend fun free() = shotMutex.withLock { shotSent.remove(messageId) }
-        try {
-            val outcome = actionService.setReactions(conversationId, messageId, ViewOnceSignal.screenshotChange())
-            Logger.i(TAG) { "screenshot msg=$messageId signal=$outcome" }
-            if (outcome != MutationOutcome.Queued) free()
-        } catch (e: CancellationException) {
-            free()
-            throw e
-        } catch (e: Exception) {
-            free()
-            Logger.e(TAG, e) { "screenshot signal failed msg=$messageId" }
+    private suspend fun enqueueSignal(
+        conversationId: Uuid,
+        messageId: Uuid,
+        change: ReactionSetChange,
+    ): MutationOutcome {
+        val outcome = actionService.setReactions(
+            conversationId, messageId, change, runAfter = lastSignalRow[messageId],
+        )
+        if (outcome == MutationOutcome.Queued) {
+            lastSignalRow[messageId] = ChatMessageActionService.reactionSetRowKey(messageId, change.scope)
         }
+        return outcome
     }
 
-    private val reactMutex = Mutex()
-    private val reacted = mutableMapOf<Uuid, String>()
+    /** At most once per viewer session; a failed enqueue frees the next screenshot to try again. */
+    suspend fun onScreenshot(conversationId: Uuid, messageId: Uuid): Unit = signalMutex.withLock {
+        if (messageId in shotSent) return@withLock
+        val outcome = try {
+            enqueueSignal(conversationId, messageId, ViewOnceSignal.screenshotChange())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(TAG, e) { "screenshot signal failed msg=$messageId" }
+            return@withLock
+        }
+        Logger.i(TAG) { "screenshot msg=$messageId signal=$outcome" }
+        if (outcome == MutationOutcome.Queued) shotSent.add(messageId)
+    }
 
     /** One emoji per viewing, add-only: a second pick would replace a still-pending row and lose the first. */
-    suspend fun onReact(conversationId: Uuid, messageId: Uuid, emoji: String) {
-        reactMutex.withLock {
-            if (messageId in reacted) return
-            val outcome = try {
-                actionService.setReactions(conversationId, messageId, ViewOnceSignal.reactionChange(emoji))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.e(TAG, e) { "viewer reaction failed msg=$messageId" }
-                return
-            }
-            Logger.i(TAG) { "viewer reaction msg=$messageId outcome=$outcome" }
-            if (outcome == MutationOutcome.Queued) reacted[messageId] = emoji
+    suspend fun onReact(conversationId: Uuid, messageId: Uuid, emoji: String): Unit = signalMutex.withLock {
+        if (messageId in reacted) return@withLock
+        val outcome = try {
+            enqueueSignal(conversationId, messageId, ViewOnceSignal.reactionChange(emoji))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(TAG, e) { "viewer reaction failed msg=$messageId" }
+            return@withLock
         }
+        Logger.i(TAG) { "viewer reaction msg=$messageId outcome=$outcome" }
+        if (outcome == MutationOutcome.Queued) reacted.add(messageId)
     }
 
     private suspend fun claim(messageId: Uuid): Boolean = claimMutex.withLock { claimed.add(messageId) }
@@ -78,18 +90,15 @@ class ViewOnceActions(
         }
     }
 
-    /**
-     * The viewer's emoji row (if any), then `_vo`, then the soft delete: each row waits for the one
-     * before it, because the outbox is not FIFO and a reaction sent after the delete is lost.
-     */
+    /** The viewer's screenshot and emoji rows (if any), then `_vo`, then the soft delete, each waiting for the one before. */
     suspend fun onViewerClosed(conversationId: Uuid, messageId: Uuid) {
         if (!claim(messageId)) return
         releasingOnFailure(messageId, "viewer close failed") {
-            val afterReaction = reactMutex.withLock { reacted.remove(messageId) }
-                ?.let { ChatMessageActionService.reactionSetRowKey(messageId, ViewOnceSignal.REACTION_SCOPE) }
-            val outcome = actionService.setReactions(
-                conversationId, messageId, ViewOnceSignal.openedChange(), runAfter = afterReaction,
-            )
+            val outcome = signalMutex.withLock {
+                reacted.remove(messageId)
+                enqueueSignal(conversationId, messageId, ViewOnceSignal.openedChange())
+                    .also { if (it == MutationOutcome.Queued) lastSignalRow.remove(messageId) }
+            }
             Logger.i(TAG) { "viewer closed msg=$messageId opened-signal=$outcome" }
             actionService.deleteMessage(
                 messageId = messageId,
