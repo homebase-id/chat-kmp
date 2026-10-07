@@ -60,14 +60,14 @@ data class ContentLabel(val text: String, val icon: ImageVector?)
  *
  * When you add a new typed message kind, add its branch here so it gets a preview icon.
  */
-fun typedMessageContentLabel(messageContent: MessageContent?, viewOnceOpened: Boolean = false): ContentLabel? = when (messageContent) {
+fun typedMessageContentLabel(messageContent: MessageContent?): ContentLabel? = when (messageContent) {
     is MessageContent.Poll -> ContentLabel(messageContent.displayLabel, Icons.Default.BarChart)
     is MessageContent.Event -> ContentLabel(messageContent.displayLabel, Icons.Default.Event)
     is MessageContent.DiceRoll -> ContentLabel(messageContent.displayLabel, Icons.Default.Casino)
     is MessageContent.Groodle -> ContentLabel(messageContent.displayLabel, Icons.Default.CalendarMonth)
     is MessageContent.ContactCard -> ContentLabel(messageContent.displayLabel, Icons.Outlined.ContactPage)
     is MessageContent.Location -> ContentLabel(messageContent.displayLabel, Icons.Default.LocationOn)
-    is MessageContent.ViewOnce -> ContentLabel(messageContent.displayLabel, if (viewOnceOpened) ViewOnceOpenedIcon else ViewOnceIcon)
+    is MessageContent.ViewOnce -> null
     is MessageContent.Unknown -> ContentLabel(messageContent.displayLabel, Icons.AutoMirrored.Outlined.HelpOutline)
     null -> null
 }

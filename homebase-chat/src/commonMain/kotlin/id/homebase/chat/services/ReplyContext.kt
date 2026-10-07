@@ -4,6 +4,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
@@ -42,11 +43,15 @@ sealed interface ReplyContext {
     /** Event reply: chip renders the viewer-local month/day from `startUtcMs`. */
     data class Event(val startUtcMs: Long) : ReplyContext
 
+    /** View-once reply: the quote reads the kind word with the view-once icon even when the original is not in memory. */
+    data class ViewOnce(val kind: String) : ReplyContext
+
     /** Reply context whose `kind` we don't recognise — render as a default reply preview. */
     data object Unknown : ReplyContext
 
     companion object {
         const val KIND_EVENT = "event"
+        const val KIND_VIEW_ONCE = "viewOnce"
 
         /**
          * Parse a wire-side [JsonElement] into a typed [ReplyContext].
@@ -63,8 +68,14 @@ sealed interface ReplyContext {
                     val ts = (obj["startUtcMs"] as? JsonPrimitive)?.longOrNull
                     if (ts != null) Event(ts) else Unknown
                 }
+                KIND_VIEW_ONCE -> (obj["media"] as? JsonPrimitive)?.contentOrNull?.let(::ViewOnce) ?: Unknown
                 else -> Unknown
             }
+        }
+
+        fun viewOnce(kind: String): JsonObject = buildJsonObject {
+            put("kind", KIND_VIEW_ONCE)
+            put("media", kind)
         }
 
         /** Build an Event-kind context for [ReplyPreview.context]. */

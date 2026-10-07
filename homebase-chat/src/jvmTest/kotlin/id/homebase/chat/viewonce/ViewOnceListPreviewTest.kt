@@ -24,6 +24,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_view_once_photo
 import id.homebase.resources.chat_view_once_unparseable
 import id.homebase.resources.chat_view_once_video
+import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -33,9 +34,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
-
-internal fun viewOnceWord(res: org.jetbrains.compose.resources.StringResource): String =
-    kotlinx.coroutines.runBlocking { org.jetbrains.compose.resources.getString(res) }
 
 @OptIn(ExperimentalTestApi::class)
 class ViewOnceListPreviewTest {
@@ -203,5 +201,23 @@ class ViewOnceListPreviewTest {
         ).single()
         assertEquals(viewOnceWord(MR.string.chat_view_once_unparseable), labelOf(afterSync)?.text, "the server tombstone has no content, so no kind word")
         assertEquals(ViewOnceOpenedIcon, labelOf(afterSync)?.icon)
+    }
+
+    @Test
+    fun theListPreviewLabelIsResourceBackedAndFollowsTheLocale() = runTest {
+        val photo = lastMessageOf(unopened("image"))
+        val video = lastMessageOf(unopened("video"))
+        val tombstone = lastMessageOf(
+            assertNotNull(mapToMessageData(serverTombstone(createdMs = now - 2 * DAY_MS, updatedMs = now - DAY_MS), ownerCredentials())),
+        )
+        val original = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale("da"))
+            assertEquals("Foto", labelOf(photo)?.text)
+            assertEquals("Video", labelOf(video)?.text)
+            assertEquals("Medie", labelOf(tombstone)?.text)
+        } finally {
+            Locale.setDefault(original)
+        }
     }
 }

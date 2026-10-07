@@ -183,7 +183,7 @@ suspend fun mapToMessageData(
                 created = metadata.created.toInstant(),
                 originalAuthor = metadata.originalAuthor,
                 sender = metadata.senderOdinId,
-                displayName = metadata.originalAuthor?.domainName ?: "",
+                displayName = displayNameResolver(header),
                 localReadTimestamp = localReadTimestamp,
                 ownReactions = ownReactions,
                 isEdited = false,

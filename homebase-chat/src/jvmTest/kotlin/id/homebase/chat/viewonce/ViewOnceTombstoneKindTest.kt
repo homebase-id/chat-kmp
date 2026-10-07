@@ -22,6 +22,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_view_once_photo
 import id.homebase.resources.chat_view_once_unparseable
 import id.homebase.resources.chat_view_once_video
+import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -132,13 +133,17 @@ class ViewOnceTombstoneKindTest {
         }
     }
 
-    private suspend fun serverTombstoneOnly(fixture: ChatMessageActionServiceTestFixture, kind: String): Pair<String, MessageUiModel> {
+    private suspend fun serverTombstoneOnly(
+        fixture: ChatMessageActionServiceTestFixture,
+        kind: String,
+        uniqueId: Uuid = Uuid.random(),
+    ): Pair<String, MessageUiModel> {
         val conversationId = fixture.seedOneOnOneConversation(other = VO_SENDER)
         val fileId = Uuid.random()
         val processor = MainIndexMetaHelpers.HomebaseFileProcessor(fixture.dbm)
         processor.baseUpsertEntryZapZap(
             fixture.testIdentityId, fixture.chatDriveId,
-            viewOnceHeader(fileId = fileId, conversationId = conversationId, createdMs = now - DAY_MS, content = descriptor(kind)),
+            viewOnceHeader(fileId = fileId, uniqueId = uniqueId, conversationId = conversationId, createdMs = now - DAY_MS, content = descriptor(kind)),
             null,
         )
         processor.baseUpsertEntryZapZap(
@@ -168,6 +173,36 @@ class ViewOnceTombstoneKindTest {
             assertEquals(ViewOnceDescriptor.KIND_VIDEO, kept?.kind)
             assertNull(kept?.caption)
             assertEquals(viewOnceWord(MR.string.chat_view_once_video), labelOf(model)?.text)
+        }
+    }
+
+    @Test
+    fun aServerTombstoneKeepsTheItemIdSoAReplyStillFindsIt() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            fixture.build(scope = this)
+            val original = Uuid.random()
+            val (_, model) = serverTombstoneOnly(fixture, "image", uniqueId = original)
+
+            assertEquals(original, model.id, "the tombstone must keep the uniqueId a reply quotes")
+        }
+    }
+
+    @Test
+    fun theKindWordFollowsTheLocaleForAnOpenedAndATombstonedItem() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            fixture.build(scope = this)
+            val (_, photo) = serverTombstoneOnly(fixture, "image")
+            val blank = assertNotNull(
+                mapToMessageData(serverTombstone(createdMs = now - 2 * DAY_MS, updatedMs = now - DAY_MS), fixture.credentialsManager),
+            )
+            val original = Locale.getDefault()
+            try {
+                Locale.setDefault(Locale("da"))
+                assertEquals("Foto", labelOf(photo)?.text)
+                assertEquals("Medie", labelOf(blank)?.text)
+            } finally {
+                Locale.setDefault(original)
+            }
         }
     }
 

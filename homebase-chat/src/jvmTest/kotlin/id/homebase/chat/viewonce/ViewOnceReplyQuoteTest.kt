@@ -4,18 +4,25 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.runComposeUiTest
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.conversationlist.toReplyPreview
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.mapToMessageData
+import id.homebase.chat.widget.ChatBubbleTestTags
+import id.homebase.chat.widget.InlineReplyPreview
 import id.homebase.chat.widget.ReplyPreviewBar
+import java.util.Locale
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.time.Clock
 
@@ -57,6 +64,52 @@ class ViewOnceReplyQuoteTest {
             onNodeWithText("Video").assertExists()
             assertEquals(0, onAllNodesWithText("secret", substring = true).fetchSemanticsNodes().size)
             onNodeWithContentDescription("Reply thumbnail").assertDoesNotExist()
+        }
+    }
+
+    @Test
+    fun aPostedQuoteShowsTheIconAndKindEvenWhenTheOriginalIsNotInMemory() = runTest {
+        for ((kind, word, da) in listOf(Triple("image", "Photo", "Foto"), Triple("video", "Video", "Video"))) {
+            val preview = unopened(kind).toReplyPreview()
+            val original = Locale.getDefault()
+            try {
+                for ((locale, expected) in listOf(Locale.ENGLISH to word, Locale("da") to da)) {
+                    Locale.setDefault(locale)
+                    runComposeUiTest {
+                        setContent {
+                            MaterialTheme {
+                                InlineReplyPreview(replyPreview = preview, sentByYou = true, onClick = {}, replyMessage = null, driveId = Uuid.random())
+                            }
+                        }
+                        onNodeWithTag(ChatBubbleTestTags.REPLY_QUOTE_TEXT, useUnmergedTree = true).assertTextEquals(expected)
+                        onNodeWithTag(ChatBubbleTestTags.REPLY_QUOTE_ICON, useUnmergedTree = true).assertExists()
+                    }
+                }
+            } finally {
+                Locale.setDefault(original)
+            }
+        }
+    }
+
+    @Test
+    fun aQuoteOfAnOpenedItemNamesTheAuthorByTheResolvedDisplayName() = runTest {
+        val tombstone = assertNotNull(
+            mapToMessageData(
+                serverTombstone(createdMs = now - 2 * DAY_MS, updatedMs = now - DAY_MS),
+                ownerCredentials(),
+                displayNameResolver = { "Samwise Gamgee" },
+            ),
+        )
+        assertEquals("Samwise Gamgee", tombstone.displayName)
+        val preview = unopened("image").toReplyPreview().copy(authorOdinId = VO_SENDER)
+        runComposeUiTest {
+            setContent {
+                MaterialTheme {
+                    InlineReplyPreview(replyPreview = preview, sentByYou = false, onClick = {}, replyMessage = tombstone, driveId = Uuid.random())
+                }
+            }
+            onNodeWithText("Samwise Gamgee").assertExists()
+            onNodeWithTag(ChatBubbleTestTags.REPLY_QUOTE_ICON, useUnmergedTree = true).assertExists()
         }
     }
 }

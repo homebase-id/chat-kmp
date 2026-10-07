@@ -31,11 +31,15 @@ object TombstoneRetention {
         }
     }
 
-    internal fun carryOver(incoming: HomebaseFile, storedContent: () -> String?): HomebaseFile {
+    // The server's tombstone has no uniqueId, so without it the item's id drifts to its fileId and a reply quoting it no longer finds it.
+    internal fun carryOver(incoming: HomebaseFile, stored: () -> HomebaseFile?): HomebaseFile {
         val appData = incoming.fileMetadata.appData
-        if (!incoming.isSoftDeleted() || appData.dataType != VIEW_ONCE_DATA_TYPE || !appData.content.isNullOrBlank()) return incoming
-        val kept = viewOnceKindOnly(storedContent())
-        if (kept.isEmpty()) return incoming
-        return incoming.copy(fileMetadata = incoming.fileMetadata.copy(appData = appData.copy(content = kept)))
+        if (!incoming.isSoftDeleted() || appData.dataType != VIEW_ONCE_DATA_TYPE) return incoming
+        if (!appData.content.isNullOrBlank() && appData.uniqueId != null) return incoming
+        val storedAppData = stored()?.fileMetadata?.appData ?: return incoming
+        val content = if (appData.content.isNullOrBlank()) viewOnceKindOnly(storedAppData.content) else appData.content
+        val uniqueId = appData.uniqueId ?: storedAppData.uniqueId
+        if (content == appData.content && uniqueId == appData.uniqueId) return incoming
+        return incoming.copy(fileMetadata = incoming.fileMetadata.copy(appData = appData.copy(content = content, uniqueId = uniqueId)))
     }
 }

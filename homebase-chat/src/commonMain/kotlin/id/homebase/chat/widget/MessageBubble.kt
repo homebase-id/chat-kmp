@@ -87,6 +87,7 @@ import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.viewonce.ViewOnceDescriptor
 import id.homebase.chat.viewonce.ViewOnceRules
 import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
@@ -1058,7 +1059,12 @@ fun InlineReplyPreview(
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
-    val quotesProtectedMedia = replyMessage?.messageContent.isReplyQuoteImageSuppressed()
+    val replyContext = remember(replyPreview.context) { ReplyContext.fromJson(replyPreview.context) }
+    val viewOnceContent = remember(replyMessage?.messageContent, replyContext) {
+        replyMessage?.messageContent?.takeIf { it is MessageContent.ViewOnce }
+            ?: (replyContext as? ReplyContext.ViewOnce)?.let { MessageContent.ViewOnce(ViewOnceDescriptor(kind = it.kind)) }
+    }
+    val quotesProtectedMedia = viewOnceContent != null || replyMessage?.messageContent.isReplyQuoteImageSuppressed()
     val mediaPayloads = remember(replyMessage?.payloads, quotesProtectedMedia) {
         if (quotesProtectedMedia) emptyList() else replyMessage?.payloads.replyQuoteMediaPayloads()
     }
@@ -1106,7 +1112,7 @@ fun InlineReplyPreview(
         isDeleted = replyMessage?.isDeleted ?: false,
         firstPayload = mediaPayloads.firstOrNull(),
         hasMultiplePayloads = mediaPayloads.size > 1,
-        messageContent = replyMessage?.messageContent.takeIf { it is MessageContent.ViewOnce },
+        messageContent = viewOnceContent,
         viewOnceOpened = viewOnceOpened,
     )
     // Dispatch on the typed ReplyContext carried on the wire — that's how
@@ -1115,9 +1121,9 @@ fun InlineReplyPreview(
     // lookup so old replies still get the chip when the parent is in
     // memory. Future kinds parse as Unknown → default reply preview, no
     // crash.
-    val eventStartLocal = when (val ctx = ReplyContext.fromJson(replyPreview.context)) {
+    val eventStartLocal = when (val ctx = replyContext) {
         is ReplyContext.Event -> rememberViewerLocalDate(ctx.startUtcMs)
-        ReplyContext.Unknown -> null
+        is ReplyContext.ViewOnce, ReplyContext.Unknown -> null
         null -> {
             val eventDescriptor = (replyMessage?.messageContent as? MessageContent.Event)?.descriptor
             eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
@@ -1184,7 +1190,7 @@ fun InlineReplyPreview(
                                 Icon(
                                     imageVector = icon,
                                     contentDescription = null,
-                                    modifier = Modifier.size(12.dp),
+                                    modifier = Modifier.size(12.dp).testTag(ChatBubbleTestTags.REPLY_QUOTE_ICON),
                                     tint = contentColor.copy(alpha = 0.7f),
                                 )
                                 Spacer(modifier = Modifier.width(3.dp))

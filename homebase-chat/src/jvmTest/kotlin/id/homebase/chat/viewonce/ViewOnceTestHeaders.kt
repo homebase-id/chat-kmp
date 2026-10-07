@@ -7,6 +7,9 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
+import kotlinx.coroutines.runBlocking
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.getString
 import kotlin.uuid.Uuid
 
 internal const val VO_OWNER = "owner.test"
@@ -118,3 +121,5 @@ internal fun serverTombstone(
     content = "",
     payloadsJson = "null",
 )
+
+internal fun viewOnceWord(res: StringResource): String = runBlocking { getString(res) }
