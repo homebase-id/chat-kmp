@@ -65,7 +65,7 @@ class ViewOnceBubblePlatformTest {
         var opened = 0
         bubble(canView = true, isOutgoing = false, state = ViewOnceState.Unopened, onOpen = { opened++ })
 
-        onNodeWithText("Tap to view").performClick()
+        onNodeWithText("Photo").performClick()
         waitForIdle()
 
         assertEquals(1, opened)

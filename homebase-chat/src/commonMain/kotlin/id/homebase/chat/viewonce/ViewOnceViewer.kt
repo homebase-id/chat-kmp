@@ -38,6 +38,8 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -312,38 +314,38 @@ internal fun ViewOnceViewerFrame(
     }
 }
 
+// Translucent so the media reads through the chrome, the way a camera's controls float over the frame.
+@Composable
+private fun chromeContainer(): Color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = CHROME_ALPHA)
+
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ViewOnceViewerHeader(onClose: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0.72f), colors.scrim.copy(alpha = 0f))))
+            .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0.6f), colors.scrim.copy(alpha = 0f))))
             .statusBarsPadding()
-            .padding(start = 12.dp, end = 20.dp, top = 8.dp, bottom = 32.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 12.dp)
+            .padding(top = 8.dp, bottom = 32.dp),
     ) {
         FilledTonalIconButton(
             onClick = onClose,
             shapes = IconButtonDefaults.shapes(),
             colors = IconButtonDefaults.filledTonalIconButtonColors(
-                containerColor = colors.surfaceContainerHighest,
+                containerColor = chromeContainer(),
                 contentColor = colors.onSurface,
             ),
-            modifier = Modifier.size(IconButtonDefaults.mediumContainerSize()).testTag(VIEW_ONCE_VIEWER_CLOSE_TAG),
+            modifier = Modifier.align(Alignment.CenterStart).size(CHROME_SIZE).testTag(VIEW_ONCE_VIEWER_CLOSE_TAG),
         ) {
-            Icon(
-                Icons.Default.Close,
-                contentDescription = stringResource(MR.string.chat_view_once_close),
-                modifier = Modifier.size(IconButtonDefaults.mediumIconSize),
-            )
+            Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.chat_view_once_close))
         }
         Box(
-            Modifier.padding(start = 16.dp).size(32.dp).clip(MaterialShapes.Cookie9Sided.toShape()).background(colors.primary),
+            Modifier.align(Alignment.Center).size(CHROME_SIZE).clip(CircleShape).background(chromeContainer()),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(ViewOnceDigitIcon, contentDescription = stringResource(MR.string.cd_view_once_toggle), tint = colors.onPrimary, modifier = Modifier.size(22.dp))
+            Icon(ViewOnceIcon, contentDescription = stringResource(MR.string.cd_view_once_toggle), tint = colors.onSurface, modifier = Modifier.size(28.dp))
         }
     }
 }
@@ -361,7 +363,7 @@ private fun ViewOnceViewerFooter(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0f), colors.scrim.copy(alpha = 0.72f))))
+            .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0f), colors.scrim.copy(alpha = 0.6f))))
             .navigationBarsPadding()
             .padding(start = 20.dp, end = 12.dp, top = 40.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -395,12 +397,12 @@ private fun ViewOnceViewerFooter(
                         onCheckedChange = onMutedChange,
                         shapes = IconButtonDefaults.toggleableShapes(),
                         colors = IconButtonDefaults.filledTonalIconToggleButtonColors(
-                            containerColor = colors.surfaceContainerHighest,
+                            containerColor = chromeContainer(),
                             contentColor = colors.onSurface,
                             checkedContainerColor = colors.inverseSurface,
                             checkedContentColor = colors.inverseOnSurface,
                         ),
-                        modifier = Modifier.padding(start = 8.dp).size(48.dp).testTag(VIEW_ONCE_VIEWER_MUTE_TAG),
+                        modifier = Modifier.padding(start = 8.dp).size(CHROME_SIZE).testTag(VIEW_ONCE_VIEWER_MUTE_TAG),
                     ) {
                         Icon(
                             if (muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
@@ -527,6 +529,8 @@ internal fun ViewOnceViewerImage(bitmap: ImageBitmap) {
 }
 
 private const val POSITION_TICK_MS = 500
+private const val CHROME_ALPHA = 0.55f
+private val CHROME_SIZE = 48.dp
 
 private class CloseOnce {
     private var done = false

@@ -54,6 +54,7 @@ import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -1220,7 +1221,7 @@ const val VIEW_ONCE_TOGGLE_TAG = "viewOnceToggle"
 @Immutable
 class ViewOnceToggle(val checked: Boolean, val onToggle: () -> Unit)
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun MessageTextFieldForAttachment(
     modifier: Modifier = Modifier,
@@ -1322,6 +1323,7 @@ fun MessageTextFieldForAttachment(
                             IconToggleButton(
                                 checked = toggle.checked,
                                 onCheckedChange = { toggle.onToggle() },
+                                shapes = IconButtonDefaults.toggleableShapes(),
                                 colors = IconButtonDefaults.iconToggleButtonColors(
                                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                     checkedContainerColor = MaterialTheme.colorScheme.primary,

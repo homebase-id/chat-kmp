@@ -1022,7 +1022,6 @@
     <string name="chat_view_once_unparseable">Media</string>
     <string name="chat_view_once_update_to_open">Update the app to open it</string>
     <string name="chat_view_once_unavailable">Can't be opened here</string>
-    <string name="chat_view_once_tap_to_view">Tap to view</string>
     <string name="chat_view_once_opening">Opening…</string>
     <string name="chat_view_once_failed">Couldn't load · Tap&#160;to&#160;retry</string>
     <string name="chat_view_once_opened">Opened</string>
@@ -1034,7 +1033,7 @@
     <string name="chat_view_once_screenshot_taken">Screenshot taken</string>
     <string name="chat_view_once_close">Close</string>
     <string name="chat_view_once_viewer_failed_title">Couldn't load</string>
-    <string name="chat_view_once_viewer_failed_body">It's still unopened. Closing won't use it up.</string>
+    <string name="chat_view_once_viewer_failed_body">Check your connection and try again.</string>
     <string name="chat_view_once_retry">Try again</string>
     <string name="chat_view_once_mute">Mute</string>
     <string name="chat_view_once_remaining">%1$s left</string>

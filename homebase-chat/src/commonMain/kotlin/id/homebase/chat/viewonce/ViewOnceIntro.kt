@@ -19,6 +19,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialShapes
+import androidx.compose.material3.toShape
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -80,11 +85,12 @@ fun ViewOnceIntroSheet(isVideo: Boolean, onDismiss: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun ViewOnceIntroContent(isVideo: Boolean, onOk: () -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     Box(modifier.fillMaxWidth()) {
-        IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(end = 8.dp).testTag(VIEW_ONCE_INTRO_CLOSE_TAG)) {
+        IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(end = 12.dp).testTag(VIEW_ONCE_INTRO_CLOSE_TAG)) {
             Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.chat_view_once_close))
         }
         Column(
@@ -92,31 +98,46 @@ internal fun ViewOnceIntroContent(isVideo: Boolean, onOk: () -> Unit, onClose: (
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(
-                Modifier.size(88.dp).background(colors.primaryContainer, CircleShape),
+                Modifier.size(96.dp).background(colors.primary, MaterialShapes.Cookie9Sided.toShape()),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    ViewOnceIcon,
+                    ViewOnceDigitIcon,
                     contentDescription = stringResource(MR.string.cd_view_once_toggle),
-                    tint = colors.onPrimaryContainer,
-                    modifier = Modifier.size(56.dp),
+                    tint = colors.onPrimary,
+                    modifier = Modifier.size(60.dp),
                 )
             }
             Text(
                 text = stringResource(
                     if (isVideo) MR.string.chat_view_once_intro_title_video else MR.string.chat_view_once_intro_title_photo,
                 ),
-                style = MaterialTheme.typography.headlineSmall.copy(textDirection = TextDirection.Content),
+                style = MaterialTheme.typography.headlineSmallEmphasized.copy(textDirection = TextDirection.Content),
                 color = colors.onSurface,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 20.dp, bottom = 24.dp).testTag(VIEW_ONCE_INTRO_TITLE_TAG),
+                modifier = Modifier.padding(top = 24.dp, bottom = 24.dp).testTag(VIEW_ONCE_INTRO_TITLE_TAG),
             )
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
-                IntroRow(ViewOnceRingIcon, stringResource(MR.string.chat_view_once_intro_disappears))
-                IntroRow(Icons.Outlined.Lock, stringResource(MR.string.chat_view_once_intro_protected))
+            Surface(
+                shape = MaterialTheme.shapes.extraLarge,
+                color = colors.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    IntroRow(ViewOnceRingIcon, stringResource(MR.string.chat_view_once_intro_disappears))
+                    IntroRow(Icons.Outlined.Lock, stringResource(MR.string.chat_view_once_intro_protected))
+                }
             }
-            Button(onClick = onOk, modifier = Modifier.fillMaxWidth().padding(top = 28.dp).testTag(VIEW_ONCE_INTRO_OK_TAG)) {
-                Text(stringResource(MR.string.ok))
+            Button(
+                onClick = onOk,
+                shapes = ButtonDefaults.shapes(),
+                contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MediumContainerHeight),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 24.dp)
+                    .heightIn(min = ButtonDefaults.MediumContainerHeight)
+                    .testTag(VIEW_ONCE_INTRO_OK_TAG),
+            ) {
+                Text(stringResource(MR.string.ok), style = ButtonDefaults.textStyleFor(ButtonDefaults.MediumContainerHeight))
             }
         }
     }
@@ -124,12 +145,15 @@ internal fun ViewOnceIntroContent(isVideo: Boolean, onOk: () -> Unit, onClose: (
 
 @Composable
 private fun IntroRow(icon: ImageVector, text: String) {
+    val colors = MaterialTheme.colorScheme
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
+        Box(Modifier.size(40.dp).background(colors.secondaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = colors.onSecondaryContainer, modifier = Modifier.size(22.dp))
+        }
         Text(
             text = text,
             style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.onSurface,
             modifier = Modifier.padding(start = 16.dp),
         )
     }
@@ -190,7 +214,9 @@ fun ViewOnceToast(message: ViewOnceToastMessage?, modifier: Modifier = Modifier)
     val toastOff = stringResource(MR.string.chat_view_once_toast_off)
     // Keeps the last text through the exit animation instead of collapsing to nothing mid-fade.
     var last by remember { mutableStateOf("") }
+    var lastOff by remember { mutableStateOf(false) }
     shown?.let {
+        lastOff = it.kind == ViewOnceToastKind.Off
         last = when (it.kind) {
             ViewOnceToastKind.Photo -> toastPhoto
             ViewOnceToastKind.Video -> toastVideo
@@ -204,16 +230,22 @@ fun ViewOnceToast(message: ViewOnceToastMessage?, modifier: Modifier = Modifier)
         modifier = modifier,
     ) {
         Surface(
-            shape = MaterialTheme.shapes.small,
+            shape = CircleShape,
             color = MaterialTheme.colorScheme.inverseSurface,
             contentColor = MaterialTheme.colorScheme.inverseOnSurface,
             modifier = Modifier.testTag(VIEW_ONCE_TOAST_TAG),
         ) {
-            Text(
-                text = last,
-                style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 12.dp, end = 20.dp, top = 10.dp, bottom = 10.dp),
+            ) {
+                Icon(if (lastOff) ViewOnceRingIcon else ViewOnceIcon, contentDescription = null, modifier = Modifier.size(20.dp))
+                Text(
+                    text = last,
+                    style = MaterialTheme.typography.labelLarge.copy(textDirection = TextDirection.Content),
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
         }
     }
 }

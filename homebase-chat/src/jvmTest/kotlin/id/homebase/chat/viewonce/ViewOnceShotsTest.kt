@@ -110,6 +110,8 @@ class ViewOnceShotsTest {
         data class States(val outgoing: Boolean, val pressFirst: Boolean = false) : Scene
         data object Morph : Scene
         data class Viewer(val stage: ViewerStage, val video: Boolean = false, val muted: Boolean = false) : Scene
+        data class Intro(val video: Boolean) : Scene
+        data class Toast(val kind: ViewOnceToastKind) : Scene
     }
 
     private enum class ViewerStage { Live, Loading, Shown, Failed }
@@ -161,6 +163,10 @@ class ViewOnceShotsTest {
             Shot("v8-viewer-photo-chrome-hidden", Scene.Viewer(ViewerStage.Shown), settleMs = 4_000),
             Shot("v9-viewer-video-muted-font-scale", Scene.Viewer(ViewerStage.Shown, video = true, muted = true), fontScale = 1.6f),
             Shot("v10-viewer-video-chrome-hidden", Scene.Viewer(ViewerStage.Shown, video = true), settleMs = 4_000),
+            Shot("i1-intro-photo", Scene.Intro(video = false), heightDp = 620),
+            Shot("i2-intro-video-font-scale-rtl", Scene.Intro(video = true), fontScale = 1.6f, rtl = true, heightDp = 820),
+            Shot("t1-toast-photo", Scene.Toast(ViewOnceToastKind.Photo), heightDp = 160, settleMs = 500),
+            Shot("t2-toast-off", Scene.Toast(ViewOnceToastKind.Off), heightDp = 160, settleMs = 500),
         )
     }
 
@@ -453,6 +459,12 @@ class ViewOnceShotsTest {
                     is Scene.Thread -> ThreadScene(scene)
                     is Scene.States -> StatesScene(scene)
                     is Scene.Viewer -> ViewerScene(scene)
+                    is Scene.Intro -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(top = 24.dp)) {
+                        ViewOnceIntroContent(isVideo = scene.video, onOk = {}, onClose = {})
+                    }
+                    is Scene.Toast -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
+                        ViewOnceToast(remember { ViewOnceToastMessage(scene.kind) })
+                    }
                     Scene.Morph -> Unit
                 }
             }
