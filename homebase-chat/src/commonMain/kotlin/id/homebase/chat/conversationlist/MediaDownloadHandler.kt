@@ -337,6 +337,10 @@ internal class MediaDownloadHandler(
         scope.launch { viewOnceActions.onViewerClosed(action.conversationId, action.messageId) }
     }
 
+    fun handleViewOnceScreenshot(action: ConversationListUiAction.ViewOnceScreenshot) {
+        scope.launch { viewOnceActions.onScreenshot(action.conversationId, action.messageId) }
+    }
+
     fun handleMediaClicked(action: ConversationListUiAction.MediaClicked) {
         scope.launch {
             try {

@@ -136,6 +136,17 @@ class ViewOnceRulesTest {
     }
 
     @Test
+    fun sender_screenshotTakenWhenReactionPreviewHasVs() {
+        assertEquals(true, ViewOnceRules.screenshotTaken(message(me, summary = summary("_vs", 1)), me))
+        assertEquals(false, ViewOnceRules.screenshotTaken(message(me, summary = summary("_vo", 1)), me))
+        assertEquals(false, ViewOnceRules.screenshotTaken(message(me), me))
+    }
+
+    @Test
+    fun recipient_neverCarriesTheScreenshotLine() =
+        assertEquals(false, ViewOnceRules.screenshotTaken(message(alice, summary = summary("_vs", 1)), me))
+
+    @Test
     fun signalScopesAreDistinct() {
         assertEquals("viewonce", ViewOnceSignal.openedChange().scope)
         assertEquals("viewonce_shot", ViewOnceSignal.screenshotChange().scope)

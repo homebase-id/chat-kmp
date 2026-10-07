@@ -14,6 +14,9 @@ object ViewOnceRules {
     fun screenshotCount(message: MessageUiModel): Int =
         ViewOnceSignal.count(message.reactionPreview, ViewOnceSignal.SCREENSHOT_CODE)
 
+    fun screenshotTaken(message: MessageUiModel, myOdinId: OdinId?): Boolean =
+        message.isFromActiveUser(myOdinId) && screenshotCount(message) >= 1
+
     fun stateOf(message: MessageUiModel, nowMs: Long, myOdinId: OdinId?): ViewOnceState {
         val createdMs = message.created.toEpochMilliseconds()
         val expiredByAge = nowMs - createdMs >= MAX_LIFESPAN_MS

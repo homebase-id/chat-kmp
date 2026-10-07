@@ -19,6 +19,26 @@ class ViewOnceActions(
     private val claimMutex = Mutex()
     private val claimed = mutableSetOf<Uuid>()
 
+    private val shotMutex = Mutex()
+    private val shotSent = mutableSetOf<Uuid>()
+
+    /** At most once per viewer session; a failed enqueue frees the next screenshot to try again. */
+    suspend fun onScreenshot(message: MessageUiModel) = onScreenshot(message.conversationId, message.id)
+
+    suspend fun onScreenshot(conversationId: Uuid, messageId: Uuid) {
+        if (!shotMutex.withLock { shotSent.add(messageId) }) return
+        try {
+            val outcome = actionService.setReactions(conversationId, messageId, ViewOnceSignal.screenshotChange())
+            Logger.i(TAG) { "screenshot msg=$messageId signal=$outcome" }
+        } catch (e: CancellationException) {
+            shotMutex.withLock { shotSent.remove(messageId) }
+            throw e
+        } catch (e: Exception) {
+            shotMutex.withLock { shotSent.remove(messageId) }
+            Logger.e(TAG, e) { "screenshot signal failed msg=$messageId" }
+        }
+    }
+
     private suspend fun claim(messageId: Uuid): Boolean = claimMutex.withLock { claimed.add(messageId) }
 
     suspend fun isConsumed(messageId: Uuid): Boolean = claimMutex.withLock { messageId in claimed }

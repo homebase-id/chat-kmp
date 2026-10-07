@@ -196,4 +196,34 @@ class ViewOnceActionsTest {
             assertTrue(fixture.drainOutbox().isEmpty())
         }
     }
+
+    @Test
+    fun twoScreenshotsInOneSessionQueueOneSignalAndTheCloseStillQueuesOpened() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val s = scenario(this, fixture)
+            val message = s.stored()
+
+            s.actions.onScreenshot(message)
+            s.actions.onScreenshot(message)
+
+            val shotKey = ChatMessageActionService.reactionSetRowKey(s.messageId, ViewOnceSignal.SCREENSHOT_SCOPE)
+            val shotRow = assertNotNull(fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, shotKey))
+            assertEquals(DriveOutboxUploader.SetReactions, shotRow.uploadType)
+            val shot = OutboxSerializer.decode<SetReactionsOutboxRequest>(shotRow)
+            assertTrue(shot.add.single().contains(ViewOnceSignal.SCREENSHOT_CODE))
+            assertEquals(1L, fixture.dbm.outbox.count(), "exactly one set-reactions row")
+
+            s.actions.onViewerClosed(message)
+
+            val openedRow = assertNotNull(
+                fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, reactionRowKey(s.messageId)),
+            )
+            assertTrue(OutboxSerializer.decode<SetReactionsOutboxRequest>(openedRow).add.single().contains(ViewOnceSignal.OPENED_CODE))
+            assertNotNull(
+                fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, shotKey),
+                "the opened signal must not clobber the pending screenshot signal",
+            )
+            assertEquals(3L, fixture.dbm.outbox.count(), "screenshot, opened and delete rows")
+        }
+    }
 }

@@ -57,6 +57,20 @@ class ViewOnceViewerTest {
         }
     }
 
+    private fun SkikoComposeUiTest.showWithCapture(server: ViewOnceFakeServer, captured: androidx.compose.runtime.State<Boolean>) {
+        setContent {
+            MaterialTheme {
+                ViewOnceViewer(
+                    data = server.viewer(),
+                    onViewerClosed = { closed++ },
+                    onDismiss = { dismissed++ },
+                    loader = server.loader,
+                    captureObserver = { captured },
+                )
+            }
+        }
+    }
+
     private fun SkikoComposeUiTest.showRemountable(server: ViewOnceFakeServer, data: FullScreenOverlay.ViewOnceViewer) {
         setContent {
             MaterialTheme {
@@ -100,6 +114,25 @@ class ViewOnceViewerTest {
 
         assertEquals(1, closed)
         assertEquals(1, dismissed)
+    }
+
+    @Test
+    fun whileTheScreenIsCapturedTheBlockedPanelReplacesTheMedia() = runSkikoComposeUiTest {
+        val server = runBlocking { ViewOnceFakeServer().start() }
+        val captured = mutableStateOf(false)
+        showWithCapture(server, captured)
+        awaitShown()
+        onNodeWithTag(VIEW_ONCE_VIEWER_BLOCKED_TAG).assertDoesNotExist()
+
+        captured.value = true
+        waitForIdle()
+        onNodeWithTag(VIEW_ONCE_VIEWER_BLOCKED_TAG).assertExists()
+        onNodeWithTag(VIEW_ONCE_VIEWER_IMAGE_TAG).assertDoesNotExist()
+
+        captured.value = false
+        waitForIdle()
+        onNodeWithTag(VIEW_ONCE_VIEWER_IMAGE_TAG).assertExists()
+        onNodeWithTag(VIEW_ONCE_VIEWER_BLOCKED_TAG).assertDoesNotExist()
     }
 
     @Test

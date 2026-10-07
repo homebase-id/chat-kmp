@@ -75,7 +75,14 @@ import androidx.compose.animation.core.tween
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.ui.text.style.LineBreak
 import id.homebase.api.client.drives.files.DescriptorContent
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
+import id.homebase.core.util.SecureWindowEffect
+import id.homebase.core.util.rememberScreenCaptureObserver
+import id.homebase.core.util.screenCaptureBlockedBySystem
+import id.homebase.resources.chat_view_once_capture_blocked
+import id.homebase.resources.chat_view_once_capture_discouraged
+import id.homebase.resources.chat_view_once_capture_system_blocked
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -112,6 +119,7 @@ const val VIEW_ONCE_VIEWER_CLOSE_TAG = "viewOnceViewerClose"
 const val VIEW_ONCE_VIEWER_RETRY_TAG = "viewOnceViewerRetry"
 const val VIEW_ONCE_VIEWER_IMAGE_TAG = "viewOnceViewerImage"
 const val VIEW_ONCE_VIEWER_PROGRESS_TAG = "viewOnceViewerProgress"
+const val VIEW_ONCE_VIEWER_BLOCKED_TAG = "viewOnceViewerBlocked"
 const val VIEW_ONCE_VIEWER_MUTE_TAG = "viewOnceViewerMute"
 internal const val VIEW_ONCE_CHROME_HIDE_MS = 2_500L
 
@@ -128,8 +136,12 @@ fun ViewOnceViewer(
     onViewerClosed: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    onScreenshot: () -> Unit = {},
     loader: ViewOncePayloadLoader = koinInject(),
+    captureObserver: @Composable (onScreenshot: () -> Unit) -> State<Boolean> = { rememberScreenCaptureObserver(it) },
 ) {
+    SecureWindowEffect(active = true)
+    val screenCaptured by captureObserver(onScreenshot)
     val isVideo = data.kind == ViewOnceDescriptor.KIND_VIDEO
     var image by remember(data.messageId) { mutableStateOf<ImageBitmap?>(null) }
     var videoShown by remember(data.messageId) { mutableStateOf(false) }
@@ -210,6 +222,7 @@ fun ViewOnceViewer(
         modifier = modifier,
     ) { belowHeader ->
         when {
+            screenCaptured -> ViewOnceCaptureBlocked(belowHeader)
             failed -> ViewOnceViewerFailed(onRetry = { attempt++ }, modifier = belowHeader)
             isVideo && videoReady -> {
                 VideoPlayerSurface(
@@ -415,6 +428,15 @@ private fun ViewOnceViewerFooter(
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(end = 8.dp),
         )
+        Text(
+            text = stringResource(
+                if (screenCaptureBlockedBySystem) MR.string.chat_view_once_capture_system_blocked
+                else MR.string.chat_view_once_capture_discouraged,
+            ),
+            style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content),
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(end = 8.dp),
+        )
     }
 }
 
@@ -422,6 +444,22 @@ private fun formatClock(ms: Long): String {
     val totalSeconds = (ms.coerceAtLeast(0L) + 999L) / 1000L
     val seconds = totalSeconds % 60
     return "${totalSeconds / 60}:${if (seconds < 10) "0" else ""}$seconds"
+}
+
+@Composable
+internal fun ViewOnceCaptureBlocked(modifier: Modifier = Modifier) {
+    Box(
+        modifier.background(MaterialTheme.colorScheme.surface).testTag(VIEW_ONCE_VIEWER_BLOCKED_TAG),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = stringResource(MR.string.chat_view_once_capture_blocked),
+            style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 32.dp),
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

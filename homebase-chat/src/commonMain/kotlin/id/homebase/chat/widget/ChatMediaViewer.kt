@@ -61,6 +61,9 @@ internal fun ChatMediaViewer(
             onViewerClosed = {
                 onUiAction(ConversationListUiAction.ViewOnceViewerClosed(data.conversationId, data.messageId))
             },
+            onScreenshot = {
+                onUiAction(ConversationListUiAction.ViewOnceScreenshot(data.conversationId, data.messageId))
+            },
             onDismiss = { onUiAction(CloseFullScreenOverlay) },
         )
 

@@ -1490,6 +1490,7 @@ class ConversationListViewModel(
             is ConversationListUiAction.CloseFullScreenOverlay -> mediaDownloadHandler.handleCloseFullScreenOverlay()
 
             is ConversationListUiAction.ViewOnceViewerClosed -> mediaDownloadHandler.handleViewOnceViewerClosed(action)
+            is ConversationListUiAction.ViewOnceScreenshot -> mediaDownloadHandler.handleViewOnceScreenshot(action)
 
             is ConversationListUiAction.ReplyToMessage -> messageActionsHandler.handleReplyToMessage(action)
 

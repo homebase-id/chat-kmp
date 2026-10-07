@@ -321,6 +321,9 @@ fun MessageBubbleRaw(
                 isOutgoing = sentByYou,
                 state = viewOnceState,
                 openedCount = if (sentByYou) ViewOnceRules.openedCount(message) else 0,
+                screenshotTaken = remember(message, sentByYou) {
+                    ViewOnceRules.screenshotTaken(message, if (sentByYou) message.originalAuthor else null)
+                },
                 canView = isMobile(),
                 onOpen = remember(message, viewOnceState, sentByYou, displayOnly) {
                     val payload = message.payloads?.firstOrNull { it.key == VIEW_ONCE_PAYLOAD_KEY }

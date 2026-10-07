@@ -84,6 +84,7 @@ import id.homebase.resources.chat_view_once_open_on_phone_body
 import id.homebase.resources.chat_view_once_open_on_phone_title
 import id.homebase.resources.ok
 import id.homebase.resources.chat_view_once_opened
+import id.homebase.resources.chat_view_once_screenshot_taken
 import id.homebase.resources.chat_view_once_opened_by
 import id.homebase.resources.chat_view_once_opening
 import id.homebase.resources.chat_view_once_photo
@@ -112,6 +113,7 @@ fun ViewOnceBubble(
     modifier: Modifier = Modifier,
     state: ViewOnceState = if (isOutgoing) ViewOnceState.Sent else ViewOnceState.Unopened,
     openedCount: Int = 0,
+    screenshotTaken: Boolean = false,
     canView: Boolean = true,
     phase: ViewOnceOpenPhase = ViewOnceOpenPhase.Idle,
     onOpen: (() -> Unit)? = null,
@@ -142,6 +144,7 @@ fun ViewOnceBubble(
     val kindLabel = descriptor?.let {
         stringResource(if (it.kind == ViewOnceDescriptor.KIND_VIDEO) MR.string.chat_view_once_video else MR.string.chat_view_once_photo)
     }
+    val shotNote = if (screenshotTaken) stringResource(MR.string.chat_view_once_screenshot_taken) else null
     val text = when {
         consumed -> BubbleText(
             title = when {
@@ -153,6 +156,7 @@ fun ViewOnceBubble(
             subtitle = kindLabel,
             subtitleColor = spentColor,
             spent = true,
+            note = shotNote,
         )
         descriptor == null -> BubbleText(
             title = stringResource(MR.string.chat_view_once_unparseable),
@@ -177,6 +181,7 @@ fun ViewOnceBubble(
             },
             subtitleEmphasised = badge == Badge.Ready || badge == Badge.Failed,
             phoneIcon = badge == Badge.Unavailable && openOnPhone,
+            note = shotNote,
         )
     }
 
@@ -278,6 +283,7 @@ private data class BubbleText(
     val subtitleEmphasised: Boolean = false,
     val phoneIcon: Boolean = false,
     val spent: Boolean = false,
+    val note: String? = null,
 )
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -306,6 +312,9 @@ private fun BubbleTextBlock(text: BubbleText) {
                 }
                 Text(text = text.subtitle, style = textStyle.withContentDirection(), color = text.subtitleColor)
             }
+        }
+        if (text.note != null) {
+            Text(text = text.note, style = MaterialTheme.typography.bodySmall.withContentDirection(), color = text.subtitleColor)
         }
     }
 }

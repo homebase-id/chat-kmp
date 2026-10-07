@@ -1037,6 +1037,10 @@
     <string name="chat_view_once_open_on_phone_body">View-once photos and videos can only be opened in the Homebase app on a phone or tablet. They are removed after they're opened.</string>
     <string name="chat_view_once_viewer_hint_photo">This photo disappears when you close it.</string>
     <string name="chat_view_once_viewer_hint_video">This video disappears when you close it.</string>
+    <string name="chat_view_once_capture_blocked">Hidden while your screen is being recorded or shared</string>
+    <string name="chat_view_once_capture_discouraged">Screenshots are discouraged; the sender is notified on iPhone.</string>
+    <string name="chat_view_once_capture_system_blocked">Screenshots are blocked by the system for this screen.</string>
+    <string name="chat_view_once_screenshot_taken">Screenshot taken</string>
     <string name="chat_view_once_close">Close</string>
     <string name="chat_view_once_viewer_title_photo">View-once photo</string>
     <string name="chat_view_once_viewer_title_video">View-once video</string>
