@@ -17,6 +17,9 @@ import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import id.homebase.resources.cd_view_once_unavailable_multiple
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.EnterTransition
@@ -154,6 +157,8 @@ internal data class EditorToolset(
     val showSave: Boolean,
     val showQuality: Boolean = false,
     val showViewOnce: Boolean = false,
+    // Shown but off: the toolbar keeps its shape when a second item arrives, and the feature stays findable.
+    val viewOnceNeedsSingle: Boolean = false,
 ) {
     val showToolbar: Boolean get() = showCrop || showDraw || showSave
 }
@@ -189,6 +194,7 @@ internal fun editorToolsetFor(
         showSave = canSave && current != null,
         showQuality = canSetQuality && isQualityRelevant,
         showViewOnce = canSetViewOnce && attachmentCount == 1 && isViewOnceCandidate(current),
+        viewOnceNeedsSingle = canSetViewOnce && attachmentCount > 1 && isViewOnceCandidate(current),
     )
 }
 
@@ -309,7 +315,8 @@ fun MediaAttachmentEditor(
         ) {
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.fillMaxSize(),
+                // The close button gets its own band, so it never sits on the media's corner.
+                modifier = Modifier.fillMaxSize().padding(top = if (onDismiss != null) CLOSE_BAND else 0.dp),
                 userScrollEnabled = true,
                 beyondViewportPageCount = 1
             ) { page ->
@@ -741,6 +748,7 @@ fun MediaAttachmentEditor(
             )
         }
         val toolset = toolsetFor(currentAttachment)
+        var singleOnlyAsked by remember(attachments.size) { mutableStateOf(false) }
         val toolbarFade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
         AnimatedVisibility(
             visible = !collapseSecondaryChrome,
@@ -762,7 +770,7 @@ fun MediaAttachmentEditor(
             itemVerticalAlignment = Alignment.CenterVertically,
         ) {
             val sendOptions = listOfNotNull(
-                SendOption.ViewOnce.takeIf { toolset.showViewOnce },
+                SendOption.ViewOnce.takeIf { toolset.showViewOnce || toolset.viewOnceNeedsSingle },
                 SendOption.Quality.takeIf { toolset.showQuality },
             )
             // A lone download joins the send options' connected group, so the row reads as one toolbar.
@@ -808,6 +816,7 @@ fun MediaAttachmentEditor(
                                 toolset = toolset,
                                 selected = viewOnce,
                                 onClick = { onToggleViewOnce!!() },
+                                onUnavailableClick = { singleOnlyAsked = true },
                                 shapes = shapes,
                             )
                             SendOption.Quality -> MediaQualityToggle(
@@ -823,7 +832,7 @@ fun MediaAttachmentEditor(
         val notice = when {
             viewOnce && toolset.showViewOnce && viewOnceDropsCaption -> MR.string.chat_view_once_toggle_supporting_caption
             viewOnce && toolset.showViewOnce -> MR.string.chat_view_once_toggle_supporting
-            viewOnceSetAside -> MR.string.chat_view_once_single_only
+            viewOnceSetAside || (singleOnlyAsked && toolset.viewOnceNeedsSingle) -> MR.string.chat_view_once_single_only
             else -> null
         }
         val motion = MaterialTheme.motionScheme
@@ -867,44 +876,52 @@ internal fun ViewOnceToolChip(
     toolset: EditorToolset,
     selected: Boolean,
     onClick: () -> Unit,
+    onUnavailableClick: () -> Unit = {},
     shapes: ToggleButtonShapes = sendOptionShapes(0, 1),
 ) {
-    if (!toolset.showViewOnce) return
+    val available = toolset.showViewOnce
+    if (!available && !toolset.viewOnceNeedsSingle) return
     val colors = MaterialTheme.colorScheme
-    val on by animateFloatAsState(if (selected) 1f else 0f, MaterialTheme.motionScheme.fastSpatialSpec())
+    val on by animateFloatAsState(if (selected && available) 1f else 0f, MaterialTheme.motionScheme.fastSpatialSpec())
+    val unavailableLabel = stringResource(MR.string.cd_view_once_unavailable_multiple)
     ToggleButton(
-        checked = selected,
-        onCheckedChange = { onClick() },
+        checked = selected && available,
+        // Still tappable when unavailable, so the tap can say why instead of doing nothing.
+        onCheckedChange = { if (available) onClick() else onUnavailableClick() },
         shapes = shapes,
         // Primary, not the HD toggle's secondary: this is the setting the recipient's trust rests on.
         colors = ToggleButtonDefaults.toggleButtonColors(
             containerColor = colors.surfaceContainer,
-            contentColor = colors.onSurfaceVariant,
+            contentColor = if (available) colors.onSurfaceVariant else colors.onSurface.copy(alpha = 0.38f),
             checkedContainerColor = colors.primary,
             checkedContentColor = colors.onPrimary,
         ),
-        modifier = Modifier.heightIn(min = SEND_OPTION_HEIGHT).testTag(VIEW_ONCE_CHIP_TAG),
+        modifier = Modifier
+            .heightIn(min = SEND_OPTION_HEIGHT)
+            .testTag(VIEW_ONCE_CHIP_TAG)
+            .then(if (available) Modifier else Modifier.semantics { stateDescription = unavailableLabel }),
     ) {
         val ink = LocalContentColor.current
         val cookie = MaterialShapes.Cookie9Sided.toShape()
-        Box(
-            modifier = Modifier
-                .size(VIEW_ONCE_GLYPH_SIZE)
-                // Turning it on spins the outlined cookie shut into the filled badge the bubbles use.
-                .graphicsLayer {
-                    rotationZ = (1f - on) * -60f
-                    val pop = 1f + 0.16f * on * (1f - on) * 4f
-                    scaleX = pop
-                    scaleY = pop
-                }
-                .border(1.5.dp, ink, cookie)
-                .background(ink.copy(alpha = on), cookie),
-            contentAlignment = Alignment.Center,
-        ) {
+        Box(Modifier.size(VIEW_ONCE_GLYPH_SIZE), contentAlignment = Alignment.Center) {
+            // Turning it on spins the outlined cookie shut into the filled badge the bubbles use; a third of a
+            // turn lands the 9-sided cookie back on its own silhouette, and the "1" stays upright throughout.
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        rotationZ = (1f - on) * -120f
+                        val pop = 1f + 0.16f * on * (1f - on) * 4f
+                        scaleX = pop
+                        scaleY = pop
+                    }
+                    .border(1.5.dp, ink, cookie)
+                    .background(ink.copy(alpha = on.coerceIn(0f, 1f) * ink.alpha), cookie),
+            )
             Icon(
                 imageVector = ViewOnceDigitIcon,
                 contentDescription = null,
-                tint = lerp(ink, colors.primary, on),
+                tint = lerp(ink, colors.primary, on.coerceIn(0f, 1f)),
                 modifier = Modifier.size(VIEW_ONCE_GLYPH_SIZE),
             )
         }
@@ -955,6 +972,7 @@ private fun MediaQualityToggle(isHigh: Boolean, onClick: () -> Unit, shapes: Tog
 
 private val SEND_OPTION_HEIGHT = 48.dp
 private val VIEW_ONCE_GLYPH_SIZE = 22.dp
+private val CLOSE_BAND = 72.dp
 
 private fun onlyTool(tools: EditorToolset): Boolean =
     listOf(tools.showCrop, tools.showDraw, tools.showSave).count { it } == 1

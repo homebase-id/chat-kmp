@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.runComposeUiTest
@@ -44,7 +45,21 @@ class ViewOnceToolChipTest {
     }
 
     @Test
-    fun chipIsHiddenForTwoAttachmentsAStickerAndADocument() = runComposeUiTest {
+    fun chipStaysForTwoAttachmentsButOnlyExplainsItself() = runComposeUiTest {
+        var toggles = 0
+        var explained = 0
+        setContent {
+            MaterialTheme {
+                ViewOnceToolChip(toolset(image(), 2), selected = true, onClick = { toggles++ }, onUnavailableClick = { explained++ })
+            }
+        }
+        onNodeWithTag(VIEW_ONCE_CHIP_TAG).assertIsDisplayed().assertIsOff().performClick()
+        assertEquals(0, toggles)
+        assertEquals(1, explained)
+    }
+
+    @Test
+    fun chipIsHiddenForAStickerAndADocument() = runComposeUiTest {
         var current by mutableStateOf(toolset(image(), 1))
         setContent {
             MaterialTheme { ViewOnceToolChip(current, selected = false, onClick = {}) }
@@ -53,7 +68,7 @@ class ViewOnceToolChipTest {
 
         val sticker = image().copy(forceSticker = true)
         val document = AttachmentPendingFile.File(id = Uuid.random(), file = PlatformFile("/tmp/f.pdf"))
-        for (hidden in listOf(toolset(image(), 2), toolset(sticker, 1), toolset(document, 1))) {
+        for (hidden in listOf(toolset(sticker, 1), toolset(document, 1), toolset(sticker, 2))) {
             current = hidden
             waitForIdle()
             assertEquals(0, onAllNodesWithTag(VIEW_ONCE_CHIP_TAG).fetchSemanticsNodes().size)

@@ -62,6 +62,8 @@ import id.homebase.chat.widget.messageBubbleShape
 import id.homebase.core.util.formatMessageTimestamp
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.performClick
+import id.homebase.chat.widget.VIEW_ONCE_CHIP_TAG
 import androidx.compose.ui.platform.testTag
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.collections.immutable.persistentListOf
@@ -102,11 +104,11 @@ class ViewOnceShotsTest {
     )
 
     private sealed interface Scene {
-        data class Editor(val attachments: List<AttachmentPendingFile>, val viewOnce: Boolean, val caption: String = "") : Scene
+        data class Editor(val attachments: List<AttachmentPendingFile>, val viewOnce: Boolean, val caption: String = "", val tapViewOnce: Boolean = false) : Scene
         data class Thread(val group: Boolean = false) : Scene
         data class States(val outgoing: Boolean, val pressFirst: Boolean = false) : Scene
         data object Morph : Scene
-        data class Viewer(val stage: ViewerStage, val video: Boolean = false) : Scene
+        data class Viewer(val stage: ViewerStage, val video: Boolean = false, val muted: Boolean = false) : Scene
     }
 
     private enum class ViewerStage { Live, Loading, Shown, Failed }
@@ -118,6 +120,7 @@ class ViewOnceShotsTest {
         val rtl: Boolean = false,
         val widthDp: Int = PHONE_W,
         val heightDp: Int = PHONE_H,
+        val settleMs: Long = 2_000,
     )
 
     private val shots by lazy {
@@ -127,6 +130,7 @@ class ViewOnceShotsTest {
             Shot("e3-editor-video-on", Scene.Editor(listOf(video()), viewOnce = true)),
             Shot("e4-editor-two-photos-hidden", Scene.Editor(listOf(image(), image()), viewOnce = false)),
             Shot("e9-editor-two-photos-after-on", Scene.Editor(listOf(image(), image()), viewOnce = true)),
+            Shot("e12-editor-two-photos-tapped", Scene.Editor(listOf(image(), image()), viewOnce = false, tapViewOnce = true)),
             Shot("e10-editor-video-on-rtl-font-scale", Scene.Editor(listOf(video()), viewOnce = true), rtl = true, fontScale = 1.3f),
             Shot("e5-editor-on-font-scale", Scene.Editor(listOf(image()), viewOnce = true), fontScale = 1.6f),
             Shot("e6-editor-on-rtl", Scene.Editor(listOf(image()), viewOnce = true), rtl = true),
@@ -153,6 +157,9 @@ class ViewOnceShotsTest {
             Shot("v5-viewer-photo-font-scale", Scene.Viewer(ViewerStage.Shown), fontScale = 1.6f),
             Shot("v6-viewer-photo-rtl", Scene.Viewer(ViewerStage.Shown), rtl = true),
             Shot("v7-viewer-failed-small-font-scale", Scene.Viewer(ViewerStage.Failed, video = true), fontScale = 1.6f, widthDp = 360, heightDp = 640),
+            Shot("v8-viewer-photo-chrome-hidden", Scene.Viewer(ViewerStage.Shown), settleMs = 4_000),
+            Shot("v9-viewer-video-muted-font-scale", Scene.Viewer(ViewerStage.Shown, video = true, muted = true), fontScale = 1.6f),
+            Shot("v10-viewer-video-chrome-hidden", Scene.Viewer(ViewerStage.Shown, video = true), settleMs = 4_000),
         )
     }
 
@@ -389,7 +396,7 @@ class ViewOnceShotsTest {
         mainClock.advanceTimeBy(1_500)
         save("${shot.name}-0-unopened", dark)
         opened = true
-        for ((label, ms) in listOf("1-80ms" to 80L, "2-200ms" to 120L, "3-settled" to 1_200L)) {
+        for ((label, ms) in listOf("1-80ms" to 80L, "2-200ms" to 120L, "3-400ms" to 200L, "4-settled" to 1_200L)) {
             mainClock.advanceTimeBy(ms)
             save("${shot.name}-$label", dark)
         }
@@ -398,8 +405,16 @@ class ViewOnceShotsTest {
     @Composable
     private fun ViewerScene(scene: Scene.Viewer) {
         val frame = remember { (if (scene.video) poster else File(samples, "red-leaf.jpg")).readBytes().toImageBitmap()!! }
-        val playing = scene.video && scene.stage == ViewerStage.Shown
-        ViewOnceViewerFrame(isVideo = scene.video, playbackProgress = if (playing) ({ 0.35f }) else null, onClose = {}) { belowHeader ->
+        ViewOnceViewerFrame(
+            isVideo = scene.video,
+            mediaShown = scene.stage == ViewerStage.Shown,
+            failed = scene.stage == ViewerStage.Failed,
+            onClose = {},
+            positionMs = { 12_000L },
+            durationMs = 34_000L,
+            muted = scene.muted,
+            onMutedChange = {},
+        ) { belowHeader ->
             when (scene.stage) {
                 ViewerStage.Loading -> ViewOnceViewerLoading(belowHeader)
                 ViewerStage.Failed -> ViewOnceViewerFailed(onRetry = {}, modifier = belowHeader)
@@ -449,8 +464,12 @@ class ViewOnceShotsTest {
             mainClock.advanceTimeBy(500)
             onNodeWithTag(FIRST_ROW).performTouchInput { down(center) }
         }
+        if ((shot.scene as? Scene.Editor)?.tapViewOnce == true) {
+            mainClock.advanceTimeBy(500)
+            onNodeWithTag(VIEW_ONCE_CHIP_TAG).performClick()
+        }
         // Coil decodes off the UI thread, so give it wall-clock time between frames.
-        repeat(8) {
+        repeat((shot.settleMs / 250).toInt()) {
             mainClock.advanceTimeBy(250)
             Thread.sleep(150)
         }

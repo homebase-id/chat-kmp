@@ -1333,11 +1333,15 @@ fun MessageTextFieldForAttachment(
                     },
                     shape = RoundedCornerShape(12.dp),
                     colors = RichTextEditorDefaults.richTextEditorColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        containerColor = if (captionDisabledText == null) MaterialTheme.colorScheme.surfaceContainerHighest
+                            else MaterialTheme.colorScheme.surfaceContainer,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,
                         disabledIndicatorColor = Color.Transparent,
-                        disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        // The disabled-content alpha, so a typed caption visibly won't go out.
+                        disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                        disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        disabledLeadingIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                     ),
                     minLines = 1,
                     maxLines = 3,

@@ -1,6 +1,22 @@
 package id.homebase.chat.viewonce
 
 import androidx.compose.foundation.Image
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilledTonalIconToggleButton
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextOverflow
+import id.homebase.resources.chat_view_once_mute
+import id.homebase.resources.chat_view_once_remaining
+import kotlinx.coroutines.delay
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
@@ -96,6 +112,8 @@ const val VIEW_ONCE_VIEWER_CLOSE_TAG = "viewOnceViewerClose"
 const val VIEW_ONCE_VIEWER_RETRY_TAG = "viewOnceViewerRetry"
 const val VIEW_ONCE_VIEWER_IMAGE_TAG = "viewOnceViewerImage"
 const val VIEW_ONCE_VIEWER_PROGRESS_TAG = "viewOnceViewerProgress"
+const val VIEW_ONCE_VIEWER_MUTE_TAG = "viewOnceViewerMute"
+internal const val VIEW_ONCE_CHROME_HIDE_MS = 2_500L
 
 /**
  * Full-screen viewer for one received view-once item. It has no save, share, forward or paging,
@@ -179,10 +197,18 @@ fun ViewOnceViewer(
     @Suppress("DEPRECATION")
     BackHandler(enabled = true) { close() }
 
-    val playback = durationMs?.takeIf { isVideo && videoShown && !failed }?.let { total ->
-        { (positionMs.toFloat() / total).coerceIn(0f, 1f) }
-    }
-    ViewOnceViewerFrame(isVideo = isVideo, playbackProgress = playback, onClose = ::close, modifier = modifier) { belowHeader ->
+    var muted by remember(data.messageId) { mutableStateOf(false) }
+    ViewOnceViewerFrame(
+        isVideo = isVideo,
+        mediaShown = shown && !failed,
+        failed = failed,
+        positionMs = { positionMs },
+        durationMs = durationMs,
+        muted = muted,
+        onMutedChange = { muted = it },
+        onClose = ::close,
+        modifier = modifier,
+    ) { belowHeader ->
         when {
             failed -> ViewOnceViewerFailed(onRetry = { attempt++ }, modifier = belowHeader)
             isVideo && videoReady -> {
@@ -195,6 +221,7 @@ fun ViewOnceViewer(
                         payload = data.payload,
                     ),
                     modifier = Modifier.fillMaxSize(),
+                    muted = muted,
                     onFirstFrame = { videoShown = true },
                     onPositionUpdate = { positionMs = it },
                     onError = { failed = true },
@@ -207,108 +234,201 @@ fun ViewOnceViewer(
     }
 }
 
-/** Always dark, like the camera: media reads best on black, and the chrome must not flip with the app theme. */
+/**
+ * Always dark, like the camera: media reads best on black, and the chrome must not flip with the app theme.
+ * Once the media is on screen the chrome steps aside after a moment and a tap brings it back; while loading
+ * or failed it stays, because those states are nothing but chrome.
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun ViewOnceViewerFrame(
     isVideo: Boolean,
-    playbackProgress: (() -> Float)?,
+    mediaShown: Boolean,
+    failed: Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    positionMs: () -> Long = { 0L },
+    durationMs: Long? = null,
+    muted: Boolean = false,
+    onMutedChange: ((Boolean) -> Unit)? = null,
     body: @Composable BoxScope.(belowHeader: Modifier) -> Unit,
 ) {
     HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
         val density = LocalDensity.current
+        val motion = MaterialTheme.motionScheme
         var headerHeight by remember { mutableStateOf(0.dp) }
-        Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim)) {
+        var chromeRequested by remember { mutableStateOf(true) }
+        val chromeVisible = chromeRequested || !mediaShown
+        LaunchedEffect(mediaShown, chromeRequested) {
+            if (mediaShown && chromeRequested) {
+                delay(VIEW_ONCE_CHROME_HIDE_MS)
+                chromeRequested = false
+            }
+        }
+        Box(
+            modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.scrim)
+                .pointerInput(mediaShown) { detectTapGestures { if (mediaShown) chromeRequested = !chromeRequested } },
+        ) {
             body(Modifier.fillMaxSize().padding(top = headerHeight))
-            ViewOnceViewerHeader(
-                isVideo = isVideo,
-                playbackProgress = playbackProgress,
-                onClose = onClose,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .onSizeChanged { headerHeight = with(density) { it.height.toDp() } },
-            )
+            AnimatedVisibility(
+                visible = chromeVisible,
+                enter = fadeIn(motion.defaultEffectsSpec()) + slideInVertically(motion.defaultSpatialSpec()) { -it / 4 },
+                exit = fadeOut(motion.defaultEffectsSpec()) + slideOutVertically(motion.defaultSpatialSpec()) { -it / 4 },
+                modifier = Modifier.align(Alignment.TopCenter),
+            ) {
+                ViewOnceViewerHeader(
+                    isVideo = isVideo,
+                    onClose = onClose,
+                    modifier = Modifier.onSizeChanged { headerHeight = with(density) { it.height.toDp() } },
+                )
+            }
+            // A failed load says what closing does in its own body, so the bottom note would only repeat it.
+            AnimatedVisibility(
+                visible = chromeVisible && !failed,
+                enter = fadeIn(motion.defaultEffectsSpec()) + slideInVertically(motion.defaultSpatialSpec()) { it / 4 },
+                exit = fadeOut(motion.defaultEffectsSpec()) + slideOutVertically(motion.defaultSpatialSpec()) { it / 4 },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            ) {
+                ViewOnceViewerFooter(
+                    isVideo = isVideo,
+                    positionMs = positionMs.takeIf { isVideo && mediaShown },
+                    durationMs = durationMs,
+                    muted = muted,
+                    onMutedChange = onMutedChange?.takeIf { isVideo && mediaShown },
+                )
+            }
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ViewOnceViewerHeader(
+private fun ViewOnceViewerHeader(isVideo: Boolean, onClose: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0.72f), colors.scrim.copy(alpha = 0f))))
+            .statusBarsPadding()
+            .padding(start = 12.dp, end = 20.dp, top = 8.dp, bottom = 32.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FilledTonalIconButton(
+            onClick = onClose,
+            shapes = IconButtonDefaults.shapes(),
+            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = colors.surfaceContainerHighest,
+                contentColor = colors.onSurface,
+            ),
+            modifier = Modifier.size(IconButtonDefaults.mediumContainerSize()).testTag(VIEW_ONCE_VIEWER_CLOSE_TAG),
+        ) {
+            Icon(
+                Icons.Default.Close,
+                contentDescription = stringResource(MR.string.chat_view_once_close),
+                modifier = Modifier.size(IconButtonDefaults.mediumIconSize),
+            )
+        }
+        Box(
+            Modifier.padding(start = 16.dp).size(32.dp).clip(MaterialShapes.Cookie9Sided.toShape()).background(colors.primary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(ViewOnceDigitIcon, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(22.dp))
+        }
+        Text(
+            text = stringResource(if (isVideo) MR.string.chat_view_once_viewer_title_video else MR.string.chat_view_once_viewer_title_photo),
+            style = MaterialTheme.typography.titleMediumEmphasized.copy(textDirection = TextDirection.Content),
+            color = colors.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 12.dp).weight(1f),
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun ViewOnceViewerFooter(
     isVideo: Boolean,
-    playbackProgress: (() -> Float)?,
-    onClose: () -> Unit,
-    modifier: Modifier = Modifier,
+    positionMs: (() -> Long)?,
+    durationMs: Long?,
+    muted: Boolean,
+    onMutedChange: ((Boolean) -> Unit)?,
 ) {
     val colors = MaterialTheme.colorScheme
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0.8f), colors.scrim.copy(alpha = 0f))))
-            .statusBarsPadding()
-            .padding(bottom = 32.dp),
+            .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0f), colors.scrim.copy(alpha = 0.72f))))
+            .navigationBarsPadding()
+            .padding(start = 20.dp, end = 12.dp, top = 40.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(start = 8.dp, end = 20.dp, top = 8.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            IconButton(
-                onClick = onClose,
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = colors.surfaceContainerHighest.copy(alpha = 0.72f),
-                    contentColor = colors.onSurface,
-                ),
-                shapes = IconButtonDefaults.shapes(),
-                modifier = Modifier.size(48.dp).testTag(VIEW_ONCE_VIEWER_CLOSE_TAG),
-            ) {
-                Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.chat_view_once_close))
-            }
-            Box(
-                Modifier.padding(start = 12.dp, top = 6.dp).size(36.dp).clip(MaterialShapes.Cookie9Sided.toShape()).background(colors.primary),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(ViewOnceDigitIcon, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(26.dp))
-            }
-            Column(
-                Modifier.padding(start = 12.dp).heightIn(min = 48.dp).weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
-            ) {
-                Text(
-                    text = stringResource(if (isVideo) MR.string.chat_view_once_viewer_title_video else MR.string.chat_view_once_viewer_title_photo),
-                    style = MaterialTheme.typography.titleMediumEmphasized.copy(textDirection = TextDirection.Content),
-                    color = colors.onSurface,
-                )
-                // Shown from the first frame, so the header never shifts and the reader knows before anything loads.
-                Text(
-                    text = stringResource(
-                        if (isVideo) MR.string.chat_view_once_viewer_hint_video else MR.string.chat_view_once_viewer_hint_photo,
-                    ),
-                    style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
-                    color = colors.onSurfaceVariant,
-                )
+        if (positionMs != null || onMutedChange != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (positionMs != null && durationMs != null && durationMs > 0) {
+                    // Read-only: a view-once video can't be scrubbed, but the reader can see how much is left.
+                    // Position arrives about twice a second; easing between ticks keeps the wave moving steadily.
+                    val position = positionMs().coerceIn(0L, durationMs)
+                    val smooth by animateFloatAsState(position.toFloat() / durationMs, tween(POSITION_TICK_MS, easing = LinearEasing))
+                    LinearWavyProgressIndicator(
+                        progress = { smooth },
+                        modifier = Modifier.weight(1f).testTag(VIEW_ONCE_VIEWER_PROGRESS_TAG),
+                        color = colors.primary,
+                        trackColor = colors.onSurface.copy(alpha = 0.24f),
+                    )
+                    Text(
+                        text = stringResource(MR.string.chat_view_once_remaining, formatClock(durationMs - position)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 12.dp),
+                    )
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+                if (onMutedChange != null) {
+                    FilledTonalIconToggleButton(
+                        checked = muted,
+                        onCheckedChange = onMutedChange,
+                        shapes = IconButtonDefaults.toggleableShapes(),
+                        colors = IconButtonDefaults.filledTonalIconToggleButtonColors(
+                            containerColor = colors.surfaceContainerHighest,
+                            contentColor = colors.onSurface,
+                            checkedContainerColor = colors.inverseSurface,
+                            checkedContentColor = colors.inverseOnSurface,
+                        ),
+                        modifier = Modifier.padding(start = 8.dp).size(48.dp).testTag(VIEW_ONCE_VIEWER_MUTE_TAG),
+                    ) {
+                        Icon(
+                            if (muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                            contentDescription = stringResource(MR.string.chat_view_once_mute),
+                        )
+                    }
+                }
             }
         }
-        // Read-only: a view-once video can't be scrubbed, but the reader can see how much is left.
-        if (playbackProgress != null) {
-            // Position arrives about twice a second; easing between ticks keeps the wave moving steadily.
-            val smooth by animateFloatAsState(playbackProgress(), tween(POSITION_TICK_MS, easing = LinearEasing))
-            LinearWavyProgressIndicator(
-                progress = { smooth },
-                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp).testTag(VIEW_ONCE_VIEWER_PROGRESS_TAG),
-                color = colors.primary,
-                trackColor = colors.onSurface.copy(alpha = 0.24f),
-            )
-        }
+        Text(
+            text = stringResource(if (isVideo) MR.string.chat_view_once_viewer_hint_video else MR.string.chat_view_once_viewer_hint_photo),
+            style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(end = 8.dp),
+        )
     }
+}
+
+private fun formatClock(ms: Long): String {
+    val totalSeconds = (ms.coerceAtLeast(0L) + 999L) / 1000L
+    val seconds = totalSeconds % 60
+    return "${totalSeconds / 60}:${if (seconds < 10) "0" else ""}$seconds"
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun ViewOnceViewerLoading(modifier: Modifier = Modifier) {
     Box(modifier, contentAlignment = Alignment.Center) {
-        ViewOnceLoadingIndicator(Modifier.size(64.dp))
+        ViewOnceLoadingIndicator(64.dp)
     }
 }
 

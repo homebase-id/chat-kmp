@@ -1017,7 +1017,7 @@
     <string name="chat_unknown_message_type">Unknown message type — please update the app.</string>
     <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
     <string name="chat_view_once_toggle">View once</string>
-    <string name="chat_view_once_toggle_supporting">Opens once. Screenshots are discouraged, not prevented.</string>
+    <string name="chat_view_once_toggle_supporting">Opens once. Screenshots discouraged, not prevented.</string>
     <string name="chat_view_once_photo">Photo</string>
     <string name="chat_view_once_video">Video</string>
     <string name="chat_view_once_sent">View once</string>
@@ -1025,11 +1025,11 @@
     <string name="chat_view_once_update_to_open">Update the app to open it</string>
     <string name="chat_view_once_unavailable">Can't be opened here</string>
     <string name="chat_view_once_caption_disabled">No caption with view once</string>
-    <string name="chat_view_once_toggle_supporting_caption">Opens once. Captions aren't sent with view once. Screenshots are discouraged, not prevented.</string>
+    <string name="chat_view_once_toggle_supporting_caption">Opens once, without the caption. Screenshots discouraged, not prevented.</string>
     <string name="chat_view_once_single_only">View once works with a single photo or video.</string>
     <string name="chat_view_once_tap_to_view">Tap to view</string>
     <string name="chat_view_once_opening">Opening…</string>
-    <string name="chat_view_once_failed">Couldn't load · Retry</string>
+    <string name="chat_view_once_failed">Couldn't load · Tap&#160;to&#160;retry</string>
     <string name="chat_view_once_opened">Opened</string>
     <string name="chat_view_once_expired">Expired</string>
     <string name="chat_view_once_open_on_phone">Open on your phone</string>
@@ -1039,8 +1039,11 @@
     <string name="chat_view_once_viewer_title_photo">View-once photo</string>
     <string name="chat_view_once_viewer_title_video">View-once video</string>
     <string name="chat_view_once_viewer_failed_title">Couldn't load</string>
-    <string name="chat_view_once_viewer_failed_body">It's still unopened, so nothing was used up.</string>
+    <string name="chat_view_once_viewer_failed_body">It's still unopened. Closing won't use it up.</string>
     <string name="chat_view_once_retry">Try again</string>
+    <string name="chat_view_once_mute">Mute</string>
+    <string name="chat_view_once_remaining">%1$s left</string>
+    <string name="cd_view_once_unavailable_multiple">View once, only for a single photo or video</string>
     <string name="cd_view_once_open">Open view-once media</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
