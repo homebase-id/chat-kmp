@@ -46,6 +46,7 @@ import id.homebase.resources.webdrop_status_expires
 import id.homebase.resources.webdrop_status_opened
 import id.homebase.resources.webdrop_status_removed
 import id.homebase.resources.webdrop_status_waiting
+import id.homebase.resources.webdrop_view_only_badge
 import kotlin.time.Instant
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
@@ -156,6 +157,14 @@ fun WebDropRowCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (row.receipt.viewOnly == true) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(MR.string.webdrop_view_only_badge),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = statusText,

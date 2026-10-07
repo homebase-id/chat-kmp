@@ -228,6 +228,13 @@ fun WebDropComposeSheet(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
+                    WebDropViewOnlyRow(
+                        checked = uiState.viewOnly,
+                        onCheckedChange = { onAction(WebDropUiAction.ViewOnlyToggled(it)) },
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     val chevronRotation = animateFloatAsState(
                         targetValue = if (uiState.introExpanded) 180f else 0f,
                         animationSpec = motion.defaultSpatialSpec(),

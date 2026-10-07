@@ -57,119 +57,22 @@ class WebDropService(
         ttlChoice: WebDropTtlChoice,
         intro: WebDropIntroContent? = null,
         theme: String? = null,
+        viewOnly: Boolean = false,
     ): Result<CreatedDrop> = runCatching {
-        require(files.isNotEmpty()) { "a drop needs at least one file" }
-        require(files.size <= WebDropProtocol.MaxFilesPerDrop) {
-            "a drop holds at most ${WebDropProtocol.MaxFilesPerDrop} files"
-        }
         val domain = credentialsManager.getActiveCredentials()?.domain
             ?: error("not authenticated")
 
-        val dropId = Uuid.random()
-        val key = ByteArrayUtil.getRndByteArray(WebDropProtocol.KeyBytes)
-        val nowMs = UnixTimeUtc.now().milliseconds
-        val ttl = ttlChoice.toTtl(nowMs)
-
-        val ivs = mutableMapOf<String, ByteArray>()
-
-        val manifestIv = ByteArrayUtil.getRndByteArray(16)
-        ivs[WebDropProtocol.ManifestPayloadKey] = manifestIv
-
-        val (manifest, dataPayloads) = stageWebDropPayloads(fileOps, files, key, ivs)
-
-        val manifestBytes = AesCbc.encrypt(
-            OdinSystemSerializer.serialize(manifest).encodeToByteArray(),
-            key,
-            manifestIv,
-        )
-        val manifestPath = fileOps.writeBytesToOutboxTempFile(manifestBytes, "wdrmeta", ".bin")
-        val payloads = mutableListOf(
-            PayloadFile(
-                key = WebDropProtocol.ManifestPayloadKey,
-                filePath = manifestPath,
-                contentType = "application/octet-stream",
-                isPreEncrypted = true,
-            )
-        )
-        payloads += dataPayloads
-
-        val encryptedIntro = intro?.takeUnless { it.isEmpty() }?.let {
-            // Its own IV, never a payload's: reusing an IV under the same key breaks CBC.
-            val introIv = ByteArrayUtil.getRndByteArray(16)
-            WebDropIntro(
-                iv = Base64.encode(introIv),
-                data = Base64.encode(
-                    AesCbc.encrypt(OdinSystemSerializer.serialize(it).encodeToByteArray(), key, introIv)
-                ),
-            )
-        }
-
-        val dropContent = WebDropDropContent(
-            ivs = ivs.mapValues { (_, iv) -> Base64.encode(iv) },
-            theme = theme,
-            intro = encryptedIntro,
+        val built = buildWebDrop(
+            fileOps, driveId, domain.toString(), files, ttlChoice, intro, theme, viewOnly,
+            UnixTimeUtc.now().milliseconds,
         )
 
-        val dropMetadata = UploadFileMetadata(
-            allowDistribution = false,
-            isEncrypted = false,
-            accessControlList = AccessControlList(
-                requiredSecurityGroup = SecurityGroupType.Anonymous.value,
-            ),
-            appData = UploadAppFileMetaData(
-                uniqueId = dropId,
-                groupId = dropId,
-                fileType = WebDropProtocol.DropFileType,
-                userDate = nowMs,
-                content = OdinSystemSerializer.serialize(dropContent),
-            ),
-            ttl = ttl,
-        )
-
-        val dropRequest = UploadFileRequest(
-            driveId = driveId,
-            keyHeader = KeyHeader.empty(),
-            metadata = dropMetadata,
-            payloads = payloads,
-        )
-
-        val url = WebDropProtocol.buildLink(domain.toString(), driveId, dropId, key)
-
-        val receipt = WebDropReceiptContent(
-            name = files.first().name,
-            files = manifest,
-            url = url,
-            ttl = ttl,
-            createdAt = nowMs,
-            recipientName = intro?.recipientName?.takeUnless { it.isBlank() },
-            conditions = intro?.conditions ?: emptyList(),
-            theme = theme,
-        )
-        val receiptKeyHeader = KeyHeader.newRandom16()
-        val receiptMetadata = UploadFileMetadata(
-            allowDistribution = false,
-            isEncrypted = true,
-            appData = UploadAppFileMetaData(
-                uniqueId = Uuid.random(),
-                groupId = dropId,
-                fileType = WebDropProtocol.ReceiptFileType,
-                userDate = nowMs,
-                content = OdinSystemSerializer.serialize(receipt),
-            ),
-        ).encryptContent(receiptKeyHeader)
-
-        val receiptRequest = UploadFileRequest(
-            driveId = driveId,
-            keyHeader = receiptKeyHeader,
-            metadata = receiptMetadata,
-        )
-
-        val dropEnqueued = outboxSync.tryEnqueue(dropRequest)
+        val dropEnqueued = outboxSync.tryEnqueue(built.dropRequest)
         if (!dropEnqueued.enqueued) error("failed to enqueue drop upload")
-        val receiptEnqueued = outboxSync.tryEnqueue(receiptRequest, dependencyUniqueId = dropId)
+        val receiptEnqueued = outboxSync.tryEnqueue(built.receiptRequest, dependencyUniqueId = built.dropId)
         if (!receiptEnqueued.enqueued) error("failed to enqueue receipt upload")
 
-        CreatedDrop(dropId = dropId, url = url)
+        CreatedDrop(dropId = built.dropId, url = built.url)
     }.onFailure { e -> Logger.e(e, TAG) { "createDrop failed" } }
 
     /**
@@ -193,6 +96,137 @@ class WebDropService(
             false
         }
     }
+}
+
+internal class BuiltWebDrop(
+    val dropId: Uuid,
+    val url: String,
+    val dropRequest: UploadFileRequest,
+    val receiptRequest: UploadFileRequest,
+)
+
+/** Everything createDrop does short of the outbox enqueue, so the wire shape is testable. */
+@OptIn(ExperimentalEncodingApi::class)
+internal suspend fun buildWebDrop(
+    fileOps: FileOperationsProvider,
+    driveId: Uuid,
+    domain: String,
+    files: List<PickedDropFile>,
+    ttlChoice: WebDropTtlChoice,
+    intro: WebDropIntroContent?,
+    theme: String?,
+    viewOnly: Boolean,
+    nowMs: Long,
+): BuiltWebDrop {
+    require(files.isNotEmpty()) { "a drop needs at least one file" }
+    require(files.size <= WebDropProtocol.MaxFilesPerDrop) {
+        "a drop holds at most ${WebDropProtocol.MaxFilesPerDrop} files"
+    }
+
+    val dropId = Uuid.random()
+    val key = ByteArrayUtil.getRndByteArray(WebDropProtocol.KeyBytes)
+    val ttl = ttlChoice.toTtl(nowMs)
+    val manifestKey = WebDropProtocol.manifestKey(viewOnly)
+
+    val ivs = mutableMapOf<String, ByteArray>()
+
+    val manifestIv = ByteArrayUtil.getRndByteArray(16)
+    ivs[manifestKey] = manifestIv
+
+    val (manifest, dataPayloads) = stageWebDropPayloads(fileOps, files, key, ivs)
+
+    val manifestBytes = AesCbc.encrypt(
+        OdinSystemSerializer.serialize(manifest).encodeToByteArray(),
+        key,
+        manifestIv,
+    )
+    val manifestPath = fileOps.writeBytesToOutboxTempFile(manifestBytes, "wdrmeta", ".bin")
+    val payloads = mutableListOf(
+        PayloadFile(
+            key = manifestKey,
+            filePath = manifestPath,
+            contentType = "application/octet-stream",
+            isPreEncrypted = true,
+        )
+    )
+    payloads += dataPayloads
+
+    val encryptedIntro = intro?.takeUnless { it.isEmpty() }?.let {
+        // Its own IV, never a payload's: reusing an IV under the same key breaks CBC.
+        val introIv = ByteArrayUtil.getRndByteArray(16)
+        WebDropIntro(
+            iv = Base64.encode(introIv),
+            data = Base64.encode(
+                AesCbc.encrypt(OdinSystemSerializer.serialize(it).encodeToByteArray(), key, introIv)
+            ),
+        )
+    }
+
+    val dropContent = WebDropDropContent(
+        v = WebDropProtocol.contentVersion(viewOnly),
+        ivs = ivs.mapValues { (_, iv) -> Base64.encode(iv) },
+        theme = theme,
+        intro = encryptedIntro,
+        viewOnly = viewOnly.takeIf { it },
+    )
+
+    val dropMetadata = UploadFileMetadata(
+        allowDistribution = false,
+        isEncrypted = false,
+        accessControlList = AccessControlList(
+            requiredSecurityGroup = SecurityGroupType.Anonymous.value,
+        ),
+        appData = UploadAppFileMetaData(
+            uniqueId = dropId,
+            groupId = dropId,
+            fileType = WebDropProtocol.DropFileType,
+            userDate = nowMs,
+            content = OdinSystemSerializer.serialize(dropContent),
+        ),
+        ttl = ttl,
+    )
+
+    val dropRequest = UploadFileRequest(
+        driveId = driveId,
+        keyHeader = KeyHeader.empty(),
+        metadata = dropMetadata,
+        payloads = payloads,
+    )
+
+    val url = WebDropProtocol.buildLink(domain, driveId, dropId, key)
+
+    val receipt = WebDropReceiptContent(
+        v = WebDropProtocol.contentVersion(viewOnly),
+        name = files.first().name,
+        files = manifest,
+        url = url,
+        ttl = ttl,
+        createdAt = nowMs,
+        recipientName = intro?.recipientName?.takeUnless { it.isBlank() },
+        conditions = intro?.conditions ?: emptyList(),
+        theme = theme,
+        viewOnly = viewOnly.takeIf { it },
+    )
+    val receiptKeyHeader = KeyHeader.newRandom16()
+    val receiptMetadata = UploadFileMetadata(
+        allowDistribution = false,
+        isEncrypted = true,
+        appData = UploadAppFileMetaData(
+            uniqueId = Uuid.random(),
+            groupId = dropId,
+            fileType = WebDropProtocol.ReceiptFileType,
+            userDate = nowMs,
+            content = OdinSystemSerializer.serialize(receipt),
+        ),
+    ).encryptContent(receiptKeyHeader)
+
+    val receiptRequest = UploadFileRequest(
+        driveId = driveId,
+        keyHeader = receiptKeyHeader,
+        metadata = receiptMetadata,
+    )
+
+    return BuiltWebDrop(dropId, url, dropRequest, receiptRequest)
 }
 
 /**

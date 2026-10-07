@@ -24,7 +24,19 @@ object WebDropProtocol {
     const val DropFileType = 100
     const val ReceiptFileType = 101
 
+    /** A view-only drop writes v2; the viewer treats it as no-download. */
+    const val ViewOnlyContentVersion = 2
+
     const val ManifestPayloadKey = "wdr_meta"
+
+    /** Old viewers look for [ManifestPayloadKey] only, so a view-only drop fails closed for them. */
+    const val ViewOnlyManifestPayloadKey = "wdr_vmeta"
+
+    fun manifestKey(viewOnly: Boolean): String =
+        if (viewOnly) ViewOnlyManifestPayloadKey else ManifestPayloadKey
+
+    fun contentVersion(viewOnly: Boolean): Int =
+        if (viewOnly) ViewOnlyContentVersion else ContentVersion
 
     /** The manifest takes one payload slot; every remaining slot is an attachment. */
     const val MaxFilesPerDrop = HomebaseProtocol.MaxPayloadsPerFile - 1
@@ -65,6 +77,7 @@ data class WebDropDropContent(
     /** Viewer theme id — cleartext on purpose: the page must paint before decryption. */
     val theme: String? = null,
     val intro: WebDropIntro? = null,
+    val viewOnly: Boolean? = null,
 )
 
 /**
@@ -115,5 +128,5 @@ data class WebDropReceiptContent(
     val createdAt: Long,
     val recipientName: String? = null,
     val conditions: List<String> = emptyList(),
-    val theme: String? = null,
+    val theme: String? = null,    val viewOnly: Boolean? = null,
 )

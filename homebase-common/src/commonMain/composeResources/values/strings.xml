@@ -2575,6 +2575,9 @@
     <string name="webdrop_condition_recipient_only">This is for the named recipient only</string>
     <string name="webdrop_condition_no_retention">They must destroy it after use and keep no copy</string>
     <string name="webdrop_condition_personal_data">It contains personal data they must handle accordingly</string>
+    <string name="webdrop_view_only">View only</string>
+    <string name="webdrop_view_only_supporting">Recipient can view in the browser; downloading is discouraged, not prevented.</string>
+    <string name="webdrop_view_only_badge">View only</string>
     <string name="webdrop_theme_mission">Mission</string>
     <string name="webdrop_theme_clean">Clean</string>
     <string name="webdrop_theme_choplifter">Choplifter</string>
