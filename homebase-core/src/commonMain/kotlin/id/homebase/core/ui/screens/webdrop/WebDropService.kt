@@ -127,6 +127,8 @@ internal suspend fun buildWebDrop(
     val key = ByteArrayUtil.getRndByteArray(WebDropProtocol.KeyBytes)
     val ttl = ttlChoice.toTtl(nowMs)
     val manifestKey = WebDropProtocol.manifestKey(viewOnly)
+    val contentVersion = WebDropProtocol.contentVersion(viewOnly)
+    val viewOnlyFlag = viewOnly.takeIf { it }
 
     val ivs = mutableMapOf<String, ByteArray>()
 
@@ -163,11 +165,11 @@ internal suspend fun buildWebDrop(
     }
 
     val dropContent = WebDropDropContent(
-        v = WebDropProtocol.contentVersion(viewOnly),
+        v = contentVersion,
         ivs = ivs.mapValues { (_, iv) -> Base64.encode(iv) },
         theme = theme,
         intro = encryptedIntro,
-        viewOnly = viewOnly.takeIf { it },
+        viewOnly = viewOnlyFlag,
     )
 
     val dropMetadata = UploadFileMetadata(
@@ -196,7 +198,7 @@ internal suspend fun buildWebDrop(
     val url = WebDropProtocol.buildLink(domain, driveId, dropId, key)
 
     val receipt = WebDropReceiptContent(
-        v = WebDropProtocol.contentVersion(viewOnly),
+        v = contentVersion,
         name = files.first().name,
         files = manifest,
         url = url,
@@ -205,7 +207,7 @@ internal suspend fun buildWebDrop(
         recipientName = intro?.recipientName?.takeUnless { it.isBlank() },
         conditions = intro?.conditions ?: emptyList(),
         theme = theme,
-        viewOnly = viewOnly.takeIf { it },
+        viewOnly = viewOnlyFlag,
     )
     val receiptKeyHeader = KeyHeader.newRandom16()
     val receiptMetadata = UploadFileMetadata(

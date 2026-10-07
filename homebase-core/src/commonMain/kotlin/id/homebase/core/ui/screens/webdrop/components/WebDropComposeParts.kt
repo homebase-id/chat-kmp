@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -47,6 +48,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -258,6 +260,31 @@ internal fun AddMoreRow(enabled: Boolean, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
+private fun ChoiceToggleButton(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean,
+    shapes: ToggleButtonShapes,
+    modifier: Modifier,
+    content: @Composable RowScope.() -> Unit,
+) {
+    ToggleButton(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        enabled = enabled,
+        shapes = shapes,
+        colors = ToggleButtonDefaults.toggleButtonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+        contentPadding = PaddingValues(horizontal = 8.dp),
+        modifier = modifier.semantics { role = Role.RadioButton },
+        content = content,
+    )
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
 internal fun ExpiryPicker(selected: WebDropTtlChoice, enabled: Boolean, onPick: (WebDropTtlChoice) -> Unit) {
     val choices = WebDropTtlChoice.entries
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -271,17 +298,12 @@ internal fun ExpiryPicker(selected: WebDropTtlChoice, enabled: Boolean, onPick: 
             ) { index, shapes, sizing ->
                 val choice = choices[index]
                 val burn = choice == WebDropTtlChoice.BurnAfterOpen
-                ToggleButton(
+                ChoiceToggleButton(
                     checked = selected == choice,
                     onCheckedChange = { onPick(choice) },
                     enabled = enabled,
                     shapes = shapes,
-                    colors = ToggleButtonDefaults.toggleButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                    modifier = sizing.semantics { role = Role.RadioButton },
+                    modifier = sizing,
                 ) {
                     if (burn && roomy) {
                         Icon(
@@ -396,17 +418,12 @@ internal fun ThemePicker(
 ) {
     ConnectedChoices(count = themes.size) { index, shapes, sizing ->
         val (id, label) = themes[index]
-        ToggleButton(
+        ChoiceToggleButton(
             checked = selected == id,
             onCheckedChange = { onPick(if (selected == id) null else id) },
             enabled = enabled,
             shapes = shapes,
-            colors = ToggleButtonDefaults.toggleButtonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            ),
-            contentPadding = PaddingValues(horizontal = 8.dp),
-            modifier = sizing.semantics { role = Role.RadioButton },
+            modifier = sizing,
         ) {
             Text(
                 text = stringResource(label),
