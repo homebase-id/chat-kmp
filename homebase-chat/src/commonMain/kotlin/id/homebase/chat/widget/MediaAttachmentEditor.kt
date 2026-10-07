@@ -221,14 +221,15 @@ fun MediaAttachmentEditor(
     // Sits just above the attachment strip; whatever it shows takes room from the media rather than covering it.
     aboveStripSlot: @Composable ColumnScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
+    addMoreEnabled: Boolean = true,
 ) {
     val isFileMode = attachments.all { it is AttachmentPendingFile.File }
     // Media is framed on black in both themes, like the camera it often comes from; documents keep the app theme.
     if (isFileMode) {
-        MediaAttachmentEditorContent(attachments, currentPage, onPageChanged, modifier, onCropImage, onDrawImage, onTrimChange, onSaveFile, onAddFile, onAddImage, onCameraClick, onRemoveFile, mediaQuality, onToggleMediaQuality, onDismiss, collapseSecondaryChrome, centerImageInPage, revealed, imageOverlay, pagerTopEndSlot, aboveStripSlot, bottomBar)
+        MediaAttachmentEditorContent(attachments, currentPage, onPageChanged, modifier, onCropImage, onDrawImage, onTrimChange, onSaveFile, onAddFile, onAddImage, onCameraClick, onRemoveFile, mediaQuality, onToggleMediaQuality, onDismiss, collapseSecondaryChrome, centerImageInPage, revealed, imageOverlay, pagerTopEndSlot, aboveStripSlot, bottomBar, addMoreEnabled)
     } else {
         HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
-            MediaAttachmentEditorContent(attachments, currentPage, onPageChanged, modifier, onCropImage, onDrawImage, onTrimChange, onSaveFile, onAddFile, onAddImage, onCameraClick, onRemoveFile, mediaQuality, onToggleMediaQuality, onDismiss, collapseSecondaryChrome, centerImageInPage, revealed, imageOverlay, pagerTopEndSlot, aboveStripSlot, bottomBar)
+            MediaAttachmentEditorContent(attachments, currentPage, onPageChanged, modifier, onCropImage, onDrawImage, onTrimChange, onSaveFile, onAddFile, onAddImage, onCameraClick, onRemoveFile, mediaQuality, onToggleMediaQuality, onDismiss, collapseSecondaryChrome, centerImageInPage, revealed, imageOverlay, pagerTopEndSlot, aboveStripSlot, bottomBar, addMoreEnabled)
         }
     }
 }
@@ -258,6 +259,7 @@ private fun MediaAttachmentEditorContent(
     pagerTopEndSlot: @Composable BoxScope.() -> Unit,
     aboveStripSlot: @Composable ColumnScope.() -> Unit,
     bottomBar: @Composable () -> Unit,
+    addMoreEnabled: Boolean,
 ) {
     val isFileMode = attachments.all { it is AttachmentPendingFile.File }
     val imageLoader: ImageLoader = koinInject()
@@ -722,6 +724,7 @@ private fun MediaAttachmentEditorContent(
             if (onCameraClick != null) {
                 IconButton(
                     onClick = onCameraClick,
+                    enabled = addMoreEnabled,
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -737,6 +740,7 @@ private fun MediaAttachmentEditorContent(
             if (addAction != null) {
                 IconButton(
                     onClick = addAction,
+                    enabled = addMoreEnabled,
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
                     )

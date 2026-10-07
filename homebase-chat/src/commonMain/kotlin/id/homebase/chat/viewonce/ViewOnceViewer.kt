@@ -97,6 +97,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DescriptorContent
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.image.toImageBitmap
 import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -144,6 +145,7 @@ const val VIEW_ONCE_VIEWER_DELETE_TAG = "viewOnceViewerDelete"
 const val VIEW_ONCE_VIEWER_PLAY_TAG = "viewOnceViewerPlay"
 const val VIEW_ONCE_VIEWER_ELAPSED_TAG = "viewOnceViewerElapsed"
 const val VIEW_ONCE_VIEWER_REMAINING_TAG = "viewOnceViewerRemaining"
+const val VIEW_ONCE_VIEWER_INFO_TAG = "viewOnceViewerInfo"
 
 /**
  * Full-screen viewer for one received view-once item. It has no save, share, forward or paging,
@@ -299,7 +301,7 @@ internal fun FullScreenOverlay.ViewOnceViewer.videoPlayerData() = FullScreenOver
     payloadKey = payload.key,
     keyHeader = keyHeader,
     payload = payload,
-    inMemory = true,
+    scratchSub = AppCacheDirs.VIEW_ONCE,
 )
 
 /**
@@ -331,6 +333,8 @@ internal fun ViewOnceViewerFrame(
     HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
         val motion = MaterialTheme.motionScheme
         var chromeRequested by remember { mutableStateOf(true) }
+        var infoOpen by remember { mutableStateOf(false) }
+        // Reaction and Reply never depend on the media, so the bottom bar is there from the first frame.
         val chromeVisible = chromeRequested || !mediaShown
         Box(
             modifier
@@ -340,8 +344,8 @@ internal fun ViewOnceViewerFrame(
         ) {
             body(Modifier.fillMaxSize())
             // Back is the way out of every state, so the top bar is never part of what a tap hides.
-            ViewOnceViewerTopBar(onClose = onClose, modifier = Modifier.align(Alignment.TopCenter))
-            if (mediaShown && !failed) {
+            ViewOnceViewerTopBar(onClose = onClose, onInfo = { infoOpen = true }, modifier = Modifier.align(Alignment.TopCenter))
+            if (!failed) {
                 AnimatedVisibility(
                     visible = chromeVisible,
                     enter = fadeIn(motion.defaultEffectsSpec()),
@@ -364,6 +368,7 @@ internal fun ViewOnceViewerFrame(
                     )
                 }
             }
+            if (infoOpen) ViewOnceIntroSheet(isVideo = isVideo, onDismiss = { infoOpen = false })
         }
     }
 }
@@ -390,7 +395,7 @@ private fun ChromeCircleButton(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ViewOnceViewerTopBar(onClose: () -> Unit, modifier: Modifier = Modifier) {
+private fun ViewOnceViewerTopBar(onClose: () -> Unit, onInfo: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val markLabel = stringResource(MR.string.cd_view_once_toggle)
     Row(
@@ -405,14 +410,8 @@ private fun ViewOnceViewerTopBar(onClose: () -> Unit, modifier: Modifier = Modif
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.chat_view_once_close))
         }
         Spacer(Modifier.weight(1f))
-        Box(
-            Modifier
-                .size(CHROME_SIZE)
-                .background(chromeContainer(), CircleShape)
-                .semantics { contentDescription = markLabel },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(ViewOnceIcon, contentDescription = null, tint = colors.onSurface, modifier = Modifier.size(IconButtonDefaults.mediumIconSize))
+        ChromeCircleButton(onClick = onInfo, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_INFO_TAG)) {
+            Icon(ViewOnceIcon, contentDescription = markLabel, modifier = Modifier.size(IconButtonDefaults.mediumIconSize))
         }
     }
 }

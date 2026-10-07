@@ -361,6 +361,7 @@ fun ConversationMessagesPane(
                                 )
                             },
                             centerImageInPage = true,
+                            addMoreEnabled = !viewOnce,
                             onAddFile = { fileLauncher.launch() },
                             onAddImage = { galleryLauncher.launch() },
                             onCameraClick = { cameraLauncher.launch() },

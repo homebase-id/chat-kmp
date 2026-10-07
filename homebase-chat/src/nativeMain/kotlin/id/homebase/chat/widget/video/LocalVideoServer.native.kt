@@ -70,7 +70,6 @@ class LocalVideoServer private constructor() {
     private val bindMutex = Mutex()
     private val sessionsMutex = Mutex()
     private val sessions = mutableMapOf<String, Session>()
-    private val memoryMp4s = mutableMapOf<String, ByteArray>()
 
     suspend fun register(
         readEncryptedChunk: suspend (Long, Long) -> ByteArray?,
@@ -92,20 +91,8 @@ class LocalVideoServer private constructor() {
         return id
     }
 
-    /** Serves [bytes] from RAM only, so a decrypted view-once MP4 never touches the disk. */
-    suspend fun registerMemoryMp4(bytes: ByteArray): String {
-        val id = Uuid.random().toString()
-        sessionsMutex.withLock { memoryMp4s[id] = bytes }
-        return id
-    }
-
-    fun memoryMp4Url(id: String): String = "http://127.0.0.1:$port/mp4?id=$id"
-
     suspend fun unregister(id: String) {
-        sessionsMutex.withLock {
-            sessions.remove(id)
-            memoryMp4s.remove(id)
-        }
+        sessionsMutex.withLock { sessions.remove(id) }
         Logger.d(tag = TAG) { "session unregistered id=$id" }
     }
 
@@ -140,27 +127,6 @@ class LocalVideoServer private constructor() {
         Logger.d(tag = TAG) { "manifest served ${body.length} chars fileId=${s.fileId}" }
         call.response.header(HttpHeaders.CacheControl, "no-store")
         call.respondText(body, ContentType("application", "vnd.apple.mpegurl"))
-    }
-
-    private suspend fun handleMemoryMp4(call: ApplicationCall) {
-        val id = call.request.queryParameters["id"]
-        val bytes = if (id.isNullOrEmpty()) null else sessionsMutex.withLock { memoryMp4s[id] }
-        if (bytes == null) return call.respond(HttpStatusCode.NotFound)
-
-        val total = bytes.size.toLong()
-        val (start, endInclusive) = parseRange(call.request.header(HttpHeaders.Range), total)
-        if (start < 0 || endInclusive >= total || endInclusive < start) {
-            call.respond(HttpStatusCode.RequestedRangeNotSatisfiable)
-            return
-        }
-        call.response.header(HttpHeaders.AcceptRanges, "bytes")
-        call.response.header(HttpHeaders.CacheControl, "no-store")
-        call.response.header(HttpHeaders.ContentRange, "bytes $start-$endInclusive/$total")
-        call.respondBytes(
-            bytes = bytes.copyOfRange(start.toInt(), endInclusive.toInt() + 1),
-            contentType = ContentType("video", "mp4"),
-            status = HttpStatusCode.PartialContent,
-        )
     }
 
     private suspend fun handleSegment(call: ApplicationCall) {
@@ -236,7 +202,6 @@ class LocalVideoServer private constructor() {
             routing {
                 get("/manifest") { handleManifest(call) }
                 get("/segment") { handleSegment(call) }
-                get("/mp4") { handleMemoryMp4(call) }
             }
         }.also { it.start(wait = false) }
         this.port = port

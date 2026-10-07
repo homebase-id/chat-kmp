@@ -251,6 +251,7 @@ class ViewOnceShotsTest {
             onDrawImage = {},
             onToggleMediaQuality = {},
             onAddImage = {},
+            addMoreEnabled = !viewOnce,
             onRemoveFile = {},
             onDismiss = {},
             centerImageInPage = true,

@@ -335,6 +335,8 @@ fun MessageBubbleRaw(
                         { onMediaClick(payload) }
                     } else null
                 },
+                onLongClick = onLongClick,
+                onDoubleClick = onDoubleClick,
                 shape = remember(sentByYou, clusterPosition) { messageBubbleShape(sentByYou, clusterPosition) },
                 containerColor = containerColor,
                 contentColor = contentColor,

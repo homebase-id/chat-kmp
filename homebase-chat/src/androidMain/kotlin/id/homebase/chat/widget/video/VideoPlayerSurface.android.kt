@@ -30,7 +30,6 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.ByteArrayDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
@@ -41,7 +40,6 @@ import id.homebase.resources.video_error_generic
 import id.homebase.resources.video_error_ten_bit
 import org.jetbrains.compose.resources.stringResource
 import androidx.media3.exoplayer.hls.HlsMediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import id.homebase.api.client.KeyHeader
@@ -305,7 +303,7 @@ actual fun VideoPlayerSurface(
             try {
                 val videoData = VideoPlayerData(
                     data.fileId, data.driveId, data.payloadKey, data.keyHeader,
-                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId, data.inMemory,
+                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId, data.scratchSub,
                 )
                 val videoAccess =
                     videoData.driveAccess(driveFileProvider, peerFileProvider, fileOperationsProvider)
@@ -396,21 +394,15 @@ actual fun VideoPlayerSurface(
                             state = VpsState.Active
                         }
                     }
-                    is VideoContent.Mp4Bytes, is VideoContent.Mp4File -> {
+                    is VideoContent.Mp4Bytes -> error("Mp4Bytes is the web-only variant — resolveVideoContent was given fileOps")
+                    is VideoContent.Mp4File -> {
                         onProgress(0.5f)
-                        // Mp4File: already streamed to a disposable hbvid_res_* temp by the
-                        // resolver (#845), deleted on dispose (see tempFile). Mp4Bytes only
-                        // arrives for an in-memory item: played from RAM, never written out.
-                        val playbackFile = (content as? VideoContent.Mp4File)?.let { File(it.filePath).also { f -> tempFile = f } }
+                        // Already streamed to a disposable hbvid_res_* temp by the
+                        // resolver (#845) — no whole-payload RAM buffer, no second
+                        // temp-file write. Deleted on dispose (see tempFile).
+                        val file = File(content.filePath).also { tempFile = it }
                         withContext(Dispatchers.Main) {
-                            if (content is VideoContent.Mp4Bytes) {
-                                player.setMediaSource(
-                                    ProgressiveMediaSource.Factory { ByteArrayDataSource(content.bytes) }
-                                        .createMediaSource(MediaItem.fromUri(Uri.EMPTY)),
-                                )
-                            } else {
-                                player.setMediaItem(MediaItem.fromUri(Uri.fromFile(playbackFile!!)))
-                            }
+                            player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
                             onProgress(0.8f)
                             val prepareStart = TimeSource.Monotonic.markNow()
                             val mp4FirstFrameListener = object : Player.Listener {

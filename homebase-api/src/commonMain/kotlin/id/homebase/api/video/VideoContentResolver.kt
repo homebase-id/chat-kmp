@@ -21,8 +21,8 @@ sealed interface VideoContent {
     data class Mp4File(val metadata: VideoMetadata, val filePath: String) : VideoContent
 
     /**
-     * Web (`preferBytes = true`) or any [VideoPlayerData.inMemory] item such as
-     * view-once: decrypted MP4 bytes for a Base64 object URL or an in-memory data source — the wasm FS is RAM-backed, so a file temp buys nothing there. The
+     * Web only (`preferBytes = true`): decrypted MP4 bytes for a Base64
+     * object URL — the wasm FS is RAM-backed, so a file temp buys nothing there. The
      * render-limit guard bounds it: an oversized MP4 throws
      * `PayloadTooLargeException` before the body is buffered.
      */
@@ -82,7 +82,7 @@ suspend fun resolveVideoContent(
             "metadata: hls path chosen — playlistChars=${hlsPlaylist.length}"
         }
         VideoContent.Hls(metadata, hlsPlaylist)
-    } else if (preferBytes || data.inMemory || fileOps == null) {
+    } else if (preferBytes || fileOps == null) {
         // Web path (RAM-backed FS): bytes for a Base64 object URL, bounded by the
         // render-limit guard — PayloadTooLargeException propagates to the surface's
         // unplayable-message handling instead of OOM-ing the tab.
@@ -102,7 +102,7 @@ suspend fun resolveVideoContent(
         // size, LRU untouched, and the surfaces play from a file path — which they
         // already did, except they used to buffer the whole payload in RAM first
         // just to write it themselves.
-        val outputPath = AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), AppCacheDirs.EXPORT) +
+        val outputPath = AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), data.scratchSub) +
             "/hbvid_res_${Random.nextLong().toULong().toString(16)}.mp4"
         val (ok, payloadElapsed) = measureTimedValue {
             driveFileProvider.streamPayloadDecryptedToPath(

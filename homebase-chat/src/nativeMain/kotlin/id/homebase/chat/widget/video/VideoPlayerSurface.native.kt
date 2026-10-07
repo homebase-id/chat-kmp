@@ -100,6 +100,7 @@ import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
+import platform.Foundation.NSUUID
 import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.create
 import platform.Foundation.writeToURL
@@ -259,7 +260,7 @@ actual fun VideoPlayerSurface(
                 AudioSession.ensurePlaybackCapable()
                 val videoData = VideoPlayerData(
                     data.fileId, data.driveId, data.payloadKey, data.keyHeader,
-                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId, data.inMemory,
+                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId, data.scratchSub,
                 )
                 val videoAccess =
                     videoData.driveAccess(driveFileProvider, peerFileProvider, fileOperationsProvider)
@@ -358,24 +359,14 @@ actual fun VideoPlayerSurface(
                         state = VpsState.Playing(player = player, timeObserver = timeObserver, sessionId = sessionId)
                         onProgress(1f)
                     }
-                    is VideoContent.Mp4Bytes, is VideoContent.Mp4File -> {
+                    is VideoContent.Mp4Bytes -> error("Mp4Bytes is the web-only variant — resolveVideoContent was given fileOps")
+                    is VideoContent.Mp4File -> {
                         onProgress(0.5f)
-                        // Mp4File is already streamed to a disposable hbvid_res_* temp by the resolver (#845).
-                        // Mp4Bytes (view-once) is served from RAM through the loopback server and never written to disk.
-                        var memorySessionId: String? = null
-                        val mp4Url = when (content) {
-                            is VideoContent.Mp4File -> {
-                                tempFilePath = content.filePath
-                                NSURL.fileURLWithPath(content.filePath)
-                            }
-                            is VideoContent.Mp4Bytes -> {
-                                val server = LocalVideoServer.shared()
-                                val id = server.registerMemoryMp4(content.bytes)
-                                memorySessionId = id
-                                NSURL.URLWithString(server.memoryMp4Url(id))!!
-                            }
-                            else -> error("unreachable")
-                        }
+                        // Already streamed to a disposable hbvid_res_* temp by the
+                        // resolver (#845) — no whole-payload RAM buffer, no second
+                        // temp-file write. Deleted on dispose (see tempFilePath).
+                        tempFilePath = content.filePath
+                        val mp4Url = NSURL.fileURLWithPath(content.filePath)
                         onProgress(0.8f)
                         val player = if (useInlineOptimizations) {
                             val item = AVPlayerItem(uRL = mp4Url)
@@ -400,7 +391,6 @@ actual fun VideoPlayerSurface(
                         }
                         state = VpsState.Playing(
                             player = player,
-                            sessionId = memorySessionId,
                         )
                         onProgress(1f)
                     }

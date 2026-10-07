@@ -4,7 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -94,6 +94,9 @@ fun ViewOnceBubble(
     canView: Boolean = true,
     phase: ViewOnceOpenPhase = ViewOnceOpenPhase.Idle,
     onOpen: (() -> Unit)? = null,
+    // The pill's own click handler would swallow the press, so a long press has to be handed up from here.
+    onLongClick: (() -> Unit)? = null,
+    onDoubleClick: (() -> Unit)? = null,
     authorName: String? = null,
     authorColor: Color? = null,
     footer: @Composable (contentColor: Color) -> Unit = {},
@@ -188,19 +191,23 @@ fun ViewOnceBubble(
             .background(container)
             .then(
                 when {
-                    canOpen && !opening -> Modifier.clickable(
+                    canOpen && !opening -> Modifier.combinedClickable(
                         interactionSource = interaction,
                         indication = null,
                         onClickLabel = openLabel,
                         role = Role.Button,
                         onClick = onOpen,
+                        onLongClick = onLongClick,
+                        onDoubleClick = onDoubleClick,
                     )
-                    openOnPhone -> Modifier.clickable(
+                    openOnPhone -> Modifier.combinedClickable(
                         interactionSource = interaction,
                         indication = null,
                         onClickLabel = openLabel,
                         role = Role.Button,
                         onClick = { explainOnPhone = true },
+                        onLongClick = onLongClick,
+                        onDoubleClick = onDoubleClick,
                     )
                     else -> Modifier
                 },

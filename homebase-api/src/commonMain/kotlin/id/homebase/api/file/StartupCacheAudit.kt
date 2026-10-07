@@ -35,6 +35,8 @@ class StartupCacheAudit(fileOperationsProvider: FileOperationsProvider) {
                 // a process death between share + foreground doesn't strand
                 // them on disk. See ShareOutboundCleanup.
                 sweepShareOutbound(cacheDir)
+                // A view-once video decrypted to disk that outlived its viewer (process death mid-view).
+                sweepViewOnceTemps(cacheDir)
             }.onFailure {
                 Logger.w(tag = "CacheAudit", throwable = it) { "startup cache audit failed" }
             }

@@ -123,8 +123,8 @@ class ViewOnceViewerTest {
 
         assertEquals(
             setOf(
-                VIEW_ONCE_VIEWER_CLOSE_TAG, VIEW_ONCE_VIEWER_REACT_TAG, VIEW_ONCE_VIEWER_REPLY_TAG,
-                VIEW_ONCE_VIEWER_DELETE_TAG,
+                VIEW_ONCE_VIEWER_CLOSE_TAG, VIEW_ONCE_VIEWER_INFO_TAG, VIEW_ONCE_VIEWER_REACT_TAG,
+                VIEW_ONCE_VIEWER_REPLY_TAG, VIEW_ONCE_VIEWER_DELETE_TAG,
             ),
             tagsOfClickables(),
         )
@@ -138,6 +138,39 @@ class ViewOnceViewerTest {
             .fetchSemanticsNodes()
             .mapNotNull { it.config.getOrNull(SemanticsProperties.TestTag) }
             .toSet()
+
+    @Test
+    fun theTopRightOneOpensTheExplainerAndClosingItIsNotAView() = runSkikoComposeUiTest {
+        val server = runBlocking { ViewOnceFakeServer().start() }
+        show(server)
+        awaitShown()
+
+        onNodeWithTag(VIEW_ONCE_VIEWER_INFO_TAG).performClick()
+        waitForIdle()
+        onNodeWithTag(VIEW_ONCE_INTRO_TITLE_TAG).assertExists()
+        assertEquals(0, closed)
+        assertEquals(0, dismissed)
+
+        onNodeWithTag(VIEW_ONCE_INTRO_OK_TAG).performClick()
+        waitUntil(timeoutMillis = 5_000) { onAllNodes(hasTestTag(VIEW_ONCE_INTRO_TITLE_TAG)).fetchSemanticsNodes().isEmpty() }
+        onNodeWithTag(VIEW_ONCE_VIEWER_IMAGE_TAG).assertExists()
+        assertEquals(0, closed, "the sheet closing is not a second view")
+        assertEquals(0, dismissed)
+        assertEquals(1, server.requests, "the explainer never reloads the media")
+    }
+
+    @Test
+    fun reactAndReplyAreThereFromTheFirstFrameBeforeTheMediaHasLoaded() = runSkikoComposeUiTest {
+        setContent {
+            MaterialTheme {
+                ViewOnceViewerFrame(isVideo = true, mediaShown = false, failed = false, onClose = {}) { fill -> Box(fill) }
+            }
+        }
+        waitForIdle()
+        onNodeWithTag(VIEW_ONCE_VIEWER_REACT_TAG).assertExists()
+        onNodeWithTag(VIEW_ONCE_VIEWER_REPLY_TAG).assertExists()
+        onNodeWithTag(VIEW_ONCE_VIEWER_INFO_TAG).assertExists()
+    }
 
     @Test
     fun backConsumesTheItemExactlyOnce() = runSkikoComposeUiTest {
@@ -440,7 +473,7 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun theViewersVideoResolvesToBytesInMemoryAndNothingIsWrittenToDiskOrTheCaches() = runBlocking {
+    fun theViewersVideoIsDecryptedToTheViewOnceTempAndSweptAndNothingGoesToTheCaches() = runBlocking {
         val server = ViewOnceFakeServer().start()
         val stub = id.homebase.api.serialization.OdinSystemSerializer.serialize(
             id.homebase.api.video.VideoMetadata(mimeType = "video/mp4", isDescriptorContentComplete = true, isSegmented = false, fileSize = 1L),
@@ -449,27 +482,30 @@ class ViewOnceViewerTest {
         val overlayData = overlay.copy(payload = overlay.payload.copy(descriptorContent = stub)).videoPlayerData()
         val video = id.homebase.api.video.VideoPlayerData(
             overlayData.fileId, overlayData.driveId, overlayData.payloadKey, overlayData.keyHeader,
-            overlayData.payload.descriptorContent, overlayData.remoteOdinId, overlayData.globalTransitId, overlayData.inMemory,
+            overlayData.payload.descriptorContent, overlayData.remoteOdinId, overlayData.globalTransitId, overlayData.scratchSub,
         )
-        val writes = mutableListOf<String>()
         val fileOps = object : id.homebase.api.file.FileOperationsProvider {
-            override fun getCacheDirectory() = "/cache"
+            override fun getCacheDirectory() = server.tempDir
             override fun openFileInput(path: String): io.ktor.client.request.forms.InputProvider = error("disk read")
             override suspend fun readFileBytes(path: String): ByteArray = error("disk read")
             override fun deleteTempFile(path: String) = false
-            override fun getFileSize(path: String) = 0L
-            override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String = error("disk write").also { writes += prefix }
-            override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String = error("disk write").also { writes += suffix }
-            override suspend fun writeStream(path: String, data: kotlinx.coroutines.flow.Flow<ByteArray>) { writes += path; error("disk write") }
+            override fun getFileSize(path: String) = java.io.File(path).length()
+            override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String = error("unused")
+            override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String = error("unused")
+            override suspend fun writeStream(path: String, data: kotlinx.coroutines.flow.Flow<ByteArray>) = error("unused")
         }
 
         server.loader.begin(server.fileId)
         val content = id.homebase.api.video.resolveVideoContent(video, server.provider, fileOps = fileOps)
 
-        val mp4 = kotlin.test.assertIs<id.homebase.api.video.VideoContent.Mp4Bytes>(content)
-        kotlin.test.assertContentEquals(server.plainImage, mp4.bytes)
-        assertTrue(writes.isEmpty(), "no file may be written for a view-once video: $writes")
-        assertEquals(0L, server.cachedBytes())
+        val mp4 = kotlin.test.assertIs<id.homebase.api.video.VideoContent.Mp4File>(content)
+        val viewOnceDir = java.io.File(server.tempDir, "hb-scratch/view-once")
+        assertEquals(viewOnceDir.canonicalPath, java.io.File(mp4.filePath).parentFile.canonicalPath)
+        kotlin.test.assertContentEquals(server.plainImage, java.io.File(mp4.filePath).readBytes())
+        assertEquals(0L, server.cachedBytes(), "the encrypted payload must not enter the disk caches")
+
+        assertTrue(id.homebase.api.file.sweepViewOnceTemps(server.tempDir))
+        assertTrue(!java.io.File(mp4.filePath).exists(), "the startup sweep reaps a temp a dead viewer left")
     }
 
     @Test
@@ -524,6 +560,19 @@ class ViewOnceViewerTest {
         onNodeWithTag("player").performClick()
         waitForIdle()
         assertTrue(present(VIEW_ONCE_VIEWER_CLOSE_TAG))
-        assertTrue(!present(VIEW_ONCE_VIEWER_REPLY_TAG), "there is nothing to reply to before the media shows")
+        assertTrue(present(VIEW_ONCE_VIEWER_REPLY_TAG), "replying never waits for the media")
+        assertTrue(present(VIEW_ONCE_VIEWER_REACT_TAG), "reacting never waits for the media")
+    }
+
+    @Test
+    fun aFailedLoadShowsOnlyBackAndTheOneInfoIcon() = runSkikoComposeUiTest {
+        setContent {
+            MaterialTheme {
+                ViewOnceViewerFrame(isVideo = false, mediaShown = false, failed = true, onClose = {}) { fill -> Box(fill) }
+            }
+        }
+        waitForIdle()
+        assertTrue(present(VIEW_ONCE_VIEWER_CLOSE_TAG))
+        assertTrue(!present(VIEW_ONCE_VIEWER_REPLY_TAG))
     }
 }

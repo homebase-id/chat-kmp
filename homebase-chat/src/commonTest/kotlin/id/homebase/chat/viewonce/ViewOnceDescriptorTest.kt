@@ -115,11 +115,10 @@ class ViewOnceDescriptorTest {
     @Test
     fun actionsLockDownEveryCopyingSurface() {
         val actions = MessageContent.ViewOnce(ViewOnceDescriptor("image")).actions
-        assertFalse(actions.allowReply)
         assertFalse(actions.allowForward)
         assertFalse(actions.allowShare)
         assertFalse(actions.allowEdit)
-        assertFalse(actions.allowInlineReactions)
+        assertFalse(actions.allowCopy)
         assertNotNull(actions)
     }
 

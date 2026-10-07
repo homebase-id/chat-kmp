@@ -10,6 +10,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.runComposeUiTest
@@ -152,5 +154,57 @@ class ViewOnceBubblePlatformTest {
         bubble(canView = true, isOutgoing = false, state = ViewOnceState.Opened, onOpen = null, isGroup = true, openedCount = 2)
         onNodeWithText("Opened").assertExists()
         onNodeWithText("Opened by 2").assertDoesNotExist()
+    }
+
+    @Test
+    fun aLongPressOnAnOpenablePillIsHandedUpSoReplyAndReactStayReachable() = runComposeUiTest {
+        var opened = 0
+        var longPressed = 0
+        setContent {
+            MaterialTheme {
+                ViewOnceBubble(
+                    descriptor = photo,
+                    isOutgoing = false,
+                    shape = RoundedCornerShape(12),
+                    containerColor = Color.LightGray,
+                    contentColor = Color.Black,
+                    state = ViewOnceState.Unopened,
+                    onOpen = { opened++ },
+                    onLongClick = { longPressed++ },
+                    footer = { Text("10:42 AM") },
+                )
+            }
+        }
+
+        onNodeWithText("Photo").performTouchInput { longClick() }
+        waitForIdle()
+
+        assertEquals(1, longPressed)
+        assertEquals(0, opened, "a long press is not a view")
+    }
+
+    @Test
+    fun aTapStillOpensWhenALongPressIsWired() = runComposeUiTest {
+        var opened = 0
+        setContent {
+            MaterialTheme {
+                ViewOnceBubble(
+                    descriptor = photo,
+                    isOutgoing = false,
+                    shape = RoundedCornerShape(12),
+                    containerColor = Color.LightGray,
+                    contentColor = Color.Black,
+                    state = ViewOnceState.Unopened,
+                    onOpen = { opened++ },
+                    onLongClick = {},
+                    footer = { Text("10:42 AM") },
+                )
+            }
+        }
+
+        onNodeWithText("Photo").performClick()
+        waitForIdle()
+
+        assertEquals(1, opened)
     }
 }

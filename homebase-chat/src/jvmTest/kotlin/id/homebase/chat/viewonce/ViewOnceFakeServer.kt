@@ -70,7 +70,10 @@ internal class ViewOnceFakeServer(
             override fun getFileSize(path: String) = 0L
             override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String = error("unused")
             override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String = error("unused")
-            override suspend fun writeStream(path: String, data: Flow<ByteArray>) = error("unused")
+            override suspend fun writeStream(path: String, data: Flow<ByteArray>) {
+                val file = java.io.File(path).also { it.parentFile.mkdirs() }
+                file.outputStream().use { out -> data.collect { out.write(it) } }
+            }
         })
         provider = DriveFileProvider(http, credentials, cached)
         loader = ViewOncePayloadLoader(provider, canView = { true }) { drive, file -> evictedImages += drive to file }

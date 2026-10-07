@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.common.OdinId
@@ -389,8 +390,8 @@ sealed interface FullScreenOverlay {
         /** Set together for a followed identity's post; playback then reads the author's drive by gtid. */
         val remoteOdinId: OdinId? = null,
         val globalTransitId: Uuid? = null,
-        /** The decrypted MP4 may only live in memory, never on disk (view-once). */
-        val inMemory: Boolean = false,
+        /** Where the decrypted MP4 temp goes; view-once keeps its own so the startup sweep can reap it. */
+        val scratchSub: String = AppCacheDirs.EXPORT,
     ) : FullScreenOverlay.MediaViewer
 
     @Immutable

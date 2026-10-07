@@ -1,6 +1,7 @@
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.request.forms.InputProvider
@@ -85,17 +86,19 @@ class VideoContentResolverTest {
     }
 
     @Test
-    fun inMemoryItem_isReturnedAsBytesAndNeverTouchesTheFilesystem() = runTest {
-        val fake = FakeVideoPrefetchDriveAccess(getPayloadResponses = mapOf(payloadKey to "view-once-mp4"))
+    fun scratchSub_choosesWhereTheDecryptedMp4IsStreamed() = runTest {
+        val fake = FakeVideoPrefetchDriveAccess(getPayloadResponses = mapOf(payloadKey to "unused"))
 
-        // fileOps throws on any write or temp-file request, so a disk path cannot pass silently.
-        val content = resolveVideoContent(playerData(mp4Stub).copy(inMemory = true), fake, fileOps = fileOps)
+        val content = resolveVideoContent(playerData(mp4Stub).copy(scratchSub = AppCacheDirs.VIEW_ONCE), fake, fileOps = fileOps)
 
-        val mp4 = assertIs<VideoContent.Mp4Bytes>(content)
-        assertContentEquals("view-once-mp4".encodeToByteArray(), mp4.bytes)
+        val mp4 = assertIs<VideoContent.Mp4File>(content)
         assertTrue(
-            fake.calls.filterIsInstance<FakeVideoPrefetchDriveAccess.Call.StreamPayloadDecryptedToPath>().isEmpty(),
-            "an in-memory item must never stream decrypted to a path (calls=${fake.calls})",
+            mp4.filePath.startsWith("/cache/hb-scratch/view-once/hbvid_res_") && mp4.filePath.endsWith(".mp4"),
+            "a view-once video must land in the swept view-once dir: ${mp4.filePath}",
+        )
+        assertTrue(
+            fake.calls.filterIsInstance<FakeVideoPrefetchDriveAccess.Call.GetPayloadBytesDecrypted>().isEmpty(),
+            "the payload must never be byte-buffered (calls=${fake.calls})",
         )
     }
 
