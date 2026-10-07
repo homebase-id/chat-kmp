@@ -18,9 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
-import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.resources.MR
-import id.homebase.resources.chat_view_once_open_on_phone
 import id.homebase.resources.chat_view_once_photo
 import id.homebase.resources.chat_view_once_sent
 import id.homebase.resources.chat_view_once_unparseable
@@ -33,7 +31,6 @@ fun ViewOnceBubble(
     descriptor: ViewOnceDescriptor?,
     isOutgoing: Boolean,
     modifier: Modifier = Modifier,
-    opensOnPhoneOnly: Boolean = isDesktopOrWeb(),
 ) {
     val contentColor = MaterialTheme.colorScheme.onSecondaryContainer
     Row(
@@ -62,13 +59,6 @@ fun ViewOnceBubble(
                 if (isOutgoing) {
                     Text(
                         text = stringResource(MR.string.chat_view_once_sent),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = contentColor.copy(alpha = 0.75f),
-                    )
-                }
-                if (opensOnPhoneOnly && !isOutgoing) {
-                    Text(
-                        text = stringResource(MR.string.chat_view_once_open_on_phone),
                         style = MaterialTheme.typography.labelMedium,
                         color = contentColor.copy(alpha = 0.75f),
                     )

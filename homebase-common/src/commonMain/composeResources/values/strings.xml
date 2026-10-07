@@ -1021,7 +1021,6 @@
     <string name="chat_view_once_photo">Photo</string>
     <string name="chat_view_once_video">Video</string>
     <string name="chat_view_once_sent">View once</string>
-    <string name="chat_view_once_open_on_phone">Open on your phone</string>
     <string name="chat_view_once_unparseable">View-once media — please update the app.</string>
     <string name="chat_view_once_caption_disabled">Captions are off for view-once media</string>
 
