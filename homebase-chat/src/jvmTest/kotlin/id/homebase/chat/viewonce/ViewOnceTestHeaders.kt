@@ -1,5 +1,7 @@
 package id.homebase.chat.viewonce
 
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.runComposeUiTest
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
@@ -7,9 +9,8 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
-import kotlinx.coroutines.runBlocking
 import org.jetbrains.compose.resources.StringResource
-import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
 internal const val VO_OWNER = "owner.test"
@@ -122,4 +123,13 @@ internal fun serverTombstone(
     payloadsJson = "null",
 )
 
-internal fun viewOnceWord(res: StringResource): String = runBlocking { getString(res) }
+// Non-composable getString() reads the screen DPI from AWT, which throws on headless CI.
+@OptIn(ExperimentalTestApi::class)
+internal fun viewOnceWord(res: StringResource): String {
+    var word: String? = null
+    runComposeUiTest {
+        setContent { word = stringResource(res) }
+        waitForIdle()
+    }
+    return checkNotNull(word)
+}
