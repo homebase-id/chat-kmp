@@ -23,7 +23,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -173,7 +172,7 @@ class ViewOnceListPreviewTest {
     }
 
     @Test
-    fun theRowStaysPhotoOrVideoWhenTheOpenedItemArrivesAsAReEmitOrAServerTombstone() = runTest {
+    fun aSpentItemReadsPhotoAfterALocalReEmitAndMediaAfterTheServerTombstoneSync() = runTest {
         val convo = conversation()
         val sent = unopened("image")
         val first = assertNotNull(
@@ -195,7 +194,7 @@ class ViewOnceListPreviewTest {
         val afterSync = assertNotNull(
             applyIncomingMessageBump(listOf(afterOpen), convo.id, tombstone, Instant.fromEpochMilliseconds(5), me),
         ).single()
-        assertNotEquals("This message was deleted", labelOf(afterSync)?.text)
+        assertEquals("Media", labelOf(afterSync)?.text, "the server tombstone has no content, so no kind word")
         assertEquals(ViewOnceOpenedIcon, labelOf(afterSync)?.icon)
     }
 }

@@ -337,6 +337,10 @@ internal class MediaDownloadHandler(
         scope.launch { viewOnceActions.onViewerClosed(action.conversationId, action.messageId) }
     }
 
+    fun handleViewOnceReact(action: ConversationListUiAction.ViewOnceReact) {
+        scope.launch { viewOnceActions.onReact(action.conversationId, action.messageId, action.emoji) }
+    }
+
     fun handleViewOnceReply(action: ConversationListUiAction.ViewOnceReply) {
         val message = messagesUiState.value.messages
             .filterIsInstance<MessageListContentModel.Message>()

@@ -148,7 +148,8 @@ class ViewOnceActionsTest {
             ViewOnceActions(s.service, fixture.credentialsManager).sweep(listOf(stale), now)
 
             fixture.dbm.outbox.deleteBy(fixture.chatDriveId, reactionRowKey(s.messageId))
-            assertEquals(1, fixture.drainOutbox().deletes().size)
+            val deleteRow = fixture.drainOutbox().deletes().single()
+            assertEquals(reactionRowKey(s.messageId), deleteRow.dependencyUniqueId, "the delete waits for _vo, which waited for the emoji")
         }
     }
 
@@ -254,6 +255,51 @@ class ViewOnceActionsTest {
                 "the opened signal must not clobber the pending screenshot signal",
             )
             assertEquals(3L, fixture.dbm.outbox.count(), "screenshot, opened and delete rows")
+        }
+    }
+
+    private fun reactRowKey(messageId: Uuid) =
+        ChatMessageActionService.reactionSetRowKey(messageId, ViewOnceSignal.REACTION_SCOPE)
+
+    @Test
+    fun reactThenCloseChainsEmojiThenOpenedThenDelete_soTheDeleteCannotOvertakeTheEmoji() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val s = scenario(this, fixture)
+
+            s.actions.onReact(s.conversationId, s.messageId, "\uD83D\uDC4D")
+            s.actions.onViewerClosed(s.conversationId, s.messageId)
+
+            val emojiRow = assertNotNull(fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, reactRowKey(s.messageId)))
+            val request = OutboxSerializer.decode<SetReactionsOutboxRequest>(emojiRow)
+            assertEquals(1, request.add.size)
+            assertTrue(request.add.single().contains("\uD83D\uDC4D"))
+            assertTrue(request.remove.isEmpty(), "add-only: the viewer never removes a reaction")
+
+            val openedRow = assertNotNull(fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, reactionRowKey(s.messageId)))
+            assertEquals(reactRowKey(s.messageId), openedRow.dependencyUniqueId, "_vo waits for the emoji row")
+            assertEquals(3L, fixture.dbm.outbox.count())
+
+            val first = fixture.drainOutbox()
+            assertEquals(listOf(emojiRow.rowId), first.map { it.rowId }, "only the emoji row is runnable first")
+            fixture.dbm.outbox.deleteByRowId(emojiRow.rowId)
+            val second = fixture.drainOutbox()
+            assertEquals(listOf(openedRow.rowId), second.map { it.rowId })
+            fixture.dbm.outbox.deleteByRowId(openedRow.rowId)
+            val deleteRow = fixture.drainOutbox().deletes().single()
+            assertEquals(reactionRowKey(s.messageId), deleteRow.dependencyUniqueId, "the delete waits for _vo, which waited for the emoji")
+        }
+    }
+
+    @Test
+    fun aSecondEmojiInTheSameViewingIsIgnoredSoThePendingRowIsNeverReplaced() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val s = scenario(this, fixture)
+            s.actions.onReact(s.conversationId, s.messageId, "\uD83D\uDC4D")
+            s.actions.onReact(s.conversationId, s.messageId, "\u2764\uFE0F")
+
+            val row = assertNotNull(fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, reactRowKey(s.messageId)))
+            assertTrue(OutboxSerializer.decode<SetReactionsOutboxRequest>(row).add.single().contains("\uD83D\uDC4D"))
+            assertEquals(1L, fixture.dbm.outbox.count())
         }
     }
 }

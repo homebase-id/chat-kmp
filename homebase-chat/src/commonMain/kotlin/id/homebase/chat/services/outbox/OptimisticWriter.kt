@@ -576,6 +576,7 @@ class OptimisticWriter(
         rowKey: Uuid,
         add: Set<String>,
         remove: Set<String>,
+        dependencyUniqueId: Uuid = uniqueId,
         recipients: suspend (original: HomebaseFile) -> List<OdinId>,
     ): MutationOutcome = reactionLockFor(driveId, uniqueId).withLock {
         val credentials = credentialsManager.requireActiveCredentials()
@@ -598,7 +599,7 @@ class OptimisticWriter(
                     recipients = recipients(existingFile),
                 ),
                 uniqueId = rowKey,
-                dependencyUniqueId = uniqueId,
+                dependencyUniqueId = dependencyUniqueId,
             )
         }?.let { return@withLock it }
 

@@ -175,7 +175,7 @@ sealed interface MessageContent {
      * [Event.descriptor] nullability contract.
      */
     data class ViewOnce(val descriptor: ViewOnceDescriptor?) : MessageContent {
-        // No reply, forward, share, edit or reactions: each would copy or expose the media.
+        // Inline long-press actions are off; reply and react exist only in the viewer, and a reply quotes the kind word only.
         override val actions: ActionPolicy = ActionPolicy.StructuredOneShot
         override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_VIEW_ONCE_LABEL
     }

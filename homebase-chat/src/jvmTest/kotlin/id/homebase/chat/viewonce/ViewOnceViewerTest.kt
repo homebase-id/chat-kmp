@@ -22,7 +22,6 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -117,7 +116,7 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun theViewerOffersOnlyBackReactReplyMoreAndDelete_andNeverSaveShareOrForward() = runSkikoComposeUiTest {
+    fun aPhotoViewerOffersOnlyBackReactReplyAndDelete_andNeverSaveShareOrForward() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
         awaitShown()
@@ -125,18 +124,13 @@ class ViewOnceViewerTest {
         assertEquals(
             setOf(
                 VIEW_ONCE_VIEWER_CLOSE_TAG, VIEW_ONCE_VIEWER_REACT_TAG, VIEW_ONCE_VIEWER_REPLY_TAG,
-                VIEW_ONCE_VIEWER_MORE_TAG, VIEW_ONCE_VIEWER_DELETE_TAG,
+                VIEW_ONCE_VIEWER_DELETE_TAG,
             ),
             tagsOfClickables(),
         )
         assertEquals(1, server.requests)
         assertEquals(0L, runBlocking { server.cachedBytes() })
         assertNoSaveShareForward()
-
-        onNodeWithTag(VIEW_ONCE_VIEWER_MORE_TAG).performClick()
-        waitForIdle()
-        assertNoSaveShareForward()
-        onNodeWithText("Delete").assertExists()
     }
 
     private fun SkikoComposeUiTest.tagsOfClickables(): Set<String> =
@@ -161,7 +155,7 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun deleteConsumesTheItemExactlyOnceThroughBothTheButtonAndTheMenu() = runSkikoComposeUiTest {
+    fun deleteConsumesTheItemExactlyOnce() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
         awaitShown()
@@ -409,6 +403,25 @@ class ViewOnceViewerTest {
         }
         onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).performClick()
         assertEquals(1, closed)
+    }
+
+    @Test
+    fun aVideoViewerMenuHoldsOnlyMuteAndANonVideoHasNoMenu() = runSkikoComposeUiTest {
+        var muted = false
+        setContent {
+            MaterialTheme {
+                ViewOnceViewerFrame(
+                    isVideo = true, mediaShown = true, failed = false, onClose = {}, muted = muted,
+                    onMutedChange = { muted = it },
+                ) { fill -> Box(fill.testTag("player")) }
+            }
+        }
+        onNodeWithTag(VIEW_ONCE_VIEWER_MORE_TAG).performClick()
+        waitForIdle()
+        assertTrue(present(VIEW_ONCE_VIEWER_MUTE_TAG))
+        onNodeWithTag(VIEW_ONCE_VIEWER_MUTE_TAG).performClick()
+        waitForIdle()
+        assertTrue(muted)
     }
 
     @Test

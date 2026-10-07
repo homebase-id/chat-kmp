@@ -261,6 +261,7 @@ class ChatMessageActionService(
         conversationId: Uuid,
         messageId: Uuid,
         change: ReactionSetChange,
+        runAfter: Uuid? = null,
     ): MutationOutcome {
         require(change.add.none { it in change.remove }) { "add and remove overlap" }
         if ((change.add + change.remove).any { !isValidEmoji(it) }) {
@@ -274,6 +275,7 @@ class ChatMessageActionService(
             rowKey = rowKey,
             add = change.add.map(toJson).toSet(),
             remove = change.remove.map(toJson).toSet(),
+            dependencyUniqueId = runAfter ?: messageId,
         ) { getRecipients(conversationId) }
         Logger.i(tag = REACTIONS_TAG) {
             "setReactions msg=$messageId scope=${change.scope} add=${change.add} remove=${change.remove} " +

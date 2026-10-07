@@ -101,6 +101,7 @@ import id.homebase.chat.widget.video.VideoPlayerSurface
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.withEmojiFont
+import id.homebase.core.widget.quickReactions
 import id.homebase.core.util.SecureWindowEffect
 import id.homebase.core.util.rememberScreenCaptureObserver
 import id.homebase.resources.MR
@@ -136,8 +137,6 @@ const val VIEW_ONCE_VIEWER_REPLY_TAG = "viewOnceViewerReply"
 const val VIEW_ONCE_VIEWER_MORE_TAG = "viewOnceViewerMore"
 const val VIEW_ONCE_VIEWER_DELETE_TAG = "viewOnceViewerDelete"
 
-val VIEW_ONCE_DEFAULT_REACTIONS = listOf("👍", "❤️", "😂", "😮", "😢", "🙏")
-
 /**
  * Full-screen viewer for one received view-once item. It has no save, share, forward or paging,
  * and it reads the payload only through [loader]. However it ends (back, delete, reply, the app
@@ -152,7 +151,7 @@ fun ViewOnceViewer(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     onScreenshot: () -> Unit = {},
-    reactions: List<String> = VIEW_ONCE_DEFAULT_REACTIONS,
+    reactions: List<String> = quickReactions(emptyList()),
     onReact: (String) -> Unit = {},
     onReply: () -> Unit = {},
     loader: ViewOncePayloadLoader = koinInject(),
@@ -293,7 +292,7 @@ internal fun ViewOnceViewerFrame(
     durationMs: Long? = null,
     muted: Boolean = false,
     onMutedChange: ((Boolean) -> Unit)? = null,
-    reactions: List<String> = VIEW_ONCE_DEFAULT_REACTIONS,
+    reactions: List<String> = quickReactions(emptyList()),
     onReact: (String) -> Unit = {},
     onReply: () -> Unit = {},
     onDelete: () -> Unit = onClose,
@@ -467,7 +466,7 @@ private fun ViewOnceViewerBottomBar(
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val emojiLabel = stringResource(MR.string.chat_message_emoji_options)
-            ChromeCircleButton(onClick = { picking = !picking }, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_REACT_TAG)) {
+            ChromeCircleButton(onClick = { if (reacted == null) picking = !picking }, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_REACT_TAG)) {
                 val current = reacted
                 if (current == null) {
                     Icon(Icons.Outlined.EmojiEmotions, contentDescription = emojiLabel)
@@ -493,12 +492,12 @@ private fun ViewOnceViewerBottomBar(
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box {
-                ChromeCircleButton(onClick = { menuOpen = true }, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_MORE_TAG)) {
-                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.string.chat_view_once_more))
-                }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    if (isVideo && onMutedChange != null) {
+            if (isVideo && onMutedChange != null) {
+                Box {
+                    ChromeCircleButton(onClick = { menuOpen = true }, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_MORE_TAG)) {
+                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.string.chat_view_once_more))
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
                             text = { Text(stringResource(if (muted) MR.string.chat_view_once_unmute else MR.string.chat_view_once_mute)) },
                             leadingIcon = {
@@ -511,14 +510,6 @@ private fun ViewOnceViewerBottomBar(
                             modifier = Modifier.testTag(VIEW_ONCE_VIEWER_MUTE_TAG),
                         )
                     }
-                    DropdownMenuItem(
-                        text = { Text(stringResource(MR.string.delete)) },
-                        leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
-                        onClick = {
-                            menuOpen = false
-                            onDelete()
-                        },
-                    )
                 }
             }
             Spacer(Modifier.weight(1f))
