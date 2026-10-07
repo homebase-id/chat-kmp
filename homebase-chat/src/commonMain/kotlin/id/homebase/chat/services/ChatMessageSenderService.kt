@@ -850,10 +850,6 @@ class ChatMessageSenderService(
         val sourceFile = chatMessageStream.getMessageFile(sourceMessageUniqueId)
             ?: throw IllegalArgumentException("source message not found: $sourceMessageUniqueId")
 
-        require(sourceFile.fileMetadata.appData.dataType != ChatProtocol.ChatViewOnceMessageDataType) {
-            "view-once media cannot be forwarded"
-        }
-
         val content = sourceFile.fileMetadata.appData.content
             ?: throw IllegalArgumentException("source message has no content")
 
@@ -866,6 +862,7 @@ class ChatMessageSenderService(
         val forwardedDataType = sourceFile.fileMetadata.appData.dataType ?: 0
 
         val typed = MessageContentParser.parse(forwardedDataType, content)
+        require(typed?.actions?.allowForward != false) { "dataType $forwardedDataType cannot be forwarded" }
         val built = if (MessageContentParser.usesRawHeaderContent(typed)) {
             // The descriptor IS the header content for these kinds. Round-tripping it through the
             // MessageAppData envelope drops every field the descriptor requires, so the receiver

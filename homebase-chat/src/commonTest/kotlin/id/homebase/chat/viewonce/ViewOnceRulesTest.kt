@@ -128,23 +128,11 @@ class ViewOnceRulesTest {
         assertEquals(ViewOnceState.Opened, state(message(me, summary = summary("_vo", 1)), created + max * 2))
 
     @Test
-    fun screenshotCount_readsOnlyVs() {
+    fun screenshotSignal_doesNotCountAsOpened() {
         val m = message(me, summary = summary("_vs", 2))
-        assertEquals(2, ViewOnceRules.screenshotCount(m))
         assertEquals(0, ViewOnceRules.openedCount(m))
         assertEquals(ViewOnceState.Sent, state(m, created + 1))
     }
-
-    @Test
-    fun sender_screenshotTakenWhenReactionPreviewHasVs() {
-        assertEquals(true, ViewOnceRules.screenshotTaken(message(me, summary = summary("_vs", 1)), me))
-        assertEquals(false, ViewOnceRules.screenshotTaken(message(me, summary = summary("_vo", 1)), me))
-        assertEquals(false, ViewOnceRules.screenshotTaken(message(me), me))
-    }
-
-    @Test
-    fun recipient_neverCarriesTheScreenshotLine() =
-        assertEquals(false, ViewOnceRules.screenshotTaken(message(alice, summary = summary("_vs", 1)), me))
 
     @Test
     fun signalScopesAreDistinct() {

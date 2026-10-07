@@ -11,12 +11,6 @@ object ViewOnceRules {
     fun openedCount(message: MessageUiModel): Int =
         ViewOnceSignal.count(message.reactionPreview, ViewOnceSignal.OPENED_CODE)
 
-    fun screenshotCount(message: MessageUiModel): Int =
-        ViewOnceSignal.count(message.reactionPreview, ViewOnceSignal.SCREENSHOT_CODE)
-
-    fun screenshotTaken(message: MessageUiModel, myOdinId: OdinId?): Boolean =
-        message.isFromActiveUser(myOdinId) && screenshotCount(message) >= 1
-
     /** Opened or expired, from either side: what the quote and list icon variants key on. */
     fun isSpent(message: MessageUiModel, nowMs: Long, myOdinId: OdinId?): Boolean =
         stateOf(message, nowMs, myOdinId).let { it == ViewOnceState.Opened || it == ViewOnceState.Expired }

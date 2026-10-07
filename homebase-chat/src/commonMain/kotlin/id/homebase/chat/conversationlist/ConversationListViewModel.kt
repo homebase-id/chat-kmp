@@ -26,6 +26,7 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.viewonce.ViewOnceActions
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessagesData
@@ -152,7 +153,7 @@ class ConversationListViewModel(
     private val chatMessageStream: ChatMessageStream,
     private val chatMessageSenderService: ChatMessageSenderService,
     private val chatMessageActionService: ChatMessageActionService,
-    private val viewOnceActions: id.homebase.chat.viewonce.ViewOnceActions,
+    private val viewOnceActions: ViewOnceActions,
     private val conversationService: ConversationService,
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,

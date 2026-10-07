@@ -10,6 +10,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoCompressionService
 import id.homebase.core.util.extensionForMimeType
+import id.homebase.core.util.isMobile
 import id.homebase.api.video.VideoMetadata
 import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
@@ -65,7 +66,7 @@ internal class MediaDownloadHandler(
     private val localVideoContextStore: LocalAttachmentContextStore,
     private val sendEvent: (ConversationListUiEvent) -> Unit,
     private val dispatch: (ConversationListUiAction) -> Unit,
-    private val onMobile: () -> Boolean = { id.homebase.core.util.isMobile() },
+    private val onMobile: () -> Boolean = { isMobile() },
 ) {
 
     fun handleShareMedia(action: ConversationListUiAction.ShareMedia) {

@@ -43,33 +43,31 @@ class ViewOnceActions(
     }
 
     /** At most once per viewer session; a failed enqueue frees the next screenshot to try again. */
-    suspend fun onScreenshot(conversationId: Uuid, messageId: Uuid): Unit = signalMutex.withLock {
-        if (messageId in shotSent) return@withLock
-        val outcome = try {
-            enqueueSignal(conversationId, messageId, ViewOnceSignal.screenshotChange())
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.e(TAG, e) { "screenshot signal failed msg=$messageId" }
-            return@withLock
-        }
-        Logger.i(TAG) { "screenshot msg=$messageId signal=$outcome" }
-        if (outcome == MutationOutcome.Queued) shotSent.add(messageId)
-    }
+    suspend fun onScreenshot(conversationId: Uuid, messageId: Uuid) =
+        signalOnce(shotSent, conversationId, messageId, ViewOnceSignal.screenshotChange(), "screenshot")
 
     /** One emoji per viewing, add-only: a second pick would replace a still-pending row and lose the first. */
-    suspend fun onReact(conversationId: Uuid, messageId: Uuid, emoji: String): Unit = signalMutex.withLock {
-        if (messageId in reacted) return@withLock
+    suspend fun onReact(conversationId: Uuid, messageId: Uuid, emoji: String) =
+        signalOnce(reacted, conversationId, messageId, ViewOnceSignal.reactionChange(emoji), "viewer reaction")
+
+    private suspend fun signalOnce(
+        sent: MutableSet<Uuid>,
+        conversationId: Uuid,
+        messageId: Uuid,
+        change: ReactionSetChange,
+        label: String,
+    ): Unit = signalMutex.withLock {
+        if (messageId in sent) return@withLock
         val outcome = try {
-            enqueueSignal(conversationId, messageId, ViewOnceSignal.reactionChange(emoji))
+            enqueueSignal(conversationId, messageId, change)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "viewer reaction failed msg=$messageId" }
+            Logger.e(TAG, e) { "$label failed msg=$messageId" }
             return@withLock
         }
-        Logger.i(TAG) { "viewer reaction msg=$messageId outcome=$outcome" }
-        if (outcome == MutationOutcome.Queued) reacted.add(messageId)
+        Logger.i(TAG) { "$label msg=$messageId outcome=$outcome" }
+        if (outcome == MutationOutcome.Queued) sent.add(messageId)
     }
 
     private suspend fun claim(messageId: Uuid): Boolean = claimMutex.withLock { claimed.add(messageId) }
@@ -119,9 +117,9 @@ class ViewOnceActions(
         for (message in messages) {
             if (message.messageContent !is MessageContent.ViewOnce) continue
             if (message.isDeleted || message.isPendingSend || message.isFromActiveUser(me)) continue
-            val opened = ViewOnceSignal.OPENED_CODE in message.ownReactions
-            val expired = nowMs - message.created.toEpochMilliseconds() >= ViewOnceRules.MAX_LIFESPAN_MS
-            if (!opened && !expired) continue
+            val state = ViewOnceRules.stateOf(message, nowMs, me)
+            if (state == ViewOnceState.Unopened) continue
+            val opened = state == ViewOnceState.Opened
             if (!claim(message.id)) continue
             releasingOnFailure(message.id, "sweep delete failed") {
                 if (actionService.isDeletedLocally(message.id)) return@releasingOnFailure

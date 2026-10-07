@@ -137,9 +137,6 @@ internal suspend fun MutableStateFlow<MessageListUiState>.sendUnderPlaceholder(
     update { it.withoutPendingSend(messageId, clearProgress = false) }
 }
 
-// View-once (216) headers carry no reply; leaving replyTo null keeps the quote in the composer instead of dropping it silently.
-internal fun <T> replyForSend(viewOnce: Boolean, replyTo: T?): T? = if (viewOnce) null else replyTo
-
 /**
  * Handles message-action arms (send / edit / delete / react / scroll-to /
  * mark-as-read / forward / reply / battle-dice / reaction-details) extracted
@@ -527,7 +524,8 @@ internal class MessageActionsHandler(
 
     fun handleSendFile(action: ConversationListUiAction.SendFile) {
         messagesUiState.update { it.copy(scrollPosition = null, isSendingMessage = true) }
-        val replyTo = replyForSend(action.viewOnce, messagesUiState.value.replyToMessage)
+        // View-once headers carry no reply; leaving replyTo null keeps the quote in the composer instead of dropping it silently.
+        val replyTo = messagesUiState.value.replyToMessage.takeUnless { action.viewOnce }
 
         addMessageWithFiles(
             conversationId = action.conversationId,
@@ -816,9 +814,8 @@ internal class MessageActionsHandler(
             // aspect for free; for images we compute aspect asynchronously below and
             // re-put once we have it — avoids blocking the placeholder on image I/O.
             val imagePathsToRefine = mutableListOf<Pair<String, String>>()
-            resolvedFiles.forEachIndexed { index, file ->
-                // View-once media gets no local preview: nothing may render it before the viewer.
-                if (viewOnce) return@forEachIndexed
+            // View-once media gets no local preview: nothing may render it before the viewer.
+            if (!viewOnce) resolvedFiles.forEachIndexed { index, file ->
                 val payloadKey = payloadKey(index)
                 val ctx: LocalAttachmentContext? = when (file) {
                     is AttachmentPendingFile.FileVideo -> {
