@@ -108,13 +108,6 @@ class WebDropViewOnlyTest {
     }
 
     @Test
-    fun togglingViewOnlyStoresTheFlag() {
-        val on = WebDropUiState().withViewOnly(true)
-        assertTrue(on.viewOnly)
-        assertFalse(on.withViewOnly(false).viewOnly)
-    }
-
-    @Test
     fun dismissingTheComposerResetsViewOnlyButKeepsTheTheme() {
         val state = WebDropUiState(
             composeOpen = true, pickedFiles = picked, viewOnly = true,

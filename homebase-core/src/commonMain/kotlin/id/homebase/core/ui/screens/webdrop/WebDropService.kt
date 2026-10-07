@@ -57,7 +57,7 @@ class WebDropService(
         ttlChoice: WebDropTtlChoice,
         intro: WebDropIntroContent? = null,
         theme: String? = null,
-        viewOnly: Boolean = false,
+        viewOnly: Boolean,
     ): Result<CreatedDrop> = runCatching {
         val domain = credentialsManager.getActiveCredentials()?.domain
             ?: error("not authenticated")

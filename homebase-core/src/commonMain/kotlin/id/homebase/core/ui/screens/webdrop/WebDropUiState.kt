@@ -82,8 +82,6 @@ internal fun WebDropUiState.toCreateRequest() = WebDropCreateRequest(
     viewOnly = viewOnly,
 )
 
-internal fun WebDropUiState.withViewOnly(enabled: Boolean) = copy(viewOnly = enabled)
-
 /** The theme survives on purpose; a typed name and the view-only choice never do. */
 internal fun WebDropUiState.afterComposeDismissed() = copy(
     composeOpen = false, pickedFiles = emptyList(), createdUrl = null,
