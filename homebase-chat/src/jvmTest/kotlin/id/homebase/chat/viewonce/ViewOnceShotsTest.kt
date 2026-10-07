@@ -103,6 +103,7 @@ class ViewOnceShotsTest {
         data class Editor(val attachments: List<AttachmentPendingFile>, val viewOnce: Boolean, val caption: String = "") : Scene
         data class Thread(val group: Boolean = false) : Scene
         data class States(val outgoing: Boolean, val pressFirst: Boolean = false) : Scene
+        data object Morph : Scene
     }
 
     private class Shot(
@@ -120,6 +121,8 @@ class ViewOnceShotsTest {
             Shot("e2-editor-photo-on", Scene.Editor(listOf(image()), viewOnce = true)),
             Shot("e3-editor-video-on", Scene.Editor(listOf(video()), viewOnce = true)),
             Shot("e4-editor-two-photos-hidden", Scene.Editor(listOf(image(), image()), viewOnce = false)),
+            Shot("e9-editor-two-photos-after-on", Scene.Editor(listOf(image(), image()), viewOnce = true)),
+            Shot("e10-editor-video-on-rtl-font-scale", Scene.Editor(listOf(video()), viewOnce = true), rtl = true, fontScale = 1.3f),
             Shot("e5-editor-on-font-scale", Scene.Editor(listOf(image()), viewOnce = true), fontScale = 1.6f),
             Shot("e6-editor-on-rtl", Scene.Editor(listOf(image()), viewOnce = true), rtl = true),
             Shot("e7-editor-on-small", Scene.Editor(listOf(image()), viewOnce = true), widthDp = 360, heightDp = 640),
@@ -134,6 +137,8 @@ class ViewOnceShotsTest {
             Shot("s3-received-pressed", Scene.States(outgoing = false, pressFirst = true), heightDp = 1_000),
             Shot("s4-received-states-font-scale", Scene.States(outgoing = false), fontScale = 1.6f, heightDp = 1_400),
             Shot("s5-received-states-rtl", Scene.States(outgoing = false), rtl = true, heightDp = 1_000),
+            Shot("s6-sent-states-font-scale", Scene.States(outgoing = true), fontScale = 1.6f, heightDp = 900),
+            Shot("m1-unopened-to-opened", Scene.Morph, heightDp = 160),
         )
     }
 
@@ -168,7 +173,8 @@ class ViewOnceShotsTest {
     @Composable
     private fun EditorScene(scene: Scene.Editor) {
         var viewOnceRequested by remember { mutableStateOf(scene.viewOnce) }
-        val viewOnce = viewOnceRequested && isViewOnceEligible(scene.attachments)
+        val eligible = isViewOnceEligible(scene.attachments)
+        val viewOnce = viewOnceRequested && eligible
         val caption = rememberRichTextState()
         LaunchedEffect(Unit) { if (scene.caption.isNotEmpty()) caption.setText(scene.caption) }
         MediaAttachmentEditor(
@@ -181,6 +187,7 @@ class ViewOnceShotsTest {
             onToggleMediaQuality = {},
             viewOnce = viewOnce,
             onToggleViewOnce = { viewOnceRequested = !viewOnceRequested },
+            viewOnceSetAside = viewOnceRequested && !eligible && scene.attachments.size > 1,
             onAddImage = {},
             onRemoveFile = {},
             onDismiss = {},
@@ -339,7 +346,42 @@ class ViewOnceShotsTest {
         }
     }
 
-    private fun render(shot: Shot, dark: Boolean) = runDesktopComposeUiTest(
+    @Composable
+    private fun MorphScene(opened: Boolean) {
+        Box(
+            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp),
+            contentAlignment = Alignment.TopStart,
+        ) {
+            ViewOnceBubble(
+                descriptor = ViewOnceDescriptor(ViewOnceDescriptor.KIND_IMAGE),
+                isOutgoing = false,
+                shape = messageBubbleShape(false, MessageClusterPosition.ALONE),
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.widthIn(max = 300.dp),
+                state = if (opened) ViewOnceState.Opened else ViewOnceState.Unopened,
+                onOpen = {},
+            )
+        }
+    }
+
+    private fun renderMorph(shot: Shot, dark: Boolean) = runDesktopComposeUiTest(
+        width = (shot.widthDp * SCALE).toInt(),
+        height = (shot.heightDp * SCALE).toInt(),
+    ) {
+        mainClock.autoAdvance = false
+        var opened by mutableStateOf(false)
+        setContent { Themed(dark, shot.fontScale, shot.rtl) { MorphScene(opened) } }
+        mainClock.advanceTimeBy(1_500)
+        save("${shot.name}-0-unopened", dark)
+        opened = true
+        for ((label, ms) in listOf("1-80ms" to 80L, "2-200ms" to 120L, "3-settled" to 1_200L)) {
+            mainClock.advanceTimeBy(ms)
+            save("${shot.name}-$label", dark)
+        }
+    }
+
+    private fun render(shot: Shot, dark: Boolean): Unit = if (shot.scene is Scene.Morph) renderMorph(shot, dark) else runDesktopComposeUiTest(
         width = (shot.widthDp * SCALE).toInt(),
         height = (shot.heightDp * SCALE).toInt(),
     ) {
@@ -350,6 +392,7 @@ class ViewOnceShotsTest {
                     is Scene.Editor -> EditorScene(scene)
                     is Scene.Thread -> ThreadScene(scene)
                     is Scene.States -> StatesScene(scene)
+                    Scene.Morph -> Unit
                 }
             }
         }

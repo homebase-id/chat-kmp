@@ -1,6 +1,10 @@
 package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.ui.text.style.TextDirection
+import id.homebase.resources.chat_view_once_single_only
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
@@ -14,8 +18,6 @@ import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.style.TextDirection
-import id.homebase.core.widget.connectedButtonShapes
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.EnterTransition
@@ -212,6 +214,8 @@ fun MediaAttachmentEditor(
     onToggleMediaQuality: (() -> Unit)? = null,
     viewOnce: Boolean = false,
     onToggleViewOnce: (() -> Unit)? = null,
+    // True when the sender turned view once on and then added more media, which view once can't carry.
+    viewOnceSetAside: Boolean = false,
     onDismiss: (() -> Unit)? = null,
     collapseSecondaryChrome: Boolean = false,
     centerImageInPage: Boolean = false,
@@ -729,7 +733,7 @@ fun MediaAttachmentEditor(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp)
                 .heightIn(min = if (canShowToolbar) FloatingToolbarDefaults.ContainerSize else 0.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
             itemVerticalAlignment = Alignment.CenterVertically,
         ) {
@@ -740,24 +744,44 @@ fun MediaAttachmentEditor(
             ) { attachment ->
                 if (attachment != null) {
                     val tools = toolsetFor(attachment)
-                    HorizontalFloatingToolbar(
-                        expanded = true,
-                        expandedShadowElevation = 0.dp,
-                    ) {
+                    val toolButtons = listOfNotNull<@Composable () -> Unit>(
                         if (tools.showCrop) {
-                            IconButton(onClick = { onCropImage!!(attachment.attachmentId) }) {
-                                Icon(Icons.Default.Crop, contentDescription = stringResource(MR.string.crop))
+                            {
+                                IconButton(onClick = { onCropImage!!(attachment.attachmentId) }) {
+                                    Icon(Icons.Default.Crop, contentDescription = stringResource(MR.string.crop))
+                                }
                             }
-                        }
+                        } else null,
                         if (tools.showDraw) {
-                            IconButton(onClick = { onDrawImage!!(attachment.attachmentId) }) {
-                                Icon(Icons.Default.Draw, contentDescription = stringResource(MR.string.draw))
+                            {
+                                IconButton(onClick = { onDrawImage!!(attachment.attachmentId) }) {
+                                    Icon(Icons.Default.Draw, contentDescription = stringResource(MR.string.draw))
+                                }
                             }
-                        }
+                        } else null,
                         if (tools.showSave) {
-                            IconButton(onClick = { onSaveFile!!(attachment) }) {
-                                Icon(Icons.Default.Download, contentDescription = stringResource(MR.string.save))
+                            {
+                                IconButton(
+                                    onClick = { onSaveFile!!(attachment) },
+                                    colors = if (onlyTool(tools)) IconButtonDefaults.filledTonalIconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    ) else IconButtonDefaults.iconButtonColors(),
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = stringResource(MR.string.save))
+                                }
                             }
+                        } else null,
+                    )
+                    // A lone tool sits as a plain 48dp button; a toolbar around one icon reads as an empty tray.
+                    if (toolButtons.size == 1) {
+                        toolButtons.single()()
+                    } else {
+                        HorizontalFloatingToolbar(
+                            expanded = true,
+                            expandedShadowElevation = 0.dp,
+                        ) {
+                            toolButtons.forEach { it() }
                         }
                     }
                 }
@@ -772,7 +796,7 @@ fun MediaAttachmentEditor(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     sendOptions.forEachIndexed { index, option ->
-                        val shapes = connectedButtonShapes(index, sendOptions.size)
+                        val shapes = sendOptionShapes(index, sendOptions.size)
                         when (option) {
                             SendOption.ViewOnce -> ViewOnceToolChip(
                                 toolset = toolset,
@@ -790,14 +814,27 @@ fun MediaAttachmentEditor(
                 }
             }
         }
-        AnimatedVisibility(
-            visible = viewOnce && toolset.showViewOnce,
-            enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
-                fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
-            exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) +
-                fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
-        ) {
-            ViewOnceNotice()
+        val notice = when {
+            viewOnce && toolset.showViewOnce -> MR.string.chat_view_once_toggle_supporting
+            viewOnceSetAside -> MR.string.chat_view_once_single_only
+            else -> null
+        }
+        val motion = MaterialTheme.motionScheme
+        AnimatedContent(
+            targetState = notice,
+            transitionSpec = {
+                fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) using
+                    SizeTransform(clip = true) { _, _ -> motion.defaultSpatialSpec() }
+            },
+        ) { shown ->
+            if (shown != null) {
+                EditorSupportingLine(
+                    text = stringResource(shown),
+                    modifier = Modifier.padding(start = EDITOR_SUPPORTING_START, end = 20.dp, top = 2.dp, bottom = 6.dp),
+                )
+            } else {
+                Spacer(Modifier.fillMaxWidth())
+            }
         }
         }
         } // end AnimatedVisibility (tool row)
@@ -823,7 +860,7 @@ internal fun ViewOnceToolChip(
     toolset: EditorToolset,
     selected: Boolean,
     onClick: () -> Unit,
-    shapes: ToggleButtonShapes = ToggleButtonDefaults.shapes(),
+    shapes: ToggleButtonShapes = sendOptionShapes(0, 1),
 ) {
     if (!toolset.showViewOnce) return
     val motion = MaterialTheme.motionScheme
@@ -832,10 +869,7 @@ internal fun ViewOnceToolChip(
         checked = selected,
         onCheckedChange = { onClick() },
         shapes = shapes,
-        colors = ToggleButtonDefaults.toggleButtonColors(
-            checkedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            checkedContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        ),
+        colors = sendOptionColors(),
         modifier = Modifier.heightIn(min = SEND_OPTION_HEIGHT).testTag(VIEW_ONCE_CHIP_TAG),
     ) {
         Crossfade(selected, animationSpec = motion.fastEffectsSpec()) { checked ->
@@ -865,6 +899,7 @@ private fun MediaQualityToggle(isHigh: Boolean, onClick: () -> Unit, shapes: Tog
         checked = isHigh,
         onCheckedChange = { onClick() },
         shapes = shapes,
+        colors = sendOptionColors(),
         modifier = Modifier.heightIn(min = SEND_OPTION_HEIGHT).testTag("mediaQualityChip"),
     ) {
         Icon(
@@ -881,23 +916,50 @@ private fun MediaQualityToggle(isHigh: Boolean, onClick: () -> Unit, shapes: Tog
 
 private val SEND_OPTION_HEIGHT = 48.dp
 
+private fun onlyTool(tools: EditorToolset): Boolean =
+    listOf(tools.showCrop, tools.showDraw, tools.showSave).count { it } == 1
+
+// Outer corners are full and morph to a squircle when checked; inner corners stay connected, so the pair always reads as one group.
+private fun sendOptionShapes(index: Int, count: Int): ToggleButtonShapes {
+    fun shape(outer: CornerSize, inner: CornerSize): RoundedCornerShape {
+        val start = if (index == 0) outer else inner
+        val end = if (index == count - 1) outer else inner
+        return RoundedCornerShape(topStart = start, bottomStart = start, topEnd = end, bottomEnd = end)
+    }
+    return ToggleButtonShapes(
+        shape = shape(CornerSize(50), CornerSize(8.dp)),
+        pressedShape = shape(CornerSize(12.dp), CornerSize(4.dp)),
+        checkedShape = shape(CornerSize(16.dp), CornerSize(8.dp)),
+    )
+}
+
 @Composable
-private fun ViewOnceNotice() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.Info,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(16.dp),
-        )
+private fun sendOptionColors() = ToggleButtonDefaults.toggleButtonColors(
+    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+    checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+)
+
+internal val EDITOR_SUPPORTING_START = 20.dp
+
+/** A quiet note under an editor control: bodySmall, onSurfaceVariant, icon on the first line. */
+@Composable
+internal fun EditorSupportingLine(text: String, modifier: Modifier = Modifier) {
+    val style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content)
+    val lineHeight = with(LocalDensity.current) { style.lineHeight.toDp() }
+    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Box(Modifier.size(lineHeight), contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(lineHeight),
+            )
+        }
         Text(
-            text = stringResource(MR.string.chat_view_once_toggle_supporting),
-            style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content),
+            text = text,
+            style = style,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 8.dp),
         )

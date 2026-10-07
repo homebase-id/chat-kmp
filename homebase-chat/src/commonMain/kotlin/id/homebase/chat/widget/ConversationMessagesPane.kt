@@ -340,7 +340,8 @@ fun ConversationMessagesPane(
                     is FullScreenOverlay.AttachmentData -> {
                         var captionEmojiPickerOpen by remember { mutableStateOf(false) }
                         var viewOnceRequested by remember { mutableStateOf(false) }
-                        val viewOnce = viewOnceRequested && isViewOnceEligible(data.attachments)
+                        val viewOnceEligible = isViewOnceEligible(data.attachments)
+                        val viewOnce = viewOnceRequested && viewOnceEligible
                         MediaAttachmentEditor(
                             attachments = data.attachments,
                             currentPage = currentGalleryPage,
@@ -356,6 +357,7 @@ fun ConversationMessagesPane(
                             },
                             viewOnce = viewOnce,
                             onToggleViewOnce = { viewOnceRequested = !viewOnceRequested },
+                            viewOnceSetAside = viewOnceRequested && !viewOnceEligible && data.attachments.size > 1,
                             centerImageInPage = true,
                             onAddFile = { fileLauncher.launch() },
                             onAddImage = { galleryLauncher.launch() },

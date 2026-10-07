@@ -1,11 +1,17 @@
 package id.homebase.chat.viewonce
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.TimerOff
+import androidx.compose.material.icons.outlined.Upgrade
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,13 +21,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -38,10 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.drawOutline
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
@@ -52,7 +54,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.graphics.shapes.Morph
 import id.homebase.core.widget.MorphShape
 import id.homebase.resources.MR
@@ -73,7 +74,7 @@ import org.jetbrains.compose.resources.stringResource
 
 enum class ViewOnceOpenPhase { Idle, Opening, Failed }
 
-private enum class Badge { Unparseable, Ready, Sent, Opening, Failed, Consumed }
+private enum class Badge { Unparseable, Ready, Unavailable, Sent, Opening, Failed, Opened, Expired }
 
 /** Placeholder only: it never reads the message payload. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -100,13 +101,16 @@ fun ViewOnceBubble(
     val canOpen = onOpen != null && descriptor != null && !isOutgoing && !consumed && !openOnPhone
     val badge = when {
         descriptor == null -> Badge.Unparseable
-        consumed -> Badge.Consumed
+        state == ViewOnceState.Expired -> Badge.Expired
+        state == ViewOnceState.Opened -> Badge.Opened
         isOutgoing -> Badge.Sent
         canOpen && phase == ViewOnceOpenPhase.Opening -> Badge.Opening
         canOpen && phase == ViewOnceOpenPhase.Failed -> Badge.Failed
-        else -> Badge.Ready
+        canOpen -> Badge.Ready
+        else -> Badge.Unavailable
     }
-    val mutedColor = if (isOutgoing) contentColor.copy(alpha = 0.78f) else colors.onSurfaceVariant
+    // On a sent bubble only the glyph dims; text stays at full contentColor so it keeps its contrast.
+    val mutedColor = if (isOutgoing) contentColor else colors.onSurfaceVariant
     val kindLabel = descriptor?.let {
         stringResource(if (it.kind == ViewOnceDescriptor.KIND_VIDEO) MR.string.chat_view_once_video else MR.string.chat_view_once_photo)
     }
@@ -133,15 +137,13 @@ fun ViewOnceBubble(
             subtitle = when (badge) {
                 Badge.Opening -> stringResource(MR.string.chat_view_once_opening)
                 Badge.Failed -> stringResource(MR.string.chat_view_once_failed)
-                else -> when {
-                    openOnPhone && !isOutgoing -> stringResource(MR.string.chat_view_once_open_on_phone)
-                    canOpen -> stringResource(MR.string.chat_view_once_tap_to_view)
-                    else -> stringResource(MR.string.chat_view_once_sent)
-                }
+                Badge.Ready -> stringResource(MR.string.chat_view_once_tap_to_view)
+                else -> if (openOnPhone && !isOutgoing) stringResource(MR.string.chat_view_once_open_on_phone)
+                else stringResource(MR.string.chat_view_once_sent)
             }
-            subtitleColor = when {
-                badge == Badge.Failed -> colors.error
-                canOpen && badge == Badge.Ready -> colors.primary
+            subtitleColor = when (badge) {
+                Badge.Failed -> colors.error
+                Badge.Ready -> colors.primary
                 else -> mutedColor
             }
         }
@@ -186,12 +188,22 @@ fun ViewOnceBubble(
         }
         FooterTrailingOrBelow(footer = footer) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ViewOnceBadge(
-                    badge = badge,
-                    pressMorph = pressMorph,
-                    contentColor = contentColor,
-                    containerColor = containerColor,
-                )
+                AnimatedContent(
+                    targetState = badge,
+                    transitionSpec = {
+                        (scaleIn(motion.defaultSpatialSpec(), initialScale = 0.6f) + fadeIn(motion.defaultEffectsSpec()))
+                            .togetherWith(scaleOut(motion.fastSpatialSpec(), targetScale = 0.6f) + fadeOut(motion.fastEffectsSpec()))
+                    },
+                    contentAlignment = Alignment.Center,
+                ) { target ->
+                    ViewOnceBadge(
+                        badge = target,
+                        isOutgoing = isOutgoing,
+                        pressMorph = pressMorph,
+                        contentColor = contentColor,
+                        containerColor = containerColor,
+                    )
+                }
                 Column(
                     modifier = Modifier.padding(start = 12.dp).weight(1f, fill = false),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -211,30 +223,22 @@ fun ViewOnceBubble(
                             targetState = subtitle to subtitleColor,
                             transitionSpec = { fadeIn(motion.fastEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
                         ) { (text, color) ->
-                            val inlineIcon = with(LocalDensity.current) { 16.sp.toDp() }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (openOnPhone && !isOutgoing && !consumed && descriptor != null) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.PhoneAndroid,
-                                        contentDescription = null,
-                                        tint = color,
-                                        modifier = Modifier.padding(end = 4.dp).size(inlineIcon),
-                                    )
+                            val textStyle = if (badge == Badge.Ready) MaterialTheme.typography.labelLarge
+                            else MaterialTheme.typography.bodyMedium
+                            val lineHeight = with(LocalDensity.current) { textStyle.lineHeight.toDp() }
+                            Row(verticalAlignment = Alignment.Top) {
+                                if (badge == Badge.Unavailable && openOnPhone) {
+                                    // Sized to one line so a wrapped label keeps the icon beside its first line.
+                                    Box(Modifier.padding(end = 4.dp).height(lineHeight), contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.PhoneAndroid,
+                                            contentDescription = null,
+                                            tint = color,
+                                            modifier = Modifier.size(lineHeight * 0.8f),
+                                        )
+                                    }
                                 }
-                                Text(
-                                    text = text,
-                                    style = if (canOpen && badge == Badge.Ready) MaterialTheme.typography.labelLarge.withContentDirection()
-                                    else MaterialTheme.typography.bodyMedium.withContentDirection(),
-                                    color = color,
-                                )
-                                if (canOpen && badge == Badge.Ready) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                        contentDescription = null,
-                                        tint = color,
-                                        modifier = Modifier.padding(start = 4.dp).size(inlineIcon),
-                                    )
-                                }
+                                Text(text = text, style = textStyle.withContentDirection(), color = color)
                             }
                         }
                     }
@@ -249,39 +253,44 @@ private fun TextStyle.withContentDirection() = copy(textDirection = TextDirectio
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ViewOnceBadge(badge: Badge, pressMorph: Float, contentColor: Color, containerColor: Color) {
+private fun ViewOnceBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, contentColor: Color, containerColor: Color) {
     val colors = MaterialTheme.colorScheme
     val morph = remember { Morph(MaterialShapes.Cookie9Sided, MaterialShapes.Circle) }
     val shape = MorphShape(morph, pressMorph)
     val badgeModifier = Modifier.size(BADGE_SIZE)
+    // Final states keep the cookie's silhouette but empty it, so they can't be mistaken for one still waiting.
+    val finalRing = contentColor.copy(alpha = 0.38f)
+    val finalGlyph = if (isOutgoing) contentColor.copy(alpha = 0.78f) else colors.onSurfaceVariant
     when (badge) {
-        Badge.Ready -> FilledBadge(badgeModifier, shape, colors.primary) {
-            DigitIcon(ViewOnceDigitIcon, colors.onPrimary)
+        Badge.Ready -> {
+            val invite = remember { Animatable(0.72f) }
+            val spring = MaterialTheme.motionScheme.slowSpatialSpec<Float>()
+            LaunchedEffect(Unit) { invite.animateTo(1f, spring) }
+            FilledBadge(badgeModifier.graphicsLayer { scaleX = invite.value; scaleY = invite.value; rotationZ = (1f - invite.value) * -120f }, shape, colors.primary) {
+                DigitIcon(ViewOnceDigitIcon, colors.onPrimary)
+            }
         }
         // Inverse of the bubble, so the sender's badge reads as solid rather than a faded copy of the recipient's.
         Badge.Sent -> FilledBadge(badgeModifier, shape, contentColor) {
             DigitIcon(ViewOnceDigitIcon, containerColor)
         }
-        Badge.Opening -> FilledBadge(badgeModifier, shape, colors.primaryContainer) {
-            LoadingIndicator(color = colors.onPrimaryContainer, modifier = Modifier.size(30.dp))
+        Badge.Unavailable -> RingBadge(badgeModifier, MaterialShapes.Cookie9Sided.toShape(), colors.outline) {
+            DigitIcon(ViewOnceDigitIcon, colors.onSurfaceVariant)
         }
-        Badge.Failed -> FilledBadge(badgeModifier, CircleShape, colors.errorContainer) {
-            Icon(Icons.Default.Refresh, contentDescription = null, tint = colors.onErrorContainer, modifier = Modifier.size(22.dp))
+        Badge.Opening -> Box(badgeModifier, contentAlignment = Alignment.Center) {
+            LoadingIndicator(color = colors.primary, modifier = Modifier.size(BADGE_SIZE))
         }
-        Badge.Consumed -> DashedBadge(badgeModifier, ringColor = contentColor.copy(alpha = 0.55f)) {
-            DigitIcon(ViewOnceDigitIcon, contentColor.copy(alpha = 0.7f))
+        Badge.Failed -> RingBadge(badgeModifier, CircleShape, colors.error) {
+            Icon(Icons.Default.Refresh, contentDescription = null, tint = colors.error, modifier = Modifier.size(22.dp))
         }
-        Badge.Unparseable -> {
-            val cookie = MaterialShapes.Cookie9Sided.toShape()
-            Box(
-                modifier = badgeModifier
-                    .clip(cookie)
-                    .background(colors.surfaceContainerHighest)
-                    .border(1.dp, colors.outline, cookie),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(ViewOnceIcon, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(22.dp))
-            }
+        Badge.Opened -> RingBadge(badgeModifier, MaterialShapes.Cookie9Sided.toShape(), finalRing) {
+            Icon(Icons.Default.Check, contentDescription = null, tint = finalGlyph, modifier = Modifier.size(22.dp))
+        }
+        Badge.Expired -> RingBadge(badgeModifier, MaterialShapes.Cookie9Sided.toShape(), finalRing) {
+            Icon(Icons.Outlined.TimerOff, contentDescription = null, tint = finalGlyph, modifier = Modifier.size(20.dp))
+        }
+        Badge.Unparseable -> RingBadge(badgeModifier, CircleShape, colors.outline) {
+            Icon(Icons.Outlined.Upgrade, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(22.dp))
         }
     }
 }
@@ -291,31 +300,9 @@ private fun FilledBadge(modifier: Modifier, shape: Shape, color: Color, content:
     Box(modifier.clip(shape).background(color), contentAlignment = Alignment.Center) { content() }
 }
 
-// Hollow and dashed: the same cookie, emptied, so "consumed" reads at a glance before the text does.
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun DashedBadge(modifier: Modifier, ringColor: Color, content: @Composable () -> Unit) {
-    val cookie = MaterialShapes.Cookie9Sided.toShape()
-    Box(modifier, contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
-            val stroke = 1.5.dp.toPx()
-            val dash = 4.dp.toPx()
-            val inset = stroke / 2f
-            val outline = cookie.createOutline(
-                size.copy(width = size.width - stroke, height = size.height - stroke),
-                layoutDirection,
-                this,
-            )
-            drawContext.transform.translate(inset, inset)
-            drawOutline(
-                outline = outline,
-                color = ringColor,
-                style = Stroke(width = stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash * 0.75f))),
-            )
-            drawContext.transform.translate(-inset, -inset)
-        }
-        content()
-    }
+private fun RingBadge(modifier: Modifier, shape: Shape, ringColor: Color, content: @Composable () -> Unit) {
+    Box(modifier.border(1.5.dp, ringColor, shape), contentAlignment = Alignment.Center) { content() }
 }
 
 @Composable

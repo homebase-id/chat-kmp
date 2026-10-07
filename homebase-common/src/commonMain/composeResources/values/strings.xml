@@ -1024,9 +1024,10 @@
     <string name="chat_view_once_unparseable">View-once media — please update the app.</string>
     <string name="chat_view_once_caption_disabled">No caption with view once</string>
     <string name="chat_view_once_caption_discarded">Your caption won't be sent. Turn off View once to keep it.</string>
+    <string name="chat_view_once_single_only">View once works with a single photo or video.</string>
     <string name="chat_view_once_tap_to_view">Tap to view</string>
     <string name="chat_view_once_opening">Opening…</string>
-    <string name="chat_view_once_failed">Couldn't load. Tap to retry</string>
+    <string name="chat_view_once_failed">Couldn't load · Retry</string>
     <string name="chat_view_once_opened">Opened</string>
     <string name="chat_view_once_expired">Expired</string>
     <string name="chat_view_once_open_on_phone">Open on your phone</string>
