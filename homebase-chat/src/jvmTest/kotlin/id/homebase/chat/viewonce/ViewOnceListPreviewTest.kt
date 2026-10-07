@@ -20,6 +20,10 @@ import id.homebase.chat.widget.InlineReplyPreview
 import id.homebase.chat.widget.messageContentLabel
 import id.homebase.core.avatars.ConversationAvatarModel
 import kotlinx.coroutines.test.runTest
+import id.homebase.resources.MR
+import id.homebase.resources.chat_view_once_photo
+import id.homebase.resources.chat_view_once_unparseable
+import id.homebase.resources.chat_view_once_video
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -29,6 +33,9 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+
+internal fun viewOnceWord(res: org.jetbrains.compose.resources.StringResource): String =
+    kotlinx.coroutines.runBlocking { org.jetbrains.compose.resources.getString(res) }
 
 @OptIn(ExperimentalTestApi::class)
 class ViewOnceListPreviewTest {
@@ -99,9 +106,9 @@ class ViewOnceListPreviewTest {
         val photo = labelOf(lastMessageOf(unopened("image", caption = "secret caption")))
         val video = labelOf(lastMessageOf(unopened("video", caption = "secret caption")))
 
-        assertEquals("Photo", photo?.text)
+        assertEquals(viewOnceWord(MR.string.chat_view_once_photo), photo?.text)
         assertEquals(ViewOnceIcon, photo?.icon)
-        assertEquals("Video", video?.text)
+        assertEquals(viewOnceWord(MR.string.chat_view_once_video), video?.text)
         assertEquals(ViewOnceIcon, video?.icon)
     }
 
@@ -111,8 +118,8 @@ class ViewOnceListPreviewTest {
         val video = lastMessageOf(spentLocally("video"))
 
         assertTrue(photo.lastMessageIsDeleted)
-        assertEquals("Photo", labelOf(photo)?.text)
-        assertEquals("Video", labelOf(video)?.text)
+        assertEquals(viewOnceWord(MR.string.chat_view_once_photo), labelOf(photo)?.text)
+        assertEquals(viewOnceWord(MR.string.chat_view_once_video), labelOf(video)?.text)
         assertEquals(ViewOnceOpenedIcon, labelOf(photo)?.icon)
     }
 
@@ -123,7 +130,7 @@ class ViewOnceListPreviewTest {
         )
         val label = labelOf(lastMessageOf(tombstone))
 
-        assertEquals(MessageContent.UNPARSEABLE_VIEW_ONCE_LABEL, label?.text)
+        assertEquals(viewOnceWord(MR.string.chat_view_once_unparseable), label?.text)
         assertEquals(ViewOnceOpenedIcon, label?.icon)
     }
 
@@ -178,14 +185,14 @@ class ViewOnceListPreviewTest {
         val first = assertNotNull(
             applyIncomingMessageBump(listOf(convo), convo.id, sent, Instant.fromEpochMilliseconds(5), me),
         )
-        assertEquals("Photo", labelOf(first.single())?.text)
+        assertEquals(viewOnceWord(MR.string.chat_view_once_photo), labelOf(first.single())?.text)
 
         val spent = spentLocally("image")
         val afterOpen = assertNotNull(
             applyIncomingMessageBump(first, convo.id, spent, Instant.fromEpochMilliseconds(5), me),
         ).single()
         assertTrue(afterOpen.lastMessageIsDeleted)
-        assertEquals("Photo", labelOf(afterOpen)?.text)
+        assertEquals(viewOnceWord(MR.string.chat_view_once_photo), labelOf(afterOpen)?.text)
         assertEquals(ViewOnceOpenedIcon, labelOf(afterOpen)?.icon)
 
         val tombstone = assertNotNull(
@@ -194,7 +201,7 @@ class ViewOnceListPreviewTest {
         val afterSync = assertNotNull(
             applyIncomingMessageBump(listOf(afterOpen), convo.id, tombstone, Instant.fromEpochMilliseconds(5), me),
         ).single()
-        assertEquals("Media", labelOf(afterSync)?.text, "the server tombstone has no content, so no kind word")
+        assertEquals(viewOnceWord(MR.string.chat_view_once_unparseable), labelOf(afterSync)?.text, "the server tombstone has no content, so no kind word")
         assertEquals(ViewOnceOpenedIcon, labelOf(afterSync)?.icon)
     }
 }

@@ -18,6 +18,10 @@ import id.homebase.api.common.OdinId
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import id.homebase.resources.MR
+import id.homebase.resources.chat_view_once_photo
+import id.homebase.resources.chat_view_once_unparseable
+import id.homebase.resources.chat_view_once_video
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -113,7 +117,7 @@ class ViewOnceTombstoneKindTest {
             assertEquals(ViewOnceDescriptor.KIND_IMAGE, kept?.kind)
             assertNull(kept?.caption, "the caption never outlives the viewing")
             assertNull(model.payloads)
-            assertEquals("Photo", labelOf(model)?.text)
+            assertEquals(viewOnceWord(MR.string.chat_view_once_photo), labelOf(model)?.text)
             assertEquals(ViewOnceOpenedIcon, labelOf(model)?.icon)
         }
     }
@@ -124,7 +128,7 @@ class ViewOnceTombstoneKindTest {
             val model = openThenServerTombstone(fixture, "video", this)
 
             assertEquals(ViewOnceDescriptor.KIND_VIDEO, (model.messageContent as MessageContent.ViewOnce).descriptor?.kind)
-            assertEquals("Video", labelOf(model)?.text)
+            assertEquals(viewOnceWord(MR.string.chat_view_once_video), labelOf(model)?.text)
         }
     }
 
@@ -163,7 +167,7 @@ class ViewOnceTombstoneKindTest {
             val kept = (model.messageContent as MessageContent.ViewOnce).descriptor
             assertEquals(ViewOnceDescriptor.KIND_VIDEO, kept?.kind)
             assertNull(kept?.caption)
-            assertEquals("Video", labelOf(model)?.text)
+            assertEquals(viewOnceWord(MR.string.chat_view_once_video), labelOf(model)?.text)
         }
     }
 
