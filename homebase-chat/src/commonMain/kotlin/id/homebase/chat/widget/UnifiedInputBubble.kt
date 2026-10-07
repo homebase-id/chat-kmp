@@ -8,7 +8,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
@@ -31,6 +33,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TooltipAnchorPosition
 import androidx.compose.material3.TooltipBox
+import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
@@ -84,20 +87,22 @@ fun UnifiedInputBubble(
             exit = signalShrinkHorizontally(),
         ) {
             Row {
-                IconButton(
-                    onClick = onCancelEdit,
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.surface,
-                    ),
-                    modifier = Modifier
-                        .size(40.dp)
-                        .testTag("cancel_fab"),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = stringResource(MR.string.cancel),
-                    )
+                SingleLineSlot {
+                    IconButton(
+                        onClick = onCancelEdit,
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.surface,
+                        ),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("cancel_fab"),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(MR.string.cancel),
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.width(8.dp))
             }
@@ -197,46 +202,55 @@ fun UnifiedInputBubble(
                     BubbleFabAction.Send -> "send_fab"
                     BubbleFabAction.Attach -> "attachment_fab"
                 }
-                SendChordTooltip(
-                    enabled = fabAction == BubbleFabAction.Send,
-                    enterSendsMessage = enterSendsMessage,
-                ) {
-                    AttachmentPopoverButton(
-                        actions = attachmentActions.takeIf { fabAction == BubbleFabAction.Attach },
-                        alignToEnd = true,
-                        onClick = fabClick,
-                        onPopoverDismissed = onAttachmentPopoverDismissed,
-                        enabled = fabEnabled,
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                            contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                        ),
-                        modifier = Modifier
-                            .size(40.dp)
-                            .testTag(fabTestTag),
+                SingleLineSlot {
+                    SendChordTooltip(
+                        enabled = fabAction == BubbleFabAction.Send,
+                        enterSendsMessage = enterSendsMessage,
                     ) {
-                        AnimatedContent(
-                            targetState = fabAction,
-                            transitionSpec = { fabToggleIn togetherWith fabToggleOut },
-                            label = "fab_icon_toggle",
-                        ) { action ->
-                            Icon(
-                                imageVector = when (action) {
-                                    BubbleFabAction.Confirm -> Icons.Filled.Check
-                                    BubbleFabAction.Send -> Icons.AutoMirrored.Filled.Send
-                                    BubbleFabAction.Attach -> Icons.Default.Add
-                                },
-                                contentDescription = when (action) {
-                                    BubbleFabAction.Attach -> stringResource(MR.string.chat_message_attachment_options)
-                                    else -> stringResource(MR.string.chat_send_message_button)
-                                },
-                            )
+                        AttachmentPopoverButton(
+                            actions = attachmentActions.takeIf { fabAction == BubbleFabAction.Attach },
+                            alignToEnd = true,
+                            onClick = fabClick,
+                            onPopoverDismissed = onAttachmentPopoverDismissed,
+                            enabled = fabEnabled,
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                                contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                            ),
+                            modifier = Modifier
+                                .size(40.dp)
+                                .testTag(fabTestTag),
+                        ) {
+                            AnimatedContent(
+                                targetState = fabAction,
+                                transitionSpec = { fabToggleIn togetherWith fabToggleOut },
+                                label = "fab_icon_toggle",
+                            ) { action ->
+                                Icon(
+                                    imageVector = when (action) {
+                                        BubbleFabAction.Confirm -> Icons.Filled.Check
+                                        BubbleFabAction.Send -> Icons.AutoMirrored.Filled.Send
+                                        BubbleFabAction.Attach -> Icons.Default.Add
+                                    },
+                                    contentDescription = when (action) {
+                                        BubbleFabAction.Attach -> stringResource(MR.string.chat_message_attachment_options)
+                                        else -> stringResource(MR.string.chat_send_message_button)
+                                    },
+                                )
+                            }
                         }
                     }
                 }
             }
         }
     }
+}
+
+// The row is bottom-aligned so the buttons stay at the last line as the field grows; this band centres them on a single line.
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SingleLineSlot(content: @Composable () -> Unit) {
+    Box(Modifier.height(RichTextEditorDefaults.MinHeight), contentAlignment = Alignment.Center) { content() }
 }
 
 /** Always wraps, so toggling it never remounts the button it decorates. */
