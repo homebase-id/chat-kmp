@@ -406,7 +406,7 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun aVideoViewerMenuHoldsOnlyMuteAndANonVideoHasNoMenu() = runSkikoComposeUiTest {
+    fun aVideoViewerMenuHoldsOnlyMute() = runSkikoComposeUiTest {
         var muted = false
         setContent {
             MaterialTheme {
@@ -416,12 +416,33 @@ class ViewOnceViewerTest {
                 ) { fill -> Box(fill.testTag("player")) }
             }
         }
+        waitForIdle()
+        val clickablesBefore = onAllNodes(hasClickAction()).fetchSemanticsNodes().size
         onNodeWithTag(VIEW_ONCE_VIEWER_MORE_TAG).performClick()
         waitForIdle()
         assertTrue(present(VIEW_ONCE_VIEWER_MUTE_TAG))
+        assertEquals(
+            1, onAllNodes(hasClickAction()).fetchSemanticsNodes().size - clickablesBefore,
+            "opening the menu adds exactly one item, Mute",
+        )
+        assertEquals(1, onAllNodes(hasTestTag(VIEW_ONCE_VIEWER_DELETE_TAG)).fetchSemanticsNodes().size, "Delete stays the single bar button, not a menu item")
         onNodeWithTag(VIEW_ONCE_VIEWER_MUTE_TAG).performClick()
         waitForIdle()
         assertTrue(muted)
+    }
+
+    @Test
+    fun aNonVideoFrameHasNoMoreButton() = runSkikoComposeUiTest {
+        setContent {
+            MaterialTheme {
+                ViewOnceViewerFrame(
+                    isVideo = false, mediaShown = true, failed = false, onClose = {}, onMutedChange = null,
+                ) { fill -> Box(fill.testTag("player")) }
+            }
+        }
+        waitForIdle()
+        assertTrue(present("player"))
+        assertTrue(!present(VIEW_ONCE_VIEWER_MORE_TAG))
     }
 
     @Test

@@ -149,7 +149,7 @@ class ViewOnceActionsTest {
 
             fixture.dbm.outbox.deleteBy(fixture.chatDriveId, reactionRowKey(s.messageId))
             val deleteRow = fixture.drainOutbox().deletes().single()
-            assertEquals(reactionRowKey(s.messageId), deleteRow.dependencyUniqueId, "the delete waits for _vo, which waited for the emoji")
+            assertEquals(reactionRowKey(s.messageId), deleteRow.dependencyUniqueId, "the re-enqueued delete waits for the _vo row")
         }
     }
 

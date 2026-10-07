@@ -86,7 +86,7 @@ fun messageContentLabel(
     // Null reads the opened variant off [isDeleted]: a received view-once item is deleted once it is spent.
     viewOnceOpened: Boolean? = null,
 ): ContentLabel? {
-    // Before the deleted check: a spent view-once item keeps its Photo/Video label rather than reading as deleted.
+    // Before the deleted check: a spent view-once item keeps its view-once label ("Media" once the server tombstone lands) instead of reading as deleted.
     if (messageContent is MessageContent.ViewOnce) {
         return typedMessageContentLabel(messageContent, viewOnceOpened ?: isDeleted)
     }
