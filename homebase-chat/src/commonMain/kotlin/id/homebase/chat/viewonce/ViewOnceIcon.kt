@@ -3,31 +3,66 @@ package id.homebase.chat.viewonce
 import androidx.compose.material.icons.materialIcon
 import androidx.compose.material.icons.materialPath
 import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.ImageVector
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+
+private fun PathBuilder.digitOne() {
+    moveTo(12.6f, 7f)
+    lineTo(14f, 7f)
+    lineTo(14f, 17f)
+    lineTo(12f, 17f)
+    lineTo(12f, 9.6f)
+    lineTo(10f, 10.8f)
+    lineTo(10f, 8.7f)
+    close()
+}
+
+private fun PathBuilder.dashedRing(outer: Float, inner: Float, dashes: Int, gapDegrees: Float) {
+    val step = 360f / dashes
+    fun point(radius: Float, degrees: Float): Pair<Float, Float> {
+        val radians = (degrees - 90f) * PI.toFloat() / 180f
+        return 12f + radius * cos(radians) to 12f + radius * sin(radians)
+    }
+    repeat(dashes) { i ->
+        val start = i * step + gapDegrees / 2f
+        val end = (i + 1) * step - gapDegrees / 2f
+        val (osx, osy) = point(outer, start)
+        val (oex, oey) = point(outer, end)
+        val (iex, iey) = point(inner, end)
+        val (isx, isy) = point(inner, start)
+        moveTo(osx, osy)
+        arcTo(outer, outer, 0f, false, true, oex, oey)
+        lineTo(iex, iey)
+        arcTo(inner, inner, 0f, false, false, isx, isy)
+        close()
+    }
+}
 
 val ViewOnceIcon: ImageVector by lazy {
     materialIcon(name = "ViewOnce") {
-        materialPath(pathFillType = PathFillType.EvenOdd) {
-            moveTo(12f, 2f)
-            curveTo(6.48f, 2f, 2f, 6.48f, 2f, 12f)
-            reflectiveCurveTo(6.48f, 22f, 12f, 22f)
-            reflectiveCurveTo(22f, 17.52f, 22f, 12f)
-            reflectiveCurveTo(17.52f, 2f, 12f, 2f)
-            close()
-            moveTo(12f, 20f)
-            curveTo(7.59f, 20f, 4f, 16.41f, 4f, 12f)
-            reflectiveCurveTo(7.59f, 4f, 12f, 4f)
-            reflectiveCurveTo(20f, 7.59f, 20f, 12f)
-            reflectiveCurveTo(16.41f, 20f, 12f, 20f)
-            close()
-            moveTo(10.5f, 9.8f)
-            lineTo(12.5f, 8.3f)
-            lineTo(13.5f, 8.3f)
-            lineTo(13.5f, 16f)
-            lineTo(12f, 16f)
-            lineTo(12f, 10.2f)
-            lineTo(10.5f, 11.3f)
-            close()
+        materialPath {
+            dashedRing(outer = 10.5f, inner = 8.5f, dashes = 10, gapDegrees = 12f)
+            digitOne()
         }
+    }
+}
+
+val ViewOnceFilledIcon: ImageVector by lazy {
+    materialIcon(name = "ViewOnceFilled") {
+        materialPath(pathFillType = PathFillType.EvenOdd) {
+            moveTo(12f, 1.5f)
+            arcTo(10.5f, 10.5f, 0f, true, true, 11.99f, 1.5f)
+            close()
+            digitOne()
+        }
+    }
+}
+
+val ViewOnceDigitIcon: ImageVector by lazy {
+    materialIcon(name = "ViewOnceDigit") {
+        materialPath { digitOne() }
     }
 }

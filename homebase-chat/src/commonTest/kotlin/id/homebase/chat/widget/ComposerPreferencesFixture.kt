@@ -26,7 +26,7 @@ internal fun WithComposerPreferences(
     KoinIsolatedContext(app) { content() }
 }
 
-private class InMemorySettings : Settings {
+internal class InMemorySettings : Settings {
     private val backing: MutableMap<String, Any> = mutableMapOf()
     override val keys: Set<String> get() = backing.keys.toSet()
     override val size: Int get() = backing.size

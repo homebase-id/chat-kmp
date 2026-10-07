@@ -1306,9 +1306,12 @@ fun MessageTextFieldForAttachment(
                             clipboardImage = clipboardImage,
                         ),
                     enabled = captionDisabledText == null,
-                    supportingText = captionDisabledText?.let { text -> { Text(text) } },
+                    // Empty, the placeholder says it; a caption typed before the toggle needs saying it is dropped.
+                    supportingText = captionDisabledText
+                        ?.takeIf { state.annotatedString.text.isNotBlank() }
+                        ?.let { text -> { Text(text) } },
                     placeholder = {
-                        Text(stringResource(MR.string.chat_new_message_placeholder))
+                        Text(captionDisabledText ?: stringResource(MR.string.chat_new_message_placeholder))
                     },
                     leadingIcon = {
                         IconButton(
@@ -1321,6 +1324,7 @@ fun MessageTextFieldForAttachment(
                                     setEmojiPicker(true)
                                 }
                             },
+                            enabled = captionDisabledText == null,
                             modifier = Modifier.testTag(ATTACHMENT_EMOJI_BUTTON_TAG),
                         ) {
                             Icon(

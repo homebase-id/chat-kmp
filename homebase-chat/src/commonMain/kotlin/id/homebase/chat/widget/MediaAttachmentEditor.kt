@@ -2,6 +2,7 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.EnterTransition
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -73,6 +75,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.IntSize
@@ -105,6 +108,7 @@ import id.homebase.resources.cd_video_thumbnail
 import id.homebase.resources.chat_message_add_gallery_image
 import id.homebase.resources.chat_view_once_toggle
 import id.homebase.resources.chat_view_once_toggle_supporting
+import id.homebase.chat.viewonce.ViewOnceFilledIcon
 import id.homebase.chat.viewonce.ViewOnceIcon
 import id.homebase.resources.chat_message_remove_gallery_image
 import id.homebase.resources.crop
@@ -692,13 +696,15 @@ fun MediaAttachmentEditor(
         // without tools fades the toolbar instead of growing the pager.
         val canShowToolbar = onCropImage != null || onDrawImage != null || onSaveFile != null
         Column {
-        Row(
+        // Flows so the chips wrap under the toolbar at large font scales instead of clipping.
+        FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp)
                 .heightIn(min = if (canShowToolbar) FloatingToolbarDefaults.ContainerSize else 0.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
         ) {
             AnimatedContent(
                 targetState = currentAttachment?.takeIf { toolset.showToolbar },
@@ -729,9 +735,10 @@ fun MediaAttachmentEditor(
                     }
                 }
             }
-            if (toolset.showQuality || toolset.showViewOnce) {
-                Spacer(modifier = Modifier.weight(1f))
-            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
             ViewOnceToolChip(toolset = toolset, selected = viewOnce, onClick = { onToggleViewOnce!!() })
             if (toolset.showQuality) {
                 val isHigh = mediaQuality == MediaQuality.HIGH
@@ -753,14 +760,14 @@ fun MediaAttachmentEditor(
                     },
                 )
             }
+            }
         }
-        if (viewOnce && toolset.showViewOnce) {
-            Text(
-                text = stringResource(MR.string.chat_view_once_toggle_supporting),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
+        AnimatedVisibility(
+            visible = viewOnce && toolset.showViewOnce,
+            enter = secondaryChromeEnter(),
+            exit = secondaryChromeExit(),
+        ) {
+            ViewOnceNotice()
         }
         }
         } // end AnimatedVisibility (tool row)
@@ -787,13 +794,42 @@ internal fun ViewOnceToolChip(toolset: EditorToolset, selected: Boolean, onClick
         onClick = onClick,
         label = { Text(stringResource(MR.string.chat_view_once_toggle)) },
         leadingIcon = {
-            Icon(
-                imageVector = ViewOnceIcon,
-                contentDescription = null,
-                modifier = Modifier.size(FilterChipDefaults.IconSize),
-            )
+            Crossfade(selected, animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) { on ->
+                Icon(
+                    imageVector = if (on) ViewOnceFilledIcon else ViewOnceIcon,
+                    contentDescription = null,
+                    tint = if (on) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                    modifier = Modifier.size(FilterChipDefaults.IconSize),
+                )
+            }
         },
     )
+}
+
+@Composable
+private fun ViewOnceNotice() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 4.dp)
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.secondaryContainer)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = ViewOnceIcon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = stringResource(MR.string.chat_view_once_toggle_supporting),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.padding(start = 12.dp),
+        )
+    }
 }
 
 @Composable

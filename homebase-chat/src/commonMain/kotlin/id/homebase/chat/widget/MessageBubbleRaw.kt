@@ -300,10 +300,32 @@ fun MessageBubbleRaw(
             return
         }
         is MessageContent.ViewOnce -> {
+            val containerColor =
+                if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+                else MaterialTheme.colorScheme.surfaceContainerHigh
+            val contentColor =
+                if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+                else MaterialTheme.colorScheme.onSurface
             ViewOnceBubble(
                 descriptor = content.descriptor,
                 isOutgoing = sentByYou,
+                shape = remember(sentByYou, clusterPosition) { messageBubbleShape(sentByYou, clusterPosition) },
+                containerColor = containerColor,
+                contentColor = contentColor,
+                authorName = authorName,
+                authorColor = authorColor,
                 modifier = modifier,
+                footer = {
+                    MessageTimestampFooter(
+                        visible = showMessageFooter,
+                        infoText = formatMessageTimestamp(message.userDate),
+                        contentColor = contentColor,
+                        showDeliveryStatus = sentByYou && !message.isDeleted,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        pendingSince = message.userDate,
+                    )
+                },
             )
             return
         }
@@ -512,26 +534,9 @@ fun MessageBubbleRaw(
     val blockTextTopPadding =
         if (authorAbutsText && message.messageAppData.replyPreview == null) 0.dp else 12.dp
 
-    val big = Dimens.Message.cornerRadius
-    val small = Dimens.Message.cornerCollapseRadius
     val shape = remember(sentByYou, clusterPosition, mediaOnly) {
-        if (mediaOnly) {
-            RoundedCornerShape(big)
-        } else if (sentByYou) {
-            when (clusterPosition) {
-                MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, small, big)
-                MessageClusterPosition.START -> RoundedCornerShape(big, big, small, big)
-                MessageClusterPosition.MIDDLE -> RoundedCornerShape(big, small, small, big)
-                MessageClusterPosition.END -> RoundedCornerShape(big, small, big, big)
-            }
-        } else {
-            when (clusterPosition) {
-                MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, big, small)
-                MessageClusterPosition.START -> RoundedCornerShape(big, big, big, small)
-                MessageClusterPosition.MIDDLE -> RoundedCornerShape(small, big, big, small)
-                MessageClusterPosition.END -> RoundedCornerShape(small, big, big, big)
-            }
-        }
+        if (mediaOnly) RoundedCornerShape(Dimens.Message.cornerRadius)
+        else messageBubbleShape(sentByYou, clusterPosition)
     }
 
     Surface(
@@ -1325,6 +1330,26 @@ internal fun buildSearchHighlightedText(
             val endIdx = (idx + lowerQuery.length).coerceAtMost(plain.length)
             addStyle(SpanStyle(background = highlightColor), idx, endIdx)
             startIndex = endIdx
+        }
+    }
+}
+
+internal fun messageBubbleShape(sentByYou: Boolean, clusterPosition: MessageClusterPosition): RoundedCornerShape {
+    val big = Dimens.Message.cornerRadius
+    val small = Dimens.Message.cornerCollapseRadius
+    return if (sentByYou) {
+        when (clusterPosition) {
+            MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, small, big)
+            MessageClusterPosition.START -> RoundedCornerShape(big, big, small, big)
+            MessageClusterPosition.MIDDLE -> RoundedCornerShape(big, small, small, big)
+            MessageClusterPosition.END -> RoundedCornerShape(big, small, big, big)
+        }
+    } else {
+        when (clusterPosition) {
+            MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, big, small)
+            MessageClusterPosition.START -> RoundedCornerShape(big, big, big, small)
+            MessageClusterPosition.MIDDLE -> RoundedCornerShape(small, big, big, small)
+            MessageClusterPosition.END -> RoundedCornerShape(small, big, big, big)
         }
     }
 }

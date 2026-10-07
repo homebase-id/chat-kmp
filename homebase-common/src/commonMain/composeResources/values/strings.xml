@@ -1022,7 +1022,7 @@
     <string name="chat_view_once_video">Video</string>
     <string name="chat_view_once_sent">View once</string>
     <string name="chat_view_once_unparseable">View-once media — please update the app.</string>
-    <string name="chat_view_once_caption_disabled">Captions are off for view-once media</string>
+    <string name="chat_view_once_caption_disabled">No caption with view once</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>
