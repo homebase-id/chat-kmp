@@ -29,6 +29,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.navigationevent.NavigationEventInput
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -186,10 +187,13 @@ class ViewOnceViewerTest {
     @Test
     fun deleteIsNotOfferedWhileTheFullViewerIsStillLoading_andAppearsOnceShown() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
+        val gate = CompletableDeferred<Unit>()
+        server.gate = gate
         show(server)
-        if (!present(VIEW_ONCE_VIEWER_IMAGE_TAG)) {
-            assertTrue(!present(VIEW_ONCE_VIEWER_DELETE_TAG))
-        }
+        waitForIdle()
+        assertTrue(!present(VIEW_ONCE_VIEWER_IMAGE_TAG))
+        assertTrue(!present(VIEW_ONCE_VIEWER_DELETE_TAG))
+        gate.complete(Unit)
         awaitShown()
         waitForIdle()
         assertTrue(present(VIEW_ONCE_VIEWER_DELETE_TAG))

@@ -143,7 +143,7 @@ Two presets in the `MessageContent` companion:
 
 - **`Standard`** — all seven true. Used by plain text + media messages (the
   `messageContent == null` fall-through in `MessageItem.kt:49`).
-- **`StructuredOneShot`** — all seven false. The default for typed kinds.
+- **`StructuredOneShot`** — turns off six flags and leaves `allowCopy` at its default of true, so Copy still shows. The default for typed kinds.
 
 ### How to override
 

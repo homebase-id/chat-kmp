@@ -21,8 +21,8 @@ sealed interface VideoContent {
     data class Mp4File(val metadata: VideoMetadata, val filePath: String) : VideoContent
 
     /**
-     * Web only (`preferBytes = true`): decrypted MP4 bytes for a Base64
-     * object URL — the wasm FS is RAM-backed, so a file temp buys nothing there. The
+     * Web only (`preferBytes = true`): decrypted MP4 bytes for a Base64 object
+     * URL — the wasm FS is RAM-backed, so a file temp buys nothing there. The
      * render-limit guard bounds it: an oversized MP4 throws
      * `PayloadTooLargeException` before the body is buffered.
      */
