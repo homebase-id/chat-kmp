@@ -35,7 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -87,12 +86,21 @@ fun ViewOnceViewer(
     var failed by remember(data.messageId) { mutableStateOf(false) }
     var videoReady by remember(data.messageId) { mutableStateOf(false) }
     var attempt by remember(data.messageId) { mutableIntStateOf(0) }
+    val hold = remember(data.messageId) { CloseOnce() }
+    val latestOnDismiss by rememberUpdatedState(onDismiss)
 
     LaunchedEffect(data.messageId, attempt) {
         failed = false
         try {
+            if (hold.claim()) {
+                try {
+                    loader.begin(data.fileId)
+                } catch (e: Throwable) {
+                    hold.release()
+                    throw e
+                }
+            }
             if (isVideo) {
-                loader.begin(data.fileId)
                 videoReady = true
             } else {
                 val bytes = loader.loadBytes(chatTargetDrive.alias, data.fileId, data.payload.key, data.keyHeader)
@@ -101,6 +109,8 @@ fun ViewOnceViewer(
             }
         } catch (e: CancellationException) {
             throw e
+        } catch (e: ViewOnceAlreadyConsumedException) {
+            latestOnDismiss()
         } catch (e: Exception) {
             Logger.w("ViewOnceViewer", e) { "load failed msg=${data.messageId}" }
             failed = true
@@ -111,14 +121,17 @@ fun ViewOnceViewer(
     val latestOnClosed by rememberUpdatedState(onViewerClosed)
     val closeGuard = remember(data.messageId) { CloseOnce() }
     fun consumeOnce() {
-        if (closeGuard.claim() && shown) latestOnClosed()
+        if (closeGuard.claim() && shown) {
+            loader.markConsumed(data.fileId)
+            latestOnClosed()
+        }
     }
 
     DisposableEffect(data.messageId) {
         onDispose {
             consumeOnce()
-            // The bitmap is still in memory here; the bytes are not on disk to begin with.
-            loader.evictAsync(chatTargetDrive.alias, data.fileId, data.payload.key)
+            // Only a viewer that took the hold may release it, or it would unmark a live sibling's file.
+            if (hold.isClaimed) loader.evictAsync(chatTargetDrive.alias, data.fileId, data.payload.key)
         }
     }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
@@ -140,7 +153,7 @@ fun ViewOnceViewer(
             ) {
                 Text(
                     text = stringResource(MR.string.chat_view_once_failed),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(32.dp),
@@ -160,16 +173,19 @@ fun ViewOnceViewer(
             )
             image != null -> ZoomableBitmap(image!!)
             else -> CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center),
-                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.6f), CircleShape)
+                    .padding(12.dp),
+                color = MaterialTheme.colorScheme.inverseOnSurface,
             )
         }
 
         IconButton(
             onClick = ::close,
             colors = IconButtonDefaults.iconButtonColors(
-                containerColor = Color.Black.copy(alpha = 0.45f),
-                contentColor = Color.White,
+                containerColor = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.6f),
+                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
             ),
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -192,11 +208,11 @@ fun ViewOnceViewer(
                 text = stringResource(
                     if (isVideo) MR.string.chat_view_once_viewer_hint_video else MR.string.chat_view_once_viewer_hint_photo,
                 ),
-                color = Color.White.copy(alpha = 0.85f),
+                color = MaterialTheme.colorScheme.inverseOnSurface,
                 style = MaterialTheme.typography.labelLarge,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
-                    .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                    .background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.6f), CircleShape)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
@@ -231,9 +247,15 @@ private fun ZoomableBitmap(bitmap: ImageBitmap) {
 private class CloseOnce {
     private var done = false
 
+    val isClaimed: Boolean get() = done
+
     fun claim(): Boolean {
         if (done) return false
         done = true
         return true
+    }
+
+    fun release() {
+        done = false
     }
 }

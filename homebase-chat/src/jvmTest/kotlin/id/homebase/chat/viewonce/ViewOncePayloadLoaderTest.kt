@@ -5,6 +5,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class ViewOncePayloadLoaderTest {
@@ -22,7 +23,26 @@ class ViewOncePayloadLoaderTest {
         assertEquals(2, server.requests, "no read may be served from a cache")
         assertTrue(server.requestedPaths.all { it.endsWith("/payload/$VIEW_ONCE_PAYLOAD_KEY") })
         assertEquals(0L, server.cachedBytes())
-        assertTrue(server.cached.isEphemeral(server.fileId), "video playback of the same file must also bypass the caches")
+    }
+
+    @Test
+    fun beginTakesAHoldThatEvictReleases() = runTest {
+        val server = ViewOnceFakeServer().start()
+        server.loader.begin(server.fileId)
+        assertTrue(server.cached.isEphemeral(server.fileId), "video playback of the file must bypass the caches")
+    }
+
+    @Test
+    fun aConsumedFileCanNeitherBeginNorLoadAgain() = runTest {
+        val server = ViewOnceFakeServer().start()
+        server.loader.markConsumed(server.fileId)
+
+        assertFailsWith<ViewOnceAlreadyConsumedException> { server.loader.begin(server.fileId) }
+        assertFailsWith<ViewOnceAlreadyConsumedException> {
+            server.loader.loadBytes(chatTargetDrive.alias, server.fileId, VIEW_ONCE_PAYLOAD_KEY, server.keyHeader)
+        }
+        assertEquals(0, server.requests)
+        assertTrue(!server.cached.isEphemeral(server.fileId))
     }
 
     @Test

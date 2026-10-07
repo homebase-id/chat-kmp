@@ -3,6 +3,8 @@ package id.homebase.chat.viewonce
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import id.homebase.chat.conversationlist.FullScreenOverlay
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -31,6 +33,8 @@ class ViewOnceViewerTest {
     private var closed = 0
     private var dismissed = 0
     private var present by mutableStateOf(true)
+    private var generation by mutableStateOf(0)
+    private var secondPresent by mutableStateOf(false)
 
     private fun SkikoComposeUiTest.show(server: ViewOnceFakeServer) {
         setContent {
@@ -48,6 +52,23 @@ class ViewOnceViewerTest {
                         onDismiss = { dismissed++ },
                         loader = server.loader,
                     )
+                }
+            }
+        }
+    }
+
+    private fun SkikoComposeUiTest.showRemountable(server: ViewOnceFakeServer, data: FullScreenOverlay.ViewOnceViewer) {
+        setContent {
+            MaterialTheme {
+                if (present) {
+                    key(generation) {
+                        ViewOnceViewer(
+                            data = data,
+                            onViewerClosed = { closed++ },
+                            onDismiss = { dismissed++ },
+                            loader = server.loader,
+                        )
+                    }
                 }
             }
         }
@@ -126,5 +147,53 @@ class ViewOnceViewerTest {
 
         assertEquals(0, closed, "closing a viewer that never showed anything must not consume the item")
         assertEquals(1, dismissed)
+    }
+
+    @Test
+    fun remountingTheViewerOnTheSameOverlayDoesNotShowTheItemASecondTime() = runSkikoComposeUiTest {
+        val server = runBlocking { ViewOnceFakeServer().start() }
+        val overlay = server.viewer()
+        showRemountable(server, overlay)
+        awaitShown()
+        assertEquals(1, server.requests)
+
+        generation++
+        waitForIdle()
+        waitUntil(timeoutMillis = 5_000) { dismissed == 1 }
+
+        assertEquals(1, server.requests, "the remounted viewer must not fetch the payload again")
+        assertEquals(1, closed, "the first viewer consumed the item once")
+        assertEquals(
+            0, onAllNodes(hasTestTag(VIEW_ONCE_VIEWER_IMAGE_TAG)).fetchSemanticsNodes().size,
+            "the second viewer shows nothing",
+        )
+        waitUntil(timeoutMillis = 5_000) { !server.cached.isEphemeral(server.fileId) }
+    }
+
+    @Test
+    fun aDisposedViewerCannotUnmarkAFileALiveViewerStillHolds() = runSkikoComposeUiTest {
+        val server = runBlocking { ViewOnceFakeServer().start() }
+        val first = server.viewer()
+        val second = server.viewer()
+        secondPresent = true
+        setContent {
+            MaterialTheme {
+                if (present) ViewOnceViewer(first, onViewerClosed = {}, onDismiss = {}, loader = server.loader)
+                if (secondPresent) ViewOnceViewer(second, onViewerClosed = {}, onDismiss = {}, loader = server.loader)
+            }
+        }
+        waitUntil(timeoutMillis = 10_000) {
+            onAllNodes(hasTestTag(VIEW_ONCE_VIEWER_IMAGE_TAG)).fetchSemanticsNodes().size == 2
+        }
+
+        present = false
+        waitForIdle()
+        waitUntil(timeoutMillis = 5_000) { server.evictedImages.isNotEmpty() }
+
+        assertEquals(true, server.cached.isEphemeral(server.fileId), "the second viewer still holds the file")
+        assertEquals(0L, runBlocking { server.cachedBytes() })
+
+        secondPresent = false
+        waitUntil(timeoutMillis = 5_000) { !server.cached.isEphemeral(server.fileId) }
     }
 }

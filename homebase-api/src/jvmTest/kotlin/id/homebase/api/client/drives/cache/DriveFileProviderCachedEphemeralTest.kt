@@ -141,4 +141,22 @@ class DriveFileProviderCachedEphemeralTest {
         provider.getPayloadBytesEncrypted(driveId, fileId, key)
         assertEquals(2, requests, "the eviction dropped the cached entry")
     }
+
+    @Test
+    fun aFileStaysEphemeralUntilEveryHolderHasEvicted() = runTest {
+        provider.markPayloadEphemeral(fileId)
+        provider.markPayloadEphemeral(fileId)
+
+        provider.evictFile(driveId, fileId, key)
+        assertEquals(true, cached.isEphemeral(fileId), "a live holder remains")
+        provider.getPayloadBytesDecrypted(driveId, fileId, key, keyHeader)
+        assertEquals(0L, cachedBytes())
+
+        provider.evictFile(driveId, fileId, key)
+        assertEquals(false, cached.isEphemeral(fileId))
+
+        provider.evictFile(driveId, fileId, key)
+        provider.markPayloadEphemeral(fileId)
+        assertEquals(true, cached.isEphemeral(fileId), "an unmatched evict must not leave a negative count")
+    }
 }

@@ -89,7 +89,9 @@ class ViewOnceActionsTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val s = scenario(this, fixture)
 
+            assertTrue(!s.actions.isConsumed(s.messageId))
             s.actions.onViewerClosed(s.stored())
+            assertTrue(s.actions.isConsumed(s.messageId))
 
             val reactionRow = assertNotNull(
                 fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, reactionRowKey(s.messageId)),

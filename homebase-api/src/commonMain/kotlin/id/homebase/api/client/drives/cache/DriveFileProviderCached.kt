@@ -206,20 +206,26 @@ class DriveFileProviderCached(
         )
     }
 
-    // Immutable set, replaced under ephemeralMutex like notFoundCache.
-    @Volatile private var ephemeralFiles: Set<Uuid> = emptySet()
+    // Holder counts per file; immutable map replaced under ephemeralMutex like notFoundCache.
+    @Volatile private var ephemeralFiles: Map<Uuid, Int> = emptyMap()
     private val ephemeralMutex = Mutex()
 
-    /** Reads of this file skip the disk caches until [evictFile]; nothing is written for it. */
+    /** Reads of this file skip the disk caches until every holder has called [evictFile]; nothing is written for it. */
     suspend fun markEphemeral(fileId: Uuid) {
-        ephemeralMutex.withLock { ephemeralFiles = ephemeralFiles + fileId }
+        ephemeralMutex.withLock { ephemeralFiles = ephemeralFiles + (fileId to (ephemeralFiles[fileId] ?: 0) + 1) }
     }
 
     fun isEphemeral(fileId: Uuid): Boolean = fileId in ephemeralFiles
 
-    /** Ends [markEphemeral] and drops whatever full-payload entry the disk cache holds for the file. */
+    /**
+     * Releases one [markEphemeral] hold, so a disposed viewer cannot unmark a file a live one still
+     * holds, and drops whatever full-payload entry the disk cache holds for the file.
+     */
     suspend fun evictFile(driveId: Uuid, fileId: Uuid, key: String) {
-        ephemeralMutex.withLock { ephemeralFiles = ephemeralFiles - fileId }
+        ephemeralMutex.withLock {
+            val holders = ephemeralFiles[fileId] ?: 0
+            ephemeralFiles = if (holders <= 1) ephemeralFiles - fileId else ephemeralFiles + (fileId to holders - 1)
+        }
         try {
             payloadDiskCache.remove(buildPayloadCacheKey(driveId, fileId, key, null, null).toDiskKey())
         } catch (e: CancellationException) {

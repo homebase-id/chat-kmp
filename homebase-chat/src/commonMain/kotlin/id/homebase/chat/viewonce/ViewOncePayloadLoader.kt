@@ -18,11 +18,27 @@ class ViewOncePayloadLoader(
 ) {
     private val scope = supervisedScope("view-once-loader")
 
-    /** Call before any reader (video playback included) touches the file. */
-    suspend fun begin(fileId: Uuid) = driveFileProvider.markPayloadEphemeral(fileId)
+    // Touched only from the main thread (composition and its effects), so a plain set is enough.
+    private val consumed = mutableSetOf<Uuid>()
+
+    /** The item was shown and is spent: nothing may load it again in this process, whatever viewer asks. */
+    fun markConsumed(fileId: Uuid) {
+        consumed += fileId
+    }
+
+    fun isConsumed(fileId: Uuid): Boolean = fileId in consumed
+
+    /**
+     * Takes one hold on the file's cache bypass; pair every successful call with one [evict].
+     * Call before any reader (video playback included) touches the file.
+     */
+    suspend fun begin(fileId: Uuid) {
+        if (isConsumed(fileId)) throw ViewOnceAlreadyConsumedException()
+        driveFileProvider.markPayloadEphemeral(fileId)
+    }
 
     suspend fun loadBytes(driveId: Uuid, fileId: Uuid, payloadKey: String, keyHeader: KeyHeader): ByteArray {
-        begin(fileId)
+        if (isConsumed(fileId)) throw ViewOnceAlreadyConsumedException()
         return driveFileProvider
             .getPayloadBytesDecryptedFromNetwork(driveId, fileId, payloadKey, keyHeader)
             .bytes
@@ -46,3 +62,5 @@ class ViewOncePayloadLoader(
         }
     }
 }
+
+class ViewOnceAlreadyConsumedException : IllegalStateException("view-once item already consumed")

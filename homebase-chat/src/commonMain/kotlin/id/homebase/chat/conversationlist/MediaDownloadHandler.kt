@@ -65,6 +65,7 @@ internal class MediaDownloadHandler(
     private val localVideoContextStore: LocalAttachmentContextStore,
     private val sendEvent: (ConversationListUiEvent) -> Unit,
     private val dispatch: (ConversationListUiAction) -> Unit,
+    private val onMobile: () -> Boolean = { id.homebase.core.util.isMobile() },
 ) {
 
     fun handleShareMedia(action: ConversationListUiAction.ShareMedia) {
@@ -325,6 +326,13 @@ internal class MediaDownloadHandler(
     }
 
     fun handleViewOnceViewerClosed(action: ConversationListUiAction.ViewOnceViewerClosed) {
+        // A remounted viewer on the same overlay (a rotation across the expanded-layout gate) must not reopen a spent item.
+        messagesUiState.update {
+            val overlay = it.fullScreenOverlay
+            if (overlay is FullScreenOverlay.ViewOnceViewer && overlay.messageId == action.messageId) {
+                it.copy(fullScreenOverlay = null)
+            } else it
+        }
         // The viewer's own scope is already gone by now; the view model's outlives it.
         scope.launch { viewOnceActions.onViewerClosed(action.conversationId, action.messageId) }
     }
@@ -334,10 +342,12 @@ internal class MediaDownloadHandler(
             try {
                 // A view-once item never takes the generic viewer: it would cache, share and save.
                 if (action.message.messageContent is MessageContent.ViewOnce) {
+                    if (viewOnceActions.isConsumed(action.message.id)) return@launch
                     viewOnceViewerFor(
                         message = action.message,
                         nowMs = Clock.System.now().toEpochMilliseconds(),
                         myOdinId = uiState.value.ownerSession?.odinId,
+                        mobile = onMobile(),
                     )?.let { viewer -> messagesUiState.update { it.copy(fullScreenOverlay = viewer) } }
                     return@launch
                 }

@@ -21,6 +21,8 @@ class ViewOnceActions(
 
     private suspend fun claim(messageId: Uuid): Boolean = claimMutex.withLock { claimed.add(messageId) }
 
+    suspend fun isConsumed(messageId: Uuid): Boolean = claimMutex.withLock { messageId in claimed }
+
     private suspend fun release(messageId: Uuid) = claimMutex.withLock { claimed.remove(messageId) }
 
     suspend fun onViewerClosed(message: MessageUiModel) = onViewerClosed(message.conversationId, message.id)
