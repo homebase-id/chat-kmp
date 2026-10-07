@@ -16,6 +16,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
@@ -33,6 +34,7 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.flow.flowOf
 
 private const val TAG = "WebDropService"
 
@@ -135,7 +137,7 @@ internal suspend fun buildWebDrop(
     val manifestIv = ByteArrayUtil.getRndByteArray(16)
     ivs[manifestKey] = manifestIv
 
-    val (manifest, dataPayloads) = stageWebDropPayloads(fileOps, files, key, ivs)
+    val (manifest, dataPayloads) = stageWebDropPayloads(fileOps, files, key, ivs, viewOnly)
 
     val manifestBytes = AesCbc.encrypt(
         OdinSystemSerializer.serialize(manifest).encodeToByteArray(),
@@ -249,12 +251,16 @@ class WebDropSourceReadException(
  * any per-file failure aborts the WHOLE drop as [WebDropSourceReadException] - a partial drop
  * must never reach the recipient - and each resolved content-URI copy is reaped either way
  * ([withResolvedFile]). [ivs] gains one fresh IV per data payload, keyed by payload key.
+ * A view-only drop transcodes HEIC/HEIF to JPEG because most browsers cannot decode HEIC and the
+ * recipient has no download to fall back on; if the transcode fails the original is sent as-is.
  */
 internal suspend fun stageWebDropPayloads(
     fileOps: FileOperationsProvider,
     files: List<PickedDropFile>,
     key: ByteArray,
     ivs: MutableMap<String, ByteArray>,
+    viewOnly: Boolean = false,
+    heicToJpeg: (ByteArray) -> ByteArray? = ::convertHeicToJpeg,
 ): Pair<List<WebDropManifestEntry>, List<PayloadFile>> {
     val manifest = mutableListOf<WebDropManifestEntry>()
     val payloads = mutableListOf<PayloadFile>()
@@ -263,18 +269,21 @@ internal suspend fun stageWebDropPayloads(
         val iv = ByteArrayUtil.getRndByteArray(16)
         try {
             fileOps.withResolvedFile(file.path) { resolvedPath ->
+                val jpeg = if (viewOnly && file.isHeif()) {
+                    heicToJpeg(fileOps.readFileBytes(resolvedPath))
+                } else null
                 manifest += WebDropManifestEntry(
                     key = payloadKey,
-                    name = file.name,
-                    contentType = file.contentType,
-                    size = fileOps.getFileSize(resolvedPath),
+                    name = if (jpeg != null) file.name.substringBeforeLast('.', file.name) + ".jpg" else file.name,
+                    contentType = if (jpeg != null) "image/jpeg" else file.contentType,
+                    size = jpeg?.size?.toLong() ?: fileOps.getFileSize(resolvedPath),
                 )
                 // Staged (not cache-temp) because the outbox reads payload bytes lazily at drain
                 // time; a reaped temp file would kill the row as PERMANENT.
                 val stagedPath = fileOps.createOutboxStagingPath("wdrdata", ".bin")
                 fileOps.writeStream(
                     stagedPath,
-                    AesCbc.streamEncryptWithCbc(fileOps.readFileAsFlow(resolvedPath), key, iv),
+                    AesCbc.streamEncryptWithCbc(jpeg?.let { flowOf(it) } ?: fileOps.readFileAsFlow(resolvedPath), key, iv),
                 )
                 payloads += PayloadFile(
                     key = payloadKey,
@@ -292,4 +301,10 @@ internal suspend fun stageWebDropPayloads(
         ivs[payloadKey] = iv
     }
     return manifest to payloads
+}
+
+private fun PickedDropFile.isHeif(): Boolean {
+    val type = contentType.lowercase()
+    return type == "image/heic" || type == "image/heif" ||
+        name.endsWith(".heic", ignoreCase = true) || name.endsWith(".heif", ignoreCase = true)
 }
