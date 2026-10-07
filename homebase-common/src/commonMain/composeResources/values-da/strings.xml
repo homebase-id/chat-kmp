@@ -1976,7 +1976,7 @@
     <string name="chat_view_once_open_on_phone">Åbn på din telefon</string>
     <string name="chat_view_once_open_on_phone_title">Åbn dette på din telefon</string>
     <string name="chat_view_once_open_on_phone_body">Dette kan kun åbnes i Homebase-appen på en telefon eller tablet.</string>
-    <string name="chat_view_once_capture_blocked">Skjult, mens din skærm optages eller deles</string>
+    <string name="chat_view_once_capture_blocked">Skærmoptagelse blokeret</string>
     <string name="chat_view_once_screenshot_taken">Skærmbillede taget</string>
     <string name="chat_view_once_close">Luk</string>
     <string name="chat_view_once_viewer_failed_title">Kunne ikke indlæse</string>
