@@ -30,6 +30,10 @@ class ViewOncePayloadLoaderTest {
         val server = ViewOnceFakeServer().start()
         server.loader.begin(server.fileId)
         assertTrue(server.cached.isEphemeral(server.fileId), "video playback of the file must bypass the caches")
+
+        server.loader.evict(chatTargetDrive.alias, server.fileId, VIEW_ONCE_PAYLOAD_KEY)
+
+        assertTrue(!server.cached.isEphemeral(server.fileId), "evict must release the hold")
     }
 
     @Test

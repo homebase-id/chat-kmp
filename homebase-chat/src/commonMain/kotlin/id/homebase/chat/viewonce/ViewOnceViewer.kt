@@ -5,13 +5,10 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -36,7 +33,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.MoreVert
@@ -44,8 +40,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -57,7 +51,6 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
@@ -92,7 +85,6 @@ import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import co.touchlab.kermit.Logger
@@ -103,15 +95,11 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.widget.video.VideoPlayerSurface
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.theme.HomebaseTheme
-import id.homebase.core.ui.theme.withEmojiFont
-import id.homebase.core.widget.quickReactions
 import id.homebase.core.util.SecureWindowEffect
 import id.homebase.core.util.rememberScreenCaptureObserver
 import id.homebase.resources.MR
 import id.homebase.resources.cd_view_once_toggle
-import id.homebase.resources.chat_message_emoji_options
 import id.homebase.resources.chat_message_image_attachment
-import id.homebase.resources.chat_message_reply
 import id.homebase.resources.chat_view_once_capture_blocked
 import id.homebase.resources.chat_view_once_close
 import id.homebase.resources.chat_view_once_more
@@ -121,8 +109,9 @@ import id.homebase.resources.chat_view_once_mute
 import id.homebase.resources.chat_view_once_retry
 import id.homebase.resources.chat_view_once_unmute
 import id.homebase.resources.chat_view_once_viewer_failed_body
+import id.homebase.resources.chat_view_once_viewer_hint_photo
+import id.homebase.resources.chat_view_once_viewer_hint_video
 import id.homebase.resources.chat_view_once_viewer_failed_title
-import id.homebase.resources.delete
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -136,20 +125,17 @@ const val VIEW_ONCE_VIEWER_PROGRESS_TAG = "viewOnceViewerProgress"
 const val VIEW_ONCE_VIEWER_BLOCKED_TAG = "viewOnceViewerBlocked"
 const val VIEW_ONCE_VIEWER_MUTE_TAG = "viewOnceViewerMute"
 const val VIEW_ONCE_VIEWER_CAPTION_TAG = "viewOnceViewerCaption"
-const val VIEW_ONCE_VIEWER_REACT_TAG = "viewOnceViewerReact"
-const val VIEW_ONCE_VIEWER_REACTION_TAG_PREFIX = "viewOnceViewerReaction_"
-const val VIEW_ONCE_VIEWER_REPLY_TAG = "viewOnceViewerReply"
+const val VIEW_ONCE_VIEWER_HINT_TAG = "viewOnceViewerHint"
 const val VIEW_ONCE_VIEWER_MORE_TAG = "viewOnceViewerMore"
-const val VIEW_ONCE_VIEWER_DELETE_TAG = "viewOnceViewerDelete"
 const val VIEW_ONCE_VIEWER_PLAY_TAG = "viewOnceViewerPlay"
 const val VIEW_ONCE_VIEWER_ELAPSED_TAG = "viewOnceViewerElapsed"
 const val VIEW_ONCE_VIEWER_REMAINING_TAG = "viewOnceViewerRemaining"
 
 /**
  * Full-screen viewer for one received view-once item. It has no save, share, forward or paging,
- * and it reads the payload only through [loader]. However it ends (back, delete, reply, the app
+ * and it reads the payload only through [loader]. However it ends (back, the app
  * leaving the foreground, or leaving composition) [onViewerClosed] runs exactly once, and only
- * if the media was actually shown: an item that never loaded is not used up. Reacting never ends it.
+ * if the media was actually shown: an item that never loaded is not used up.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -159,9 +145,6 @@ fun ViewOnceViewer(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     onScreenshot: () -> Unit = {},
-    reactions: List<String> = quickReactions(emptyList()),
-    onReact: (String) -> Unit = {},
-    onReply: () -> Unit = {},
     loader: ViewOncePayloadLoader = koinInject(),
     captureObserver: @Composable (onScreenshot: () -> Unit) -> State<Boolean> = { rememberScreenCaptureObserver(it) },
 ) {
@@ -258,13 +241,6 @@ fun ViewOnceViewer(
         },
         muted = muted,
         onMutedChange = { muted = it },
-        reactions = reactions,
-        onReact = onReact,
-        onReply = {
-            onReply()
-            close()
-        },
-        onDelete = ::close,
         onClose = ::close,
         modifier = modifier,
     ) { fill ->
@@ -322,10 +298,6 @@ internal fun ViewOnceViewerFrame(
     onTogglePlay: (() -> Unit)? = null,
     muted: Boolean = false,
     onMutedChange: ((Boolean) -> Unit)? = null,
-    reactions: List<String> = quickReactions(emptyList()),
-    onReact: (String) -> Unit = {},
-    onReply: () -> Unit = {},
-    onDelete: () -> Unit = onClose,
     body: @Composable BoxScope.(fill: Modifier) -> Unit,
 ) {
     HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
@@ -357,10 +329,6 @@ internal fun ViewOnceViewerFrame(
                         onTogglePlay = onTogglePlay,
                         muted = muted,
                         onMutedChange = onMutedChange,
-                        reactions = reactions,
-                        onReact = onReact,
-                        onReply = onReply,
-                        onDelete = onDelete,
                     )
                 }
             }
@@ -427,17 +395,11 @@ private fun ViewOnceViewerBottomBar(
     onTogglePlay: (() -> Unit)?,
     muted: Boolean,
     onMutedChange: ((Boolean) -> Unit)?,
-    reactions: List<String>,
-    onReact: (String) -> Unit,
-    onReply: () -> Unit,
-    onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
     val scrim = colors.scrim
     val motion = MaterialTheme.motionScheme
-    var picking by remember { mutableStateOf(false) }
-    var reacted by remember { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     Column(
         modifier = modifier
@@ -498,61 +460,13 @@ private fun ViewOnceViewerBottomBar(
                 }
             }
         }
-        AnimatedVisibility(
-            visible = picking,
-            enter = fadeIn(motion.defaultEffectsSpec()) + expandVertically(motion.defaultSpatialSpec()),
-            exit = fadeOut(motion.fastEffectsSpec()) + shrinkVertically(motion.fastSpatialSpec()),
-        ) {
-            Surface(shape = CircleShape, color = chromeContainer()) {
-                Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    reactions.forEachIndexed { index, emoji ->
-                        Box(
-                            Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .clickable {
-                                    reacted = emoji
-                                    picking = false
-                                    onReact(emoji)
-                                }
-                                .semantics { contentDescription = emoji }
-                                .testTag("$VIEW_ONCE_VIEWER_REACTION_TAG_PREFIX$index"),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(text = emoji.withEmojiFont(), fontSize = 26.sp)
-                        }
-                    }
-                }
-            }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val emojiLabel = stringResource(MR.string.chat_message_emoji_options)
-            ChromeCircleButton(onClick = { if (reacted == null) picking = !picking }, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_REACT_TAG)) {
-                val current = reacted
-                if (current == null) {
-                    Icon(Icons.Outlined.EmojiEmotions, contentDescription = emojiLabel)
-                } else {
-                    Text(text = current.withEmojiFont(), fontSize = 22.sp)
-                }
-            }
-            Surface(
-                onClick = onReply,
-                shape = CircleShape,
-                color = chromeContainer(),
-                contentColor = colors.onSurface,
-                modifier = Modifier.weight(1f).height(CHROME_SIZE).testTag(VIEW_ONCE_VIEWER_REPLY_TAG),
-            ) {
-                Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Text(
-                        text = stringResource(MR.string.chat_message_reply),
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(start = 10.dp),
-                    )
-                }
-            }
-        }
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = stringResource(if (isVideo) MR.string.chat_view_once_viewer_hint_video else MR.string.chat_view_once_viewer_hint_photo),
+                style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp).testTag(VIEW_ONCE_VIEWER_HINT_TAG),
+            )
             if (isVideo && onMutedChange != null) {
                 Box {
                     ChromeCircleButton(onClick = { menuOpen = true }, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_MORE_TAG)) {
@@ -572,10 +486,6 @@ private fun ViewOnceViewerBottomBar(
                         )
                     }
                 }
-            }
-            Spacer(Modifier.weight(1f))
-            ChromeCircleButton(onClick = onDelete, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_DELETE_TAG)) {
-                Icon(Icons.Outlined.Delete, contentDescription = stringResource(MR.string.delete))
             }
         }
     }

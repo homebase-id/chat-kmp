@@ -1491,8 +1491,6 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ViewOnceViewerClosed -> mediaDownloadHandler.handleViewOnceViewerClosed(action)
             is ConversationListUiAction.ViewOnceScreenshot -> mediaDownloadHandler.handleViewOnceScreenshot(action)
-            is ConversationListUiAction.ViewOnceReact -> mediaDownloadHandler.handleViewOnceReact(action)
-            is ConversationListUiAction.ViewOnceReply -> mediaDownloadHandler.handleViewOnceReply(action)
 
             is ConversationListUiAction.ReplyToMessage -> messageActionsHandler.handleReplyToMessage(action)
 

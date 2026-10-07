@@ -1979,6 +1979,8 @@
     <string name="chat_view_once_capture_blocked">Skjult, mens din skærm optages eller deles</string>
     <string name="chat_view_once_screenshot_taken">Skærmbillede taget</string>
     <string name="chat_view_once_close">Luk</string>
+    <string name="chat_view_once_viewer_hint_photo">Dette foto forsvinder, når du lukker det.</string>
+    <string name="chat_view_once_viewer_hint_video">Denne video forsvinder, når du lukker den.</string>
     <string name="chat_view_once_viewer_failed_title">Kunne ikke indlæse</string>
     <string name="chat_view_once_viewer_failed_body">Tjek din forbindelse, og prøv igen.</string>
     <string name="chat_view_once_retry">Prøv igen</string>
@@ -1996,6 +1998,6 @@
     <string name="chat_view_once_intro_title_video">Denne video kan kun ses én gang</string>
     <string name="chat_view_once_intro_ok">OK</string>
     <string name="chat_view_once_intro_row_disappears">Det forsvinder fra chatten, når det er lukket</string>
-    <string name="chat_view_once_intro_row_protected">Det kan ikke deles, videresendes, kopieres eller gemmes</string>
+    <string name="chat_view_once_intro_row_protected">Det kan ikke deles, videresendes, kopieres eller gemmes fra appen</string>
     <string name="cd_view_once_intro">Vis én gang. Det forlader chatten, når det er lukket, og kan ikke deles, videresendes eller gemmes fra appen.</string>
 </resources>

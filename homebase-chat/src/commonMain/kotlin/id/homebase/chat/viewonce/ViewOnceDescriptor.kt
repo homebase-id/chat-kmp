@@ -1,6 +1,5 @@
 package id.homebase.chat.viewonce
 
-import id.homebase.api.sync.database.TombstoneRetention
 import kotlinx.serialization.Serializable
 
 /** Wire format of a view-once message (dataType 216). */
@@ -21,6 +20,3 @@ data class ViewOnceDescriptor(
         const val MAX_CAPTION_CODEPOINTS = 1000
     }
 }
-
-/** What a view-once tombstone keeps of its descriptor: the kind, so a spent item still reads Photo or Video; never the caption. */
-fun viewOnceTombstoneContent(content: String?): String = TombstoneRetention.viewOnceKindOnly(content)

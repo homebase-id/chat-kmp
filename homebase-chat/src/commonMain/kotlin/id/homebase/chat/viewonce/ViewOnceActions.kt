@@ -40,26 +40,6 @@ class ViewOnceActions(
         }
     }
 
-    private val reactMutex = Mutex()
-    private val reacted = mutableMapOf<Uuid, String>()
-
-    /** One emoji per viewing, add-only: a second pick would replace a still-pending row and lose the first. */
-    suspend fun onReact(conversationId: Uuid, messageId: Uuid, emoji: String) {
-        reactMutex.withLock {
-            if (messageId in reacted) return
-            val outcome = try {
-                actionService.setReactions(conversationId, messageId, ViewOnceSignal.reactionChange(emoji))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.e(TAG, e) { "viewer reaction failed msg=$messageId" }
-                return
-            }
-            Logger.i(TAG) { "viewer reaction msg=$messageId outcome=$outcome" }
-            if (outcome == MutationOutcome.Queued) reacted[messageId] = emoji
-        }
-    }
-
     private suspend fun claim(messageId: Uuid): Boolean = claimMutex.withLock { claimed.add(messageId) }
 
     suspend fun isConsumed(messageId: Uuid): Boolean = claimMutex.withLock { messageId in claimed }
@@ -67,17 +47,13 @@ class ViewOnceActions(
     private suspend fun release(messageId: Uuid) = claimMutex.withLock { claimed.remove(messageId) }
 
     /**
-     * The viewer's emoji row (if any), then `_vo`, then the soft delete: each row waits for the one
-     * before it, because the outbox is not FIFO and a reaction sent after the delete is lost.
+     * `_vo`, then the soft delete: the delete waits for the reaction row, because the outbox is not
+     * FIFO and a reaction sent after the delete is lost.
      */
     suspend fun onViewerClosed(conversationId: Uuid, messageId: Uuid) {
         if (!claim(messageId)) return
         try {
-            val afterReaction = reactMutex.withLock { reacted.remove(messageId) }
-                ?.let { ChatMessageActionService.reactionSetRowKey(messageId, ViewOnceSignal.REACTION_SCOPE) }
-            val outcome = actionService.setReactions(
-                conversationId, messageId, ViewOnceSignal.openedChange(), runAfter = afterReaction,
-            )
+            val outcome = actionService.setReactions(conversationId, messageId, ViewOnceSignal.openedChange())
             Logger.i(TAG) { "viewer closed msg=$messageId opened-signal=$outcome" }
             actionService.deleteMessage(
                 messageId = messageId,

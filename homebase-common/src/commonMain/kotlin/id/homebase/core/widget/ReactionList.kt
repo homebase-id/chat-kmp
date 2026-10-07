@@ -165,12 +165,6 @@ private fun extractEmoji(reactionContent: String): String? {
     }
 }
 
-private val BaseQuickReactions = listOf("❤️", "👍", "👎", "😂", "😮", "😢")
-const val QUICK_REACTION_COUNT = 6
-
-fun quickReactions(userDefaults: List<String>): List<String> =
-    (userDefaults + BaseQuickReactions).distinctByEmoji().take(QUICK_REACTION_COUNT)
-
 /**
  * Horizontal reaction menu displaying common emoji reactions.
  *
@@ -193,7 +187,8 @@ fun ReactionMenu(
     backgroundModifier: Modifier = Modifier,
     emojiModifier: (index: Int) -> Modifier = { Modifier },
 ) {
-    val reactions = quickReactions(userDefaultReactions)
+    val baseDefaults = listOf("❤️", "👍", "👎", "😂", "😮", "😢")
+    val reactions = (userDefaultReactions + baseDefaults).distinctByEmoji().take(6)
     val scrollState = rememberScrollState()
     val haptics = rememberHaptics()
 

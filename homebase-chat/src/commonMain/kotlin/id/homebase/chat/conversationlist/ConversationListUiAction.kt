@@ -130,11 +130,7 @@ sealed interface ConversationListUiAction {
     /** The view-once viewer went away, by any route; consumes the item. */
     data class ViewOnceViewerClosed(val conversationId: Uuid, val messageId: Uuid) : ConversationListUiAction
 
-    data class ViewOnceReact(val conversationId: Uuid, val messageId: Uuid, val emoji: String) : ConversationListUiAction
-
     data class ViewOnceScreenshot(val conversationId: Uuid, val messageId: Uuid) : ConversationListUiAction
-
-    data class ViewOnceReply(val messageId: Uuid) : ConversationListUiAction
 
     /**
      * Persist where the user is reading in this conversation. The anchor is

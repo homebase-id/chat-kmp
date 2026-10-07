@@ -169,7 +169,7 @@ suspend fun mapToMessageData(
             else
                 minOf(UnixTimeUtc(appData.userDate!!), metadata.created)
 
-            // The tombstone keeps only the kind, never the payloads or caption.
+            // A view-once tombstone has no descriptor, payloads or thumbnail; the bubble renders from state.
             val isViewOnce = appData.dataType == ChatProtocol.ChatViewOnceMessageDataType
 
             return MessageUiModel(
@@ -200,7 +200,7 @@ suspend fun mapToMessageData(
                 isPinned = isPinned,
                 isAutoPinDismissed = isAutoPinDismissed,
                 isManuallyPinned = isManuallyPinned,
-                messageContent = if (isViewOnce) spentViewOnceContent(content) else null,
+                messageContent = if (isViewOnce) MessageContent.ViewOnce(descriptor = null) else null,
                 hasMore = hasMore
             )
         }
@@ -636,10 +636,4 @@ internal suspend fun renderStatusMessage(
             }
         }
     }
-}
-
-// A spent view-once item keeps only its kind; whatever else a tombstone carries is dropped here.
-private fun spentViewOnceContent(content: String?): MessageContent.ViewOnce {
-    val parsed = (MessageContentParser.parse(ChatProtocol.ChatViewOnceMessageDataType, content) as? MessageContent.ViewOnce)
-    return MessageContent.ViewOnce(parsed?.descriptor?.copy(caption = null))
 }
