@@ -127,7 +127,7 @@ the long-press menu shows. The dispatcher reads it once
 hard-coded `if (is X)` checks anywhere in the menu code, so this is the
 single point where you decide what users can do with your message.
 
-The six flags:
+The seven flags:
 
 | Flag | Controls |
 |---|---|
@@ -136,13 +136,14 @@ The six flags:
 | `allowForward` | "Forward to…" entry — opens the recipient picker |
 | `allowShare` | "Share" / copy text |
 | `allowInlineReactions` | Emoji quick-strip on long-press + "Add reaction" hover icon |
+| `allowCopy` | "Copy" entry — copies the message text |
 | `allowReactionDetails` | "Show all reactions" — per-emoji reactor breakdown sheet |
 
 Two presets in the `MessageContent` companion:
 
-- **`Standard`** — all six true. Used by plain text + media messages (the
+- **`Standard`** — all seven true. Used by plain text + media messages (the
   `messageContent == null` fall-through in `MessageItem.kt:49`).
-- **`StructuredOneShot`** — all six false. The default for typed kinds.
+- **`StructuredOneShot`** — all seven false. The default for typed kinds.
 
 ### How to override
 
@@ -523,8 +524,9 @@ For a kind whose media must stay private, as ViewOnce's does:
   also sets `seedCache = false` and `omitThumbnails = true` for 216, which covers the
   thumbnails the video processor generates during encryption.
 - Keep the header `previewThumbnail` null.
-- Dispatch the bubble before any media code in `MessageBubbleRaw`, and use
-  `ActionPolicy.StructuredOneShot` so nothing replies to, forwards or shares it.
+- Dispatch the bubble before any media code in `MessageBubbleRaw`, and give
+  it a custom `ActionPolicy`: reply and inline reactions on; `allowCopy = false`, forward and
+  share off, so the payload leaves only through the viewer.
 - Make `collectConversationOverview` skip the kind, and refuse it in
   `forwardMessage`.
 - Leave `ChatMediaAutoSaveRules` alone: it already rejects any `dataType != 0`.

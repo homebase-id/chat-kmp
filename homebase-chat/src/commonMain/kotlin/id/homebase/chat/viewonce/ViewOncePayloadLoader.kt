@@ -9,10 +9,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
-/**
- * The only reader of a view-once payload. Bytes come over the network and are decrypted in
- * memory; the disk payload and chunk caches are never written for this file.
- */
+/** Reads image bytes network-only and holds the cache-bypass mark that video playback also relies on. */
 class ViewOncePayloadLoader(
     private val driveFileProvider: DriveFileProvider,
     private val canView: () -> Boolean = { isMobile() },

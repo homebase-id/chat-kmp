@@ -173,6 +173,29 @@ class ViewOnceViewerTest {
     }
 
     @Test
+    fun deleteIsNotOfferedUntilTheMediaIsShown_soATapCannotDismissAnUnopenedItem() = runSkikoComposeUiTest {
+        setContent {
+            MaterialTheme {
+                ViewOnceViewerFrame(isVideo = false, mediaShown = false, failed = false, onClose = {}) { fill -> Box(fill) }
+            }
+        }
+        waitForIdle()
+        assertTrue(!present(VIEW_ONCE_VIEWER_DELETE_TAG), "Delete must not exist before the media renders")
+    }
+
+    @Test
+    fun deleteIsNotOfferedWhileTheFullViewerIsStillLoading_andAppearsOnceShown() = runSkikoComposeUiTest {
+        val server = runBlocking { ViewOnceFakeServer().start() }
+        show(server)
+        if (!present(VIEW_ONCE_VIEWER_IMAGE_TAG)) {
+            assertTrue(!present(VIEW_ONCE_VIEWER_DELETE_TAG))
+        }
+        awaitShown()
+        waitForIdle()
+        assertTrue(present(VIEW_ONCE_VIEWER_DELETE_TAG))
+    }
+
+    @Test
     fun backConsumesTheItemExactlyOnce() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)

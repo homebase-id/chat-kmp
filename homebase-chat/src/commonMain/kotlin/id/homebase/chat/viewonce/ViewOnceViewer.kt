@@ -365,6 +365,7 @@ internal fun ViewOnceViewerFrame(
                         onReact = onReact,
                         onReply = onReply,
                         onDelete = onDelete,
+                        showDelete = mediaShown,
                     )
                 }
             }
@@ -431,6 +432,7 @@ private fun ViewOnceViewerBottomBar(
     onReact: (String) -> Unit,
     onReply: () -> Unit,
     onDelete: () -> Unit,
+    showDelete: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -574,8 +576,10 @@ private fun ViewOnceViewerBottomBar(
                 }
             }
             Spacer(Modifier.weight(1f))
-            ChromeCircleButton(onClick = onDelete, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_DELETE_TAG)) {
-                Icon(Icons.Outlined.Delete, contentDescription = stringResource(MR.string.delete))
+            if (showDelete) {
+                ChromeCircleButton(onClick = onDelete, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_DELETE_TAG)) {
+                    Icon(Icons.Outlined.Delete, contentDescription = stringResource(MR.string.delete))
+                }
             }
         }
     }
