@@ -166,7 +166,6 @@ internal fun editorToolsetFor(
     )
 }
 
-/** One image (not a sticker) or one video; documents, audio and stickers never qualify. */
 internal fun isViewOnceCandidate(current: AttachmentPendingFile?): Boolean = when (current) {
     is AttachmentPendingFile.FileImage -> !current.forceSticker
     is AttachmentPendingFile.Gallery -> !current.forceSticker

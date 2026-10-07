@@ -63,6 +63,7 @@ class ViewOnceSendTest {
             val service = fixture.build(encryptorOverride = PassThroughEncryptor(simulateVideoProcessor = false))
             val conversation = fixture.seedConversation(others = listOf("bob.test"))
             val messageId = Uuid.random()
+            val sentAt = UnixTimeUtc(UnixTimeUtc.now().milliseconds - 60_000)
 
             service.sendAttachmentsMessage(
                 viewOnce = true,
@@ -71,7 +72,7 @@ class ViewOnceSendTest {
                 text = "a caption that must be ignored",
                 attachments = listOf(AttachmentInput(filePath = jpegFile(), contentType = "image/jpeg")),
                 replyTo = null,
-                sentAt = UnixTimeUtc.now(),
+                sentAt = sentAt,
                 fileOperationsProvider = JvmFileOperationsProvider(),
                 mediaQuality = MediaQuality.STANDARD,
             )
@@ -80,6 +81,7 @@ class ViewOnceSendTest {
                 .selectHomebaseFileByUnique(fixture.testIdentityId, fixture.chatDriveId, messageId)
             assertNotNull(stored)
             val appData = stored.fileMetadata.appData
+            assertEquals(sentAt.milliseconds, appData.userDate)
             assertEquals(216, appData.dataType)
             assertTrue(!appData.content.isNullOrBlank())
             val parsed = assertIs<MessageContent.ViewOnce>(

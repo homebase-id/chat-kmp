@@ -14,11 +14,6 @@ object ViewOnceRules {
     fun screenshotCount(message: MessageUiModel): Int =
         ViewOnceSignal.count(message.reactionPreview, ViewOnceSignal.SCREENSHOT_CODE)
 
-    /**
-     * Recipient: [ViewOnceState.Unopened] / [ViewOnceState.Opened] / [ViewOnceState.Expired].
-     * Sender: [ViewOnceState.Sent] / [ViewOnceState.Opened] / [ViewOnceState.Expired]; the count of
-     * openers comes from [openedCount].
-     */
     fun stateOf(message: MessageUiModel, nowMs: Long, myOdinId: OdinId?): ViewOnceState {
         val createdMs = message.created.toEpochMilliseconds()
         val expiredByAge = nowMs - createdMs >= MAX_LIFESPAN_MS

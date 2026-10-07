@@ -2,11 +2,7 @@ package id.homebase.chat.viewonce
 
 import kotlinx.serialization.Serializable
 
-/**
- * Wire format for a view-once media message. Rides in `appData.content` next to
- * `appData.dataType = ChatProtocol.ChatViewOnceMessageDataType`; the single media payload lives
- * under `chat_web0`. Identity, author and time come from the HomebaseFile envelope.
- */
+/** Wire format of a view-once message; see ChatMessageDataType kdoc in ChatProtocol. */
 @Serializable
 data class ViewOnceDescriptor(
     val kind: String,

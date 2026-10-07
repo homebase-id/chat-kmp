@@ -31,7 +31,6 @@ suspend fun buildViewOnceBundle(
     mediaQuality = mediaQuality,
 ).withoutThumbnails()
 
-/** Sends [attachments] as a normal media message, or as one view-once message when [viewOnce]. */
 suspend fun ChatMessageSenderService.sendAttachmentsMessage(
     viewOnce: Boolean,
     messageId: Uuid,
@@ -54,6 +53,7 @@ suspend fun ChatMessageSenderService.sendAttachmentsMessage(
             content = MessageContent.ViewOnce(ViewOnceDescriptor(kind)),
             previousMessageUniqueId = null,
             payloadBundle = buildViewOnceBundle(attachment, fileOperationsProvider, mediaQuality),
+            userDate = sentAt,
         )
         return
     }

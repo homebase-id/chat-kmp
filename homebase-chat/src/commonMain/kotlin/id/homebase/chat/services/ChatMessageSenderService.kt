@@ -199,6 +199,7 @@ class ChatMessageSenderService(
         // fetch); the payload loads progressively like any chat image. Defaults to
         // null so existing typed-kind callers are unchanged.
         payloadBundle: PayloadBundle? = null,
+        userDate: UnixTimeUtc? = null,
     ): SendMessageResult = sendMessageInternal(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
@@ -210,6 +211,7 @@ class ChatMessageSenderService(
         previousMessageUniqueId = previousMessageUniqueId,
         payloadBundle = payloadBundle,
         dataType = id.homebase.chat.services.content.MessageContentParser.dataTypeFor(content),
+        userDate = userDate,
     )
 
     private data class ResolvedRecipients(val recipients: List<OdinId>, val isLocalOnly: Boolean)
