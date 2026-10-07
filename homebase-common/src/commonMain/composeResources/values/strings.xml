@@ -1017,12 +1017,20 @@
     <string name="chat_unknown_message_type">Unknown message type — please update the app.</string>
     <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
     <string name="chat_view_once_toggle">View once</string>
-    <string name="chat_view_once_toggle_supporting">Recipient can open it once. Screenshots are discouraged, not prevented.</string>
+    <string name="chat_view_once_toggle_supporting">Opens once. Screenshots are discouraged, not prevented.</string>
     <string name="chat_view_once_photo">Photo</string>
     <string name="chat_view_once_video">Video</string>
     <string name="chat_view_once_sent">View once</string>
     <string name="chat_view_once_unparseable">View-once media — please update the app.</string>
     <string name="chat_view_once_caption_disabled">No caption with view once</string>
+    <string name="chat_view_once_caption_discarded">Your caption won't be sent. Turn off View once to keep it.</string>
+    <string name="chat_view_once_tap_to_view">Tap to view</string>
+    <string name="chat_view_once_opening">Opening…</string>
+    <string name="chat_view_once_failed">Couldn't load. Tap to retry</string>
+    <string name="chat_view_once_opened">Opened</string>
+    <string name="chat_view_once_expired">Expired</string>
+    <string name="chat_view_once_open_on_phone">Open on your phone</string>
+    <string name="cd_view_once_open">Open view-once media</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>

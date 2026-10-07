@@ -3,6 +3,19 @@ package id.homebase.chat.widget
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ToggleButtonShapes
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextDirection
+import id.homebase.core.widget.connectedButtonShapes
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.EnterTransition
@@ -43,7 +56,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Hd
@@ -53,8 +65,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
@@ -75,7 +85,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.IntSize
@@ -439,7 +448,8 @@ fun MediaAttachmentEditor(
                     onClick = onDismiss,
                     modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
                     colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
                     )
                 ) {
                     Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.menu_back))
@@ -533,14 +543,19 @@ fun MediaAttachmentEditor(
             ) {
                 attachments.forEach { attachment ->
                     val isSelected = activeAttachment?.attachmentId == attachment.attachmentId
+                    val corner by animateDpAsState(
+                        if (isSelected) 20.dp else 8.dp,
+                        MaterialTheme.motionScheme.fastSpatialSpec(),
+                    )
+                    val thumbShape = RoundedCornerShape(corner)
                     Box(
                         modifier = Modifier
                             .size(60.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(thumbShape)
                             .border(
                                 width = if (isSelected) 2.dp else 0.dp,
                                 color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Unspecified,
-                                shape = RoundedCornerShape(8.dp)
+                                shape = thumbShape,
                             )
                             .clickable {
                                 scope.launch {
@@ -621,19 +636,31 @@ fun MediaAttachmentEditor(
                         }
 
                         if (isSelected && onRemoveFile != null) {
+                            // A 48dp target in the thumbnail's top-end corner; only the small badge is drawn.
                             Box(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color.Black.copy(alpha = 0.5f))
-                                    .clickable { onRemoveFile(attachment.attachmentId) },
-                                contentAlignment = Alignment.Center
+                                    .align(Alignment.TopEnd)
+                                    .size(48.dp)
+                                    .clickable(
+                                        onClickLabel = stringResource(MR.string.chat_message_remove_gallery_image),
+                                        role = Role.Button,
+                                    ) { onRemoveFile(attachment.attachmentId) },
+                                contentAlignment = Alignment.TopEnd,
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = stringResource(MR.string.chat_message_remove_gallery_image),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(24.dp)
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .padding(top = 5.dp, end = 5.dp)
+                                        .size(22.dp)
+                                        .background(MaterialTheme.colorScheme.errorContainer, CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = stringResource(MR.string.chat_message_remove_gallery_image),
+                                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                }
                             }
                         }
                     }
@@ -735,37 +762,40 @@ fun MediaAttachmentEditor(
                     }
                 }
             }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-            ViewOnceToolChip(toolset = toolset, selected = viewOnce, onClick = { onToggleViewOnce!!() })
-            if (toolset.showQuality) {
-                val isHigh = mediaQuality == MediaQuality.HIGH
-                FilterChip(
-                    modifier = Modifier.testTag("mediaQualityChip"),
-                    selected = isHigh,
-                    onClick = { onToggleMediaQuality!!() },
-                    label = { Text(stringResource(MR.string.chat_media_quality_hd)) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = if (isHigh) Icons.Default.Hd
-                            else HomebaseIcons.HdOff,
-                            contentDescription = stringResource(
-                                if (isHigh) MR.string.cd_media_quality_high_on
-                                else MR.string.cd_media_quality_high_off
-                            ),
-                            modifier = Modifier.size(FilterChipDefaults.IconSize),
-                        )
-                    },
-                )
-            }
+            val sendOptions = listOfNotNull(
+                SendOption.ViewOnce.takeIf { toolset.showViewOnce },
+                SendOption.Quality.takeIf { toolset.showQuality },
+            )
+            if (sendOptions.isNotEmpty()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    sendOptions.forEachIndexed { index, option ->
+                        val shapes = connectedButtonShapes(index, sendOptions.size)
+                        when (option) {
+                            SendOption.ViewOnce -> ViewOnceToolChip(
+                                toolset = toolset,
+                                selected = viewOnce,
+                                onClick = { onToggleViewOnce!!() },
+                                shapes = shapes,
+                            )
+                            SendOption.Quality -> MediaQualityToggle(
+                                isHigh = mediaQuality == MediaQuality.HIGH,
+                                onClick = { onToggleMediaQuality!!() },
+                                shapes = shapes,
+                            )
+                        }
+                    }
+                }
             }
         }
         AnimatedVisibility(
             visible = viewOnce && toolset.showViewOnce,
-            enter = secondaryChromeEnter(),
-            exit = secondaryChromeExit(),
+            enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) +
+                fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
         ) {
             ViewOnceNotice()
         }
@@ -785,49 +815,91 @@ fun MediaAttachmentEditor(
 
 internal const val VIEW_ONCE_CHIP_TAG = "viewOnceChip"
 
+private enum class SendOption { ViewOnce, Quality }
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-internal fun ViewOnceToolChip(toolset: EditorToolset, selected: Boolean, onClick: () -> Unit) {
+internal fun ViewOnceToolChip(
+    toolset: EditorToolset,
+    selected: Boolean,
+    onClick: () -> Unit,
+    shapes: ToggleButtonShapes = ToggleButtonDefaults.shapes(),
+) {
     if (!toolset.showViewOnce) return
-    FilterChip(
-        modifier = Modifier.testTag(VIEW_ONCE_CHIP_TAG),
-        selected = selected,
-        onClick = onClick,
-        label = { Text(stringResource(MR.string.chat_view_once_toggle)) },
-        leadingIcon = {
-            Crossfade(selected, animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) { on ->
-                Icon(
-                    imageVector = if (on) ViewOnceFilledIcon else ViewOnceIcon,
-                    contentDescription = null,
-                    tint = if (on) MaterialTheme.colorScheme.primary else LocalContentColor.current,
-                    modifier = Modifier.size(FilterChipDefaults.IconSize),
-                )
-            }
-        },
-    )
+    val motion = MaterialTheme.motionScheme
+    val on by animateFloatAsState(if (selected) 1f else 0f, motion.defaultSpatialSpec())
+    ToggleButton(
+        checked = selected,
+        onCheckedChange = { onClick() },
+        shapes = shapes,
+        colors = ToggleButtonDefaults.toggleButtonColors(
+            checkedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            checkedContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        ),
+        modifier = Modifier.heightIn(min = SEND_OPTION_HEIGHT).testTag(VIEW_ONCE_CHIP_TAG),
+    ) {
+        Crossfade(selected, animationSpec = motion.fastEffectsSpec()) { checked ->
+            Icon(
+                imageVector = if (checked) ViewOnceFilledIcon else ViewOnceIcon,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(ButtonDefaults.IconSize)
+                    // Turning it on spins the dashed ring shut into the filled badge.
+                    .graphicsLayer {
+                        rotationZ = (1f - on) * -90f
+                        val pop = 1f + 0.18f * on * (1f - on) * 4f
+                        scaleX = pop
+                        scaleY = pop
+                    },
+            )
+        }
+        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+        Text(stringResource(MR.string.chat_view_once_toggle))
+    }
 }
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun MediaQualityToggle(isHigh: Boolean, onClick: () -> Unit, shapes: ToggleButtonShapes) {
+    ToggleButton(
+        checked = isHigh,
+        onCheckedChange = { onClick() },
+        shapes = shapes,
+        modifier = Modifier.heightIn(min = SEND_OPTION_HEIGHT).testTag("mediaQualityChip"),
+    ) {
+        Icon(
+            imageVector = if (isHigh) Icons.Default.Hd else HomebaseIcons.HdOff,
+            contentDescription = stringResource(
+                if (isHigh) MR.string.cd_media_quality_high_on else MR.string.cd_media_quality_high_off
+            ),
+            modifier = Modifier.size(ButtonDefaults.IconSize),
+        )
+        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+        Text(stringResource(MR.string.chat_media_quality_hd))
+    }
+}
+
+private val SEND_OPTION_HEIGHT = 48.dp
 
 @Composable
 private fun ViewOnceNotice() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 4.dp)
-            .clip(MaterialTheme.shapes.large)
-            .background(MaterialTheme.colorScheme.secondaryContainer)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = ViewOnceIcon,
+            imageVector = Icons.Outlined.Info,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSecondaryContainer,
-            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(16.dp),
         )
         Text(
             text = stringResource(MR.string.chat_view_once_toggle_supporting),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-            modifier = Modifier.padding(start = 12.dp),
+            style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 8.dp),
         )
     }
 }

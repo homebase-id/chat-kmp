@@ -54,6 +54,13 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.chat_view_once_caption_disabled
+import id.homebase.resources.chat_view_once_caption_discarded
+import id.homebase.chat.widget.MessageTimestampFooter
+import id.homebase.chat.widget.messageBubbleShape
+import id.homebase.core.util.formatMessageTimestamp
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.platform.testTag
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
@@ -67,6 +74,7 @@ import java.io.File
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -94,6 +102,7 @@ class ViewOnceShotsTest {
     private sealed interface Scene {
         data class Editor(val attachments: List<AttachmentPendingFile>, val viewOnce: Boolean, val caption: String = "") : Scene
         data class Thread(val group: Boolean = false) : Scene
+        data class States(val outgoing: Boolean, val pressFirst: Boolean = false) : Scene
     }
 
     private class Shot(
@@ -120,6 +129,11 @@ class ViewOnceShotsTest {
             Shot("b3-thread-font-scale", Scene.Thread(group = true), fontScale = 1.6f, heightDp = 1_100),
             Shot("b4-thread-rtl", Scene.Thread(group = true), rtl = true),
             Shot("b5-thread-small", Scene.Thread(group = true), widthDp = 360, heightDp = 760),
+            Shot("s1-received-states", Scene.States(outgoing = false), heightDp = 1_000),
+            Shot("s2-sent-states", Scene.States(outgoing = true), heightDp = 620),
+            Shot("s3-received-pressed", Scene.States(outgoing = false, pressFirst = true), heightDp = 1_000),
+            Shot("s4-received-states-font-scale", Scene.States(outgoing = false), fontScale = 1.6f, heightDp = 1_400),
+            Shot("s5-received-states-rtl", Scene.States(outgoing = false), rtl = true, heightDp = 1_000),
         )
     }
 
@@ -170,17 +184,21 @@ class ViewOnceShotsTest {
             onAddImage = {},
             onRemoveFile = {},
             onDismiss = {},
+            centerImageInPage = true,
             bottomBar = {
                 MessageTextFieldForAttachment(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     state = caption,
                     onSendMessage = {},
                     captionDisabledText = if (viewOnce) stringResource(MR.string.chat_view_once_caption_disabled) else null,
+                    captionSetAsideText = stringResource(MR.string.chat_view_once_caption_discarded),
                     showFormattingToolbar = false,
                 )
             },
         )
     }
+
+    private val recentMs = Clock.System.now().toEpochMilliseconds() - 3_600_000L
 
     private fun message(
         content: MessageContent?,
@@ -195,9 +213,10 @@ class ViewOnceShotsTest {
         fileId = Uuid.random(),
         conversationId = Uuid.random(),
         content = text,
-        userDate = Instant.fromEpochMilliseconds(1_760_000_000_000L + minute * 60_000L),
+        userDate = Instant.fromEpochMilliseconds(recentMs + minute * 60_000L),
         modified = null,
-        created = Instant.fromEpochMilliseconds(1_760_000_000_000L),
+        // Recent, or stateOf would rightly call every row Expired.
+        created = Instant.fromEpochMilliseconds(recentMs),
         originalAuthor = if (sent) null else OdinId(author),
         sender = if (sent) null else OdinId(author),
         displayName = name,
@@ -252,6 +271,74 @@ class ViewOnceShotsTest {
         }
     }
 
+    private class StateRow(
+        val state: ViewOnceState,
+        val kind: String? = ViewOnceDescriptor.KIND_IMAGE,
+        val phase: ViewOnceOpenPhase = ViewOnceOpenPhase.Idle,
+        val tappable: Boolean = false,
+        val openOnPhone: Boolean = false,
+        val openedCount: Int = 0,
+        val author: String? = null,
+    )
+
+    @Composable
+    private fun StatesScene(scene: Scene.States) {
+        val longName = "Bartholomew Featherstonehaugh-Wolfeschlegelsteinhausen"
+        val rows = if (scene.outgoing) listOf(
+            StateRow(ViewOnceState.Sent),
+            StateRow(ViewOnceState.Sent, kind = ViewOnceDescriptor.KIND_VIDEO),
+            StateRow(ViewOnceState.Opened, openedCount = 1),
+            StateRow(ViewOnceState.Opened, kind = ViewOnceDescriptor.KIND_VIDEO, openedCount = 3),
+            StateRow(ViewOnceState.Expired),
+        ) else listOf(
+            StateRow(ViewOnceState.Unopened, tappable = true, author = "Alice"),
+            StateRow(ViewOnceState.Unopened, kind = ViewOnceDescriptor.KIND_VIDEO, tappable = true, author = longName),
+            StateRow(ViewOnceState.Unopened, phase = ViewOnceOpenPhase.Opening, tappable = true),
+            StateRow(ViewOnceState.Unopened, phase = ViewOnceOpenPhase.Failed, tappable = true),
+            StateRow(ViewOnceState.Opened),
+            StateRow(ViewOnceState.Expired, kind = ViewOnceDescriptor.KIND_VIDEO),
+            StateRow(ViewOnceState.Unopened, openOnPhone = true),
+            StateRow(ViewOnceState.Unopened),
+            StateRow(ViewOnceState.Unopened, kind = null),
+        )
+        val sent = scene.outgoing
+        val container = if (sent) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh
+        val content = if (sent) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface
+        Column(
+            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            rows.forEachIndexed { index, row ->
+                Box(Modifier.fillMaxWidth(), contentAlignment = if (sent) Alignment.CenterEnd else Alignment.CenterStart) {
+                    ViewOnceBubble(
+                        descriptor = row.kind?.let(::ViewOnceDescriptor),
+                        isOutgoing = sent,
+                        shape = messageBubbleShape(sent, MessageClusterPosition.ALONE),
+                        containerColor = container,
+                        contentColor = content,
+                        modifier = Modifier.widthIn(max = 300.dp).then(if (index == 0) Modifier.testTag(FIRST_ROW) else Modifier),
+                        state = row.state,
+                        openedCount = row.openedCount,
+                        openOnPhone = row.openOnPhone,
+                        phase = row.phase,
+                        onOpen = if (row.tappable) ({}) else null,
+                        authorName = row.author,
+                        footer = {
+                            MessageTimestampFooter(
+                                infoText = formatMessageTimestamp(Instant.fromEpochMilliseconds(1_760_000_000_000L + index * 60_000L)),
+                                contentColor = content,
+                                showDeliveryStatus = sent,
+                                isPendingSend = false,
+                                deliveryStatus = 30,
+                                pendingSince = null,
+                            )
+                        },
+                    )
+                }
+            }
+        }
+    }
+
     private fun render(shot: Shot, dark: Boolean) = runDesktopComposeUiTest(
         width = (shot.widthDp * SCALE).toInt(),
         height = (shot.heightDp * SCALE).toInt(),
@@ -262,8 +349,13 @@ class ViewOnceShotsTest {
                 when (val scene = shot.scene) {
                     is Scene.Editor -> EditorScene(scene)
                     is Scene.Thread -> ThreadScene(scene)
+                    is Scene.States -> StatesScene(scene)
                 }
             }
+        }
+        if ((shot.scene as? Scene.States)?.pressFirst == true) {
+            mainClock.advanceTimeBy(500)
+            onNodeWithTag(FIRST_ROW).performTouchInput { down(center) }
         }
         // Coil decodes off the UI thread, so give it wall-clock time between frames.
         repeat(8) {
@@ -285,5 +377,6 @@ class ViewOnceShotsTest {
         const val SCALE = 2f
         const val PHONE_W = 412
         const val PHONE_H = 892
+        const val FIRST_ROW = "firstRow"
     }
 }

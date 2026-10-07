@@ -149,6 +149,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.Morph
+import id.homebase.core.widget.MorphShape
 import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
 import id.homebase.resources.card_font_archivo_black
@@ -644,23 +645,6 @@ private fun Swatch(
                 .border(1.dp, outline.copy(alpha = 0.5f * (1f - progress)), shape),
             contentAlignment = Alignment.Center,
         ) { content() }
-    }
-}
-
-internal class MorphShape(private val morph: Morph, private val progress: Float) : Shape {
-    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val path = Path()
-        var first = true
-        morph.forEachCubic(progress) { cubic ->
-            if (first) {
-                path.moveTo(cubic.anchor0X, cubic.anchor0Y)
-                first = false
-            }
-            path.cubicTo(cubic.control0X, cubic.control0Y, cubic.control1X, cubic.control1Y, cubic.anchor1X, cubic.anchor1Y)
-        }
-        path.close()
-        path.transform(Matrix().apply { scale(size.width, size.height) })
-        return Outline.Generic(path)
     }
 }
 

@@ -56,6 +56,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -80,6 +81,7 @@ import id.homebase.chat.poll.PollBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.viewonce.ViewOnceBubble
+import id.homebase.chat.viewonce.ViewOnceRules
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -101,6 +103,7 @@ import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
+import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -306,9 +309,17 @@ fun MessageBubbleRaw(
             val contentColor =
                 if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
                 else MaterialTheme.colorScheme.onSurface
+            val viewOnceState = remember(message, sentByYou) {
+                // sentByYou already settled authorship; hand stateOf an identity that agrees with it.
+                val me = if (sentByYou) message.originalAuthor else null
+                ViewOnceRules.stateOf(message, Clock.System.now().toEpochMilliseconds(), me)
+            }
             ViewOnceBubble(
                 descriptor = content.descriptor,
                 isOutgoing = sentByYou,
+                state = viewOnceState,
+                openedCount = if (sentByYou) ViewOnceRules.openedCount(message) else 0,
+                openOnPhone = !isMobile(),
                 shape = remember(sentByYou, clusterPosition) { messageBubbleShape(sentByYou, clusterPosition) },
                 containerColor = containerColor,
                 contentColor = contentColor,
@@ -986,7 +997,7 @@ fun MessageBubbleRaw(
                                 if (showMessageFooter) {
                                     Text(
                                         text = messageInfoText,
-                                        style = MaterialTheme.typography.labelSmall,
+                                        style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
                                         color = contentColor.copy(alpha = 0.7f),
                                         modifier = Modifier.testTag(ChatBubbleTestTags.TIMESTAMP),
                                     )
@@ -1280,7 +1291,7 @@ private fun BoxScope.MediaTimestampOverlay(
             ) {
                 Text(
                     text = messageInfoText,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
                     color = HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f),
                 )
                 if (sentByYou) {

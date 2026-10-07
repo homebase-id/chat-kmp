@@ -60,6 +60,7 @@ import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
 import id.homebase.resources.cd_send_to
 import id.homebase.resources.chat_view_once_caption_disabled
+import id.homebase.resources.chat_view_once_caption_discarded
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -355,6 +356,7 @@ fun ConversationMessagesPane(
                             },
                             viewOnce = viewOnce,
                             onToggleViewOnce = { viewOnceRequested = !viewOnceRequested },
+                            centerImageInPage = true,
                             onAddFile = { fileLauncher.launch() },
                             onAddImage = { galleryLauncher.launch() },
                             onCameraClick = { cameraLauncher.launch() },
@@ -418,6 +420,7 @@ fun ConversationMessagesPane(
                                     captionDisabledText = if (viewOnce) {
                                         stringResource(MR.string.chat_view_once_caption_disabled)
                                     } else null,
+                                    captionSetAsideText = stringResource(MR.string.chat_view_once_caption_discarded),
                                     onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
                                     onPasteImage = { imageBytes ->
                                         onUiAction(

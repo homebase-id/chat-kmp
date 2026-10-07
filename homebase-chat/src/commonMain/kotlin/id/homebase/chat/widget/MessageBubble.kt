@@ -63,6 +63,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -916,7 +917,8 @@ fun MessageTimestampFooter(
     ) {
         Text(
             text = infoText,
-            style = MaterialTheme.typography.labelSmall,
+            // A Latin "10:54 AM" stays in that order inside an RTL bubble.
+            style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
             color = contentColor.copy(alpha = 0.7f),
         )
         if (showDeliveryStatus) {

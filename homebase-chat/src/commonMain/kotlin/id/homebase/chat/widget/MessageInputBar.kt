@@ -99,6 +99,7 @@ import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.HeadingStyle
 import com.mohamedrejeb.richeditor.model.RichTextState
+import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.api.client.link.LinkPreviewProvider
@@ -1225,9 +1226,12 @@ fun MessageTextFieldForAttachment(
     onPasteImage: ((ByteArray) -> Unit)? = null,
     // Injectable so a test can paste without the OS clipboard, which headless CI lacks.
     clipboardImage: () -> ByteArray? = ::getImageFromClipboard,
-    // Non-null turns the caption off and shows this as its supporting text.
+    // Non-null turns the caption off; the typed caption is set aside, not cleared, and comes back when re-enabled.
     captionDisabledText: String? = null,
+    captionSetAsideText: String? = null,
 ) {
+    val blankCaption = rememberRichTextState()
+    val shownCaption = if (captionDisabledText != null) blankCaption else state
     val enterSendsMessage = rememberEnterSendsMessage()
     var hasSent by remember { mutableStateOf(false) }
     val autocomplete = rememberComposerAutocompleteController()
@@ -1286,7 +1290,7 @@ fun MessageTextFieldForAttachment(
         ) {
             Box(modifier = Modifier.weight(1f)) {
                 RichTextEditor(
-                    state = state,
+                    state = shownCaption,
                     modifier = Modifier.fillMaxWidth().testTag(ATTACHMENT_CAPTION_FIELD_TAG)
                         .pasteImageMenuItem(onPasteImage)
                         .focusRequester(captionFocusRequester)
@@ -1306,10 +1310,6 @@ fun MessageTextFieldForAttachment(
                             clipboardImage = clipboardImage,
                         ),
                     enabled = captionDisabledText == null,
-                    // Empty, the placeholder says it; a caption typed before the toggle needs saying it is dropped.
-                    supportingText = captionDisabledText
-                        ?.takeIf { state.annotatedString.text.isNotBlank() }
-                        ?.let { text -> { Text(text) } },
                     placeholder = {
                         Text(captionDisabledText ?: stringResource(MR.string.chat_new_message_placeholder))
                     },
@@ -1391,6 +1391,14 @@ fun MessageTextFieldForAttachment(
                     }
                 }
             }
+        }
+        if (captionDisabledText != null && captionSetAsideText != null && state.annotatedString.text.isNotBlank()) {
+            Text(
+                text = captionSetAsideText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, end = 64.dp, top = 6.dp),
+            )
         }
 
         // Emoji only, no sticker/GIF tabs: a caption is text, and a sticker isn't.
