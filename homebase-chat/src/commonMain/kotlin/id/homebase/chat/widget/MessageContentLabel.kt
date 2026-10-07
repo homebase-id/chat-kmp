@@ -23,6 +23,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.viewonce.ViewOnceIcon
+import id.homebase.chat.viewonce.ViewOnceOpenedIcon
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_audio
 import id.homebase.resources.chat_message_deleted
@@ -55,14 +56,14 @@ data class ContentLabel(val text: String, val icon: ImageVector?)
  *
  * When you add a new typed message kind, add its branch here so it gets a preview icon.
  */
-fun typedMessageContentLabel(messageContent: MessageContent?): ContentLabel? = when (messageContent) {
+fun typedMessageContentLabel(messageContent: MessageContent?, viewOnceOpened: Boolean = false): ContentLabel? = when (messageContent) {
     is MessageContent.Poll -> ContentLabel(messageContent.displayLabel, Icons.Default.BarChart)
     is MessageContent.Event -> ContentLabel(messageContent.displayLabel, Icons.Default.Event)
     is MessageContent.DiceRoll -> ContentLabel(messageContent.displayLabel, Icons.Default.Casino)
     is MessageContent.Groodle -> ContentLabel(messageContent.displayLabel, Icons.Default.CalendarMonth)
     is MessageContent.ContactCard -> ContentLabel(messageContent.displayLabel, Icons.Outlined.ContactPage)
     is MessageContent.Location -> ContentLabel(messageContent.displayLabel, Icons.Default.LocationOn)
-    is MessageContent.ViewOnce -> ContentLabel(messageContent.displayLabel, ViewOnceIcon)
+    is MessageContent.ViewOnce -> ContentLabel(messageContent.displayLabel, if (viewOnceOpened) ViewOnceOpenedIcon else ViewOnceIcon)
     is MessageContent.Unknown -> ContentLabel(messageContent.displayLabel, Icons.AutoMirrored.Outlined.HelpOutline)
     null -> null
 }
@@ -82,7 +83,13 @@ fun messageContentLabel(
     firstPayload: PayloadDescriptor?,
     hasMultiplePayloads: Boolean,
     messageContent: MessageContent? = null,
+    // Null reads the opened variant off [isDeleted]: a received view-once item is deleted once it is spent.
+    viewOnceOpened: Boolean? = null,
 ): ContentLabel? {
+    // Before the deleted check: a spent view-once item keeps its Photo/Video label rather than reading as deleted.
+    if (messageContent is MessageContent.ViewOnce) {
+        return typedMessageContentLabel(messageContent, viewOnceOpened ?: isDeleted)
+    }
     if (isDeleted) {
         return ContentLabel(
             text = stringResource(MR.string.chat_message_deleted),

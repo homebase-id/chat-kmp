@@ -17,6 +17,10 @@ object ViewOnceRules {
     fun screenshotTaken(message: MessageUiModel, myOdinId: OdinId?): Boolean =
         message.isFromActiveUser(myOdinId) && screenshotCount(message) >= 1
 
+    /** Opened or expired, from either side: what the quote and list icon variants key on. */
+    fun isSpent(message: MessageUiModel, nowMs: Long, myOdinId: OdinId?): Boolean =
+        stateOf(message, nowMs, myOdinId).let { it == ViewOnceState.Opened || it == ViewOnceState.Expired }
+
     fun stateOf(message: MessageUiModel, nowMs: Long, myOdinId: OdinId?): ViewOnceState {
         val createdMs = message.created.toEpochMilliseconds()
         val expiredByAge = nowMs - createdMs >= MAX_LIFESPAN_MS

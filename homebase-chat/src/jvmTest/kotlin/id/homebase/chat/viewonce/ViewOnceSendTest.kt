@@ -13,6 +13,7 @@ import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
+import id.homebase.chat.services.mapToMessageData
 import id.homebase.upload.PayloadBundle
 import id.homebase.upload.PayloadBundleEncryptor
 import java.awt.image.BufferedImage
@@ -71,7 +72,7 @@ class ViewOnceSendTest {
                 viewOnce = true,
                 messageId = messageId,
                 conversationId = conversation,
-                text = "a caption that must be ignored",
+                text = "",
                 attachments = listOf(AttachmentInput(filePath = jpegFile(), contentType = "image/jpeg")),
                 replyTo = null,
                 sentAt = sentAt,
@@ -90,12 +91,78 @@ class ViewOnceSendTest {
                 MessageContentParser.parse(appData.dataType, appData.content)
             )
             assertEquals(ViewOnceDescriptor.KIND_IMAGE, parsed.descriptor?.kind)
+            assertNull(parsed.descriptor?.caption)
+            assertTrue("caption" !in appData.content.orEmpty(), "a captionless send puts no caption field on the wire")
             assertNull(appData.previewThumbnail, "header preview thumbnail must be null")
 
             val payloads = stored.fileMetadata.payloads.orEmpty()
             assertEquals(listOf("${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}0"), payloads.map { it.key })
             assertTrue(payloads.single().thumbnails.isNullOrEmpty(), "image payload must carry no thumbnails")
             assertNull(payloads.single().previewThumbnail)
+        }
+    }
+
+    @Test
+    fun `a caption travels in the descriptor and surfaces nowhere but the viewer`() = runTest {
+        ChatMessageSenderServiceTestFixture().use { fixture ->
+            val service = fixture.build(encryptorOverride = PassThroughEncryptor(simulateVideoProcessor = false))
+            val conversation = fixture.seedConversation(others = listOf("bob.test"))
+            val messageId = Uuid.random()
+
+            service.sendAttachmentsMessage(
+                viewOnce = true,
+                messageId = messageId,
+                conversationId = conversation,
+                text = "  Our secret plan  ",
+                attachments = listOf(AttachmentInput(filePath = jpegFile(), contentType = "image/jpeg")),
+                replyTo = null,
+                sentAt = UnixTimeUtc.now(),
+                fileOperationsProvider = JvmFileOperationsProvider(),
+                mediaQuality = MediaQuality.STANDARD,
+            )
+
+            val stored = fixture.dbm.driveMainIndex
+                .selectHomebaseFileByUnique(fixture.testIdentityId, fixture.chatDriveId, messageId)
+            assertNotNull(stored)
+            val content = assertIs<MessageContent.ViewOnce>(
+                MessageContentParser.parse(stored.fileMetadata.appData.dataType, stored.fileMetadata.appData.content)
+            )
+            assertEquals("Our secret plan", content.descriptor?.caption)
+
+            val model = assertNotNull(mapToMessageData(stored, fixture.credentialsManager))
+            assertEquals("Photo", model.content, "the list preview and notification read this, never the caption")
+            assertEquals("Photo", model.messageContent?.displayLabel)
+            assertEquals("Photo", model.messageContent?.notificationLabel)
+            assertTrue("secret" !in model.messageAppData.getMessage())
+            assertNull(model.previewThumbnail)
+        }
+    }
+
+    @Test
+    fun `an over-long caption is cut on a code point boundary`() = runTest {
+        ChatMessageSenderServiceTestFixture().use { fixture ->
+            val service = fixture.build(encryptorOverride = PassThroughEncryptor(simulateVideoProcessor = false))
+            val conversation = fixture.seedConversation(others = listOf("bob.test"))
+            val messageId = Uuid.random()
+
+            service.sendAttachmentsMessage(
+                viewOnce = true,
+                messageId = messageId,
+                conversationId = conversation,
+                text = "\uD83D\uDE00".repeat(ViewOnceDescriptor.MAX_CAPTION_CODEPOINTS + 50),
+                attachments = listOf(AttachmentInput(filePath = jpegFile(), contentType = "image/jpeg")),
+                replyTo = null,
+                sentAt = UnixTimeUtc.now(),
+                fileOperationsProvider = JvmFileOperationsProvider(),
+                mediaQuality = MediaQuality.STANDARD,
+            )
+
+            val stored = fixture.dbm.driveMainIndex
+                .selectHomebaseFileByUnique(fixture.testIdentityId, fixture.chatDriveId, messageId)
+            val caption = (MessageContentParser.parse(216, stored!!.fileMetadata.appData.content) as MessageContent.ViewOnce)
+                .descriptor?.caption.orEmpty()
+            assertEquals(ViewOnceDescriptor.MAX_CAPTION_CODEPOINTS, caption.codePointCount(0, caption.length))
+            assertEquals(2 * ViewOnceDescriptor.MAX_CAPTION_CODEPOINTS, caption.length, "no pair split in half")
         }
     }
 

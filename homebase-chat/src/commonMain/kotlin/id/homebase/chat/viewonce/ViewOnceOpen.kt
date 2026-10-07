@@ -30,5 +30,6 @@ fun viewOnceViewerFor(
         payload = payload,
         keyHeader = KeyHeader(iv = iv, aesKey = message.keyHeader.aesKey),
         kind = descriptor.kind,
+        caption = descriptor.caption,
     )
 }

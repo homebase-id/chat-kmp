@@ -153,31 +153,15 @@ class MediaAttachmentEditorToolsetTest {
         )
     }
 
-    private fun viewOnce(current: AttachmentPendingFile?, count: Int = 1, wired: Boolean = true) =
-        editorToolsetFor(
-            current,
-            canCrop = true,
-            canDraw = true,
-            canSave = true,
-            canSetViewOnce = wired,
-            attachmentCount = count,
-        ).showViewOnce
-
     @Test
-    fun viewOnce_showsForOneImageOrOneVideo() {
-        assertTrue(viewOnce(fileImage()))
-        assertTrue(viewOnce(gallery()))
-        assertTrue(viewOnce(video()))
-        assertTrue(viewOnce(fileImage(name = "anim.gif")))
-    }
-
-    @Test
-    fun viewOnce_hiddenForNoneManyStickersDocumentsOrUnwiredHost() {
-        assertFalse(viewOnce(null, count = 0))
-        assertFalse(viewOnce(fileImage(), count = 2))
-        assertFalse(viewOnce(file()))
-        assertFalse(viewOnce(fileImage().copy(forceSticker = true)))
-        assertFalse(viewOnce(fileImage(), wired = false))
+    fun viewOnceCandidate_isAnImageOrVideoButNotAStickerOrDocument() {
+        assertTrue(isViewOnceCandidate(fileImage()))
+        assertTrue(isViewOnceCandidate(gallery()))
+        assertTrue(isViewOnceCandidate(video()))
+        assertTrue(isViewOnceCandidate(fileImage(name = "anim.gif")))
+        assertFalse(isViewOnceCandidate(file()))
+        assertFalse(isViewOnceCandidate(fileImage().copy(forceSticker = true)))
+        assertFalse(isViewOnceCandidate(null))
     }
 
     @Test

@@ -531,7 +531,7 @@ internal class MessageActionsHandler(
 
         addMessageWithFiles(
             conversationId = action.conversationId,
-            content = if (action.viewOnce) "" else action.message.trimEnd(),
+            content = action.message.trimEnd(),
             files = action.attachments,
             replyTo = replyTo,
             viewOnce = action.viewOnce,
@@ -892,7 +892,8 @@ internal class MessageActionsHandler(
             val placeholder = PendingOutgoingMessage(
                 id = newMessageId,
                 conversationId = conversationId,
-                text = content,
+                // A view-once caption is for the viewer only, never the sender's own bubble.
+                text = if (viewOnce) "" else content,
                 attachmentCount = files.size,
                 sentAt = Instant.fromEpochMilliseconds(sentAt.milliseconds),
                 replyPreview = replyTo?.toReplyPreview(),

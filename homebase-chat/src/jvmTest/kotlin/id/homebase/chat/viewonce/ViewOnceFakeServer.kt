@@ -81,7 +81,7 @@ internal class ViewOnceFakeServer(
         .filter { it.id == "drive_payloads" || it.id == "hls_chunks" }
         .sumOf { it.sizeBytes }
 
-    fun viewer(messageId: Uuid = Uuid.random(), kind: String = ViewOnceDescriptor.KIND_IMAGE) =
+    fun viewer(messageId: Uuid = Uuid.random(), kind: String = ViewOnceDescriptor.KIND_IMAGE, caption: String? = null) =
         FullScreenOverlay.ViewOnceViewer(
             messageId = messageId,
             conversationId = Uuid.random(),
@@ -93,6 +93,7 @@ internal class ViewOnceFakeServer(
             ),
             keyHeader = keyHeader,
             kind = kind,
+            caption = caption,
         )
 }
 

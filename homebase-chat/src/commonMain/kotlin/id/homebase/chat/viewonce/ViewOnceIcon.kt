@@ -19,6 +19,16 @@ private fun PathBuilder.digitOne() {
     close()
 }
 
+private fun PathBuilder.checkMark() {
+    moveTo(7.4f, 12.2f)
+    lineTo(8.6f, 11f)
+    lineTo(10.6f, 13f)
+    lineTo(15.4f, 8.2f)
+    lineTo(16.6f, 9.4f)
+    lineTo(10.6f, 15.4f)
+    close()
+}
+
 private fun PathBuilder.dashedRing(outer: Float, inner: Float, dashes: Int, gapDegrees: Float) {
     val step = 360f / dashes
     fun point(radius: Float, degrees: Float): Pair<Float, Float> {
@@ -45,6 +55,21 @@ val ViewOnceIcon: ImageVector by lazy {
         materialPath {
             dashedRing(outer = 10.5f, inner = 8.5f, dashes = 10, gapDegrees = 12f)
             digitOne()
+        }
+    }
+}
+
+val ViewOnceRingIcon: ImageVector by lazy {
+    materialIcon(name = "ViewOnceRing") {
+        materialPath { dashedRing(outer = 10.5f, inner = 8.5f, dashes = 10, gapDegrees = 12f) }
+    }
+}
+
+val ViewOnceOpenedIcon: ImageVector by lazy {
+    materialIcon(name = "ViewOnceOpened") {
+        materialPath {
+            dashedRing(outer = 10.5f, inner = 8.5f, dashes = 10, gapDegrees = 12f)
+            checkMark()
         }
     }
 }

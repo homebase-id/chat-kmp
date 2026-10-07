@@ -220,7 +220,7 @@ class ChatMessageStreamMapperTest {
         val content = result.messageContent
         assertTrue(content is id.homebase.chat.services.content.MessageContent.ViewOnce)
         assertEquals("image", content.descriptor?.kind)
-        assertEquals("View-once photo", result.content)
+        assertEquals("Photo", result.content)
         assertEquals(listOf("chat_web0"), result.payloads?.map { it.key })
     }
 

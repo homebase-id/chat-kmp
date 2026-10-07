@@ -40,12 +40,12 @@ import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.resources.cd_view_once_toggle
 import id.homebase.resources.chat_view_once_retry
 import id.homebase.resources.chat_view_once_viewer_failed_body
 import id.homebase.resources.chat_view_once_viewer_failed_title
-import id.homebase.resources.chat_view_once_viewer_title_photo
-import id.homebase.resources.chat_view_once_viewer_title_video
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -81,8 +81,6 @@ import id.homebase.core.util.SecureWindowEffect
 import id.homebase.core.util.rememberScreenCaptureObserver
 import id.homebase.core.util.screenCaptureBlockedBySystem
 import id.homebase.resources.chat_view_once_capture_blocked
-import id.homebase.resources.chat_view_once_capture_discouraged
-import id.homebase.resources.chat_view_once_capture_system_blocked
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -106,8 +104,6 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_image_attachment
 import id.homebase.resources.chat_view_once_close
-import id.homebase.resources.chat_view_once_viewer_hint_photo
-import id.homebase.resources.chat_view_once_viewer_hint_video
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -121,6 +117,7 @@ const val VIEW_ONCE_VIEWER_IMAGE_TAG = "viewOnceViewerImage"
 const val VIEW_ONCE_VIEWER_PROGRESS_TAG = "viewOnceViewerProgress"
 const val VIEW_ONCE_VIEWER_BLOCKED_TAG = "viewOnceViewerBlocked"
 const val VIEW_ONCE_VIEWER_MUTE_TAG = "viewOnceViewerMute"
+const val VIEW_ONCE_VIEWER_CAPTION_TAG = "viewOnceViewerCaption"
 internal const val VIEW_ONCE_CHROME_HIDE_MS = 2_500L
 
 /**
@@ -212,6 +209,7 @@ fun ViewOnceViewer(
     var muted by remember(data.messageId) { mutableStateOf(false) }
     ViewOnceViewerFrame(
         isVideo = isVideo,
+        caption = remember(data.caption) { data.caption?.let { markdownToPlainPreview(it, ViewOnceDescriptor.MAX_CAPTION_CODEPOINTS) }?.takeIf { it.isNotBlank() } },
         mediaShown = shown && !failed,
         failed = failed,
         positionMs = { positionMs },
@@ -256,6 +254,7 @@ fun ViewOnceViewer(
 @Composable
 internal fun ViewOnceViewerFrame(
     isVideo: Boolean,
+    caption: String? = null,
     mediaShown: Boolean,
     failed: Boolean,
     onClose: () -> Unit,
@@ -292,24 +291,24 @@ internal fun ViewOnceViewerFrame(
                 modifier = Modifier.align(Alignment.TopCenter),
             ) {
                 ViewOnceViewerHeader(
-                    isVideo = isVideo,
                     onClose = onClose,
                     modifier = Modifier.onSizeChanged { headerHeight = with(density) { it.height.toDp() } },
                 )
             }
-            // A failed load says what closing does in its own body, so the bottom note would only repeat it.
+            val shownCaption = caption.takeIf { mediaShown }
+            val hasFooter = shownCaption != null || (isVideo && mediaShown)
             AnimatedVisibility(
-                visible = chromeVisible && !failed,
+                visible = (chromeVisible || shownCaption != null) && !failed && hasFooter,
                 enter = fadeIn(motion.defaultEffectsSpec()) + slideInVertically(motion.defaultSpatialSpec()) { it / 4 },
                 exit = fadeOut(motion.defaultEffectsSpec()) + slideOutVertically(motion.defaultSpatialSpec()) { it / 4 },
                 modifier = Modifier.align(Alignment.BottomCenter),
             ) {
                 ViewOnceViewerFooter(
-                    isVideo = isVideo,
-                    positionMs = positionMs.takeIf { isVideo && mediaShown },
+                    caption = shownCaption,
+                    positionMs = positionMs.takeIf { isVideo && mediaShown && chromeVisible },
                     durationMs = durationMs,
                     muted = muted,
-                    onMutedChange = onMutedChange?.takeIf { isVideo && mediaShown },
+                    onMutedChange = onMutedChange?.takeIf { isVideo && mediaShown && chromeVisible },
                 )
             }
         }
@@ -318,7 +317,7 @@ internal fun ViewOnceViewerFrame(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ViewOnceViewerHeader(isVideo: Boolean, onClose: () -> Unit, modifier: Modifier = Modifier) {
+private fun ViewOnceViewerHeader(onClose: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     Row(
         modifier = modifier
@@ -347,23 +346,15 @@ private fun ViewOnceViewerHeader(isVideo: Boolean, onClose: () -> Unit, modifier
             Modifier.padding(start = 16.dp).size(32.dp).clip(MaterialShapes.Cookie9Sided.toShape()).background(colors.primary),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(ViewOnceDigitIcon, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(22.dp))
+            Icon(ViewOnceDigitIcon, contentDescription = stringResource(MR.string.cd_view_once_toggle), tint = colors.onPrimary, modifier = Modifier.size(22.dp))
         }
-        Text(
-            text = stringResource(if (isVideo) MR.string.chat_view_once_viewer_title_video else MR.string.chat_view_once_viewer_title_photo),
-            style = MaterialTheme.typography.titleMediumEmphasized.copy(textDirection = TextDirection.Content),
-            color = colors.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 12.dp).weight(1f),
-        )
     }
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ViewOnceViewerFooter(
-    isVideo: Boolean,
+    caption: String?,
     positionMs: (() -> Long)?,
     durationMs: Long?,
     muted: Boolean,
@@ -422,21 +413,18 @@ private fun ViewOnceViewerFooter(
                 }
             }
         }
-        Text(
-            text = stringResource(if (isVideo) MR.string.chat_view_once_viewer_hint_video else MR.string.chat_view_once_viewer_hint_photo),
-            style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
-            color = colors.onSurfaceVariant,
-            modifier = Modifier.padding(end = 8.dp),
-        )
-        Text(
-            text = stringResource(
-                if (screenCaptureBlockedBySystem) MR.string.chat_view_once_capture_system_blocked
-                else MR.string.chat_view_once_capture_discouraged,
-            ),
-            style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content),
-            color = colors.onSurfaceVariant,
-            modifier = Modifier.padding(end = 8.dp),
-        )
+        if (caption != null) {
+            Text(
+                text = caption,
+                style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
+                color = colors.onSurface,
+                modifier = Modifier
+                    .padding(end = 8.dp)
+                    .heightIn(max = 200.dp)
+                    .verticalScroll(rememberScrollState())
+                    .testTag(VIEW_ONCE_VIEWER_CAPTION_TAG),
+            )
+        }
     }
 }
 

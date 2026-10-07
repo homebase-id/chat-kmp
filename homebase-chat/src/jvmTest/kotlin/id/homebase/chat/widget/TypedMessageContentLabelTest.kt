@@ -55,7 +55,7 @@ class TypedMessageContentLabelTest {
         val label = typedMessageContentLabel(
             MessageContent.ViewOnce(id.homebase.chat.viewonce.ViewOnceDescriptor("video"))
         )
-        assertEquals("View-once video", label?.text)
+        assertEquals("Video", label?.text)
         assertEquals(id.homebase.chat.viewonce.ViewOnceIcon, label?.icon)
     }
 

@@ -87,6 +87,8 @@ import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.viewonce.ViewOnceRules
+import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.haptics.HapticEvent
@@ -1092,11 +1094,18 @@ fun InlineReplyPreview(
     // Strip richeditor's `<br>` empty-paragraph artifacts from the quoted body so a reply to a
     // legacy `<br>` message shows its real text, not a stray break / blank quote (#1104).
     val replyText = remember(replyPreview.message) { replyPreview.message.stripComposerLineBreakArtifacts() }
+    val viewOnceOpened = remember(replyMessage, currentOdinId) {
+        replyMessage?.takeIf { it.messageContent is MessageContent.ViewOnce }?.let {
+            ViewOnceRules.isSpent(it, Clock.System.now().toEpochMilliseconds(), runCatching { OdinId(currentOdinId) }.getOrNull())
+        } ?: false
+    }
     val contentLabel = messageContentLabel(
         textContent = replyText,
         isDeleted = replyMessage?.isDeleted ?: false,
         firstPayload = mediaPayloads.firstOrNull(),
         hasMultiplePayloads = mediaPayloads.size > 1,
+        messageContent = replyMessage?.messageContent.takeIf { it is MessageContent.ViewOnce },
+        viewOnceOpened = viewOnceOpened,
     )
     // Dispatch on the typed ReplyContext carried on the wire — that's how
     // the renderer knows it's an event reply without looking up the parent.

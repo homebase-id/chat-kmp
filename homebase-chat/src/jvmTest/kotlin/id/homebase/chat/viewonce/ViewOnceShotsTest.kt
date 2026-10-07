@@ -56,14 +56,15 @@ import id.homebase.chat.widget.isViewOnceEligible
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
-import id.homebase.resources.chat_view_once_caption_disabled
 import id.homebase.chat.widget.MessageTimestampFooter
 import id.homebase.chat.widget.messageBubbleShape
 import id.homebase.core.util.formatMessageTimestamp
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performClick
-import id.homebase.chat.widget.VIEW_ONCE_CHIP_TAG
+import id.homebase.chat.widget.VIEW_ONCE_TOGGLE_TAG
+import id.homebase.chat.widget.ViewOnceToggle
 import androidx.compose.ui.platform.testTag
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.collections.immutable.persistentListOf
@@ -206,10 +207,6 @@ class ViewOnceShotsTest {
             onCropImage = {},
             onDrawImage = {},
             onToggleMediaQuality = {},
-            viewOnce = viewOnce,
-            onToggleViewOnce = { viewOnceRequested = !viewOnceRequested },
-            viewOnceSetAside = viewOnceRequested && !eligible && scene.attachments.size > 1,
-            viewOnceDropsCaption = viewOnce && scene.caption.isNotEmpty(),
             onAddImage = {},
             onRemoveFile = {},
             onDismiss = {},
@@ -219,7 +216,7 @@ class ViewOnceShotsTest {
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     state = caption,
                     onSendMessage = {},
-                    captionDisabledText = if (viewOnce) stringResource(MR.string.chat_view_once_caption_disabled) else null,
+                    viewOnceToggle = if (eligible) ViewOnceToggle(viewOnce) { viewOnceRequested = !viewOnceRequested } else null,
                     showFormattingToolbar = false,
                 )
             },
@@ -466,7 +463,7 @@ class ViewOnceShotsTest {
         }
         if ((shot.scene as? Scene.Editor)?.tapViewOnce == true) {
             mainClock.advanceTimeBy(500)
-            onNodeWithTag(VIEW_ONCE_CHIP_TAG).performClick()
+            onAllNodesWithTag(VIEW_ONCE_TOGGLE_TAG).fetchSemanticsNodes().firstOrNull()?.let { onNodeWithTag(VIEW_ONCE_TOGGLE_TAG).performClick() }
         }
         // Coil decodes off the UI thread, so give it wall-clock time between frames.
         repeat((shot.settleMs / 250).toInt()) {

@@ -75,7 +75,7 @@ class ViewOnceBubblePlatformTest {
     @Test
     fun theSenderSideReadsTheSameWhetherOrNotThePlatformCanView() = runComposeUiTest {
         for (state in listOf(ViewOnceState.Sent, ViewOnceState.Opened)) {
-            val label = if (state == ViewOnceState.Sent) "View once" else "Opened"
+            val label = if (state == ViewOnceState.Sent) "Sent" else "Opened"
             for (canView in listOf(true, false)) {
                 bubble(canView = canView, isOutgoing = true, state = state, onOpen = null)
                 onNodeWithText(label).assertExists()

@@ -2,7 +2,6 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.ui.text.style.TextDirection
-import id.homebase.resources.chat_view_once_single_only
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.animation.AnimatedVisibility
@@ -19,7 +18,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import id.homebase.resources.cd_view_once_unavailable_multiple
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.EnterTransition
@@ -122,10 +120,6 @@ import id.homebase.resources.cd_pause_video
 import id.homebase.resources.cd_play_video
 import id.homebase.resources.cd_video_thumbnail
 import id.homebase.resources.chat_message_add_gallery_image
-import id.homebase.resources.chat_view_once_toggle
-import id.homebase.resources.chat_view_once_toggle_supporting
-import id.homebase.chat.viewonce.ViewOnceDigitIcon
-import id.homebase.resources.chat_view_once_toggle_supporting_caption
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonShapes
 import androidx.compose.material3.LocalContentColor
@@ -156,9 +150,6 @@ internal data class EditorToolset(
     val showDraw: Boolean,
     val showSave: Boolean,
     val showQuality: Boolean = false,
-    val showViewOnce: Boolean = false,
-    // Shown but off: the toolbar keeps its shape when a second item arrives, and the feature stays findable.
-    val viewOnceNeedsSingle: Boolean = false,
 ) {
     val showToolbar: Boolean get() = showCrop || showDraw || showSave
 }
@@ -172,8 +163,6 @@ internal fun editorToolsetFor(
     canDraw: Boolean,   // onDrawImage != null
     canSave: Boolean,   // onSaveFile  != null
     canSetQuality: Boolean = false, // onToggleMediaQuality != null
-    canSetViewOnce: Boolean = false, // onToggleViewOnce != null
-    attachmentCount: Int = 1,
 ): EditorToolset {
     val isEditableImage =
         current is AttachmentPendingFile.FileImage || current is AttachmentPendingFile.Gallery
@@ -193,8 +182,6 @@ internal fun editorToolsetFor(
         showDraw = canDraw && isNonGifImage,
         showSave = canSave && current != null,
         showQuality = canSetQuality && isQualityRelevant,
-        showViewOnce = canSetViewOnce && attachmentCount == 1 && isViewOnceCandidate(current),
-        viewOnceNeedsSingle = canSetViewOnce && attachmentCount > 1 && isViewOnceCandidate(current),
     )
 }
 
@@ -229,11 +216,6 @@ fun MediaAttachmentEditor(
      */
     mediaQuality: MediaQuality = MediaQuality.STANDARD,
     onToggleMediaQuality: (() -> Unit)? = null,
-    viewOnce: Boolean = false,
-    onToggleViewOnce: (() -> Unit)? = null,
-    // True when the sender turned view once on and then added more media, which view once can't carry.
-    viewOnceSetAside: Boolean = false,
-    viewOnceDropsCaption: Boolean = false,
     onDismiss: (() -> Unit)? = null,
     collapseSecondaryChrome: Boolean = false,
     centerImageInPage: Boolean = false,
@@ -743,12 +725,9 @@ fun MediaAttachmentEditor(
                 canDraw = onDrawImage != null,
                 canSave = onSaveFile != null,
                 canSetQuality = onToggleMediaQuality != null,
-                canSetViewOnce = onToggleViewOnce != null,
-                attachmentCount = attachments.size,
             )
         }
         val toolset = toolsetFor(currentAttachment)
-        var singleOnlyAsked by remember(attachments.size) { mutableStateOf(false) }
         val toolbarFade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
         AnimatedVisibility(
             visible = !collapseSecondaryChrome,
@@ -770,7 +749,6 @@ fun MediaAttachmentEditor(
             itemVerticalAlignment = Alignment.CenterVertically,
         ) {
             val sendOptions = listOfNotNull(
-                SendOption.ViewOnce.takeIf { toolset.showViewOnce || toolset.viewOnceNeedsSingle },
                 SendOption.Quality.takeIf { toolset.showQuality },
             )
             // A lone download joins the send options' connected group, so the row reads as one toolbar.
@@ -812,13 +790,6 @@ fun MediaAttachmentEditor(
                     sendOptions.forEachIndexed { index, option ->
                         val shapes = sendOptionShapes(index + offset, groupSize)
                         when (option) {
-                            SendOption.ViewOnce -> ViewOnceToolChip(
-                                toolset = toolset,
-                                selected = viewOnce,
-                                onClick = { onToggleViewOnce!!() },
-                                onUnavailableClick = { singleOnlyAsked = true },
-                                shapes = shapes,
-                            )
                             SendOption.Quality -> MediaQualityToggle(
                                 isHigh = mediaQuality == MediaQuality.HIGH,
                                 onClick = { onToggleMediaQuality!!() },
@@ -827,29 +798,6 @@ fun MediaAttachmentEditor(
                         }
                     }
                 }
-            }
-        }
-        val notice = when {
-            viewOnce && toolset.showViewOnce && viewOnceDropsCaption -> MR.string.chat_view_once_toggle_supporting_caption
-            viewOnce && toolset.showViewOnce -> MR.string.chat_view_once_toggle_supporting
-            viewOnceSetAside || (singleOnlyAsked && toolset.viewOnceNeedsSingle) -> MR.string.chat_view_once_single_only
-            else -> null
-        }
-        val motion = MaterialTheme.motionScheme
-        AnimatedContent(
-            targetState = notice,
-            transitionSpec = {
-                fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) using
-                    SizeTransform(clip = true) { _, _ -> motion.defaultSpatialSpec() }
-            },
-        ) { shown ->
-            if (shown != null) {
-                EditorSupportingLine(
-                    text = stringResource(shown),
-                    modifier = Modifier.padding(start = EDITOR_SUPPORTING_START, end = 20.dp, top = 2.dp, bottom = 6.dp),
-                )
-            } else {
-                Spacer(Modifier.fillMaxWidth())
             }
         }
         }
@@ -866,69 +814,7 @@ fun MediaAttachmentEditor(
     }
 }
 
-internal const val VIEW_ONCE_CHIP_TAG = "viewOnceChip"
-
-private enum class SendOption { ViewOnce, Quality }
-
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-internal fun ViewOnceToolChip(
-    toolset: EditorToolset,
-    selected: Boolean,
-    onClick: () -> Unit,
-    onUnavailableClick: () -> Unit = {},
-    shapes: ToggleButtonShapes = sendOptionShapes(0, 1),
-) {
-    val available = toolset.showViewOnce
-    if (!available && !toolset.viewOnceNeedsSingle) return
-    val colors = MaterialTheme.colorScheme
-    val on by animateFloatAsState(if (selected && available) 1f else 0f, MaterialTheme.motionScheme.fastSpatialSpec())
-    val unavailableLabel = stringResource(MR.string.cd_view_once_unavailable_multiple)
-    ToggleButton(
-        checked = selected && available,
-        // Still tappable when unavailable, so the tap can say why instead of doing nothing.
-        onCheckedChange = { if (available) onClick() else onUnavailableClick() },
-        shapes = shapes,
-        // Primary, not the HD toggle's secondary: this is the setting the recipient's trust rests on.
-        colors = ToggleButtonDefaults.toggleButtonColors(
-            containerColor = colors.surfaceContainer,
-            contentColor = if (available) colors.onSurfaceVariant else colors.onSurface.copy(alpha = 0.38f),
-            checkedContainerColor = colors.primary,
-            checkedContentColor = colors.onPrimary,
-        ),
-        modifier = Modifier
-            .heightIn(min = SEND_OPTION_HEIGHT)
-            .testTag(VIEW_ONCE_CHIP_TAG)
-            .then(if (available) Modifier else Modifier.semantics { stateDescription = unavailableLabel }),
-    ) {
-        val ink = LocalContentColor.current
-        val cookie = MaterialShapes.Cookie9Sided.toShape()
-        Box(Modifier.size(VIEW_ONCE_GLYPH_SIZE), contentAlignment = Alignment.Center) {
-            // Turning it on spins the outlined cookie shut into the filled badge the bubbles use; a third of a
-            // turn lands the 9-sided cookie back on its own silhouette, and the "1" stays upright throughout.
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .graphicsLayer {
-                        rotationZ = (1f - on) * -120f
-                        val pop = 1f + 0.16f * on * (1f - on) * 4f
-                        scaleX = pop
-                        scaleY = pop
-                    }
-                    .border(1.5.dp, ink, cookie)
-                    .background(ink.copy(alpha = on.coerceIn(0f, 1f) * ink.alpha), cookie),
-            )
-            Icon(
-                imageVector = ViewOnceDigitIcon,
-                contentDescription = null,
-                tint = lerp(ink, colors.primary, on.coerceIn(0f, 1f)),
-                modifier = Modifier.size(VIEW_ONCE_GLYPH_SIZE),
-            )
-        }
-        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-        Text(stringResource(MR.string.chat_view_once_toggle))
-    }
-}
+private enum class SendOption { Quality }
 
 private class EditorTool(val icon: ImageVector, val label: StringResource, val onClick: () -> Unit)
 
@@ -971,7 +857,6 @@ private fun MediaQualityToggle(isHigh: Boolean, onClick: () -> Unit, shapes: Tog
 }
 
 private val SEND_OPTION_HEIGHT = 48.dp
-private val VIEW_ONCE_GLYPH_SIZE = 22.dp
 private val CLOSE_BAND = 72.dp
 
 private fun onlyTool(tools: EditorToolset): Boolean =
@@ -998,35 +883,6 @@ private fun sendOptionColors() = ToggleButtonDefaults.toggleButtonColors(
     checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
     checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
 )
-
-internal val EDITOR_SUPPORTING_START = 20.dp
-
-/** A quiet note under an editor control: bodySmall, onSurfaceVariant, icon on the first line. */
-@Composable
-internal fun EditorSupportingLine(text: String, modifier: Modifier = Modifier) {
-    // Content direction keeps English punctuation right; the explicit side keeps the text beside its icon in RTL.
-    val style = MaterialTheme.typography.bodySmall.copy(
-        textDirection = TextDirection.Content,
-        textAlign = if (LocalLayoutDirection.current == LayoutDirection.Rtl) TextAlign.Right else TextAlign.Left,
-    )
-    val lineHeight = with(LocalDensity.current) { style.lineHeight.toDp() }
-    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Box(Modifier.size(lineHeight), contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = Icons.Outlined.Info,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(lineHeight),
-            )
-        }
-        Text(
-            text = text,
-            style = style,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 8.dp).weight(1f),
-        )
-    }
-}
 
 @Composable
 fun secondaryChromeEnter(): EnterTransition =

@@ -57,6 +57,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconToggleButton
+import androidx.compose.runtime.Immutable
+import id.homebase.chat.viewonce.ViewOnceIcon
+import id.homebase.resources.cd_view_once_toggle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -1211,6 +1215,11 @@ private fun EmojiToggleButton(
     }
 }
 
+const val VIEW_ONCE_TOGGLE_TAG = "viewOnceToggle"
+
+@Immutable
+class ViewOnceToggle(val checked: Boolean, val onToggle: () -> Unit)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun MessageTextFieldForAttachment(
@@ -1225,8 +1234,8 @@ fun MessageTextFieldForAttachment(
     onPasteImage: ((ByteArray) -> Unit)? = null,
     // Injectable so a test can paste without the OS clipboard, which headless CI lacks.
     clipboardImage: () -> ByteArray? = ::getImageFromClipboard,
-    // Non-null turns the caption off; a typed caption stays visible and comes back when re-enabled.
-    captionDisabledText: String? = null,
+    // Non-null puts the view-once toggle inside the caption field; null when the attachment can't be view once.
+    viewOnceToggle: ViewOnceToggle? = null,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
     var hasSent by remember { mutableStateOf(false) }
@@ -1305,9 +1314,27 @@ fun MessageTextFieldForAttachment(
                             onPasteImage = onPasteImage,
                             clipboardImage = clipboardImage,
                         ),
-                    enabled = captionDisabledText == null,
                     placeholder = {
-                        Text(captionDisabledText ?: stringResource(MR.string.chat_new_message_placeholder))
+                        Text(stringResource(MR.string.chat_new_message_placeholder))
+                    },
+                    trailingIcon = viewOnceToggle?.let { toggle ->
+                        {
+                            IconToggleButton(
+                                checked = toggle.checked,
+                                onCheckedChange = { toggle.onToggle() },
+                                colors = IconButtonDefaults.iconToggleButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    checkedContainerColor = MaterialTheme.colorScheme.primary,
+                                    checkedContentColor = MaterialTheme.colorScheme.onPrimary,
+                                ),
+                                modifier = Modifier.testTag(VIEW_ONCE_TOGGLE_TAG),
+                            ) {
+                                Icon(
+                                    imageVector = ViewOnceIcon,
+                                    contentDescription = stringResource(MR.string.cd_view_once_toggle),
+                                )
+                            }
+                        }
                     },
                     leadingIcon = {
                         IconButton(
@@ -1320,7 +1347,6 @@ fun MessageTextFieldForAttachment(
                                     setEmojiPicker(true)
                                 }
                             },
-                            enabled = captionDisabledText == null,
                             modifier = Modifier.testTag(ATTACHMENT_EMOJI_BUTTON_TAG),
                         ) {
                             Icon(
@@ -1333,15 +1359,10 @@ fun MessageTextFieldForAttachment(
                     },
                     shape = RoundedCornerShape(12.dp),
                     colors = RichTextEditorDefaults.richTextEditorColors(
-                        containerColor = if (captionDisabledText == null) MaterialTheme.colorScheme.surfaceContainerHighest
-                            else MaterialTheme.colorScheme.surfaceContainer,
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,
                         disabledIndicatorColor = Color.Transparent,
-                        // The disabled-content alpha, so a typed caption visibly won't go out.
-                        disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                        disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        disabledLeadingIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                     ),
                     minLines = 1,
                     maxLines = 3,

@@ -14,6 +14,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SkikoComposeUiTest
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runSkikoComposeUiTest
@@ -114,6 +116,41 @@ class ViewOnceViewerTest {
 
         assertEquals(1, closed)
         assertEquals(1, dismissed)
+    }
+
+    @Test
+    fun theCaptionShowsInsideTheViewerAndTheViewerSaysNothingAboutViewingOnce() = runSkikoComposeUiTest {
+        val server = runBlocking { ViewOnceFakeServer().start() }
+        setContent {
+            MaterialTheme {
+                ViewOnceViewer(
+                    data = server.viewer(caption = "Remember this place"),
+                    onViewerClosed = { closed++ },
+                    onDismiss = { dismissed++ },
+                    loader = server.loader,
+                )
+            }
+        }
+        awaitShown()
+
+        onNodeWithTag(VIEW_ONCE_VIEWER_CAPTION_TAG).assertTextEquals("Remember this place")
+        assertEquals(
+            1, onAllNodes(hasClickAction()).fetchSemanticsNodes().size,
+            "a caption adds no affordance beyond close",
+        )
+        for (word in listOf("once", "screenshot", "disappears")) {
+            assertEquals(
+                0, onAllNodesWithText(word, substring = true, ignoreCase = true).fetchSemanticsNodes().size, word,
+            )
+        }
+    }
+
+    @Test
+    fun noCaptionMeansNoCaptionNode() = runSkikoComposeUiTest {
+        val server = runBlocking { ViewOnceFakeServer().start() }
+        show(server)
+        awaitShown()
+        onNodeWithTag(VIEW_ONCE_VIEWER_CAPTION_TAG).assertDoesNotExist()
     }
 
     @Test

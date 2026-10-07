@@ -26,7 +26,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,7 +59,10 @@ import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
 import id.homebase.resources.cd_send_to
-import id.homebase.resources.chat_view_once_caption_disabled
+import id.homebase.chat.viewonce.ViewOnceIntroSheet
+import id.homebase.chat.viewonce.ViewOnceToast
+import id.homebase.chat.viewonce.rememberViewOnceComposerState
+import id.homebase.chat.conversationlist.AttachmentPendingFile
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -340,12 +342,10 @@ fun ConversationMessagesPane(
 
                     is FullScreenOverlay.AttachmentData -> {
                         var captionEmojiPickerOpen by remember { mutableStateOf(false) }
-                        var viewOnceRequested by remember { mutableStateOf(false) }
+                        val viewOnceState = rememberViewOnceComposerState()
                         val viewOnceEligible = isViewOnceEligible(data.attachments)
-                        val viewOnce = viewOnceRequested && viewOnceEligible
-                        val captionTyped by remember(textFieldState) {
-                            derivedStateOf { textFieldState.annotatedString.text.isNotBlank() }
-                        }
+                        val viewOnce = viewOnceState.requested && viewOnceEligible
+                        val viewOnceIsVideo = data.attachments.singleOrNull() is AttachmentPendingFile.FileVideo
                         MediaAttachmentEditor(
                             attachments = data.attachments,
                             currentPage = currentGalleryPage,
@@ -359,10 +359,6 @@ fun ConversationMessagesPane(
                                         .ToggleMediaQuality
                                 )
                             },
-                            viewOnce = viewOnce,
-                            onToggleViewOnce = { viewOnceRequested = !viewOnceRequested },
-                            viewOnceSetAside = viewOnceRequested && !viewOnceEligible && data.attachments.size > 1,
-                            viewOnceDropsCaption = viewOnce && captionTyped,
                             centerImageInPage = true,
                             onAddFile = { fileLauncher.launch() },
                             onAddImage = { galleryLauncher.launch() },
@@ -393,6 +389,10 @@ fun ConversationMessagesPane(
                                 )
                             },
                             pagerTopEndSlot = {
+                                ViewOnceToast(
+                                    message = viewOnceState.toast,
+                                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                                )
                                 Row(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
@@ -424,8 +424,8 @@ fun ConversationMessagesPane(
                                     onSendMessage = {
                                         onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments, viewOnce))
                                     },
-                                    captionDisabledText = if (viewOnce) {
-                                        stringResource(MR.string.chat_view_once_caption_disabled)
+                                    viewOnceToggle = if (viewOnceEligible) {
+                                        ViewOnceToggle(viewOnce) { viewOnceState.toggle(viewOnceIsVideo) }
                                     } else null,
                                     onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
                                     onPasteImage = { imageBytes ->
@@ -438,6 +438,9 @@ fun ConversationMessagesPane(
                                 )
                             },
                         )
+                        if (viewOnceState.showIntro) {
+                            ViewOnceIntroSheet(isVideo = viewOnceIsVideo, onDismiss = viewOnceState::dismissIntro)
+                        }
                     }
                 }
             }

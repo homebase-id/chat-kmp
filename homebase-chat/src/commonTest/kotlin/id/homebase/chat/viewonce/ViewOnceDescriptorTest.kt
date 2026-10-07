@@ -30,8 +30,8 @@ class ViewOnceDescriptorTest {
 
     @Test
     fun summaryLine_namesTheKind() {
-        assertEquals("View-once photo", ViewOnceDescriptor(ViewOnceDescriptor.KIND_IMAGE).summaryLine())
-        assertEquals("View-once video", ViewOnceDescriptor(ViewOnceDescriptor.KIND_VIDEO).summaryLine())
+        assertEquals("Photo", ViewOnceDescriptor(ViewOnceDescriptor.KIND_IMAGE).summaryLine())
+        assertEquals("Video", ViewOnceDescriptor(ViewOnceDescriptor.KIND_VIDEO).summaryLine())
     }
 
     @Test
@@ -55,6 +55,42 @@ class ViewOnceDescriptorTest {
         )
         assertTrue("\"kind\":\"image\"" in json.replace(" ", ""))
         assertTrue("\"schemaVersion\":1" in json.replace(" ", ""))
+    }
+
+    @Test
+    fun caption_roundTripsButNeverReachesTheLabel() {
+        val descriptor = ViewOnceDescriptor(ViewOnceDescriptor.KIND_IMAGE, caption = "meet at 9")
+        val content = MessageContent.ViewOnce(descriptor)
+
+        val parsed = assertIs<MessageContent.ViewOnce>(
+            MessageContentParser.parse(216, MessageContentParser.serialize(content))
+        )
+        assertEquals("meet at 9", parsed.descriptor?.caption)
+        assertEquals("Photo", parsed.displayLabel)
+        assertEquals("Photo", parsed.notificationLabel)
+        assertEquals("Photo", descriptor.summaryLine())
+    }
+
+    @Test
+    fun captionlessDescriptor_keepsTheOriginalWireShape() {
+        val json = MessageContentParser.serialize(
+            MessageContent.ViewOnce(ViewOnceDescriptor(ViewOnceDescriptor.KIND_VIDEO))
+        )
+        assertTrue("caption" !in json)
+    }
+
+    @Test
+    fun tombstoneContent_keepsTheKindAndDropsTheCaption() {
+        val kept = viewOnceTombstoneContent(
+            MessageContentParser.serialize(
+                MessageContent.ViewOnce(ViewOnceDescriptor(ViewOnceDescriptor.KIND_VIDEO, caption = "gone"))
+            )
+        )
+        assertTrue("gone" !in kept)
+        assertEquals(ViewOnceDescriptor.KIND_VIDEO, (MessageContentParser.parse(216, kept) as MessageContent.ViewOnce).descriptor?.kind)
+        assertEquals("", viewOnceTombstoneContent(null))
+        assertEquals("", viewOnceTombstoneContent("{not json"))
+        assertEquals("", viewOnceTombstoneContent("""{"kind":"gif"}"""))
     }
 
     @Test

@@ -204,7 +204,7 @@ sealed interface MessageContent {
         const val UNPARSEABLE_POLL_LABEL = "Poll"
         const val UNPARSEABLE_CONTACT_LABEL = "Contact"
         const val UNPARSEABLE_LOCATION_LABEL = "Location"
-        const val UNPARSEABLE_VIEW_ONCE_LABEL = "View-once media"
+        const val UNPARSEABLE_VIEW_ONCE_LABEL = "Media"
         const val UNKNOWN_LABEL = "Unknown message"
     }
 
