@@ -86,7 +86,8 @@ sealed interface ConversationListUiAction {
     data class SendFile(
         val conversationId: Uuid,
         val message: String,
-        val attachments: List<AttachmentPendingFile>
+        val attachments: List<AttachmentPendingFile>,
+        val viewOnce: Boolean = false,
     ) : ConversationListUiAction
 
     data class AttachGalleryItem(

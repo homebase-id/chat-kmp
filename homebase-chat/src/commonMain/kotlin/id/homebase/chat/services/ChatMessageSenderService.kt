@@ -302,6 +302,7 @@ class ChatMessageSenderService(
                 "payloads=${payloadBundle?.payloads?.size ?: 0}"
         }
         val effectiveUserDate = userDate ?: UnixTimeUtc.now()
+        val isViewOnce = dataType == ChatProtocol.ChatViewOnceMessageDataType
         // previewThumbs pass through encryptBundle unchanged, so derive the preview from the
         // plaintext bundle here — UploadService doesn't need to hand the encrypted result back.
         val unecryptedMetadata =
@@ -315,7 +316,7 @@ class ChatMessageSenderService(
                     dataType = dataType,
                     userDate = effectiveUserDate.milliseconds,
                     content = content,
-                    previewThumbnail = payloadBundle?.previewThumbs?.minByOrNull {
+                    previewThumbnail = payloadBundle?.previewThumbs?.takeUnless { isViewOnce }?.minByOrNull {
                         it.pixelWidth
                     })
             )
@@ -363,6 +364,9 @@ class ChatMessageSenderService(
                 dependencyUniqueId = effectiveDep,
                 priority = 1,
                 originalRecipientCount = recipients.size,
+                // View-once bytes must not land in the payload cache or carry any thumbnail.
+                seedCache = !isViewOnce,
+                omitThumbnails = isViewOnce,
             ),
             scope = scope,
         )
@@ -843,6 +847,10 @@ class ChatMessageSenderService(
     ): List<SendMessageResult> {
         val sourceFile = chatMessageStream.getMessageFile(sourceMessageUniqueId)
             ?: throw IllegalArgumentException("source message not found: $sourceMessageUniqueId")
+
+        require(sourceFile.fileMetadata.appData.dataType != ChatProtocol.ChatViewOnceMessageDataType) {
+            "view-once media cannot be forwarded"
+        }
 
         val content = sourceFile.fileMetadata.appData.content
             ?: throw IllegalArgumentException("source message has no content")

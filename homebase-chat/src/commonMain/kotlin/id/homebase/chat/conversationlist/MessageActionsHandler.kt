@@ -28,6 +28,7 @@ import id.homebase.upload.PayloadBundle
 import id.homebase.chat.services.MAX_REACTIONS_PER_USER_PER_MESSAGE
 import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
+import id.homebase.chat.viewonce.sendAttachmentsMessage
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
@@ -527,9 +528,10 @@ internal class MessageActionsHandler(
 
         addMessageWithFiles(
             conversationId = action.conversationId,
-            content = action.message.trimEnd(),
+            content = if (action.viewOnce) "" else action.message.trimEnd(),
             files = action.attachments,
             replyTo = replyTo,
+            viewOnce = action.viewOnce,
         )
         // Input is cleared inside addMessageWithFiles after
         // the send is successfully queued.
@@ -706,6 +708,7 @@ internal class MessageActionsHandler(
         replyTo: MessageUiModel? = null,
         // Slow work that runs under the "Preparing…" placeholder instead of delaying it.
         prepare: suspend (List<AttachmentInput>) -> List<AttachmentInput> = { it },
+        viewOnce: Boolean = false,
     ) {
         val sentAt = UnixTimeUtc.now()
         fun payloadKey(index: Int) = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
@@ -811,6 +814,8 @@ internal class MessageActionsHandler(
             // re-put once we have it — avoids blocking the placeholder on image I/O.
             val imagePathsToRefine = mutableListOf<Pair<String, String>>()
             resolvedFiles.forEachIndexed { index, file ->
+                // View-once media gets no local preview: nothing may render it before the viewer.
+                if (viewOnce) return@forEachIndexed
                 val payloadKey = payloadKey(index)
                 val ctx: LocalAttachmentContext? = when (file) {
                     is AttachmentPendingFile.FileVideo -> {
@@ -921,7 +926,7 @@ internal class MessageActionsHandler(
                                 localVideoContextStore.put(newMessageId, payloadKey(index), preview.copy(localFilePath = input.filePath))
                             }
                         }
-                        bundleAndSend(newMessageId, conversationId, content, prepared, replyTo, sentAt)
+                        bundleAndSend(newMessageId, conversationId, content, prepared, replyTo, sentAt, viewOnce)
                     }
                     jumpToLatestAfterOwnSend(conversationId)
                 } catch (e: Throwable) {
@@ -1045,7 +1050,7 @@ internal class MessageActionsHandler(
                     )
                 }
                 messagesUiState.sendUnderPlaceholder(newMessageId) {
-                    bundleAndSend(newMessageId, conversationId, text, attachments, replyTo = null, sentAt = sentAt)
+                    bundleAndSend(newMessageId, conversationId, text, attachments, replyTo = null, sentAt = sentAt, viewOnce = false)
                 }
             }
         } catch (e: CancellationException) {
@@ -1070,34 +1075,22 @@ internal class MessageActionsHandler(
         attachments: List<AttachmentInput>,
         replyTo: MessageUiModel?,
         sentAt: UnixTimeUtc,
+        viewOnce: Boolean,
     ) {
-        val bundle = MessageAttachmentBuilder.build(
-            attachments = attachments,
-            fileOperationsProvider = fileOperationsProvider,
-            mediaQuality = userPreferences.mediaQuality,
-            payloadKeyFactory = { index, _ -> "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index" },
-        )
         if (replyTo != null) {
             Logger.d(tag = TAG) { "addMessageWithFiles: reply message=$messageId conversation=$conversationId replyTo=${replyTo.id}" }
-            chatMessageSenderService.replyToMessage(
-                messageUniqueId = messageId,
-                conversationId = conversationId,
-                replyTo = replyTo.toReplyPreview(),
-                messageText = content,
-                previousMessageUniqueId = null,
-                payloadBundle = bundle,
-                userDate = sentAt,
-            )
-        } else {
-            chatMessageSenderService.sendNewMessage(
-                messageUniqueId = messageId,
-                conversationId = conversationId,
-                messageText = content,
-                previousMessageUniqueId = null,
-                payloadBundle = bundle,
-                userDate = sentAt,
-            )
         }
+        chatMessageSenderService.sendAttachmentsMessage(
+            viewOnce = viewOnce,
+            messageId = messageId,
+            conversationId = conversationId,
+            text = content,
+            attachments = attachments,
+            replyTo = replyTo?.toReplyPreview(),
+            sentAt = sentAt,
+            fileOperationsProvider = fileOperationsProvider,
+            mediaQuality = userPreferences.mediaQuality,
+        )
     }
 
     private fun editMessage(messageId: Uuid, versionTag: Uuid, content: String) {

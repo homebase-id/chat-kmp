@@ -51,6 +51,22 @@ class TypedMessageContentLabelTest {
     }
 
     @Test
+    fun viewOnce_showsKindLabelAndViewOnceIcon() {
+        val label = typedMessageContentLabel(
+            MessageContent.ViewOnce(id.homebase.chat.viewonce.ViewOnceDescriptor("video"))
+        )
+        assertEquals("View-once video", label?.text)
+        assertEquals(id.homebase.chat.viewonce.ViewOnceIcon, label?.icon)
+    }
+
+    @Test
+    fun viewOnce_unparseable_fallsBackToKindLabel() {
+        val label = typedMessageContentLabel(MessageContent.ViewOnce(null))
+        assertEquals(MessageContent.UNPARSEABLE_VIEW_ONCE_LABEL, label?.text)
+        assertEquals(id.homebase.chat.viewonce.ViewOnceIcon, label?.icon)
+    }
+
+    @Test
     fun nullContent_returnsNull() {
         assertNull(typedMessageContentLabel(null))
     }

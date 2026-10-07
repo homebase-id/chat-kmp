@@ -59,6 +59,7 @@ import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
 import id.homebase.resources.cd_send_to
+import id.homebase.resources.chat_view_once_caption_disabled
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -337,6 +338,8 @@ fun ConversationMessagesPane(
 
                     is FullScreenOverlay.AttachmentData -> {
                         var captionEmojiPickerOpen by remember { mutableStateOf(false) }
+                        var viewOnceRequested by remember { mutableStateOf(false) }
+                        val viewOnce = viewOnceRequested && isViewOnceEligible(data.attachments)
                         MediaAttachmentEditor(
                             attachments = data.attachments,
                             currentPage = currentGalleryPage,
@@ -350,6 +353,8 @@ fun ConversationMessagesPane(
                                         .ToggleMediaQuality
                                 )
                             },
+                            viewOnce = viewOnce,
+                            onToggleViewOnce = { viewOnceRequested = !viewOnceRequested },
                             onAddFile = { fileLauncher.launch() },
                             onAddImage = { galleryLauncher.launch() },
                             onCameraClick = { cameraLauncher.launch() },
@@ -408,8 +413,11 @@ fun ConversationMessagesPane(
                                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                                     state = textFieldState,
                                     onSendMessage = {
-                                        onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments))
+                                        onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments, viewOnce))
                                     },
+                                    captionDisabledText = if (viewOnce) {
+                                        stringResource(MR.string.chat_view_once_caption_disabled)
+                                    } else null,
                                     onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
                                     onPasteImage = { imageBytes ->
                                         onUiAction(

@@ -103,6 +103,9 @@ import id.homebase.resources.cd_pause_video
 import id.homebase.resources.cd_play_video
 import id.homebase.resources.cd_video_thumbnail
 import id.homebase.resources.chat_message_add_gallery_image
+import id.homebase.resources.chat_view_once_toggle
+import id.homebase.resources.chat_view_once_toggle_supporting
+import id.homebase.chat.viewonce.ViewOnceIcon
 import id.homebase.resources.chat_message_remove_gallery_image
 import id.homebase.resources.crop
 import id.homebase.resources.draw
@@ -124,6 +127,7 @@ internal data class EditorToolset(
     val showDraw: Boolean,
     val showSave: Boolean,
     val showQuality: Boolean = false,
+    val showViewOnce: Boolean = false,
 ) {
     val showToolbar: Boolean get() = showCrop || showDraw || showSave
 }
@@ -137,6 +141,8 @@ internal fun editorToolsetFor(
     canDraw: Boolean,   // onDrawImage != null
     canSave: Boolean,   // onSaveFile  != null
     canSetQuality: Boolean = false, // onToggleMediaQuality != null
+    canSetViewOnce: Boolean = false, // onToggleViewOnce != null
+    attachmentCount: Int = 1,
 ): EditorToolset {
     val isEditableImage =
         current is AttachmentPendingFile.FileImage || current is AttachmentPendingFile.Gallery
@@ -156,8 +162,20 @@ internal fun editorToolsetFor(
         showDraw = canDraw && isNonGifImage,
         showSave = canSave && current != null,
         showQuality = canSetQuality && isQualityRelevant,
+        showViewOnce = canSetViewOnce && attachmentCount == 1 && isViewOnceCandidate(current),
     )
 }
+
+/** One image (not a sticker) or one video; documents, audio and stickers never qualify. */
+internal fun isViewOnceCandidate(current: AttachmentPendingFile?): Boolean = when (current) {
+    is AttachmentPendingFile.FileImage -> !current.forceSticker
+    is AttachmentPendingFile.Gallery -> !current.forceSticker
+    is AttachmentPendingFile.FileVideo -> true
+    else -> false
+}
+
+internal fun isViewOnceEligible(attachments: List<AttachmentPendingFile>): Boolean =
+    attachments.size == 1 && isViewOnceCandidate(attachments.single())
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -180,6 +198,8 @@ fun MediaAttachmentEditor(
      */
     mediaQuality: MediaQuality = MediaQuality.STANDARD,
     onToggleMediaQuality: (() -> Unit)? = null,
+    viewOnce: Boolean = false,
+    onToggleViewOnce: (() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
     collapseSecondaryChrome: Boolean = false,
     centerImageInPage: Boolean = false,
@@ -658,6 +678,8 @@ fun MediaAttachmentEditor(
                 canDraw = onDrawImage != null,
                 canSave = onSaveFile != null,
                 canSetQuality = onToggleMediaQuality != null,
+                canSetViewOnce = onToggleViewOnce != null,
+                attachmentCount = attachments.size,
             )
         }
         val toolset = toolsetFor(currentAttachment)
@@ -670,6 +692,7 @@ fun MediaAttachmentEditor(
         // Reserve the toolbar's height whenever tools can appear, so paging onto an attachment
         // without tools fades the toolbar instead of growing the pager.
         val canShowToolbar = onCropImage != null || onDrawImage != null || onSaveFile != null
+        Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -707,8 +730,11 @@ fun MediaAttachmentEditor(
                     }
                 }
             }
-            if (toolset.showQuality) {
+            if (toolset.showQuality || toolset.showViewOnce) {
                 Spacer(modifier = Modifier.weight(1f))
+            }
+            ViewOnceToolChip(toolset = toolset, selected = viewOnce, onClick = { onToggleViewOnce!!() })
+            if (toolset.showQuality) {
                 val isHigh = mediaQuality == MediaQuality.HIGH
                 FilterChip(
                     modifier = Modifier.testTag("mediaQualityChip"),
@@ -729,6 +755,15 @@ fun MediaAttachmentEditor(
                 )
             }
         }
+        if (viewOnce && toolset.showViewOnce) {
+            Text(
+                text = stringResource(MR.string.chat_view_once_toggle_supporting),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
+        }
         } // end AnimatedVisibility (tool row)
 
         // max, not sum: the ime inset already spans the nav bar, so stacking them double-counts.
@@ -740,6 +775,26 @@ fun MediaAttachmentEditor(
             bottomBar()
         }
     }
+}
+
+internal const val VIEW_ONCE_CHIP_TAG = "viewOnceChip"
+
+@Composable
+internal fun ViewOnceToolChip(toolset: EditorToolset, selected: Boolean, onClick: () -> Unit) {
+    if (!toolset.showViewOnce) return
+    FilterChip(
+        modifier = Modifier.testTag(VIEW_ONCE_CHIP_TAG),
+        selected = selected,
+        onClick = onClick,
+        label = { Text(stringResource(MR.string.chat_view_once_toggle)) },
+        leadingIcon = {
+            Icon(
+                imageVector = ViewOnceIcon,
+                contentDescription = null,
+                modifier = Modifier.size(FilterChipDefaults.IconSize),
+            )
+        },
+    )
 }
 
 @Composable

@@ -79,6 +79,7 @@ import id.homebase.chat.groodle.GroodleBubble
 import id.homebase.chat.poll.PollBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.viewonce.ViewOnceBubble
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -295,6 +296,14 @@ fun MessageBubbleRaw(
                         modifier = Modifier.padding(start = 8.dp),
                     )
                 },
+            )
+            return
+        }
+        is MessageContent.ViewOnce -> {
+            ViewOnceBubble(
+                descriptor = content.descriptor,
+                isOutgoing = sentByYou,
+                modifier = modifier,
             )
             return
         }

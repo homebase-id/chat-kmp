@@ -1225,6 +1225,8 @@ fun MessageTextFieldForAttachment(
     onPasteImage: ((ByteArray) -> Unit)? = null,
     // Injectable so a test can paste without the OS clipboard, which headless CI lacks.
     clipboardImage: () -> ByteArray? = ::getImageFromClipboard,
+    // Non-null turns the caption off and shows this as its supporting text.
+    captionDisabledText: String? = null,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
     var hasSent by remember { mutableStateOf(false) }
@@ -1303,6 +1305,8 @@ fun MessageTextFieldForAttachment(
                             onPasteImage = onPasteImage,
                             clipboardImage = clipboardImage,
                         ),
+                    enabled = captionDisabledText == null,
+                    supportingText = captionDisabledText?.let { text -> { Text(text) } },
                     placeholder = {
                         Text(stringResource(MR.string.chat_new_message_placeholder))
                     },
