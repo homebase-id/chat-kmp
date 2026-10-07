@@ -10,6 +10,7 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -222,6 +223,20 @@ class ChatMessageStreamMapperTest {
         assertEquals("image", content.descriptor?.kind)
         assertEquals("Photo", result.content)
         assertEquals(listOf("chat_web0"), result.payloads?.map { it.key })
+    }
+
+    @Test
+    fun searchNeverMatchesAViewOnceCaption() {
+        val viewOnce = buildChatMessageHeader(
+            localAppDataJson = null,
+            dataType = ChatProtocol.ChatViewOnceMessageDataType,
+            rawHeaderContent = """{"schemaVersion":1,"kind":"image","caption":"surprise party"}""",
+        )
+        val plain = buildChatMessageHeader(localAppDataJson = null)
+
+        assertFalse(matchesSearchQuery(viewOnce, "surprise"))
+        assertFalse(matchesSearchQuery(viewOnce, "image"))
+        assertTrue(matchesSearchQuery(plain, "hi"))
     }
 
     @Test

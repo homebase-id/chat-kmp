@@ -1046,7 +1046,7 @@
     <string name="chat_view_once_intro_title_photo">This photo can be viewed once</string>
     <string name="chat_view_once_intro_title_video">This video can be viewed once</string>
     <string name="chat_view_once_intro_disappears">It disappears from the chat after it's closed</string>
-    <string name="chat_view_once_intro_protected">It can't be shared, forwarded, copied or saved</string>
+    <string name="chat_view_once_intro_protected">It can't be shared, forwarded or saved from the app</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>

@@ -40,5 +40,3 @@ actual fun rememberScreenCaptureObserver(onScreenshot: () -> Unit): State<Boolea
     }
     return captured
 }
-
-actual val screenCaptureBlockedBySystem: Boolean = false

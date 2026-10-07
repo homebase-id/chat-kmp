@@ -11,9 +11,6 @@ expect fun SecureWindowEffect(active: Boolean)
 @Composable
 expect fun rememberScreenCaptureObserver(onScreenshot: () -> Unit): State<Boolean>
 
-/** Whether the OS itself blacks out captures of a secure window, so copy may say blocked rather than discouraged. */
-expect val screenCaptureBlockedBySystem: Boolean
-
 class SecureFlagRefCounter {
     private var holds = 0
     private var flagWasPresent = false

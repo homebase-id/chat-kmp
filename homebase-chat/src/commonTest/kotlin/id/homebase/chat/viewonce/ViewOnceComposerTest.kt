@@ -117,7 +117,7 @@ class ViewOnceComposerTest {
 
         onNodeWithText("This photo can be viewed once").assertExists()
         onNodeWithText("It disappears from the chat after it's closed").assertExists()
-        onNodeWithText("It can't be shared, forwarded, copied or saved").assertExists()
+        onNodeWithText("It can't be shared, forwarded or saved from the app").assertExists()
         assertEquals(0, onAllNodesWithText("screenshot", substring = true, ignoreCase = true).fetchSemanticsNodes().size)
         assertEquals(0, onAllNodesWithText("Learn more", substring = true, ignoreCase = true).fetchSemanticsNodes().size)
 

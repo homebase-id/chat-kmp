@@ -13,7 +13,6 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.style.TextOverflow
 import id.homebase.resources.chat_view_once_mute
 import id.homebase.resources.chat_view_once_remaining
 import kotlinx.coroutines.delay
@@ -58,7 +57,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -79,7 +77,6 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import id.homebase.core.util.SecureWindowEffect
 import id.homebase.core.util.rememberScreenCaptureObserver
-import id.homebase.core.util.screenCaptureBlockedBySystem
 import id.homebase.resources.chat_view_once_capture_blocked
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState

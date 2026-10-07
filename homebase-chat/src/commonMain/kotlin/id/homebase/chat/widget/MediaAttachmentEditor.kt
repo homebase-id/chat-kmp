@@ -1,23 +1,16 @@
 package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.ui.text.style.TextDirection
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonShapes
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.EnterTransition
@@ -122,13 +115,6 @@ import id.homebase.resources.cd_video_thumbnail
 import id.homebase.resources.chat_message_add_gallery_image
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonShapes
-import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.MaterialShapes
-import androidx.compose.material3.toShape
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.LayoutDirection
 import id.homebase.resources.chat_message_remove_gallery_image
 import id.homebase.resources.crop
 import id.homebase.resources.draw
@@ -194,6 +180,13 @@ internal fun isViewOnceCandidate(current: AttachmentPendingFile?): Boolean = whe
 
 internal fun isViewOnceEligible(attachments: List<AttachmentPendingFile>): Boolean =
     attachments.size == 1 && isViewOnceCandidate(attachments.single())
+
+internal fun viewOnceToggleFor(
+    attachments: List<AttachmentPendingFile>,
+    requested: Boolean,
+    onToggle: () -> Unit,
+): ViewOnceToggle? =
+    if (isViewOnceEligible(attachments)) ViewOnceToggle(requested, onToggle) else null
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

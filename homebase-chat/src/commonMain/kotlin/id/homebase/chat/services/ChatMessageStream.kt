@@ -928,12 +928,7 @@ class ChatMessageStream(
         return BatchResult(
             records = withContext(Dispatchers.Default) {
                 result.records
-                    .filter {
-                        it.fileMetadata.appData.content?.contains(
-                            searchQuery,
-                            ignoreCase = true
-                        ) == true
-                    }
+                    .filter { matchesSearchQuery(it, searchQuery) }
                     .mapNotNull { mapToMessageData(it, credentialsManager, ::resolveDisplayName) }
             },
             hasMoreRows = result.hasMoreRows,
@@ -1091,6 +1086,13 @@ sealed interface ChatMessagesData {
  * nor age it. [nowMs] is epoch-ms; [ownReactions] are the current user's decoded vote
  * codes (`_p0`, `_1Y`).
  */
+// A view-once caption is viewer-only; matching it would confirm the text without opening.
+internal fun matchesSearchQuery(header: HomebaseFile, query: String): Boolean {
+    val appData = header.fileMetadata.appData
+    if (appData.dataType == ChatProtocol.ChatViewOnceMessageDataType) return false
+    return appData.content?.contains(query, ignoreCase = true) == true
+}
+
 internal fun shouldAutoPin(
     content: MessageContent?,
     ownReactions: List<String>,

@@ -24,8 +24,6 @@ actual fun SecureWindowEffect(active: Boolean) {
 @Composable
 actual fun rememberScreenCaptureObserver(onScreenshot: () -> Unit): State<Boolean> = remember { mutableStateOf(false) }
 
-actual val screenCaptureBlockedBySystem: Boolean = true
-
 // Main thread only: Compose effects are already serialised there.
 private val secureHolds = WeakHashMap<Window, SecureFlagRefCounter>()
 

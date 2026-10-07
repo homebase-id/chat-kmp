@@ -10,5 +10,3 @@ actual fun SecureWindowEffect(active: Boolean) = Unit
 
 @Composable
 actual fun rememberScreenCaptureObserver(onScreenshot: () -> Unit): State<Boolean> = remember { mutableStateOf(false) }
-
-actual val screenCaptureBlockedBySystem: Boolean = false
