@@ -6,6 +6,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.hasStateDescription
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.ComposeUiTest
@@ -75,10 +77,14 @@ class ViewOnceBubblePlatformTest {
     @Test
     fun theSenderSideReadsTheSameWhetherOrNotThePlatformCanView() = runComposeUiTest {
         for (state in listOf(ViewOnceState.Sent, ViewOnceState.Opened)) {
-            val label = if (state == ViewOnceState.Sent) "Sent" else "Opened"
             for (canView in listOf(true, false)) {
                 bubble(canView = canView, isOutgoing = true, state = state, onOpen = null)
-                onNodeWithText(label).assertExists()
+                if (state == ViewOnceState.Sent) {
+                    // The ticks say "sent" on screen; the chip says it to a screen reader.
+                    onNode(hasText("Photo") and hasStateDescription("Sent")).assertExists()
+                } else {
+                    onNodeWithText("Opened").assertExists()
+                }
                 onNodeWithText("Open on your phone").assertDoesNotExist()
             }
         }

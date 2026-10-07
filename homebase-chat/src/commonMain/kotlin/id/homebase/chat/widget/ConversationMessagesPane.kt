@@ -344,6 +344,7 @@ fun ConversationMessagesPane(
                         var captionEmojiPickerOpen by remember { mutableStateOf(false) }
                         val viewOnceState = rememberViewOnceComposerState()
                         val viewOnceEligible = isViewOnceEligible(data.attachments)
+                        LaunchedEffect(viewOnceEligible) { viewOnceState.onEligibilityChanged(viewOnceEligible) }
                         val viewOnce = viewOnceState.requested && viewOnceEligible
                         val viewOnceIsVideo = data.attachments.singleOrNull() is AttachmentPendingFile.FileVideo
                         MediaAttachmentEditor(

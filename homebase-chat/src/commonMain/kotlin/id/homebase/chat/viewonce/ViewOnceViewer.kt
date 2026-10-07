@@ -38,7 +38,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
 import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import id.homebase.api.util.markdownToPlainPreview
@@ -73,6 +72,10 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.text.style.TextOverflow
+import id.homebase.core.util.formatMessageTimestamp
 import androidx.compose.ui.text.style.LineBreak
 import id.homebase.api.client.drives.files.DescriptorContent
 import androidx.compose.runtime.State
@@ -117,6 +120,8 @@ const val VIEW_ONCE_VIEWER_PROGRESS_TAG = "viewOnceViewerProgress"
 const val VIEW_ONCE_VIEWER_BLOCKED_TAG = "viewOnceViewerBlocked"
 const val VIEW_ONCE_VIEWER_MUTE_TAG = "viewOnceViewerMute"
 const val VIEW_ONCE_VIEWER_CAPTION_TAG = "viewOnceViewerCaption"
+const val VIEW_ONCE_VIEWER_SENDER_TAG = "viewOnceViewerSender"
+const val VIEW_ONCE_VIEWER_THIN_PROGRESS_TAG = "viewOnceViewerThinProgress"
 internal const val VIEW_ONCE_CHROME_HIDE_MS = 2_500L
 
 /**
@@ -208,6 +213,8 @@ fun ViewOnceViewer(
     var muted by remember(data.messageId) { mutableStateOf(false) }
     ViewOnceViewerFrame(
         isVideo = isVideo,
+        senderName = data.senderName,
+        sentAt = data.sentAt?.let { formatMessageTimestamp(it) },
         caption = remember(data.caption) { data.caption?.let { markdownToPlainPreview(it, ViewOnceDescriptor.MAX_CAPTION_CODEPOINTS) }?.takeIf { it.isNotBlank() } },
         mediaShown = shown && !failed,
         failed = failed,
@@ -253,6 +260,8 @@ fun ViewOnceViewer(
 @Composable
 internal fun ViewOnceViewerFrame(
     isVideo: Boolean,
+    senderName: String? = null,
+    sentAt: String? = null,
     caption: String? = null,
     mediaShown: Boolean,
     failed: Boolean,
@@ -291,7 +300,26 @@ internal fun ViewOnceViewerFrame(
             ) {
                 ViewOnceViewerHeader(
                     onClose = onClose,
+                    senderName = senderName,
+                    sentAt = sentAt,
                     modifier = Modifier.onSizeChanged { headerHeight = with(density) { it.height.toDp() } },
+                )
+            }
+            // With the chrome away a one-time video still shows how much is left, so the reader never taps to find out.
+            AnimatedVisibility(
+                visible = isVideo && mediaShown && !chromeVisible && durationMs != null && durationMs > 0,
+                enter = fadeIn(motion.defaultEffectsSpec()),
+                exit = fadeOut(motion.fastEffectsSpec()),
+                modifier = Modifier.align(Alignment.BottomCenter),
+            ) {
+                val progress by rememberPlaybackProgress(positionMs, durationMs ?: 1L)
+                LinearProgressIndicator(
+                    progress = { progress },
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.24f),
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
+                    modifier = Modifier.fillMaxWidth().navigationBarsPadding().height(3.dp).testTag(VIEW_ONCE_VIEWER_THIN_PROGRESS_TAG),
                 )
             }
             val shownCaption = caption.takeIf { mediaShown }
@@ -320,15 +348,15 @@ private fun chromeContainer(): Color = MaterialTheme.colorScheme.surfaceContaine
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ViewOnceViewerHeader(onClose: () -> Unit, modifier: Modifier = Modifier) {
+private fun ViewOnceViewerHeader(onClose: () -> Unit, senderName: String?, sentAt: String?, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
-    Box(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0.6f), colors.scrim.copy(alpha = 0f))))
+            .background(Brush.verticalGradient(0f to colors.scrim.copy(alpha = SCRIM_ALPHA), 1f to colors.scrim.copy(alpha = 0f)))
             .statusBarsPadding()
-            .padding(horizontal = 12.dp)
-            .padding(top = 8.dp, bottom = 32.dp),
+            .padding(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         FilledTonalIconButton(
             onClick = onClose,
@@ -337,17 +365,45 @@ private fun ViewOnceViewerHeader(onClose: () -> Unit, modifier: Modifier = Modif
                 containerColor = chromeContainer(),
                 contentColor = colors.onSurface,
             ),
-            modifier = Modifier.align(Alignment.CenterStart).size(CHROME_SIZE).testTag(VIEW_ONCE_VIEWER_CLOSE_TAG),
+            modifier = Modifier.size(CHROME_SIZE).testTag(VIEW_ONCE_VIEWER_CLOSE_TAG),
         ) {
             Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.chat_view_once_close))
         }
-        Box(
-            Modifier.align(Alignment.Center).size(CHROME_SIZE).clip(CircleShape).background(chromeContainer()),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(ViewOnceIcon, contentDescription = stringResource(MR.string.cd_view_once_toggle), tint = colors.onSurface, modifier = Modifier.size(28.dp))
+        Column(Modifier.weight(1f).padding(start = 12.dp, end = 12.dp)) {
+            if (senderName != null) {
+                Text(
+                    text = senderName,
+                    style = MaterialTheme.typography.titleSmallEmphasized.copy(textDirection = TextDirection.Content),
+                    color = colors.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag(VIEW_ONCE_VIEWER_SENDER_TAG),
+                )
+            }
+            if (sentAt != null) {
+                Text(
+                    text = sentAt,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
         }
+        // A mark, not a control: no container, so it doesn't invite a tap.
+        Icon(
+            ViewOnceIcon,
+            contentDescription = stringResource(MR.string.cd_view_once_toggle),
+            tint = colors.onSurface,
+            modifier = Modifier.size(24.dp),
+        )
     }
+}
+
+@Composable
+private fun rememberPlaybackProgress(positionMs: () -> Long, durationMs: Long): State<Float> {
+    // Position arrives about twice a second; easing between ticks keeps the bar moving steadily.
+    val position = positionMs().coerceIn(0L, durationMs)
+    return animateFloatAsState(position.toFloat() / durationMs, tween(POSITION_TICK_MS, easing = LinearEasing))
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -363,7 +419,7 @@ private fun ViewOnceViewerFooter(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0f), colors.scrim.copy(alpha = 0.6f))))
+            .background(Brush.verticalGradient(0f to colors.scrim.copy(alpha = 0f), 1f to colors.scrim.copy(alpha = SCRIM_ALPHA)))
             .navigationBarsPadding()
             .padding(start = 20.dp, end = 12.dp, top = 40.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -372,9 +428,8 @@ private fun ViewOnceViewerFooter(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (positionMs != null && durationMs != null && durationMs > 0) {
                     // Read-only: a view-once video can't be scrubbed, but the reader can see how much is left.
-                    // Position arrives about twice a second; easing between ticks keeps the wave moving steadily.
                     val position = positionMs().coerceIn(0L, durationMs)
-                    val smooth by animateFloatAsState(position.toFloat() / durationMs, tween(POSITION_TICK_MS, easing = LinearEasing))
+                    val smooth by rememberPlaybackProgress(positionMs, durationMs)
                     LinearWavyProgressIndicator(
                         progress = { smooth },
                         modifier = Modifier.weight(1f).testTag(VIEW_ONCE_VIEWER_PROGRESS_TAG),
@@ -530,6 +585,7 @@ internal fun ViewOnceViewerImage(bitmap: ImageBitmap) {
 
 private const val POSITION_TICK_MS = 500
 private const val CHROME_ALPHA = 0.55f
+private const val SCRIM_ALPHA = 0.72f
 private val CHROME_SIZE = 48.dp
 
 private class CloseOnce {

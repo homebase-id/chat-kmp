@@ -58,7 +58,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.IconToggleButton
+import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.runtime.Immutable
 import id.homebase.chat.viewonce.ViewOnceIcon
 import id.homebase.resources.cd_view_once_toggle
@@ -1320,20 +1320,23 @@ fun MessageTextFieldForAttachment(
                     },
                     trailingIcon = viewOnceToggle?.let { toggle ->
                         {
-                            IconToggleButton(
+                            FilledTonalIconToggleButton(
                                 checked = toggle.checked,
                                 onCheckedChange = { toggle.onToggle() },
+                                // Circle off, squircle on, on the motion scheme's springs: the editor's tool-group language.
                                 shapes = IconButtonDefaults.toggleableShapes(),
-                                colors = IconButtonDefaults.iconToggleButtonColors(
+                                colors = IconButtonDefaults.filledTonalIconToggleButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
                                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                     checkedContainerColor = MaterialTheme.colorScheme.primary,
                                     checkedContentColor = MaterialTheme.colorScheme.onPrimary,
                                 ),
-                                modifier = Modifier.testTag(VIEW_ONCE_TOGGLE_TAG),
+                                modifier = Modifier.size(IconButtonDefaults.extraSmallContainerSize()).testTag(VIEW_ONCE_TOGGLE_TAG),
                             ) {
                                 Icon(
                                     imageVector = ViewOnceIcon,
                                     contentDescription = stringResource(MR.string.cd_view_once_toggle),
+                                    modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
                                 )
                             }
                         }

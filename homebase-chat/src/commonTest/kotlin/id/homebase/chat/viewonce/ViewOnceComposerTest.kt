@@ -9,6 +9,11 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertTouchHeightIsEqualTo
+import androidx.compose.ui.test.assertTouchWidthIsEqualTo
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -55,6 +60,7 @@ class ViewOnceComposerTest {
         onNodeWithTag(VIEW_ONCE_TOGGLE_TAG).assertIsOn()
         onNodeWithTag(ATTACHMENT_CAPTION_FIELD_TAG).assertIsEnabled()
         onAllNodesWithText("View once").assertCountEquals(0)
+        onNodeWithTag(VIEW_ONCE_TOGGLE_TAG).assertTouchHeightIsEqualTo(48.dp).assertTouchWidthIsEqualTo(48.dp)
     }
 
     @Test
@@ -110,27 +116,39 @@ class ViewOnceComposerTest {
     }
 
     @Test
-    fun theIntroSheetCarriesTheTwoRowsAndNothingElse() = runComposeUiTest {
+    fun theIntroSheetIsTheTitleAndOneDismissAndNeverExplainsTheProtection() = runComposeUiTest {
         var ok = 0
-        var closed = 0
-        setContent { MaterialTheme { ViewOnceIntroContent(isVideo = false, onOk = { ok++ }, onClose = { closed++ }) } }
+        setContent { MaterialTheme { ViewOnceIntroContent(isVideo = false, onOk = { ok++ }) } }
 
         onNodeWithText("This photo can be viewed once").assertExists()
-        onNodeWithText("It disappears from the chat after it's closed").assertExists()
-        onNodeWithText("It can't be shared, forwarded or saved from the app").assertExists()
-        assertEquals(0, onAllNodesWithText("screenshot", substring = true, ignoreCase = true).fetchSemanticsNodes().size)
-        assertEquals(0, onAllNodesWithText("Learn more", substring = true, ignoreCase = true).fetchSemanticsNodes().size)
+        for (banned in listOf("screenshot", "disappears", "forward", "Learn more")) {
+            assertEquals(0, onAllNodesWithText(banned, substring = true, ignoreCase = true).fetchSemanticsNodes().size, banned)
+        }
+        onNodeWithContentDescription("can't be shared", substring = true).assertExists()
 
-        onNodeWithTag(VIEW_ONCE_INTRO_OK_TAG).performClick()
-        onNodeWithTag(VIEW_ONCE_INTRO_CLOSE_TAG).performClick()
+        onNodeWithTag(VIEW_ONCE_INTRO_OK_TAG).assertTextEquals("Got it").performClick()
         assertEquals(1, ok)
-        assertEquals(1, closed)
     }
 
     @Test
     fun theIntroNamesAVideoWhenItIsOne() = runComposeUiTest {
-        setContent { MaterialTheme { ViewOnceIntroContent(isVideo = true, onOk = {}, onClose = {}) } }
+        setContent { MaterialTheme { ViewOnceIntroContent(isVideo = true, onOk = {}) } }
         onNodeWithText("This video can be viewed once").assertExists()
+    }
+
+    @Test
+    fun addingASecondItemTurnsViewOnceOffWithTheOffToast() {
+        val state = ViewOnceComposerState(UserPreferences(InMemorySettings()))
+        state.onEligibilityChanged(eligible = false)
+        assertEquals(null, state.toast, "never on, so nothing to announce")
+
+        state.toggle(isVideo = false)
+        state.onEligibilityChanged(eligible = false)
+        assertFalse(state.requested)
+        assertEquals(ViewOnceToastKind.Off, state.toast?.kind)
+
+        state.onEligibilityChanged(eligible = true)
+        assertFalse(state.requested, "removing the second item doesn't silently turn it back on")
     }
 
     @Test

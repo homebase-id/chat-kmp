@@ -31,5 +31,7 @@ fun viewOnceViewerFor(
         keyHeader = KeyHeader(iv = iv, aesKey = message.keyHeader.aesKey),
         kind = descriptor.kind,
         caption = descriptor.caption,
+        senderName = message.displayName.ifBlank { message.sender?.domainName }?.takeIf { it.isNotBlank() },
+        sentAt = message.userDate,
     )
 }

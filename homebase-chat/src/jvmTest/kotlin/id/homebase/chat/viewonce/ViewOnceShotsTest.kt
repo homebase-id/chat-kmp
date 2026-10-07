@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.Surface
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -87,7 +90,7 @@ import kotlin.uuid.Uuid
  * Renders the view-once composer and bubbles in every state, light and dark, to PNGs for design
  * review. Set VIEW_ONCE_SHOTS_DIR to write the images; without it the states are only composed.
  */
-@OptIn(ExperimentalTestApi::class)
+@OptIn(ExperimentalTestApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 class ViewOnceShotsTest {
 
     private val outDir: File? = System.getenv("VIEW_ONCE_SHOTS_DIR")?.let(::File)?.also { it.mkdirs() }
@@ -105,11 +108,23 @@ class ViewOnceShotsTest {
     )
 
     private sealed interface Scene {
-        data class Editor(val attachments: List<AttachmentPendingFile>, val viewOnce: Boolean, val caption: String = "", val tapViewOnce: Boolean = false) : Scene
+        data class Editor(
+            val attachments: List<AttachmentPendingFile>,
+            val viewOnce: Boolean,
+            val caption: String = "",
+            val tapViewOnce: Boolean = false,
+            val addAfterOn: AttachmentPendingFile? = null,
+        ) : Scene
         data class Thread(val group: Boolean = false) : Scene
         data class States(val outgoing: Boolean, val pressFirst: Boolean = false) : Scene
         data object Morph : Scene
-        data class Viewer(val stage: ViewerStage, val video: Boolean = false, val muted: Boolean = false) : Scene
+        data class Viewer(
+            val stage: ViewerStage,
+            val video: Boolean = false,
+            val muted: Boolean = false,
+            val caption: String? = null,
+            val sender: String = "Alice",
+        ) : Scene
         data class Intro(val video: Boolean) : Scene
         data class Toast(val kind: ViewOnceToastKind) : Scene
     }
@@ -134,6 +149,8 @@ class ViewOnceShotsTest {
             Shot("e4-editor-two-photos-hidden", Scene.Editor(listOf(image(), image()), viewOnce = false)),
             Shot("e9-editor-two-photos-after-on", Scene.Editor(listOf(image(), image()), viewOnce = true)),
             Shot("e12-editor-two-photos-tapped", Scene.Editor(listOf(image(), image()), viewOnce = false, tapViewOnce = true)),
+            Shot("e13-editor-on-then-second-photo-added", Scene.Editor(listOf(image()), viewOnce = true, addAfterOn = image()), settleMs = 3_100),
+            Shot("e14-editor-toggle-off-tapped-on", Scene.Editor(listOf(image()), viewOnce = false, tapViewOnce = true), settleMs = 750),
             Shot("e10-editor-video-on-rtl-font-scale", Scene.Editor(listOf(video()), viewOnce = true), rtl = true, fontScale = 1.3f),
             Shot("e5-editor-on-font-scale", Scene.Editor(listOf(image()), viewOnce = true), fontScale = 1.6f),
             Shot("e6-editor-on-rtl", Scene.Editor(listOf(image()), viewOnce = true), rtl = true),
@@ -163,6 +180,9 @@ class ViewOnceShotsTest {
             Shot("v8-viewer-photo-chrome-hidden", Scene.Viewer(ViewerStage.Shown), settleMs = 4_000),
             Shot("v9-viewer-video-muted-font-scale", Scene.Viewer(ViewerStage.Shown, video = true, muted = true), fontScale = 1.6f),
             Shot("v10-viewer-video-chrome-hidden", Scene.Viewer(ViewerStage.Shown, video = true), settleMs = 4_000),
+            Shot("v11-viewer-photo-caption", Scene.Viewer(ViewerStage.Shown, caption = "Don't show anyone. The view from the ridge before the rain came in.")),
+            Shot("v12-viewer-photo-landscape-top-edge", Scene.Viewer(ViewerStage.Shown), widthDp = 960, heightDp = 540),
+            Shot("v13-viewer-photo-long-name-font-scale", Scene.Viewer(ViewerStage.Shown, sender = "Bartholomew Featherstonehaugh-Wolfeschlegelsteinhausen"), fontScale = 1.6f, widthDp = 360, heightDp = 640),
             Shot("i1-intro-photo", Scene.Intro(video = false), heightDp = 620),
             Shot("i2-intro-video-font-scale-rtl", Scene.Intro(video = true), fontScale = 1.6f, rtl = true, heightDp = 820),
             Shot("t1-toast-photo", Scene.Toast(ViewOnceToastKind.Photo), heightDp = 160, settleMs = 500),
@@ -200,13 +220,23 @@ class ViewOnceShotsTest {
 
     @Composable
     private fun EditorScene(scene: Scene.Editor) {
-        var viewOnceRequested by remember { mutableStateOf(scene.viewOnce) }
-        val eligible = isViewOnceEligible(scene.attachments)
-        val viewOnce = viewOnceRequested && eligible
+        val state = remember {
+            ViewOnceComposerState(UserPreferences(InMemorySettings()).also { it.viewOnceIntroSeen = true })
+                .also { if (scene.viewOnce) it.toggle(isVideo = false) }
+        }
+        var attachments by remember { mutableStateOf(scene.attachments) }
+        LaunchedEffect(Unit) {
+            val extra = scene.addAfterOn ?: return@LaunchedEffect
+            delay(VIEW_ONCE_TOAST_MS + 500)
+            attachments = attachments + extra
+        }
+        val eligible = isViewOnceEligible(attachments)
+        LaunchedEffect(eligible) { state.onEligibilityChanged(eligible) }
+        val viewOnce = state.requested && eligible
         val caption = rememberRichTextState()
         LaunchedEffect(Unit) { if (scene.caption.isNotEmpty()) caption.setText(scene.caption) }
         MediaAttachmentEditor(
-            attachments = scene.attachments,
+            attachments = attachments,
             currentPage = 0,
             onPageChanged = {},
             onSaveFile = {},
@@ -217,12 +247,15 @@ class ViewOnceShotsTest {
             onRemoveFile = {},
             onDismiss = {},
             centerImageInPage = true,
+            pagerTopEndSlot = {
+                ViewOnceToast(message = state.toast, modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp))
+            },
             bottomBar = {
                 MessageTextFieldForAttachment(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     state = caption,
                     onSendMessage = {},
-                    viewOnceToggle = if (eligible) ViewOnceToggle(viewOnce) { viewOnceRequested = !viewOnceRequested } else null,
+                    viewOnceToggle = if (eligible) ViewOnceToggle(viewOnce) { state.toggle(isVideo = false) } else null,
                     showFormattingToolbar = false,
                 )
             },
@@ -244,7 +277,8 @@ class ViewOnceShotsTest {
         fileId = Uuid.random(),
         conversationId = Uuid.random(),
         content = text,
-        userDate = Instant.fromEpochMilliseconds(recentMs + minute * 60_000L),
+        // Fixed, so both themes (rendered minutes apart) print the same time.
+        userDate = Instant.fromEpochMilliseconds(FIXED_TIME_MS + minute * 60_000L),
         modified = null,
         // Recent, or stateOf would rightly call every row Expired.
         created = Instant.fromEpochMilliseconds(recentMs),
@@ -356,7 +390,7 @@ class ViewOnceShotsTest {
                         authorName = row.author,
                         footer = {
                             MessageTimestampFooter(
-                                infoText = formatMessageTimestamp(Instant.fromEpochMilliseconds(1_760_000_000_000L + index * 60_000L)),
+                                infoText = formatMessageTimestamp(Instant.fromEpochMilliseconds(FIXED_TIME_MS + index * 60_000L)),
                                 contentColor = content,
                                 showDeliveryStatus = sent,
                                 isPendingSend = false,
@@ -410,6 +444,9 @@ class ViewOnceShotsTest {
         val frame = remember { (if (scene.video) poster else File(samples, "red-leaf.jpg")).readBytes().toImageBitmap()!! }
         ViewOnceViewerFrame(
             isVideo = scene.video,
+            senderName = scene.sender,
+            sentAt = formatMessageTimestamp(Instant.fromEpochMilliseconds(FIXED_TIME_MS)),
+            caption = scene.caption,
             mediaShown = scene.stage == ViewerStage.Shown,
             failed = scene.stage == ViewerStage.Failed,
             onClose = {},
@@ -459,8 +496,14 @@ class ViewOnceShotsTest {
                     is Scene.Thread -> ThreadScene(scene)
                     is Scene.States -> StatesScene(scene)
                     is Scene.Viewer -> ViewerScene(scene)
-                    is Scene.Intro -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(top = 24.dp)) {
-                        ViewOnceIntroContent(isVideo = scene.video, onOk = {}, onClose = {})
+                    is Scene.Intro -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f)), contentAlignment = Alignment.BottomCenter) {
+                        // ModalBottomSheet's own window can't be captured here, so its surface and handle are drawn around the content.
+                        Surface(shape = BottomSheetDefaults.ExpandedShape, color = BottomSheetDefaults.ContainerColor) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                BottomSheetDefaults.DragHandle()
+                                ViewOnceIntroContent(isVideo = scene.video, onOk = {})
+                            }
+                        }
                     }
                     is Scene.Toast -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
                         ViewOnceToast(remember { ViewOnceToastMessage(scene.kind) })
@@ -498,5 +541,6 @@ class ViewOnceShotsTest {
         const val PHONE_W = 412
         const val PHONE_H = 892
         const val FIRST_ROW = "firstRow"
+        const val FIXED_TIME_MS = 1_760_000_000_000L
     }
 }

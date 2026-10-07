@@ -12,13 +12,16 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.snap
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
+import id.homebase.resources.cd_view_once_toggle
 import androidx.compose.material.icons.outlined.TimerOff
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.animation.SizeTransform
@@ -30,7 +33,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -66,7 +68,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -140,8 +141,8 @@ fun ViewOnceBubble(
         else -> Badge.Unavailable
     }
     val mutedColor = if (isOutgoing) contentColor.copy(alpha = MUTED_ALPHA) else colors.onSurfaceVariant
-    // Spent rows step back on both sides, so a live item above them stays the strongest thing in the thread.
-    val spentColor = if (isOutgoing) contentColor.copy(alpha = SPENT_ALPHA) else colors.onSurfaceVariant
+    // A spent label steps back through weight, not fade: on the sent bubble a faded onPrimary reads as disabled.
+    val spentColor = if (isOutgoing) contentColor else colors.onSurfaceVariant
     val kindLabel = descriptor?.let {
         stringResource(if (it.kind == ViewOnceDescriptor.KIND_VIDEO) MR.string.chat_view_once_video else MR.string.chat_view_once_photo)
     }
@@ -170,11 +171,11 @@ fun ViewOnceBubble(
                 Badge.Ready -> null
                 Badge.Opening -> stringResource(MR.string.chat_view_once_opening)
                 Badge.Failed -> stringResource(MR.string.chat_view_once_failed)
-                Badge.Sent -> stringResource(MR.string.chat_view_once_sent)
+                Badge.Sent -> null
                 else -> stringResource(if (openOnPhone) MR.string.chat_view_once_open_on_phone else MR.string.chat_view_once_unavailable)
             },
             statusColor = if (badge == Badge.Failed) colors.error else mutedColor,
-            statusInline = badge == Badge.Sent || badge == Badge.Opening,
+            statusInline = badge == Badge.Opening,
             phoneIcon = badge == Badge.Unavailable && openOnPhone,
             note = shotNote,
         )
@@ -186,6 +187,9 @@ fun ViewOnceBubble(
     val pressScale by animateFloatAsState(if (pressed) 0.96f else 1f, motion.fastSpatialSpec())
     val pressMorph by animateFloatAsState(if (pressed) 1f else 0f, motion.fastSpatialSpec())
     val openLabel = stringResource(MR.string.cd_view_once_open)
+    val viewOnceLabel = stringResource(MR.string.cd_view_once_toggle)
+    // The ticks already say "sent" on screen; a screen reader still hears it.
+    val sentLabel = if (badge == Badge.Sent) stringResource(MR.string.chat_view_once_sent) else null
 
     if (explainOnPhone) {
         AlertDialog(
@@ -220,8 +224,13 @@ fun ViewOnceBubble(
                     )
                 } else Modifier
             )
+            // After the clip and fill, so the bubble's own shape follows the growing width instead of being cut by it.
+            .animateContentSize(motion.fastSpatialSpec())
             .heightIn(min = 48.dp)
-            .semantics(mergeDescendants = true) {}
+            .semantics(mergeDescendants = true) {
+                contentDescription = viewOnceLabel
+                sentLabel?.let { stateDescription = it }
+            }
             .padding(start = 8.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
     ) {
         if (authorName != null) {
@@ -265,7 +274,7 @@ fun ViewOnceBubble(
                     transitionSpec = {
                         (slideInVertically(motion.defaultSpatialSpec()) { it / 3 } + fadeIn(HANDOFF_IN))
                             .togetherWith(slideOutVertically(motion.fastSpatialSpec()) { -it / 3 } + fadeOut(HANDOFF_OUT))
-                            .using(SizeTransform(clip = false) { _, _ -> motion.defaultSpatialSpec() })
+                            .using(SizeTransform(clip = false) { _, _ -> snap() })
                     },
                     contentAlignment = Alignment.CenterStart,
                     modifier = Modifier.padding(start = 10.dp).weight(1f, fill = false),
@@ -343,48 +352,54 @@ private fun TextStyle.withContentDirection() = copy(textDirection = TextDirectio
 @Composable
 private fun ViewOnceBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, contentColor: Color) {
     val colors = MaterialTheme.colorScheme
-    val badgeModifier = Modifier.size(BADGE_SIZE)
+    val cookie = MaterialShapes.Cookie9Sided.toShape()
     when (badge) {
         Badge.Ready, Badge.Sent, Badge.Opened -> CookieBadge(badge, isOutgoing, pressMorph, contentColor)
-        Badge.Unavailable -> RingBadge(badgeModifier, MaterialShapes.Cookie9Sided.toShape(), colors.outline) {
-            DigitIcon(ViewOnceDigitIcon, colors.onSurfaceVariant)
+        Badge.Unavailable -> FilledBadge(cookie, colors.surfaceContainerHighest) {
+            Icon(ViewOnceIcon, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(GLYPH_SIZE))
         }
         Badge.Opening -> ViewOnceLoadingIndicator(BADGE_SIZE)
-        Badge.Failed -> RingBadge(badgeModifier, MaterialShapes.Cookie9Sided.toShape(), colors.error) {
-            Icon(Icons.Default.Refresh, contentDescription = null, tint = colors.error, modifier = Modifier.size(18.dp))
+        Badge.Failed -> FilledBadge(cookie, colors.errorContainer) {
+            Icon(Icons.Default.Refresh, contentDescription = null, tint = colors.onErrorContainer, modifier = Modifier.size(18.dp))
         }
-        Badge.Expired -> {
-            val ring = if (isOutgoing) contentColor.copy(alpha = SPENT_ALPHA) else colors.outline
-            val glyph = if (isOutgoing) contentColor.copy(alpha = SPENT_ALPHA) else colors.onSurfaceVariant
-            RingBadge(badgeModifier, MaterialShapes.Cookie9Sided.toShape(), ring) {
-                Icon(Icons.Outlined.TimerOff, contentDescription = null, tint = glyph, modifier = Modifier.size(17.dp))
-            }
+        Badge.Expired -> FilledBadge(cookie, Color.Transparent) {
+            val tint = if (isOutgoing) contentColor.copy(alpha = SPENT_ALPHA) else colors.onSurfaceVariant
+            Icon(Icons.Outlined.TimerOff, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
         }
-        Badge.Unparseable -> RingBadge(badgeModifier, MaterialShapes.Cookie9Sided.toShape(), colors.outline) {
+        Badge.Unparseable -> FilledBadge(cookie, colors.surfaceContainerHighest) {
             Icon(Icons.Outlined.SystemUpdate, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(18.dp))
         }
     }
 }
 
 /**
- * Filled only for the recipient's unopened item, the one thing in the thread worth tapping. The sender's copy is an
- * outline, and opening empties the cookie while it turns a third (the 9-sided cookie lands on its own silhouette).
+ * The toggle's own dashed "1" on a cookie: filled for the recipient's unopened item, the one thing in the thread
+ * worth tapping, tonal on the sender's copy. Opening empties the cookie while it turns, and the "1" becomes a check
+ * inside the same dashed ring.
  */
 @Composable
 private fun CookieBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, contentColor: Color) {
     val colors = MaterialTheme.colorScheme
     val motion = MaterialTheme.motionScheme
     val spent = badge == Badge.Opened
-    val fill by animateFloatAsState(if (badge == Badge.Ready) 1f else 0f, motion.defaultEffectsSpec())
-    val turn by animateFloatAsState(if (spent) 1f else 0f, motion.slowSpatialSpec())
-    val ring by animateColorAsState(
+    val fill by animateColorAsState(
         when {
-            isOutgoing -> contentColor.copy(alpha = if (spent) SPENT_ALPHA else 0.85f)
-            spent -> colors.outline
+            spent -> Color.Transparent
+            isOutgoing -> contentColor.copy(alpha = SENT_FILL_ALPHA)
             else -> colors.primary
         },
         motion.defaultEffectsSpec(),
     )
+    val glyph by animateColorAsState(
+        when {
+            spent && isOutgoing -> contentColor.copy(alpha = SPENT_ALPHA)
+            spent -> colors.onSurfaceVariant
+            isOutgoing -> contentColor
+            else -> colors.onPrimary
+        },
+        motion.defaultEffectsSpec(),
+    )
+    val turn by animateFloatAsState(if (spent) 1f else 0f, motion.slowSpatialSpec())
     val digitAlpha by animateFloatAsState(if (spent) 0f else 1f, motion.fastEffectsSpec())
     val invite = remember { Animatable(if (badge == Badge.Ready) 0.72f else 1f) }
     val inviteSpec = motion.slowSpatialSpec<Float>()
@@ -393,7 +408,6 @@ private fun CookieBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, co
     // Rounds out mid-turn, so the cookie visibly changes form while it empties.
     val squish = (4f * turn * (1f - turn)).coerceIn(0f, 1f) * 0.7f
     val shape = MorphShape(morph, maxOf(pressMorph, squish))
-    val fillColor = colors.primary
     Box(
         Modifier.size(BADGE_SIZE).graphicsLayer { scaleX = invite.value; scaleY = invite.value },
         contentAlignment = Alignment.Center,
@@ -402,18 +416,16 @@ private fun CookieBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, co
             Modifier
                 .matchParentSize()
                 .graphicsLayer { rotationZ = turn * 120f + (1f - invite.value) * -120f }
-                .background(fillColor.copy(alpha = fill.coerceIn(0f, 1f)), shape)
-                .border(1.5.dp, ring, shape),
+                .background(fill, shape),
         )
-        val digitTint = if (isOutgoing) contentColor else lerp(colors.primary, colors.onPrimary, fill.coerceIn(0f, 1f))
-        DigitIcon(ViewOnceDigitIcon, digitTint, Modifier.graphicsLayer { alpha = digitAlpha })
+        Icon(ViewOnceIcon, contentDescription = null, tint = glyph, modifier = Modifier.size(GLYPH_SIZE).graphicsLayer { alpha = digitAlpha })
         Icon(
-            Icons.Default.Check,
+            ViewOnceOpenedIcon,
             contentDescription = null,
-            tint = if (isOutgoing) contentColor.copy(alpha = SPENT_ALPHA) else colors.onSurfaceVariant,
-            modifier = Modifier.size(18.dp).graphicsLayer {
+            tint = glyph,
+            modifier = Modifier.size(GLYPH_SIZE).graphicsLayer {
                 alpha = 1f - digitAlpha
-                val pop = 0.6f + 0.4f * turn
+                val pop = 0.8f + 0.2f * turn
                 scaleX = pop
                 scaleY = pop
             },
@@ -435,22 +447,19 @@ internal fun ViewOnceLoadingIndicator(size: Dp, modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center,
     ) {
         Box(Modifier.matchParentSize().graphicsLayer { rotationZ = angle }.background(colors.primary, shape))
-        Icon(ViewOnceDigitIcon, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(size * DIGIT_RATIO))
+        Icon(ViewOnceIcon, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(size * GLYPH_RATIO))
     }
 }
 
 @Composable
-private fun RingBadge(modifier: Modifier, shape: Shape, ringColor: Color, content: @Composable () -> Unit) {
-    Box(modifier.border(1.5.dp, ringColor, shape), contentAlignment = Alignment.Center) { content() }
-}
-
-@Composable
-private fun DigitIcon(icon: ImageVector, tint: Color, modifier: Modifier = Modifier) {
-    Icon(icon, contentDescription = null, tint = tint, modifier = modifier.size(BADGE_SIZE * DIGIT_RATIO))
+private fun FilledBadge(shape: Shape, fill: Color, content: @Composable () -> Unit) {
+    Box(Modifier.size(BADGE_SIZE).background(fill, shape), contentAlignment = Alignment.Center) { content() }
 }
 
 private val BADGE_SIZE = 32.dp
-private const val DIGIT_RATIO = 0.8f
+private const val GLYPH_RATIO = 0.72f
+private val GLYPH_SIZE = BADGE_SIZE * GLYPH_RATIO
+private const val SENT_FILL_ALPHA = 0.18f
 private const val MUTED_ALPHA = 0.8f
 private const val MAX_BADGE_GROWTH = 1.4f
 private const val SPENT_ALPHA = 0.7f

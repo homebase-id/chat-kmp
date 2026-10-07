@@ -73,9 +73,3 @@ val ViewOnceOpenedIcon: ImageVector by lazy {
         }
     }
 }
-
-val ViewOnceDigitIcon: ImageVector by lazy {
-    materialIcon(name = "ViewOnceDigit") {
-        materialPath { digitOne() }
-    }
-}

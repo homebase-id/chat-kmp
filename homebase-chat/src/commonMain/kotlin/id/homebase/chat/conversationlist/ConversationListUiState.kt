@@ -373,6 +373,8 @@ sealed interface FullScreenOverlay {
         val kind: String,
         /** Shown only inside the viewer, as the last thing read from the descriptor. */
         val caption: String? = null,
+        val senderName: String? = null,
+        val sentAt: Instant? = null,
     ) : FullScreenOverlay.MediaViewer
 
     @Immutable
