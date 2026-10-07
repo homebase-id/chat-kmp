@@ -25,17 +25,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.LocalFireDepartment
-import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.PersonOutline
-import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.Checkbox
@@ -62,7 +57,6 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -74,6 +68,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.common.util.formatBytes
 import id.homebase.core.ui.screens.profile.ConnectedChoices
+import id.homebase.core.ui.screens.vault.components.fileTypeIcon
 import id.homebase.core.ui.screens.webdrop.model.PickedDropFile
 import id.homebase.core.ui.screens.webdrop.model.WebDropTtlChoice
 import id.homebase.resources.MR
@@ -158,14 +153,6 @@ internal fun FileDropZone(maxFiles: Int, onClick: () -> Unit) {
     }
 }
 
-private fun PickedDropFile.icon(): ImageVector = when {
-    contentType.startsWith("image/") -> Icons.Outlined.Image
-    contentType.startsWith("video/") -> Icons.Outlined.Movie
-    contentType.startsWith("audio/") -> Icons.Outlined.AudioFile
-    contentType == "application/pdf" -> Icons.Outlined.PictureAsPdf
-    else -> Icons.AutoMirrored.Outlined.InsertDriveFile
-}
-
 private fun PickedDropFile.detail(): String? = when {
     size > 0 -> formatBytes(size)
     '.' in name -> name.substringAfterLast('.').uppercase()
@@ -218,7 +205,7 @@ internal fun PickedFileRow(file: PickedDropFile, enabled: Boolean, onRemove: () 
             modifier = Modifier.size(40.dp).background(colors.secondaryContainer, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(file.icon(), contentDescription = null, tint = colors.onSecondaryContainer, modifier = Modifier.size(20.dp))
+            Icon(fileTypeIcon(file.contentType, file.name), contentDescription = null, tint = colors.onSecondaryContainer, modifier = Modifier.size(20.dp))
         }
         Column(modifier = Modifier.weight(1f)) {
             FileName(file.name)

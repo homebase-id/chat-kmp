@@ -133,7 +133,7 @@ private fun AudienceKind.colors(): AudienceColors {
 }
 
 /** Past this scale a connected row can't fit its labels, so its segments stack. */
-private const val STACK_FONT_SCALE = 1.25f
+internal const val STACK_FONT_SCALE = 1.25f
 
 /** Stacked segments keep the connected language: round outer ends, tight inner joins, a pill when picked. */
 private fun stackedButtonShapes(index: Int, count: Int): ToggleButtonShapes {

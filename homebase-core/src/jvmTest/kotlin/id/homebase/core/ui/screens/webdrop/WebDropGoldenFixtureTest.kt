@@ -13,6 +13,9 @@ import kotlin.test.assertTrue
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 
 /** Emits the real sender output (content JSON, ciphertext payloads, link key) for the web-drop-app cross-repo test. */
 class WebDropGoldenFixtureTest {
@@ -25,24 +28,16 @@ class WebDropGoldenFixtureTest {
             fs, Uuid.random(), "frodo.example", picked, WebDropTtlChoice.BurnAfterOpen,
             null, WebDropProtocol.ThemeClean, viewOnly, nowMs = 1_700_000_000_000,
         )
-        val content = built.dropRequest.metadata.appData.content!!
-        val payloads = built.dropRequest.payloads.joinToString(",") { p ->
-            "\"${p.key}\":\"${Base64.encode(fs.files[p.filePath]!!)}\""
-        }
-        val fragment = built.url.substringAfter('#')
-        val json = "{\"keyB64Url\":\"$fragment\",\"content\":${quote(content)},\"payloads\":{$payloads}}"
+        val json = buildJsonObject {
+            put("keyB64Url", built.url.substringAfter('#'))
+            put("content", built.dropRequest.metadata.appData.content!!)
+            putJsonObject("payloads") {
+                built.dropRequest.payloads.forEach { put(it.key, Base64.encode(fs.files[it.filePath]!!)) }
+            }
+        }.toString()
         val dir = File(System.getProperty("webdrop.fixture.dir") ?: "build/webdrop-golden").apply { mkdirs() }
         File(dir, "$name.json").writeText(json)
         assertTrue(File(dir, "$name.json").length() > 0)
-    }
-
-    private fun quote(s: String) = buildString {
-        append('"')
-        for (c in s) when (c) {
-            '"' -> append("\\\""); '\\' -> append("\\\\")
-            else -> append(c)
-        }
-        append('"')
     }
 
     @Test fun emitViewOnly() = runTest { emit("viewonly", true) }

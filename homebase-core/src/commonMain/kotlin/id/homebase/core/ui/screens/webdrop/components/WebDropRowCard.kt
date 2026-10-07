@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.core.ui.screens.profile.STACK_FONT_SCALE
 import id.homebase.core.ui.screens.webdrop.model.DropRow
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.ui.screens.webdrop.model.DropStatus
@@ -144,7 +145,7 @@ fun WebDropRowCard(
     val badgeIconColor by animateColorAsState(look.onContainer, effects)
 
     // Large text needs the full width for the title, so the actions drop below it.
-    val stacked = LocalDensity.current.fontScale >= 1.25f
+    val stacked = LocalDensity.current.fontScale >= STACK_FONT_SCALE
     val actions: @Composable () -> Unit = {
         Row {
             if (removed) {
