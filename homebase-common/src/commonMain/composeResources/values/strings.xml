@@ -1039,6 +1039,8 @@
     <string name="chat_view_once_mute">Mute</string>
     <string name="chat_view_once_unmute">Unmute</string>
     <string name="chat_view_once_more">More options</string>
+    <string name="chat_view_once_play">Play</string>
+    <string name="chat_view_once_pause">Pause</string>
     <string name="cd_view_once_open">Open view-once media</string>
     <string name="cd_view_once_toggle">View once</string>
     <string name="chat_view_once_toast_photo">Photo set to view once</string>
@@ -1046,7 +1048,9 @@
     <string name="chat_view_once_toast_off">View once off</string>
     <string name="chat_view_once_intro_title_photo">This photo can be viewed once</string>
     <string name="chat_view_once_intro_title_video">This video can be viewed once</string>
-    <string name="chat_view_once_intro_ok">Got it</string>
+    <string name="chat_view_once_intro_ok">OK</string>
+    <string name="chat_view_once_intro_row_disappears">It disappears from the chat after it's closed</string>
+    <string name="chat_view_once_intro_row_protected">It can't be shared, forwarded, copied or saved</string>
     <string name="cd_view_once_intro">View once. It leaves the chat after it's closed, and it can't be shared, forwarded or saved from the app.</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>

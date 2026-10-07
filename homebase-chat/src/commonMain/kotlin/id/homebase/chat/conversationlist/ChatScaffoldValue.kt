@@ -41,6 +41,10 @@ fun chatOwnsWindow(
     chatDetail(uiState.selectedConversationId, uiState.activeConversations) is ChatDetail.Open
 }
 
+// The view-once viewer is black to the screen's edge, so the app scaffold must not pad it for the home indicator.
+fun showsViewOnceViewer(messagesUiState: MessageListUiState): Boolean =
+    messagesUiState.fullScreenOverlay is FullScreenOverlay.ViewOnceViewer
+
 private val adaptStrategies = ListDetailPaneScaffoldDefaults.adaptStrategies()
 
 internal fun chatScaffoldValue(isExpanded: Boolean, detail: ChatDetail): ThreePaneScaffoldValue =

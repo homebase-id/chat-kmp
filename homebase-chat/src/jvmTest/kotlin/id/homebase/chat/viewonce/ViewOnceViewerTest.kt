@@ -211,19 +211,19 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun aTapTogglesTheOneChromeLayerAndTheBackButtonAlwaysComesBack() = runSkikoComposeUiTest {
+    fun aTapTogglesTheBottomControlsAndTheBackButtonNeverGoesAway() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
         awaitShown()
         onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).assertExists()
 
         onNodeWithTag(VIEW_ONCE_VIEWER_IMAGE_TAG).performClick()
-        waitUntil(timeoutMillis = 5_000) { !present(VIEW_ONCE_VIEWER_CLOSE_TAG) }
-        onNodeWithTag(VIEW_ONCE_VIEWER_REPLY_TAG).assertDoesNotExist()
+        waitUntil(timeoutMillis = 5_000) { !present(VIEW_ONCE_VIEWER_REPLY_TAG) }
+        onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).assertExists()
 
         onNodeWithTag(VIEW_ONCE_VIEWER_IMAGE_TAG).performClick()
-        waitUntil(timeoutMillis = 5_000) { present(VIEW_ONCE_VIEWER_CLOSE_TAG) }
-        onNodeWithTag(VIEW_ONCE_VIEWER_REPLY_TAG).assertExists()
+        waitUntil(timeoutMillis = 5_000) { present(VIEW_ONCE_VIEWER_REPLY_TAG) }
+        onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).assertExists()
     }
 
     private fun SkikoComposeUiTest.present(tag: String) = onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
@@ -377,7 +377,8 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun aVideoFramesChromeIsOneLayerThatATapTogglesAndTheBackButtonAlwaysComesBack() = runSkikoComposeUiTest {
+    fun aVideoFrameShowsPlayPauseAndElapsedAndRemainingTimeAndATapNeverHidesBack() = runSkikoComposeUiTest {
+        var playing by mutableStateOf(true)
         setContent {
             MaterialTheme {
                 ViewOnceViewerFrame(
@@ -387,22 +388,46 @@ class ViewOnceViewerTest {
                     onClose = { closed++ },
                     positionMs = { 5_000L },
                     durationMs = 20_000L,
+                    playing = playing,
+                    onTogglePlay = { playing = !playing },
                     onMutedChange = {},
                 ) { fill -> Box(fill.testTag("player")) }
             }
         }
         assertTrue(present(VIEW_ONCE_VIEWER_CLOSE_TAG))
         assertTrue(present(VIEW_ONCE_VIEWER_PROGRESS_TAG))
+        onNodeWithTag(VIEW_ONCE_VIEWER_ELAPSED_TAG).assertTextEquals("0:05")
+        onNodeWithTag(VIEW_ONCE_VIEWER_REMAINING_TAG).assertTextEquals("-0:15")
+        onNode(hasTestTag(VIEW_ONCE_VIEWER_PLAY_TAG) and hasContentDescription("Pause")).assertExists()
+        onNodeWithTag(VIEW_ONCE_VIEWER_PLAY_TAG).performClick()
+        waitForIdle()
+        assertTrue(!playing)
+        onNode(hasTestTag(VIEW_ONCE_VIEWER_PLAY_TAG) and hasContentDescription("Play")).assertExists()
 
         repeat(3) {
             onNodeWithTag("player").performClick()
-            waitUntil(timeoutMillis = 5_000) { !present(VIEW_ONCE_VIEWER_CLOSE_TAG) }
-            assertTrue(!present(VIEW_ONCE_VIEWER_PROGRESS_TAG), "the progress line is part of the same layer")
+            waitUntil(timeoutMillis = 5_000) { !present(VIEW_ONCE_VIEWER_PROGRESS_TAG) }
+            assertTrue(present(VIEW_ONCE_VIEWER_CLOSE_TAG), "back survives a tap")
             onNodeWithTag("player").performClick()
-            waitUntil(timeoutMillis = 5_000) { present(VIEW_ONCE_VIEWER_CLOSE_TAG) }
+            waitUntil(timeoutMillis = 5_000) { present(VIEW_ONCE_VIEWER_PROGRESS_TAG) }
         }
         onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).performClick()
         assertEquals(1, closed)
+    }
+
+    @Test
+    fun playbackTimesNeverGroupIntoHoursBelowAnHourAndNeverGoNegative() {
+        assertEquals("0:00", formatPlaybackTime(-5L))
+        assertEquals("0:05", formatPlaybackTime(4_600L))
+        assertEquals("1:05", formatPlaybackTime(65_000L))
+        assertEquals("1:01:05", formatPlaybackTime(3_665_000L))
+    }
+
+    @Test
+    fun theViewersVideoIsPlayedFromMemoryAndNeverFromADecryptedFileOnDisk() = runBlocking {
+        val server = ViewOnceFakeServer().start()
+        val video = server.viewer().copy(kind = ViewOnceDescriptor.KIND_VIDEO)
+        assertTrue(video.videoPlayerData().inMemory)
     }
 
     @Test

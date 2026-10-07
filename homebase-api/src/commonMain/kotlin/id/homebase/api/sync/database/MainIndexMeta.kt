@@ -190,7 +190,12 @@ object MainIndexMetaHelpers {
             val written = ArrayList<HomebaseFile>(fileHeaders.size)
             databaseManager.withWriteTransaction { db ->
 
-                fileHeaders.forEach { fileHeader ->
+                fileHeaders.forEach { incoming ->
+                    val fileHeader = TombstoneRetention.carryOver(incoming) {
+                        db.driveMainIndexQueries.selectByIdentityAndDriveAndFile(identityId, driveId, incoming.fileId)
+                            .executeAsOneOrNull()
+                            ?.let { OdinSystemSerializer.deserialize<HomebaseFile>(it.jsonHeader).fileMetadata.appData.content }
+                    }
                     // Convert SharedSecretEncryptedFileHeader to extract DriveMainIndex fields and tag records
                     val driveMainIndexRecord =
                         convertFileHeaderToDriveMainIndexRecord(identityId, driveId, fileHeader)

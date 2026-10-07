@@ -27,9 +27,11 @@ class ViewOnceBubblePlatformTest {
         state: ViewOnceState,
         onOpen: (() -> Unit)?,
         descriptor: ViewOnceDescriptor? = photo,
+        isGroup: Boolean = false,
+        openedCount: Int = 0,
     ) = setContent {
         MaterialTheme {
-            Bubble(canView, isOutgoing, state, onOpen, descriptor)
+            Bubble(canView, isOutgoing, state, onOpen, descriptor, isGroup, openedCount)
         }
     }
 
@@ -40,10 +42,14 @@ class ViewOnceBubblePlatformTest {
         state: ViewOnceState,
         onOpen: (() -> Unit)?,
         descriptor: ViewOnceDescriptor?,
+        isGroup: Boolean = false,
+        openedCount: Int = 0,
     ) {
         ViewOnceBubble(
             descriptor = descriptor,
             isOutgoing = isOutgoing,
+            isGroup = isGroup,
+            openedCount = openedCount,
             shape = RoundedCornerShape(12),
             containerColor = Color.LightGray,
             contentColor = Color.Black,
@@ -124,5 +130,26 @@ class ViewOnceBubblePlatformTest {
         waitForIdle()
 
         assertEquals(0, opened)
+    }
+
+    @Test
+    fun aGroupSenderSeesOpenedByNFromTheFirstViewerOn() = runComposeUiTest {
+        for (count in listOf(1, 2, 5)) {
+            bubble(canView = true, isOutgoing = true, state = ViewOnceState.Opened, onOpen = null, isGroup = true, openedCount = count)
+            onNodeWithText("Opened by $count").assertExists()
+        }
+    }
+
+    @Test
+    fun aOneToOneSenderSeesPlainOpenedWhateverTheCount() = runComposeUiTest {
+        bubble(canView = true, isOutgoing = true, state = ViewOnceState.Opened, onOpen = null, isGroup = false, openedCount = 1)
+        onNodeWithText("Opened").assertExists()
+        onNodeWithText("Opened by 1").assertDoesNotExist()
+    }
+
+    @Test
+    fun aGroupRecipientsOwnSpentCopyNeverReadsOpenedBy() = runComposeUiTest {
+        bubble(canView = true, isOutgoing = false, state = ViewOnceState.Opened, onOpen = null, isGroup = true, openedCount = 0)
+        onNodeWithText("Opened").assertExists()
     }
 }

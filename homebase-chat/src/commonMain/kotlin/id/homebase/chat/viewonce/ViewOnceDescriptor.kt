@@ -1,6 +1,6 @@
 package id.homebase.chat.viewonce
 
-import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.database.TombstoneRetention
 import kotlinx.serialization.Serializable
 
 /** Wire format of a view-once message (dataType 216). */
@@ -23,12 +23,4 @@ data class ViewOnceDescriptor(
 }
 
 /** What a view-once tombstone keeps of its descriptor: the kind, so a spent item still reads Photo or Video; never the caption. */
-fun viewOnceTombstoneContent(content: String?): String {
-    if (content.isNullOrBlank()) return ""
-    return try {
-        val descriptor = OdinSystemSerializer.deserialize<ViewOnceDescriptor>(content)
-        if (descriptor.isValid()) OdinSystemSerializer.serialize(descriptor.copy(caption = null)) else ""
-    } catch (_: Exception) {
-        ""
-    }
-}
+fun viewOnceTombstoneContent(content: String?): String = TombstoneRetention.viewOnceKindOnly(content)

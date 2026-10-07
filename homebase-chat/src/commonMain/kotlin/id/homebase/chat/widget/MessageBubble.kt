@@ -182,6 +182,7 @@ fun SentMessageBubble(
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     currentOdinId: String = "",
     clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
+    isGroupConversation: Boolean = false,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
     onBattle: (() -> Unit)? = null,
@@ -380,6 +381,7 @@ fun SentMessageBubble(
                         showVoiceNoteSender = true,
                         currentOdinId = currentOdinId,
                         clusterPosition = clusterPosition,
+                        isGroupConversation = isGroupConversation,
                         onLongClick = {
                             if (onMessageInfo != null) {
                                 haptics.perform(HapticEvent.LongPress)

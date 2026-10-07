@@ -389,6 +389,8 @@ sealed interface FullScreenOverlay {
         /** Set together for a followed identity's post; playback then reads the author's drive by gtid. */
         val remoteOdinId: OdinId? = null,
         val globalTransitId: Uuid? = null,
+        /** The decrypted MP4 may only live in memory, never on disk (view-once). */
+        val inMemory: Boolean = false,
     ) : FullScreenOverlay.MediaViewer
 
     @Immutable

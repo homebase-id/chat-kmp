@@ -24,6 +24,7 @@ import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.driveAccess
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.video.VideoPreloader
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.core.audio.AudioSession
@@ -92,6 +93,7 @@ import platform.AVFoundation.AVLayerVideoGravityResizeAspect
 import platform.AVFoundation.AVLayerVideoGravityResizeAspectFill
 import platform.AVKit.AVPlayerViewController
 import platform.Foundation.NSData
+import platform.Foundation.NSDataWritingFileProtectionComplete
 import platform.Foundation.NSDate
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
@@ -103,6 +105,7 @@ import platform.Foundation.NSURL
 import platform.Foundation.NSUUID
 import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.create
+import platform.Foundation.writeToFile
 import platform.Foundation.writeToURL
 import platform.darwin.NSObjectProtocol
 import kotlin.time.measureTimedValue
@@ -260,7 +263,7 @@ actual fun VideoPlayerSurface(
                 AudioSession.ensurePlaybackCapable()
                 val videoData = VideoPlayerData(
                     data.fileId, data.driveId, data.payloadKey, data.keyHeader,
-                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId,
+                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId, data.inMemory,
                 )
                 val videoAccess =
                     videoData.driveAccess(driveFileProvider, peerFileProvider, fileOperationsProvider)
@@ -359,14 +362,25 @@ actual fun VideoPlayerSurface(
                         state = VpsState.Playing(player = player, timeObserver = timeObserver, sessionId = sessionId)
                         onProgress(1f)
                     }
-                    is VideoContent.Mp4Bytes -> error("Mp4Bytes is the web-only variant — resolveVideoContent was given fileOps")
-                    is VideoContent.Mp4File -> {
+                    is VideoContent.Mp4Bytes, is VideoContent.Mp4File -> {
                         onProgress(0.5f)
-                        // Already streamed to a disposable hbvid_res_* temp by the
-                        // resolver (#845) — no whole-payload RAM buffer, no second
-                        // temp-file write. Deleted on dispose (see tempFilePath).
-                        tempFilePath = content.filePath
-                        val mp4Url = NSURL.fileURLWithPath(content.filePath)
+                        // Mp4File: already streamed to a disposable hbvid_res_* temp by the
+                        // resolver (#845). Mp4Bytes (an in-memory item, e.g. view-once) has no
+                        // AVPlayer-from-RAM path, so it gets the same swept temp but written
+                        // data-protected. Both are deleted on dispose (see tempFilePath).
+                        val mp4Path = when (content) {
+                            is VideoContent.Mp4File -> content.filePath
+                            is VideoContent.Mp4Bytes -> {
+                                val path = AppCacheDirs.scratchDir(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.EXPORT) +
+                                    "/hbvid_res_${NSUUID().UUIDString}.mp4"
+                                tempFilePath = path
+                                check(content.bytes.toNSData().writeToFile(path, NSDataWritingFileProtectionComplete, null)) { "in-memory video temp write failed" }
+                                path
+                            }
+                            else -> error("unreachable")
+                        }
+                        tempFilePath = mp4Path
+                        val mp4Url = NSURL.fileURLWithPath(mp4Path)
                         onProgress(0.8f)
                         val player = if (useInlineOptimizations) {
                             val item = AVPlayerItem(uRL = mp4Url)

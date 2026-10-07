@@ -158,6 +158,7 @@ fun MessageBubbleRaw(
     sentByYou: Boolean,
     currentOdinId: String = "",
     clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
+    isGroupConversation: Boolean = false,
     authorName: String? = null,
     authorColor: Color? = null,
     onLongClick: () -> Unit,
@@ -319,6 +320,7 @@ fun MessageBubbleRaw(
             ViewOnceBubble(
                 descriptor = content.descriptor,
                 isOutgoing = sentByYou,
+                isGroup = isGroupConversation,
                 state = viewOnceState,
                 openedCount = if (sentByYou) ViewOnceRules.openedCount(message) else 0,
                 screenshotTaken = remember(message, viewOnceMe) {

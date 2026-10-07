@@ -85,6 +85,21 @@ class VideoContentResolverTest {
     }
 
     @Test
+    fun inMemoryItem_isReturnedAsBytesAndNeverTouchesTheFilesystem() = runTest {
+        val fake = FakeVideoPrefetchDriveAccess(getPayloadResponses = mapOf(payloadKey to "view-once-mp4"))
+
+        // fileOps throws on any write or temp-file request, so a disk path cannot pass silently.
+        val content = resolveVideoContent(playerData(mp4Stub).copy(inMemory = true), fake, fileOps = fileOps)
+
+        val mp4 = assertIs<VideoContent.Mp4Bytes>(content)
+        assertContentEquals("view-once-mp4".encodeToByteArray(), mp4.bytes)
+        assertTrue(
+            fake.calls.filterIsInstance<FakeVideoPrefetchDriveAccess.Call.StreamPayloadDecryptedToPath>().isEmpty(),
+            "an in-memory item must never stream decrypted to a path (calls=${fake.calls})",
+        )
+    }
+
+    @Test
     fun segmentedWithPlaylist_staysOnHlsBranch() = runTest {
         val hlsStub = VideoMetadata(
             mimeType = "application/vnd.apple.mpegurl",

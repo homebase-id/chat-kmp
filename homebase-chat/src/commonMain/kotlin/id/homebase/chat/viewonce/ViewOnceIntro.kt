@@ -1,8 +1,6 @@
 package id.homebase.chat.viewonce
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -16,6 +14,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.graphics.vector.ImageVector
+import id.homebase.resources.chat_view_once_close
+import id.homebase.resources.chat_view_once_intro_row_disappears
+import id.homebase.resources.chat_view_once_intro_row_protected
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -63,6 +69,7 @@ import org.jetbrains.compose.resources.stringResource
 
 const val VIEW_ONCE_INTRO_OK_TAG = "viewOnceIntroOk"
 const val VIEW_ONCE_INTRO_TITLE_TAG = "viewOnceIntroTitle"
+const val VIEW_ONCE_INTRO_CLOSE_TAG = "viewOnceIntroClose"
 const val VIEW_ONCE_TOAST_TAG = "viewOnceToast"
 internal const val VIEW_ONCE_TOAST_MS = 2_000L
 
@@ -85,39 +92,68 @@ fun ViewOnceIntroSheet(isVideo: Boolean, onDismiss: () -> Unit) {
 internal fun ViewOnceIntroContent(isVideo: Boolean, onOk: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val heroDescription = stringResource(MR.string.cd_view_once_intro)
-    Column(
-        modifier = modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            Modifier
-                .size(112.dp)
-                .background(colors.primaryContainer, MaterialShapes.Cookie9Sided.toShape())
-                .semantics { contentDescription = heroDescription },
-            contentAlignment = Alignment.Center,
+    Box(modifier.fillMaxWidth().navigationBarsPadding()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(ViewOnceIcon, contentDescription = null, tint = colors.onPrimaryContainer, modifier = Modifier.size(64.dp))
+            Box(
+                Modifier
+                    .size(112.dp)
+                    .background(colors.primaryContainer, MaterialShapes.Cookie9Sided.toShape())
+                    .semantics { contentDescription = heroDescription },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(ViewOnceIcon, contentDescription = null, tint = colors.onPrimaryContainer, modifier = Modifier.size(64.dp))
+            }
+            Text(
+                text = stringResource(
+                    if (isVideo) MR.string.chat_view_once_intro_title_video else MR.string.chat_view_once_intro_title_photo,
+                ),
+                style = MaterialTheme.typography.headlineSmallEmphasized.copy(textDirection = TextDirection.Content),
+                color = colors.onSurface,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 24.dp).testTag(VIEW_ONCE_INTRO_TITLE_TAG),
+            )
+            Column(Modifier.padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                ViewOnceIntroRow(ViewOnceRingIcon, stringResource(MR.string.chat_view_once_intro_row_disappears))
+                ViewOnceIntroRow(Icons.Outlined.Lock, stringResource(MR.string.chat_view_once_intro_row_protected))
+            }
+            Button(
+                onClick = onOk,
+                shapes = ButtonDefaults.shapes(),
+                modifier = Modifier
+                    .padding(top = 32.dp)
+                    .widthIn(min = 160.dp)
+                    .heightIn(min = 48.dp)
+                    .testTag(VIEW_ONCE_INTRO_OK_TAG),
+            ) {
+                Text(stringResource(MR.string.chat_view_once_intro_ok))
+            }
         }
-        Text(
-            text = stringResource(
-                if (isVideo) MR.string.chat_view_once_intro_title_video else MR.string.chat_view_once_intro_title_photo,
-            ),
-            style = MaterialTheme.typography.headlineSmallEmphasized.copy(textDirection = TextDirection.Content),
-            color = colors.onSurface,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 24.dp).testTag(VIEW_ONCE_INTRO_TITLE_TAG),
-        )
-        Button(
+        IconButton(
             onClick = onOk,
-            shapes = ButtonDefaults.shapes(),
-            modifier = Modifier
-                .padding(top = 32.dp)
-                .widthIn(min = 160.dp)
-                .heightIn(min = 48.dp)
-                .testTag(VIEW_ONCE_INTRO_OK_TAG),
+            modifier = Modifier.align(Alignment.TopEnd).padding(end = 8.dp).testTag(VIEW_ONCE_INTRO_CLOSE_TAG),
         ) {
-            Text(stringResource(MR.string.chat_view_once_intro_ok))
+            Icon(
+                Icons.Default.Close,
+                contentDescription = stringResource(MR.string.chat_view_once_close),
+                tint = colors.onSurfaceVariant,
+            )
         }
+    }
+}
+
+@Composable
+private fun ViewOnceIntroRow(icon: ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(start = 16.dp),
+        )
     }
 }
 
@@ -195,12 +231,10 @@ fun ViewOnceToast(message: ViewOnceToastMessage?, modifier: Modifier = Modifier)
     }
     AnimatedVisibility(
         visible = shown != null,
-        // Opaque within a few frames and held there; the room it takes opens on the same spring, so it never lands on the media.
-        enter = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()) +
-            expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec(), expandFrom = Alignment.Top) +
+        // No fade either way: the toast is opaque from its first frame to its last, and the room it takes opens on a spring so it never lands on the media.
+        enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec(), expandFrom = Alignment.Top) +
             slideInVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) { it / 2 },
-        exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
-            shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec(), shrinkTowards = Alignment.Top),
+        exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec(), shrinkTowards = Alignment.Top),
         modifier = modifier,
     ) {
         Surface(

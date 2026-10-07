@@ -385,6 +385,7 @@ class ViewOnceShotsTest {
                     ViewOnceBubble(
                         descriptor = row.kind?.let(::ViewOnceDescriptor),
                         isOutgoing = sent,
+                        isGroup = row.openedCount > 1,
                         shape = messageBubbleShape(sent, MessageClusterPosition.ALONE),
                         containerColor = container,
                         contentColor = content,

@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertTouchHeightIsEqualTo
 import androidx.compose.ui.test.assertTouchWidthIsEqualTo
@@ -116,18 +117,18 @@ class ViewOnceComposerTest {
     }
 
     @Test
-    fun theIntroSheetIsTheTitleAndOneDismissAndNeverExplainsTheProtection() = runComposeUiTest {
-        var ok = 0
-        setContent { MaterialTheme { ViewOnceIntroContent(isVideo = false, onOk = { ok++ }) } }
+    fun theIntroSheetHasATitleTwoVisibleRowsAnOkAndACloseThatBothDismiss() = runComposeUiTest {
+        var dismissed = 0
+        setContent { MaterialTheme { ViewOnceIntroContent(isVideo = false, onOk = { dismissed++ }) } }
 
         onNodeWithText("This photo can be viewed once").assertExists()
-        for (banned in listOf("screenshot", "disappears", "forward", "Learn more")) {
-            assertEquals(0, onAllNodesWithText(banned, substring = true, ignoreCase = true).fetchSemanticsNodes().size, banned)
-        }
-        onNodeWithContentDescription("can't be shared", substring = true).assertExists()
+        onNodeWithText("It disappears from the chat after it's closed").assertIsDisplayed()
+        onNodeWithText("It can't be shared, forwarded, copied or saved").assertIsDisplayed()
+        onNodeWithTag(VIEW_ONCE_INTRO_CLOSE_TAG).assertIsDisplayed()
 
-        onNodeWithTag(VIEW_ONCE_INTRO_OK_TAG).assertTextEquals("Got it").performClick()
-        assertEquals(1, ok)
+        onNodeWithTag(VIEW_ONCE_INTRO_OK_TAG).assertTextEquals("OK").performClick()
+        onNodeWithTag(VIEW_ONCE_INTRO_CLOSE_TAG).performClick()
+        assertEquals(2, dismissed)
     }
 
     @Test

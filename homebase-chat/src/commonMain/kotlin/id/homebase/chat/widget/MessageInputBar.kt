@@ -1225,8 +1225,10 @@ private fun EmojiToggleButton(
 const val VIEW_ONCE_TOGGLE_TAG = "viewOnceToggle"
 
 // Outlined circle off, filled squircle on: shape, fill and outline travel together on the motion scheme, as one control.
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ViewOnceCaptionToggle(toggle: ViewOnceToggle) {
+    val toggleSize = IconButtonDefaults.extraSmallContainerSize()
     val colors = MaterialTheme.colorScheme
     val motion = MaterialTheme.motionScheme
     val interaction = remember { MutableInteractionSource() }
@@ -1235,7 +1237,7 @@ private fun ViewOnceCaptionToggle(toggle: ViewOnceToggle) {
         when {
             pressed -> 8.dp
             toggle.checked -> 12.dp
-            else -> VIEW_ONCE_TOGGLE_SIZE / 2
+            else -> toggleSize.height / 2
         },
         motion.fastSpatialSpec(),
     )
@@ -1250,27 +1252,25 @@ private fun ViewOnceCaptionToggle(toggle: ViewOnceToggle) {
             .toggleable(
                 value = toggle.checked,
                 interactionSource = interaction,
-                indication = ripple(bounded = false, radius = VIEW_ONCE_TOGGLE_SIZE / 2),
+                indication = ripple(bounded = false, radius = toggleSize.height / 2),
                 role = Role.Switch,
                 onValueChange = { toggle.onToggle() },
             ),
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            Modifier.size(VIEW_ONCE_TOGGLE_SIZE).background(container, shape).border(1.dp, outline, shape),
+            Modifier.size(toggleSize).background(container, shape).border(1.dp, outline, shape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = ViewOnceIcon,
                 contentDescription = stringResource(MR.string.cd_view_once_toggle),
                 tint = glyph,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
             )
         }
     }
 }
-
-private val VIEW_ONCE_TOGGLE_SIZE = 40.dp
 
 @Immutable
 class ViewOnceToggle(val checked: Boolean, val onToggle: () -> Unit)

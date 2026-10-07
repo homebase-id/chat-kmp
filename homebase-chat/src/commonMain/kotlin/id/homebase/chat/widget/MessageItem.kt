@@ -182,6 +182,7 @@ fun MessageItem(
                 decryptedFiles = decryptedFiles,
                 currentOdinId = currentOdinId,
                 clusterPosition = clusterPosition,
+                isGroupConversation = isGroupConversation,
                 onMessageInfo = onMessageInfo,
                 onReply = onReply,
                 onBattle = onBattle,

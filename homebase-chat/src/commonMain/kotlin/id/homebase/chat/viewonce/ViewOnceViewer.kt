@@ -40,6 +40,8 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Delete
@@ -75,6 +77,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -112,6 +115,8 @@ import id.homebase.resources.chat_message_reply
 import id.homebase.resources.chat_view_once_capture_blocked
 import id.homebase.resources.chat_view_once_close
 import id.homebase.resources.chat_view_once_more
+import id.homebase.resources.chat_view_once_pause
+import id.homebase.resources.chat_view_once_play
 import id.homebase.resources.chat_view_once_mute
 import id.homebase.resources.chat_view_once_retry
 import id.homebase.resources.chat_view_once_unmute
@@ -136,6 +141,9 @@ const val VIEW_ONCE_VIEWER_REACTION_TAG_PREFIX = "viewOnceViewerReaction_"
 const val VIEW_ONCE_VIEWER_REPLY_TAG = "viewOnceViewerReply"
 const val VIEW_ONCE_VIEWER_MORE_TAG = "viewOnceViewerMore"
 const val VIEW_ONCE_VIEWER_DELETE_TAG = "viewOnceViewerDelete"
+const val VIEW_ONCE_VIEWER_PLAY_TAG = "viewOnceViewerPlay"
+const val VIEW_ONCE_VIEWER_ELAPSED_TAG = "viewOnceViewerElapsed"
+const val VIEW_ONCE_VIEWER_REMAINING_TAG = "viewOnceViewerRemaining"
 
 /**
  * Full-screen viewer for one received view-once item. It has no save, share, forward or paging,
@@ -166,6 +174,9 @@ fun ViewOnceViewer(
     var videoReady by remember(data.messageId) { mutableStateOf(false) }
     var attempt by remember(data.messageId) { mutableIntStateOf(0) }
     var positionMs by remember(data.messageId) { mutableLongStateOf(0L) }
+    var paused by remember(data.messageId) { mutableStateOf(false) }
+    var ended by remember(data.messageId) { mutableStateOf(false) }
+    var replayToken by remember(data.messageId) { mutableIntStateOf(0) }
     val durationMs = remember(data.payload) { (data.payload.descriptorInfo() as? DescriptorContent.VideoFile)?.durationMs }
     val hold = remember(data.messageId) { CloseOnce() }
     val latestOnDismiss by rememberUpdatedState(onDismiss)
@@ -234,6 +245,17 @@ fun ViewOnceViewer(
         failed = failed,
         positionMs = { positionMs },
         durationMs = durationMs,
+        playing = !paused && !ended,
+        onTogglePlay = {
+            when {
+                ended -> {
+                    ended = false
+                    paused = false
+                    replayToken++
+                }
+                else -> paused = !paused
+            }
+        },
         muted = muted,
         onMutedChange = { muted = it },
         reactions = reactions,
@@ -251,17 +273,14 @@ fun ViewOnceViewer(
             failed -> ViewOnceViewerFailed(onRetry = { attempt++ }, modifier = fill)
             isVideo && videoReady -> {
                 VideoPlayerSurface(
-                    data = FullScreenOverlay.VideoPlayerData(
-                        fileId = data.fileId,
-                        driveId = chatTargetDrive.alias,
-                        payloadKey = data.payload.key,
-                        keyHeader = data.keyHeader,
-                        payload = data.payload,
-                    ),
+                    data = data.videoPlayerData(),
                     modifier = Modifier.fillMaxSize(),
                     muted = muted,
                     // The viewer's one chrome layer owns every control; the player's own would replace it.
                     useNativeControls = false,
+                    paused = paused,
+                    replayToken = replayToken,
+                    onEnded = { ended = true },
                     onFirstFrame = { videoShown = true },
                     onPositionUpdate = { positionMs = it },
                     onError = { failed = true },
@@ -273,6 +292,15 @@ fun ViewOnceViewer(
         }
     }
 }
+
+internal fun FullScreenOverlay.ViewOnceViewer.videoPlayerData() = FullScreenOverlay.VideoPlayerData(
+    fileId = fileId,
+    driveId = chatTargetDrive.alias,
+    payloadKey = payload.key,
+    keyHeader = keyHeader,
+    payload = payload,
+    inMemory = true,
+)
 
 /**
  * Always dark, like the camera: media reads best on black, and the chrome must not flip with the app theme.
@@ -290,6 +318,8 @@ internal fun ViewOnceViewerFrame(
     modifier: Modifier = Modifier,
     positionMs: () -> Long = { 0L },
     durationMs: Long? = null,
+    playing: Boolean = true,
+    onTogglePlay: (() -> Unit)? = null,
     muted: Boolean = false,
     onMutedChange: ((Boolean) -> Unit)? = null,
     reactions: List<String> = quickReactions(emptyList()),
@@ -309,29 +339,29 @@ internal fun ViewOnceViewerFrame(
                 .pointerInput(mediaShown) { detectTapGestures { if (mediaShown) chromeRequested = !chromeRequested } },
         ) {
             body(Modifier.fillMaxSize())
-            AnimatedVisibility(
-                visible = chromeVisible,
-                enter = fadeIn(motion.defaultEffectsSpec()),
-                exit = fadeOut(motion.defaultEffectsSpec()),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                Box(Modifier.fillMaxSize()) {
-                    ViewOnceViewerTopBar(onClose = onClose, modifier = Modifier.align(Alignment.TopCenter))
-                    if (mediaShown && !failed) {
-                        ViewOnceViewerBottomBar(
-                            isVideo = isVideo,
-                            caption = caption,
-                            positionMs = positionMs,
-                            durationMs = durationMs,
-                            muted = muted,
-                            onMutedChange = onMutedChange,
-                            reactions = reactions,
-                            onReact = onReact,
-                            onReply = onReply,
-                            onDelete = onDelete,
-                            modifier = Modifier.align(Alignment.BottomCenter),
-                        )
-                    }
+            // Back is the way out of every state, so the top bar is never part of what a tap hides.
+            ViewOnceViewerTopBar(onClose = onClose, modifier = Modifier.align(Alignment.TopCenter))
+            if (mediaShown && !failed) {
+                AnimatedVisibility(
+                    visible = chromeVisible,
+                    enter = fadeIn(motion.defaultEffectsSpec()),
+                    exit = fadeOut(motion.defaultEffectsSpec()),
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                ) {
+                    ViewOnceViewerBottomBar(
+                        isVideo = isVideo,
+                        caption = caption,
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        playing = playing,
+                        onTogglePlay = onTogglePlay,
+                        muted = muted,
+                        onMutedChange = onMutedChange,
+                        reactions = reactions,
+                        onReact = onReact,
+                        onReply = onReply,
+                        onDelete = onDelete,
+                    )
                 }
             }
         }
@@ -393,6 +423,8 @@ private fun ViewOnceViewerBottomBar(
     caption: String?,
     positionMs: () -> Long,
     durationMs: Long?,
+    playing: Boolean,
+    onTogglePlay: (() -> Unit)?,
     muted: Boolean,
     onMutedChange: ((Boolean) -> Unit)?,
     reactions: List<String>,
@@ -402,6 +434,7 @@ private fun ViewOnceViewerBottomBar(
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
+    val scrim = colors.scrim
     val motion = MaterialTheme.motionScheme
     var picking by remember { mutableStateOf(false) }
     var reacted by remember { mutableStateOf<String?>(null) }
@@ -409,9 +442,21 @@ private fun ViewOnceViewerBottomBar(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(0f to colors.scrim.copy(alpha = 0f), 1f to colors.scrim.copy(alpha = SCRIM_ALPHA)))
+            .drawBehind {
+                // The fade lives in the top padding; from there down the scrim is solid enough to read a caption over white.
+                val fade = (BOTTOM_FADE.toPx() / size.height).coerceIn(0f, 1f)
+                drawRect(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0f to scrim.copy(alpha = 0f),
+                            fade to scrim.copy(alpha = SCRIM_ALPHA),
+                            1f to scrim.copy(alpha = SCRIM_ALPHA),
+                        ),
+                    ),
+                )
+            }
             .navigationBarsPadding()
-            .padding(start = 12.dp, end = 12.dp, top = 56.dp, bottom = 8.dp),
+            .padding(start = 12.dp, end = 12.dp, top = BOTTOM_FADE, bottom = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (caption != null) {
@@ -426,16 +471,32 @@ private fun ViewOnceViewerBottomBar(
                     .testTag(VIEW_ONCE_VIEWER_CAPTION_TAG),
             )
         }
-        if (isVideo && durationMs != null && durationMs > 0) {
-            val smooth by rememberPlaybackProgress(positionMs, durationMs)
-            LinearProgressIndicator(
-                progress = { smooth },
-                color = colors.primary,
-                trackColor = colors.onSurface.copy(alpha = 0.24f),
-                gapSize = 0.dp,
-                drawStopIndicator = {},
-                modifier = Modifier.fillMaxWidth().height(3.dp).testTag(VIEW_ONCE_VIEWER_PROGRESS_TAG),
-            )
+        if (isVideo && onTogglePlay != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChromeCircleButton(onClick = onTogglePlay, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_PLAY_TAG)) {
+                    Icon(
+                        if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = stringResource(if (playing) MR.string.chat_view_once_pause else MR.string.chat_view_once_play),
+                    )
+                }
+                val duration = durationMs?.takeIf { it > 0 }
+                val position = positionMs().coerceAtLeast(0L).let { if (duration != null) it.coerceAtMost(duration) else it }
+                PlaybackTime(formatPlaybackTime(position), Modifier.testTag(VIEW_ONCE_VIEWER_ELAPSED_TAG))
+                if (duration != null) {
+                    val smooth by rememberPlaybackProgress(positionMs, duration)
+                    LinearProgressIndicator(
+                        progress = { smooth },
+                        color = colors.primary,
+                        trackColor = colors.onSurface.copy(alpha = 0.24f),
+                        gapSize = 0.dp,
+                        drawStopIndicator = {},
+                        modifier = Modifier.weight(1f).height(3.dp).testTag(VIEW_ONCE_VIEWER_PROGRESS_TAG),
+                    )
+                    PlaybackTime("-" + formatPlaybackTime(duration - position), Modifier.testTag(VIEW_ONCE_VIEWER_REMAINING_TAG))
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+            }
         }
         AnimatedVisibility(
             visible = picking,
@@ -518,6 +579,27 @@ private fun ViewOnceViewerBottomBar(
             }
         }
     }
+}
+
+// A clock reads left to right in every script, so an RTL layout must not reorder "0:05" or "-1:20".
+@Composable
+private fun PlaybackTime(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge.copy(textDirection = TextDirection.Ltr, fontFeatureSettings = "tnum"),
+        color = MaterialTheme.colorScheme.onSurface,
+        maxLines = 1,
+        modifier = modifier,
+    )
+}
+
+internal fun formatPlaybackTime(ms: Long): String {
+    val totalSeconds = (ms.coerceAtLeast(0L) + 500L) / 1000L
+    val hours = totalSeconds / 3600
+    val minutes = totalSeconds % 3600 / 60
+    val seconds = totalSeconds % 60
+    val ss = seconds.toString().padStart(2, '0')
+    return if (hours > 0) "$hours:${minutes.toString().padStart(2, '0')}:$ss" else "$minutes:$ss"
 }
 
 @Composable
@@ -625,6 +707,7 @@ private const val POSITION_TICK_MS = 500
 private const val CHROME_ALPHA = 0.62f
 private const val SCRIM_ALPHA = 0.72f
 private val CHROME_SIZE = 48.dp
+private val BOTTOM_FADE = 56.dp
 
 private class CloseOnce {
     private var done = false

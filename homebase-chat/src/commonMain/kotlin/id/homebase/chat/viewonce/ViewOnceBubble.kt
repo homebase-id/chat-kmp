@@ -87,6 +87,7 @@ fun ViewOnceBubble(
     containerColor: Color,
     contentColor: Color,
     modifier: Modifier = Modifier,
+    isGroup: Boolean = false,
     state: ViewOnceState = if (isOutgoing) ViewOnceState.Sent else ViewOnceState.Unopened,
     openedCount: Int = 0,
     screenshotTaken: Boolean = false,
@@ -124,7 +125,7 @@ fun ViewOnceBubble(
         consumed -> {
             title = when {
                 state == ViewOnceState.Expired -> stringResource(MR.string.chat_view_once_expired)
-                isOutgoing && openedCount > 1 -> pluralStringResource(MR.plurals.chat_view_once_opened_by, openedCount, openedCount)
+                isOutgoing && isGroup && openedCount >= 1 -> pluralStringResource(MR.plurals.chat_view_once_opened_by, openedCount, openedCount)
                 else -> stringResource(MR.string.chat_view_once_opened)
             }
             second = kindLabel
