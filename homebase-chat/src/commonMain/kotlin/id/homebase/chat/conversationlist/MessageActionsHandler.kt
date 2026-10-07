@@ -150,6 +150,9 @@ internal suspend fun MutableStateFlow<MessageListUiState>.sendUnderPlaceholder(
  * Behavior is byte-identical to the previous in-VM implementation; the move
  * is purely structural — see PR 4b-2 in `lucky-chasing-valley.md` for context.
  */
+// View-once (216) headers carry no reply; leaving replyTo null keeps the quote in the composer instead of dropping it silently.
+internal fun <T> replyForSend(viewOnce: Boolean, replyTo: T?): T? = if (viewOnce) null else replyTo
+
 internal class MessageActionsHandler(
     private val scope: CoroutineScope,
     private val uiState: MutableStateFlow<ConversationListUiState>,
@@ -524,7 +527,7 @@ internal class MessageActionsHandler(
 
     fun handleSendFile(action: ConversationListUiAction.SendFile) {
         messagesUiState.update { it.copy(scrollPosition = null, isSendingMessage = true) }
-        val replyTo = messagesUiState.value.replyToMessage
+        val replyTo = replyForSend(action.viewOnce, messagesUiState.value.replyToMessage)
 
         addMessageWithFiles(
             conversationId = action.conversationId,
