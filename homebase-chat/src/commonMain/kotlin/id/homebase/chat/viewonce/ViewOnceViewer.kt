@@ -312,8 +312,8 @@ internal fun FullScreenOverlay.ViewOnceViewer.videoPlayerData() = FullScreenOver
 
 /**
  * Always dark, like the camera: media reads best on black, and the chrome must not flip with the app theme.
- * The media fills the screen and one chrome layer floats over it on scrims; a tap anywhere toggles that layer.
- * While loading or failed the chrome stays, because those states are nothing but chrome.
+ * The media fills the screen and the chrome floats over it on scrims. A tap on the media hides only the
+ * top row's title and mark; back, react and Reply stay, because they are the ways out and the only actions.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -340,56 +340,49 @@ internal fun ViewOnceViewerFrame(
 ) {
     HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
         val motion = MaterialTheme.motionScheme
-        var chromeRequested by remember { mutableStateOf(true) }
+        var topRequested by remember { mutableStateOf(true) }
         var infoOpen by remember { mutableStateOf(false) }
-        // Reaction and Reply never depend on the media, so the bottom bar is there from the first frame.
-        val chromeVisible = chromeRequested || !mediaShown
+        LaunchedEffect(playing) { if (!playing) topRequested = true }
+        val topVisible = topRequested || !mediaShown
         Box(
             modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.scrim)
-                .pointerInput(mediaShown) { detectTapGestures { if (mediaShown) chromeRequested = !chromeRequested } },
+                .pointerInput(mediaShown) { detectTapGestures { if (mediaShown) topRequested = !topRequested } },
         ) {
             body(Modifier.fillMaxSize())
             AnimatedVisibility(
-                visible = chromeVisible,
+                visible = topVisible,
                 enter = fadeIn(motion.defaultEffectsSpec()),
                 exit = fadeOut(motion.defaultEffectsSpec()),
                 modifier = Modifier.align(Alignment.TopCenter),
             ) {
                 ChromeScrim(fromTop = true, modifier = Modifier.fillMaxWidth().height(TOP_SCRIM))
             }
-            // Back is the way out of every state, so it is never part of what a tap hides.
             ViewOnceViewerTopBar(
                 senderName = senderName,
                 sentAt = sentAt,
-                titleVisible = chromeVisible,
+                titleVisible = topVisible,
                 onClose = onClose,
                 onInfo = { infoOpen = true },
                 modifier = Modifier.align(Alignment.TopCenter),
             )
-            AnimatedVisibility(
-                visible = chromeVisible,
-                enter = fadeIn(motion.defaultEffectsSpec()),
-                exit = fadeOut(motion.defaultEffectsSpec()),
+            ViewOnceViewerBottomBar(
+                isVideo = isVideo,
+                caption = caption?.takeUnless { failed },
+                positionMs = positionMs,
+                durationMs = durationMs,
+                playing = playing,
+                onTogglePlay = onTogglePlay?.takeIf { mediaShown },
+                muted = muted,
+                onMutedChange = onMutedChange?.takeIf { mediaShown },
+                reactions = reactions,
+                onReact = onReact,
+                onReply = onReply,
+                onInfo = { infoOpen = true },
+                onDelete = onDelete.takeIf { mediaShown },
                 modifier = Modifier.align(Alignment.BottomCenter),
-            ) {
-                ViewOnceViewerBottomBar(
-                    isVideo = isVideo,
-                    caption = caption?.takeUnless { failed },
-                    positionMs = positionMs,
-                    durationMs = durationMs,
-                    playing = playing,
-                    onTogglePlay = onTogglePlay?.takeIf { mediaShown },
-                    muted = muted,
-                    onMutedChange = onMutedChange?.takeIf { mediaShown },
-                    reactions = reactions,
-                    onReact = onReact,
-                    onReply = onReply,
-                    onInfo = { infoOpen = true },
-                    onDelete = onDelete.takeIf { mediaShown },
-                )
-            }
+            )
             if (infoOpen) ViewOnceIntroSheet(isVideo = isVideo, onDismiss = { infoOpen = false })
         }
     }
@@ -486,8 +479,14 @@ private fun ViewOnceViewerTopBar(
                 }
             }
         }
-        ChromeCircleButton(onClick = onInfo, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_INFO_TAG)) {
-            Icon(ViewOnceIcon, contentDescription = markLabel, modifier = Modifier.size(IconButtonDefaults.mediumIconSize))
+        androidx.compose.animation.AnimatedVisibility(
+            visible = titleVisible,
+            enter = fadeIn(motion.defaultEffectsSpec()),
+            exit = fadeOut(motion.defaultEffectsSpec()),
+        ) {
+            ChromeCircleButton(onClick = onInfo, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_INFO_TAG)) {
+                Icon(ViewOnceIcon, contentDescription = markLabel, modifier = Modifier.size(IconButtonDefaults.mediumIconSize))
+            }
         }
     }
 }
@@ -527,16 +526,21 @@ private fun ViewOnceViewerBottomBar(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (caption != null) {
-                Text(
-                    text = caption,
-                    style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
-                    color = colors.onSurface,
-                    modifier = Modifier
-                        .padding(horizontal = 8.dp)
-                        .heightIn(max = 160.dp)
-                        .verticalScroll(rememberScrollState())
-                        .testTag(VIEW_ONCE_VIEWER_CAPTION_TAG),
-                )
+                Surface(
+                    shape = MaterialTheme.shapes.large,
+                    color = chromeContainer(),
+                    contentColor = colors.onSurface,
+                ) {
+                    Text(
+                        text = caption,
+                        style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
+                        modifier = Modifier
+                            .heightIn(max = CAPTION_MAX_HEIGHT)
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .testTag(VIEW_ONCE_VIEWER_CAPTION_TAG),
+                    )
+                }
             }
             if (isVideo && onTogglePlay != null) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -794,6 +798,7 @@ private const val SCRIM_ALPHA = 0.64f
 private val CHROME_SIZE = 48.dp
 private val BOTTOM_FADE = 72.dp
 private val TOP_SCRIM = 160.dp
+private val CAPTION_MAX_HEIGHT = 160.dp
 private val BOTTOM_BAR_MAX_WIDTH = 640.dp
 
 private class CloseOnce {

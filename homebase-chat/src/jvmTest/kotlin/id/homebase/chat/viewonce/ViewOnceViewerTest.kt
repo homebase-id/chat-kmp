@@ -283,19 +283,45 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun aTapTogglesTheBottomControlsAndTheBackButtonNeverGoesAway() = runSkikoComposeUiTest {
+    fun aTapHidesOnlyTheTopRow_andBackReactReplyAndTheMenuNeverGoAway() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
         awaitShown()
-        onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).assertExists()
+        val alwaysThere = listOf(
+            VIEW_ONCE_VIEWER_CLOSE_TAG, VIEW_ONCE_VIEWER_REACT_TAG, VIEW_ONCE_VIEWER_REPLY_TAG, VIEW_ONCE_VIEWER_MORE_TAG,
+        )
 
         onNodeWithTag(VIEW_ONCE_VIEWER_IMAGE_TAG).performClick()
-        waitUntil(timeoutMillis = 5_000) { !present(VIEW_ONCE_VIEWER_REPLY_TAG) }
-        onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).assertExists()
+        waitUntil(timeoutMillis = 5_000) { !present(VIEW_ONCE_VIEWER_INFO_TAG) }
+        for (tag in alwaysThere) assertTrue(present(tag), tag)
 
         onNodeWithTag(VIEW_ONCE_VIEWER_IMAGE_TAG).performClick()
-        waitUntil(timeoutMillis = 5_000) { present(VIEW_ONCE_VIEWER_REPLY_TAG) }
-        onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).assertExists()
+        waitUntil(timeoutMillis = 5_000) { present(VIEW_ONCE_VIEWER_INFO_TAG) }
+        for (tag in alwaysThere) assertTrue(present(tag), tag)
+    }
+
+    @Test
+    fun theLivePathShowsTheSenderTheTimeAndTheCaptionOnItsOwnContainer() = runSkikoComposeUiTest {
+        val server = runBlocking { ViewOnceFakeServer().start() }
+        setContent {
+            MaterialTheme {
+                ViewOnceViewer(
+                    data = server.viewer(
+                        caption = "Remember this place",
+                        senderName = "Alice",
+                        sentAt = kotlin.time.Clock.System.now(),
+                    ),
+                    onViewerClosed = {},
+                    onDismiss = {},
+                    loader = server.loader,
+                )
+            }
+        }
+        awaitShown()
+        onNodeWithText("Alice").assertExists()
+        onNodeWithTag(VIEW_ONCE_VIEWER_TITLE_TAG).assertExists()
+        onNodeWithTag(VIEW_ONCE_VIEWER_CAPTION_TAG).assertExists()
+        onNodeWithText("Remember this place").assertExists()
     }
 
     private fun SkikoComposeUiTest.present(tag: String) = onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
@@ -492,13 +518,29 @@ class ViewOnceViewerTest {
         assertTrue(!playing)
         onNode(hasTestTag(VIEW_ONCE_VIEWER_PLAY_TAG) and hasContentDescription("Play")).assertExists()
 
+        onNodeWithTag(VIEW_ONCE_VIEWER_PLAY_TAG).performClick()
+        waitForIdle()
+        assertTrue(playing)
+
         repeat(3) {
             onNodeWithTag("player").performClick()
-            waitUntil(timeoutMillis = 5_000) { !present(VIEW_ONCE_VIEWER_PROGRESS_TAG) }
+            waitUntil(timeoutMillis = 5_000) { !present(VIEW_ONCE_VIEWER_INFO_TAG) }
             assertTrue(present(VIEW_ONCE_VIEWER_CLOSE_TAG), "back survives a tap")
+            assertTrue(present(VIEW_ONCE_VIEWER_PROGRESS_TAG), "the transport stays")
+            assertTrue(present(VIEW_ONCE_VIEWER_REPLY_TAG), "Reply stays")
             onNodeWithTag("player").performClick()
-            waitUntil(timeoutMillis = 5_000) { present(VIEW_ONCE_VIEWER_PROGRESS_TAG) }
+            waitUntil(timeoutMillis = 5_000) { present(VIEW_ONCE_VIEWER_INFO_TAG) }
         }
+
+        onNodeWithTag("player").performClick()
+        waitUntil(timeoutMillis = 5_000) { !present(VIEW_ONCE_VIEWER_INFO_TAG) }
+        onNodeWithTag(VIEW_ONCE_VIEWER_PLAY_TAG).performClick()
+        waitUntil(timeoutMillis = 5_000) { present(VIEW_ONCE_VIEWER_INFO_TAG) }
+        assertTrue(!playing, "pausing brings the top row back")
+
+        val transportBottom = onNodeWithTag(VIEW_ONCE_VIEWER_PLAY_TAG).getBoundsInRoot().bottom
+        val replyTop = onNodeWithTag(VIEW_ONCE_VIEWER_REPLY_TAG).getBoundsInRoot().top
+        assertTrue(transportBottom <= replyTop, "the transport row sits above the Reply row")
         onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).performClick()
         assertEquals(1, closed)
     }

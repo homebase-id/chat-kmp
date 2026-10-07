@@ -24,6 +24,7 @@ import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import javax.imageio.ImageIO
 import kotlin.io.encoding.Base64
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 /** A drive that serves one AES-encrypted view-once payload, over the real provider and cache stack. */
@@ -87,7 +88,13 @@ internal class ViewOnceFakeServer(
         .filter { it.id == "drive_payloads" || it.id == "hls_chunks" }
         .sumOf { it.sizeBytes }
 
-    fun viewer(messageId: Uuid = Uuid.random(), kind: String = ViewOnceDescriptor.KIND_IMAGE, caption: String? = null) =
+    fun viewer(
+        messageId: Uuid = Uuid.random(),
+        kind: String = ViewOnceDescriptor.KIND_IMAGE,
+        caption: String? = null,
+        senderName: String? = null,
+        sentAt: Instant? = null,
+    ) =
         FullScreenOverlay.ViewOnceViewer(
             messageId = messageId,
             conversationId = Uuid.random(),
@@ -100,6 +107,8 @@ internal class ViewOnceFakeServer(
             keyHeader = keyHeader,
             kind = kind,
             caption = caption,
+            senderName = senderName,
+            sentAt = sentAt,
         )
 }
 

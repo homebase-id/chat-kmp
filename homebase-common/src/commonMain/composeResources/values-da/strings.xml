@@ -1970,14 +1970,12 @@
     <string name="chat_view_once_unavailable">Kan ikke åbnes her</string>
     <string name="chat_view_once_opening">Åbner…</string>
     <string name="chat_view_once_failed">Kunne ikke indlæse</string>
-    <string name="chat_view_once_tap_to_retry">Tryk for at prøve igen</string>
     <string name="chat_view_once_opened">Åbnet</string>
     <string name="chat_view_once_expired">Udløbet</string>
     <string name="chat_view_once_open_on_phone">Åbn på din telefon</string>
     <string name="chat_view_once_open_on_phone_title">Åbn dette på din telefon</string>
     <string name="chat_view_once_open_on_phone_body">Dette kan kun åbnes i Homebase-appen på en telefon eller tablet.</string>
     <string name="chat_view_once_capture_blocked">Skærmoptagelse blokeret</string>
-    <string name="chat_view_once_screenshot_taken">Skærmbillede taget</string>
     <string name="chat_view_once_close">Luk</string>
     <string name="chat_view_once_viewer_failed_title">Kunne ikke indlæse</string>
     <string name="chat_view_once_viewer_failed_body">Tjek din forbindelse, og prøv igen.</string>

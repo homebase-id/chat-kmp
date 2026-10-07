@@ -323,9 +323,6 @@ fun MessageBubbleRaw(
                 isGroup = isGroupConversation,
                 state = viewOnceState,
                 openedCount = if (sentByYou) ViewOnceRules.openedCount(message) else 0,
-                screenshotTaken = remember(message, viewOnceMe) {
-                    ViewOnceRules.screenshotTaken(message, viewOnceMe)
-                },
                 canView = isMobile(),
                 onOpen = remember(message, viewOnceState, sentByYou, displayOnly) {
                     val payload = message.payloads?.firstOrNull { it.key == VIEW_ONCE_PAYLOAD_KEY }

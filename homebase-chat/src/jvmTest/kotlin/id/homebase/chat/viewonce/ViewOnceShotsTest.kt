@@ -3,6 +3,7 @@ package id.homebase.chat.viewonce
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -82,6 +83,7 @@ import org.koin.dsl.module
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -174,6 +176,7 @@ class ViewOnceShotsTest {
             Shot("s5-received-states-rtl", Scene.States(outgoing = false), rtl = true, heightDp = 1_000),
             Shot("s6-sent-states-font-scale", Scene.States(outgoing = true), fontScale = 1.6f, heightDp = 900),
             Shot("v1-viewer-photo-live", Scene.Viewer(ViewerStage.Live)),
+            Shot("v16-viewer-photo-live-caption", Scene.Viewer(ViewerStage.Live, caption = "Don't show anyone. The view from the ridge before the rain came in.")),
             Shot("v2-viewer-loading", Scene.Viewer(ViewerStage.Loading)),
             // VLC can't decode in a headless test, so the poster stands in for a playing frame.
             Shot("v3-viewer-video-playing", Scene.Viewer(ViewerStage.Shown, video = true)),
@@ -201,6 +204,43 @@ class ViewOnceShotsTest {
         for (dark in listOf(false, true)) {
             for (shot in shots) if (only.isEmpty() || only.any { shot.name.startsWith(it) }) render(shot, dark)
         }
+    }
+
+    @Test
+    fun togglingViewOnceFloatsTheToastOverTheMediaAndNeverMovesIt() = runDesktopComposeUiTest(
+        width = (PHONE_W * SCALE).toInt(),
+        height = (PHONE_H * SCALE).toInt(),
+    ) {
+        val state = ViewOnceComposerState(UserPreferences(InMemorySettings()).also { it.viewOnceIntroSeen = true })
+        val attachments = listOf(image())
+        setContent {
+            Themed(dark = true, fontScale = 1f, rtl = false) {
+                MediaAttachmentEditor(
+                    attachments = attachments,
+                    currentPage = 0,
+                    onPageChanged = {},
+                    onAddImage = {},
+                    addMoreEnabled = !state.requested,
+                    centerImageInPage = true,
+                    imageOverlay = { Box(Modifier.matchParentSize().testTag(MEDIA_TAG)) },
+                    aboveStripOverlay = {
+                        ViewOnceToast(message = state.toast, modifier = Modifier.align(Alignment.BottomCenter))
+                    },
+                )
+            }
+        }
+        repeat(8) {
+            mainClock.advanceTimeBy(250)
+            Thread.sleep(150)
+        }
+        val before = onNodeWithTag(MEDIA_TAG).getBoundsInRoot()
+
+        runOnIdle { state.toggle(isVideo = false, eligible = true) }
+        mainClock.advanceTimeBy(150)
+        assertTrue(onAllNodesWithTag(VIEW_ONCE_TOAST_TAG).fetchSemanticsNodes().isNotEmpty())
+        assertEquals(before, onNodeWithTag(MEDIA_TAG).getBoundsInRoot(), "mid-animation")
+        mainClock.advanceTimeBy(600)
+        assertEquals(before, onNodeWithTag(MEDIA_TAG).getBoundsInRoot(), "toast fully in")
     }
 
     private val koin = koinApplication {
@@ -236,11 +276,11 @@ class ViewOnceShotsTest {
             if (extra == null) {
                 if (scene.viewOnce) {
                     delay(settleMs - scene.toastAgeMs)
-                    state.toggle(isVideo)
+                    state.toggle(isVideo, isViewOnceEligible(attachments))
                 }
                 return@LaunchedEffect
             }
-            if (scene.viewOnce) state.toggle(isVideo)
+            if (scene.viewOnce) state.toggle(isVideo, isViewOnceEligible(attachments))
             delay(VIEW_ONCE_TOAST_MS + 500)
             attachments = attachments + extra
         }
@@ -262,15 +302,15 @@ class ViewOnceShotsTest {
             onRemoveFile = {},
             onDismiss = {},
             centerImageInPage = true,
-            aboveStripSlot = {
-                ViewOnceToast(message = state.toast, modifier = Modifier.align(Alignment.CenterHorizontally))
+            aboveStripOverlay = {
+                ViewOnceToast(message = state.toast, modifier = Modifier.align(Alignment.BottomCenter))
             },
             bottomBar = {
                 MessageTextFieldForAttachment(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     state = caption,
                     onSendMessage = {},
-                    viewOnceToggle = if (eligible) ViewOnceToggle(viewOnce) { state.toggle(isVideo) } else null,
+                    viewOnceToggle = if (eligible) ViewOnceToggle(viewOnce) { state.toggle(isVideo, isViewOnceEligible(attachments)) } else null,
                     showFormattingToolbar = false,
                 )
             },
@@ -452,7 +492,17 @@ class ViewOnceShotsTest {
         val server = runBlocking { ViewOnceFakeServer(plainImage = File(samples, "red-leaf.jpg").readBytes()).start() }
         setContent {
             Themed(dark, shot.fontScale, shot.rtl) {
-                ViewOnceViewer(data = server.viewer(), onViewerClosed = {}, onDismiss = {}, loader = server.loader)
+                val scene = shot.scene as Scene.Viewer
+                ViewOnceViewer(
+                    data = server.viewer(
+                        caption = scene.caption,
+                        senderName = scene.sender,
+                        sentAt = Instant.fromEpochMilliseconds(Clock.System.now().toEpochMilliseconds() - 12 * 60_000L),
+                    ),
+                    onViewerClosed = {},
+                    onDismiss = {},
+                    loader = server.loader,
+                )
             }
         }
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag(VIEW_ONCE_VIEWER_IMAGE_TAG)).fetchSemanticsNodes().isNotEmpty() }
@@ -527,6 +577,7 @@ class ViewOnceShotsTest {
 
     private companion object {
         const val SCALE = 2f
+        const val MEDIA_TAG = "editorMedia"
         const val PHONE_W = 412
         const val PHONE_H = 892
         const val FIRST_ROW = "firstRow"

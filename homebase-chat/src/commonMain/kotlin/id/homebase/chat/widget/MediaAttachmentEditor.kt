@@ -7,7 +7,6 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.foundation.layout.ColumnScope
 import id.homebase.core.ui.theme.HomebaseTheme
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
@@ -45,6 +44,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -83,6 +83,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -218,18 +219,18 @@ fun MediaAttachmentEditor(
     revealed: Boolean = true,
     imageOverlay: @Composable BoxScope.(AttachmentPendingFile) -> Unit = {},
     pagerTopEndSlot: @Composable BoxScope.() -> Unit = {},
-    // Sits just above the attachment strip; whatever it shows takes room from the media rather than covering it.
-    aboveStripSlot: @Composable ColumnScope.() -> Unit = {},
+    // Floats over the media just above the attachment strip and takes no room, so the media never moves.
+    aboveStripOverlay: @Composable BoxScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
     addMoreEnabled: Boolean = true,
 ) {
     val isFileMode = attachments.all { it is AttachmentPendingFile.File }
     // Media is framed on black in both themes, like the camera it often comes from; documents keep the app theme.
     if (isFileMode) {
-        MediaAttachmentEditorContent(attachments, currentPage, onPageChanged, modifier, onCropImage, onDrawImage, onTrimChange, onSaveFile, onAddFile, onAddImage, onCameraClick, onRemoveFile, mediaQuality, onToggleMediaQuality, onDismiss, collapseSecondaryChrome, centerImageInPage, revealed, imageOverlay, pagerTopEndSlot, aboveStripSlot, bottomBar, addMoreEnabled)
+        MediaAttachmentEditorContent(attachments, currentPage, onPageChanged, modifier, onCropImage, onDrawImage, onTrimChange, onSaveFile, onAddFile, onAddImage, onCameraClick, onRemoveFile, mediaQuality, onToggleMediaQuality, onDismiss, collapseSecondaryChrome, centerImageInPage, revealed, imageOverlay, pagerTopEndSlot, aboveStripOverlay, bottomBar, addMoreEnabled)
     } else {
         HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
-            MediaAttachmentEditorContent(attachments, currentPage, onPageChanged, modifier, onCropImage, onDrawImage, onTrimChange, onSaveFile, onAddFile, onAddImage, onCameraClick, onRemoveFile, mediaQuality, onToggleMediaQuality, onDismiss, collapseSecondaryChrome, centerImageInPage, revealed, imageOverlay, pagerTopEndSlot, aboveStripSlot, bottomBar, addMoreEnabled)
+            MediaAttachmentEditorContent(attachments, currentPage, onPageChanged, modifier, onCropImage, onDrawImage, onTrimChange, onSaveFile, onAddFile, onAddImage, onCameraClick, onRemoveFile, mediaQuality, onToggleMediaQuality, onDismiss, collapseSecondaryChrome, centerImageInPage, revealed, imageOverlay, pagerTopEndSlot, aboveStripOverlay, bottomBar, addMoreEnabled)
         }
     }
 }
@@ -257,7 +258,7 @@ private fun MediaAttachmentEditorContent(
     revealed: Boolean,
     imageOverlay: @Composable BoxScope.(AttachmentPendingFile) -> Unit,
     pagerTopEndSlot: @Composable BoxScope.() -> Unit,
-    aboveStripSlot: @Composable ColumnScope.() -> Unit,
+    aboveStripOverlay: @Composable BoxScope.() -> Unit,
     bottomBar: @Composable () -> Unit,
     addMoreEnabled: Boolean,
 ) {
@@ -576,7 +577,12 @@ private fun MediaAttachmentEditorContent(
         }
         } // end AnimatedContent (trim bar)
 
-        aboveStripSlot()
+        Box(Modifier.fillMaxWidth().height(0.dp).zIndex(1f)) {
+            Box(
+                Modifier.align(Alignment.BottomCenter).wrapContentHeight(Alignment.Bottom, unbounded = true),
+                content = aboveStripOverlay,
+            )
+        }
 
         // Attachment-strip row: thumbnails for every queued attachment with a
         // trailing "+" to add another. This row is just about managing the

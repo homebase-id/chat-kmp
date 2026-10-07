@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.TimerOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
@@ -64,9 +66,8 @@ import id.homebase.resources.chat_view_once_opened
 import id.homebase.resources.chat_view_once_opened_by
 import id.homebase.resources.chat_view_once_opening
 import id.homebase.resources.chat_view_once_photo
-import id.homebase.resources.chat_view_once_screenshot_taken
 import id.homebase.resources.chat_view_once_sent
-import id.homebase.resources.chat_view_once_tap_to_retry
+import id.homebase.resources.chat_view_once_retry
 import id.homebase.resources.chat_view_once_unavailable
 import id.homebase.resources.chat_view_once_unparseable
 import id.homebase.resources.chat_view_once_update_to_open
@@ -93,7 +94,6 @@ fun ViewOnceBubble(
     isGroup: Boolean = false,
     state: ViewOnceState = if (isOutgoing) ViewOnceState.Sent else ViewOnceState.Unopened,
     openedCount: Int = 0,
-    screenshotTaken: Boolean = false,
     canView: Boolean = true,
     phase: ViewOnceOpenPhase = ViewOnceOpenPhase.Idle,
     onOpen: (() -> Unit)? = null,
@@ -125,7 +125,7 @@ fun ViewOnceBubble(
     )
     val title: String
     val second: String?
-    val status: List<String>
+    val status: String?
     when {
         consumed -> {
             title = when {
@@ -134,26 +134,25 @@ fun ViewOnceBubble(
                 else -> stringResource(MR.string.chat_view_once_opened)
             }
             second = kindLabel
-            status = emptyList()
+            status = null
         }
         descriptor == null -> {
             title = kindLabel
             second = null
-            status = listOf(stringResource(MR.string.chat_view_once_update_to_open))
+            status = stringResource(MR.string.chat_view_once_update_to_open)
         }
         else -> {
             title = kindLabel
             second = null
             status = when {
-                opening -> listOf(stringResource(MR.string.chat_view_once_opening))
-                failed -> listOf(stringResource(MR.string.chat_view_once_failed), stringResource(MR.string.chat_view_once_tap_to_retry))
-                openOnPhone -> listOf(stringResource(MR.string.chat_view_once_open_on_phone))
-                !isOutgoing && !canOpen -> listOf(stringResource(MR.string.chat_view_once_unavailable))
-                else -> emptyList()
+                opening -> stringResource(MR.string.chat_view_once_opening)
+                failed -> stringResource(MR.string.chat_view_once_failed)
+                openOnPhone -> stringResource(MR.string.chat_view_once_open_on_phone)
+                !isOutgoing && !canOpen -> stringResource(MR.string.chat_view_once_unavailable)
+                else -> null
             }
         }
     }
-    val shotNote = if (screenshotTaken) stringResource(MR.string.chat_view_once_screenshot_taken) else null
 
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -169,7 +168,7 @@ fun ViewOnceBubble(
     )
     // The glyph carries the meaning, so it grows with the label at large font scales.
     val glyphSize = with(LocalDensity.current) { GLYPH_SIZE.toDp() }
-    val openLabel = stringResource(MR.string.cd_view_once_open)
+    val openLabel = stringResource(if (failed) MR.string.chat_view_once_retry else MR.string.cd_view_once_open)
     val viewOnceLabel = stringResource(MR.string.cd_view_once_toggle)
     val sentLabel = if (isOutgoing && !consumed && descriptor != null) stringResource(MR.string.chat_view_once_sent) else null
 
@@ -188,9 +187,7 @@ fun ViewOnceBubble(
         !isOutgoing && canOpen -> colors.primary
         else -> content
     }
-    val glyph: ImageVector? = when {
-        opening -> null
-        failed -> Icons.Default.Refresh
+    val glyph: ImageVector = when {
         state == ViewOnceState.Expired -> Icons.Outlined.TimerOff
         consumed -> ViewOnceOpenedIcon
         else -> ViewOnceIcon
@@ -245,11 +242,28 @@ fun ViewOnceBubble(
         FooterCentredOrBelow(footer = { footer(content) }) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // The "1" stays through opening and failure; progress and retry only adorn it.
                     Box(Modifier.size(glyphSize), contentAlignment = Alignment.Center) {
-                        if (glyph == null) {
-                            ViewOnceLoadingIndicator(glyphSize)
-                        } else {
-                            Icon(glyph, contentDescription = null, tint = glyphTint, modifier = Modifier.size(glyphSize))
+                        Icon(glyph, contentDescription = null, tint = glyphTint, modifier = Modifier.size(glyphSize))
+                        if (opening) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(glyphSize),
+                                color = colors.primary,
+                                strokeWidth = ADORNMENT_STROKE,
+                            )
+                        }
+                        if (failed) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = null,
+                                tint = colors.onError,
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .offset(x = ADORNMENT_OFFSET, y = ADORNMENT_OFFSET)
+                                    .size(glyphSize / 2)
+                                    .background(colors.error, CircleShape)
+                                    .padding(ADORNMENT_PADDING),
+                            )
                         }
                     }
                     Text(
@@ -273,18 +287,15 @@ fun ViewOnceBubble(
                         )
                     }
                 }
-                val lines = status + listOfNotNull(shotNote)
-                if (lines.isNotEmpty()) {
-                    Column(Modifier.padding(start = glyphSize + 8.dp, top = 2.dp)) {
-                        lines.forEachIndexed { index, line ->
-                            Text(
-                                text = line,
-                                style = MaterialTheme.typography.bodySmall.withContentDirection(),
-                                // Only the failure itself is red; the way out beneath it reads as ordinary status.
-                                color = if (index == 0) statusColor else content.copy(alpha = STATUS_ALPHA),
-                            )
-                        }
-                    }
+                status?.let { line ->
+                    Text(
+                        text = line,
+                        style = MaterialTheme.typography.bodySmall.withContentDirection(),
+                        color = statusColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = glyphSize + 8.dp, top = 2.dp),
+                    )
                 }
             }
         }
@@ -302,6 +313,9 @@ internal fun ViewOnceLoadingIndicator(size: Dp, modifier: Modifier = Modifier) {
 }
 
 private val GLYPH_SIZE = 22.sp
+private val ADORNMENT_STROKE = 2.dp
+private val ADORNMENT_OFFSET = 3.dp
+private val ADORNMENT_PADDING = 1.dp
 private const val STATUS_ALPHA = 0.72f
 private const val PRESSED_STATE_ALPHA = 0.10f
 

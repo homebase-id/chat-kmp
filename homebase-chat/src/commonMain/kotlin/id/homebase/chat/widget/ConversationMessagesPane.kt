@@ -390,8 +390,8 @@ fun ConversationMessagesPane(
                                     )
                                 )
                             },
-                            aboveStripSlot = {
-                                ViewOnceToast(message = viewOnceState.toast, modifier = Modifier.align(Alignment.CenterHorizontally))
+                            aboveStripOverlay = {
+                                ViewOnceToast(message = viewOnceState.toast, modifier = Modifier.align(Alignment.BottomCenter))
                             },
                             pagerTopEndSlot = {
                                 Row(
@@ -426,7 +426,7 @@ fun ConversationMessagesPane(
                                         onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments, viewOnce))
                                     },
                                     viewOnceToggle = viewOnceToggleFor(data.attachments, viewOnce) {
-                                        viewOnceState.toggle(viewOnceIsVideo)
+                                        viewOnceState.toggle(viewOnceIsVideo, viewOnceEligible)
                                     },
                                     onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
                                     onPasteImage = { imageBytes ->

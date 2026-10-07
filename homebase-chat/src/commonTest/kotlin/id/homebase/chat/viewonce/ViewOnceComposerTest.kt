@@ -85,34 +85,34 @@ class ViewOnceComposerTest {
         val settings = InMemorySettings()
         val state = ViewOnceComposerState(UserPreferences(settings))
 
-        state.toggle(isVideo = false)
+        state.toggle(isVideo = false, eligible = true)
         assertTrue(state.requested)
         assertTrue(state.showIntro)
         assertEquals(ViewOnceToastKind.Photo, state.toast?.kind)
 
         state.dismissIntro()
-        state.toggle(isVideo = false)
+        state.toggle(isVideo = false, eligible = true)
         assertFalse(state.requested)
         assertFalse(state.showIntro)
         assertEquals(ViewOnceToastKind.Off, state.toast?.kind)
 
-        state.toggle(isVideo = true)
+        state.toggle(isVideo = true, eligible = true)
         assertTrue(state.requested)
         assertFalse(state.showIntro, "second turn-on in the same session")
         assertEquals(ViewOnceToastKind.Video, state.toast?.kind)
 
         val nextSession = ViewOnceComposerState(UserPreferences(settings))
-        nextSession.toggle(isVideo = false)
+        nextSession.toggle(isVideo = false, eligible = true)
         assertFalse(nextSession.showIntro, "the flag outlives the screen")
     }
 
     @Test
     fun everyToggleGetsItsOwnToastEvenWithTheSameKind() {
         val state = ViewOnceComposerState(UserPreferences(InMemorySettings()))
-        state.toggle(isVideo = false)
+        state.toggle(isVideo = false, eligible = true)
         val first = assertNotNull(state.toast)
-        state.toggle(isVideo = false)
-        state.toggle(isVideo = false)
+        state.toggle(isVideo = false, eligible = true)
+        state.toggle(isVideo = false, eligible = true)
         assertTrue(state.toast !== first)
     }
 
@@ -143,13 +143,27 @@ class ViewOnceComposerTest {
         state.onEligibilityChanged(eligible = false)
         assertEquals(null, state.toast, "never on, so nothing to announce")
 
-        state.toggle(isVideo = false)
+        state.toggle(isVideo = false, eligible = true)
         state.onEligibilityChanged(eligible = false)
         assertFalse(state.requested)
         assertEquals(ViewOnceToastKind.Off, state.toast?.kind)
 
         state.onEligibilityChanged(eligible = true)
         assertFalse(state.requested, "removing the second item doesn't silently turn it back on")
+    }
+
+    @Test
+    fun withTwoOrMoreItemsTheToggleNeverAnnouncesViewOnce_itTakesTheOffPath() {
+        val state = ViewOnceComposerState(UserPreferences(InMemorySettings()))
+        state.toggle(isVideo = false, eligible = false)
+        assertFalse(state.requested)
+        assertEquals(null, state.toast, "never on, so nothing to announce")
+        assertFalse(state.showIntro)
+
+        state.toggle(isVideo = false, eligible = true)
+        state.toggle(isVideo = false, eligible = false)
+        assertFalse(state.requested)
+        assertEquals(ViewOnceToastKind.Off, state.toast?.kind)
     }
 
     @Test

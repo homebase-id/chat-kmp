@@ -2,8 +2,9 @@ package id.homebase.chat.viewonce
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -176,7 +177,9 @@ class ViewOnceComposerState(private val preferences: UserPreferences) {
     var showIntro by mutableStateOf(false)
         private set
 
-    fun toggle(isVideo: Boolean) {
+    /** An ineligible batch (2+ items) takes the same path as adding a second item: never a "set to view once". */
+    fun toggle(isVideo: Boolean, eligible: Boolean) {
+        if (!eligible) return onEligibilityChanged(false)
         requested = !requested
         toast = ViewOnceToastMessage(
             when {
@@ -234,10 +237,10 @@ fun ViewOnceToast(message: ViewOnceToastMessage?, modifier: Modifier = Modifier)
     }
     AnimatedVisibility(
         visible = shown != null,
-        // No fade either way: the toast is opaque from its first frame to its last, and the room it takes opens on a spring so it never lands on the media.
-        enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec(), expandFrom = Alignment.Top) +
+        enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) +
             slideInVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) { it / 2 },
-        exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec(), shrinkTowards = Alignment.Top),
+        exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
+            slideOutVertically(MaterialTheme.motionScheme.fastSpatialSpec()) { it / 2 },
         modifier = modifier,
     ) {
         Surface(
