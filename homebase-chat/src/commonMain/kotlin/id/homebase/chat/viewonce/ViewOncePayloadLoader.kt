@@ -35,17 +35,20 @@ class ViewOncePayloadLoader(
      * Call before any reader (video playback included) touches the file.
      */
     suspend fun begin(fileId: Uuid) {
-        requireViewable(fileId)
-        if (isConsumed(fileId)) throw ViewOnceAlreadyConsumedException()
+        requireReadable(fileId)
         driveFileProvider.markPayloadEphemeral(fileId)
     }
 
     suspend fun loadBytes(driveId: Uuid, fileId: Uuid, payloadKey: String, keyHeader: KeyHeader): ByteArray {
-        requireViewable(fileId)
-        if (isConsumed(fileId)) throw ViewOnceAlreadyConsumedException()
+        requireReadable(fileId)
         return driveFileProvider
             .getPayloadBytesDecryptedFromNetwork(driveId, fileId, payloadKey, keyHeader)
             .bytes
+    }
+
+    private fun requireReadable(fileId: Uuid) {
+        requireViewable(fileId)
+        if (isConsumed(fileId)) throw ViewOnceAlreadyConsumedException()
     }
 
     // Desktop and web only ever show "Open on your phone"; a read reaching here is a bug, and it must not start the clock.

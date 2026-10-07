@@ -16,14 +16,14 @@ object ViewOnceSignal {
     const val SCREENSHOT_SCOPE = "viewonce_shot"
     const val REACTION_SCOPE = "viewonce_react"
 
-    fun openedChange(): ReactionSetChange =
-        ReactionSetChange(scope = OPENED_SCOPE, add = setOf(OPENED_CODE), remove = emptySet())
+    private fun addOnly(scope: String, code: String) =
+        ReactionSetChange(scope = scope, add = setOf(code), remove = emptySet())
 
-    fun reactionChange(emoji: String): ReactionSetChange =
-        ReactionSetChange(scope = REACTION_SCOPE, add = setOf(emoji), remove = emptySet())
+    fun openedChange() = addOnly(OPENED_SCOPE, OPENED_CODE)
 
-    fun screenshotChange(): ReactionSetChange =
-        ReactionSetChange(scope = SCREENSHOT_SCOPE, add = setOf(SCREENSHOT_CODE), remove = emptySet())
+    fun reactionChange(emoji: String) = addOnly(REACTION_SCOPE, emoji)
+
+    fun screenshotChange() = addOnly(SCREENSHOT_SCOPE, SCREENSHOT_CODE)
 
     fun count(summary: ReactionSummary?, code: String): Int =
         summary?.reactions?.values.orEmpty()
