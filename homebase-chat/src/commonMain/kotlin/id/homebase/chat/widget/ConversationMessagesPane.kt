@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +52,7 @@ import id.homebase.chat.conversationlist.resolveAnchorMessageId
 import id.homebase.chat.services.PaginatedConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
+import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.camera.CameraModes
 import id.homebase.core.util.rememberCameraManager
@@ -182,16 +184,8 @@ fun ConversationMessagesPane(
             }
     }
 
-    LaunchedEffect(uiState.scrollPosition) {
-        val position = uiState.scrollPosition
-        if (position?.triggerScroll == true) {
-            if (position.animate) {
-                listState.jumpToItem(position.firstVisibleItemIndex, position.firstVisibleItemScrollOffset)
-            } else {
-                listState.scrollToItem(position.firstVisibleItemIndex, position.firstVisibleItemScrollOffset)
-            }
-            onUiAction(ConversationListUiAction.ClearScrollTrigger)
-        }
+    ScrollPositionTrigger(listState, uiState.scrollPosition) {
+        onUiAction(ConversationListUiAction.ClearScrollTrigger)
     }
 
     // Proximity-trigger: when the visible window approaches either end and the
@@ -431,5 +425,28 @@ fun ConversationMessagesPane(
                 }
             }
         }
+    }
+}
+
+@Composable
+internal fun ScrollPositionTrigger(listState: LazyListState, position: ScrollPosition?, onConsumed: () -> Unit) {
+    // Snap while this composition applies, in the same measure as the window it came with: a frame later the
+    // replaced rows are mid animateItem fade-out, and a snap's item-animator reset leaves them drawn on screen.
+    DisposableEffect(position) {
+        if (position?.triggerScroll == true) {
+            if (position.animate) {
+                listState.requestJumpStart(position.firstVisibleItemIndex)
+            } else {
+                listState.requestScrollToItem(position.firstVisibleItemIndex, position.firstVisibleItemScrollOffset)
+            }
+        }
+        onDispose { }
+    }
+    LaunchedEffect(position) {
+        if (position?.triggerScroll != true) return@LaunchedEffect
+        if (position.animate) {
+            listState.animateScrollToItem(position.firstVisibleItemIndex, position.firstVisibleItemScrollOffset)
+        }
+        onConsumed()
     }
 }
