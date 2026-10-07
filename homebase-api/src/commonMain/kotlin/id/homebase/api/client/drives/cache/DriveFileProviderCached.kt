@@ -188,24 +188,6 @@ class DriveFileProviderCached(
         key: String,
     ): ByteApiResponse = delegate.getPayloadBytesRawNetwork(driveId, fileId, key)
 
-    /**
-     * Fetch and decrypt a payload straight from the network, never touching the disk caches.
-     * For content that must not outlive its viewer (view-once media).
-     */
-    suspend fun getPayloadBytesDecryptedFromNetwork(
-            driveId: Uuid,
-            fileId: Uuid,
-            key: String,
-            keyHeader: KeyHeader,
-    ): BytesResponse {
-        val raw = getPayloadBytesRawFromNetwork(driveId, fileId, key)
-        if (raw.status == 404) throw NotFoundException()
-        return BytesResponse(
-                bytes = delegate.decryptBytes(keyHeader, raw.headers, raw.bytes),
-                contentType = raw.contentType,
-        )
-    }
-
     // Holder counts per file; immutable map replaced under ephemeralMutex like notFoundCache.
     @Volatile private var ephemeralFiles: Map<Uuid, Int> = emptyMap()
     private val ephemeralMutex = Mutex()
@@ -314,6 +296,9 @@ class DriveFileProviderCached(
             fileOps: FileOperationsProvider = fileOperationsProvider,
             onProgress: ((Float) -> Unit)? = null,
     ): Boolean {
+        if (fileId in ephemeralFiles) {
+            return delegate.streamPayloadDecryptedToPath(driveId, fileId, key, keyHeader, outputPath, fileOps, onProgress)
+        }
         val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null)
         val snapshot = payloadDiskCache.openSnapshot(cacheKey.toDiskKey())
                 ?: return delegate.streamPayloadDecryptedToPath(

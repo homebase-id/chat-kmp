@@ -81,6 +81,20 @@ internal class ViewOnceFakeServer(
         KoinIsolatedContext(koin, content = content)
     }
 
+    val fileOps = object : FileOperationsProvider {
+        override fun getCacheDirectory() = tempDir
+        override fun openFileInput(path: String): InputProvider = error("unused")
+        override suspend fun readFileBytes(path: String): ByteArray = error("unused")
+        override fun deleteTempFile(path: String) = java.io.File(path).let { it.delete() || !it.exists() }
+        override fun getFileSize(path: String) = 0L
+        override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String = error("unused")
+        override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String = error("unused")
+        override suspend fun writeStream(path: String, data: Flow<ByteArray>) {
+            val file = java.io.File(path).also { it.parentFile.mkdirs() }
+            file.outputStream().use { out -> data.collect { out.write(it) } }
+        }
+    }
+
     suspend fun start(): ViewOnceFakeServer {
         val cipher = AesCbc.encrypt(plainImage, aes, iv)
         val credentials = CredentialsManager().also {
@@ -97,19 +111,6 @@ internal class ViewOnceFakeServer(
                 headers = headersOf("payloadencrypted" to listOf("true")),
             )
         })
-        val fileOps = object : FileOperationsProvider {
-            override fun getCacheDirectory() = tempDir
-            override fun openFileInput(path: String): InputProvider = error("unused")
-            override suspend fun readFileBytes(path: String): ByteArray = error("unused")
-            override fun deleteTempFile(path: String) = false
-            override fun getFileSize(path: String) = 0L
-            override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String = error("unused")
-            override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String = error("unused")
-            override suspend fun writeStream(path: String, data: Flow<ByteArray>) {
-                val file = java.io.File(path).also { it.parentFile.mkdirs() }
-                file.outputStream().use { out -> data.collect { out.write(it) } }
-            }
-        }
         cached = DriveFileProviderCached(http, credentials, fileOps)
         provider = DriveFileProvider(http, credentials, cached)
         homebaseImageLoader = HomebaseImageLoader(
@@ -119,6 +120,7 @@ internal class ViewOnceFakeServer(
         )
         loader = ViewOncePayloadLoader(
             provider,
+            fileOps,
             tempDir = { viewOnceTempDir },
             canView = { true },
             evictLocalImage = { path ->

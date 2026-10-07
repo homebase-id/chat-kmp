@@ -186,14 +186,6 @@ public class DriveFileProvider(
         )
     }
 
-    /** Network-only fetch + in-memory decrypt; see [DriveFileProviderCached.getPayloadBytesDecryptedFromNetwork]. */
-    suspend fun getPayloadBytesDecryptedFromNetwork(
-        driveId: Uuid,
-        fileId: Uuid,
-        key: String,
-        keyHeader: KeyHeader,
-    ): BytesResponse = driveCache.getPayloadBytesDecryptedFromNetwork(driveId, fileId, key, keyHeader)
-
     suspend fun markPayloadEphemeral(fileId: Uuid) = driveCache.markEphemeral(fileId)
 
     suspend fun evictFile(driveId: Uuid, fileId: Uuid, key: String) = driveCache.evictFile(driveId, fileId, key)

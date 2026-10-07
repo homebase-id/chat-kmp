@@ -872,6 +872,7 @@ val appModule = module {
     single {
         ViewOncePayloadLoader(
             driveFileProvider = get(),
+            fileOps = get(),
             tempDir = { get<FileOperationsProvider>().scratchDir(AppCacheDirs.VIEW_ONCE) },
             evictLocalImage = { path -> get<ImageLoader>().evictMemoryFor(path) },
         ) { driveId, fileId -> get<HomebaseImageLoader>().evictFile(driveId, fileId) }

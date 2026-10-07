@@ -161,11 +161,11 @@ class ViewOnceMediaClickedTest {
     @Test
     fun theLoaderRefusesToReadPayloadBytesWhereViewingIsBlocked() = runTest {
         val server = ViewOnceFakeServer().start()
-        val blocked = ViewOncePayloadLoader(server.provider, tempDir = { server.viewOnceTempDir }, canView = { false }) { _, _ -> }
+        val blocked = ViewOncePayloadLoader(server.provider, server.fileOps, tempDir = { server.viewOnceTempDir }, canView = { false }) { _, _ -> }
 
         assertFailsWith<ViewOnceNotViewableHereException> { blocked.begin(server.fileId) }
         assertFailsWith<ViewOnceNotViewableHereException> {
-            blocked.loadBytes(server.chatDriveId, server.fileId, VIEW_ONCE_PAYLOAD_KEY, server.keyHeader)
+            blocked.loadToTempFile(server.chatDriveId, server.fileId, VIEW_ONCE_PAYLOAD_KEY, server.keyHeader)
         }
         assertEquals(0, server.requests)
     }

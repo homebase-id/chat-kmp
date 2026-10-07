@@ -1,7 +1,6 @@
 package id.homebase.api.client.drives.cache
 
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
@@ -25,10 +24,9 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.uuid.Uuid
 
-/** A view-once payload is read over the network, decrypted in memory, and never lands in a disk cache. */
+/** A view-once payload is read over the network and never lands in a disk cache. */
 class DriveFileProviderCachedEphemeralTest {
 
     private val driveId = Uuid.parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
@@ -90,25 +88,6 @@ class DriveFileProviderCachedEphemeralTest {
         .sumOf { it.sizeBytes }
 
     @Test
-    fun theNetworkOnlyReadDecryptsInMemoryAndLeavesNothingOnDisk() = runTest {
-        val first = provider.getPayloadBytesDecryptedFromNetwork(driveId, fileId, key, keyHeader)
-        val second = provider.getPayloadBytesDecryptedFromNetwork(driveId, fileId, key, keyHeader)
-
-        assertContentEquals(plain, first.bytes)
-        assertContentEquals(plain, second.bytes)
-        assertEquals(2, requests, "every read goes to the network")
-        assertEquals(0L, cachedBytes(), "neither the payload cache nor the chunk cache may hold a byte")
-    }
-
-    @Test
-    fun aMissingPayloadIsNotFound() = runTest {
-        status = HttpStatusCode.NotFound
-        assertFailsWith<NotFoundException> {
-            provider.getPayloadBytesDecryptedFromNetwork(driveId, fileId, key, keyHeader)
-        }
-    }
-
-    @Test
     fun anEphemeralFileSkipsTheDiskCachesForEveryReaderUntilEvicted() = runTest {
         provider.markPayloadEphemeral(fileId)
 
@@ -128,6 +107,30 @@ class DriveFileProviderCachedEphemeralTest {
         provider.getPayloadBytesEncrypted(driveId, fileId, key)
         provider.getPayloadBytesEncrypted(driveId, fileId, key)
         assertEquals(before + 1, requests, "after the eviction the file is an ordinary cached one again")
+    }
+
+    @Test
+    fun anEphemeralStreamIgnoresAnEntryCachedBeforeTheMark() = runTest {
+        provider.getPayloadBytesEncrypted(driveId, fileId, key)
+        provider.markPayloadEphemeral(fileId)
+        val out = Path.of(tempDir, "streamed").toString()
+        val writer = object : FileOperationsProvider {
+            override fun getCacheDirectory() = tempDir
+            override fun openFileInput(path: String): InputProvider = error("unused")
+            override suspend fun readFileBytes(path: String): ByteArray = error("unused")
+            override fun deleteTempFile(path: String) = false
+            override fun getFileSize(path: String) = 0L
+            override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String = error("unused")
+            override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String = error("unused")
+            override suspend fun writeStream(path: String, data: Flow<ByteArray>) {
+                java.io.File(path).outputStream().use { o -> data.collect { o.write(it) } }
+            }
+        }
+
+        assertEquals(true, provider.streamPayloadDecryptedToPath(driveId, fileId, key, keyHeader, out, writer))
+
+        assertEquals(2, requests, "the stream goes to the network, not the earlier cache entry")
+        assertContentEquals(plain, java.io.File(out).readBytes())
     }
 
     @Test

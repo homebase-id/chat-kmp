@@ -23,20 +23,17 @@ class StartupCacheAudit(fileOperationsProvider: FileOperationsProvider) {
         val cacheDir = fileOperationsProvider.getCacheDirectory()
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
             runCatching {
+                // Real (not dry-run) sweeps, run first so a failing audit walk can't skip them:
+                // cleartext copies of E2EE Homebase payloads written by the chat "Share to other
+                // app" flow (see ShareOutboundCleanup), and view-once temps that outlived their viewer.
+                sweepShareOutbound(cacheDir)
+                sweepViewOnceTemps(cacheDir)
                 val report = CacheAudit.audit(cacheDir)
                 CacheAudit.logReport(report)
                 // Dry-run sweep: logs what the future startup sweep WOULD delete.
                 // Once on-device logs confirm the targets, this flips from log to
                 // real safeDeleteRecursively. See CacheSweeper.
                 CacheSweeper.sweepUntracked(report)
-                // Real (not dry-run) sweep: cleartext copies of E2EE Homebase
-                // payloads written by the chat "Share to other app" flow live
-                // in a dedicated subdir and are reaped on every cold start so
-                // a process death between share + foreground doesn't strand
-                // them on disk. See ShareOutboundCleanup.
-                sweepShareOutbound(cacheDir)
-                // A view-once video decrypted to disk that outlived its viewer (process death mid-view).
-                sweepViewOnceTemps(cacheDir)
             }.onFailure {
                 Logger.w(tag = "CacheAudit", throwable = it) { "startup cache audit failed" }
             }
