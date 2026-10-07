@@ -1025,6 +1025,9 @@ private fun rememberPendingStale(since: Instant, threshold: Duration = 1.minutes
  */
 fun String.hasContent(): Boolean = stripComposerLineBreakArtifacts().isNotEmpty()
 
+internal fun MessageContent?.isReplyQuoteImageSuppressed(): Boolean =
+    this is MessageContent.ViewOnce || this is MessageContent.Unknown
+
 /**
  * Displays a compact preview of the message being replied to, shown inline within the message
  * bubble.
@@ -1049,12 +1052,15 @@ fun InlineReplyPreview(
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
-    val mediaPayloads = remember(replyMessage?.payloads) { replyMessage?.payloads.replyQuoteMediaPayloads() }
+    val quotesProtectedMedia = replyMessage?.messageContent.isReplyQuoteImageSuppressed()
+    val mediaPayloads = remember(replyMessage?.payloads, quotesProtectedMedia) {
+        if (quotesProtectedMedia) emptyList() else replyMessage?.payloads.replyQuoteMediaPayloads()
+    }
     // A voice note's embedded thumb is its waveform and a PDF's is a 20px page, so only visual media gets one.
     val showThumbnail = replyMessage == null || mediaPayloads.firstOrNull()?.isVisualMedia() == true
 
     val imageData: HomebaseImageData? = remember(replyPreview, replyMessage, driveId) {
-        if (replyMessage == null || driveId == null) return@remember null
+        if (replyMessage == null || driveId == null || quotesProtectedMedia) return@remember null
         val firstVisualPayload = mediaPayloads.firstOrNull()?.takeIf { it.isVisualMedia() }
             ?: return@remember null
         firstVisualPayload.replyQuoteImageData(
@@ -1066,8 +1072,8 @@ fun InlineReplyPreview(
     }
 
     // Fallback: decode embedded base64 thumbnail if we can't build HomebaseImageData
-    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData, showThumbnail) {
-        if (imageData != null || !showThumbnail) return@remember null
+    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData, showThumbnail, quotesProtectedMedia) {
+        if (imageData != null || !showThumbnail || quotesProtectedMedia) return@remember null
         replyPreview.previewThumbnail?.content?.let { base64Content ->
             try {
                 val bytes = Base64.decode(base64Content)
@@ -1079,7 +1085,7 @@ fun InlineReplyPreview(
     }
 
     val hasThumb = imageData != null || thumbnailBitmap != null
-    val hasImage = hasThumb || replyPreview.previewThumbnail != null
+    val hasImage = hasThumb || (!quotesProtectedMedia && replyPreview.previewThumbnail != null)
 
     // Strip richeditor's `<br>` empty-paragraph artifacts from the quoted body so a reply to a
     // legacy `<br>` message shows its real text, not a stray break / blank quote (#1104).

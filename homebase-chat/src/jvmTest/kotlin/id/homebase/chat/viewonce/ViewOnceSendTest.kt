@@ -9,6 +9,7 @@ import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.image.MediaQuality
 import id.homebase.chat.services.ChatMessageSenderServiceTestFixture
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
@@ -19,6 +20,7 @@ import java.io.File
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -190,6 +192,34 @@ class ViewOnceSendTest {
                 }
                 assertTrue(threw)
             }
+            assertEquals(0L, fixture.outboxRowCount())
+        }
+    }
+
+    @Test
+    fun `view-once refuses a reply instead of dropping it`() = runTest {
+        ChatMessageSenderServiceTestFixture().use { fixture ->
+            val service = fixture.build(encryptorOverride = PassThroughEncryptor(simulateVideoProcessor = false))
+            val conversation = fixture.seedConversation(others = listOf("bob.test"))
+
+            val failure = assertFailsWith<IllegalArgumentException> {
+                service.sendAttachmentsMessage(
+                    viewOnce = true,
+                    messageId = Uuid.random(),
+                    conversationId = conversation,
+                    text = "",
+                    attachments = listOf(AttachmentInput(filePath = jpegFile(), contentType = "image/jpeg")),
+                    replyTo = ReplyPreview(
+                        replyUniqueId = Uuid.random(),
+                        authorOdinId = "bob.test",
+                        message = "quoted",
+                    ),
+                    sentAt = UnixTimeUtc.now(),
+                    fileOperationsProvider = JvmFileOperationsProvider(),
+                    mediaQuality = MediaQuality.STANDARD,
+                )
+            }
+            assertTrue(failure.message.orEmpty().contains("reply"))
             assertEquals(0L, fixture.outboxRowCount())
         }
     }

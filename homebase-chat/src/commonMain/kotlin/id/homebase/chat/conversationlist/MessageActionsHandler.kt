@@ -137,6 +137,9 @@ internal suspend fun MutableStateFlow<MessageListUiState>.sendUnderPlaceholder(
     update { it.withoutPendingSend(messageId, clearProgress = false) }
 }
 
+// View-once (216) headers carry no reply; leaving replyTo null keeps the quote in the composer instead of dropping it silently.
+internal fun <T> replyForSend(viewOnce: Boolean, replyTo: T?): T? = if (viewOnce) null else replyTo
+
 /**
  * Handles message-action arms (send / edit / delete / react / scroll-to /
  * mark-as-read / forward / reply / battle-dice / reaction-details) extracted
@@ -150,9 +153,6 @@ internal suspend fun MutableStateFlow<MessageListUiState>.sendUnderPlaceholder(
  * Behavior is byte-identical to the previous in-VM implementation; the move
  * is purely structural — see PR 4b-2 in `lucky-chasing-valley.md` for context.
  */
-// View-once (216) headers carry no reply; leaving replyTo null keeps the quote in the composer instead of dropping it silently.
-internal fun <T> replyForSend(viewOnce: Boolean, replyTo: T?): T? = if (viewOnce) null else replyTo
-
 internal class MessageActionsHandler(
     private val scope: CoroutineScope,
     private val uiState: MutableStateFlow<ConversationListUiState>,

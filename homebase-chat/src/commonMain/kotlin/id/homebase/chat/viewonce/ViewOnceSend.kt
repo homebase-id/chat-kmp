@@ -43,6 +43,7 @@ suspend fun ChatMessageSenderService.sendAttachmentsMessage(
     mediaQuality: MediaQuality,
 ) {
     if (viewOnce) {
+        require(replyTo == null) { "view-once media cannot be a reply" }
         val attachment = attachments.singleOrNull()
             ?: throw IllegalArgumentException("view-once media takes exactly one attachment")
         val kind = viewOnceKindOf(attachment)

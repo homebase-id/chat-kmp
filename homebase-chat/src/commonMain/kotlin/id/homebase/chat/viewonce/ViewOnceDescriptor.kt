@@ -2,7 +2,7 @@ package id.homebase.chat.viewonce
 
 import kotlinx.serialization.Serializable
 
-/** Wire format of a view-once message; see ChatMessageDataType kdoc in ChatProtocol. */
+/** Wire format of a view-once message (dataType 216). */
 @Serializable
 data class ViewOnceDescriptor(
     val kind: String,
