@@ -140,7 +140,7 @@ class WebDropViewModel(
             WebDropUiAction.CreateClicked -> createDrop()
 
             is WebDropUiAction.ViewOnlyToggled ->
-                _uiState.update { it.copy(viewOnly = action.enabled) }
+                _uiState.update { it.withViewOnly(action.enabled) }
 
             WebDropUiAction.ComposeDismissed -> _uiState.update { it.afterComposeDismissed() }
 

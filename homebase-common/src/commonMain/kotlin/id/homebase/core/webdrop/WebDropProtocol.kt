@@ -104,7 +104,7 @@ data class WebDropIntroContent(
     fun isEmpty(): Boolean = recipientName.isNullOrBlank() && conditions.isEmpty() && note.isNullOrBlank()
 }
 
-/** One entry of the encrypted wdr_meta manifest — the recipient's file list. */
+/** One entry of the encrypted manifest, the recipient's file list. */
 @Serializable
 data class WebDropManifestEntry(
     val key: String,
@@ -128,5 +128,6 @@ data class WebDropReceiptContent(
     val createdAt: Long,
     val recipientName: String? = null,
     val conditions: List<String> = emptyList(),
-    val theme: String? = null,    val viewOnly: Boolean? = null,
+    val theme: String? = null,
+    val viewOnly: Boolean? = null,
 )

@@ -63,7 +63,6 @@ sealed interface WebDropError {
     data class SourceUnreadable(val fileName: String) : WebDropError
 }
 
-/** What createDrop is called with; the composer's state, nothing else. */
 internal data class WebDropCreateRequest(
     val files: List<PickedDropFile>,
     val ttlChoice: WebDropTtlChoice,
@@ -82,6 +81,8 @@ internal fun WebDropUiState.toCreateRequest() = WebDropCreateRequest(
     theme = theme,
     viewOnly = viewOnly,
 )
+
+internal fun WebDropUiState.withViewOnly(enabled: Boolean) = copy(viewOnly = enabled)
 
 /** The theme survives on purpose; a typed name and the view-only choice never do. */
 internal fun WebDropUiState.afterComposeDismissed() = copy(

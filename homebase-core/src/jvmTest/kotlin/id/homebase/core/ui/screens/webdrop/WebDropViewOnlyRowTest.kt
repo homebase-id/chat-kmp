@@ -16,17 +16,16 @@ import kotlin.test.assertEquals
 class WebDropViewOnlyRowTest {
 
     @Test
-    fun tappingTheRowReportsTheFlippedValueAndTheStateReducerStoresIt() = runComposeUiTest {
-        var state by mutableStateOf(WebDropUiState())
+    fun tappingTheRowEmitsViewOnlyToggledTrueThenFalse() = runComposeUiTest {
+        var checked by mutableStateOf(false)
         val actions = mutableListOf<WebDropUiAction>()
         setContent {
             MaterialTheme {
                 WebDropViewOnlyRow(
-                    checked = state.viewOnly,
+                    checked = checked,
                     onCheckedChange = {
-                        val action = WebDropUiAction.ViewOnlyToggled(it)
-                        actions += action
-                        state = state.copy(viewOnly = action.enabled)
+                        actions += WebDropUiAction.ViewOnlyToggled(it)
+                        checked = it
                     },
                 )
             }
@@ -35,10 +34,12 @@ class WebDropViewOnlyRowTest {
         onNodeWithText("View only").performClick()
         waitForIdle()
         assertEquals(listOf<WebDropUiAction>(WebDropUiAction.ViewOnlyToggled(true)), actions)
-        assertEquals(true, state.viewOnly)
 
         onNodeWithText("View only").performClick()
         waitForIdle()
-        assertEquals(false, state.viewOnly)
+        assertEquals(
+            listOf<WebDropUiAction>(WebDropUiAction.ViewOnlyToggled(true), WebDropUiAction.ViewOnlyToggled(false)),
+            actions,
+        )
     }
 }
