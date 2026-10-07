@@ -10,7 +10,6 @@ import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.config.webDropLabeledDrive
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.ui.screens.webdrop.model.WebDropTtlChoice
-import id.homebase.core.webdrop.WebDropIntroContent
 import id.homebase.core.webdrop.WebDropProtocol
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -140,14 +139,10 @@ class WebDropViewModel(
 
             WebDropUiAction.CreateClicked -> createDrop()
 
-            WebDropUiAction.ComposeDismissed -> _uiState.update {
-                // The theme survives on purpose; a typed name never does.
-                it.copy(
-                    composeOpen = false, pickedFiles = emptyList(), createdUrl = null,
-                    isCreating = false, error = null,
-                    introExpanded = false, recipientName = "", conditions = emptySet(),
-                )
-            }
+            is WebDropUiAction.ViewOnlyToggled ->
+                _uiState.update { it.copy(viewOnly = action.enabled) }
+
+            WebDropUiAction.ComposeDismissed -> _uiState.update { it.afterComposeDismissed() }
 
             is WebDropUiAction.CopyLinkClicked ->
                 _events.tryEmit(WebDropUiEvent.CopyLink(action.url))
@@ -166,13 +161,12 @@ class WebDropViewModel(
         if (state.pickedFiles.isEmpty() || state.isCreating) return
         _uiState.update { it.copy(isCreating = true, error = null) }
 
-        val intro = WebDropIntroContent(
-            recipientName = state.recipientName.takeUnless { it.isBlank() },
-            conditions = state.conditions.sorted(),
-        ).takeUnless { it.isEmpty() }
+        val request = state.toCreateRequest()
 
         viewModelScope.launch {
-            webDropService.createDrop(state.pickedFiles, state.ttlChoice, intro, state.theme)
+            webDropService.createDrop(
+                request.files, request.ttlChoice, request.intro, request.theme, request.viewOnly,
+            )
                 .onSuccess { created ->
                     _uiState.update { it.copy(isCreating = false, createdUrl = created.url) }
                     webDropStream.loadAll()

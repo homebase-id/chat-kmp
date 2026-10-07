@@ -5,6 +5,7 @@ package id.homebase.core.ui.screens.webdrop
 import id.homebase.core.ui.screens.webdrop.model.DropRow
 import id.homebase.core.ui.screens.webdrop.model.PickedDropFile
 import id.homebase.core.ui.screens.webdrop.model.WebDropTtlChoice
+import id.homebase.core.webdrop.WebDropIntroContent
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -21,6 +22,7 @@ data class WebDropUiState(
     val recipientName: String = "",
     val conditions: Set<String> = emptySet(),
     val theme: String? = null,
+    val viewOnly: Boolean = false,
     val isCreating: Boolean = false,
     /** Set when a drop was just created; the sheet flips to the share step. */
     val createdUrl: String? = null,
@@ -38,6 +40,7 @@ sealed interface WebDropUiAction {
     data class RecipientNameChanged(val name: String) : WebDropUiAction
     data class ConditionToggled(val id: String) : WebDropUiAction
     data class ThemeChosen(val theme: String?) : WebDropUiAction
+    data class ViewOnlyToggled(val enabled: Boolean) : WebDropUiAction
     data object CreateClicked : WebDropUiAction
     data object ComposeDismissed : WebDropUiAction
     data class CopyLinkClicked(val url: String) : WebDropUiAction
@@ -59,3 +62,30 @@ sealed interface WebDropError {
     /** A picked file could not be read back at create time; it has been removed from the pick list. */
     data class SourceUnreadable(val fileName: String) : WebDropError
 }
+
+internal data class WebDropCreateRequest(
+    val files: List<PickedDropFile>,
+    val ttlChoice: WebDropTtlChoice,
+    val intro: WebDropIntroContent?,
+    val theme: String?,
+    val viewOnly: Boolean,
+)
+
+internal fun WebDropUiState.toCreateRequest() = WebDropCreateRequest(
+    files = pickedFiles,
+    ttlChoice = ttlChoice,
+    intro = WebDropIntroContent(
+        recipientName = recipientName.takeUnless { it.isBlank() },
+        conditions = conditions.sorted(),
+    ).takeUnless { it.isEmpty() },
+    theme = theme,
+    viewOnly = viewOnly,
+)
+
+/** The theme survives on purpose; a typed name and the view-only choice never do. */
+internal fun WebDropUiState.afterComposeDismissed() = copy(
+    composeOpen = false, pickedFiles = emptyList(), createdUrl = null,
+    isCreating = false, error = null,
+    introExpanded = false, recipientName = "", conditions = emptySet(),
+    viewOnly = false,
+)
