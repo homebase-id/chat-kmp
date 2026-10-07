@@ -1074,6 +1074,13 @@ sealed interface ChatMessagesData {
     data class Messages(val window: MessageWindow) : ChatMessagesData
 }
 
+// A view-once caption is viewer-only; matching it would confirm the text without opening.
+internal fun matchesSearchQuery(header: HomebaseFile, query: String): Boolean {
+    val appData = header.fileMetadata.appData
+    if (appData.dataType == ChatProtocol.ChatViewOnceMessageDataType) return false
+    return appData.content?.contains(query, ignoreCase = true) == true
+}
+
 /**
  * Auto-pin decision for #887, extracted so the actionability guards are unit-testable.
  *
@@ -1086,13 +1093,6 @@ sealed interface ChatMessagesData {
  * nor age it. [nowMs] is epoch-ms; [ownReactions] are the current user's decoded vote
  * codes (`_p0`, `_1Y`).
  */
-// A view-once caption is viewer-only; matching it would confirm the text without opening.
-internal fun matchesSearchQuery(header: HomebaseFile, query: String): Boolean {
-    val appData = header.fileMetadata.appData
-    if (appData.dataType == ChatProtocol.ChatViewOnceMessageDataType) return false
-    return appData.content?.contains(query, ignoreCase = true) == true
-}
-
 internal fun shouldAutoPin(
     content: MessageContent?,
     ownReactions: List<String>,
