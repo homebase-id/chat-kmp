@@ -5,6 +5,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.outbox.MutationOutcome
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -30,6 +31,7 @@ class ViewOnceActions(
         try {
             val outcome = actionService.setReactions(conversationId, messageId, ViewOnceSignal.screenshotChange())
             Logger.i(TAG) { "screenshot msg=$messageId signal=$outcome" }
+            if (outcome != MutationOutcome.Queued) shotMutex.withLock { shotSent.remove(messageId) }
         } catch (e: CancellationException) {
             shotMutex.withLock { shotSent.remove(messageId) }
             throw e
