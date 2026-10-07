@@ -17,7 +17,6 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.forms.InputProvider
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
@@ -38,7 +37,6 @@ internal class ViewOnceFakeServer(
     private val iv = ByteArray(16) { 5 }
     val keyHeader = KeyHeader(iv = iv, aesKey = aes)
 
-    @Volatile var gate: CompletableDeferred<Unit>? = null
     var requests = 0
     var requestedPaths = mutableListOf<String>()
     var status: HttpStatusCode = HttpStatusCode.OK
@@ -57,7 +55,6 @@ internal class ViewOnceFakeServer(
             )
         }
         val http = HttpClient(MockEngine { request ->
-            gate?.await()
             requests++
             requestedPaths += request.url.encodedPath
             respond(

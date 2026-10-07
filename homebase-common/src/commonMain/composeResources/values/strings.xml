@@ -1036,7 +1036,6 @@
     <string name="chat_view_once_retry">Try again</string>
     <string name="chat_view_once_mute">Mute</string>
     <string name="chat_view_once_unmute">Unmute</string>
-    <string name="chat_view_once_more">More options</string>
     <string name="chat_view_once_play">Play</string>
     <string name="chat_view_once_pause">Pause</string>
     <string name="cd_view_once_open">Open view-once media</string>

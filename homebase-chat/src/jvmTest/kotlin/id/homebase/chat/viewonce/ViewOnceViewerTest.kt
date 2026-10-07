@@ -30,7 +30,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.navigationevent.NavigationEventInput
 import io.ktor.http.HttpStatusCode
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -118,22 +117,23 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun aPhotoViewerOffersOnlyBackReactReplyAndAMenuOfInfoAndDelete_andNeverSaveShareOrForward() = runSkikoComposeUiTest {
+    fun aPhotoViewerOffersOnlyBackInfoReactAndReply_andNeverSaveShareOrForward() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
         awaitShown()
 
         assertEquals(
             setOf(
-                VIEW_ONCE_VIEWER_CLOSE_TAG, VIEW_ONCE_VIEWER_INFO_TAG, VIEW_ONCE_VIEWER_REACT_TAG,
-                VIEW_ONCE_VIEWER_REPLY_TAG, VIEW_ONCE_VIEWER_MORE_TAG,
+                VIEW_ONCE_VIEWER_CLOSE_TAG, VIEW_ONCE_VIEWER_INFO_TAG, VIEW_ONCE_VIEWER_REACT_TAG, VIEW_ONCE_VIEWER_REPLY_TAG,
             ),
             tagsOfClickables(),
         )
-        onNodeWithTag(VIEW_ONCE_VIEWER_MORE_TAG).performClick()
-        waitForIdle()
-        assertTrue(present(VIEW_ONCE_VIEWER_MENU_INFO_TAG))
-        assertTrue(present(VIEW_ONCE_VIEWER_DELETE_TAG))
+        onNode(hasTestTag(VIEW_ONCE_VIEWER_REPLY_TAG) and hasContentDescription("Reply")).assertExists()
+        val react = onNodeWithTag(VIEW_ONCE_VIEWER_REACT_TAG).getBoundsInRoot()
+        val reply = onNodeWithTag(VIEW_ONCE_VIEWER_REPLY_TAG).getBoundsInRoot()
+        assertEquals(react.right - react.left, reply.right - reply.left, "reply is the same circle as react")
+        assertEquals(react.bottom - react.top, reply.bottom - reply.top, "reply is the same circle as react")
+        assertEquals(react.top, reply.top, "reply sits beside react")
         assertEquals(1, server.requests)
         assertEquals(0L, runBlocking { server.cachedBytes() })
         assertNoSaveShareForward()
@@ -179,60 +179,12 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun deleteIsNotOfferedUntilTheMediaIsShown_soATapCannotDismissAnUnopenedItem() = runSkikoComposeUiTest {
-        setContent {
-            MaterialTheme {
-                ViewOnceViewerFrame(isVideo = false, mediaShown = false, failed = false, onClose = {}) { fill -> Box(fill) }
-            }
-        }
-        waitForIdle()
-        onNodeWithTag(VIEW_ONCE_VIEWER_MORE_TAG).performClick()
-        waitForIdle()
-        assertTrue(present(VIEW_ONCE_VIEWER_MENU_INFO_TAG))
-        assertTrue(!present(VIEW_ONCE_VIEWER_DELETE_TAG), "Delete must not exist before the media renders")
-    }
-
-    @Test
-    fun deleteIsNotOfferedWhileTheFullViewerIsStillLoading_andAppearsOnceShown() = runSkikoComposeUiTest {
-        val server = runBlocking { ViewOnceFakeServer().start() }
-        val gate = CompletableDeferred<Unit>()
-        server.gate = gate
-        show(server)
-        waitForIdle()
-        assertTrue(!present(VIEW_ONCE_VIEWER_IMAGE_TAG))
-        assertTrue(!present(VIEW_ONCE_VIEWER_DELETE_TAG))
-        gate.complete(Unit)
-        awaitShown()
-        waitForIdle()
-        onNodeWithTag(VIEW_ONCE_VIEWER_MORE_TAG).performClick()
-        waitForIdle()
-        assertTrue(present(VIEW_ONCE_VIEWER_DELETE_TAG))
-    }
-
-    @Test
     fun backConsumesTheItemExactlyOnce() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
         awaitShown()
 
         onNodeWithTag(VIEW_ONCE_VIEWER_CLOSE_TAG).performClick()
-        waitForIdle()
-        present = false
-        waitForIdle()
-
-        assertEquals(1, closed)
-        assertEquals(1, dismissed)
-    }
-
-    @Test
-    fun deleteConsumesTheItemExactlyOnce() = runSkikoComposeUiTest {
-        val server = runBlocking { ViewOnceFakeServer().start() }
-        show(server)
-        awaitShown()
-
-        onNodeWithTag(VIEW_ONCE_VIEWER_MORE_TAG).performClick()
-        waitForIdle()
-        onNodeWithTag(VIEW_ONCE_VIEWER_DELETE_TAG).performClick()
         waitForIdle()
         present = false
         waitForIdle()
@@ -283,12 +235,12 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun aTapHidesOnlyTheTopRow_andBackReactReplyAndTheMenuNeverGoAway() = runSkikoComposeUiTest {
+    fun aTapHidesOnlyTheTopRow_andBackReactAndReplyNeverGoAway() = runSkikoComposeUiTest {
         val server = runBlocking { ViewOnceFakeServer().start() }
         show(server)
         awaitShown()
         val alwaysThere = listOf(
-            VIEW_ONCE_VIEWER_CLOSE_TAG, VIEW_ONCE_VIEWER_REACT_TAG, VIEW_ONCE_VIEWER_REPLY_TAG, VIEW_ONCE_VIEWER_MORE_TAG,
+            VIEW_ONCE_VIEWER_CLOSE_TAG, VIEW_ONCE_VIEWER_REACT_TAG, VIEW_ONCE_VIEWER_REPLY_TAG,
         )
 
         onNodeWithTag(VIEW_ONCE_VIEWER_IMAGE_TAG).performClick()
@@ -609,7 +561,7 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun aPhotoFrameHasTheSameMenuAsAVideoButNoMute() = runSkikoComposeUiTest {
+    fun aPhotoFrameHasTheSameBottomRowAsAVideoButNoMute() = runSkikoComposeUiTest {
         setContent {
             MaterialTheme {
                 ViewOnceViewerFrame(
@@ -619,7 +571,8 @@ class ViewOnceViewerTest {
         }
         waitForIdle()
         assertTrue(present("player"))
-        assertTrue(present(VIEW_ONCE_VIEWER_MORE_TAG))
+        assertTrue(present(VIEW_ONCE_VIEWER_REACT_TAG))
+        assertTrue(present(VIEW_ONCE_VIEWER_REPLY_TAG))
         assertTrue(!present(VIEW_ONCE_VIEWER_MUTE_TAG))
     }
 
@@ -655,7 +608,7 @@ class ViewOnceViewerTest {
     }
 
     @Test
-    fun aFailedLoadStillLetsTheRecipientReplyAndReact_butNotDelete() = runSkikoComposeUiTest {
+    fun aFailedLoadStillLetsTheRecipientReplyAndReact() = runSkikoComposeUiTest {
         setContent {
             MaterialTheme {
                 ViewOnceViewerFrame(isVideo = false, mediaShown = false, failed = true, onClose = {}) { fill -> Box(fill) }
@@ -665,8 +618,5 @@ class ViewOnceViewerTest {
         assertTrue(present(VIEW_ONCE_VIEWER_CLOSE_TAG))
         assertTrue(present(VIEW_ONCE_VIEWER_REPLY_TAG))
         assertTrue(present(VIEW_ONCE_VIEWER_REACT_TAG))
-        onNodeWithTag(VIEW_ONCE_VIEWER_MORE_TAG).performClick()
-        waitForIdle()
-        assertTrue(!present(VIEW_ONCE_VIEWER_DELETE_TAG))
     }
 }

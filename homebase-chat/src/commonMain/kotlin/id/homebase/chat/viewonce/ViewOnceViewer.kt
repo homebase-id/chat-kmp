@@ -36,20 +36,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.EmojiEmotions
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -116,7 +112,6 @@ import id.homebase.resources.chat_message_image_attachment
 import id.homebase.resources.chat_message_reply
 import id.homebase.resources.chat_view_once_capture_blocked
 import id.homebase.resources.chat_view_once_close
-import id.homebase.resources.chat_view_once_more
 import id.homebase.resources.chat_view_once_pause
 import id.homebase.resources.chat_view_once_play
 import id.homebase.resources.chat_view_once_mute
@@ -124,8 +119,6 @@ import id.homebase.resources.chat_view_once_retry
 import id.homebase.resources.chat_view_once_unmute
 import id.homebase.resources.chat_view_once_viewer_failed_body
 import id.homebase.resources.chat_view_once_viewer_failed_title
-import id.homebase.resources.delete
-import id.homebase.resources.info
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -142,18 +135,15 @@ const val VIEW_ONCE_VIEWER_CAPTION_TAG = "viewOnceViewerCaption"
 const val VIEW_ONCE_VIEWER_REACT_TAG = "viewOnceViewerReact"
 const val VIEW_ONCE_VIEWER_REACTION_TAG_PREFIX = "viewOnceViewerReaction_"
 const val VIEW_ONCE_VIEWER_REPLY_TAG = "viewOnceViewerReply"
-const val VIEW_ONCE_VIEWER_MORE_TAG = "viewOnceViewerMore"
-const val VIEW_ONCE_VIEWER_DELETE_TAG = "viewOnceViewerDelete"
 const val VIEW_ONCE_VIEWER_PLAY_TAG = "viewOnceViewerPlay"
 const val VIEW_ONCE_VIEWER_ELAPSED_TAG = "viewOnceViewerElapsed"
 const val VIEW_ONCE_VIEWER_REMAINING_TAG = "viewOnceViewerRemaining"
 const val VIEW_ONCE_VIEWER_INFO_TAG = "viewOnceViewerInfo"
-const val VIEW_ONCE_VIEWER_MENU_INFO_TAG = "viewOnceViewerMenuInfo"
 const val VIEW_ONCE_VIEWER_TITLE_TAG = "viewOnceViewerTitle"
 
 /**
  * Full-screen viewer for one received view-once item. It has no save, share, forward or paging,
- * and it reads the payload only through [loader]. However it ends (back, delete, reply, the app
+ * and it reads the payload only through [loader]. However it ends (back, reply, the app
  * leaving the foreground, or leaving composition) [onViewerClosed] runs exactly once, and only
  * if the media was actually shown: an item that never loaded is not used up. Reacting never ends it.
  */
@@ -272,7 +262,6 @@ fun ViewOnceViewer(
             onReply()
             close()
         },
-        onDelete = ::close,
         onClose = ::close,
         modifier = modifier,
     ) { fill ->
@@ -313,7 +302,7 @@ internal fun FullScreenOverlay.ViewOnceViewer.videoPlayerData() = FullScreenOver
 /**
  * Always dark, like the camera: media reads best on black, and the chrome must not flip with the app theme.
  * The media fills the screen and the chrome floats over it on scrims. A tap on the media hides only the
- * top row's title and mark; back, react and Reply stay, because they are the ways out and the only actions.
+ * top row's title and mark; back, react and reply stay, because they are the ways out and the only actions.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -335,7 +324,6 @@ internal fun ViewOnceViewerFrame(
     reactions: List<String> = quickReactions(emptyList()),
     onReact: (String) -> Unit = {},
     onReply: () -> Unit = {},
-    onDelete: () -> Unit = onClose,
     body: @Composable BoxScope.(fill: Modifier) -> Unit,
 ) {
     HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
@@ -379,8 +367,6 @@ internal fun ViewOnceViewerFrame(
                 reactions = reactions,
                 onReact = onReact,
                 onReply = onReply,
-                onInfo = { infoOpen = true },
-                onDelete = onDelete.takeIf { mediaShown },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
             if (infoOpen) ViewOnceIntroSheet(isVideo = isVideo, onDismiss = { infoOpen = false })
@@ -505,15 +491,12 @@ private fun ViewOnceViewerBottomBar(
     reactions: List<String>,
     onReact: (String) -> Unit,
     onReply: () -> Unit,
-    onInfo: () -> Unit,
-    onDelete: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
     val motion = MaterialTheme.motionScheme
     var picking by remember { mutableStateOf(false) }
     var reacted by remember { mutableStateOf<String?>(null) }
-    var menuOpen by remember { mutableStateOf(false) }
     Box(modifier.fillMaxWidth()) {
         ChromeScrim(fromTop = false, modifier = Modifier.matchParentSize())
         Column(
@@ -614,56 +597,8 @@ private fun ViewOnceViewerBottomBar(
                         Text(text = current.withEmojiFont(), style = MaterialTheme.typography.titleLarge)
                     }
                 }
-                Surface(
-                    onClick = onReply,
-                    shape = CircleShape,
-                    color = chromeContainer(),
-                    contentColor = colors.onSurface,
-                    modifier = Modifier.weight(1f).heightIn(min = CHROME_SIZE).testTag(VIEW_ONCE_VIEWER_REPLY_TAG),
-                ) {
-                    // A field, like the composer, not an arrow: mirrored for RTL the reply arrow is the forward arrow.
-                    Box(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), contentAlignment = Alignment.CenterStart) {
-                        Text(
-                            text = stringResource(MR.string.chat_message_reply),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = colors.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                Box {
-                    ChromeCircleButton(onClick = { menuOpen = true }, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_MORE_TAG)) {
-                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.string.chat_view_once_more))
-                    }
-                    DropdownMenu(
-                        expanded = menuOpen,
-                        onDismissRequest = { menuOpen = false },
-                        shape = MaterialTheme.shapes.large,
-                        containerColor = colors.surfaceContainerHigh,
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(MR.string.info)) },
-                            leadingIcon = { Icon(Icons.Outlined.Info, contentDescription = null) },
-                            onClick = {
-                                menuOpen = false
-                                onInfo()
-                            },
-                            modifier = Modifier.testTag(VIEW_ONCE_VIEWER_MENU_INFO_TAG),
-                        )
-                        // An item that never rendered is not used up, so it can't be deleted from here either.
-                        if (onDelete != null) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(MR.string.delete), color = colors.error) },
-                                leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = colors.error) },
-                                onClick = {
-                                    menuOpen = false
-                                    onDelete()
-                                },
-                                modifier = Modifier.testTag(VIEW_ONCE_VIEWER_DELETE_TAG),
-                            )
-                        }
-                    }
+                ChromeCircleButton(onClick = onReply, modifier = Modifier.testTag(VIEW_ONCE_VIEWER_REPLY_TAG)) {
+                    Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = stringResource(MR.string.chat_message_reply))
                 }
             }
         }
