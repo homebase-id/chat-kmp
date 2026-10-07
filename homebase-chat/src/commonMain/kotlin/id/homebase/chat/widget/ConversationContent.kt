@@ -2228,11 +2228,10 @@ private const val JUMP_ANIMATED_ROWS = 3
 
 // Snap to a few rows short of the target and animate only the rest: a long animated scroll is slow, and
 // a page loading mid-flight shifts every index under it.
-internal suspend fun LazyListState.jumpToItem(index: Int, scrollOffset: Int = 0) {
+internal fun LazyListState.requestJumpStart(index: Int) {
     val from = firstVisibleItemIndex
-    if (index < from - JUMP_ANIMATED_ROWS) scrollToItem(index + JUMP_ANIMATED_ROWS)
-    else if (index > from + JUMP_ANIMATED_ROWS) scrollToItem(index - JUMP_ANIMATED_ROWS)
-    animateScrollToItem(index, scrollOffset)
+    if (index < from - JUMP_ANIMATED_ROWS) requestScrollToItem(index + JUMP_ANIMATED_ROWS)
+    else if (index > from + JUMP_ANIMATED_ROWS) requestScrollToItem(index - JUMP_ANIMATED_ROWS)
 }
 
 private data class ListEndSample(val total: Int, val overflow: Int?, val atEnd: Boolean, val firstIndex: Int, val firstOffset: Int)
