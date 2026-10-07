@@ -7,7 +7,6 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import id.homebase.core.ui.theme.HomebaseTheme
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonShapes
@@ -223,44 +222,6 @@ fun MediaAttachmentEditor(
     aboveStripOverlay: @Composable BoxScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
     addMoreEnabled: Boolean = true,
-) {
-    val isFileMode = attachments.all { it is AttachmentPendingFile.File }
-    // Media is framed on black in both themes, like the camera it often comes from; documents keep the app theme.
-    if (isFileMode) {
-        MediaAttachmentEditorContent(attachments, currentPage, onPageChanged, modifier, onCropImage, onDrawImage, onTrimChange, onSaveFile, onAddFile, onAddImage, onCameraClick, onRemoveFile, mediaQuality, onToggleMediaQuality, onDismiss, collapseSecondaryChrome, centerImageInPage, revealed, imageOverlay, pagerTopEndSlot, aboveStripOverlay, bottomBar, addMoreEnabled)
-    } else {
-        HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
-            MediaAttachmentEditorContent(attachments, currentPage, onPageChanged, modifier, onCropImage, onDrawImage, onTrimChange, onSaveFile, onAddFile, onAddImage, onCameraClick, onRemoveFile, mediaQuality, onToggleMediaQuality, onDismiss, collapseSecondaryChrome, centerImageInPage, revealed, imageOverlay, pagerTopEndSlot, aboveStripOverlay, bottomBar, addMoreEnabled)
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun MediaAttachmentEditorContent(
-    attachments: List<AttachmentPendingFile>,
-    currentPage: Int,
-    onPageChanged: (Int) -> Unit,
-    modifier: Modifier,
-    onCropImage: ((attachmentId: Uuid) -> Unit)?,
-    onDrawImage: ((attachmentId: Uuid) -> Unit)?,
-    onTrimChange: ((attachmentId: Uuid, startMs: Long?, endMs: Long?) -> Unit)?,
-    onSaveFile: ((file: AttachmentPendingFile) -> Unit)?,
-    onAddFile: (() -> Unit)?,
-    onAddImage: (() -> Unit)?,
-    onCameraClick: (() -> Unit)?,
-    onRemoveFile: ((attachmentId: Uuid) -> Unit)?,
-    mediaQuality: MediaQuality,
-    onToggleMediaQuality: (() -> Unit)?,
-    onDismiss: (() -> Unit)?,
-    collapseSecondaryChrome: Boolean,
-    centerImageInPage: Boolean,
-    revealed: Boolean,
-    imageOverlay: @Composable BoxScope.(AttachmentPendingFile) -> Unit,
-    pagerTopEndSlot: @Composable BoxScope.() -> Unit,
-    aboveStripOverlay: @Composable BoxScope.() -> Unit,
-    bottomBar: @Composable () -> Unit,
-    addMoreEnabled: Boolean,
 ) {
     val isFileMode = attachments.all { it is AttachmentPendingFile.File }
     val imageLoader: ImageLoader = koinInject()
