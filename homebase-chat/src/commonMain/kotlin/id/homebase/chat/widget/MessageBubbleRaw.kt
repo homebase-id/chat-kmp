@@ -339,11 +339,10 @@ fun MessageBubbleRaw(
                 authorName = authorName,
                 authorColor = authorColor,
                 modifier = modifier,
-                footer = {
+                footer = { footerColor ->
                     MessageTimestampFooter(
-                        visible = showMessageFooter,
                         infoText = formatMessageTimestamp(message.userDate),
-                        contentColor = contentColor,
+                        contentColor = footerColor,
                         showDeliveryStatus = sentByYou && !message.isDeleted,
                         isPendingSend = isPendingSend,
                         deliveryStatus = message.messageAppData.deliveryStatus,

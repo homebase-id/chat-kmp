@@ -72,7 +72,10 @@ fun ReplyPreviewBar(
     accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
     val currentOdinId = LocalCurrentOdinId.current
-    val mediaPayloads = remember(message.payloads) { message.payloads.replyQuoteMediaPayloads() }
+    val quotesProtectedMedia = message.messageContent.isReplyQuoteImageSuppressed()
+    val mediaPayloads = remember(message.payloads, quotesProtectedMedia) {
+        if (quotesProtectedMedia) emptyList() else message.payloads.replyQuoteMediaPayloads()
+    }
 
     val firstPayload = mediaPayloads.firstOrNull()
     val hasMultiplePayloads = mediaPayloads.size > 1
@@ -93,13 +96,17 @@ fun ReplyPreviewBar(
 
     // Strip richeditor's `<br>` empty-paragraph artifacts so replying to a legacy `<br>` message
     // shows its real text in the composer bar, not a stray break / blank preview (#1104).
-    val replyBarText = remember(message.content) { message.content.stripComposerLineBreakArtifacts() }
+    val replyBarText = remember(message.content, quotesProtectedMedia) {
+        if (quotesProtectedMedia) "" else message.content.stripComposerLineBreakArtifacts()
+    }
     // Content label for media-only messages (no text)
     val contentLabel = messageContentLabel(
         textContent = replyBarText,
         isDeleted = message.isDeleted,
         firstPayload = firstPayload,
         hasMultiplePayloads = hasMultiplePayloads,
+        messageContent = message.messageContent.takeIf { it is MessageContent.ViewOnce },
+        viewOnceOpened = true,
     )
 
     val previewText = contentLabel?.text ?: replyBarText.trim().truncateToCodePoints(80)

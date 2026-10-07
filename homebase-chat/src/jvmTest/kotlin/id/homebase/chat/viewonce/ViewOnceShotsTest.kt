@@ -119,13 +119,12 @@ class ViewOnceShotsTest {
         ) : Scene
         data class Thread(val group: Boolean = false) : Scene
         data class States(val outgoing: Boolean, val pressFirst: Boolean = false) : Scene
-        data object Morph : Scene
         data class Viewer(
             val stage: ViewerStage,
             val video: Boolean = false,
             val muted: Boolean = false,
             val caption: String? = null,
-            val sender: String = "Alice",
+            val picking: Boolean = false,
         ) : Scene
         data class Intro(val video: Boolean) : Scene
         data class Toast(val kind: ViewOnceToastKind) : Scene
@@ -171,7 +170,6 @@ class ViewOnceShotsTest {
             Shot("s4-received-states-font-scale", Scene.States(outgoing = false), fontScale = 1.6f, heightDp = 1_400),
             Shot("s5-received-states-rtl", Scene.States(outgoing = false), rtl = true, heightDp = 1_000),
             Shot("s6-sent-states-font-scale", Scene.States(outgoing = true), fontScale = 1.6f, heightDp = 900),
-            Shot("m1-unopened-to-opened", Scene.Morph, heightDp = 160),
             Shot("v1-viewer-photo-live", Scene.Viewer(ViewerStage.Live)),
             Shot("v2-viewer-loading", Scene.Viewer(ViewerStage.Loading)),
             // VLC can't decode in a headless test, so the poster stands in for a playing frame.
@@ -180,12 +178,10 @@ class ViewOnceShotsTest {
             Shot("v5-viewer-photo-font-scale", Scene.Viewer(ViewerStage.Shown), fontScale = 1.6f),
             Shot("v6-viewer-photo-rtl", Scene.Viewer(ViewerStage.Shown), rtl = true),
             Shot("v7-viewer-failed-small-font-scale", Scene.Viewer(ViewerStage.Failed, video = true), fontScale = 1.6f, widthDp = 360, heightDp = 640),
-            Shot("v8-viewer-photo-chrome-hidden", Scene.Viewer(ViewerStage.Shown), settleMs = 4_000),
             Shot("v9-viewer-video-muted-font-scale", Scene.Viewer(ViewerStage.Shown, video = true, muted = true), fontScale = 1.6f),
-            Shot("v10-viewer-video-chrome-hidden", Scene.Viewer(ViewerStage.Shown, video = true), settleMs = 4_000),
+            Shot("v14-viewer-video-caption-reactions", Scene.Viewer(ViewerStage.Shown, video = true, caption = "Dinner at the harbour", picking = true)),
             Shot("v11-viewer-photo-caption", Scene.Viewer(ViewerStage.Shown, caption = "Don't show anyone. The view from the ridge before the rain came in.")),
             Shot("v12-viewer-photo-landscape-top-edge", Scene.Viewer(ViewerStage.Shown), widthDp = 960, heightDp = 540),
-            Shot("v13-viewer-photo-long-name-font-scale", Scene.Viewer(ViewerStage.Shown, sender = "Bartholomew Featherstonehaugh-Wolfeschlegelsteinhausen"), fontScale = 1.6f, widthDp = 360, heightDp = 640),
             Shot("i1-intro-photo", Scene.Intro(video = false), heightDp = 620),
             Shot("i2-intro-video-font-scale-rtl", Scene.Intro(video = true), fontScale = 1.6f, rtl = true, heightDp = 820),
             Shot("t1-toast-photo", Scene.Toast(ViewOnceToastKind.Photo), heightDp = 160, settleMs = 500),
@@ -399,10 +395,10 @@ class ViewOnceShotsTest {
                         phase = row.phase,
                         onOpen = if (row.tappable) ({}) else null,
                         authorName = row.author,
-                        footer = {
+                        footer = { footerColor ->
                             MessageTimestampFooter(
                                 infoText = formatMessageTimestamp(Instant.fromEpochMilliseconds(FIXED_TIME_MS + index * 60_000L)),
-                                contentColor = content,
+                                contentColor = footerColor,
                                 showDeliveryStatus = sent,
                                 isPendingSend = false,
                                 deliveryStatus = 30,
@@ -416,47 +412,10 @@ class ViewOnceShotsTest {
     }
 
     @Composable
-    private fun MorphScene(opened: Boolean) {
-        Box(
-            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp),
-            contentAlignment = Alignment.TopStart,
-        ) {
-            ViewOnceBubble(
-                descriptor = ViewOnceDescriptor(ViewOnceDescriptor.KIND_IMAGE),
-                isOutgoing = false,
-                shape = messageBubbleShape(false, MessageClusterPosition.ALONE),
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.widthIn(max = 300.dp),
-                state = if (opened) ViewOnceState.Opened else ViewOnceState.Unopened,
-                onOpen = {},
-            )
-        }
-    }
-
-    private fun renderMorph(shot: Shot, dark: Boolean) = runDesktopComposeUiTest(
-        width = (shot.widthDp * SCALE).toInt(),
-        height = (shot.heightDp * SCALE).toInt(),
-    ) {
-        mainClock.autoAdvance = false
-        var opened by mutableStateOf(false)
-        setContent { Themed(dark, shot.fontScale, shot.rtl) { MorphScene(opened) } }
-        mainClock.advanceTimeBy(1_500)
-        save("${shot.name}-0-unopened", dark)
-        opened = true
-        for ((label, ms) in listOf("1-80ms" to 80L, "2-200ms" to 120L, "3-400ms" to 200L, "4-settled" to 1_200L)) {
-            mainClock.advanceTimeBy(ms)
-            save("${shot.name}-$label", dark)
-        }
-    }
-
-    @Composable
     private fun ViewerScene(scene: Scene.Viewer) {
         val frame = remember { (if (scene.video) poster else File(samples, "red-leaf.jpg")).readBytes().toImageBitmap()!! }
         ViewOnceViewerFrame(
             isVideo = scene.video,
-            senderName = scene.sender,
-            sentAt = formatMessageTimestamp(Instant.fromEpochMilliseconds(FIXED_TIME_MS)),
             caption = scene.caption,
             mediaShown = scene.stage == ViewerStage.Shown,
             failed = scene.stage == ViewerStage.Failed,
@@ -465,10 +424,10 @@ class ViewOnceShotsTest {
             durationMs = 34_000L,
             muted = scene.muted,
             onMutedChange = {},
-        ) { belowHeader ->
+        ) { fill ->
             when (scene.stage) {
-                ViewerStage.Loading -> ViewOnceViewerLoading(belowHeader)
-                ViewerStage.Failed -> ViewOnceViewerFailed(onRetry = {}, modifier = belowHeader)
+                ViewerStage.Loading -> ViewOnceViewerLoading(fill)
+                ViewerStage.Failed -> ViewOnceViewerFailed(onRetry = {}, modifier = fill)
                 else -> ViewOnceViewerImage(frame)
             }
         }
@@ -481,18 +440,16 @@ class ViewOnceShotsTest {
         val server = runBlocking { ViewOnceFakeServer(plainImage = File(samples, "red-leaf.jpg").readBytes()).start() }
         setContent {
             Themed(dark, shot.fontScale, shot.rtl) {
-                ViewOnceViewer(data = server.viewer().copy(senderName = "Alice", sentAt = Instant.fromEpochMilliseconds(FIXED_TIME_MS)), onViewerClosed = {}, onDismiss = {}, loader = server.loader)
+                ViewOnceViewer(data = server.viewer(), onViewerClosed = {}, onDismiss = {}, loader = server.loader)
             }
         }
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag(VIEW_ONCE_VIEWER_IMAGE_TAG)).fetchSemanticsNodes().isNotEmpty() }
-        // The first frames after opening, while the header is still up; v8 covers it stepping aside.
         mainClock.autoAdvance = false
         mainClock.advanceTimeBy(600)
         save(shot.name, dark)
     }
 
     private fun render(shot: Shot, dark: Boolean): Unit = when {
-        shot.scene is Scene.Morph -> renderMorph(shot, dark)
         (shot.scene as? Scene.Viewer)?.stage == ViewerStage.Live -> renderLiveViewer(shot, dark)
         else -> renderStill(shot, dark)
     }
@@ -521,13 +478,16 @@ class ViewOnceShotsTest {
                     is Scene.Toast -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
                         ViewOnceToast(remember { ViewOnceToastMessage(scene.kind) })
                     }
-                    Scene.Morph -> Unit
                 }
             }
         }
         if ((shot.scene as? Scene.States)?.pressFirst == true) {
             mainClock.advanceTimeBy(500)
             onNodeWithTag(FIRST_ROW).performTouchInput { down(center) }
+        }
+        if ((shot.scene as? Scene.Viewer)?.picking == true) {
+            mainClock.advanceTimeBy(500)
+            onNodeWithTag(VIEW_ONCE_VIEWER_REACT_TAG).performClick()
         }
         if ((shot.scene as? Scene.Editor)?.tapViewOnce == true) {
             mainClock.advanceTimeBy(500)

@@ -1264,13 +1264,13 @@ private fun ViewOnceCaptionToggle(toggle: ViewOnceToggle) {
                 imageVector = ViewOnceIcon,
                 contentDescription = stringResource(MR.string.cd_view_once_toggle),
                 tint = glyph,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(24.dp),
             )
         }
     }
 }
 
-private val VIEW_ONCE_TOGGLE_SIZE = 36.dp
+private val VIEW_ONCE_TOGGLE_SIZE = 40.dp
 
 @Immutable
 class ViewOnceToggle(val checked: Boolean, val onToggle: () -> Unit)

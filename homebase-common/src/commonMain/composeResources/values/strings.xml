@@ -1037,7 +1037,8 @@
     <string name="chat_view_once_viewer_failed_body">Check your connection and try again.</string>
     <string name="chat_view_once_retry">Try again</string>
     <string name="chat_view_once_mute">Mute</string>
-    <string name="chat_view_once_remaining">%1$s left</string>
+    <string name="chat_view_once_unmute">Unmute</string>
+    <string name="chat_view_once_more">More options</string>
     <string name="cd_view_once_open">Open view-once media</string>
     <string name="cd_view_once_toggle">View once</string>
     <string name="chat_view_once_toast_photo">Photo set to view once</string>

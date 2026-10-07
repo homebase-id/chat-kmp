@@ -2,6 +2,7 @@ package id.homebase.chat.viewonce
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -25,16 +26,23 @@ class ViewOnceBubblePlatformTest {
         isOutgoing: Boolean,
         state: ViewOnceState,
         onOpen: (() -> Unit)?,
+        descriptor: ViewOnceDescriptor? = photo,
     ) = setContent {
         MaterialTheme {
-            Bubble(canView, isOutgoing, state, onOpen)
+            Bubble(canView, isOutgoing, state, onOpen, descriptor)
         }
     }
 
     @Composable
-    private fun Bubble(canView: Boolean, isOutgoing: Boolean, state: ViewOnceState, onOpen: (() -> Unit)?) {
+    private fun Bubble(
+        canView: Boolean,
+        isOutgoing: Boolean,
+        state: ViewOnceState,
+        onOpen: (() -> Unit)?,
+        descriptor: ViewOnceDescriptor?,
+    ) {
         ViewOnceBubble(
-            descriptor = photo,
+            descriptor = descriptor,
             isOutgoing = isOutgoing,
             shape = RoundedCornerShape(12),
             containerColor = Color.LightGray,
@@ -43,6 +51,7 @@ class ViewOnceBubblePlatformTest {
             state = state,
             canView = canView,
             onOpen = onOpen,
+            footer = { Text("10:42 AM") },
         )
     }
 
@@ -88,5 +97,32 @@ class ViewOnceBubblePlatformTest {
                 onNodeWithText("Open on your phone").assertDoesNotExist()
             }
         }
+    }
+
+    @Test
+    fun everyOpenedPillCarriesItsKindAndTheTimeOnBothSides() = runComposeUiTest {
+        for (isOutgoing in listOf(false, true)) {
+            for ((descriptor, kindWord) in listOf(
+                photo to "Photo",
+                ViewOnceDescriptor(ViewOnceDescriptor.KIND_VIDEO) to "Video",
+                null to "Media",
+            )) {
+                bubble(canView = true, isOutgoing = isOutgoing, state = ViewOnceState.Opened, onOpen = null, descriptor = descriptor)
+                onNodeWithText("Opened").assertExists()
+                onNodeWithText(kindWord).assertExists()
+                onNodeWithText("10:42 AM").assertExists()
+            }
+        }
+    }
+
+    @Test
+    fun anOpenedPillIsNotClickableEvenWhereViewingIsAllowed() = runComposeUiTest {
+        var opened = 0
+        bubble(canView = true, isOutgoing = false, state = ViewOnceState.Opened, onOpen = { opened++ })
+
+        onNodeWithText("Opened").performClick()
+        waitForIdle()
+
+        assertEquals(0, opened)
     }
 }

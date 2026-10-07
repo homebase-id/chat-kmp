@@ -1227,18 +1227,6 @@ internal class MessageActionsHandler(
         }
     }
 
-    private fun MessageUiModel.toReplyPreview() = ReplyPreview(
-        replyUniqueId = id,
-        authorOdinId = originalAuthor?.domainName ?: "null",
-        // trim before truncate: leading newlines would otherwise render as a bare
-        // "…" in the quote and eat into the 80-codepoint budget.
-        message = content.trim().truncateToCodePoints(80),
-        previewThumbnail = previewThumbnail
-            .takeIf { payloads.replyQuoteMediaPayloads().firstOrNull()?.isVisualMedia() == true },
-        context = (messageContent as? MessageContent.Event)?.descriptor
-            ?.let { ReplyContext.event(it.startUtcMs) },
-    )
-
     private fun replyToMessage(
         conversationId: Uuid,
         replyTo: MessageUiModel,
@@ -1306,4 +1294,20 @@ internal class MessageActionsHandler(
             }
         }
     }
+}
+
+internal fun MessageUiModel.toReplyPreview(): ReplyPreview {
+    val viewOnce = messageContent as? MessageContent.ViewOnce
+    return ReplyPreview(
+        replyUniqueId = id,
+        authorOdinId = originalAuthor?.domainName ?: "null",
+        // The kind word only: a view-once descriptor carries the caption and its media must never be quoted.
+        // Trim before truncate: leading newlines would otherwise render as a bare "…" in the quote.
+        message = viewOnce?.displayLabel ?: content.trim().truncateToCodePoints(80),
+        previewThumbnail = previewThumbnail.takeIf {
+            viewOnce == null && payloads.replyQuoteMediaPayloads().firstOrNull()?.isVisualMedia() == true
+        },
+        context = (messageContent as? MessageContent.Event)?.descriptor
+            ?.let { ReplyContext.event(it.startUtcMs) },
+    )
 }

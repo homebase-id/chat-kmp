@@ -12,6 +12,7 @@ import id.homebase.chat.data.ConversationUiModel.Companion.updateWithLatestMessa
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.convo.applyIncomingMessageBump
 import id.homebase.chat.services.mapToMessageData
 import id.homebase.chat.widget.ChatBubbleTestTags
 import id.homebase.chat.widget.ContentLabel
@@ -22,6 +23,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -168,5 +170,32 @@ class ViewOnceListPreviewTest {
         quote(unopened("image", caption = "secret caption"), "Photo", caption = "secret caption")
         quote(unopened("video", caption = "secret caption"), "Video", caption = "secret caption")
         quote(spentLocally("video"), "Video")
+    }
+
+    @Test
+    fun theRowStaysPhotoOrVideoWhenTheOpenedItemArrivesAsAReEmitOrAServerTombstone() = runTest {
+        val convo = conversation()
+        val sent = unopened("image")
+        val first = assertNotNull(
+            applyIncomingMessageBump(listOf(convo), convo.id, sent, Instant.fromEpochMilliseconds(5), me),
+        )
+        assertEquals("Photo", labelOf(first.single())?.text)
+
+        val spent = spentLocally("image")
+        val afterOpen = assertNotNull(
+            applyIncomingMessageBump(first, convo.id, spent, Instant.fromEpochMilliseconds(5), me),
+        ).single()
+        assertTrue(afterOpen.lastMessageIsDeleted)
+        assertEquals("Photo", labelOf(afterOpen)?.text)
+        assertEquals(ViewOnceOpenedIcon, labelOf(afterOpen)?.icon)
+
+        val tombstone = assertNotNull(
+            mapToMessageData(serverTombstone(createdMs = now - 2 * DAY_MS, updatedMs = now - DAY_MS), ownerCredentials()),
+        )
+        val afterSync = assertNotNull(
+            applyIncomingMessageBump(listOf(afterOpen), convo.id, tombstone, Instant.fromEpochMilliseconds(5), me),
+        ).single()
+        assertNotEquals("This message was deleted", labelOf(afterSync)?.text)
+        assertEquals(ViewOnceOpenedIcon, labelOf(afterSync)?.icon)
     }
 }

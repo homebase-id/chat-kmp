@@ -6,7 +6,9 @@ import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiState
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MediaDownloadHandler
+import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
+import kotlinx.collections.immutable.persistentListOf
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionServiceTestFixture
 import id.homebase.chat.services.ChatMessageStream
@@ -166,5 +168,40 @@ class ViewOnceMediaClickedTest {
             blocked.loadBytes(server.chatDriveId, server.fileId, VIEW_ONCE_PAYLOAD_KEY, server.keyHeader)
         }
         assertEquals(0, server.requests)
+    }
+
+    @Test
+    fun replyingFromTheViewerQuotesTheUnopenedItemWithoutClosingOrReadingAnything() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val h = harness(this, fixture, mobile = true)
+            val message = incoming()
+            h.messages.value = MessageListUiState(
+                messages = persistentListOf(MessageListContentModel.Message(message)),
+            )
+            val viewer = assertIs<FullScreenOverlay.ViewOnceViewer>(tap(h, message))
+
+            h.handler.handleViewOnceReply(ConversationListUiAction.ViewOnceReply(viewer.messageId))
+
+            assertEquals(message, h.messages.value.replyToMessage)
+            assertEquals(viewer, h.messages.value.fullScreenOverlay, "the viewer's own single close path ends it, not the reply")
+            assertEquals(0, h.server.requests)
+        }
+    }
+
+    @Test
+    fun aReplyForAMessageThatIsNotViewOnceOrNotLoadedQuotesNothing() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val h = harness(this, fixture, mobile = true)
+            val plain = mapToMessageData(
+                viewOnceHeader(createdMs = now - DAY_MS, dataType = 100, content = "hello"),
+                ownerCredentials(),
+            )!!
+            h.messages.value = MessageListUiState(messages = persistentListOf(MessageListContentModel.Message(plain)))
+
+            h.handler.handleViewOnceReply(ConversationListUiAction.ViewOnceReply(plain.id))
+            h.handler.handleViewOnceReply(ConversationListUiAction.ViewOnceReply(kotlin.uuid.Uuid.random()))
+
+            assertNull(h.messages.value.replyToMessage)
+        }
     }
 }
