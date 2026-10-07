@@ -1,21 +1,52 @@
 package id.homebase.chat.viewonce
 
 import androidx.compose.foundation.Image
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialShapes
+import androidx.compose.material3.toShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.resources.chat_view_once_retry
+import id.homebase.resources.chat_view_once_viewer_failed_body
+import id.homebase.resources.chat_view_once_viewer_failed_title
+import id.homebase.resources.chat_view_once_viewer_title_photo
+import id.homebase.resources.chat_view_once_viewer_title_video
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -51,7 +82,6 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_image_attachment
 import id.homebase.resources.chat_view_once_close
-import id.homebase.resources.chat_view_once_failed
 import id.homebase.resources.chat_view_once_viewer_hint_photo
 import id.homebase.resources.chat_view_once_viewer_hint_video
 import kotlinx.coroutines.CancellationException
@@ -145,84 +175,170 @@ fun ViewOnceViewer(
     @Suppress("DEPRECATION")
     BackHandler(enabled = true) { close() }
 
-    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim)) {
+    ViewOnceViewerFrame(isVideo = isVideo, shown = shown && !failed, onClose = ::close, modifier = modifier) { belowHeader ->
         when {
-            failed -> Box(
-                Modifier.fillMaxSize().testTag(VIEW_ONCE_VIEWER_RETRY_TAG).clickable { attempt++ },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = stringResource(MR.string.chat_view_once_failed),
-                    color = MaterialTheme.colorScheme.inverseOnSurface,
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(32.dp),
+            failed -> ViewOnceViewerFailed(onRetry = { attempt++ }, modifier = belowHeader)
+            isVideo && videoReady -> {
+                VideoPlayerSurface(
+                    data = FullScreenOverlay.VideoPlayerData(
+                        fileId = data.fileId,
+                        driveId = chatTargetDrive.alias,
+                        payloadKey = data.payload.key,
+                        keyHeader = data.keyHeader,
+                        payload = data.payload,
+                    ),
+                    modifier = Modifier.fillMaxSize(),
+                    onFirstFrame = { videoShown = true },
+                    onError = { failed = true },
                 )
+                if (!videoShown) ViewOnceViewerLoading(belowHeader)
             }
-            isVideo && videoReady -> VideoPlayerSurface(
-                data = FullScreenOverlay.VideoPlayerData(
-                    fileId = data.fileId,
-                    driveId = chatTargetDrive.alias,
-                    payloadKey = data.payload.key,
-                    keyHeader = data.keyHeader,
-                    payload = data.payload,
-                ),
-                modifier = Modifier.fillMaxSize(),
-                onFirstFrame = { videoShown = true },
-                onError = { failed = true },
-            )
-            image != null -> ZoomableBitmap(image!!)
-            else -> CircularProgressIndicator(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.6f), CircleShape)
-                    .padding(12.dp),
-                color = MaterialTheme.colorScheme.inverseOnSurface,
-            )
+            image != null -> ViewOnceViewerImage(image!!)
+            else -> ViewOnceViewerLoading(belowHeader)
         }
+    }
+}
 
-        IconButton(
-            onClick = ::close,
-            colors = IconButtonDefaults.iconButtonColors(
-                containerColor = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.6f),
-                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-            ),
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .statusBarsPadding()
-                .padding(8.dp)
-                .testTag(VIEW_ONCE_VIEWER_CLOSE_TAG),
-        ) {
-            Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.chat_view_once_close))
-        }
-
-        Column(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = stringResource(
-                    if (isVideo) MR.string.chat_view_once_viewer_hint_video else MR.string.chat_view_once_viewer_hint_photo,
-                ),
-                color = MaterialTheme.colorScheme.inverseOnSurface,
-                style = MaterialTheme.typography.labelLarge,
-                textAlign = TextAlign.Center,
+/** Always dark, like the camera: media reads best on black, and the chrome must not flip with the app theme. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun ViewOnceViewerFrame(
+    isVideo: Boolean,
+    shown: Boolean,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    body: @Composable BoxScope.(belowHeader: Modifier) -> Unit,
+) {
+    HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
+        val density = LocalDensity.current
+        var headerHeight by remember { mutableStateOf(0.dp) }
+        Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim)) {
+            body(Modifier.fillMaxSize().padding(top = headerHeight))
+            ViewOnceViewerHeader(
+                isVideo = isVideo,
+                shown = shown,
+                onClose = onClose,
                 modifier = Modifier
-                    .background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.6f), CircleShape)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .align(Alignment.TopCenter)
+                    .onSizeChanged { headerHeight = with(density) { it.height.toDp() } },
             )
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ZoomableBitmap(bitmap: ImageBitmap) {
+private fun ViewOnceViewerHeader(isVideo: Boolean, shown: Boolean, onClose: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    val motion = MaterialTheme.motionScheme
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0.8f), colors.scrim.copy(alpha = 0f))))
+            .statusBarsPadding()
+            .padding(start = 8.dp, end = 20.dp, top = 8.dp, bottom = 32.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        IconButton(
+            onClick = onClose,
+            colors = IconButtonDefaults.iconButtonColors(
+                containerColor = colors.surfaceContainerHighest.copy(alpha = 0.72f),
+                contentColor = colors.onSurface,
+            ),
+            shapes = IconButtonDefaults.shapes(),
+            modifier = Modifier.size(48.dp).testTag(VIEW_ONCE_VIEWER_CLOSE_TAG),
+        ) {
+            Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.chat_view_once_close))
+        }
+        Box(
+            Modifier.padding(start = 12.dp, top = 6.dp).size(36.dp).clip(MaterialShapes.Cookie9Sided.toShape()).background(colors.primary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(ViewOnceDigitIcon, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(26.dp))
+        }
+        Column(
+            Modifier.padding(start = 12.dp).heightIn(min = 48.dp).weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+        ) {
+            Text(
+                text = stringResource(if (isVideo) MR.string.chat_view_once_viewer_title_video else MR.string.chat_view_once_viewer_title_photo),
+                style = MaterialTheme.typography.titleMediumEmphasized.copy(textDirection = TextDirection.Content),
+                color = colors.onSurface,
+            )
+            // Only once something is on screen: closing a viewer that never loaded uses nothing up.
+            AnimatedVisibility(
+                visible = shown,
+                enter = fadeIn(motion.defaultEffectsSpec()) + expandVertically(motion.defaultSpatialSpec()),
+                exit = fadeOut(motion.fastEffectsSpec()) + shrinkVertically(motion.fastSpatialSpec()),
+            ) {
+                Text(
+                    text = stringResource(
+                        if (isVideo) MR.string.chat_view_once_viewer_hint_video else MR.string.chat_view_once_viewer_hint_photo,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
+                    color = colors.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun ViewOnceViewerLoading(modifier: Modifier = Modifier) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        ContainedLoadingIndicator(modifier = Modifier.size(64.dp))
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun ViewOnceViewerFailed(onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Column(
+        modifier = modifier.verticalScroll(rememberScrollState()).padding(horizontal = 32.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            Modifier.size(72.dp).clip(MaterialShapes.Cookie9Sided.toShape()).background(colors.surfaceContainerHighest),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.CloudOff, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(32.dp))
+        }
+        Text(
+            text = stringResource(MR.string.chat_view_once_viewer_failed_title),
+            style = MaterialTheme.typography.titleLargeEmphasized,
+            color = colors.onSurface,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 20.dp),
+        )
+        Text(
+            text = stringResource(MR.string.chat_view_once_viewer_failed_body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 8.dp).widthIn(max = 280.dp),
+        )
+        Button(
+            onClick = onRetry,
+            shapes = ButtonDefaults.shapes(),
+            modifier = Modifier.padding(top = 24.dp).heightIn(min = 48.dp).testTag(VIEW_ONCE_VIEWER_RETRY_TAG),
+        ) {
+            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+            Text(stringResource(MR.string.chat_view_once_retry))
+        }
+    }
+}
+
+@Composable
+internal fun ViewOnceViewerImage(bitmap: ImageBitmap) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+    val reveal = remember { Animatable(0f) }
+    val revealSpec = MaterialTheme.motionScheme.slowSpatialSpec<Float>()
+    LaunchedEffect(Unit) { reveal.animateTo(1f, revealSpec) }
     val transformState = rememberTransformableState { zoom, pan, _ ->
         scale = (scale * zoom).coerceIn(1f, 5f)
         offset = if (scale <= 1f) Offset.Zero else offset + pan
@@ -235,8 +351,10 @@ private fun ZoomableBitmap(bitmap: ImageBitmap) {
             .fillMaxSize()
             .testTag(VIEW_ONCE_VIEWER_IMAGE_TAG)
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
+                val entry = 0.92f + 0.08f * reveal.value
+                alpha = reveal.value.coerceIn(0f, 1f)
+                scaleX = scale * entry
+                scaleY = scale * entry
                 translationX = offset.x
                 translationY = offset.y
             }

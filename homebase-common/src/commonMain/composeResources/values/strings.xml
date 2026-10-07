@@ -1034,6 +1034,11 @@
     <string name="chat_view_once_viewer_hint_photo">This photo disappears when you close it.</string>
     <string name="chat_view_once_viewer_hint_video">This video disappears when you close it.</string>
     <string name="chat_view_once_close">Close</string>
+    <string name="chat_view_once_viewer_title_photo">View-once photo</string>
+    <string name="chat_view_once_viewer_title_video">View-once video</string>
+    <string name="chat_view_once_viewer_failed_title">Couldn't load</string>
+    <string name="chat_view_once_viewer_failed_body">It's still unopened, so nothing was used up.</string>
+    <string name="chat_view_once_retry">Try again</string>
     <string name="cd_view_once_open">Open view-once media</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>

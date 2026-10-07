@@ -29,12 +29,8 @@ import kotlin.uuid.Uuid
 internal class ViewOnceFakeServer(
     val chatDriveId: Uuid = Uuid.parse("9ff813af-f2d6-1e2f-9b9d-b189e72d1a11"),
     val fileId: Uuid = Uuid.random(),
+    val plainImage: ByteArray = checkerboardPng(),
 ) {
-    val plainImage: ByteArray = ByteArrayOutputStream().also { out ->
-        val image = BufferedImage(16, 16, BufferedImage.TYPE_INT_RGB)
-        for (x in 0 until 16) for (y in 0 until 16) image.setRGB(x, y, if ((x + y) % 2 == 0) 0xFF8800 else 0x2244AA)
-        ImageIO.write(image, "png", out)
-    }.toByteArray()
 
     private val aes = SecureByteArray(ByteArray(16) { 9 })
     private val iv = ByteArray(16) { 5 }
@@ -99,3 +95,9 @@ internal class ViewOnceFakeServer(
             kind = kind,
         )
 }
+
+private fun checkerboardPng(): ByteArray = ByteArrayOutputStream().also { out ->
+    val image = BufferedImage(16, 16, BufferedImage.TYPE_INT_RGB)
+    for (x in 0 until 16) for (y in 0 until 16) image.setRGB(x, y, if ((x + y) % 2 == 0) 0xFF8800 else 0x2244AA)
+    ImageIO.write(image, "png", out)
+}.toByteArray()

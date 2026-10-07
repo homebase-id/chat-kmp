@@ -26,6 +26,9 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.hasTestTag
+import id.homebase.api.image.toImageBitmap
+import kotlinx.coroutines.runBlocking
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
@@ -104,7 +107,10 @@ class ViewOnceShotsTest {
         data class Thread(val group: Boolean = false) : Scene
         data class States(val outgoing: Boolean, val pressFirst: Boolean = false) : Scene
         data object Morph : Scene
+        data class Viewer(val stage: ViewerStage, val video: Boolean = false) : Scene
     }
+
+    private enum class ViewerStage { Live, Loading, Shown, Failed }
 
     private class Shot(
         val name: String,
@@ -139,6 +145,14 @@ class ViewOnceShotsTest {
             Shot("s5-received-states-rtl", Scene.States(outgoing = false), rtl = true, heightDp = 1_000),
             Shot("s6-sent-states-font-scale", Scene.States(outgoing = true), fontScale = 1.6f, heightDp = 900),
             Shot("m1-unopened-to-opened", Scene.Morph, heightDp = 160),
+            Shot("v1-viewer-photo-live", Scene.Viewer(ViewerStage.Live)),
+            Shot("v2-viewer-loading", Scene.Viewer(ViewerStage.Loading)),
+            // VLC can't decode in a headless test, so the poster stands in for a playing frame.
+            Shot("v3-viewer-video-playing", Scene.Viewer(ViewerStage.Shown, video = true)),
+            Shot("v4-viewer-failed", Scene.Viewer(ViewerStage.Failed)),
+            Shot("v5-viewer-photo-font-scale", Scene.Viewer(ViewerStage.Shown), fontScale = 1.6f),
+            Shot("v6-viewer-photo-rtl", Scene.Viewer(ViewerStage.Shown), rtl = true),
+            Shot("v7-viewer-failed-small-font-scale", Scene.Viewer(ViewerStage.Failed, video = true), fontScale = 1.6f, widthDp = 360, heightDp = 640),
         )
     }
 
@@ -381,7 +395,40 @@ class ViewOnceShotsTest {
         }
     }
 
-    private fun render(shot: Shot, dark: Boolean): Unit = if (shot.scene is Scene.Morph) renderMorph(shot, dark) else runDesktopComposeUiTest(
+    @Composable
+    private fun ViewerScene(scene: Scene.Viewer) {
+        val frame = remember { (if (scene.video) poster else File(samples, "red-leaf.jpg")).readBytes().toImageBitmap()!! }
+        ViewOnceViewerFrame(isVideo = scene.video, shown = scene.stage == ViewerStage.Shown, onClose = {}) { belowHeader ->
+            when (scene.stage) {
+                ViewerStage.Loading -> ViewOnceViewerLoading(belowHeader)
+                ViewerStage.Failed -> ViewOnceViewerFailed(onRetry = {}, modifier = belowHeader)
+                else -> ViewOnceViewerImage(frame)
+            }
+        }
+    }
+
+    private fun renderLiveViewer(shot: Shot, dark: Boolean) = runDesktopComposeUiTest(
+        width = (shot.widthDp * SCALE).toInt(),
+        height = (shot.heightDp * SCALE).toInt(),
+    ) {
+        val server = runBlocking { ViewOnceFakeServer(plainImage = File(samples, "red-leaf.jpg").readBytes()).start() }
+        setContent {
+            Themed(dark, shot.fontScale, shot.rtl) {
+                ViewOnceViewer(data = server.viewer(), onViewerClosed = {}, onDismiss = {}, loader = server.loader)
+            }
+        }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag(VIEW_ONCE_VIEWER_IMAGE_TAG)).fetchSemanticsNodes().isNotEmpty() }
+        mainClock.advanceTimeBy(2_000)
+        save(shot.name, dark)
+    }
+
+    private fun render(shot: Shot, dark: Boolean): Unit = when {
+        shot.scene is Scene.Morph -> renderMorph(shot, dark)
+        (shot.scene as? Scene.Viewer)?.stage == ViewerStage.Live -> renderLiveViewer(shot, dark)
+        else -> renderStill(shot, dark)
+    }
+
+    private fun renderStill(shot: Shot, dark: Boolean) = runDesktopComposeUiTest(
         width = (shot.widthDp * SCALE).toInt(),
         height = (shot.heightDp * SCALE).toInt(),
     ) {
@@ -392,6 +439,7 @@ class ViewOnceShotsTest {
                     is Scene.Editor -> EditorScene(scene)
                     is Scene.Thread -> ThreadScene(scene)
                     is Scene.States -> StatesScene(scene)
+                    is Scene.Viewer -> ViewerScene(scene)
                     Scene.Morph -> Unit
                 }
             }
