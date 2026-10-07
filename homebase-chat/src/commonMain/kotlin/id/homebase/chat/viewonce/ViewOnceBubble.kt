@@ -2,11 +2,17 @@ package id.homebase.chat.viewonce
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.TimerOff
-import androidx.compose.material.icons.outlined.Upgrade
+import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
@@ -25,13 +31,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -69,6 +74,8 @@ import id.homebase.resources.chat_view_once_sent
 import id.homebase.resources.chat_view_once_tap_to_view
 import id.homebase.resources.chat_view_once_unparseable
 import id.homebase.resources.chat_view_once_video
+import id.homebase.resources.chat_view_once_unavailable
+import id.homebase.resources.chat_view_once_update_to_open
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -115,39 +122,41 @@ fun ViewOnceBubble(
     val kindLabel = descriptor?.let {
         stringResource(if (it.kind == ViewOnceDescriptor.KIND_VIDEO) MR.string.chat_view_once_video else MR.string.chat_view_once_photo)
     }
-    val title: String
-    val subtitle: String?
-    val subtitleColor: Color
-    when {
-        consumed -> {
+    val text = when {
+        consumed -> BubbleText(
             title = when {
                 state == ViewOnceState.Expired -> stringResource(MR.string.chat_view_once_expired)
                 isOutgoing && openedCount > 1 -> pluralStringResource(MR.plurals.chat_view_once_opened_by, openedCount, openedCount)
                 else -> stringResource(MR.string.chat_view_once_opened)
-            }
-            subtitle = kindLabel
-            subtitleColor = mutedColor
-        }
-        descriptor == null -> {
-            title = stringResource(MR.string.chat_view_once_unparseable)
-            subtitle = null
-            subtitleColor = mutedColor
-        }
-        else -> {
-            title = kindLabel.orEmpty()
+            },
+            titleColor = mutedColor,
+            subtitle = kindLabel,
+            subtitleColor = mutedColor,
+        )
+        descriptor == null -> BubbleText(
+            title = stringResource(MR.string.chat_view_once_unparseable),
+            titleColor = contentColor,
+            subtitle = stringResource(MR.string.chat_view_once_update_to_open),
+            subtitleColor = mutedColor,
+        )
+        else -> BubbleText(
+            title = kindLabel.orEmpty(),
+            titleColor = contentColor,
             subtitle = when (badge) {
                 Badge.Opening -> stringResource(MR.string.chat_view_once_opening)
                 Badge.Failed -> stringResource(MR.string.chat_view_once_failed)
                 Badge.Ready -> stringResource(MR.string.chat_view_once_tap_to_view)
-                else -> if (openOnPhone && !isOutgoing) stringResource(MR.string.chat_view_once_open_on_phone)
-                else stringResource(MR.string.chat_view_once_sent)
-            }
+                Badge.Sent -> stringResource(MR.string.chat_view_once_sent)
+                else -> stringResource(if (openOnPhone) MR.string.chat_view_once_open_on_phone else MR.string.chat_view_once_unavailable)
+            },
             subtitleColor = when (badge) {
                 Badge.Failed -> colors.error
                 Badge.Ready -> colors.primary
                 else -> mutedColor
-            }
-        }
+            },
+            subtitleEmphasised = badge == Badge.Ready,
+            phoneIcon = badge == Badge.Unavailable && openOnPhone,
+        )
     }
 
     val motion = MaterialTheme.motionScheme
@@ -192,8 +201,8 @@ fun ViewOnceBubble(
                 AnimatedContent(
                     targetState = badge,
                     transitionSpec = {
-                        (scaleIn(motion.defaultSpatialSpec(), initialScale = 0.6f) + fadeIn(motion.defaultEffectsSpec()))
-                            .togetherWith(scaleOut(motion.fastSpatialSpec(), targetScale = 0.6f) + fadeOut(motion.fastEffectsSpec()))
+                        (scaleIn(motion.defaultSpatialSpec(), initialScale = 0.6f) + fadeIn(HANDOFF_IN))
+                            .togetherWith(scaleOut(motion.fastSpatialSpec(), targetScale = 0.6f) + fadeOut(HANDOFF_OUT))
                     },
                     contentAlignment = Alignment.Center,
                 ) { target ->
@@ -205,45 +214,56 @@ fun ViewOnceBubble(
                         containerColor = containerColor,
                     )
                 }
-                Column(
+                // Title and subtitle change as one unit, so a frame never pairs the new title with the old subtitle.
+                AnimatedContent(
+                    targetState = text,
+                    transitionSpec = {
+                        (slideInVertically(motion.defaultSpatialSpec()) { it / 3 } + fadeIn(HANDOFF_IN))
+                            .togetherWith(slideOutVertically(motion.fastSpatialSpec()) { -it / 3 } + fadeOut(HANDOFF_OUT))
+                            .using(SizeTransform(clip = false) { _, _ -> motion.defaultSpatialSpec() })
+                    },
+                    contentAlignment = Alignment.CenterStart,
                     modifier = Modifier.padding(start = 12.dp).weight(1f, fill = false),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(
-                        text = title,
-                        style = if (badge == Badge.Unparseable) MaterialTheme.typography.bodyMedium.withContentDirection()
-                        else MaterialTheme.typography.titleMediumEmphasized.withContentDirection(),
-                        color = when {
-                            consumed -> mutedColor
-                            descriptor == null -> colors.onSurfaceVariant
-                            else -> contentColor
-                        },
-                    )
-                    if (subtitle != null) {
-                        AnimatedContent(
-                            targetState = subtitle to subtitleColor,
-                            transitionSpec = { fadeIn(motion.fastEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
-                        ) { (text, color) ->
-                            val textStyle = if (badge == Badge.Ready) MaterialTheme.typography.labelLarge
-                            else MaterialTheme.typography.bodyMedium
-                            val lineHeight = with(LocalDensity.current) { textStyle.lineHeight.toDp() }
-                            Row(verticalAlignment = Alignment.Top) {
-                                if (badge == Badge.Unavailable && openOnPhone) {
-                                    // Sized to one line so a wrapped label keeps the icon beside its first line.
-                                    Box(Modifier.padding(end = 4.dp).height(lineHeight), contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.PhoneAndroid,
-                                            contentDescription = null,
-                                            tint = color,
-                                            modifier = Modifier.size(lineHeight * 0.8f),
-                                        )
-                                    }
-                                }
-                                Text(text = text, style = textStyle.withContentDirection(), color = color)
-                            }
-                        }
+                ) { shown -> BubbleTextBlock(shown) }
+            }
+        }
+    }
+}
+
+private data class BubbleText(
+    val title: String,
+    val titleColor: Color,
+    val subtitle: String?,
+    val subtitleColor: Color,
+    val subtitleEmphasised: Boolean = false,
+    val phoneIcon: Boolean = false,
+)
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun BubbleTextBlock(text: BubbleText) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = text.title,
+            style = MaterialTheme.typography.titleMediumEmphasized.withContentDirection(),
+            color = text.titleColor,
+        )
+        if (text.subtitle != null) {
+            val textStyle = if (text.subtitleEmphasised) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyMedium
+            val lineHeight = with(LocalDensity.current) { textStyle.lineHeight.toDp() }
+            Row(verticalAlignment = Alignment.Top) {
+                if (text.phoneIcon) {
+                    // Sized to one line so a wrapped label keeps the icon beside its first line.
+                    Box(Modifier.padding(end = 4.dp).height(lineHeight), contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Outlined.PhoneAndroid,
+                            contentDescription = null,
+                            tint = text.subtitleColor,
+                            modifier = Modifier.size(lineHeight * 0.8f),
+                        )
                     }
                 }
+                Text(text = text.subtitle, style = textStyle.withContentDirection(), color = text.subtitleColor)
             }
         }
     }
@@ -260,7 +280,7 @@ private fun ViewOnceBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, 
     val shape = MorphShape(morph, pressMorph)
     val badgeModifier = Modifier.size(BADGE_SIZE)
     // Final states keep the cookie's silhouette but empty it, so they can't be mistaken for one still waiting.
-    val finalRing = contentColor.copy(alpha = 0.38f)
+    val finalRing = if (isOutgoing) contentColor.copy(alpha = 0.8f) else colors.outline
     val finalGlyph = if (isOutgoing) contentColor.copy(alpha = 0.78f) else colors.onSurfaceVariant
     when (badge) {
         Badge.Ready -> {
@@ -278,10 +298,8 @@ private fun ViewOnceBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, 
         Badge.Unavailable -> RingBadge(badgeModifier, MaterialShapes.Cookie9Sided.toShape(), colors.outline) {
             DigitIcon(ViewOnceDigitIcon, colors.onSurfaceVariant)
         }
-        Badge.Opening -> Box(badgeModifier, contentAlignment = Alignment.Center) {
-            LoadingIndicator(color = colors.primary, modifier = Modifier.size(BADGE_SIZE))
-        }
-        Badge.Failed -> RingBadge(badgeModifier, CircleShape, colors.error) {
+        Badge.Opening -> ViewOnceLoadingIndicator(badgeModifier)
+        Badge.Failed -> RingBadge(badgeModifier, MaterialShapes.Cookie9Sided.toShape(), colors.error) {
             Icon(Icons.Default.Refresh, contentDescription = null, tint = colors.error, modifier = Modifier.size(22.dp))
         }
         Badge.Opened -> RingBadge(badgeModifier, MaterialShapes.Cookie9Sided.toShape(), finalRing) {
@@ -290,10 +308,22 @@ private fun ViewOnceBadge(badge: Badge, isOutgoing: Boolean, pressMorph: Float, 
         Badge.Expired -> RingBadge(badgeModifier, MaterialShapes.Cookie9Sided.toShape(), finalRing) {
             Icon(Icons.Outlined.TimerOff, contentDescription = null, tint = finalGlyph, modifier = Modifier.size(20.dp))
         }
-        Badge.Unparseable -> RingBadge(badgeModifier, CircleShape, colors.outline) {
-            Icon(Icons.Outlined.Upgrade, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(22.dp))
+        Badge.Unparseable -> RingBadge(badgeModifier, MaterialShapes.Cookie9Sided.toShape(), colors.outline) {
+            Icon(Icons.Outlined.SystemUpdate, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(22.dp))
         }
     }
+}
+
+/** The bubble and the viewer share it, so "opening" looks the same in both places. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun ViewOnceLoadingIndicator(modifier: Modifier = Modifier) {
+    ContainedLoadingIndicator(
+        modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.primaryContainer,
+        indicatorColor = MaterialTheme.colorScheme.primary,
+        containerShape = MaterialShapes.Cookie9Sided.toShape(),
+    )
 }
 
 @Composable
@@ -312,6 +342,11 @@ private fun DigitIcon(icon: ImageVector, tint: Color) {
 }
 
 private val BADGE_SIZE = 44.dp
+
+// Out, then in: the outgoing state is gone before the incoming one shows, so no frame reads as two overlapping labels.
+private const val HANDOFF_OUT_MS = 90
+private val HANDOFF_OUT = tween<Float>(HANDOFF_OUT_MS, easing = FastOutLinearInEasing)
+private val HANDOFF_IN = tween<Float>(180, delayMillis = HANDOFF_OUT_MS, easing = LinearOutSlowInEasing)
 
 // The timestamp tucks beside the content like a text bubble's, and drops below when that would squeeze it.
 @Composable

@@ -95,7 +95,6 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.material3.LocalTextStyle
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.HeadingStyle
@@ -1226,9 +1225,8 @@ fun MessageTextFieldForAttachment(
     onPasteImage: ((ByteArray) -> Unit)? = null,
     // Injectable so a test can paste without the OS clipboard, which headless CI lacks.
     clipboardImage: () -> ByteArray? = ::getImageFromClipboard,
-    // Non-null turns the caption off; a typed caption stays visible, struck through, and comes back when re-enabled.
+    // Non-null turns the caption off; a typed caption stays visible and comes back when re-enabled.
     captionDisabledText: String? = null,
-    captionSetAsideText: String? = null,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
     var hasSent by remember { mutableStateOf(false) }
@@ -1308,9 +1306,6 @@ fun MessageTextFieldForAttachment(
                             clipboardImage = clipboardImage,
                         ),
                     enabled = captionDisabledText == null,
-                    textStyle = if (captionDisabledText != null) {
-                        LocalTextStyle.current.copy(textDecoration = TextDecoration.LineThrough)
-                    } else LocalTextStyle.current,
                     placeholder = {
                         Text(captionDisabledText ?: stringResource(MR.string.chat_new_message_placeholder))
                     },
@@ -1342,6 +1337,7 @@ fun MessageTextFieldForAttachment(
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,
                         disabledIndicatorColor = Color.Transparent,
+                        disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     ),
                     minLines = 1,
                     maxLines = 3,
@@ -1393,13 +1389,6 @@ fun MessageTextFieldForAttachment(
                 }
             }
         }
-        if (captionDisabledText != null && captionSetAsideText != null && state.annotatedString.text.isNotBlank()) {
-            EditorSupportingLine(
-                text = captionSetAsideText,
-                modifier = Modifier.padding(start = EDITOR_SUPPORTING_START - 16.dp, end = 64.dp, top = 6.dp),
-            )
-        }
-
         // Emoji only, no sticker/GIF tabs: a caption is text, and a sticker isn't.
         if (emojiPanel.isPanelComposed) {
             EmojiSelection(

@@ -4,11 +4,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.layout.onSizeChanged
@@ -24,7 +19,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
@@ -58,6 +52,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.ui.text.style.LineBreak
+import id.homebase.api.client.drives.files.DescriptorContent
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -94,6 +95,7 @@ import androidx.compose.ui.backhandler.BackHandler
 const val VIEW_ONCE_VIEWER_CLOSE_TAG = "viewOnceViewerClose"
 const val VIEW_ONCE_VIEWER_RETRY_TAG = "viewOnceViewerRetry"
 const val VIEW_ONCE_VIEWER_IMAGE_TAG = "viewOnceViewerImage"
+const val VIEW_ONCE_VIEWER_PROGRESS_TAG = "viewOnceViewerProgress"
 
 /**
  * Full-screen viewer for one received view-once item. It has no save, share, forward or paging,
@@ -116,6 +118,8 @@ fun ViewOnceViewer(
     var failed by remember(data.messageId) { mutableStateOf(false) }
     var videoReady by remember(data.messageId) { mutableStateOf(false) }
     var attempt by remember(data.messageId) { mutableIntStateOf(0) }
+    var positionMs by remember(data.messageId) { mutableLongStateOf(0L) }
+    val durationMs = remember(data.payload) { (data.payload.descriptorInfo() as? DescriptorContent.VideoFile)?.durationMs }
     val hold = remember(data.messageId) { CloseOnce() }
     val latestOnDismiss by rememberUpdatedState(onDismiss)
 
@@ -175,7 +179,10 @@ fun ViewOnceViewer(
     @Suppress("DEPRECATION")
     BackHandler(enabled = true) { close() }
 
-    ViewOnceViewerFrame(isVideo = isVideo, shown = shown && !failed, onClose = ::close, modifier = modifier) { belowHeader ->
+    val playback = durationMs?.takeIf { isVideo && videoShown && !failed }?.let { total ->
+        { (positionMs.toFloat() / total).coerceIn(0f, 1f) }
+    }
+    ViewOnceViewerFrame(isVideo = isVideo, playbackProgress = playback, onClose = ::close, modifier = modifier) { belowHeader ->
         when {
             failed -> ViewOnceViewerFailed(onRetry = { attempt++ }, modifier = belowHeader)
             isVideo && videoReady -> {
@@ -189,6 +196,7 @@ fun ViewOnceViewer(
                     ),
                     modifier = Modifier.fillMaxSize(),
                     onFirstFrame = { videoShown = true },
+                    onPositionUpdate = { positionMs = it },
                     onError = { failed = true },
                 )
                 if (!videoShown) ViewOnceViewerLoading(belowHeader)
@@ -204,7 +212,7 @@ fun ViewOnceViewer(
 @Composable
 internal fun ViewOnceViewerFrame(
     isVideo: Boolean,
-    shown: Boolean,
+    playbackProgress: (() -> Float)?,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     body: @Composable BoxScope.(belowHeader: Modifier) -> Unit,
@@ -216,7 +224,7 @@ internal fun ViewOnceViewerFrame(
             body(Modifier.fillMaxSize().padding(top = headerHeight))
             ViewOnceViewerHeader(
                 isVideo = isVideo,
-                shown = shown,
+                playbackProgress = playbackProgress,
                 onClose = onClose,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -228,49 +236,51 @@ internal fun ViewOnceViewerFrame(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ViewOnceViewerHeader(isVideo: Boolean, shown: Boolean, onClose: () -> Unit, modifier: Modifier = Modifier) {
+private fun ViewOnceViewerHeader(
+    isVideo: Boolean,
+    playbackProgress: (() -> Float)?,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = MaterialTheme.colorScheme
-    val motion = MaterialTheme.motionScheme
-    Row(
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0.8f), colors.scrim.copy(alpha = 0f))))
             .statusBarsPadding()
-            .padding(start = 8.dp, end = 20.dp, top = 8.dp, bottom = 32.dp),
-        verticalAlignment = Alignment.Top,
+            .padding(bottom = 32.dp),
     ) {
-        IconButton(
-            onClick = onClose,
-            colors = IconButtonDefaults.iconButtonColors(
-                containerColor = colors.surfaceContainerHighest.copy(alpha = 0.72f),
-                contentColor = colors.onSurface,
-            ),
-            shapes = IconButtonDefaults.shapes(),
-            modifier = Modifier.size(48.dp).testTag(VIEW_ONCE_VIEWER_CLOSE_TAG),
+        Row(
+            modifier = Modifier.padding(start = 8.dp, end = 20.dp, top = 8.dp),
+            verticalAlignment = Alignment.Top,
         ) {
-            Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.chat_view_once_close))
-        }
-        Box(
-            Modifier.padding(start = 12.dp, top = 6.dp).size(36.dp).clip(MaterialShapes.Cookie9Sided.toShape()).background(colors.primary),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(ViewOnceDigitIcon, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(26.dp))
-        }
-        Column(
-            Modifier.padding(start = 12.dp).heightIn(min = 48.dp).weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
-        ) {
-            Text(
-                text = stringResource(if (isVideo) MR.string.chat_view_once_viewer_title_video else MR.string.chat_view_once_viewer_title_photo),
-                style = MaterialTheme.typography.titleMediumEmphasized.copy(textDirection = TextDirection.Content),
-                color = colors.onSurface,
-            )
-            // Only once something is on screen: closing a viewer that never loaded uses nothing up.
-            AnimatedVisibility(
-                visible = shown,
-                enter = fadeIn(motion.defaultEffectsSpec()) + expandVertically(motion.defaultSpatialSpec()),
-                exit = fadeOut(motion.fastEffectsSpec()) + shrinkVertically(motion.fastSpatialSpec()),
+            IconButton(
+                onClick = onClose,
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = colors.surfaceContainerHighest.copy(alpha = 0.72f),
+                    contentColor = colors.onSurface,
+                ),
+                shapes = IconButtonDefaults.shapes(),
+                modifier = Modifier.size(48.dp).testTag(VIEW_ONCE_VIEWER_CLOSE_TAG),
             ) {
+                Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.chat_view_once_close))
+            }
+            Box(
+                Modifier.padding(start = 12.dp, top = 6.dp).size(36.dp).clip(MaterialShapes.Cookie9Sided.toShape()).background(colors.primary),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(ViewOnceDigitIcon, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(26.dp))
+            }
+            Column(
+                Modifier.padding(start = 12.dp).heightIn(min = 48.dp).weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+            ) {
+                Text(
+                    text = stringResource(if (isVideo) MR.string.chat_view_once_viewer_title_video else MR.string.chat_view_once_viewer_title_photo),
+                    style = MaterialTheme.typography.titleMediumEmphasized.copy(textDirection = TextDirection.Content),
+                    color = colors.onSurface,
+                )
+                // Shown from the first frame, so the header never shifts and the reader knows before anything loads.
                 Text(
                     text = stringResource(
                         if (isVideo) MR.string.chat_view_once_viewer_hint_video else MR.string.chat_view_once_viewer_hint_photo,
@@ -280,6 +290,17 @@ private fun ViewOnceViewerHeader(isVideo: Boolean, shown: Boolean, onClose: () -
                 )
             }
         }
+        // Read-only: a view-once video can't be scrubbed, but the reader can see how much is left.
+        if (playbackProgress != null) {
+            // Position arrives about twice a second; easing between ticks keeps the wave moving steadily.
+            val smooth by animateFloatAsState(playbackProgress(), tween(POSITION_TICK_MS, easing = LinearEasing))
+            LinearWavyProgressIndicator(
+                progress = { smooth },
+                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp).testTag(VIEW_ONCE_VIEWER_PROGRESS_TAG),
+                color = colors.primary,
+                trackColor = colors.onSurface.copy(alpha = 0.24f),
+            )
+        }
     }
 }
 
@@ -287,7 +308,7 @@ private fun ViewOnceViewerHeader(isVideo: Boolean, shown: Boolean, onClose: () -
 @Composable
 internal fun ViewOnceViewerLoading(modifier: Modifier = Modifier) {
     Box(modifier, contentAlignment = Alignment.Center) {
-        ContainedLoadingIndicator(modifier = Modifier.size(64.dp))
+        ViewOnceLoadingIndicator(Modifier.size(64.dp))
     }
 }
 
@@ -308,17 +329,17 @@ internal fun ViewOnceViewerFailed(onRetry: () -> Unit, modifier: Modifier = Modi
         }
         Text(
             text = stringResource(MR.string.chat_view_once_viewer_failed_title),
-            style = MaterialTheme.typography.titleLargeEmphasized,
+            style = MaterialTheme.typography.headlineSmallEmphasized,
             color = colors.onSurface,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 20.dp),
         )
         Text(
             text = stringResource(MR.string.chat_view_once_viewer_failed_body),
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Paragraph),
             color = colors.onSurfaceVariant,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 8.dp).widthIn(max = 280.dp),
+            modifier = Modifier.padding(top = 8.dp).widthIn(max = 320.dp),
         )
         Button(
             onClick = onRetry,
@@ -361,6 +382,8 @@ internal fun ViewOnceViewerImage(bitmap: ImageBitmap) {
             .transformable(transformState),
     )
 }
+
+private const val POSITION_TICK_MS = 500
 
 private class CloseOnce {
     private var done = false

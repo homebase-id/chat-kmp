@@ -2,7 +2,6 @@ package id.homebase.chat.viewonce
 
 import androidx.compose.material.icons.materialIcon
 import androidx.compose.material.icons.materialPath
-import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.ImageVector
 import kotlin.math.PI
@@ -45,17 +44,6 @@ val ViewOnceIcon: ImageVector by lazy {
     materialIcon(name = "ViewOnce") {
         materialPath {
             dashedRing(outer = 10.5f, inner = 8.5f, dashes = 10, gapDegrees = 12f)
-            digitOne()
-        }
-    }
-}
-
-val ViewOnceFilledIcon: ImageVector by lazy {
-    materialIcon(name = "ViewOnceFilled") {
-        materialPath(pathFillType = PathFillType.EvenOdd) {
-            moveTo(12f, 1.5f)
-            arcTo(10.5f, 10.5f, 0f, true, true, 11.99f, 1.5f)
-            close()
             digitOne()
         }
     }

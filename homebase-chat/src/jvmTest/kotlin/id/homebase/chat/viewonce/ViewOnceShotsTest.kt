@@ -57,7 +57,6 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.chat_view_once_caption_disabled
-import id.homebase.resources.chat_view_once_caption_discarded
 import id.homebase.chat.widget.MessageTimestampFooter
 import id.homebase.chat.widget.messageBubbleShape
 import id.homebase.core.util.formatMessageTimestamp
@@ -133,6 +132,7 @@ class ViewOnceShotsTest {
             Shot("e6-editor-on-rtl", Scene.Editor(listOf(image()), viewOnce = true), rtl = true),
             Shot("e7-editor-on-small", Scene.Editor(listOf(image()), viewOnce = true), widthDp = 360, heightDp = 640),
             Shot("e8-editor-on-typed-caption", Scene.Editor(listOf(image()), viewOnce = true, caption = "Don't show anyone")),
+            Shot("e11-editor-on-typed-caption-rtl", Scene.Editor(listOf(image()), viewOnce = true, caption = "Don't show anyone"), rtl = true),
             Shot("b1-thread", Scene.Thread()),
             Shot("b2-thread-group-long-name", Scene.Thread(group = true)),
             Shot("b3-thread-font-scale", Scene.Thread(group = true), fontScale = 1.6f, heightDp = 1_100),
@@ -202,6 +202,7 @@ class ViewOnceShotsTest {
             viewOnce = viewOnce,
             onToggleViewOnce = { viewOnceRequested = !viewOnceRequested },
             viewOnceSetAside = viewOnceRequested && !eligible && scene.attachments.size > 1,
+            viewOnceDropsCaption = viewOnce && scene.caption.isNotEmpty(),
             onAddImage = {},
             onRemoveFile = {},
             onDismiss = {},
@@ -212,7 +213,6 @@ class ViewOnceShotsTest {
                     state = caption,
                     onSendMessage = {},
                     captionDisabledText = if (viewOnce) stringResource(MR.string.chat_view_once_caption_disabled) else null,
-                    captionSetAsideText = stringResource(MR.string.chat_view_once_caption_discarded),
                     showFormattingToolbar = false,
                 )
             },
@@ -398,7 +398,8 @@ class ViewOnceShotsTest {
     @Composable
     private fun ViewerScene(scene: Scene.Viewer) {
         val frame = remember { (if (scene.video) poster else File(samples, "red-leaf.jpg")).readBytes().toImageBitmap()!! }
-        ViewOnceViewerFrame(isVideo = scene.video, shown = scene.stage == ViewerStage.Shown, onClose = {}) { belowHeader ->
+        val playing = scene.video && scene.stage == ViewerStage.Shown
+        ViewOnceViewerFrame(isVideo = scene.video, playbackProgress = if (playing) ({ 0.35f }) else null, onClose = {}) { belowHeader ->
             when (scene.stage) {
                 ViewerStage.Loading -> ViewOnceViewerLoading(belowHeader)
                 ViewerStage.Failed -> ViewOnceViewerFailed(onRetry = {}, modifier = belowHeader)

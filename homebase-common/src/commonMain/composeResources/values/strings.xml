@@ -1021,9 +1021,11 @@
     <string name="chat_view_once_photo">Photo</string>
     <string name="chat_view_once_video">Video</string>
     <string name="chat_view_once_sent">View once</string>
-    <string name="chat_view_once_unparseable">View-once media — please update the app.</string>
+    <string name="chat_view_once_unparseable">View-once media</string>
+    <string name="chat_view_once_update_to_open">Update the app to open it</string>
+    <string name="chat_view_once_unavailable">Can't be opened here</string>
     <string name="chat_view_once_caption_disabled">No caption with view once</string>
-    <string name="chat_view_once_caption_discarded">Your caption won't be sent. Turn off View once to keep it.</string>
+    <string name="chat_view_once_toggle_supporting_caption">Opens once. Captions aren't sent with view once. Screenshots are discouraged, not prevented.</string>
     <string name="chat_view_once_single_only">View once works with a single photo or video.</string>
     <string name="chat_view_once_tap_to_view">Tap to view</string>
     <string name="chat_view_once_opening">Opening…</string>
@@ -1037,7 +1039,7 @@
     <string name="chat_view_once_viewer_title_photo">View-once photo</string>
     <string name="chat_view_once_viewer_title_video">View-once video</string>
     <string name="chat_view_once_viewer_failed_title">Couldn't load</string>
-    <string name="chat_view_once_viewer_failed_body">It's still unopened, so nothing was used up.</string>
+    <string name="chat_view_once_viewer_failed_body">It's still unopened, so nothing was used up.</string>
     <string name="chat_view_once_retry">Try again</string>
     <string name="cd_view_once_open">Open view-once media</string>
 

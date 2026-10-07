@@ -6,7 +6,6 @@ import id.homebase.resources.chat_view_once_single_only
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material.icons.outlined.Info
@@ -41,6 +40,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
@@ -67,8 +67,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingToolbarDefaults
-import androidx.compose.material3.HorizontalFloatingToolbar
+import androidx.compose.ui.graphics.vector.ImageVector
+import org.jetbrains.compose.resources.StringResource
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -79,6 +79,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateSetOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -119,8 +121,17 @@ import id.homebase.resources.cd_video_thumbnail
 import id.homebase.resources.chat_message_add_gallery_image
 import id.homebase.resources.chat_view_once_toggle
 import id.homebase.resources.chat_view_once_toggle_supporting
-import id.homebase.chat.viewonce.ViewOnceFilledIcon
-import id.homebase.chat.viewonce.ViewOnceIcon
+import id.homebase.chat.viewonce.ViewOnceDigitIcon
+import id.homebase.resources.chat_view_once_toggle_supporting_caption
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButtonShapes
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialShapes
+import androidx.compose.material3.toShape
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.LayoutDirection
 import id.homebase.resources.chat_message_remove_gallery_image
 import id.homebase.resources.crop
 import id.homebase.resources.draw
@@ -216,6 +227,7 @@ fun MediaAttachmentEditor(
     onToggleViewOnce: (() -> Unit)? = null,
     // True when the sender turned view once on and then added more media, which view once can't carry.
     viewOnceSetAside: Boolean = false,
+    viewOnceDropsCaption: Boolean = false,
     onDismiss: (() -> Unit)? = null,
     collapseSecondaryChrome: Boolean = false,
     centerImageInPage: Boolean = false,
@@ -357,9 +369,18 @@ fun MediaAttachmentEditor(
                         val seekRequest = seekRequestByAtt[attId]
                         val clipStart = attachment.trimStartMs ?: 0L
                         val clipEnd = attachment.trimEndMs ?: (durationMs ?: 0L)
+                        // Sized to the poster's aspect, so a video floats on the surface like a photo instead of a full-page black slab.
+                        var aspect by remember(attId) { mutableStateOf<Float?>(null) }
+                        val rememberAspect: (AsyncImagePainter.State) -> Unit = { state ->
+                            if (state is AsyncImagePainter.State.Success) {
+                                val size = state.painter.intrinsicSize
+                                if (size.width > 0f && size.height > 0f) aspect = size.width / size.height
+                            }
+                        }
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Box(
                             modifier = Modifier
-                                .fillMaxSize()
+                                .then(aspect?.let { Modifier.aspectRatio(it) } ?: Modifier.fillMaxSize())
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(Color.Black),
                             contentAlignment = Alignment.Center,
@@ -392,6 +413,7 @@ fun MediaAttachmentEditor(
                                         contentDescription = null,
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Fit,
+                                        onState = rememberAspect,
                                     )
                                 }
                             } else {
@@ -412,6 +434,7 @@ fun MediaAttachmentEditor(
                                     contentDescription = stringResource(MR.string.cd_video_thumbnail),
                                     modifier = Modifier.fillMaxWidth(),
                                     contentScale = ContentScale.Fit,
+                                    onState = rememberAspect,
                                 )
                             }
                             IconButton(
@@ -427,6 +450,7 @@ fun MediaAttachmentEditor(
                                     tint = Color.White,
                                 )
                             }
+                        }
                         }
                     }
                     is AttachmentPendingFile.Gallery -> {
@@ -732,71 +756,53 @@ fun MediaAttachmentEditor(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp)
-                .heightIn(min = if (canShowToolbar) FloatingToolbarDefaults.ContainerSize else 0.dp),
+                .heightIn(min = if (canShowToolbar) SEND_OPTION_HEIGHT else 0.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
             itemVerticalAlignment = Alignment.CenterVertically,
         ) {
-            AnimatedContent(
+            val sendOptions = listOfNotNull(
+                SendOption.ViewOnce.takeIf { toolset.showViewOnce },
+                SendOption.Quality.takeIf { toolset.showQuality },
+            )
+            // A lone download joins the send options' connected group, so the row reads as one toolbar.
+            val saveJoinsGroup = sendOptions.isNotEmpty() && toolset.showSave && onlyTool(toolset)
+            // Not composed when empty: FlowRow would still space a zero-width slot and push the group off the edge.
+            if (!saveJoinsGroup) AnimatedContent(
                 targetState = currentAttachment?.takeIf { toolset.showToolbar },
                 contentKey = { it != null },
                 transitionSpec = { fadeIn(toolbarFade) togetherWith fadeOut(toolbarFade) using null },
             ) { attachment ->
                 if (attachment != null) {
                     val tools = toolsetFor(attachment)
-                    val toolButtons = listOfNotNull<@Composable () -> Unit>(
-                        if (tools.showCrop) {
-                            {
-                                IconButton(onClick = { onCropImage!!(attachment.attachmentId) }) {
-                                    Icon(Icons.Default.Crop, contentDescription = stringResource(MR.string.crop))
-                                }
-                            }
-                        } else null,
-                        if (tools.showDraw) {
-                            {
-                                IconButton(onClick = { onDrawImage!!(attachment.attachmentId) }) {
-                                    Icon(Icons.Default.Draw, contentDescription = stringResource(MR.string.draw))
-                                }
-                            }
-                        } else null,
-                        if (tools.showSave) {
-                            {
-                                IconButton(
-                                    onClick = { onSaveFile!!(attachment) },
-                                    colors = if (onlyTool(tools)) IconButtonDefaults.filledTonalIconButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    ) else IconButtonDefaults.iconButtonColors(),
-                                ) {
-                                    Icon(Icons.Default.Download, contentDescription = stringResource(MR.string.save))
-                                }
-                            }
-                        } else null,
+                    val toolButtons = listOfNotNull(
+                        if (tools.showCrop) EditorTool(Icons.Default.Crop, MR.string.crop) { onCropImage!!(attachment.attachmentId) } else null,
+                        if (tools.showDraw) EditorTool(Icons.Default.Draw, MR.string.draw) { onDrawImage!!(attachment.attachmentId) } else null,
+                        if (tools.showSave) EditorTool(Icons.Default.Download, MR.string.save) { onSaveFile!!(attachment) } else null,
                     )
-                    // A lone tool sits as a plain 48dp button; a toolbar around one icon reads as an empty tray.
-                    if (toolButtons.size == 1) {
-                        toolButtons.single()()
-                    } else {
-                        HorizontalFloatingToolbar(
-                            expanded = true,
-                            expandedShadowElevation = 0.dp,
-                        ) {
-                            toolButtons.forEach { it() }
+                    // Same height and connected shapes as the send options, so the row reads as one toolbar.
+                    Row(horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
+                        toolButtons.forEachIndexed { index, tool ->
+                            ConnectedToolButton(tool, sendOptionShapes(index, toolButtons.size))
                         }
                     }
                 }
             }
-            val sendOptions = listOfNotNull(
-                SendOption.ViewOnce.takeIf { toolset.showViewOnce },
-                SendOption.Quality.takeIf { toolset.showQuality },
-            )
             if (sendOptions.isNotEmpty()) {
+                val groupSize = sendOptions.size + if (saveJoinsGroup) 1 else 0
+                val offset = groupSize - sendOptions.size
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (saveJoinsGroup && currentAttachment != null) {
+                        ConnectedToolButton(
+                            EditorTool(Icons.Default.Download, MR.string.save) { onSaveFile!!(currentAttachment) },
+                            sendOptionShapes(0, groupSize),
+                        )
+                    }
                     sendOptions.forEachIndexed { index, option ->
-                        val shapes = sendOptionShapes(index, sendOptions.size)
+                        val shapes = sendOptionShapes(index + offset, groupSize)
                         when (option) {
                             SendOption.ViewOnce -> ViewOnceToolChip(
                                 toolset = toolset,
@@ -815,6 +821,7 @@ fun MediaAttachmentEditor(
             }
         }
         val notice = when {
+            viewOnce && toolset.showViewOnce && viewOnceDropsCaption -> MR.string.chat_view_once_toggle_supporting_caption
             viewOnce && toolset.showViewOnce -> MR.string.chat_view_once_toggle_supporting
             viewOnceSetAside -> MR.string.chat_view_once_single_only
             else -> null
@@ -863,32 +870,64 @@ internal fun ViewOnceToolChip(
     shapes: ToggleButtonShapes = sendOptionShapes(0, 1),
 ) {
     if (!toolset.showViewOnce) return
-    val motion = MaterialTheme.motionScheme
-    val on by animateFloatAsState(if (selected) 1f else 0f, motion.defaultSpatialSpec())
+    val colors = MaterialTheme.colorScheme
+    val on by animateFloatAsState(if (selected) 1f else 0f, MaterialTheme.motionScheme.fastSpatialSpec())
     ToggleButton(
         checked = selected,
         onCheckedChange = { onClick() },
         shapes = shapes,
-        colors = sendOptionColors(),
+        // Primary, not the HD toggle's secondary: this is the setting the recipient's trust rests on.
+        colors = ToggleButtonDefaults.toggleButtonColors(
+            containerColor = colors.surfaceContainer,
+            contentColor = colors.onSurfaceVariant,
+            checkedContainerColor = colors.primary,
+            checkedContentColor = colors.onPrimary,
+        ),
         modifier = Modifier.heightIn(min = SEND_OPTION_HEIGHT).testTag(VIEW_ONCE_CHIP_TAG),
     ) {
-        Crossfade(selected, animationSpec = motion.fastEffectsSpec()) { checked ->
+        val ink = LocalContentColor.current
+        val cookie = MaterialShapes.Cookie9Sided.toShape()
+        Box(
+            modifier = Modifier
+                .size(VIEW_ONCE_GLYPH_SIZE)
+                // Turning it on spins the outlined cookie shut into the filled badge the bubbles use.
+                .graphicsLayer {
+                    rotationZ = (1f - on) * -60f
+                    val pop = 1f + 0.16f * on * (1f - on) * 4f
+                    scaleX = pop
+                    scaleY = pop
+                }
+                .border(1.5.dp, ink, cookie)
+                .background(ink.copy(alpha = on), cookie),
+            contentAlignment = Alignment.Center,
+        ) {
             Icon(
-                imageVector = if (checked) ViewOnceFilledIcon else ViewOnceIcon,
+                imageVector = ViewOnceDigitIcon,
                 contentDescription = null,
-                modifier = Modifier
-                    .size(ButtonDefaults.IconSize)
-                    // Turning it on spins the dashed ring shut into the filled badge.
-                    .graphicsLayer {
-                        rotationZ = (1f - on) * -90f
-                        val pop = 1f + 0.18f * on * (1f - on) * 4f
-                        scaleX = pop
-                        scaleY = pop
-                    },
+                tint = lerp(ink, colors.primary, on),
+                modifier = Modifier.size(VIEW_ONCE_GLYPH_SIZE),
             )
         }
         Spacer(Modifier.size(ButtonDefaults.IconSpacing))
         Text(stringResource(MR.string.chat_view_once_toggle))
+    }
+}
+
+private class EditorTool(val icon: ImageVector, val label: StringResource, val onClick: () -> Unit)
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun ConnectedToolButton(tool: EditorTool, shapes: ToggleButtonShapes) {
+    FilledTonalIconButton(
+        onClick = tool.onClick,
+        shapes = IconButtonShapes(shape = shapes.shape, pressedShape = shapes.pressedShape),
+        colors = IconButtonDefaults.filledTonalIconButtonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+        modifier = Modifier.size(SEND_OPTION_HEIGHT),
+    ) {
+        Icon(tool.icon, contentDescription = stringResource(tool.label))
     }
 }
 
@@ -915,6 +954,7 @@ private fun MediaQualityToggle(isHigh: Boolean, onClick: () -> Unit, shapes: Tog
 }
 
 private val SEND_OPTION_HEIGHT = 48.dp
+private val VIEW_ONCE_GLYPH_SIZE = 22.dp
 
 private fun onlyTool(tools: EditorToolset): Boolean =
     listOf(tools.showCrop, tools.showDraw, tools.showSave).count { it } == 1
@@ -946,7 +986,11 @@ internal val EDITOR_SUPPORTING_START = 20.dp
 /** A quiet note under an editor control: bodySmall, onSurfaceVariant, icon on the first line. */
 @Composable
 internal fun EditorSupportingLine(text: String, modifier: Modifier = Modifier) {
-    val style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content)
+    // Content direction keeps English punctuation right; the explicit side keeps the text beside its icon in RTL.
+    val style = MaterialTheme.typography.bodySmall.copy(
+        textDirection = TextDirection.Content,
+        textAlign = if (LocalLayoutDirection.current == LayoutDirection.Rtl) TextAlign.Right else TextAlign.Left,
+    )
     val lineHeight = with(LocalDensity.current) { style.lineHeight.toDp() }
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Box(Modifier.size(lineHeight), contentAlignment = Alignment.Center) {
@@ -961,7 +1005,7 @@ internal fun EditorSupportingLine(text: String, modifier: Modifier = Modifier) {
             text = text,
             style = style,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 8.dp),
+            modifier = Modifier.padding(start = 8.dp).weight(1f),
         )
     }
 }
