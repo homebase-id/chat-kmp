@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.clipboard.rememberCopyToClipboard
+import id.homebase.core.util.getUriHandler
 import id.homebase.core.ui.screens.email.components.EmailNoServerContent
 import id.homebase.core.ui.screens.email.components.EmailHomeContent
 import id.homebase.core.ui.screens.email.onboarding.EmailOnboardingContent
@@ -73,6 +74,7 @@ fun EmailScreen(
     val setupState by setupViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
+    val uriHandler = getUriHandler()
 
     Scaffold(
         topBar = {
@@ -128,6 +130,9 @@ fun EmailScreen(
                             healthUnavailable = uiState.healthError != null,
                             onCheckHealth = { viewModel.onAction(EmailUiAction.CheckHealthClicked) },
                             onCopy = copyToClipboard,
+                            onOpenOwnerConsole = {
+                                viewModel.ownerEmailSettingsUrl()?.let { uriHandler.openUrl(it) }
+                            },
                         )
                     }
 

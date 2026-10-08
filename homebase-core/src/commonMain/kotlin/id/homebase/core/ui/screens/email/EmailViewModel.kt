@@ -11,6 +11,7 @@ import id.homebase.core.email.EmailPreferences
 import id.homebase.core.email.Thunderbird
 import id.homebase.core.email.launchMailClient
 import id.homebase.core.sync.OptionalDriveActivation
+import id.homebase.core.util.buildOwnerEmailSettingsUrl
 import id.homebase.core.ui.screens.email.setup.EmailSetupStep
 import id.homebase.core.ui.screens.email.setup.resolveSetupStep
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -204,6 +205,10 @@ class EmailViewModel(
             }
         }
     }
+
+    /** Where the owner fixes what the setup check found; null when signed out. */
+    fun ownerEmailSettingsUrl(): String? =
+        credentialsManager.credentialsFlow.value?.domain?.buildOwnerEmailSettingsUrl()
 
     fun refreshStatus() {
         viewModelScope.launch { refreshStatusNow() }

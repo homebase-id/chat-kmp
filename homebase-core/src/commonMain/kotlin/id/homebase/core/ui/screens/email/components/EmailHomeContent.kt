@@ -62,6 +62,7 @@ import id.homebase.resources.email_mailbox_none_unread
 import id.homebase.resources.email_mailbox_open_client
 import id.homebase.resources.email_mailbox_queued
 import id.homebase.resources.email_mailbox_unread
+import id.homebase.resources.email_open_owner_console
 import id.homebase.resources.email_refresh
 import id.homebase.resources.email_server_header
 import id.homebase.resources.email_server_no_report
@@ -97,6 +98,7 @@ fun EmailHomeContent(
     healthUnavailable: Boolean,
     onCheckHealth: () -> Unit,
     onCopy: (String) -> Unit,
+    onOpenOwnerConsole: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -157,6 +159,7 @@ fun EmailHomeContent(
             healthUnavailable = healthUnavailable,
             onCheckHealth = onCheckHealth,
             onCopy = onCopy,
+            onOpenOwnerConsole = onOpenOwnerConsole,
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -285,6 +288,7 @@ private fun EmailSetupCard(
     healthUnavailable: Boolean,
     onCheckHealth: () -> Unit,
     onCopy: (String) -> Unit,
+    onOpenOwnerConsole: () -> Unit,
 ) {
     SectionCard(title = stringResource(MR.string.email_setup_header)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -356,15 +360,19 @@ private fun EmailSetupCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            // Publishing DNS is an owner action, so point there rather than duplicating a write
-            // button in the app. For a domain whose DNS is hosted elsewhere, the records above
-            // are the instructions.
+            // Publishing DNS is an owner action, so open the owner console on the page that
+            // does it rather than duplicating a write button in the app. For a domain whose DNS
+            // is hosted elsewhere, the records above are the instructions.
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = stringResource(MR.string.email_health_fix_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            FilledTonalButton(onClick = onOpenOwnerConsole) {
+                Text(stringResource(MR.string.email_open_owner_console))
+            }
         }
 
         Spacer(modifier = Modifier.height(4.dp))
