@@ -74,7 +74,10 @@ jobs:
           echo "Updated version.properties:"
           cat gradle/version.properties         
 
-      - name: Azure login (OIDC)
+      # Fail fast on bad Azure credentials, before the build. This login cannot be reused after
+      # the build: az keeps GitHub's OIDC assertion, which Entra accepts for only ~5 minutes (plus
+      # clock skew), so a build longer than that fails the token fetch with AADSTS700024.
+      - name: Azure login (OIDC) - credential check
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CODESIGN_CLIENT_ID }}
@@ -102,6 +105,15 @@ jobs:
         run: ./gradlew clean createReleaseDistributable
         env:
           JDK_21: ${{ env.JAVA_HOME }}
+
+      # Again, after the build: a fresh OIDC assertion, so the token fetch below no longer depends
+      # on how long the build took.
+      - name: Azure login (OIDC) - for signing
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CODESIGN_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_CODESIGN_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_CODESIGN_SUBSCRIPTION_ID }}
 
       # Deliberately after the build: the token is short-lived.
       - name: Fetch Azure code-signing access token
