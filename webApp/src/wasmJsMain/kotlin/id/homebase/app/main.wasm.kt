@@ -25,6 +25,8 @@ import id.homebase.core.di.allModules
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.configureWebResources
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 
@@ -34,9 +36,12 @@ private fun bootStage(label: String, percent: Int): Unit =
 private fun bootDone(): Unit =
     js("{ if (window.__homebaseBootDone) window.__homebaseBootDone(); }")
 
-@OptIn(ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalResourceApi::class)
 @ExperimentalBrowserHistoryApi
 fun main() {
+    configureWebResources {
+        resourcePathMapping { path -> "./$path?v=$WEB_RESOURCES_VERSION" }
+    }
     // sql.js compiles its wasm asynchronously; finish that and build the in-memory database
     // before Koin (and the DriveSync graph behind the login screen) ever touches DatabaseManager.
     MainScope().launch {
