@@ -1,4 +1,5 @@
 import java.io.ByteArrayOutputStream
+import java.security.MessageDigest
 import org.apache.tools.ant.filters.ReplaceTokens
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpack
@@ -176,6 +177,38 @@ val generateHtmlTemplate by tasks.registering(Copy::class) {
     filter<ReplaceTokens>("tokens" to mapOf("PUBLIC_PATH" to publicPath))
 }
 
+// The .wasm is content-hashed but composeResources/*.cvr are not, and each string accessor compiled
+// into the .wasm is a byte offset into its .cvr. A browser that serves a cached .cvr from the
+// previous deploy reads misaligned records, and the string load fails. This key goes on every
+// resource URL (main.wasm.kt), so a resource change is a new URL.
+val webResourcesVersionDir = layout.buildDirectory.dir("generated/webResourcesVersion/kotlin")
+val generateWebResourcesVersion = tasks.register("generateWebResourcesVersion") {
+    val resources = files(
+        rootProject.subprojects.map { it.layout.projectDirectory.dir("src") }
+    ).asFileTree.matching { include("*/composeResources/**") }
+    val composeVersion = libs.versions.composeMultiplatform.get()
+    val outFile = webResourcesVersionDir.map { it.file("id/homebase/app/WebResourcesVersion.kt") }
+    inputs.files(resources).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.property("composeVersion", composeVersion)
+    outputs.file(outFile)
+    doLast {
+        val root = rootDir
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(composeVersion.toByteArray())
+        resources.files.sortedBy { it.relativeTo(root).invariantSeparatorsPath }.forEach { file ->
+            digest.update(file.relativeTo(root).invariantSeparatorsPath.toByteArray())
+            digest.update(file.readBytes())
+        }
+        val version = digest.digest().take(8).joinToString("") { "%02x".format(it) }
+        outFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(
+                "package id.homebase.app\n\ninternal const val WEB_RESOURCES_VERSION = \"$version\"\n"
+            )
+        }
+    }
+}
+
 kotlin {
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
@@ -212,6 +245,9 @@ kotlin {
             implementation(libs.navigation.compose)
             implementation(libs.koin.core)
 
+        }
+        wasmJsMain {
+            kotlin.srcDir(generateWebResourcesVersion.map { webResourcesVersionDir.get() })
         }
         wasmJsMain.dependencies {
             // Used by webpack.config.d/html-plugin.js to inject the (content-hashed) bundle
