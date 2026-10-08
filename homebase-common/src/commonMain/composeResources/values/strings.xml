@@ -1179,7 +1179,6 @@
     <string name="email_setup_records_manual">Your DNS is not managed here, so the email records have to be added by hand. Once setup finishes, Email setup lists each one to add.</string>
     <string name="email_setup_done_title">Email is ready</string>
     <string name="email_home_address_label">Your address</string>
-    <string name="email_home_status_ok">Everything is working</string>
     <string name="email_home_status_incomplete">Setup is not finished</string>
     <string name="email_home_storage">Mailbox storage</string>
     <string name="email_home_storage_unavailable">Not reported by your mail server</string>

@@ -140,8 +140,8 @@ class MailProvider(
      *
      * Runs the same DNS-record and key checks the owner console's Email tab runs — server-side,
      * from the same services — so the two surfaces cannot disagree and nothing is duplicated
-     * here. On demand only: it does DNS lookups plus outbound HTTPS, which is why it is not part
-     * of [getStatus], which runs on every login and identity switch.
+     * here. It does DNS lookups plus outbound HTTPS, which is why it is not part of [getStatus]
+     * (every login and identity switch); the email home asks it on entry, throttled there.
      */
     suspend fun getHealth(): MailAppHealth {
         val creds = requireCreds()

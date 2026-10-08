@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * Email setup's entry screen. Its whole job in this state is deciding which of three things the
@@ -45,7 +47,11 @@ class EmailViewModel(
 
     companion object {
         private const val TAG = "EmailViewModel"
+        private val HEALTH_REUSE = 60.seconds
     }
+
+    /** When the last health answer arrived; HomeShown reuses one younger than [HEALTH_REUSE]. */
+    private var lastHealthCheck: TimeSource.Monotonic.ValueTimeMark? = null
 
     private val _uiState = MutableStateFlow(EmailUiState())
     val uiState: StateFlow<EmailUiState> = _uiState.asStateFlow()
@@ -104,6 +110,10 @@ class EmailViewModel(
         // answer is most likely to have changed.
         viewModelScope.launch {
             credentialsManager.credentialsFlow.collect { credentials ->
+                // Another identity's answers must not be shown, or copied from, while this one's
+                // are fetched.
+                lastHealthCheck = null
+                _uiState.update { it.copy(mailboxStatus = null, health = null, healthError = null) }
                 if (credentials != null) {
                     refreshStatus()
                 }
@@ -152,7 +162,13 @@ class EmailViewModel(
 
             EmailUiAction.CheckHealthClicked -> checkHealth()
 
-            EmailUiAction.HomeShown -> if (!_uiState.value.isCheckingHealth) checkHealth()
+            // The home recomposes on every return from a sub-screen and every rotation; each
+            // check costs the server uncached DNS lookups and a relay call, so a fresh answer
+            // is reused.
+            EmailUiAction.HomeShown -> {
+                val fresh = lastHealthCheck?.let { it.elapsedNow() < HEALTH_REUSE } == true
+                if (!_uiState.value.isCheckingHealth && !fresh) checkHealth()
+            }
 
             EmailUiAction.OpenMailClientClicked -> viewModelScope.launch {
                 val client = Thunderbird.client
@@ -178,6 +194,7 @@ class EmailViewModel(
             _uiState.update { it.copy(isCheckingHealth = true, healthError = null) }
             try {
                 val health = mailProvider.getHealth()
+                lastHealthCheck = TimeSource.Monotonic.markNow()
                 _uiState.update { it.copy(health = health, isCheckingHealth = false) }
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) { "email health check failed: ${e.message}" }
@@ -197,7 +214,9 @@ class EmailViewModel(
             _uiState.update { it.copy(isCheckingServer = true, statusError = null) }
             try {
                 val status = mailProvider.getStatus()
-                _uiState.update { it.copy(serverStatus = status, isCheckingServer = false) }
+                // isCheckingServer stays on until the mailbox has answered too: the home shows
+                // "did not report" for a missing answer, and loading is not one.
+                _uiState.update { it.copy(serverStatus = status) }
                 // Remembered for the toolbar, which has to decide before this call can finish.
                 emailPreferences.setServerSupportsMail(status.tenantMailEnabled)
 
@@ -207,6 +226,7 @@ class EmailViewModel(
                     val mailbox = runCatching { mailProvider.getMailboxStatus() }.getOrNull()
                     _uiState.update { it.copy(mailboxStatus = mailbox) }
                 }
+                _uiState.update { it.copy(isCheckingServer = false) }
             } catch (e: Exception) {
                 // A failed call is not the same answer as "this server has no email" — the user
                 // is told to retry rather than told their server does not support it.

@@ -173,7 +173,7 @@ class MailModelsSerializationTest {
         assertEquals(MailHealthSeverity.Error, health.severity, "the server's verdict must survive the wire")
     }
 
-    /** odin-core #1887's shape: an unanchored DNSSEC chain is a warning, not an error. */
+    /** The severity verdict and DNSSEC block: an unanchored DNSSEC chain is a warning, not an error. */
     @Test
     fun healthParsesSeverityAndDnssec() {
         val json = """

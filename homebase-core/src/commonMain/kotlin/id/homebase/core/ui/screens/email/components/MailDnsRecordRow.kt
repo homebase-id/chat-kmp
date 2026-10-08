@@ -37,6 +37,13 @@ fun MailDnsRecordRow(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
+        // What the record is for: several broken TXT records look alike without it.
+        if (record.description.isNotBlank()) {
+            Text(
+                text = record.description,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
         CopyableLine(
             text = stringResource(MR.string.email_record_at, record.type, record.domain),
             copyText = record.domain,

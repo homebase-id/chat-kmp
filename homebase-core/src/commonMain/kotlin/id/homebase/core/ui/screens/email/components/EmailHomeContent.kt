@@ -197,25 +197,25 @@ private fun EmailServerCard(
     SectionCard(title = stringResource(MR.string.email_server_header)) {
         // Only when the mail server actually answered: showing "0 unread" because the question
         // failed would be a lie the user would act on.
-        val answered = mailbox?.available == true
+        val answered = mailbox?.takeIf { it.available }
         Row(verticalAlignment = Alignment.CenterVertically) {
             StatusIcon(
                 busy = isRefreshing,
-                icon = if (answered) Icons.Filled.CheckCircle else Icons.Outlined.Info,
-                tint = if (answered) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                icon = if (answered != null) Icons.Filled.CheckCircle else Icons.Outlined.Info,
+                tint = if (answered != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = stringResource(
-                        if (answered) MR.string.email_server_running else MR.string.email_server_no_report
+                        if (answered != null) MR.string.email_server_running else MR.string.email_server_no_report
                     ),
                     style = MaterialTheme.typography.bodyLarge,
                 )
-                if (mailbox != null && answered) {
+                if (answered != null) {
                     Text(
-                        text = if (mailbox.inboxUnread > 0) {
-                            pluralStringResource(MR.plurals.email_mailbox_unread, mailbox.inboxUnread, mailbox.inboxUnread)
+                        text = if (answered.inboxUnread > 0) {
+                            pluralStringResource(MR.plurals.email_mailbox_unread, answered.inboxUnread, answered.inboxUnread)
                         } else {
                             stringResource(MR.string.email_mailbox_none_unread)
                         },
@@ -234,10 +234,10 @@ private fun EmailServerCard(
             }
         }
 
-        if (mailbox != null && answered) {
-            if (mailbox.junkTotal > 0) {
+        if (answered != null) {
+            if (answered.junkTotal > 0) {
                 Text(
-                    text = pluralStringResource(MR.plurals.email_mailbox_junk, mailbox.junkTotal, mailbox.junkTotal),
+                    text = pluralStringResource(MR.plurals.email_mailbox_junk, answered.junkTotal, answered.junkTotal),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -245,9 +245,9 @@ private fun EmailServerCard(
 
             // Anything queued is a delivery problem, so it gets the error colour rather than
             // sitting quietly with the other counts.
-            if (mailbox.queuedOutbound > 0) {
+            if (answered.queuedOutbound > 0) {
                 Text(
-                    text = pluralStringResource(MR.plurals.email_mailbox_queued, mailbox.queuedOutbound, mailbox.queuedOutbound),
+                    text = pluralStringResource(MR.plurals.email_mailbox_queued, answered.queuedOutbound, answered.queuedOutbound),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
