@@ -27,8 +27,8 @@ data class EmailUiState(
     /** null until email is on and the mail server has answered. */
     val mailboxStatus: MailboxStatusResult? = null,
     /**
-     * Whether email actually WORKS, as opposed to how far setup got. Null until the user asks:
-     * the check costs DNS lookups plus outbound HTTPS server-side, so it is not run on entry.
+     * Whether email actually WORKS, as opposed to how far setup got. Asked each time the email
+     * home is shown, and again on "Check setup again"; null until the first answer.
      *
      * [serverStatus] cannot answer this — an identity whose domain has no MX reports as fully
      * configured there while nothing can deliver mail to it.
@@ -59,8 +59,11 @@ sealed interface EmailUiAction {
     /** Opens Thunderbird, if this platform knows how. */
     data object OpenMailClientClicked : EmailUiAction
 
-    /** "Check my email" — asks the server whether email actually works. */
+    /** "Check setup again" — asks the server whether email actually works. */
     data object CheckHealthClicked : EmailUiAction
+
+    /** The email home came on screen: check the setup without waiting to be asked. */
+    data object HomeShown : EmailUiAction
 }
 
 sealed interface EmailUiEvent {

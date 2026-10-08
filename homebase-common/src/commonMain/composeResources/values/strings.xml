@@ -1176,7 +1176,7 @@
     <string name="email_setup_failed">Setup did not complete.</string>
     <string name="email_setup_stalled">That step reported success but nothing changed, so setup stopped rather than repeating it.</string>
     <string name="email_setup_retry">Try again</string>
-    <string name="email_setup_records_manual">Your DNS is not managed here, so these records have to be added by hand.</string>
+    <string name="email_setup_records_manual">Your DNS is not managed here, so the email records have to be added by hand. Once setup finishes, Email setup lists each one to add.</string>
     <string name="email_setup_done_title">Email is ready</string>
     <string name="email_home_address_label">Your address</string>
     <string name="email_home_status_ok">Everything is working</string>
@@ -1302,10 +1302,11 @@
     <string name="email_secrets_password_warning">Anyone with this password can read and send your mail. Enter it only in your own mail app.</string>
 
     <!-- Email setup — mailbox status -->
-    <string name="email_mailbox_unread">%1$d unread</string>
-    <string name="email_mailbox_none_unread">Nothing unread</string>
-    <string name="email_mailbox_junk">%1$d in junk</string>
-    <string name="email_mailbox_queued">%1$d message(s) still trying to send</string>
+    <string name="email_mailbox_none_unread">No unread email</string>
+    <string name="email_server_header">Email server</string>
+    <string name="email_server_running">Your email server is running</string>
+    <string name="email_server_no_report">Your email server did not report its status</string>
+    <string name="email_refresh">Refresh</string>
     <string name="email_mailbox_open_client">Open %1$s</string>
     <!-- Email health: whether mail actually works, as opposed to whether setup finished. -->
     <!-- Mail app setup: what to type into a client that has no autoconfig. -->
@@ -1326,11 +1327,20 @@
     <string name="email_settings_username">Username</string>
     <string name="email_settings_password_hint">Password: use one of the app passwords below. The same one works for both.</string>
     <string name="email_settings_cert_warning">Your server may ask you to accept a security exception the first time you connect.</string>
-    <string name="email_health_check">Check my email</string>
-    <string name="email_health_checking">Checking…</string>
-    <string name="email_health_ok">Your email is working.</string>
+    <string name="email_setup_header">Email setup</string>
+    <string name="email_setup_check_again">Check setup again</string>
+    <string name="email_setup_checking">Checking your email setup…</string>
+    <string name="email_setup_ok">Your email setup is correct</string>
+    <string name="email_setup_warning">Your email works, but its setup could be stronger.</string>
     <string name="email_health_attention">Your email needs attention. Mail may not reach you, or may be treated as spam.</string>
-    <string name="email_health_missing_record">%1$s record missing or incorrect</string>
+    <string name="email_setup_dnssec_missing">DNSSEC is not set up for your domain. For your security and email deliverability, it should be configured.</string>
+    <string name="email_setup_dnssec_broken">DNSSEC for your domain is broken, so some mail servers cannot find it at all.</string>
+    <string name="email_record_at">%1$s record at %2$s</string>
+    <string name="email_record_not_found">Not found</string>
+    <string name="email_record_wrong_value">Has the wrong value</string>
+    <string name="email_record_unchecked">Could not be checked</string>
+    <string name="email_copy_name">Copy name</string>
+    <string name="email_copy_value">Copy value</string>
     <string name="email_health_fix_hint">Open the owner console to fix this: Security → Email.</string>
     <string name="email_health_unavailable">Could not check your email right now.</string>
     <string name="email_mailbox_open_failed">%1$s does not seem to be installed</string>

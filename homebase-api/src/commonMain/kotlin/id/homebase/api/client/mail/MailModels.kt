@@ -103,9 +103,9 @@ data class MailDnsRecord(
  * [MailAppStatus] answers only the second question, so an identity whose domain has no MX
  * reports as fully configured while nothing can deliver mail to it.
  *
- * The server decides: [brokenRecords] is already filtered and [needsAttention] is already
- * computed, so this app renders the verdict rather than re-deriving it. Re-deriving it here
- * would let the app and the owner console disagree about the same identity.
+ * The server decides: [brokenRecords] is already filtered and [severity] is already computed, so
+ * this app renders the verdict rather than re-deriving it. Re-deriving it here would let the app
+ * and the owner console disagree about the same identity.
  */
 @Serializable
 data class MailAppHealth(
@@ -114,10 +114,44 @@ data class MailAppHealth(
     val activated: Boolean = false,
     val records: List<MailDnsRecord> = emptyList(),
     val brokenRecords: List<MailDnsRecord> = emptyList(),
-    /** Checks a record comparison cannot make: DKIM pair proof, public-key drift. */
+    /** Checks a record comparison cannot make: DKIM pair proof, public-key drift, the relay. */
     val errors: List<String> = emptyList(),
     val warnings: List<String> = emptyList(),
+    /**
+     * The verdict to branch on. No default, deliberately: with `ignoreUnknownKeys` a missing
+     * field would silently become the default, and a default of [MailHealthSeverity.Ok] paints a
+     * broken setup green. Missing, it fails to decode and the screen says it could not check.
+     */
+    val severity: MailHealthSeverity,
+    /** Null when there is no email to report on. */
+    val dnssec: MailDnssecHealth? = null,
+)
+
+/** How bad it is, decided by the server (odin-core `MailHealthSeverity`). */
+@Serializable
+enum class MailHealthSeverity {
+    @SerialName("ok")
+    Ok,
+
+    /** Works, but weaker than it should be: an unanchored DNSSEC chain, a check that could not run. */
+    @SerialName("warning")
+    Warning,
+
+    /** Mail is not delivered, or is rejected or marked as spam. */
+    @SerialName("error")
+    Error,
+}
+
+/**
+ * The two DNSSEC verdicts the app shows, from odin-core `DnssecHealthResult`. The raw status is
+ * left undeclared on purpose: the server has already graded it.
+ */
+@Serializable
+data class MailDnssecHealth(
+    /** DNSSEC is not (fully) set up for the domain. */
     val needsAttention: Boolean = false,
+    /** A DS that matches no key: validating resolvers refuse the whole domain. */
+    val breaksResolution: Boolean = false,
 )
 
 /**

@@ -3,6 +3,7 @@ package id.homebase.api.client.mail
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -135,9 +136,9 @@ class MailModelsSerializationTest {
     }
 
     /**
-     * The health shape. The dangerous default here is `needsAttention` silently reading false:
-     * the screen would then report healthy email for an identity whose domain has no MX, which
-     * is the exact failure this endpoint exists to surface.
+     * The health shape. The dangerous default here is the verdict silently reading as fine: the
+     * screen would then report healthy email for an identity whose domain has no MX, which is
+     * the exact failure this endpoint exists to surface.
      */
     @Test
     fun healthParsesTheServerShape() {
@@ -154,7 +155,8 @@ class MailModelsSerializationTest {
               ],
               "errors": ["DKIM pair proof failed"],
               "warnings": ["Could not reach the WKD endpoint"],
-              "needsAttention": true
+              "needsAttention": true,
+              "severity": "error"
             }
         """.trimIndent()
 
@@ -168,18 +170,61 @@ class MailModelsSerializationTest {
         assertEquals("MX", health.brokenRecords.first().type)
         assertEquals(listOf("DKIM pair proof failed"), health.errors)
         assertEquals(listOf("Could not reach the WKD endpoint"), health.warnings)
-        assertTrue(health.needsAttention, "the server's verdict must survive the wire")
+        assertEquals(MailHealthSeverity.Error, health.severity, "the server's verdict must survive the wire")
+    }
+
+    /** odin-core #1887's shape: an unanchored DNSSEC chain is a warning, not an error. */
+    @Test
+    fun healthParsesSeverityAndDnssec() {
+        val json = """
+            {
+              "tenantMailEnabled": true,
+              "activated": true,
+              "dnssec": {
+                "status": "parentUnsigned",
+                "enclosingZone": "",
+                "enclosingZoneStatus": null,
+                "lookupFailed": false,
+                "needsAttention": true,
+                "breaksResolution": false,
+                "dsToPublish": [],
+                "parentDsRecords": [],
+                "parentZoneSigned": false
+              },
+              "needsAttention": false,
+              "severity": "warning"
+            }
+        """.trimIndent()
+
+        val health = OdinSystemSerializer.deserialize<MailAppHealth>(json)
+
+        assertEquals(MailHealthSeverity.Warning, health.severity)
+        assertEquals(MailDnssecHealth(needsAttention = true, breaksResolution = false), health.dnssec)
+    }
+
+    /**
+     * Pins the deliberate missing default on `severity`: a payload without the verdict must fail
+     * (and render as "could not check"), never decode as a healthy setup.
+     */
+    @Test
+    fun healthWithoutSeverityDoesNotDecode() {
+        assertFails {
+            OdinSystemSerializer.deserialize<MailAppHealth>(
+                """{ "tenantMailEnabled": true, "activated": true, "needsAttention": true }"""
+            )
+        }
     }
 
     /** A host with no email must parse as "nothing to see", not as a warning. */
     @Test
     fun healthParsesTheEmailIsOffShape() {
         val health = OdinSystemSerializer.deserialize<MailAppHealth>(
-            """{ "tenantMailEnabled": false, "activated": false }"""
+            """{ "tenantMailEnabled": false, "activated": false, "severity": "ok" }"""
         )
 
         assertTrue(!health.tenantMailEnabled)
-        assertTrue(!health.needsAttention)
+        assertEquals(MailHealthSeverity.Ok, health.severity)
+        assertNull(health.dnssec)
         assertTrue(health.records.isEmpty())
     }
 

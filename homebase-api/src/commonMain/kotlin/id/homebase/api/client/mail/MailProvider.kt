@@ -155,7 +155,7 @@ class MailProvider(
         Logger.d(tag = TAG) {
             "health: enabled=${health.tenantMailEnabled} activated=${health.activated} " +
                 "broken=${health.brokenRecords.size}/${health.records.size} " +
-                "errors=${health.errors.size} needsAttention=${health.needsAttention}"
+                "errors=${health.errors.size} severity=${health.severity}"
         }
         return health
     }

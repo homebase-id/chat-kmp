@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.email.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,54 +16,69 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.VpnKey
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import androidx.compose.material3.FilledTonalButton
+import id.homebase.api.client.mail.MailAppHealth
 import id.homebase.api.client.mail.MailAppStatus
+import id.homebase.api.client.mail.MailHealthSeverity
 import id.homebase.api.client.mail.MailboxMode
 import id.homebase.api.client.mail.MailboxStatusResult
 import id.homebase.core.email.Thunderbird
 import id.homebase.core.email.canLaunchMailClient
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.email_health_attention
-import id.homebase.resources.email_health_check
-import id.homebase.resources.email_health_checking
 import id.homebase.resources.email_health_fix_hint
-import id.homebase.resources.email_health_missing_record
-import id.homebase.resources.email_health_ok
 import id.homebase.resources.email_health_unavailable
 import id.homebase.resources.email_home_address_label
 import id.homebase.resources.email_home_mail_app
 import id.homebase.resources.email_home_mail_app_detail
 import id.homebase.resources.email_home_secrets
+import id.homebase.resources.email_home_secrets_detail
 import id.homebase.resources.email_home_thunderbird
 import id.homebase.resources.email_home_thunderbird_detail
-import id.homebase.resources.email_home_secrets_detail
-import id.homebase.resources.email_home_status_ok
 import id.homebase.resources.email_mailbox_junk
 import id.homebase.resources.email_mailbox_none_unread
 import id.homebase.resources.email_mailbox_open_client
 import id.homebase.resources.email_mailbox_queued
 import id.homebase.resources.email_mailbox_unread
-import id.homebase.resources.email_no_server_retry
-import id.homebase.api.client.mail.MailAppHealth
+import id.homebase.resources.email_refresh
+import id.homebase.resources.email_server_header
+import id.homebase.resources.email_server_no_report
+import id.homebase.resources.email_server_running
+import id.homebase.resources.email_setup_check_again
+import id.homebase.resources.email_setup_checking
+import id.homebase.resources.email_setup_dnssec_broken
+import id.homebase.resources.email_setup_dnssec_missing
+import id.homebase.resources.email_setup_header
+import id.homebase.resources.email_setup_ok
+import id.homebase.resources.email_setup_warning
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * The screen once email works: the address, that it is working, and the way in to the secrets.
+ * The screen once email is set up: the address, the server and its mail, whether the domain is
+ * set up so mail reaches it, and the way in to the secrets.
  *
  * Storage deliberately is not here yet — the mail server does not report usage on this setup, and
  * a row that always says "unknown" is worse than no row.
@@ -80,6 +96,7 @@ fun EmailHomeContent(
     isCheckingHealth: Boolean,
     healthUnavailable: Boolean,
     onCheckHealth: () -> Unit,
+    onCopy: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -121,154 +138,26 @@ fun EmailHomeContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isRefreshing) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(
-                            imageVector = Icons.Filled.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = stringResource(MR.string.email_home_status_ok),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                }
+        // Two questions, two cards: is the server up and is there mail, and is the domain set up
+        // so mail reaches it. One green tick for both hid a domain with no MX behind a working
+        // server.
+        EmailServerCard(
+            status = status,
+            mailbox = mailbox,
+            isRefreshing = isRefreshing,
+            onRefresh = onRefresh,
+            onOpenMailClient = onOpenMailClient,
+        )
 
-                // Only when the mail server actually answered — showing "0 unread" because the
-                // question failed would be a lie the user would act on.
-                if (mailbox?.available == true) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = if (mailbox.inboxUnread > 0) {
-                            stringResource(MR.string.email_mailbox_unread, mailbox.inboxUnread)
-                        } else {
-                            stringResource(MR.string.email_mailbox_none_unread)
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
+        Spacer(modifier = Modifier.height(16.dp))
 
-                    if (mailbox.junkTotal > 0) {
-                        Text(
-                            text = stringResource(MR.string.email_mailbox_junk, mailbox.junkTotal),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-
-                    // Anything queued is a delivery problem, so it gets the error colour rather
-                    // than sitting quietly with the other counts.
-                    if (mailbox.queuedOutbound > 0) {
-                        Text(
-                            text = stringResource(MR.string.email_mailbox_queued, mailbox.queuedOutbound),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-
-                    if (canLaunchMailClient(Thunderbird.client)) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        FilledTonalButton(onClick = onOpenMailClient) {
-                            Text(
-                                stringResource(
-                                    MR.string.email_mailbox_open_client,
-                                    Thunderbird.client.displayName,
-                                )
-                            )
-                        }
-                    }
-                }
-
-                status?.publicKeyFingerprint?.let { fingerprint ->
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        // Short form: enough to compare against a mail client at a glance.
-                        text = fingerprint.takeLast(16).chunked(4).joinToString(" "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-                TextButton(onClick = onRefresh, enabled = !isRefreshing) {
-                    Text(stringResource(MR.string.email_no_server_retry))
-                }
-
-                // "Set up" and "works" are different questions. Everything above answers the
-                // first; an identity whose domain has no MX looks fully configured there while
-                // nothing can deliver mail to it. The verdict below is the server's — the same
-                // checks the owner console runs, decided there and rendered here.
-                Spacer(modifier = Modifier.height(8.dp))
-                TextButton(onClick = onCheckHealth, enabled = !isCheckingHealth) {
-                    Text(
-                        stringResource(
-                            if (isCheckingHealth) MR.string.email_health_checking
-                            else MR.string.email_health_check
-                        )
-                    )
-                }
-
-                when {
-                    // A failed check must never read as a clean bill of health.
-                    healthUnavailable -> Text(
-                        text = stringResource(MR.string.email_health_unavailable),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-
-                    health == null -> Unit
-
-                    health.needsAttention -> {
-                        Text(
-                            text = stringResource(MR.string.email_health_attention),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        health.brokenRecords.forEach { record ->
-                            Text(
-                                text = stringResource(
-                                    MR.string.email_health_missing_record,
-                                    record.description.ifBlank { record.type },
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        health.errors.forEach { message ->
-                            Text(
-                                text = message,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        // Publishing DNS is an owner action, so point there rather than
-                        // duplicating a write button in the app.
-                        Text(
-                            text = stringResource(MR.string.email_health_fix_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-
-                    else -> Text(
-                        text = stringResource(MR.string.email_health_ok),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
+        EmailSetupCard(
+            health = health,
+            isCheckingHealth = isCheckingHealth,
+            healthUnavailable = healthUnavailable,
+            onCheckHealth = onCheckHealth,
+            onCopy = onCopy,
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -294,6 +183,231 @@ fun EmailHomeContent(
                 onClick = onOpenSecrets,
             )
         }
+    }
+}
+
+@Composable
+private fun EmailServerCard(
+    status: MailAppStatus?,
+    mailbox: MailboxStatusResult?,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    onOpenMailClient: () -> Unit,
+) {
+    SectionCard(title = stringResource(MR.string.email_server_header)) {
+        // Only when the mail server actually answered: showing "0 unread" because the question
+        // failed would be a lie the user would act on.
+        val answered = mailbox?.available == true
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            StatusIcon(
+                busy = isRefreshing,
+                icon = if (answered) Icons.Filled.CheckCircle else Icons.Outlined.Info,
+                tint = if (answered) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(
+                        if (answered) MR.string.email_server_running else MR.string.email_server_no_report
+                    ),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                if (mailbox != null && answered) {
+                    Text(
+                        text = if (mailbox.inboxUnread > 0) {
+                            pluralStringResource(MR.plurals.email_mailbox_unread, mailbox.inboxUnread, mailbox.inboxUnread)
+                        } else {
+                            stringResource(MR.string.email_mailbox_none_unread)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            // Next to the line it refreshes, and there even when the server did not answer:
+            // that is when a refresh matters most.
+            IconButton(onClick = onRefresh, enabled = !isRefreshing) {
+                Icon(
+                    imageVector = Icons.Outlined.Refresh,
+                    contentDescription = stringResource(MR.string.email_refresh),
+                )
+            }
+        }
+
+        if (mailbox != null && answered) {
+            if (mailbox.junkTotal > 0) {
+                Text(
+                    text = pluralStringResource(MR.plurals.email_mailbox_junk, mailbox.junkTotal, mailbox.junkTotal),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            // Anything queued is a delivery problem, so it gets the error colour rather than
+            // sitting quietly with the other counts.
+            if (mailbox.queuedOutbound > 0) {
+                Text(
+                    text = pluralStringResource(MR.plurals.email_mailbox_queued, mailbox.queuedOutbound, mailbox.queuedOutbound),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+
+            if (canLaunchMailClient(Thunderbird.client)) {
+                Spacer(modifier = Modifier.height(8.dp))
+                FilledTonalButton(onClick = onOpenMailClient) {
+                    Text(stringResource(MR.string.email_mailbox_open_client, Thunderbird.client.displayName))
+                }
+            }
+        }
+
+        status?.publicKeyFingerprint?.let { fingerprint ->
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                // Short form: enough to compare against a mail client at a glance.
+                text = fingerprint.takeLast(16).chunked(4).joinToString(" "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * Whether the domain is set up so mail reaches it and is not marked as spam. The colour is the
+ * server's [MailAppHealth.severity] — the same checks the owner console runs, decided there and
+ * only rendered here.
+ */
+@Composable
+private fun EmailSetupCard(
+    health: MailAppHealth?,
+    isCheckingHealth: Boolean,
+    healthUnavailable: Boolean,
+    onCheckHealth: () -> Unit,
+    onCopy: (String) -> Unit,
+) {
+    SectionCard(title = stringResource(MR.string.email_setup_header)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val (icon, tint, headline) = when {
+                // A failed check must never read as a clean bill of health.
+                healthUnavailable -> Triple(
+                    Icons.Outlined.Info,
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+                    MR.string.email_health_unavailable,
+                )
+
+                health == null -> Triple(
+                    Icons.Outlined.Info,
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+                    MR.string.email_setup_checking,
+                )
+
+                else -> when (health.severity) {
+                    MailHealthSeverity.Ok -> Triple(
+                        Icons.Filled.CheckCircle,
+                        MaterialTheme.colorScheme.primary,
+                        MR.string.email_setup_ok,
+                    )
+
+                    MailHealthSeverity.Warning -> Triple(
+                        Icons.Outlined.WarningAmber,
+                        HomebaseTheme.extendedColors.warning,
+                        MR.string.email_setup_warning,
+                    )
+
+                    MailHealthSeverity.Error -> Triple(
+                        Icons.Outlined.ErrorOutline,
+                        MaterialTheme.colorScheme.error,
+                        MR.string.email_health_attention,
+                    )
+                }
+            }
+            StatusIcon(busy = isCheckingHealth, icon = icon, tint = tint)
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = stringResource(headline),
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        if (health != null && !healthUnavailable && health.severity != MailHealthSeverity.Ok) {
+            health.brokenRecords.forEach { record ->
+                Spacer(modifier = Modifier.height(12.dp))
+                MailDnsRecordRow(record = record, onCopy = onCopy)
+            }
+            (health.errors + health.warnings).forEach { message ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            val dnssec = health.dnssec
+            if (dnssec != null && (dnssec.breaksResolution || dnssec.needsAttention)) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(
+                        if (dnssec.breaksResolution) MR.string.email_setup_dnssec_broken
+                        else MR.string.email_setup_dnssec_missing
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            // Publishing DNS is an owner action, so point there rather than duplicating a write
+            // button in the app. For a domain whose DNS is hosted elsewhere, the records above
+            // are the instructions.
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = stringResource(MR.string.email_health_fix_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+        TextButton(onClick = onCheckHealth, enabled = !isCheckingHealth) {
+            Text(stringResource(MR.string.email_setup_check_again))
+        }
+    }
+}
+
+@Composable
+private fun SectionCard(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            content()
+        }
+    }
+}
+
+/** A section's status icon, or a spinner in its place while the section is being re-asked. */
+@Composable
+private fun StatusIcon(busy: Boolean, icon: ImageVector, tint: Color) {
+    if (busy) {
+        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+    } else {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(24.dp),
+        )
     }
 }
 

@@ -152,6 +152,8 @@ class EmailViewModel(
 
             EmailUiAction.CheckHealthClicked -> checkHealth()
 
+            EmailUiAction.HomeShown -> if (!_uiState.value.isCheckingHealth) checkHealth()
+
             EmailUiAction.OpenMailClientClicked -> viewModelScope.launch {
                 val client = Thunderbird.client
                 // False means not installed — say so rather than appearing to do nothing.
@@ -166,7 +168,7 @@ class EmailViewModel(
      * Ask the server whether email actually works.
      *
      * Every check runs server-side, from the same services the owner console's Email tab uses,
-     * and the verdict (`needsAttention`, `brokenRecords`) arrives already decided. Nothing is
+     * and the verdict (`severity`, `brokenRecords`) arrives already decided. Nothing is
      * recomputed here on purpose: two clients deriving "healthy" from raw records would
      * eventually disagree about the same identity, and the one that disagreed quietly would be
      * the one people trusted.

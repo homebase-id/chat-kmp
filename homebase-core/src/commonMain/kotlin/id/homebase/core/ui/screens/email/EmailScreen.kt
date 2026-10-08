@@ -14,17 +14,22 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.ExtendPermissionDialog
+import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.core.ui.screens.email.components.EmailNoServerContent
 import id.homebase.core.ui.screens.email.components.EmailHomeContent
 import id.homebase.core.ui.screens.email.onboarding.EmailOnboardingContent
@@ -66,12 +71,14 @@ fun EmailScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val setupStep by viewModel.setupStep.collectAsStateWithLifecycle()
     val setupState by setupViewModel.uiState.collectAsStateWithLifecycle()
-
+    val snackbarHostState = remember { SnackbarHostState() }
+    val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
 
     Scaffold(
         topBar = {
             TopAppBar(title = { Text(stringResource(MR.string.email_label)) })
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -104,19 +111,25 @@ fun EmailScreen(
                         onAction = viewModel::onAction,
                     )
 
-                    EmailBody.Home -> EmailHomeContent(
-                        status = uiState.serverStatus,
-                        mailbox = uiState.mailboxStatus,
-                        onOpenSecrets = onNavigateToSecrets,
-                        onOpenThunderbirdSetup = onNavigateToThunderbirdSetup,
-                        onRefresh = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
-                        onOpenMailClient = { viewModel.onAction(EmailUiAction.OpenMailClientClicked) },
-                        isRefreshing = uiState.isCheckingServer,
-                        health = uiState.health,
-                        isCheckingHealth = uiState.isCheckingHealth,
-                        healthUnavailable = uiState.healthError != null,
-                        onCheckHealth = { viewModel.onAction(EmailUiAction.CheckHealthClicked) },
-                    )
+                    EmailBody.Home -> {
+                        // Every time the home comes on screen: a domain's DNS changes outside
+                        // the app, and a verdict from an earlier visit may no longer hold.
+                        LaunchedEffect(Unit) { viewModel.onAction(EmailUiAction.HomeShown) }
+                        EmailHomeContent(
+                            status = uiState.serverStatus,
+                            mailbox = uiState.mailboxStatus,
+                            onOpenSecrets = onNavigateToSecrets,
+                            onOpenThunderbirdSetup = onNavigateToThunderbirdSetup,
+                            onRefresh = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
+                            onOpenMailClient = { viewModel.onAction(EmailUiAction.OpenMailClientClicked) },
+                            isRefreshing = uiState.isCheckingServer,
+                            health = uiState.health,
+                            isCheckingHealth = uiState.isCheckingHealth,
+                            healthUnavailable = uiState.healthError != null,
+                            onCheckHealth = { viewModel.onAction(EmailUiAction.CheckHealthClicked) },
+                            onCopy = copyToClipboard,
+                        )
+                    }
 
                     EmailBody.Setup -> EmailSetupContent(
                         currentStep = setupStep,
