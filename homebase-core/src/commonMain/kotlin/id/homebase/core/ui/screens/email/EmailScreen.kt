@@ -114,8 +114,8 @@ fun EmailScreen(
                     )
 
                     EmailBody.Home -> {
-                        // Every time the home comes on screen: a domain's DNS changes outside
-                        // the app, and a verdict from an earlier visit may no longer hold.
+                        // On entry: a domain's DNS changes outside the app. The ViewModel
+                        // reuses a recent answer.
                         LaunchedEffect(Unit) { viewModel.onAction(EmailUiAction.HomeShown) }
                         EmailHomeContent(
                             status = uiState.serverStatus,

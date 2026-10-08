@@ -2,7 +2,6 @@ package id.homebase.core.ui.screens.email.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,6 +44,8 @@ import id.homebase.api.client.mail.MailboxMode
 import id.homebase.api.client.mail.MailboxStatusResult
 import id.homebase.core.email.Thunderbird
 import id.homebase.core.email.canLaunchMailClient
+import id.homebase.core.ui.screens.email.thunderbird.Body
+import id.homebase.core.ui.screens.email.thunderbird.SetupCard
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.email_health_attention
@@ -64,6 +65,7 @@ import id.homebase.resources.email_mailbox_queued
 import id.homebase.resources.email_mailbox_unread
 import id.homebase.resources.email_open_owner_console
 import id.homebase.resources.email_refresh
+import id.homebase.resources.email_server_checking
 import id.homebase.resources.email_server_header
 import id.homebase.resources.email_server_no_report
 import id.homebase.resources.email_server_running
@@ -197,24 +199,21 @@ private fun EmailServerCard(
     onRefresh: () -> Unit,
     onOpenMailClient: () -> Unit,
 ) {
-    SectionCard(title = stringResource(MR.string.email_server_header)) {
-        // Only when the mail server actually answered: showing "0 unread" because the question
+    SetupCard(title = stringResource(MR.string.email_server_header)) {
+        // Counts only when the mail server actually answered: "0 unread" because the question
         // failed would be a lie the user would act on.
         val answered = mailbox?.takeIf { it.available }
+        val (icon, tint, line) = when {
+            mailbox == null -> Triple(Icons.Outlined.Info, MaterialTheme.colorScheme.onSurfaceVariant, MR.string.email_server_checking)
+            answered == null -> Triple(Icons.Outlined.Info, MaterialTheme.colorScheme.onSurfaceVariant, MR.string.email_server_no_report)
+            else -> Triple(Icons.Filled.CheckCircle, MaterialTheme.colorScheme.primary, MR.string.email_server_running)
+        }
+        Spacer(modifier = Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            StatusIcon(
-                busy = isRefreshing,
-                icon = if (answered != null) Icons.Filled.CheckCircle else Icons.Outlined.Info,
-                tint = if (answered != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            StatusIcon(busy = isRefreshing || mailbox == null, icon = icon, tint = tint)
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(
-                        if (answered != null) MR.string.email_server_running else MR.string.email_server_no_report
-                    ),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
+                Text(text = stringResource(line), style = MaterialTheme.typography.bodyLarge)
                 if (answered != null) {
                     Text(
                         text = if (answered.inboxUnread > 0) {
@@ -239,11 +238,7 @@ private fun EmailServerCard(
 
         if (answered != null) {
             if (answered.junkTotal > 0) {
-                Text(
-                    text = pluralStringResource(MR.plurals.email_mailbox_junk, answered.junkTotal, answered.junkTotal),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Body(pluralStringResource(MR.plurals.email_mailbox_junk, answered.junkTotal, answered.junkTotal))
             }
 
             // Anything queued is a delivery problem, so it gets the error colour rather than
@@ -264,15 +259,8 @@ private fun EmailServerCard(
             }
         }
 
-        status?.publicKeyFingerprint?.let { fingerprint ->
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                // Short form: enough to compare against a mail client at a glance.
-                text = fingerprint.takeLast(16).chunked(4).joinToString(" "),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        // Short form: enough to compare against a mail client at a glance.
+        status?.publicKeyFingerprint?.let { Body(it.takeLast(16).chunked(4).joinToString(" ")) }
     }
 }
 
@@ -290,42 +278,21 @@ private fun EmailSetupCard(
     onCopy: (String) -> Unit,
     onOpenOwnerConsole: () -> Unit,
 ) {
-    SectionCard(title = stringResource(MR.string.email_setup_header)) {
+    SetupCard(title = stringResource(MR.string.email_setup_header)) {
+        // A failed check must never read as a clean bill of health.
+        val shown = health?.takeUnless { healthUnavailable }
+        val (icon, tint, headline) = when (shown?.severity) {
+            null -> Triple(
+                Icons.Outlined.Info,
+                MaterialTheme.colorScheme.onSurfaceVariant,
+                if (healthUnavailable) MR.string.email_health_unavailable else MR.string.email_setup_checking,
+            )
+            MailHealthSeverity.Ok -> Triple(Icons.Filled.CheckCircle, MaterialTheme.colorScheme.primary, MR.string.email_setup_ok)
+            MailHealthSeverity.Warning -> Triple(Icons.Outlined.WarningAmber, HomebaseTheme.extendedColors.warning, MR.string.email_setup_warning)
+            MailHealthSeverity.Error -> Triple(Icons.Outlined.ErrorOutline, MaterialTheme.colorScheme.error, MR.string.email_health_attention)
+        }
+        Spacer(modifier = Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            val (icon, tint, headline) = when {
-                // A failed check must never read as a clean bill of health.
-                healthUnavailable -> Triple(
-                    Icons.Outlined.Info,
-                    MaterialTheme.colorScheme.onSurfaceVariant,
-                    MR.string.email_health_unavailable,
-                )
-
-                health == null -> Triple(
-                    Icons.Outlined.Info,
-                    MaterialTheme.colorScheme.onSurfaceVariant,
-                    MR.string.email_setup_checking,
-                )
-
-                else -> when (health.severity) {
-                    MailHealthSeverity.Ok -> Triple(
-                        Icons.Filled.CheckCircle,
-                        MaterialTheme.colorScheme.primary,
-                        MR.string.email_setup_ok,
-                    )
-
-                    MailHealthSeverity.Warning -> Triple(
-                        Icons.Outlined.WarningAmber,
-                        HomebaseTheme.extendedColors.warning,
-                        MR.string.email_setup_warning,
-                    )
-
-                    MailHealthSeverity.Error -> Triple(
-                        Icons.Outlined.ErrorOutline,
-                        MaterialTheme.colorScheme.error,
-                        MR.string.email_health_attention,
-                    )
-                }
-            }
             StatusIcon(busy = isCheckingHealth, icon = icon, tint = tint)
             Spacer(modifier = Modifier.width(12.dp))
             Text(
@@ -335,40 +302,23 @@ private fun EmailSetupCard(
             )
         }
 
-        if (health != null && !healthUnavailable && health.severity != MailHealthSeverity.Ok) {
-            health.brokenRecords.forEach { record ->
+        if (shown != null && shown.severity != MailHealthSeverity.Ok) {
+            shown.brokenRecords.forEach { record ->
                 Spacer(modifier = Modifier.height(12.dp))
                 MailDnsRecordRow(record = record, onCopy = onCopy)
             }
-            (health.errors + health.warnings).forEach { message ->
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            val dnssec = health.dnssec
-            if (dnssec != null && (dnssec.breaksResolution || dnssec.needsAttention)) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(
-                        if (dnssec.breaksResolution) MR.string.email_setup_dnssec_broken
-                        else MR.string.email_setup_dnssec_missing
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            shown.errors.forEach { Body(it) }
+            shown.warnings.forEach { Body(it) }
+            shown.dnssec?.let { dnssec ->
+                when {
+                    dnssec.breaksResolution -> Body(stringResource(MR.string.email_setup_dnssec_broken))
+                    dnssec.needsAttention -> Body(stringResource(MR.string.email_setup_dnssec_missing))
+                }
             }
             // Publishing DNS is an owner action, so open the owner console on the page that
             // does it rather than duplicating a write button in the app. For a domain whose DNS
             // is hosted elsewhere, the records above are the instructions.
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = stringResource(MR.string.email_health_fix_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Body(stringResource(MR.string.email_health_fix_hint))
             Spacer(modifier = Modifier.height(8.dp))
             FilledTonalButton(onClick = onOpenOwnerConsole) {
                 Text(stringResource(MR.string.email_open_owner_console))
@@ -378,28 +328,6 @@ private fun EmailSetupCard(
         Spacer(modifier = Modifier.height(4.dp))
         TextButton(onClick = onCheckHealth, enabled = !isCheckingHealth) {
             Text(stringResource(MR.string.email_setup_check_again))
-        }
-    }
-}
-
-@Composable
-private fun SectionCard(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            content()
         }
     }
 }

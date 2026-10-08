@@ -155,7 +155,6 @@ class MailModelsSerializationTest {
               ],
               "errors": ["DKIM pair proof failed"],
               "warnings": ["Could not reach the WKD endpoint"],
-              "needsAttention": true,
               "severity": "error"
             }
         """.trimIndent()
@@ -165,7 +164,8 @@ class MailModelsSerializationTest {
         assertTrue(health.tenantMailEnabled)
         assertTrue(health.activated)
         assertEquals(2, health.records.size)
-        assertEquals("domainOrRecordNotFound", health.records.first().status)
+        assertEquals(DnsLookupRecordStatus.DomainOrRecordNotFound, health.records.first().status)
+        assertEquals(DnsLookupRecordStatus.Success, health.records[1].status)
         assertEquals(1, health.brokenRecords.size)
         assertEquals("MX", health.brokenRecords.first().type)
         assertEquals(listOf("DKIM pair proof failed"), health.errors)

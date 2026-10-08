@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import id.homebase.api.client.mail.DnsLookupRecordStatus
 import id.homebase.api.client.mail.MailDnsRecord
 import id.homebase.resources.MR
 import id.homebase.resources.email_copy_name
@@ -60,7 +61,6 @@ fun MailDnsRecordRow(
         if (record.value.isNotBlank()) {
             CopyableLine(
                 text = record.value,
-                copyText = record.value,
                 copyLabel = stringResource(MR.string.email_copy_value),
                 onCopy = onCopy,
                 monospace = true,
@@ -72,7 +72,7 @@ fun MailDnsRecordRow(
 @Composable
 private fun CopyableLine(
     text: String,
-    copyText: String,
+    copyText: String = text,
     copyLabel: String,
     onCopy: (String) -> Unit,
     monospace: Boolean = false,
@@ -94,9 +94,13 @@ private fun CopyableLine(
     }
 }
 
-/** Words for the server's lookup verdict (odin-core `DnsLookupRecordStatus`), not a new one. */
-private fun problemOf(status: String): StringResource = when (status) {
-    "domainOrRecordNotFound" -> MR.string.email_record_not_found
-    "incorrectValue" -> MR.string.email_record_wrong_value
-    else -> MR.string.email_record_unchecked
+/** Words for the server's lookup verdict, not a new one. */
+private fun problemOf(status: DnsLookupRecordStatus): StringResource = when (status) {
+    DnsLookupRecordStatus.DomainOrRecordNotFound -> MR.string.email_record_not_found
+    DnsLookupRecordStatus.IncorrectValue -> MR.string.email_record_wrong_value
+    DnsLookupRecordStatus.Unknown,
+    DnsLookupRecordStatus.Success,
+    DnsLookupRecordStatus.NoAuthoritativeNameServer,
+    DnsLookupRecordStatus.MultipleRecordsNotSupported,
+    DnsLookupRecordStatus.AaaaRecordsNotSupported -> MR.string.email_record_unchecked
 }

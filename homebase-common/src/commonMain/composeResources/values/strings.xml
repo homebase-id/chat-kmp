@@ -1303,6 +1303,7 @@
     <!-- Email setup — mailbox status -->
     <string name="email_mailbox_none_unread">No unread email</string>
     <string name="email_server_header">Email server</string>
+    <string name="email_server_checking">Checking your email server…</string>
     <string name="email_server_running">Your email server is running</string>
     <string name="email_server_no_report">Your email server did not report its status</string>
     <string name="email_refresh">Refresh</string>

@@ -24,11 +24,11 @@ data class EmailUiState(
     val driveActivated: Boolean? = null,
     /** Credential files on the drive — the last setup step's signal. */
     val credentialCount: Int = 0,
-    /** null until email is on and the mail server has answered. */
+    /** null until email is on and the mailbox has been asked; a failed ask is `available = false`. */
     val mailboxStatus: MailboxStatusResult? = null,
     /**
-     * Whether email actually WORKS, as opposed to how far setup got. Asked each time the email
-     * home is shown, and again on "Check setup again"; null until the first answer.
+     * Whether email actually WORKS, as opposed to how far setup got. Asked when the email home
+     * is shown (a recent answer is reused) and on "Check setup again"; null until it answers.
      *
      * [serverStatus] cannot answer this — an identity whose domain has no MX reports as fully
      * configured there while nothing can deliver mail to it.

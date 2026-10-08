@@ -82,19 +82,36 @@ data class MailClientSettings(
 @Serializable
 data class MailDnsRecord(
     val type: String = "",
-    /** The record's label, e.g. "s1._domainkey". */
+    /**
+     * The record's label relative to the identity's domain, e.g. "s1._domainkey"; "" at the
+     * identity's apex. What a DNS provider's host field wants when the zone IS that domain.
+     */
     val name: String = "",
-    /** The fully-qualified name the record is published at — what you paste into a DNS provider. */
+    /** The fully-qualified name the record is published at. */
     val domain: String = "",
     val value: String = "",
     val description: String = "",
     /**
-     * The server's lookup verdict: "success" when the record is published correctly, otherwise
-     * "unknown" / "domainOrRecordNotFound" / "incorrectValue" / ... Only meaningful on records
-     * that came from a health check; the DKIM set returned by activation leaves it empty.
+     * The server's lookup verdict. Only meaningful on records that came from a health check; the
+     * DKIM set returned by activation leaves it at [DnsLookupRecordStatus.Unknown].
      */
-    val status: String = "",
+    val status: DnsLookupRecordStatus = DnsLookupRecordStatus.Unknown,
 )
+
+/**
+ * Mirrors odin-core `DnsLookupRecordStatus`. A value this app does not know coerces to
+ * [Unknown] (`coerceInputValues`), which renders as "could not be checked".
+ */
+@Serializable
+enum class DnsLookupRecordStatus {
+    Unknown,
+    Success,
+    DomainOrRecordNotFound,
+    IncorrectValue,
+    NoAuthoritativeNameServer,
+    MultipleRecordsNotSupported,
+    AaaaRecordsNotSupported,
+}
 
 /**
  * Whether the identity's email actually WORKS, as opposed to how far setup got —
