@@ -95,6 +95,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
      */
     suspend fun build(
         scope: CoroutineScope = TestScope(),
+        encryptorOverride: PayloadBundleEncryptor? = null,
         messageLookup: ((DatabaseManager) -> MessageLookup)? = null,
         engineHandler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = {
             respondError(HttpStatusCode.InternalServerError)
@@ -135,7 +136,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
         // Same wiring the app uses (UploadService over the same outbox/encryptor/optimistic
         // writer/seeder), so these tests exercise the real shared send spine.
         val uploadService = UploadService(
-            encryptor = payloadEncryptor,
+            encryptor = encryptorOverride ?: payloadEncryptor,
             outboxSync = outboxSync,
             optimisticWriter = OptimisticWriterPort(optimisticWriter),
             payloadCacheSeeder = cacheSeeder,
@@ -144,7 +145,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
         return ChatMessageSenderService(
             outboxSync = outboxSync,
             conversationStream = conversationLookup,
-            payloadBundleEncryptionService = payloadEncryptor,
+            payloadBundleEncryptionService = encryptorOverride ?: payloadEncryptor,
             scope = scope,
             chatMessageStream = messageLookup?.invoke(dbm) ?: FakeMessageLookup(),
             optimisticWriter = optimisticWriter,

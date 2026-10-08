@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material3.Icon
@@ -55,6 +56,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -78,12 +80,16 @@ import id.homebase.chat.groodle.GroodleBubble
 import id.homebase.chat.poll.PollBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.viewonce.ViewOnceBubble
+import id.homebase.chat.viewonce.VIEW_ONCE_PAYLOAD_KEY
+import id.homebase.chat.viewonce.ViewOnceRules
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.stripComposerLineBreakArtifacts
@@ -98,6 +104,7 @@ import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
+import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -150,6 +157,7 @@ fun MessageBubbleRaw(
     sentByYou: Boolean,
     currentOdinId: String = "",
     clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
+    isGroupConversation: Boolean = false,
     authorName: String? = null,
     authorColor: Color? = null,
     onLongClick: () -> Unit,
@@ -296,6 +304,53 @@ fun MessageBubbleRaw(
             )
             return
         }
+        is MessageContent.ViewOnce -> {
+            val containerColor =
+                if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+                else MaterialTheme.colorScheme.surfaceContainerHigh
+            val contentColor =
+                if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+                else MaterialTheme.colorScheme.onSurface
+            // sentByYou already settled authorship; hand the rules an identity that agrees with it.
+            val viewOnceMe = if (sentByYou) message.originalAuthor else null
+            val (viewOnceState, openedCount) = remember(message, viewOnceMe, sentByYou) {
+                ViewOnceRules.stateOf(message, Clock.System.now().toEpochMilliseconds(), viewOnceMe) to
+                    if (sentByYou) ViewOnceRules.openedCount(message) else 0
+            }
+            ViewOnceBubble(
+                descriptor = content.descriptor,
+                isOutgoing = sentByYou,
+                isGroup = isGroupConversation,
+                state = viewOnceState,
+                openedCount = openedCount,
+                canView = isMobile(),
+                onOpen = remember(message, displayOnly) {
+                    val payload = message.payloads?.firstOrNull { it.key == VIEW_ONCE_PAYLOAD_KEY }
+                    if (payload != null && !displayOnly) {
+                        { onMediaClick(payload) }
+                    } else null
+                },
+                onLongClick = onLongClick,
+                onDoubleClick = onDoubleClick,
+                shape = remember(sentByYou, clusterPosition) { messageBubbleShape(sentByYou, clusterPosition) },
+                containerColor = containerColor,
+                contentColor = contentColor,
+                authorName = authorName,
+                authorColor = authorColor,
+                modifier = modifier,
+                footer = { footerColor ->
+                    MessageTimestampFooter(
+                        infoText = formatMessageTimestamp(message.userDate),
+                        contentColor = footerColor,
+                        showDeliveryStatus = sentByYou && !message.isDeleted,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        pendingSince = message.userDate,
+                    )
+                },
+            )
+            return
+        }
         is MessageContent.Unknown -> {
             UnknownMessageBubble(
                 dataType = content.dataType,
@@ -371,10 +426,6 @@ fun MessageBubbleRaw(
 
     val filteredPayloads = message.payloads.mediaPayloads()
     val hasMedia = filteredPayloads.isNotEmpty()
-    // A 2+-image album (MediaGallery) sitting above a caption renders full-bleed —
-    // the images run edge-to-edge to the bubble, and only the caption below keeps its
-    // 12dp inset (the messenger convention, matching this app's media-only bubbles). A
-    // single image already renders edge-to-edge, so it is untouched.
     val isGallery = filteredPayloads.size >= 2
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -505,31 +556,16 @@ fun MessageBubbleRaw(
     val blockTextTopPadding =
         if (authorAbutsText && message.messageAppData.replyPreview == null) 0.dp else 12.dp
 
-    val big = Dimens.Message.cornerRadius
-    val small = Dimens.Message.cornerCollapseRadius
     val shape = remember(sentByYou, clusterPosition, mediaOnly) {
-        if (mediaOnly) {
-            RoundedCornerShape(big)
-        } else if (sentByYou) {
-            when (clusterPosition) {
-                MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, small, big)
-                MessageClusterPosition.START -> RoundedCornerShape(big, big, small, big)
-                MessageClusterPosition.MIDDLE -> RoundedCornerShape(big, small, small, big)
-                MessageClusterPosition.END -> RoundedCornerShape(big, small, big, big)
-            }
-        } else {
-            when (clusterPosition) {
-                MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, big, small)
-                MessageClusterPosition.START -> RoundedCornerShape(big, big, big, small)
-                MessageClusterPosition.MIDDLE -> RoundedCornerShape(small, big, big, small)
-                MessageClusterPosition.END -> RoundedCornerShape(small, big, big, big)
-            }
-        }
+        if (mediaOnly) RoundedCornerShape(Dimens.Message.cornerRadius)
+        else messageBubbleShape(sentByYou, clusterPosition)
     }
 
     Surface(
         modifier = modifier
             .testTag(ChatBubbleTestTags.BUBBLE)
+            // Capped on the bubble, not the gallery, so a block caption can't widen it past the images.
+            .ifTrue(isGallery) { Modifier.widthIn(max = Dimens.MediaBubble.galleryMaxWidth) }
             .ifTrue(!isStickerBubble) { Modifier.clip(shape) }
             .ifTrue(isMobile()) {
                 Modifier.combinedClickable(
@@ -760,15 +796,17 @@ fun MessageBubbleRaw(
                     ) {
                         // No onTextLayout: the block renderer reports none, and the
                         // timestamp is placed below as its own row (next).
-                        ChatMarkdown(
-                            content = bodyText,
-                            modifier = Modifier.testTag(ChatBubbleTestTags.CAPTION),
-                            color = contentColor,
-                            style = MaterialTheme.typography.bodyLarge,
-                            searchQuery = effectiveSearchQuery,
-                            isCurrentSearchResult = isCurrentSearchResult,
-                            mentions = mentionContext,
-                        )
+                        SelectableOnDesktop(enabled = !message.isDeleted) {
+                            ChatMarkdown(
+                                content = bodyText,
+                                modifier = Modifier.testTag(ChatBubbleTestTags.CAPTION),
+                                color = contentColor,
+                                style = MaterialTheme.typography.bodyLarge,
+                                searchQuery = effectiveSearchQuery,
+                                isCurrentSearchResult = isCurrentSearchResult,
+                                mentions = mentionContext,
+                            )
+                        }
                     }
                     if (message.hasMore && onShowMoreClick != null) {
                         Box(
@@ -860,10 +898,8 @@ fun MessageBubbleRaw(
                                         messageId = message.id,
                                         downloadingFiles = downloadingFiles,
                                         uploadStatus = uploadStatus,
-                                        // The custom Layout below already clamps the caption to
-                                        // the media width, so there is no gap to fill — the
-                                        // gallery renders full-bleed at its album width.
-                                        fillWidth = false,
+                                        // Single media stays off fill: MediaMessage.fillsBubble would crop it to maxHeight.
+                                        fillWidth = isGallery,
                                         // Floors a narrow single image to 240dp so the caption
                                         // clamp below can't collapse it to one char per line.
                                         hasCaption = true,
@@ -904,18 +940,20 @@ fun MessageBubbleRaw(
                                             tint = contentColor,
                                         )
                                     }
-                                    ChatMarkdown(
-                                        content = bodyText,
-                                        modifier = Modifier.testTag(ChatBubbleTestTags.CAPTION),
-                                        color = contentColor,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        searchQuery = effectiveSearchQuery,
-                                        isCurrentSearchResult = isCurrentSearchResult,
-                                        mentions = mentionContext,
-                                        maxLines = bodyMaxLines,
-                                        overflow = TextOverflow.Ellipsis,
-                                        onTextLayout = { textLayoutResult = it },
-                                    )
+                                    SelectableOnDesktop(enabled = !message.isDeleted) {
+                                        ChatMarkdown(
+                                            content = bodyText,
+                                            modifier = Modifier.testTag(ChatBubbleTestTags.CAPTION),
+                                            color = contentColor,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            searchQuery = effectiveSearchQuery,
+                                            isCurrentSearchResult = isCurrentSearchResult,
+                                            mentions = mentionContext,
+                                            maxLines = bodyMaxLines,
+                                            overflow = TextOverflow.Ellipsis,
+                                            onTextLayout = { textLayoutResult = it },
+                                        )
+                                    }
                                 }
                             }
                             // Single custom-Layout slot for the one-way "Read more"
@@ -970,7 +1008,7 @@ fun MessageBubbleRaw(
                                 if (showMessageFooter) {
                                     Text(
                                         text = messageInfoText,
-                                        style = MaterialTheme.typography.labelSmall,
+                                        style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
                                         color = contentColor.copy(alpha = 0.7f),
                                         modifier = Modifier.testTag(ChatBubbleTestTags.TIMESTAMP),
                                     )
@@ -1264,7 +1302,7 @@ private fun BoxScope.MediaTimestampOverlay(
             ) {
                 Text(
                     text = messageInfoText,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
                     color = HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f),
                 )
                 if (sentByYou) {
@@ -1279,6 +1317,11 @@ private fun BoxScope.MediaTimestampOverlay(
             }
         }
     }
+}
+
+@Composable
+private fun SelectableOnDesktop(enabled: Boolean, content: @Composable () -> Unit) {
+    if (enabled && isDesktopOrWeb()) SelectionContainer(content = content) else content()
 }
 
 /**
@@ -1309,6 +1352,26 @@ internal fun buildSearchHighlightedText(
             val endIdx = (idx + lowerQuery.length).coerceAtMost(plain.length)
             addStyle(SpanStyle(background = highlightColor), idx, endIdx)
             startIndex = endIdx
+        }
+    }
+}
+
+internal fun messageBubbleShape(sentByYou: Boolean, clusterPosition: MessageClusterPosition): RoundedCornerShape {
+    val big = Dimens.Message.cornerRadius
+    val small = Dimens.Message.cornerCollapseRadius
+    return if (sentByYou) {
+        when (clusterPosition) {
+            MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, small, big)
+            MessageClusterPosition.START -> RoundedCornerShape(big, big, small, big)
+            MessageClusterPosition.MIDDLE -> RoundedCornerShape(big, small, small, big)
+            MessageClusterPosition.END -> RoundedCornerShape(big, small, big, big)
+        }
+    } else {
+        when (clusterPosition) {
+            MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, big, small)
+            MessageClusterPosition.START -> RoundedCornerShape(big, big, big, small)
+            MessageClusterPosition.MIDDLE -> RoundedCornerShape(small, big, big, small)
+            MessageClusterPosition.END -> RoundedCornerShape(small, big, big, big)
         }
     }
 }

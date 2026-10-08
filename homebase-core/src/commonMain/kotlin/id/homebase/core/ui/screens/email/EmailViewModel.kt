@@ -5,12 +5,15 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.mail.MailProvider
+import id.homebase.api.client.mail.MailboxStatusResult
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.config.emailLabeledDrive
 import id.homebase.core.email.EmailPreferences
 import id.homebase.core.email.Thunderbird
 import id.homebase.core.email.launchMailClient
 import id.homebase.core.sync.OptionalDriveActivation
+import id.homebase.core.util.buildOwnerDnsSettingsUrl
+import id.homebase.core.util.buildOwnerEmailSettingsUrl
 import id.homebase.core.ui.screens.email.setup.EmailSetupStep
 import id.homebase.core.ui.screens.email.setup.resolveSetupStep
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -21,10 +24,15 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.TimeSource
 
 /**
  * Email setup's entry screen. Its whole job in this state is deciding which of three things the
@@ -45,7 +53,12 @@ class EmailViewModel(
 
     companion object {
         private const val TAG = "EmailViewModel"
+        private val HEALTH_REUSE = 15.minutes
     }
+
+    /** When the last health answer arrived; HomeShown reuses one younger than [HEALTH_REUSE]. */
+    private var lastHealthCheck: TimeSource.Monotonic.ValueTimeMark? = null
+    private var healthJob: Job? = null
 
     private val _uiState = MutableStateFlow(EmailUiState())
     val uiState: StateFlow<EmailUiState> = _uiState.asStateFlow()
@@ -103,9 +116,20 @@ class EmailViewModel(
         // they change also refreshes after a login or an identity switch, which is when the
         // answer is most likely to have changed.
         viewModelScope.launch {
-            credentialsManager.credentialsFlow.collect { credentials ->
+            // On an identity switch, collectLatest cancels the previous identity's status call
+            // and the reset drops everything it already answered, so none of it is shown (or
+            // copied from) under the new identity. The drive and credential fields have their
+            // own flows. A re-emission for the same identity (a token refresh) only re-asks.
+            var identity = credentialsManager.credentialsFlow.value?.domain
+            credentialsManager.credentialsFlow.collectLatest { credentials ->
+                if (credentials?.domain != identity) {
+                    identity = credentials?.domain
+                    healthJob?.cancel()
+                    lastHealthCheck = null
+                    _uiState.update { EmailUiState(driveActivated = it.driveActivated, credentialCount = it.credentialCount) }
+                }
                 if (credentials != null) {
-                    refreshStatus()
+                    refreshStatusNow()
                 }
             }
         }
@@ -152,6 +176,13 @@ class EmailViewModel(
 
             EmailUiAction.CheckHealthClicked -> checkHealth()
 
+            // The home re-enters composition on every return from a sub-screen; each check costs
+            // the server uncached DNS lookups and a relay call, so a recent answer is reused.
+            EmailUiAction.HomeShown -> {
+                val fresh = lastHealthCheck?.let { it.elapsedNow() < HEALTH_REUSE } == true
+                if (!fresh) checkHealth()
+            }
+
             EmailUiAction.OpenMailClientClicked -> viewModelScope.launch {
                 val client = Thunderbird.client
                 // False means not installed — say so rather than appearing to do nothing.
@@ -166,17 +197,22 @@ class EmailViewModel(
      * Ask the server whether email actually works.
      *
      * Every check runs server-side, from the same services the owner console's Email tab uses,
-     * and the verdict (`needsAttention`, `brokenRecords`) arrives already decided. Nothing is
+     * and the verdict (`severity`, `brokenRecords`) arrives already decided. Nothing is
      * recomputed here on purpose: two clients deriving "healthy" from raw records would
      * eventually disagree about the same identity, and the one that disagreed quietly would be
      * the one people trusted.
      */
     fun checkHealth() {
-        viewModelScope.launch {
+        if (healthJob?.isActive == true) return
+        healthJob = viewModelScope.launch {
             _uiState.update { it.copy(isCheckingHealth = true, healthError = null) }
             try {
                 val health = mailProvider.getHealth()
+                lastHealthCheck = TimeSource.Monotonic.markNow()
                 _uiState.update { it.copy(health = health, isCheckingHealth = false) }
+            } catch (e: CancellationException) {
+                // An identity switch: the reset already cleared this check's state.
+                throw e
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) { "email health check failed: ${e.message}" }
                 _uiState.update {
@@ -185,6 +221,14 @@ class EmailViewModel(
             }
         }
     }
+
+    /** Where the owner fixes what the setup check found; null when signed out. */
+    fun ownerEmailSettingsUrl(): String? =
+        credentialsManager.credentialsFlow.value?.domain?.buildOwnerEmailSettingsUrl()
+
+    /** Where the owner fixes DNSSEC, which is a DNS setting rather than an email one. */
+    fun ownerDnsSettingsUrl(): String? =
+        credentialsManager.credentialsFlow.value?.domain?.buildOwnerDnsSettingsUrl()
 
     fun refreshStatus() {
         viewModelScope.launch { refreshStatusNow() }
@@ -201,10 +245,18 @@ class EmailViewModel(
 
                 // Only once email is actually on: before that there is no mailbox to ask about,
                 // and a failure here must not make the whole screen look broken.
+                // A failed call is "did not report", the same answer as a server that does not
+                // count; null stays "not asked yet".
                 if (status.activated) {
-                    val mailbox = runCatching { mailProvider.getMailboxStatus() }.getOrNull()
+                    val mailbox = runCatching { mailProvider.getMailboxStatus() }
+                        .getOrElse {
+                            if (it is CancellationException) throw it
+                            MailboxStatusResult(available = false)
+                        }
                     _uiState.update { it.copy(mailboxStatus = mailbox) }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // A failed call is not the same answer as "this server has no email" — the user
                 // is told to retry rather than told their server does not support it.

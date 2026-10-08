@@ -317,4 +317,17 @@ class CacheSweeperTest {
         assertTrue(fs.exists("$cacheDir/report.txt".toPath()))
         assertTrue(fs.exists("$cacheDir/com.crashlytics.data/f.bin".toPath()))
     }
+
+    @Test
+    fun startupSweepRemovesAStreamedPlaybackTempWhateverItsAge() {
+        val fs = FakeFileSystem()
+        val cache = "/cache".toPath()
+        val temp = cache / AppCacheDirs.SCRATCH_DIR_NAME / AppCacheDirs.EXPORT / "hbvid_res_deadbeef.mp4"
+        fs.createDirectories(temp.parent!!)
+        fs.write(temp) { writeUtf8("decrypted") }
+
+        CacheSweeper.sweepUntracked(CacheAudit.audit(cache.toString(), fs), fs)
+
+        assertFalse(fs.exists(temp))
+    }
 }

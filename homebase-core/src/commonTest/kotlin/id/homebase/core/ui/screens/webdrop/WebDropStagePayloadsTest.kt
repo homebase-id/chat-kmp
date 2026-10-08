@@ -75,7 +75,7 @@ class WebDropStagePayloadsTest {
     }
 }
 
-private class StageFakeFileOps(
+internal class StageFakeFileOps(
     val files: MutableMap<String, ByteArray>,
     private val resolveMap: Map<String, String> = emptyMap(),
 ) : FileOperationsProvider {

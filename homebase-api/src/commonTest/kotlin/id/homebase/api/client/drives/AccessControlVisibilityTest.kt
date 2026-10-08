@@ -66,4 +66,32 @@ class AccessControlVisibilityTest {
                 .sortedWith(aclMostRestrictiveFirst),
         )
     }
+
+    @Test
+    fun aCircleMemberSeesWhatItsCircleOrEveryoneMayRead() {
+        val other = "11111111-2222-4333-8444-555555555555"
+        val table: List<Pair<AccessControlList?, Boolean>> = listOf(
+            acl("anonymous") to true,
+            acl("authenticated") to true,
+            acl("connected") to true,
+            acl("autoconnected") to true,
+            acl("connected", circles = emptyList()) to true,
+            acl("connected", circles = listOf(friendsCircle)) to true,
+            acl("connected", circles = listOf(friendsCircle.replace("-", "").uppercase())) to true,
+            acl("connected", circles = listOf(other, friendsCircle)) to true,
+            acl("connected", circles = listOf(other)) to false,
+            acl("connected", circles = listOf(systemCircle)) to true,
+            acl("anonymous", circles = listOf(other)) to false,
+            acl("authenticated", circles = listOf(other)) to false,
+            acl("anonymous", circles = listOf(friendsCircle)) to true,
+            acl("owner") to false,
+            acl("owner", circles = listOf(friendsCircle)) to false,
+            acl("connected", odinIds = listOf("sam.dotyou.cloud")) to false,
+            acl("anonymous", odinIds = listOf("sam.dotyou.cloud")) to false,
+            acl("system") to false,
+            acl(null) to false,
+            null to false,
+        )
+        table.forEach { (acl, expected) -> assertEquals(expected, acl.isVisibleToCircle(friendsCircle), "$acl") }
+    }
 }

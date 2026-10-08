@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -58,9 +60,11 @@ import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.profile_avatar_edit_acl_anonymous
-import id.homebase.resources.profile_avatar_edit_acl_circles
+import id.homebase.resources.profile_avatar_edit_acl_connected
+import id.homebase.resources.profile_avatar_edit_connected_desc
 import id.homebase.resources.profile_avatar_edit_anonymous_desc
-import id.homebase.resources.profile_avatar_edit_circles_desc
+import id.homebase.resources.profile_avatar_edit_acl_only_me
+import id.homebase.resources.profile_avatar_edit_only_me_desc
 import id.homebase.resources.profile_avatar_edit_error_delete
 import id.homebase.resources.profile_avatar_edit_error_too_large
 import id.homebase.resources.profile_avatar_edit_error_upload
@@ -88,8 +92,8 @@ fun ProfileAvatarEditScreen(
     val anonymousPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
         file?.let { viewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.ANONYMOUS, it)) }
     }
-    val connectedPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
-        file?.let { viewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.CONNECTED, it)) }
+    val onlyMePicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
+        file?.let { viewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.OWNER, it)) }
     }
 
     LaunchedEffect(Unit) {
@@ -137,15 +141,17 @@ fun ProfileAvatarEditScreen(
             Spacer(Modifier.height(24.dp))
 
             PhotoTierSection(
-                title = stringResource(MR.string.profile_avatar_edit_acl_circles),
-                description = stringResource(MR.string.profile_avatar_edit_circles_desc),
-                tier = uiState.connected,
-                onPick = { connectedPicker.launch() },
-                onRemove = { viewModel.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.CONNECTED)) },
-                onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED)) },
+                title = stringResource(MR.string.profile_avatar_edit_acl_only_me),
+                description = stringResource(MR.string.profile_avatar_edit_only_me_desc),
+                tier = uiState.onlyMe,
+                onPick = { onlyMePicker.launch() },
+                onRemove = { viewModel.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.OWNER)) },
+                onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.OWNER)) },
             ) {
-                ExistingAvatarContent(uiState.connected.existing, "ProfileAvatarEditScreen")
+                ExistingAvatarContent(uiState.onlyMe.existing, "ProfileAvatarEditScreen")
             }
+
+            ConnectionsPhotoBlock(uiState.connected, viewModel::onAction)
         }
     }
 }
@@ -198,6 +204,8 @@ internal fun PhotoTierSection(
     controlsVisible: Boolean = true,
     centered: Boolean = false,
     onPhotoTap: (() -> Unit)? = null,
+    shape: Shape = CircleShape,
+    idleBadge: Boolean = false,
     existingPhotoContent: @Composable () -> Unit,
 ) {
     val motion = MaterialTheme.motionScheme
@@ -221,7 +229,9 @@ internal fun PhotoTierSection(
         ) {
             Box(contentAlignment = Alignment.BottomEnd) {
                 Box(
-                    modifier = Modifier.size(96.dp).clip(CircleShape).clickable(
+                    modifier = Modifier.size(96.dp).clip(shape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                        .clickable(
                         onClick = if (controlsVisible) onPick else (onPhotoTap ?: onPick)
                     ),
                 ) {
@@ -238,8 +248,8 @@ internal fun PhotoTierSection(
                         }
                     }
                 }
-                if (controlsVisible) {
-                    FilledIconButton(onClick = onPick, modifier = Modifier.size(32.dp)) {
+                if (controlsVisible || idleBadge) {
+                    FilledIconButton(onClick = if (controlsVisible) onPick else (onPhotoTap ?: onPick), modifier = Modifier.size(32.dp)) {
                         Icon(
                             imageVector = Icons.Filled.PhotoCamera,
                             contentDescription = stringResource(MR.string.cd_profile_avatar_change_photo),
@@ -278,6 +288,42 @@ internal fun PhotoTierSection(
                 } else {
                     Text(stringResource(MR.string.profile_avatar_edit_upload))
                 }
+            }
+        }
+    }
+}
+
+/** An older connections-only photo: shown only while one is stored, with a one-tap Remove. */
+@Composable
+internal fun ConnectionsPhotoBlock(tier: PhotoTierUiState, onAction: (ProfileAvatarEditAction) -> Unit) {
+    if (tier.existing == null) return
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            text = stringResource(MR.string.profile_avatar_edit_acl_connected),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            text = stringResource(MR.string.profile_avatar_edit_connected_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Box(modifier = Modifier.size(96.dp).clip(CircleShape)) {
+                ExistingAvatarContent(tier.existing, "ConnectionsPhotoBlock")
+            }
+            TextButton(
+                enabled = !tier.isDeleting,
+                onClick = {
+                    onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.CONNECTED))
+                    onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED))
+                },
+            ) {
+                Text(stringResource(MR.string.profile_avatar_edit_remove))
             }
         }
     }

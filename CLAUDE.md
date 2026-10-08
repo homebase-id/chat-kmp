@@ -38,6 +38,15 @@ one of these patterns, stop and write down what you actually observed,
 what you suspect, and what evidence you'd need to confirm — then go get
 that evidence.
 
+**Platform-specific bugs.** When a bug shows up on only some platforms, check whether that code
+follows the "Platform-specific code" principles below. If it doesn't, step back: the fix brings
+the code in line with them, so the same bug can't be waiting on the other platforms. Do it in
+the same PR, or as a linked issue when it's too big to hold the fix back.
+
+**Web (WASM) crashes.** A production web trace is only `wasm-function[N]:0xOFF` frames. Resolve
+the first error to Kotlin source lines before reasoning about the cause: see
+[`WASM_CRASH_SYMBOLS.md`](WASM_CRASH_SYMBOLS.md).
+
 ## Project Overview
 
 Homebase Chat — a Kotlin Multiplatform (KMP) chat application targeting Android, iOS, Desktop (
@@ -112,11 +121,29 @@ Each module follows the standard KMP layout:
 - `src/commonMain/kotlin/` — Shared code (bulk of logic)
 - `src/androidMain/kotlin/` — Android implementations (OkHttp, ExoPlayer, SQLCipher)
 - `src/jvmMain/kotlin/` — Desktop implementations (VLC-J, JDBC SQLite)
-- `src/nativeMain/kotlin/` — iOS implementations (Darwin networking, native SQLite)
-- `src/webMain/kotlin/` — Web implementations (partial)
+- `src/nativeMain/kotlin/` — iOS implementations (Darwin networking, native SQLite); `appleMain`
+  in some modules
+- `src/wasmJsMain/kotlin/` — Web implementations (partial)
+- Intermediate sets that share ONE implementation across targets: `skiaMain` (jvm + native +
+  wasmJs; homebase-api images, homebase-common), `cameraStubMain` (jvm + wasmJs),
+  `jvmAndNativeTest`
 
-Use `expect`/`actual` declarations for platform-specific code. The flag `-Xexpect-actual-classes` is
-enabled.
+The flag `-Xexpect-actual-classes` is enabled.
+
+## Platform-specific code
+
+We ship on four platforms: **iOS, Android, JVM (desktop) and WASM (web)**. Platform code is done
+only when it behaves the same on all four.
+
+- **One contract.** Each platform capability has one common interface whose KDoc states the
+  behaviour all four must match, edge cases included. An `actual` without a written contract
+  is a guess.
+- **One implementation where possible.** Prefer a multiplatform library or a shared source set
+  (okio, `skiaMain`); write per-platform code only for what is genuinely platform-specific.
+  Never copy an `actual` from one platform to another.
+- **Tested on the real platforms.** Contract tests run the real implementation, not a fake.
+  CI runs `commonTest` on iOS and WASM for `homebase-api` only; elsewhere a green `jvmTest`
+  proves nothing about iOS, Android or WASM.
 
 ## Key Technology Choices
 
@@ -272,6 +299,18 @@ Rules:
 - Work blocked on an undecided question is a separate issue, not a stack layer.
 - CI must be green on every layer before merging — the stack merge is all-or-nothing.
 - Branch names never contain `/` (this applies to every branch, stacked or not).
+
+## Opening a PR
+
+When you open a PR, before handing it over:
+
+- **Simplify.** Remind me to run `/simplify` (see below).
+- **Platforms.** If the diff touches platform code, the description says which of the four
+  platforms were verified and how. CI alone covers JVM, plus iOS/WASM for `homebase-api` only.
+- **Evidence.** A bug fix's description states what proved the root cause (log, trace, failing
+  test), and for a platform-specific bug, whether the platform principles held.
+- **Watch CI to green**, and read the silent-revert check's summary: it never fails the build,
+  so its warnings are only seen if someone looks.
 
 ## Before you merge: remind me to run a simplify pass
 

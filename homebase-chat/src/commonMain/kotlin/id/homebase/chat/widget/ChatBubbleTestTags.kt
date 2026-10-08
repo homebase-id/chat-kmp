@@ -20,4 +20,7 @@ object ChatBubbleTestTags {
 
     /** The quoted body text inside the inline reply preview. */
     const val REPLY_QUOTE_TEXT = "chat.bubble.reply.quote"
+
+    /** The content-kind icon leading the quoted body in the inline reply preview. */
+    const val REPLY_QUOTE_ICON = "chat.bubble.reply.quote.icon"
 }

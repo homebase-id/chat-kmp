@@ -6,6 +6,7 @@ import id.homebase.chat.event.EventDescriptor
 import id.homebase.chat.groodle.GroodleDescriptor
 import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
+import id.homebase.chat.viewonce.ViewOnceDescriptor
 import id.homebase.notifshared.EVENT_NOTIF_SENTINEL
 
 /**
@@ -169,6 +170,25 @@ sealed interface MessageContent {
     }
 
     /**
+     * A single photo or video the recipient can open once. The media is a payload, unlike the other
+     * typed kinds, and must never be loaded outside the viewer. [descriptor] follows the
+     * [Event.descriptor] nullability contract.
+     */
+    data class ViewOnce(val descriptor: ViewOnceDescriptor?) : MessageContent {
+        // Reply and react work like any message, and a reply quotes just the icon and kind word. The payload leaves the viewer by no other route.
+        override val actions: ActionPolicy = ActionPolicy(
+            allowEdit = false,
+            allowReply = true,
+            allowForward = false,
+            allowShare = false,
+            allowInlineReactions = true,
+            allowReactionDetails = true,
+            allowCopy = false,
+        )
+        override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_VIEW_ONCE_LABEL
+    }
+
+    /**
      * A typed message whose [dataType] this client doesn't recognize — typically
      * a newer kind (poll, doodle, …) sent from a more up-to-date peer. The
      * receiver can't render the content itself; the bubble shows an
@@ -192,6 +212,7 @@ sealed interface MessageContent {
         const val UNPARSEABLE_POLL_LABEL = "Poll"
         const val UNPARSEABLE_CONTACT_LABEL = "Contact"
         const val UNPARSEABLE_LOCATION_LABEL = "Location"
+        const val UNPARSEABLE_VIEW_ONCE_LABEL = "Media"
         const val UNKNOWN_LABEL = "Unknown message"
     }
 
@@ -216,6 +237,7 @@ data class ActionPolicy(
     val allowInlineReactions: Boolean,
     /** "Show all reactions" / per-emoji reactor breakdown sheet. */
     val allowReactionDetails: Boolean,
+    val allowCopy: Boolean = true,
 ) {
     companion object {
         val Standard = ActionPolicy(

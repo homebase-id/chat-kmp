@@ -51,7 +51,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,10 +60,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -88,9 +87,10 @@ import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.viewonce.ViewOnceRules
+import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
-import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.image.HomebaseImage
@@ -134,7 +134,6 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
@@ -183,6 +182,7 @@ fun SentMessageBubble(
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     currentOdinId: String = "",
     clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
+    isGroupConversation: Boolean = false,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
     onBattle: (() -> Unit)? = null,
@@ -207,6 +207,7 @@ fun SentMessageBubble(
     chainCap: Int? = null,
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
+    onCopyText: (String) -> Unit = {},
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     val popupTransition = updateTransition(popupMode, label = "messagePopup")
@@ -215,8 +216,6 @@ fun SentMessageBubble(
     var showEmojiPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
-    val clipboardManager = LocalClipboard.current
-    val scope = rememberCoroutineScope()
     // Captures the bubble's measured width so the reaction pill can be capped to
     // it instead of widening the bubble for narrow messages (e.g. "."). Initial
     // value 0 means "no constraint yet" — pill renders unconstrained for one
@@ -315,9 +314,7 @@ fun SentMessageBubble(
                         },
                         onCopy = {
                             popupMode = MessagePopupMode.None
-                            scope.launch {
-                                clipboardManager.setClipEntry(clipEntryOf(message.content))
-                            }
+                            onCopyText(message.content)
                         },
                         onEdit = onEdit?.let { orig ->
                             { popupMode = MessagePopupMode.None; orig() }
@@ -384,6 +381,7 @@ fun SentMessageBubble(
                         showVoiceNoteSender = true,
                         currentOdinId = currentOdinId,
                         clusterPosition = clusterPosition,
+                        isGroupConversation = isGroupConversation,
                         onLongClick = {
                             if (onMessageInfo != null) {
                                 haptics.perform(HapticEvent.LongPress)
@@ -535,6 +533,7 @@ fun ReceivedMessageBubble(
     chainCap: Int? = null,
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
+    onCopyText: (String) -> Unit = {},
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     val popupTransition = updateTransition(popupMode, label = "messagePopup")
@@ -556,8 +555,6 @@ fun ReceivedMessageBubble(
     val hasVisibleBackground = !mediaOnly && !emojiOnly
     val isVoiceNote = mediaOnly &&
         filteredPayloads.singleOrNull()?.isAudio() == true
-    val clipboardManager = LocalClipboard.current
-    val scope = rememberCoroutineScope()
     val haptics = rememberHaptics()
     val policy = message.messageContent?.actions ?: ActionPolicy.Standard
     val openReactionBar: (() -> Unit)? =
@@ -776,9 +773,7 @@ fun ReceivedMessageBubble(
                         },
                         onCopy = {
                             popupMode = MessagePopupMode.None
-                            scope.launch {
-                                clipboardManager.setClipEntry(clipEntryOf(message.content))
-                            }
+                            onCopyText(message.content)
                         },
                         onDelete = {
                             popupMode = MessagePopupMode.None
@@ -926,7 +921,8 @@ fun MessageTimestampFooter(
     ) {
         Text(
             text = infoText,
-            style = MaterialTheme.typography.labelSmall,
+            // A Latin "10:54 AM" stays in that order inside an RTL bubble.
+            style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
             color = contentColor.copy(alpha = 0.7f),
         )
         if (showDeliveryStatus) {
@@ -1035,6 +1031,9 @@ private fun rememberPendingStale(since: Instant, threshold: Duration = 1.minutes
  */
 fun String.hasContent(): Boolean = stripComposerLineBreakArtifacts().isNotEmpty()
 
+internal fun MessageContent?.isProtectedMedia(): Boolean =
+    this is MessageContent.ViewOnce || this is MessageContent.Unknown
+
 /**
  * Displays a compact preview of the message being replied to, shown inline within the message
  * bubble.
@@ -1059,7 +1058,10 @@ fun InlineReplyPreview(
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
-    val mediaPayloads = remember(replyMessage?.payloads) { replyMessage?.payloads.replyQuoteMediaPayloads() }
+    val quotesProtectedMedia = replyMessage?.messageContent.isProtectedMedia()
+    val mediaPayloads = remember(replyMessage?.payloads, quotesProtectedMedia) {
+        if (quotesProtectedMedia) emptyList() else replyMessage?.payloads.replyQuoteMediaPayloads()
+    }
     // A voice note's embedded thumb is its waveform and a PDF's is a 20px page, so only visual media gets one.
     val showThumbnail = replyMessage == null || mediaPayloads.firstOrNull()?.isVisualMedia() == true
 
@@ -1089,16 +1091,23 @@ fun InlineReplyPreview(
     }
 
     val hasThumb = imageData != null || thumbnailBitmap != null
-    val hasImage = hasThumb || replyPreview.previewThumbnail != null
+    val hasImage = hasThumb || (!quotesProtectedMedia && replyPreview.previewThumbnail != null)
 
     // Strip richeditor's `<br>` empty-paragraph artifacts from the quoted body so a reply to a
     // legacy `<br>` message shows its real text, not a stray break / blank quote (#1104).
     val replyText = remember(replyPreview.message) { replyPreview.message.stripComposerLineBreakArtifacts() }
+    val viewOnceOpened = remember(replyMessage, currentOdinId) {
+        replyMessage?.takeIf { it.messageContent is MessageContent.ViewOnce }?.let {
+            ViewOnceRules.isSpent(it, Clock.System.now().toEpochMilliseconds(), runCatching { OdinId(currentOdinId) }.getOrNull())
+        } ?: false
+    }
     val contentLabel = messageContentLabel(
         textContent = replyText,
         isDeleted = replyMessage?.isDeleted ?: false,
         firstPayload = mediaPayloads.firstOrNull(),
         hasMultiplePayloads = mediaPayloads.size > 1,
+        messageContent = replyMessage?.messageContent.takeIf { it is MessageContent.ViewOnce },
+        viewOnceOpened = viewOnceOpened,
     )
     // Dispatch on the typed ReplyContext carried on the wire — that's how
     // the renderer knows it's an event reply without looking up the parent.
@@ -1175,7 +1184,7 @@ fun InlineReplyPreview(
                                 Icon(
                                     imageVector = icon,
                                     contentDescription = null,
-                                    modifier = Modifier.size(12.dp),
+                                    modifier = Modifier.size(12.dp).testTag(ChatBubbleTestTags.REPLY_QUOTE_ICON),
                                     tint = contentColor.copy(alpha = 0.7f),
                                 )
                                 Spacer(modifier = Modifier.width(3.dp))

@@ -18,9 +18,19 @@ package id.homebase.api.platform
  */
 interface BackgroundExecutionAssertion {
     fun end()
+
+    fun reportProgress(fraction: Float) = Unit
 }
 
-expect fun beginBackgroundExecutionAssertion(name: String): BackgroundExecutionAssertion
+/**
+ * A non-null [continuedProcessingTitle] marks user-initiated work: on iOS 26+ it runs as a
+ * `BGContinuedProcessingTask`, which isn't capped at ~30s but must report progress or the
+ * system expires it as stalled.
+ */
+expect fun beginBackgroundExecutionAssertion(
+    name: String,
+    continuedProcessingTitle: String? = null,
+): BackgroundExecutionAssertion
 
 /** For platforms that don't suspend a process out from under an in-flight request. */
 internal object NoBackgroundExecutionAssertion : BackgroundExecutionAssertion {

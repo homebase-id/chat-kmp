@@ -35,6 +35,7 @@ import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.api.sync.database.TombstoneRetention
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.chat.services.convo.ConversationAppDataJson
@@ -517,6 +518,7 @@ class OptimisticWriter(
         uniqueId: Uuid,
         recipients: List<OdinId>?,
         hardDelete: Boolean = false,
+        dependencyUniqueId: Uuid? = null,
     ): MutationOutcome = writeDelete(driveId, uniqueId) { original ->
         outboxSync.tryEnqueue(
             request = DeleteLocalFilesByFileIdRequest(
@@ -524,7 +526,8 @@ class OptimisticWriter(
                 fileIds = listOf(original.fileId),
                 recipients = recipients,
                 hardDelete = hardDelete,
-            )
+            ),
+            dependencyUniqueId = dependencyUniqueId,
         )
     }
 
@@ -573,6 +576,7 @@ class OptimisticWriter(
         rowKey: Uuid,
         add: Set<String>,
         remove: Set<String>,
+        dependencyUniqueId: Uuid = uniqueId,
         recipients: suspend (original: HomebaseFile) -> List<OdinId>,
     ): MutationOutcome = reactionLockFor(driveId, uniqueId).withLock {
         val credentials = credentialsManager.requireActiveCredentials()
@@ -595,7 +599,7 @@ class OptimisticWriter(
                     recipients = recipients(existingFile),
                 ),
                 uniqueId = rowKey,
-                dependencyUniqueId = uniqueId,
+                dependencyUniqueId = dependencyUniqueId,
             )
         }?.let { return@withLock it }
 
@@ -672,13 +676,22 @@ class OptimisticWriter(
             gate("delete", uniqueId) { enqueue(existingFile) }?.let { return it }
         }
 
+        // A view-once tombstone's age (updated - created) decides Opened vs Expired, so it carries
+        // the real delete time, as the server's own tombstone does.
+        val deletedAt = if (existingFile.fileMetadata.appData.dataType == ChatProtocol.ChatViewOnceMessageDataType) {
+            maxOf(existingFile.optimisticStamp(), UnixTimeUtc())
+        } else {
+            existingFile.optimisticStamp()
+        }
         val deletedFile = existingFile.copy(
             fileState = FileState.Deleted,
             fileMetadata = existingFile.fileMetadata.copy(
-                updated = existingFile.optimisticStamp(),
+                updated = deletedAt,
                 payloads = emptyList(),
                 appData = existingFile.fileMetadata.appData.copy(
-                    content = "",
+                    content = if (existingFile.fileMetadata.appData.dataType == ChatProtocol.ChatViewOnceMessageDataType) {
+                        TombstoneRetention.viewOnceKindOnly(existingFile.fileMetadata.appData.content)
+                    } else "",
                     previewThumbnail = null,
                     // Belt-and-suspenders: HomebaseFile.isSoftDeleted() checks BOTH
                     // markers and the defragmenter's SoftDeleteArchivalMismatch

@@ -10,12 +10,17 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoCompressionService
 import id.homebase.core.util.extensionForMimeType
+import id.homebase.core.util.isMobile
 import id.homebase.api.video.VideoMetadata
 import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.viewonce.ViewOnceActions
+import id.homebase.chat.viewonce.viewOnceViewerFor
+import kotlin.time.Clock
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
@@ -56,10 +61,12 @@ internal class MediaDownloadHandler(
     private val driveFileProvider: DriveFileProvider,
     private val fileOperationsProvider: FileOperationsProvider,
     private val chatMessageActionService: ChatMessageActionService,
+    private val viewOnceActions: ViewOnceActions,
     private val chatMessageStream: ChatMessageStream,
     private val localVideoContextStore: LocalAttachmentContextStore,
     private val sendEvent: (ConversationListUiEvent) -> Unit,
     private val dispatch: (ConversationListUiAction) -> Unit,
+    private val onMobile: () -> Boolean = { isMobile() },
 ) {
 
     fun handleShareMedia(action: ConversationListUiAction.ShareMedia) {
@@ -319,9 +326,50 @@ internal class MediaDownloadHandler(
         sendEvent(SaveFileToDevice(filePath, fileName))
     }
 
+    fun handleViewOnceViewerClosed(action: ConversationListUiAction.ViewOnceViewerClosed) {
+        // A remounted viewer on the same overlay (a rotation across the expanded-layout gate) must not reopen a spent item.
+        messagesUiState.update {
+            val overlay = it.fullScreenOverlay
+            if (overlay is FullScreenOverlay.ViewOnceViewer && overlay.messageId == action.messageId) {
+                it.copy(fullScreenOverlay = null)
+            } else it
+        }
+        // The viewer's own scope is already gone by now; the view model's outlives it.
+        scope.launch { viewOnceActions.onViewerClosed(action.conversationId, action.messageId) }
+    }
+
+    fun handleViewOnceReact(action: ConversationListUiAction.ViewOnceReact) {
+        scope.launch { viewOnceActions.onReact(action.conversationId, action.messageId, action.emoji) }
+    }
+
+    fun handleViewOnceReply(action: ConversationListUiAction.ViewOnceReply) {
+        val message = messagesUiState.value.messages
+            .filterIsInstance<MessageListContentModel.Message>()
+            .firstOrNull { it.message.id == action.messageId }
+            ?.message
+            ?.takeIf { it.messageContent is MessageContent.ViewOnce }
+            ?: return
+        messagesUiState.update { it.copy(replyToMessage = message) }
+    }
+
+    fun handleViewOnceScreenshot(action: ConversationListUiAction.ViewOnceScreenshot) {
+        scope.launch { viewOnceActions.onScreenshot(action.conversationId, action.messageId) }
+    }
+
     fun handleMediaClicked(action: ConversationListUiAction.MediaClicked) {
         scope.launch {
             try {
+                // A view-once item never takes the generic viewer: it would cache, share and save.
+                if (action.message.messageContent is MessageContent.ViewOnce) {
+                    if (viewOnceActions.isConsumed(action.message.id)) return@launch
+                    viewOnceViewerFor(
+                        message = action.message,
+                        nowMs = Clock.System.now().toEpochMilliseconds(),
+                        myOdinId = uiState.value.ownerSession?.odinId,
+                        mobile = onMobile(),
+                    )?.let { viewer -> messagesUiState.update { it.copy(fullScreenOverlay = viewer) } }
+                    return@launch
+                }
                 val selectedPayload =
                     action.message.payloads?.firstOrNull { it.key == action.payloadKey }
                         ?: return@launch

@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiAction.CloseFullScreenOverlay
 import id.homebase.chat.conversationlist.ConversationListUiAction.DeleteMessage
@@ -13,6 +14,8 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.ShareMedia
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MessageListUiState
+import id.homebase.core.widget.quickReactions
+import id.homebase.chat.viewonce.ViewOnceViewer
 
 /**
  * Rendered either inside the messages pane (single-pane, where the shared-element scopes come
@@ -53,6 +56,22 @@ internal fun ChatMediaViewer(
                 )
             },
             uploadStatus = data.uploadMessageId?.let { uiState.uploadProgress[it] },
+        )
+
+        is FullScreenOverlay.ViewOnceViewer -> ViewOnceViewer(
+            data = data,
+            onViewerClosed = {
+                onUiAction(ConversationListUiAction.ViewOnceViewerClosed(data.conversationId, data.messageId))
+            },
+            onScreenshot = {
+                onUiAction(ConversationListUiAction.ViewOnceScreenshot(data.conversationId, data.messageId))
+            },
+            reactions = remember(uiState.userDefaultReactions) { quickReactions(uiState.userDefaultReactions) },
+            onReact = { emoji ->
+                onUiAction(ConversationListUiAction.ViewOnceReact(data.conversationId, data.messageId, emoji))
+            },
+            onReply = { onUiAction(ConversationListUiAction.ViewOnceReply(data.messageId)) },
+            onDismiss = { onUiAction(CloseFullScreenOverlay) },
         )
 
         is FullScreenOverlay.PdfViewerData -> ChatPdfViewer(

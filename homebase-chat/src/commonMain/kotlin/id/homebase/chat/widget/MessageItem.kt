@@ -45,6 +45,7 @@ fun MessageItem(
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
     ownLiveShareUntilMs: Long? = null,
+    onCopyText: (String) -> Unit = {},
 ) {
     val odinId: OdinId? = try {
         OdinId(currentOdinId)
@@ -181,6 +182,7 @@ fun MessageItem(
                 decryptedFiles = decryptedFiles,
                 currentOdinId = currentOdinId,
                 clusterPosition = clusterPosition,
+                isGroupConversation = isGroupConversation,
                 onMessageInfo = onMessageInfo,
                 onReply = onReply,
                 onBattle = onBattle,
@@ -205,6 +207,7 @@ fun MessageItem(
                 chainCap = chainCap,
                 onSaveContactCard = onSaveContactCard,
                 onMessageIdentity = onMessageIdentity,
+                onCopyText = onCopyText,
             )
         }
     } else {
@@ -265,6 +268,7 @@ fun MessageItem(
                 chainCap = chainCap,
                 onSaveContactCard = onSaveContactCard,
                 onMessageIdentity = onMessageIdentity,
+                onCopyText = onCopyText,
             )
         }
     }

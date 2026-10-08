@@ -133,7 +133,7 @@ internal fun ProfilePreview(
     }
 
     val publicRows = rowsFor(uiState.visibleValues(ProfileVisibility.ANONYMOUS))
-    val circlesRows = rowsFor(uiState.visibleValues(ProfileVisibility.CONNECTED))
+    val circlesRows = rowsFor(uiState.visibleToCircles())
     val publicPhoto = uiState.visiblePhoto(ProfileVisibility.ANONYMOUS)
     val circlesPhoto = uiState.visiblePhoto(ProfileVisibility.CONNECTED)
 

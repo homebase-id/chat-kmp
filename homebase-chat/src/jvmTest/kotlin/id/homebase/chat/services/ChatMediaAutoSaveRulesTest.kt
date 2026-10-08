@@ -76,6 +76,10 @@ class ChatMediaAutoSaveRulesTest {
     )
 
     @Test
+    fun viewOnceMediaIsNeverAutoSaved() =
+        assertFalse(decide(messageDataType = ChatProtocol.ChatViewOnceMessageDataType))
+
+    @Test
     fun anUnrecognisedTypedKindIsSkipped() = assertFalse(decide(messageDataType = 9_999))
 
     @Test

@@ -7,6 +7,8 @@ import androidx.compose.material.icons.outlined.MailOutline
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.email.EmailViewModel
 import id.homebase.core.ui.screens.email.EmailScreen
+import id.homebase.core.ui.screens.email.EmailUiAction
+import id.homebase.core.ui.screens.email.mode.EmailModeSwitchScreen
 import id.homebase.core.email.EmailPreferences
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.AnimatedVisibility
@@ -28,6 +30,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.navigation.NavGraphBuilder
 import id.homebase.chat.conversationlist.chatOwnsWindow
+import id.homebase.chat.conversationlist.showsViewOnceViewer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -345,6 +348,7 @@ fun AppNavHost(
     val serverSupportsMail by emailPreferences.serverSupportsMail.collectAsStateWithLifecycle()
     val emailViewModel: EmailViewModel = koinViewModel()
     val emailUiState by emailViewModel.uiState.collectAsStateWithLifecycle()
+    val emailMailboxMode = emailUiState.serverStatus?.takeIf { it.mailboxProvisioned }?.mode
     val profileCardEnabled by koinInject<DeveloperPreferences>().profileCardEnabled.collectAsStateWithLifecycle()
     val emailUnreadCount = emailUiState.mailboxStatus
         ?.takeIf { it.available }
@@ -434,7 +438,8 @@ fun AppNavHost(
     val paintsUnderTitleBar = chromeDestination?.hasRoute(Route.Login::class) == true
     // The card fills its sheet to the screen's bottom edge; its own chrome pads for the navigation bar.
     // The Vault gallery/editor floor does the same (VaultGalleryScreen pads its sheet content itself).
-    val paintsUnderNavigationBar = chromeDestination.isCardRoute() || isVaultOverlayOpen
+    val isViewOnceViewerOpen = chromeEntry != null && entryShowsViewOnceViewer(chromeEntry)
+    val paintsUnderNavigationBar = chromeDestination.isCardRoute() || isVaultOverlayOpen || isViewOnceViewerOpen
     val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail
     val railVisible = isOnTopLevelScreen && showNavigationRail
     val contentInsets = ScaffoldDefaults.contentWindowInsets.only(
@@ -1568,6 +1573,9 @@ fun AppNavHost(
                                             onOpenMoments = openMoments,
                                             onOpenVault = openVault,
                                             onOpenEmail = openEmail,
+                                            onOpenEmailModeSwitch = {
+                                                navController.navigate(Route.EmailModeSwitch)
+                                            },
                                             onOpenContacts = openContactBook,
                                             onNavigateToCropper = { requestId ->
                                                 navController.navigate(
@@ -1585,6 +1593,7 @@ fun AppNavHost(
                                             },
                                         ),
                                         profileCardEnabled = profileCardEnabled,
+                                        emailMailboxMode = emailMailboxMode,
                                     )
                                 }
                             },
@@ -2128,6 +2137,22 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() },
                                     onOpenEmail = openEmail,
+                                    mailboxMode = emailMailboxMode,
+                                    onChangeMode = { navController.navigate(Route.EmailModeSwitch) },
+                                )
+                            }
+                        }
+
+                        composable<Route.EmailModeSwitch> {
+                            if (isAuthenticated) {
+                                EmailModeSwitchScreen(
+                                    viewModel = koinViewModel(),
+                                    status = emailUiState.serverStatus,
+                                    onBackClick = { navController.popBackStack() },
+                                    onSwitched = {
+                                        emailViewModel.onAction(EmailUiAction.RefreshStatusClicked)
+                                        navController.popBackStack()
+                                    },
                                 )
                             }
                         }
@@ -2321,6 +2346,15 @@ private fun entryOwnsWindow(
         else -> entry.savedStateHandle.getStateFlow(OWNS_WINDOW_KEY, false)
             .collectAsStateWithLifecycle().value
     }
+}
+
+@Composable
+private fun entryShowsViewOnceViewer(entry: NavBackStackEntry): Boolean {
+    if (!entry.destination.hasRoute(Route.ChatList::class)) return false
+    val chat: ConversationListViewModel = koinViewModel(viewModelStoreOwner = entry)
+    val messages = chat.messagesUiState.collectAsStateWithLifecycle()
+    val shows by remember(chat) { derivedStateOf { showsViewOnceViewer(messages.value) } }
+    return shows
 }
 
 private inline fun <reified T : Any> NavGraphBuilder.tab(

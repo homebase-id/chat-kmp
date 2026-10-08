@@ -87,18 +87,18 @@ class ProfileVisibleAttributesTest {
             priority = priority,
         )
         val attributes = listOf(bio("public", "anonymous"), bio("vetted b", "connected", 5), bio("vetted a", "connected", 1), bio("owner", "owner"))
-        assertEquals("public", attributes.visibleBio(ANONYMOUS))
-        assertEquals("vetted a", attributes.visibleBio(CONNECTED))
-        assertNull(listOf(bio("owner", "owner")).visibleBio(CONNECTED))
+        assertEquals("public", attributes.visibleBio(ANONYMOUS.aclFilter()))
+        assertEquals("vetted a", attributes.visibleBio(CONNECTED.aclFilter()))
+        assertNull(listOf(bio("owner", "owner")).visibleBio(CONNECTED.aclFilter()))
     }
 
     @Test
-    fun previewVettedValuesLeaveOutAnOwnerOnlyRecordTheEditorStillEdits() {
+    fun theEditorEditsThePublicRecordAndPreviewKeepsTheOwnerOnlyOneOut() {
         val ownerOnly = status("owner only", "owner")
-        val state = ProfileEditUiState().withLoaded(LoadedProfileAttributes.from(listOf(status("public", "anonymous"), ownerOnly)))
+        val loaded = LoadedProfileAttributes.from(listOf(ownerOnly, status("public", "anonymous")))
+        val state = ProfileEditUiState().withLoaded(loaded, emptyList())
 
-        assertEquals("owner only", state.connectedValues[ProfileField.STATUS])
+        assertEquals("public", state.values[ProfileField.STATUS])
         assertEquals("public", state.visibleValues(CONNECTED)[ProfileField.STATUS])
-        assertEquals("public", state.visibleValues(ANONYMOUS)[ProfileField.STATUS])
     }
 }

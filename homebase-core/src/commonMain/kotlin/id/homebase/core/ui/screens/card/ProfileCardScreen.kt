@@ -1,11 +1,39 @@
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalComposeUiApi::class)
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material3.MaterialShapes
+import androidx.compose.material3.toShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipAnchorPosition
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material3.FilledTonalButton
+import id.homebase.resources.profile_card_read_only_ok
+import id.homebase.resources.profile_card_read_only
+import id.homebase.resources.profile_card_not_saved
+import id.homebase.resources.profile_card_read_only_title
+import id.homebase.resources.profile_card_read_only_why
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -16,7 +44,9 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -33,14 +63,23 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
@@ -54,11 +93,12 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -72,13 +112,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -86,12 +133,24 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import id.homebase.core.localization.TranslationUtil
-import id.homebase.core.ui.screens.profile.LoadFailedState
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.resources.MR
+import id.homebase.resources.profile_edit_load_failed
+import id.homebase.resources.profile_edit_retry
 import id.homebase.resources.close
+import id.homebase.resources.cancel
+import id.homebase.resources.profile_card_reset_failed
+import id.homebase.resources.profile_card_circle_unsupported
 import id.homebase.resources.file_saved_to
+import id.homebase.resources.profile_card_audience_circle
+import id.homebase.resources.profile_card_audience_description
+import id.homebase.resources.profile_card_audience_public
+import id.homebase.resources.profile_card_reset_card
+import id.homebase.resources.profile_card_reset_title
+import id.homebase.resources.profile_card_reset_message_public
+import id.homebase.resources.profile_card_reset_message_circle
+import id.homebase.resources.profile_card_reset_confirm
 import id.homebase.resources.profile_card_design_board
 import id.homebase.resources.profile_card_design_collage
 import id.homebase.resources.profile_card_design_dossier
@@ -102,6 +161,16 @@ import id.homebase.resources.profile_card_save
 import id.homebase.resources.profile_card_share
 import id.homebase.resources.profile_card_share_failed
 import id.homebase.resources.profile_card_unsupported
+import id.homebase.resources.profile_card_access_body
+import id.homebase.resources.profile_card_access_continue
+import id.homebase.resources.profile_card_access_later
+import id.homebase.resources.profile_card_access_title
+import id.homebase.resources.profile_card_save_public
+import id.homebase.resources.profile_card_share_public
+import id.homebase.resources.profile_card_share_public_message
+import id.homebase.resources.profile_card_share_public_title
+import id.homebase.resources.profile_card_save_public_message
+import id.homebase.resources.profile_card_save_public_title
 import kotlin.math.exp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
@@ -117,9 +186,15 @@ private val TOP_BAND_HEIGHT = 56.dp
 private val BAND_FADE_HEIGHT = 16.dp
 // The floating toolbar plus its vertical margins.
 private val TOOLBAR_BAND_HEIGHT = 88.dp
+private val CHROME_GAP = 8.dp
+private val CHROME_CONTROL_SIZE = 40.dp
 private val MAX_SHEET_PULL = 32.dp
+private const val UNSAVED_LABEL_ALPHA = 0.8f
 private val DISMISS_DRAG_DISTANCE = 96.dp
 private const val DISMISS_FLING_VELOCITY = 1500f
+private const val SKELETON_ALPHA_LOW = 0.35f
+private const val SKELETON_ALPHA_HIGH = 0.8f
+private const val SKELETON_PULSE_MS = 900
 
 @Composable
 fun StartCardHostWhenSettled(viewModel: ProfileCardViewModel) {
@@ -157,6 +232,52 @@ fun ProfileCardScreen(
     onBack: () -> Unit,
     onEdit: () -> Unit,
 ) {
+    LaunchedEffect(viewModel) { viewModel.onScreenShown() }
+    IntroViewerSwitch(viewModel = viewModel, onBack = onBack) { onClose ->
+        ProfileCardViewer(viewModel = viewModel, onBack = onClose, onEdit = onEdit)
+    }
+}
+
+@Composable
+internal fun IntroViewerSwitch(
+    viewModel: ProfileCardViewModel,
+    onBack: () -> Unit,
+    viewer: @Composable (onClose: () -> Unit) -> Unit,
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val motion = MaterialTheme.motionScheme
+    AnimatedContent(
+        targetState = uiState.viewing,
+        transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
+        modifier = Modifier.fillMaxSize(),
+    ) { viewing ->
+        if (viewing) {
+            viewer(viewModel::onIntroReturned)
+        } else {
+            val tiles by viewModel.introTiles.collectAsStateWithLifecycle()
+            val revision by viewModel.introRevision.collectAsStateWithLifecycle()
+            val host by viewModel.host.collectAsStateWithLifecycle()
+            CardIntro(
+                uiState = uiState,
+                tiles = tiles,
+                host = host,
+                revision = revision,
+                onOpen = viewModel::onCardOpened,
+                onClose = onBack,
+                onRetry = viewModel::onRetry,
+                onCapture = viewModel::captureIntroTiles,
+                onTilePainted = viewModel::onIntroTilePainted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileCardViewer(
+    viewModel: ProfileCardViewModel,
+    onBack: () -> Unit,
+    onEdit: () -> Unit,
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val host by viewModel.host.collectAsStateWithLifecycle()
     val motion = MaterialTheme.motionScheme
@@ -167,8 +288,8 @@ fun ProfileCardScreen(
     val nfc = rememberCardNfc()
     val errCard = stringResource(MR.string.profile_card_error)
     val errShare = stringResource(MR.string.profile_card_share_failed)
-
-    LaunchedEffect(viewModel) { viewModel.onScreenShown() }
+    val errReset = stringResource(MR.string.profile_card_reset_failed)
+    val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
@@ -198,7 +319,9 @@ fun ProfileCardScreen(
                 }
                 ProfileCardEvent.CardFailed -> launch { snackbarHostState.showSnackbar(errCard) }
                 ProfileCardEvent.ShareFailed -> launch { snackbarHostState.showSnackbar(errShare) }
-                ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed -> Unit
+                ProfileCardEvent.ResetFailed -> launch { snackbarHostState.showSnackbar(errReset) }
+                ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
+                ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed, ProfileCardEvent.ContentSaveFailed -> Unit
             }
         }
     }
@@ -248,6 +371,7 @@ fun ProfileCardScreen(
     // the native card view behind on iOS/Desktop instead of following cardSheetExitTransition().
     @Suppress("DEPRECATION") BackHandler { leave() }
     val cover by viewModel.cover.collectAsStateWithLifecycle()
+    var confirmPublicShare by rememberSaveable { mutableStateOf(false) }
 
     CardExpressiveTheme {
         val bands = cardBands(uiState.design)
@@ -294,49 +418,204 @@ fun ProfileCardScreen(
                     )
                 }
                 SheetTopChrome(
+                    uiState = uiState,
                     onClose = leave,
                     // Over a band the whole strip drags; floating over the card only the handle does, so the card keeps its taps.
                     bandDrag = if (bands.top) dismissDrag else Modifier,
                     handleDrag = if (bands.top) Modifier else dismissDrag,
                     modifier = Modifier.align(Alignment.TopCenter),
                 )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .semantics {
-                            isTraversalGroup = true
-                            traversalIndex = -1f
-                        }
-                        .navigationBarsPadding()
-                        .height(TOOLBAR_BAND_HEIGHT),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    HorizontalFloatingToolbar(
-                        expanded = true,
-                        colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
-                            toolbarContainerColor = chromePillColor(),
-                            toolbarContentColor = MaterialTheme.colorScheme.onSurface,
-                        ),
+                CardBottomChrome(
+                    audience = uiState.selectedAudience,
+                    isExporting = uiState.isExporting,
+                    canShare = uiState.canShare,
+                    saveInsteadOfShare = saveInsteadOfShare,
+                    readOnly = uiState.isCircleReadOnly,
+                    showsReset = uiState.showsReset,
+                    canReset = uiState.canReset,
+                    onShare = { if (uiState.isCircleSelected) confirmPublicShare = true else viewModel.onShareClicked() },
+                    onEdit = onEdit,
+                    onReset = viewModel::onResetCardConfirmed,
+                    extraActions = { nfc?.let { CardNfcAction(it) } },
+                )
+            }
+        }
+        DesignAccessPrompt(shown = uiState.isDesignAccessPromptShown, viewModel = viewModel)
+        val circle = uiState.selectedAudience as? CardAudience.Circle
+        if (confirmPublicShare && circle != null) {
+            SharePublicCardDialog(
+                circleLabel = audienceLabel(circle),
+                saveInsteadOfShare = saveInsteadOfShare,
+                onConfirm = {
+                    confirmPublicShare = false
+                    viewModel.onShareClicked()
+                },
+                onDismiss = { confirmPublicShare = false },
+            )
+        }
+    }
+}
+
+// A circle card is never what gets shared, so the toolbar stays the same on every card and the swap is said here, where it happens.
+@Composable
+internal fun SharePublicCardDialog(circleLabel: String, saveInsteadOfShare: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
+        title = {
+            Text(
+                stringResource(if (saveInsteadOfShare) MR.string.profile_card_save_public_title else MR.string.profile_card_share_public_title),
+                textAlign = TextAlign.Center,
+            )
+        },
+        text = {
+            Text(
+                stringResource(
+                    if (saveInsteadOfShare) MR.string.profile_card_save_public_message else MR.string.profile_card_share_public_message,
+                    circleLabel,
+                ),
+            )
+        },
+        confirmButton = {
+            Button(onClick = onConfirm, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(if (saveInsteadOfShare) MR.string.profile_card_save_public else MR.string.profile_card_share_public))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
+        },
+    )
+}
+
+@Composable
+internal fun BoxScope.CardBottomChrome(
+    audience: CardAudience,
+    isExporting: Boolean,
+    canShare: Boolean,
+    saveInsteadOfShare: Boolean,
+    readOnly: Boolean,
+    showsReset: Boolean,
+    canReset: Boolean,
+    onShare: () -> Unit,
+    onEdit: () -> Unit,
+    onReset: () -> Unit,
+    extraActions: @Composable () -> Unit,
+) {
+    var confirmReset by remember { mutableStateOf(false) }
+    var explainReadOnly by remember { mutableStateOf(false) }
+    val motion = MaterialTheme.motionScheme
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .semantics {
+                isTraversalGroup = true
+                traversalIndex = -1f
+            }
+            .navigationBarsPadding()
+            .height(TOOLBAR_BAND_HEIGHT),
+        contentAlignment = Alignment.Center,
+    ) {
+        // One toolbar: the quick actions as icons, Edit as its labelled, filled lead action.
+        HorizontalFloatingToolbar(
+            expanded = true,
+            colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
+                toolbarContainerColor = chromePillColor(),
+                toolbarContentColor = MaterialTheme.colorScheme.onSurface,
+            ),
+            contentPadding = PaddingValues(start = 4.dp, end = 8.dp),
+        ) {
+            ShareAction(
+                isExporting = isExporting,
+                enabled = canShare,
+                saveInsteadOfShare = saveInsteadOfShare,
+                onClick = onShare,
+            )
+            extraActions()
+            // Absent on a card that's still its default, so nothing in the toolbar does nothing.
+            AnimatedVisibility(
+                visible = showsReset,
+                enter = expandHorizontally(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                exit = shrinkHorizontally(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            ) {
+                val resetLabel = stringResource(MR.string.profile_card_reset_card)
+                WithTooltip(resetLabel) {
+                    IconButton(onClick = { confirmReset = true }, enabled = canReset) {
+                        Icon(Icons.Outlined.RestartAlt, contentDescription = resetLabel)
+                    }
+                }
+            }
+            Spacer(Modifier.width(4.dp))
+            // Read-only keeps the slot but turns quiet, so nothing promises an edit that can't be kept.
+            AnimatedContent(
+                targetState = readOnly,
+                transitionSpec = {
+                    fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
+                },
+            ) { locked ->
+                if (locked) {
+                    FilledTonalButton(
+                        onClick = { explainReadOnly = true },
+                        shapes = ButtonDefaults.shapes(),
+                        contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
                     ) {
-                        ShareAction(
-                            isExporting = uiState.isExporting,
-                            enabled = uiState.canShare,
-                            saveInsteadOfShare = saveInsteadOfShare,
-                            onClick = viewModel::onShareClicked,
+                        Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text(
+                            stringResource(MR.string.profile_card_read_only_why),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            // The label's own script sets its direction, so a trailing "?" isn't flipped by the layout's.
+                            style = LocalTextStyle.current.copy(textDirection = TextDirection.Content),
                         )
-                        nfc?.let { CardNfcAction(it) }
-                        IconButton(onClick = onEdit) {
-                            Icon(
-                                imageVector = Icons.Outlined.Edit,
-                                contentDescription = stringResource(MR.string.profile_card_edit),
-                            )
-                        }
+                    }
+                } else {
+                    Button(
+                        onClick = onEdit,
+                        shapes = ButtonDefaults.shapes(),
+                        contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
+                    ) {
+                        Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text(stringResource(MR.string.profile_card_edit), maxLines = 1)
                     }
                 }
             }
         }
     }
+    if (confirmReset) {
+        ResetCardDialog(
+            audience = audience,
+            onReset = { confirmReset = false; onReset() },
+            onDismiss = { confirmReset = false },
+        )
+    }
+    if (explainReadOnly) ReadOnlyCardDialog(onDismiss = { explainReadOnly = false })
+}
+
+@Composable
+internal fun DesignAccessPrompt(shown: Boolean, viewModel: ProfileCardViewModel) {
+    if (shown) DesignAccessDialog(onContinue = viewModel::onDesignAccessAccepted, onDismiss = viewModel::onDesignAccessDeclined)
+}
+
+@Composable
+internal fun DesignAccessDialog(onContinue: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
+        title = { Text(stringResource(MR.string.profile_card_access_title), textAlign = TextAlign.Center) },
+        text = { Text(stringResource(MR.string.profile_card_access_body)) },
+        confirmButton = {
+            Button(onClick = onContinue, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(MR.string.profile_card_access_continue))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(MR.string.profile_card_access_later))
+            }
+        },
+    )
 }
 
 // Native bands in the page's colour where a design has content under the chrome; the page has no safe-area support.
@@ -389,13 +668,17 @@ private fun CardBandsLayout(
 }
 
 @Composable
-private fun SheetTopChrome(
+internal fun SheetTopChrome(
+    uiState: ProfileCardUiState,
     onClose: () -> Unit,
     bandDrag: Modifier,
     handleDrag: Modifier,
     modifier: Modifier = Modifier,
 ) {
-    Box(
+    val gap = with(LocalDensity.current) { CHROME_GAP.roundToPx() }
+    val edge = with(LocalDensity.current) { 8.dp.roundToPx() }
+    // The audience pill takes all the room up to the close button; the grab zone sits in the middle only while it's clear.
+    Layout(
         modifier = modifier
             .fillMaxWidth()
             .height(TOP_BAND_HEIGHT)
@@ -404,32 +687,187 @@ private fun SheetTopChrome(
                 isTraversalGroup = true
                 traversalIndex = -1f
             },
-    ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(width = 64.dp, height = 48.dp)
-                .then(handleDrag)
-                // Close already dismisses; a second announced control for the same action is noise.
-                .clearAndSetSemantics { },
-            contentAlignment = Alignment.Center,
-        ) {
-            CardChromePill {
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = 10.dp, vertical = 7.dp)
-                        .size(width = 32.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.onSurfaceVariant),
+        content = {
+            AudienceTitle(uiState)
+            ChromeIconButton(onClick = onClose) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringResource(MR.string.close),
+                    modifier = Modifier.size(20.dp),
                 )
             }
+            // An unmarked grab zone: Close is the visible way out, and a bare handle read as an empty chip.
+            Box(
+                modifier = Modifier
+                    .size(width = 64.dp, height = 48.dp)
+                    .then(handleDrag)
+                    .clearAndSetSemantics { },
+            )
+        },
+    ) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val close = measurables[1].measure(loose)
+        val handle = measurables[2].measure(loose)
+        val badgeRoom = (width - edge * 2 - close.width - gap).coerceAtLeast(0)
+        val badge = measurables[0].measure(loose.copy(maxWidth = badgeRoom))
+        val handleStart = (width - handle.width) / 2
+        val handleFits = edge + badge.width + gap <= handleStart
+        layout(width, height) {
+            badge.placeRelative(edge, (height - badge.height) / 2)
+            close.placeRelative(width - edge - close.width, (height - close.height) / 2)
+            if (handleFits) handle.placeRelative(handleStart, (height - handle.height) / 2)
         }
-        CardChromePill(modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp)) {
-            IconButton(onClick = onClose) {
-                Icon(imageVector = Icons.Filled.Close, contentDescription = stringResource(MR.string.close))
+    }
+}
+
+@Composable
+internal fun audienceLabel(audience: CardAudience): String = when (audience) {
+    CardAudience.Public -> stringResource(MR.string.profile_card_audience_public)
+    is CardAudience.Circle -> audience.label.trim().ifEmpty { stringResource(MR.string.profile_card_audience_circle) }
+}
+
+internal fun audienceIcon(audience: CardAudience) =
+    if (audience is CardAudience.Circle) Icons.Outlined.Groups else Icons.Outlined.Public
+
+@Composable
+internal fun AudienceTitle(uiState: ProfileCardUiState, modifier: Modifier = Modifier) {
+    val named = stringResource(MR.string.profile_card_audience_description, audienceLabel(uiState.selectedAudience))
+    val readOnlyLabel = stringResource(MR.string.profile_card_read_only)
+    val unsavedLabel = stringResource(MR.string.profile_card_not_saved)
+    val description = when {
+        uiState.isCircleReadOnly -> "$named $readOnlyLabel"
+        uiState.isUnsavedCard -> "$named $unsavedLabel"
+        else -> named
+    }
+    AudienceChip(
+        audience = uiState.selectedAudience,
+        locked = uiState.isCircleReadOnly,
+        unsaved = uiState.isUnsavedCard,
+        modifier = modifier.minimumInteractiveComponentSize().clearAndSetSemantics { contentDescription = description },
+    )
+}
+
+@Composable
+internal fun audienceContainer(audience: CardAudience): Color =
+    if (audience is CardAudience.Circle) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer
+
+@Composable
+internal fun onAudienceContainer(audience: CardAudience): Color =
+    if (audience is CardAudience.Circle) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
+
+@Composable
+internal fun AudienceChip(
+    audience: CardAudience,
+    modifier: Modifier = Modifier,
+    locked: Boolean = false,
+    elevated: Boolean = true,
+    maxLines: Int = 1,
+    unsaved: Boolean = false,
+) {
+    val motion = MaterialTheme.motionScheme
+    val container by animateColorAsState(audienceContainer(audience), motion.defaultEffectsSpec())
+    val content by animateColorAsState(onAudienceContainer(audience), motion.defaultEffectsSpec())
+    val elevation = if (elevated) 2.dp else 0.dp
+    Surface(shape = CircleShape, color = container, contentColor = content, shadowElevation = elevation, modifier = modifier) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .animateContentSize(motion.defaultSpatialSpec())
+                .heightIn(min = CHROME_CONTROL_SIZE)
+                .padding(start = 12.dp, end = 16.dp, top = 4.dp, bottom = 4.dp),
+        ) {
+            AnimatedContent(
+                targetState = audience to unsaved,
+                transitionSpec = { fadeIn(motion.defaultEffectsSpec()).togetherWith(fadeOut(motion.fastEffectsSpec())) },
+                modifier = Modifier.weight(1f, fill = false),
+            ) { (shown, draft) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = audienceIcon(shown), contentDescription = null, modifier = Modifier.size(18.dp))
+                    Column(modifier = Modifier.padding(start = 8.dp).weight(1f, fill = false)) {
+                        Text(
+                            text = audienceLabel(shown),
+                            style = MaterialTheme.typography.labelLargeEmphasized,
+                            maxLines = maxLines,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (draft) {
+                            Text(
+                                text = stringResource(MR.string.profile_card_not_saved),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = LocalContentColor.current.copy(alpha = UNSAVED_LABEL_ALPHA),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
+            if (locked) {
+                Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.padding(start = 6.dp).size(16.dp))
             }
         }
     }
+}
+
+@Composable
+internal fun ResetCardDialog(audience: CardAudience, onReset: () -> Unit, onDismiss: () -> Unit) {
+    val message = when (audience) {
+        CardAudience.Public -> stringResource(MR.string.profile_card_reset_message_public)
+        is CardAudience.Circle -> stringResource(MR.string.profile_card_reset_message_circle, audienceLabel(audience))
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.RestartAlt, contentDescription = null) },
+        title = { Text(stringResource(MR.string.profile_card_reset_title), textAlign = TextAlign.Center) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                AudienceChip(audience = audience, elevated = false, maxLines = 2)
+                Text(message)
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onReset,
+                shapes = ButtonDefaults.shapes(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                ),
+            ) {
+                Icon(Icons.Outlined.RestartAlt, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                Text(stringResource(MR.string.profile_card_reset_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
+        },
+    )
+}
+
+@Composable
+internal fun ReadOnlyCardDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
+        title = { Text(stringResource(MR.string.profile_card_read_only_title), textAlign = TextAlign.Center) },
+        text = { Text(stringResource(MR.string.profile_card_circle_unsupported)) },
+        confirmButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.profile_card_read_only_ok)) }
+        },
+    )
+}
+
+@Composable
+internal fun WithTooltip(text: String, content: @Composable () -> Unit) {
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+        tooltip = { PlainTooltip { Text(text) } },
+        state = rememberTooltipState(),
+        content = content,
+    )
 }
 
 @Composable
@@ -449,6 +887,22 @@ private fun CardChromePill(modifier: Modifier = Modifier, content: @Composable (
 }
 
 @Composable
+private fun ChromeIconButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Box(modifier = modifier.minimumInteractiveComponentSize(), contentAlignment = Alignment.Center) {
+        Surface(
+            onClick = onClick,
+            shape = CircleShape,
+            color = chromePillColor(),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            shadowElevation = 2.dp,
+            modifier = Modifier.size(CHROME_CONTROL_SIZE),
+        ) {
+            Box(contentAlignment = Alignment.Center) { content() }
+        }
+    }
+}
+
+@Composable
 internal fun CardSurface(
     uiState: ProfileCardUiState,
     host: CardHost?,
@@ -456,10 +910,16 @@ internal fun CardSurface(
     onRetry: () -> Unit,
     paintWhileAttached: suspend (onPainted: () -> Unit) -> Unit,
     modifier: Modifier = Modifier,
+    layoutWidth: Dp? = null,
     cover: ImageBitmap? = null,
     coverHeld: Boolean = false,
+    skeleton: Boolean = false,
 ) {
     val motion = MaterialTheme.motionScheme
+    // A failure sits on a neutral surface: the design's colour behind an error plate only clashes with it.
+    val neutral = MaterialTheme.colorScheme.surfaceContainerHigh
+    val failedAny = uiState.loadFailed || uiState.cardFailed
+    val ground: () -> Color = { if (failedAny) neutral else backdrop() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     // Attaching the WebView costs ~300ms of frames on a mid-range phone, which would swallow the enter transition.
     var attached by remember { mutableStateOf(false) }
@@ -473,15 +933,18 @@ internal fun CardSurface(
     }
     val live = painted && uiState.isCardReady
 
-    Box(modifier = modifier.drawBehind { drawRect(backdrop()) }) {
+    Box(modifier = modifier.drawBehind { drawRect(ground()) }) {
         if (uiState.loadFailed) {
-            LoadFailedState(modifier = Modifier.align(Alignment.Center), onRetry = onRetry)
+            CardErrorPlate(
+                message = MR.string.profile_edit_load_failed,
+                onRetry = onRetry,
+                modifier = Modifier.align(Alignment.Center),
+            )
             return@Box
         }
         // An unsupported server's /card is its public site, which desktop and web would float over the message.
         if (!uiState.cardUnsupported && attached) {
-            // Left untransformed: iOS and desktop interop views don't follow a graphicsLayer.
-            host?.let { CardHostView(host = it, modifier = Modifier.fillMaxSize()) }
+            host?.let { CardHostView(host = it, modifier = Modifier.fillMaxSize(), layoutWidth = layoutWidth) }
         }
         if (cover != null && !uiState.cardUnsupported) {
             AnimatedVisibility(
@@ -505,7 +968,13 @@ internal fun CardSurface(
             exit = fadeOut(motion.slowEffectsSpec()),
             modifier = Modifier.fillMaxSize(),
         ) {
-            CardPlaceholder(failed = failed, unsupported = uiState.cardUnsupported, backdrop = backdrop)
+            CardPlaceholder(
+                failed = failed,
+                unsupported = uiState.cardUnsupported,
+                skeletonDesign = uiState.design.takeIf { skeleton },
+                backdrop = ground,
+                onRetry = onRetry,
+            )
         }
     }
 }
@@ -518,6 +987,7 @@ private fun ShareAction(
     onClick: () -> Unit,
 ) {
     val motion = MaterialTheme.motionScheme
+    val icon = if (saveInsteadOfShare) Icons.Outlined.Download else Icons.Outlined.Share
     AnimatedContent(
         targetState = isExporting,
         transitionSpec = { fadeIn(motion.fastEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
@@ -529,7 +999,7 @@ private fun ShareAction(
         } else {
             IconButton(onClick = onClick, enabled = enabled) {
                 Icon(
-                    imageVector = if (saveInsteadOfShare) Icons.Outlined.Download else Icons.Outlined.Share,
+                    imageVector = icon,
                     contentDescription = stringResource(
                         if (saveInsteadOfShare) MR.string.profile_card_save else MR.string.profile_card_share,
                     ),
@@ -547,29 +1017,82 @@ internal fun designLabel(design: String): StringResource = when (design) {
 }
 
 @Composable
-private fun CardPlaceholder(failed: Boolean, unsupported: Boolean, backdrop: () -> Color) {
-    val message = when {
-        unsupported -> MR.string.profile_card_unsupported
-        failed -> MR.string.profile_card_error
-        else -> null
-    }
+private fun CardPlaceholder(
+    failed: Boolean,
+    unsupported: Boolean,
+    skeletonDesign: String?,
+    backdrop: () -> Color,
+    onRetry: () -> Unit,
+) {
     Box(modifier = Modifier.fillMaxSize().drawBehind { drawRect(backdrop()) }, contentAlignment = Alignment.Center) {
-        if (message != null) {
-            Surface(
+        when {
+            unsupported -> Surface(
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.padding(32.dp),
+                modifier = Modifier.padding(24.dp),
             ) {
                 Text(
-                    text = stringResource(message),
+                    text = stringResource(MR.string.profile_card_unsupported),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(24.dp),
                 )
             }
-        } else {
-            ContainedLoadingIndicator()
+            failed -> CardErrorPlate(message = MR.string.profile_card_error, onRetry = onRetry)
+            skeletonDesign != null -> CardSkeleton(skeletonDesign)
+            else -> ContainedLoadingIndicator()
+        }
+    }
+}
+
+// The chosen design's layout at full size, breathing, so the hero keeps its shape while the card loads.
+@Composable
+private fun CardSkeleton(design: String) {
+    val pulse by rememberInfiniteTransition().animateFloat(
+        initialValue = SKELETON_ALPHA_LOW,
+        targetValue = SKELETON_ALPHA_HIGH,
+        animationSpec = infiniteRepeatable(tween(SKELETON_PULSE_MS), RepeatMode.Reverse),
+    )
+    CardDesignThumbnail(design = design, modifier = Modifier.fillMaxSize().graphicsLayer { alpha = pulse })
+}
+
+@Composable
+internal fun CookieBadge(icon: ImageVector, container: Color, content: Color, size: Dp, iconSize: Dp) {
+    Box(
+        modifier = Modifier.size(size).background(container, MaterialShapes.Cookie9Sided.toShape()),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(iconSize))
+    }
+}
+
+// One message for both preview failures, on the neutral ground: it reads as blocked, not alarming; only the icon carries the error role.
+@Composable
+internal fun CardErrorPlate(message: StringResource, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier.padding(32.dp),
+    ) {
+        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+            CookieBadge(
+                icon = Icons.Outlined.ErrorOutline,
+                container = MaterialTheme.colorScheme.errorContainer,
+                content = MaterialTheme.colorScheme.onErrorContainer,
+                size = 64.dp,
+                iconSize = 28.dp,
+            )
+            Text(
+                text = stringResource(message),
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+            )
+            FilledTonalButton(onClick = onRetry, shapes = ButtonDefaults.shapes()) {
+                Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                Text(stringResource(MR.string.profile_edit_retry))
+            }
         }
     }
 }

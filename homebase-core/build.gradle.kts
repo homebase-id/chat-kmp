@@ -27,6 +27,7 @@ kotlin {
         compileSdkExtension = 19
         minSdk = libs.versions.android.minSdk.get().toInt()
         withHostTest {}
+        withDeviceTest {}
     }
 
     jvm()
@@ -170,6 +171,13 @@ kotlin {
         wasmJsMain.dependencies {
             implementation(libs.ktor.client.js)
         }
+        getByName("androidDeviceTest").dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlin.testJunit)
+            implementation(libs.androidx.test.runner)
+            implementation(libs.androidx.test.core)
+            implementation(libs.androidx.junit)
+        }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
@@ -203,5 +211,10 @@ kotlin {
 // against the mocked Android host-test classpath. Disable the task until
 // those tests are migrated to jvmTest/.
 tasks.matching { it.name == "testAndroidHostTest" }.configureEach {
+    enabled = false
+}
+
+// The compose-resources plugin leaves this device-test copy task's outputDirectory unset; the tests use no resources.
+tasks.matching { it.name == "copyAndroidDeviceTestComposeResourcesToAndroidAssets" }.configureEach {
     enabled = false
 }

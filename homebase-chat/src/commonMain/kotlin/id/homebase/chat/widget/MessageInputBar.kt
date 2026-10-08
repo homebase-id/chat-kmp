@@ -54,9 +54,19 @@ import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.runtime.Immutable
+import id.homebase.chat.viewonce.ViewOnceIcon
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.ripple
+import androidx.compose.ui.semantics.Role
+import id.homebase.resources.cd_view_once_toggle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -114,6 +124,7 @@ import id.homebase.core.clipboard.ClipboardImagePasteEffect
 import id.homebase.core.clipboard.KeyboardImageReceiver
 import id.homebase.core.clipboard.clipboardImageReceiverModifier
 import id.homebase.core.clipboard.pasteImageContextMenuItem
+import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.clipboard.readClipboardImage
 import id.homebase.core.emoji.EmojiShortcodeEffect
 import id.homebase.core.settings.rememberArrowUpEditsLastMessage
@@ -393,7 +404,6 @@ fun MessageTextFieldExpanded(
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
     val arrowUpEditsLastMessage = rememberArrowUpEditsLastMessage()
-    val pasteScope = rememberCoroutineScope()
     var isFieldFocused by remember { mutableStateOf(false) }
     val autocomplete = rememberComposerAutocompleteController()
 
@@ -437,25 +447,13 @@ fun MessageTextFieldExpanded(
         } else {
             Modifier
         }
-        val pasteImageLabel = stringResource(MR.string.chat_message_paste_image)
         Box(modifier = Modifier.fillMaxWidth()) {
             KeyboardImageReceiver(onPasteImage) {
                 RichTextEditor(
                     state = state,
                     modifier = Modifier.fillMaxWidth()
                         .then(pasteModifier)
-                        .then(
-                            if (onPasteImage != null)
-                                Modifier.pasteImageContextMenuItem(
-                                    label = pasteImageLabel,
-                                    enabled = true,
-                                ) {
-                                    pasteScope.launch {
-                                        readClipboardImage()?.let { onPasteImage.invoke(it) }
-                                    }
-                                }
-                            else Modifier
-                        )
+                        .pasteImageMenuItem(onPasteImage)
                         .focusRequester(focusRequester)
                         .onFocusChanged { focusState ->
                             isFieldFocused = focusState.isFocused
@@ -597,7 +595,6 @@ fun MessageTextFieldCompact(
     attachmentActions: ImmutableList<AttachmentAction>? = null,
     onCancelEdit: () -> Unit,
 ) {
-    val pasteScope = rememberCoroutineScope()
     val autocomplete = rememberComposerAutocompleteController()
     val showSendButton = hasSendableContent(state, payloadRenderers)
     val showRecordingButton by remember(
@@ -752,7 +749,6 @@ fun MessageTextFieldCompact(
                         } else {
                             Modifier
                         }
-                        val pasteImageLabel = stringResource(MR.string.chat_message_paste_image)
                         Box(modifier = Modifier.weight(1f)) {
                             KeyboardImageReceiver(onPasteImage) {
                                 RichTextEditor(
@@ -760,18 +756,7 @@ fun MessageTextFieldCompact(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .then(pasteModifier)
-                                        .then(
-                                            if (onPasteImage != null)
-                                                Modifier.pasteImageContextMenuItem(
-                                                    label = pasteImageLabel,
-                                                    enabled = true,
-                                                ) {
-                                                    pasteScope.launch {
-                                                        readClipboardImage()?.let { onPasteImage.invoke(it) }
-                                                    }
-                                                }
-                                            else Modifier
-                                        )
+                                        .pasteImageMenuItem(onPasteImage)
                                         .focusRequester(focusRequester)
                                         .onFocusChanged { focusState ->
                                             isKeyboardFocused = focusState.isFocused
@@ -1236,7 +1221,62 @@ private fun EmojiToggleButton(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
+const val VIEW_ONCE_TOGGLE_TAG = "viewOnceToggle"
+private val VIEW_ONCE_TOGGLE_TARGET = 48.dp
+
+// Outlined circle off, filled squircle on: shape, fill and outline travel together on the motion scheme, as one control.
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun ViewOnceCaptionToggle(toggle: ViewOnceToggle) {
+    val toggleSize = IconButtonDefaults.extraSmallContainerSize()
+    val colors = MaterialTheme.colorScheme
+    val motion = MaterialTheme.motionScheme
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val corner by animateDpAsState(
+        when {
+            pressed -> 8.dp
+            toggle.checked -> 12.dp
+            else -> toggleSize.height / 2
+        },
+        motion.fastSpatialSpec(),
+    )
+    val container by animateColorAsState(if (toggle.checked) colors.primary else colors.primary.copy(alpha = 0f), motion.defaultEffectsSpec())
+    val outline by animateColorAsState(if (toggle.checked) colors.primary.copy(alpha = 0f) else colors.outline, motion.defaultEffectsSpec())
+    val glyph by animateColorAsState(if (toggle.checked) colors.onPrimary else colors.onSurfaceVariant, motion.defaultEffectsSpec())
+    val shape = RoundedCornerShape(corner)
+    Box(
+        // minimumInteractiveComponentSize measured 32dp in the editor's trailing slot, so the target is sized explicitly.
+        modifier = Modifier
+            .size(VIEW_ONCE_TOGGLE_TARGET)
+            .testTag(VIEW_ONCE_TOGGLE_TAG)
+            .toggleable(
+                value = toggle.checked,
+                interactionSource = interaction,
+                indication = ripple(bounded = false, radius = toggleSize.height / 2),
+                role = Role.Switch,
+                onValueChange = { toggle.onToggle() },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(toggleSize).background(container, shape).border(1.dp, outline, shape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = ViewOnceIcon,
+                contentDescription = stringResource(MR.string.cd_view_once_toggle),
+                tint = glyph,
+                modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+            )
+        }
+    }
+}
+
+@Immutable
+class ViewOnceToggle(val checked: Boolean, val onToggle: () -> Unit)
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun MessageTextFieldForAttachment(
     modifier: Modifier = Modifier,
@@ -1247,6 +1287,11 @@ fun MessageTextFieldForAttachment(
     // are unit-testable without a device.
     showFormattingToolbar: Boolean = isDesktopOrWeb(),
     onEmojiPickerVisibilityChanged: (Boolean) -> Unit = {},
+    onPasteImage: ((ByteArray) -> Unit)? = null,
+    // Injectable so a test can paste without the OS clipboard, which headless CI lacks.
+    clipboardImage: () -> ByteArray? = ::getImageFromClipboard,
+    // Non-null puts the view-once toggle inside the caption field; null when the attachment can't be view once.
+    viewOnceToggle: ViewOnceToggle? = null,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
     var hasSent by remember { mutableStateOf(false) }
@@ -1308,6 +1353,7 @@ fun MessageTextFieldForAttachment(
                 RichTextEditor(
                     state = state,
                     modifier = Modifier.fillMaxWidth().testTag(ATTACHMENT_CAPTION_FIELD_TAG)
+                        .pasteImageMenuItem(onPasteImage)
                         .focusRequester(captionFocusRequester)
                         // Tapping into the caption closes the panel; the keyboard reclaims the space.
                         .onFocusChanged { if (it.isFocused) setEmojiPicker(false, forKeyboard = true) }
@@ -1321,10 +1367,13 @@ fun MessageTextFieldForAttachment(
                                 }
                             },
                             onNewline = { state.addTextAfterSelection("\n") },
+                            onPasteImage = onPasteImage,
+                            clipboardImage = clipboardImage,
                         ),
                     placeholder = {
                         Text(stringResource(MR.string.chat_new_message_placeholder))
                     },
+                    trailingIcon = viewOnceToggle?.let { toggle -> { ViewOnceCaptionToggle(toggle) } },
                     leadingIcon = {
                         IconButton(
                             onClick = {
@@ -1403,7 +1452,6 @@ fun MessageTextFieldForAttachment(
                 }
             }
         }
-
         // Emoji only, no sticker/GIF tabs: a caption is text, and a sticker isn't.
         if (emojiPanel.isPanelComposed) {
             EmojiSelection(
@@ -1671,3 +1719,12 @@ private fun MarkdownLinkDialog(
     )
 }
 
+@Composable
+private fun Modifier.pasteImageMenuItem(onPasteImage: ((ByteArray) -> Unit)?): Modifier {
+    val scope = rememberCoroutineScope()
+    val label = stringResource(MR.string.chat_message_paste_image)
+    if (onPasteImage == null) return this
+    return pasteImageContextMenuItem(label = label, enabled = true) {
+        scope.launch { readClipboardImage()?.let(onPasteImage) }
+    }
+}

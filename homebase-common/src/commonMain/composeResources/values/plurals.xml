@@ -36,4 +36,20 @@
         <item quantity="one">Sending to %1$d conversation…</item>
         <item quantity="other">Sending to %1$d conversations…</item>
     </plurals>
+    <plurals name="profile_edit_card_details">
+        <item quantity="one">%1$d detail</item>
+        <item quantity="other">%1$d details</item>
+    </plurals>
+    <plurals name="email_mailbox_unread">
+        <item quantity="one">%1$d unread email</item>
+        <item quantity="other">%1$d unread emails</item>
+    </plurals>
+    <plurals name="email_mailbox_junk">
+        <item quantity="one">%1$d email in junk</item>
+        <item quantity="other">%1$d emails in junk</item>
+    </plurals>
+    <plurals name="email_mailbox_queued">
+        <item quantity="one">%1$d email still trying to send</item>
+        <item quantity="other">%1$d emails still trying to send</item>
+    </plurals>
 </resources>

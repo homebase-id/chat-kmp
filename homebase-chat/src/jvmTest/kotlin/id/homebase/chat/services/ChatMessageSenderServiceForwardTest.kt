@@ -12,6 +12,7 @@ import id.homebase.chat.services.content.MessageContentParser
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.uuid.Uuid
@@ -136,4 +137,36 @@ class ChatMessageSenderServiceForwardTest {
                 assertNull(envelope.replyPreview, "a forward is not a reply to the original's parent")
             }
         }
+
+    @Test
+    fun `forwarding a view-once message throws and enqueues nothing`() = runTest {
+        val lookup = DbBackedLookup()
+
+        ChatMessageSenderServiceTestFixture().use { fixture ->
+            val service = fixture.build(messageLookup = { _: DatabaseManager -> lookup })
+            lookup.fileLookup = { uid ->
+                fixture.dbm.driveMainIndex
+                    .selectHomebaseFileByUnique(fixture.testIdentityId, fixture.chatDriveId, uid)
+            }
+
+            val source = fixture.seedConversation(others = listOf("bob.test"))
+            val target = fixture.seedConversation(others = listOf("carol.test"))
+            val messageId = Uuid.random()
+
+            service.sendNewTypedMessage(
+                messageUniqueId = messageId,
+                conversationId = source,
+                content = MessageContent.ViewOnce(
+                    id.homebase.chat.viewonce.ViewOnceDescriptor(id.homebase.chat.viewonce.ViewOnceDescriptor.KIND_IMAGE)
+                ),
+                previousMessageUniqueId = null,
+            )
+            val rowsBefore = fixture.outboxRowCount()
+
+            val failure = runCatching { service.forwardMessage(messageId, listOf(target)) }.exceptionOrNull()
+
+            assertIs<IllegalArgumentException>(failure)
+            assertEquals(rowsBefore, fixture.outboxRowCount(), "nothing may be enqueued for the target")
+        }
+    }
 }

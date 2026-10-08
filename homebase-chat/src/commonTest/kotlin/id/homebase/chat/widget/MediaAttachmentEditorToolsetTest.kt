@@ -1,5 +1,10 @@
 package id.homebase.chat.widget
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.runComposeUiTest
+import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.gallery.GalleryImage
 import io.github.vinceglb.filekit.PlatformFile
@@ -151,5 +156,54 @@ class MediaAttachmentEditorToolsetTest {
         assertFalse(
             editorToolsetFor(fileImage(), canCrop = true, canDraw = true, canSave = true).showQuality,
         )
+    }
+
+    @Test
+    fun viewOnceCandidate_isAnImageOrVideoButNotAStickerOrDocument() {
+        assertTrue(isViewOnceCandidate(fileImage()))
+        assertTrue(isViewOnceCandidate(gallery()))
+        assertTrue(isViewOnceCandidate(video()))
+        assertTrue(isViewOnceCandidate(fileImage(name = "anim.gif")))
+        assertFalse(isViewOnceCandidate(file()))
+        assertFalse(isViewOnceCandidate(fileImage().copy(forceSticker = true)))
+        assertFalse(isViewOnceCandidate(null))
+    }
+
+    @Test
+    fun viewOnceEligible_requiresExactlyOneCandidate() {
+        assertTrue(isViewOnceEligible(listOf(fileImage())))
+        assertFalse(isViewOnceEligible(emptyList()))
+        assertFalse(isViewOnceEligible(listOf(fileImage(), video())))
+        assertFalse(isViewOnceEligible(listOf(file())))
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun viewOnceToggle_shownOnlyForOneImageOrVideoThroughTheRealWiring() {
+        val cases = listOf(
+            listOf(fileImage()) to 1,
+            listOf(video()) to 1,
+            emptyList<AttachmentPendingFile>() to 0,
+            listOf(fileImage(), fileImage()) to 0,
+            listOf(fileImage().copy(forceSticker = true)) to 0,
+            listOf(file()) to 0,
+        )
+        for ((attachments, expected) in cases) {
+            runComposeUiTest {
+                setContent {
+                    WithComposerPreferences {
+                        MaterialTheme {
+                            MessageTextFieldForAttachment(
+                                state = rememberRichTextState(),
+                                onSendMessage = {},
+                                showFormattingToolbar = false,
+                                viewOnceToggle = viewOnceToggleFor(attachments, requested = false) {},
+                            )
+                        }
+                    }
+                }
+                assertEquals(expected, onAllNodesWithTag(VIEW_ONCE_TOGGLE_TAG).fetchSemanticsNodes().size)
+            }
+        }
     }
 }

@@ -1,10 +1,13 @@
 package id.homebase.core.ui.screens.email
 
 import id.homebase.api.client.mail.MailAppStatus
+import id.homebase.api.client.mail.MailboxMode
 import id.homebase.core.ui.screens.email.setup.EmailSetupStep
 import id.homebase.core.ui.screens.email.setup.resolveSetupStep
+import id.homebase.core.ui.screens.email.setup.setupMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.uuid.Uuid
 
 /**
@@ -19,12 +22,14 @@ class EmailSetupStateMachineTest {
         mailbox: Boolean = false,
         activated: Boolean = false,
         currentKey: Uuid? = null,
+        mode: MailboxMode? = null,
     ) = MailAppStatus(
         tenantMailEnabled = true,
         driveProvisioned = true,
         mailboxProvisioned = mailbox,
         activated = activated,
         currentKeyFileUniqueId = currentKey,
+        mode = mode,
     )
 
     /**
@@ -125,5 +130,71 @@ class EmailSetupStateMachineTest {
             credentialCount = 1,
         )
         assertEquals(EmailSetupStep.NeedsDrive, step)
+    }
+
+    /** A standard mailbox has no key: once it exists, the next thing is a mail app password. */
+    @Test
+    fun aStandardMailboxSkipsTheKey() {
+        val step = resolveSetupStep(
+            hasPermissions = true,
+            driveActivated = true,
+            status = status(mailbox = true, activated = true, mode = MailboxMode.Standard),
+            credentialCount = 0,
+        )
+        assertEquals(EmailSetupStep.NeedsAppPassword, step)
+    }
+
+    @Test
+    fun aStandardMailboxWithACredentialIsComplete() {
+        val step = resolveSetupStep(
+            hasPermissions = true,
+            driveActivated = true,
+            status = status(mailbox = true, activated = true, mode = MailboxMode.Standard),
+            credentialCount = 1,
+        )
+        assertEquals(EmailSetupStep.Complete, step)
+    }
+
+    @Test
+    fun anEncryptedMailboxStillNeedsItsKey() {
+        val step = resolveSetupStep(
+            hasPermissions = true,
+            driveActivated = true,
+            status = status(mailbox = true, mode = MailboxMode.Encrypted),
+            credentialCount = 0,
+        )
+        assertEquals(EmailSetupStep.NeedsKey, step)
+    }
+
+    /** A server that predates modes only makes encrypted mailboxes. */
+    @Test
+    fun noModeMeansTheKeyIsStillNeeded() {
+        val step = resolveSetupStep(
+            hasPermissions = true,
+            driveActivated = true,
+            status = status(mailbox = true, mode = null),
+            credentialCount = 0,
+        )
+        assertEquals(EmailSetupStep.NeedsKey, step)
+    }
+
+    /** Nothing is preselected: until the user picks, setup has no mode to run with. */
+    @Test
+    fun aServerThatOffersTheChoiceWaitsForIt() {
+        val fresh = status(mode = MailboxMode.Encrypted)
+        assertNull(setupMode(fresh, chosenMode = null))
+        assertEquals(MailboxMode.Standard, setupMode(fresh, chosenMode = MailboxMode.Standard))
+    }
+
+    /** Once the mailbox exists the server's mode wins; a stale local pick must not change it. */
+    @Test
+    fun anExistingMailboxKeepsTheServersMode() {
+        val existing = status(mailbox = true, mode = MailboxMode.Standard)
+        assertEquals(MailboxMode.Standard, setupMode(existing, chosenMode = MailboxMode.Encrypted))
+    }
+
+    @Test
+    fun anOlderServerIsAlwaysEncrypted() {
+        assertEquals(MailboxMode.Encrypted, setupMode(status(mode = null), chosenMode = null))
     }
 }

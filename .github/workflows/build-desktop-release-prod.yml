@@ -37,15 +37,15 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .conveyor/install
-          key: conveyor-22.0-linux-amd64
+          key: conveyor-22.3-linux-amd64
 
       - name: Download Conveyor
         if: steps.cache-conveyor.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          wget https://downloads.hydraulic.dev/conveyor/conveyor-22.0-linux-amd64.tar.gz
+          wget https://downloads.hydraulic.dev/conveyor/conveyor-22.3-linux-amd64.tar.gz
           mkdir -p .conveyor/install
-          tar xzvf conveyor-22.0-linux-amd64.tar.gz -C .conveyor/install
+          tar xzvf conveyor-22.3-linux-amd64.tar.gz -C .conveyor/install
 
       - name: Cache Conveyor data
         uses: actions/cache@v5
@@ -74,13 +74,6 @@ jobs:
           echo "Updated version.properties:"
           cat gradle/version.properties         
 
-      - name: Azure login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CODESIGN_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_CODESIGN_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_CODESIGN_SUBSCRIPTION_ID }}
-
       - name: Stage Apple signing material
         shell: bash
         env:
@@ -103,7 +96,15 @@ jobs:
         env:
           JDK_21: ${{ env.JAVA_HOME }}
 
-      # Deliberately after the build: the token is short-lived.
+      # Login and token fetch both deliberately after the build: az reuses the login's
+      # federated assertion, which expires minutes later, so a long build outlives it.
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CODESIGN_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_CODESIGN_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_CODESIGN_SUBSCRIPTION_ID }}
+
       - name: Fetch Azure code-signing access token
         shell: bash
         run: |
@@ -123,7 +124,7 @@ jobs:
           JDK_21: ${{ env.JAVA_HOME }}
         shell: bash
         run: |
-          PATH="$PATH:../.conveyor/install/conveyor-22.0/bin"
+          PATH="$PATH:../.conveyor/install/conveyor-22.3/bin"
           conveyor --cache-dir="../.conveyor/cache" "-Kapp.signing-key=$SIGNING_KEY" -f ci.conveyor_production.conf make site
 
       - name: Create release in production repo

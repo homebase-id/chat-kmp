@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,7 +28,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsTopBar
+import id.homebase.api.client.mail.MailboxMode
 import id.homebase.resources.MR
+import id.homebase.resources.email_mode_encrypted
+import id.homebase.resources.email_mode_row_title
+import id.homebase.resources.email_mode_standard
 import id.homebase.resources.email_settings_biometrics
 import id.homebase.resources.email_settings_open
 import id.homebase.resources.email_settings_section
@@ -39,11 +44,15 @@ fun EmailSettingsScreen(
     viewModel: EmailSettingsViewModel,
     onBackClick: () -> Unit,
     onOpenEmail: () -> Unit,
+    mailboxMode: MailboxMode?,
+    onChangeMode: () -> Unit,
     showOpenEmail: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     EmailSettingsUi(
         uiState = uiState,
+        mailboxMode = mailboxMode,
+        onChangeMode = onChangeMode,
         onAction = { action ->
             if (action is EmailSettingsUiAction.OpenEmailClicked) onOpenEmail()
             else viewModel.onAction(action)
@@ -57,6 +66,9 @@ fun EmailSettingsScreen(
 @Composable
 fun EmailSettingsUi(
     uiState: EmailSettingsUiState,
+    /** Null until a mailbox exists on a server that supports the choice: nothing to switch yet. */
+    mailboxMode: MailboxMode?,
+    onChangeMode: () -> Unit,
     onAction: (EmailSettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
     showOpenEmail: Boolean = true,
@@ -95,6 +107,20 @@ fun EmailSettingsUi(
                     onCheckedChange = { onAction(EmailSettingsUiAction.SetIconVisible(it)) },
                 ),
             )
+            mailboxMode?.let { mode ->
+                // Not a toggle: switching changes who can read the mail
+                SettingsRow(
+                    icon = Icons.Outlined.Lock,
+                    title = stringResource(MR.string.email_mode_row_title),
+                    supportingText = stringResource(
+                        when (mode) {
+                            MailboxMode.Encrypted -> MR.string.email_mode_encrypted
+                            MailboxMode.Standard -> MR.string.email_mode_standard
+                        }
+                    ),
+                    action = SettingsRowAction.Navigate(onChangeMode),
+                )
+            }
             SettingsRow(
                 icon = Icons.Outlined.Fingerprint,
                 title = stringResource(MR.string.email_settings_biometrics),
