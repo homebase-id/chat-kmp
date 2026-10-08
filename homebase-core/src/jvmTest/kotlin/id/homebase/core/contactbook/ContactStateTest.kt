@@ -7,9 +7,7 @@ import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
 import id.homebase.api.common.OdinId
-import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.ui.screens.contactbook.blocksUnreview
-import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.ui.screens.contactbook.ContactState
 import id.homebase.core.ui.screens.contactbook.contactStateOf
 import id.homebase.core.ui.screens.contactbook.isPersonalCircle
@@ -80,7 +78,6 @@ class ContactStateTest {
     fun ambientCirclesDoNotCountTowardCircleState() {
         assertFalse(circle(grantOn = CircleGrantOn.Connect).isPersonalCircle())
         assertFalse(circle(grantOn = CircleGrantOn.OwnFlowConnect).isPersonalCircle())
-        assertFalse(circle(id = AUTO_CONNECTIONS_CIRCLE_ID).isPersonalCircle())
     }
 
     /**
@@ -99,7 +96,6 @@ class ContactStateTest {
     fun ambientCirclesAreNotHandAssignable() {
         assertTrue(circle(grantOn = CircleGrantOn.Connect).isAmbientCircle())
         assertTrue(circle(grantOn = CircleGrantOn.OwnFlowConnect).isAmbientCircle())
-        assertTrue(circle(id = AUTO_CONNECTIONS_CIRCLE_ID).isAmbientCircle())
     }
 
     @Test
@@ -144,12 +140,6 @@ class UnreviewBlockingTest {
 
         assertTrue(vendor.blocksUnreview())
         assertFalse(vendor.isPersonalCircle())
-    }
-
-    @Test
-    fun systemCirclesAreSkipped() {
-        assertFalse(circle(id = AUTO_CONNECTIONS_CIRCLE_ID).blocksUnreview())
-        assertFalse(circle(id = CONFIRMED_CONNECTIONS_CIRCLE_ID).blocksUnreview())
     }
 
     @Test

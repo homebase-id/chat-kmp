@@ -5,13 +5,11 @@ import id.homebase.api.client.connections.CircleGrantOn
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.chat.services.convo.contact.CircleMembershipState
-import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONTACTS_APP_ID
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
 import id.homebase.core.config.EMERGENCY_LOCATION_CIRCLE_ID
-import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.ui.screens.contactbook.isAppDefaultCircle
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,17 +34,6 @@ class AssignableCirclesTest {
         designation = designation,
         appId = appId,
     )
-
-    /**
-     * The reason the legacy ids survive the move to GrantOn: a server below odin-core #1688 reports
-     * None for every circle, and odin-core keeps these two at None even above it.
-     */
-    @Test
-    fun legacySystemCirclesAreAppDefaultsEvenAtGrantOnNone() {
-        assertTrue(circle(AUTO_CONNECTIONS_CIRCLE_ID, "Auto Connections").isAppDefaultCircle())
-        assertTrue(circle(CONFIRMED_CONNECTIONS_CIRCLE_ID, "Confirmed").isAppDefaultCircle())
-        assertTrue(circle(AUTO_CONNECTIONS_CIRCLE_ID.uppercase(), "Auto").isAppDefaultCircle())
-    }
 
     @Test
     fun aGrantOnMarksAnAppDefaultWithoutAnyIdKnowledge() {
@@ -154,7 +141,7 @@ class ReviewCircleGroupsTest {
     fun onlyAnOfferedCircleCountsAsHeld() {
         val groups = state(circle("aa", "Friends")).reviewCircleGroups()
 
-        assertFalse(groups.holdsAnyOffered(setOf(AUTO_CONNECTIONS_CIRCLE_ID, "chat")))
+        assertFalse(groups.holdsAnyOffered(setOf("chat")))
         assertTrue(groups.holdsAnyOffered(setOf("aa")))
     }
 
@@ -165,7 +152,6 @@ class ReviewCircleGroupsTest {
             circle("bb", "Vendor", grantOn = CircleGrantOn.OwnFlowConnect),
             circle("cc", "Subscribers", designation = CircleDesignation.Audience),
             circle("dd", "Bank", designation = CircleDesignation.Vendor),
-            circle(AUTO_CONNECTIONS_CIRCLE_ID, "Auto Connections"),
         ).reviewCircleGroups()
 
         assertTrue(groups.isEmpty)

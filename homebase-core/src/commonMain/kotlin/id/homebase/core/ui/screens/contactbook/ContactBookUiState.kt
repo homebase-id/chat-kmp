@@ -64,10 +64,7 @@ data class CircleMembersUi(
     val circleName: String,
     /** The owner's chosen emoji; often a ZWJ sequence, so it is carried and rendered whole. */
     val circleEmoji: String? = null,
-    /** Whether this circle's membership can be managed here — false for the system-managed
-     *  Confirmed/Auto-connected circles (see [id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID]
-     *  / [id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID]), which are computed by the vetting
-     *  flow rather than manually curated. */
+    /** False for an ambient circle, whose owning app enrols members itself. */
     val manageable: Boolean = true,
     val disabled: Boolean = false,
     /** Shown under the menu's greyed Disable/Enable item; null means the toggle is offered. */

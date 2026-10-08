@@ -25,12 +25,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import id.homebase.api.client.connections.CircleWithMembers
-import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.resources.MR
 import id.homebase.resources.enroll_banner
 import id.homebase.resources.enroll_banner_action
 import id.homebase.resources.contactbook_circle_disabled
-import id.homebase.resources.contactbook_circle_new
 import id.homebase.resources.contactbook_circles_empty
 import org.jetbrains.compose.resources.stringResource
 
@@ -62,9 +60,6 @@ fun CirclesTabContent(
         }
 
         else -> {
-            // Client-side display override only — the auto-connected system circle keeps its
-            // server-side name/id, we just relabel it here.
-            val newName = stringResource(MR.string.contactbook_circle_new)
             LazyColumn(
                 state = listState,
                 modifier = modifier.fillMaxSize(),
@@ -99,11 +94,6 @@ fun CirclesTabContent(
                 }
                 items(circles, key = { it.circle.id }) { circle ->
                     val description = circle.circle.description
-                    val displayName = if (circle.circle.id == AUTO_CONNECTIONS_CIRCLE_ID) {
-                        newName
-                    } else {
-                        circle.circle.name
-                    }
                     ListItem(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -121,7 +111,7 @@ fun CirclesTabContent(
                                 )
                             }
                         },
-                        headlineContent = { Text(displayName) },
+                        headlineContent = { Text(circle.circle.name) },
                         supportingContent = when {
                             circle.circle.disabled -> {
                                 { Text(stringResource(MR.string.contactbook_circle_disabled)) }

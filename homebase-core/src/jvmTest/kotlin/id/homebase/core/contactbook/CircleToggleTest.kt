@@ -5,8 +5,6 @@ import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.ProblemDetails
 import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
-import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONTACTS_APP_ID
 import id.homebase.core.ui.screens.contactbook.ContactBookError
 import id.homebase.core.ui.screens.contactbook.toCircleToggleError
@@ -24,21 +22,15 @@ class CircleToggleTest {
     private fun circle(appId: Uuid?, id: String = "aa") = RedactedCircleDefinition(id = id, name = "c", appId = appId)
 
     @Test
-    fun theToggleIsOfferedOnChatAndContactsAppCircles() {
+    fun theToggleIsOfferedOnlyOnChatCircles() {
         assertNull(circle(ChatProtocol.ChatAppId).toggleBlockedReason())
-        assertNull(circle(Uuid.parse(CONTACTS_APP_ID)).toggleBlockedReason())
     }
 
     @Test
     fun ownerAndOtherAppCirclesAreBlockedAsForbidden() {
         assertEquals(ContactBookError.CircleToggleForbidden, circle(null).toggleBlockedReason())
+        assertEquals(ContactBookError.CircleToggleForbidden, circle(Uuid.parse(CONTACTS_APP_ID)).toggleBlockedReason())
         assertEquals(ContactBookError.CircleToggleForbidden, circle(Uuid.random()).toggleBlockedReason())
-    }
-
-    @Test
-    fun systemCirclesAreBlockedAsSystem() {
-        assertEquals(ContactBookError.CircleToggleSystemCircle, circle(ChatProtocol.ChatAppId, CONFIRMED_CONNECTIONS_CIRCLE_ID).toggleBlockedReason())
-        assertEquals(ContactBookError.CircleToggleSystemCircle, circle(ChatProtocol.ChatAppId, AUTO_CONNECTIONS_CIRCLE_ID).toggleBlockedReason())
     }
 
     @Test

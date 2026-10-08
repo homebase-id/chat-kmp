@@ -27,7 +27,6 @@ import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.avatars.AppConnectionStatus
-import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.contactTargetDrive
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.core.contactbook.ContactOverrideStore
@@ -710,12 +709,7 @@ private fun CircleWithMembers.matchesQuery(query: String): Boolean {
 }
 
 /**
- * Sort bucket for the Circles tab: the auto-connected ("New") circle first, the user's own
- * circles (including Emergency Location Access — a user circle, not an app default) in the
- * middle, and every other app default circle last.
+ * Sort bucket for the Circles tab: the user's own circles (including Emergency Location Access —
+ * a user circle, not an app default) first, and every app default circle last.
  */
-private fun RedactedCircleDefinition.circleSortRank(): Int = when {
-    id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true) -> 0
-    isAppDefaultCircle() -> 2
-    else -> 1
-}
+private fun RedactedCircleDefinition.circleSortRank(): Int = if (isAppDefaultCircle()) 1 else 0

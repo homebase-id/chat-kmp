@@ -60,11 +60,10 @@ data class ConnectionState(
 }
 
 /**
- * Owner circles (including system circles) with their members, fetched alongside the
- * connection map on every [ConnectionService.refresh]. Powers circle-membership reads:
- * the contact-list "Confirmed" / "Introduced" pills (via the two system-circle ids) and
- * the contact-detail "circles this person is in" list. Persisted by [ConnectionCacheRepository]
- * and hydrated on a cold start, so offline it shows the last-known memberships.
+ * Owner circles with their members, fetched alongside the connection map on every
+ * [ConnectionService.refresh]. Powers circle-membership reads such as the contact-detail
+ * "circles this person is in" list. Persisted by [ConnectionCacheRepository] and hydrated on a
+ * cold start, so offline it shows the last-known memberships.
  */
 data class CircleMembershipState(
     val isLoaded: Boolean = false,
@@ -285,8 +284,6 @@ class ConnectionService(
                 )
                 circlesDeferred.await()?.let { circles ->
                     _circles.value = CircleMembershipState(isLoaded = true, circles = circles)
-                    // Verifies the Confirmed (bb2683fa…) / Auto (9e22b429…) system-circle ids
-                    // actually come back here so the membership-driven pills are reliable.
                     Logger.d {
                         "ConnectionService circles: " +
                             circles.joinToString { "${it.circle.id}(${it.circle.name})=${it.members.size}" }

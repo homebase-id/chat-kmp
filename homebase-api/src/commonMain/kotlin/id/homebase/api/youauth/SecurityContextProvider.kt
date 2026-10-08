@@ -66,13 +66,6 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
                 securityLevel =
                     callerJson?.get("securityLevel")?.jsonPrimitive?.contentOrNull
                         ?: "anonymous",
-                isGrantedConnectedIdentitiesSystemCircle =
-                    callerJson
-                        ?.get("isGrantedConnectedIdentitiesSystemCircle")
-                        ?.jsonPrimitive
-                        ?.contentOrNull
-                        ?.toBooleanStrictOrNull()
-                        ?: false
             )
 
         val permissionContextJson = root["permissionContext"]?.jsonObject
