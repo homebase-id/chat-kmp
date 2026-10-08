@@ -13,3 +13,8 @@ fun OdinId.buildConnectToIdentityUrl(connectId: OdinId): String {
 fun OdinId.buildBlockUrl(targetId: OdinId): String {
     return "https://${this.domainName}/owner/connections/${targetId.domainName}/block"
 }
+
+/** The owner console's Security → Email tab: the mail DNS records, and the repair button. */
+fun OdinId.buildOwnerEmailSettingsUrl(): String {
+    return "https://${this.domainName}/owner/security/email"
+}
