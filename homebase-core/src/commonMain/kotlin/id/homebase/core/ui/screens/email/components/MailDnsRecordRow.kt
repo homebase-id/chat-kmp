@@ -46,7 +46,9 @@ fun MailDnsRecordRow(
         }
         CopyableLine(
             text = stringResource(MR.string.email_record_at, record.type, record.domain),
-            copyText = record.domain,
+            // The label, not the FQDN: DNS providers append the zone to whatever is pasted into
+            // the host field, so the FQDN would end up published at name.example.com.example.com.
+            copyText = record.name.ifBlank { "@" },
             copyLabel = stringResource(MR.string.email_copy_name),
             onCopy = onCopy,
         )

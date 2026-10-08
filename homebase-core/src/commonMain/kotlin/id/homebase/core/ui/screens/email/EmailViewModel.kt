@@ -25,7 +25,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.TimeSource
 
 /**
@@ -47,7 +47,7 @@ class EmailViewModel(
 
     companion object {
         private const val TAG = "EmailViewModel"
-        private val HEALTH_REUSE = 60.seconds
+        private val HEALTH_REUSE = 15.minutes
     }
 
     /** When the last health answer arrived; HomeShown reuses one younger than [HEALTH_REUSE]. */
