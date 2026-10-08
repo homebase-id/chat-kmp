@@ -49,6 +49,8 @@ fun ZoomableSubSamplingImage(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
     onTap: (() -> Unit)? = null,
+    onLoaded: (() -> Unit)? = null,
+    onError: (() -> Unit)? = null,
     // Fires with `true` once the user pinches past fit and `false` when the
     // transform returns to fit. Lets a host (e.g. a Moments carousel pager)
     // disable page-swiping while a photo is zoomed so panning a zoomed image
@@ -165,7 +167,11 @@ fun ZoomableSubSamplingImage(
             contentScale = contentScale,
             zoomState = zoomState,
             scrollBar = null,
-            onSuccess = { imageLoaded = true },
+            onSuccess = {
+                imageLoaded = true
+                onLoaded?.invoke()
+            },
+            onError = onError?.let { callback -> { _ -> callback() } },
             onTap = onTap?.let { callback -> { _: Offset -> callback() } },
         )
     }

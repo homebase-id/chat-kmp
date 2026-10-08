@@ -59,6 +59,10 @@ import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
 import id.homebase.resources.cd_send_to
+import id.homebase.chat.viewonce.ViewOnceIntroSheet
+import id.homebase.chat.viewonce.ViewOnceToast
+import id.homebase.chat.viewonce.rememberViewOnceComposerState
+import id.homebase.chat.conversationlist.AttachmentPendingFile
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -277,6 +281,7 @@ fun ConversationMessagesPane(
                     is FullScreenOverlay.VideoPlayerData -> "videoPlayer"
                     is FullScreenOverlay.AttachmentData -> "attachment"
                     is FullScreenOverlay.PdfViewerData -> "pdf"
+                    is FullScreenOverlay.ViewOnceViewer -> "viewOnce"
                 }
             },
             transitionSpec = {
@@ -337,6 +342,11 @@ fun ConversationMessagesPane(
 
                     is FullScreenOverlay.AttachmentData -> {
                         var captionEmojiPickerOpen by remember { mutableStateOf(false) }
+                        val viewOnceState = rememberViewOnceComposerState()
+                        val viewOnceEligible = isViewOnceEligible(data.attachments)
+                        LaunchedEffect(viewOnceEligible) { viewOnceState.onEligibilityChanged(viewOnceEligible) }
+                        val viewOnce = viewOnceState.requested && viewOnceEligible
+                        val viewOnceIsVideo = data.attachments.singleOrNull() is AttachmentPendingFile.FileVideo
                         MediaAttachmentEditor(
                             attachments = data.attachments,
                             currentPage = currentGalleryPage,
@@ -350,6 +360,8 @@ fun ConversationMessagesPane(
                                         .ToggleMediaQuality
                                 )
                             },
+                            centerImageInPage = true,
+                            addMoreEnabled = !viewOnce,
                             onAddFile = { fileLauncher.launch() },
                             onAddImage = { galleryLauncher.launch() },
                             onCameraClick = { cameraLauncher.launch() },
@@ -377,6 +389,9 @@ fun ConversationMessagesPane(
                                         data.conversationId, attachmentId, startMs, endMs,
                                     )
                                 )
+                            },
+                            aboveStripOverlay = {
+                                ViewOnceToast(message = viewOnceState.toast, modifier = Modifier.align(Alignment.BottomCenter))
                             },
                             pagerTopEndSlot = {
                                 Row(
@@ -408,7 +423,12 @@ fun ConversationMessagesPane(
                                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                                     state = textFieldState,
                                     onSendMessage = {
-                                        onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments))
+                                        onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments, viewOnce))
+                                    },
+                                    viewOnceToggle = remember(data.attachments, viewOnce, viewOnceState, viewOnceIsVideo, viewOnceEligible) {
+                                        viewOnceToggleFor(data.attachments, viewOnce) {
+                                            viewOnceState.toggle(viewOnceIsVideo, viewOnceEligible)
+                                        }
                                     },
                                     onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
                                     onPasteImage = { imageBytes ->
@@ -421,6 +441,9 @@ fun ConversationMessagesPane(
                                 )
                             },
                         )
+                        if (viewOnceState.showIntro) {
+                            ViewOnceIntroSheet(isVideo = viewOnceIsVideo, onDismiss = viewOnceState::dismissIntro)
+                        }
                     }
                 }
             }

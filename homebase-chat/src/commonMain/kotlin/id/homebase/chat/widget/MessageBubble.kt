@@ -63,6 +63,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -86,6 +87,8 @@ import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.viewonce.ViewOnceRules
+import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.haptics.HapticEvent
@@ -179,6 +182,7 @@ fun SentMessageBubble(
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     currentOdinId: String = "",
     clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
+    isGroupConversation: Boolean = false,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
     onBattle: (() -> Unit)? = null,
@@ -377,6 +381,7 @@ fun SentMessageBubble(
                         showVoiceNoteSender = true,
                         currentOdinId = currentOdinId,
                         clusterPosition = clusterPosition,
+                        isGroupConversation = isGroupConversation,
                         onLongClick = {
                             if (onMessageInfo != null) {
                                 haptics.perform(HapticEvent.LongPress)
@@ -916,7 +921,8 @@ fun MessageTimestampFooter(
     ) {
         Text(
             text = infoText,
-            style = MaterialTheme.typography.labelSmall,
+            // A Latin "10:54 AM" stays in that order inside an RTL bubble.
+            style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
             color = contentColor.copy(alpha = 0.7f),
         )
         if (showDeliveryStatus) {
@@ -1025,6 +1031,9 @@ private fun rememberPendingStale(since: Instant, threshold: Duration = 1.minutes
  */
 fun String.hasContent(): Boolean = stripComposerLineBreakArtifacts().isNotEmpty()
 
+internal fun MessageContent?.isProtectedMedia(): Boolean =
+    this is MessageContent.ViewOnce || this is MessageContent.Unknown
+
 /**
  * Displays a compact preview of the message being replied to, shown inline within the message
  * bubble.
@@ -1049,7 +1058,10 @@ fun InlineReplyPreview(
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
-    val mediaPayloads = remember(replyMessage?.payloads) { replyMessage?.payloads.replyQuoteMediaPayloads() }
+    val quotesProtectedMedia = replyMessage?.messageContent.isProtectedMedia()
+    val mediaPayloads = remember(replyMessage?.payloads, quotesProtectedMedia) {
+        if (quotesProtectedMedia) emptyList() else replyMessage?.payloads.replyQuoteMediaPayloads()
+    }
     // A voice note's embedded thumb is its waveform and a PDF's is a 20px page, so only visual media gets one.
     val showThumbnail = replyMessage == null || mediaPayloads.firstOrNull()?.isVisualMedia() == true
 
@@ -1079,16 +1091,23 @@ fun InlineReplyPreview(
     }
 
     val hasThumb = imageData != null || thumbnailBitmap != null
-    val hasImage = hasThumb || replyPreview.previewThumbnail != null
+    val hasImage = hasThumb || (!quotesProtectedMedia && replyPreview.previewThumbnail != null)
 
     // Strip richeditor's `<br>` empty-paragraph artifacts from the quoted body so a reply to a
     // legacy `<br>` message shows its real text, not a stray break / blank quote (#1104).
     val replyText = remember(replyPreview.message) { replyPreview.message.stripComposerLineBreakArtifacts() }
+    val viewOnceOpened = remember(replyMessage, currentOdinId) {
+        replyMessage?.takeIf { it.messageContent is MessageContent.ViewOnce }?.let {
+            ViewOnceRules.isSpent(it, Clock.System.now().toEpochMilliseconds(), runCatching { OdinId(currentOdinId) }.getOrNull())
+        } ?: false
+    }
     val contentLabel = messageContentLabel(
         textContent = replyText,
         isDeleted = replyMessage?.isDeleted ?: false,
         firstPayload = mediaPayloads.firstOrNull(),
         hasMultiplePayloads = mediaPayloads.size > 1,
+        messageContent = replyMessage?.messageContent.takeIf { it is MessageContent.ViewOnce },
+        viewOnceOpened = viewOnceOpened,
     )
     // Dispatch on the typed ReplyContext carried on the wire — that's how
     // the renderer knows it's an event reply without looking up the parent.
@@ -1165,7 +1184,7 @@ fun InlineReplyPreview(
                                 Icon(
                                     imageVector = icon,
                                     contentDescription = null,
-                                    modifier = Modifier.size(12.dp),
+                                    modifier = Modifier.size(12.dp).testTag(ChatBubbleTestTags.REPLY_QUOTE_ICON),
                                     tint = contentColor.copy(alpha = 0.7f),
                                 )
                                 Spacer(modifier = Modifier.width(3.dp))

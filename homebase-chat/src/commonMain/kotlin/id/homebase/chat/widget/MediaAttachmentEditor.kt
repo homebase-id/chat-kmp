@@ -2,6 +2,14 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ToggleButtonShapes
+import androidx.compose.ui.semantics.Role
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.EnterTransition
@@ -18,12 +26,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
@@ -32,6 +42,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -41,7 +52,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Hd
@@ -51,10 +61,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.FloatingToolbarDefaults
-import androidx.compose.material3.HorizontalFloatingToolbar
+import androidx.compose.ui.graphics.vector.ImageVector
+import org.jetbrains.compose.resources.StringResource
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -65,12 +73,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateSetOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
+import id.homebase.core.widget.connectedButtonShapes
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -103,6 +115,8 @@ import id.homebase.resources.cd_pause_video
 import id.homebase.resources.cd_play_video
 import id.homebase.resources.cd_video_thumbnail
 import id.homebase.resources.chat_message_add_gallery_image
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButtonShapes
 import id.homebase.resources.chat_message_remove_gallery_image
 import id.homebase.resources.crop
 import id.homebase.resources.draw
@@ -159,6 +173,23 @@ internal fun editorToolsetFor(
     )
 }
 
+internal fun isViewOnceCandidate(current: AttachmentPendingFile?): Boolean = when (current) {
+    is AttachmentPendingFile.FileImage -> !current.forceSticker
+    is AttachmentPendingFile.Gallery -> !current.forceSticker
+    is AttachmentPendingFile.FileVideo -> true
+    else -> false
+}
+
+internal fun isViewOnceEligible(attachments: List<AttachmentPendingFile>): Boolean =
+    attachments.size == 1 && isViewOnceCandidate(attachments.single())
+
+internal fun viewOnceToggleFor(
+    attachments: List<AttachmentPendingFile>,
+    requested: Boolean,
+    onToggle: () -> Unit,
+): ViewOnceToggle? =
+    if (isViewOnceEligible(attachments)) ViewOnceToggle(requested, onToggle) else null
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MediaAttachmentEditor(
@@ -187,7 +218,10 @@ fun MediaAttachmentEditor(
     revealed: Boolean = true,
     imageOverlay: @Composable BoxScope.(AttachmentPendingFile) -> Unit = {},
     pagerTopEndSlot: @Composable BoxScope.() -> Unit = {},
+    // Floats over the media just above the attachment strip and takes no room, so the media never moves.
+    aboveStripOverlay: @Composable BoxScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
+    addMoreEnabled: Boolean = true,
 ) {
     val isFileMode = attachments.all { it is AttachmentPendingFile.File }
     val imageLoader: ImageLoader = koinInject()
@@ -261,7 +295,8 @@ fun MediaAttachmentEditor(
         ) {
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.fillMaxSize(),
+                // The close button gets its own band, so it never sits on the media's corner.
+                modifier = Modifier.fillMaxSize().padding(top = if (onDismiss != null) CLOSE_BAND else 0.dp),
                 userScrollEnabled = true,
                 beyondViewportPageCount = 1
             ) { page ->
@@ -321,9 +356,18 @@ fun MediaAttachmentEditor(
                         val seekRequest = seekRequestByAtt[attId]
                         val clipStart = attachment.trimStartMs ?: 0L
                         val clipEnd = attachment.trimEndMs ?: (durationMs ?: 0L)
+                        // Sized to the poster's aspect, so a video floats on the surface like a photo instead of a full-page black slab.
+                        var aspect by remember(attId) { mutableStateOf<Float?>(null) }
+                        val rememberAspect: (AsyncImagePainter.State) -> Unit = { state ->
+                            if (state is AsyncImagePainter.State.Success) {
+                                val size = state.painter.intrinsicSize
+                                if (size.width > 0f && size.height > 0f) aspect = size.width / size.height
+                            }
+                        }
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Box(
                             modifier = Modifier
-                                .fillMaxSize()
+                                .then(aspect?.let { Modifier.aspectRatio(it) } ?: Modifier.fillMaxSize())
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(Color.Black),
                             contentAlignment = Alignment.Center,
@@ -356,6 +400,7 @@ fun MediaAttachmentEditor(
                                         contentDescription = null,
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Fit,
+                                        onState = rememberAspect,
                                     )
                                 }
                             } else {
@@ -376,6 +421,7 @@ fun MediaAttachmentEditor(
                                     contentDescription = stringResource(MR.string.cd_video_thumbnail),
                                     modifier = Modifier.fillMaxWidth(),
                                     contentScale = ContentScale.Fit,
+                                    onState = rememberAspect,
                                 )
                             }
                             IconButton(
@@ -391,6 +437,7 @@ fun MediaAttachmentEditor(
                                     tint = Color.White,
                                 )
                             }
+                        }
                         }
                     }
                     is AttachmentPendingFile.Gallery -> {
@@ -416,7 +463,8 @@ fun MediaAttachmentEditor(
                     onClick = onDismiss,
                     modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
                     colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
                     )
                 ) {
                     Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.menu_back))
@@ -490,6 +538,13 @@ fun MediaAttachmentEditor(
         }
         } // end AnimatedContent (trim bar)
 
+        Box(Modifier.fillMaxWidth().height(0.dp).zIndex(1f)) {
+            Box(
+                Modifier.align(Alignment.BottomCenter).wrapContentHeight(Alignment.Bottom, unbounded = true),
+                content = aboveStripOverlay,
+            )
+        }
+
         // Attachment-strip row: thumbnails for every queued attachment with a
         // trailing "+" to add another. This row is just about managing the
         // collection of attachments — actions on the current one live below.
@@ -510,14 +565,19 @@ fun MediaAttachmentEditor(
             ) {
                 attachments.forEach { attachment ->
                     val isSelected = activeAttachment?.attachmentId == attachment.attachmentId
+                    val corner by animateDpAsState(
+                        if (isSelected) 20.dp else 8.dp,
+                        MaterialTheme.motionScheme.fastSpatialSpec(),
+                    )
+                    val thumbShape = RoundedCornerShape(corner)
                     Box(
                         modifier = Modifier
                             .size(60.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(thumbShape)
                             .border(
                                 width = if (isSelected) 2.dp else 0.dp,
                                 color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Unspecified,
-                                shape = RoundedCornerShape(8.dp)
+                                shape = thumbShape,
                             )
                             .clickable {
                                 scope.launch {
@@ -598,19 +658,31 @@ fun MediaAttachmentEditor(
                         }
 
                         if (isSelected && onRemoveFile != null) {
+                            // A 48dp target in the thumbnail's top-end corner; only the small badge is drawn.
                             Box(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color.Black.copy(alpha = 0.5f))
-                                    .clickable { onRemoveFile(attachment.attachmentId) },
-                                contentAlignment = Alignment.Center
+                                    .align(Alignment.TopEnd)
+                                    .size(48.dp)
+                                    .clickable(
+                                        onClickLabel = stringResource(MR.string.chat_message_remove_gallery_image),
+                                        role = Role.Button,
+                                    ) { onRemoveFile(attachment.attachmentId) },
+                                contentAlignment = Alignment.TopEnd,
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = stringResource(MR.string.chat_message_remove_gallery_image),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(24.dp)
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .padding(top = 5.dp, end = 5.dp)
+                                        .size(22.dp)
+                                        .background(MaterialTheme.colorScheme.errorContainer, CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = stringResource(MR.string.chat_message_remove_gallery_image),
+                                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                }
                             }
                         }
                     }
@@ -619,9 +691,12 @@ fun MediaAttachmentEditor(
             if (onCameraClick != null) {
                 IconButton(
                     onClick = onCameraClick,
+                    enabled = addMoreEnabled,
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_CONTAINER_ALPHA),
+                        disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_CONTENT_ALPHA),
                     )
                 ) {
                     Icon(
@@ -634,8 +709,11 @@ fun MediaAttachmentEditor(
             if (addAction != null) {
                 IconButton(
                     onClick = addAction,
+                    enabled = addMoreEnabled,
                     colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_CONTAINER_ALPHA),
+                        disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_CONTENT_ALPHA),
                     )
                 ) {
                     Icon(
@@ -670,64 +748,61 @@ fun MediaAttachmentEditor(
         // Reserve the toolbar's height whenever tools can appear, so paging onto an attachment
         // without tools fades the toolbar instead of growing the pager.
         val canShowToolbar = onCropImage != null || onDrawImage != null || onSaveFile != null
-        Row(
+        Column {
+        // Flows so the chips wrap under the toolbar at large font scales instead of clipping.
+        FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp)
-                .heightIn(min = if (canShowToolbar) FloatingToolbarDefaults.ContainerSize else 0.dp),
+                .heightIn(min = if (canShowToolbar) SEND_OPTION_HEIGHT else 0.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
         ) {
-            AnimatedContent(
+            val showQuality = toolset.showQuality
+            // A lone download joins the quality toggle's connected group, so the row reads as one toolbar.
+            val saveJoinsGroup = showQuality && toolset.showSave && onlyTool(toolset)
+            // Not composed when empty: FlowRow would still space a zero-width slot and push the group off the edge.
+            if (!saveJoinsGroup) AnimatedContent(
                 targetState = currentAttachment?.takeIf { toolset.showToolbar },
                 contentKey = { it != null },
                 transitionSpec = { fadeIn(toolbarFade) togetherWith fadeOut(toolbarFade) using null },
             ) { attachment ->
                 if (attachment != null) {
                     val tools = toolsetFor(attachment)
-                    HorizontalFloatingToolbar(
-                        expanded = true,
-                        expandedShadowElevation = 0.dp,
-                    ) {
-                        if (tools.showCrop) {
-                            IconButton(onClick = { onCropImage!!(attachment.attachmentId) }) {
-                                Icon(Icons.Default.Crop, contentDescription = stringResource(MR.string.crop))
-                            }
-                        }
-                        if (tools.showDraw) {
-                            IconButton(onClick = { onDrawImage!!(attachment.attachmentId) }) {
-                                Icon(Icons.Default.Draw, contentDescription = stringResource(MR.string.draw))
-                            }
-                        }
-                        if (tools.showSave) {
-                            IconButton(onClick = { onSaveFile!!(attachment) }) {
-                                Icon(Icons.Default.Download, contentDescription = stringResource(MR.string.save))
-                            }
+                    val toolButtons = listOfNotNull(
+                        if (tools.showCrop) EditorTool(Icons.Default.Crop, MR.string.crop) { onCropImage!!(attachment.attachmentId) } else null,
+                        if (tools.showDraw) EditorTool(Icons.Default.Draw, MR.string.draw) { onDrawImage!!(attachment.attachmentId) } else null,
+                        if (tools.showSave) EditorTool(Icons.Default.Download, MR.string.save) { onSaveFile!!(attachment) } else null,
+                    )
+                    // Same height and connected shapes as the send options, so the row reads as one toolbar.
+                    Row(horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
+                        toolButtons.forEachIndexed { index, tool ->
+                            ConnectedToolButton(tool, connectedButtonShapes(index, toolButtons.size))
                         }
                     }
                 }
             }
-            if (toolset.showQuality) {
-                Spacer(modifier = Modifier.weight(1f))
-                val isHigh = mediaQuality == MediaQuality.HIGH
-                FilterChip(
-                    modifier = Modifier.testTag("mediaQualityChip"),
-                    selected = isHigh,
-                    onClick = { onToggleMediaQuality!!() },
-                    label = { Text(stringResource(MR.string.chat_media_quality_hd)) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = if (isHigh) Icons.Default.Hd
-                            else HomebaseIcons.HdOff,
-                            contentDescription = stringResource(
-                                if (isHigh) MR.string.cd_media_quality_high_on
-                                else MR.string.cd_media_quality_high_off
-                            ),
-                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+            if (showQuality) {
+                val groupSize = if (saveJoinsGroup) 2 else 1
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (saveJoinsGroup && currentAttachment != null) {
+                        ConnectedToolButton(
+                            EditorTool(Icons.Default.Download, MR.string.save) { onSaveFile!!(currentAttachment) },
+                            connectedButtonShapes(0, groupSize),
                         )
-                    },
-                )
+                    }
+                    MediaQualityToggle(
+                        isHigh = mediaQuality == MediaQuality.HIGH,
+                        onClick = { onToggleMediaQuality!!() },
+                        shapes = connectedButtonShapes(groupSize - 1, groupSize),
+                    )
+                }
             }
+        }
         }
         } // end AnimatedVisibility (tool row)
 
@@ -741,6 +816,60 @@ fun MediaAttachmentEditor(
         }
     }
 }
+
+private class EditorTool(val icon: ImageVector, val label: StringResource, val onClick: () -> Unit)
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun ConnectedToolButton(tool: EditorTool, shapes: ToggleButtonShapes) {
+    FilledTonalIconButton(
+        onClick = tool.onClick,
+        shapes = IconButtonShapes(shape = shapes.shape, pressedShape = shapes.pressedShape),
+        colors = IconButtonDefaults.filledTonalIconButtonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+        modifier = Modifier.size(SEND_OPTION_HEIGHT),
+    ) {
+        Icon(tool.icon, contentDescription = stringResource(tool.label))
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun MediaQualityToggle(isHigh: Boolean, onClick: () -> Unit, shapes: ToggleButtonShapes) {
+    ToggleButton(
+        checked = isHigh,
+        onCheckedChange = { onClick() },
+        shapes = shapes,
+        colors = sendOptionColors(),
+        modifier = Modifier.heightIn(min = SEND_OPTION_HEIGHT).testTag("mediaQualityChip"),
+    ) {
+        Icon(
+            imageVector = if (isHigh) Icons.Default.Hd else HomebaseIcons.HdOff,
+            contentDescription = stringResource(
+                if (isHigh) MR.string.cd_media_quality_high_on else MR.string.cd_media_quality_high_off
+            ),
+            modifier = Modifier.size(ButtonDefaults.IconSize),
+        )
+        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+        Text(stringResource(MR.string.chat_media_quality_hd))
+    }
+}
+
+private val SEND_OPTION_HEIGHT = 48.dp
+private val CLOSE_BAND = 72.dp
+
+private fun onlyTool(tools: EditorToolset): Boolean =
+    listOf(tools.showCrop, tools.showDraw, tools.showSave).count { it } == 1
+
+@Composable
+private fun sendOptionColors() = ToggleButtonDefaults.toggleButtonColors(
+    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+    checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+)
 
 @Composable
 fun secondaryChromeEnter(): EnterTransition =
@@ -788,3 +917,7 @@ private fun PdfAttachmentPreview(
         }
     }
 }
+
+// M3 disabled-state opacities: the add buttons stay legible as "not now" instead of vanishing into the strip.
+private const val DISABLED_CONTAINER_ALPHA = 0.12f
+private const val DISABLED_CONTENT_ALPHA = 0.38f

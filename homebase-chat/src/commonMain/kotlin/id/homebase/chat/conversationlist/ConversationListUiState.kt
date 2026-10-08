@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.common.OdinId
@@ -361,6 +362,22 @@ sealed interface FullScreenOverlay {
         val processingAttachmentIds: Set<Uuid> = emptySet(),
     ) : FullScreenOverlay
 
+    /** A received view-once item: the media, its optional caption, and who sent it when, since the thread can't be scrolled back to check. */
+    @Immutable
+    data class ViewOnceViewer(
+        val messageId: Uuid,
+        val conversationId: Uuid,
+        val fileId: Uuid,
+        val payload: PayloadDescriptor,
+        val keyHeader: KeyHeader,
+        /** [id.homebase.chat.viewonce.ViewOnceDescriptor.KIND_IMAGE] or KIND_VIDEO. */
+        val kind: String,
+        /** Shown only inside the viewer, as the last thing read from the descriptor. */
+        val caption: String? = null,
+        val senderName: String? = null,
+        val sentAt: Instant? = null,
+    ) : FullScreenOverlay.MediaViewer
+
     @Immutable
     data class VideoPlayerData(
         val fileId: Uuid,
@@ -375,6 +392,8 @@ sealed interface FullScreenOverlay {
         /** Set together for a followed identity's post; playback then reads the author's drive by gtid. */
         val remoteOdinId: OdinId? = null,
         val globalTransitId: Uuid? = null,
+        /** Where the decrypted MP4 temp goes; view-once keeps its own so the startup sweep can reap it. */
+        val scratchSub: String = AppCacheDirs.EXPORT,
     ) : FullScreenOverlay.MediaViewer
 
     @Immutable

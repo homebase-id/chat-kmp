@@ -22,6 +22,9 @@ import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.viewonce.kindLabel
+import id.homebase.chat.viewonce.ViewOnceIcon
+import id.homebase.chat.viewonce.ViewOnceOpenedIcon
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_audio
 import id.homebase.resources.chat_message_deleted
@@ -61,6 +64,7 @@ fun typedMessageContentLabel(messageContent: MessageContent?): ContentLabel? = w
     is MessageContent.Groodle -> ContentLabel(messageContent.displayLabel, Icons.Default.CalendarMonth)
     is MessageContent.ContactCard -> ContentLabel(messageContent.displayLabel, Icons.Outlined.ContactPage)
     is MessageContent.Location -> ContentLabel(messageContent.displayLabel, Icons.Default.LocationOn)
+    is MessageContent.ViewOnce -> null
     is MessageContent.Unknown -> ContentLabel(messageContent.displayLabel, Icons.AutoMirrored.Outlined.HelpOutline)
     null -> null
 }
@@ -80,7 +84,14 @@ fun messageContentLabel(
     firstPayload: PayloadDescriptor?,
     hasMultiplePayloads: Boolean,
     messageContent: MessageContent? = null,
+    // Null reads the opened variant off [isDeleted]: a received view-once item is deleted once it is spent.
+    viewOnceOpened: Boolean? = null,
 ): ContentLabel? {
+    // Before the deleted check: a spent view-once item keeps its view-once label instead of reading as deleted; "Media" only when this device never stored the live row.
+    if (messageContent is MessageContent.ViewOnce) {
+        val word = stringResource(messageContent.descriptor.kindLabel())
+        return ContentLabel(word, if (viewOnceOpened ?: isDeleted) ViewOnceOpenedIcon else ViewOnceIcon)
+    }
     if (isDeleted) {
         return ContentLabel(
             text = stringResource(MR.string.chat_message_deleted),

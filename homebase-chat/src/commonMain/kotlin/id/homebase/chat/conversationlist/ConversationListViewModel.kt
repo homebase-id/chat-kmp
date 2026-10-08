@@ -26,6 +26,7 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.viewonce.ViewOnceActions
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessagesData
@@ -152,6 +153,7 @@ class ConversationListViewModel(
     private val chatMessageStream: ChatMessageStream,
     private val chatMessageSenderService: ChatMessageSenderService,
     private val chatMessageActionService: ChatMessageActionService,
+    private val viewOnceActions: ViewOnceActions,
     private val conversationService: ConversationService,
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
@@ -252,6 +254,7 @@ class ConversationListViewModel(
         driveFileProvider = driveFileProvider,
         fileOperationsProvider = fileOperationsProvider,
         chatMessageActionService = chatMessageActionService,
+        viewOnceActions = viewOnceActions,
         chatMessageStream = chatMessageStream,
         localVideoContextStore = localVideoContextStore,
         sendEvent = ::sendEvent,
@@ -1486,6 +1489,11 @@ class ConversationListViewModel(
             is ConversationListUiAction.ShowMoreClicked -> mediaDownloadHandler.handleShowMoreClicked(action)
 
             is ConversationListUiAction.CloseFullScreenOverlay -> mediaDownloadHandler.handleCloseFullScreenOverlay()
+
+            is ConversationListUiAction.ViewOnceViewerClosed -> mediaDownloadHandler.handleViewOnceViewerClosed(action)
+            is ConversationListUiAction.ViewOnceScreenshot -> mediaDownloadHandler.handleViewOnceScreenshot(action)
+            is ConversationListUiAction.ViewOnceReact -> mediaDownloadHandler.handleViewOnceReact(action)
+            is ConversationListUiAction.ViewOnceReply -> mediaDownloadHandler.handleViewOnceReply(action)
 
             is ConversationListUiAction.ReplyToMessage -> messageActionsHandler.handleReplyToMessage(action)
 

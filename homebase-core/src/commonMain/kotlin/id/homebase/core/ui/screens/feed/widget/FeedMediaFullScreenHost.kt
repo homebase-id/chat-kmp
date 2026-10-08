@@ -42,6 +42,7 @@ internal fun FeedMediaFullScreenHost(
                     is FullScreenOverlay.VideoPlayerData -> "video"
                     is FullScreenOverlay.AttachmentData -> "attachment"
                     is FullScreenOverlay.PdfViewerData -> "pdf"
+                    is FullScreenOverlay.ViewOnceViewer -> "viewOnce"
                 }
             },
             transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
@@ -67,6 +68,7 @@ internal fun FeedMediaFullScreenHost(
                 // Chat-composer / PDF overlays; [feedMediaOverlay] never produces them.
                 is FullScreenOverlay.AttachmentData -> Unit
                 is FullScreenOverlay.PdfViewerData -> Unit
+                is FullScreenOverlay.ViewOnceViewer -> Unit
             }
         }
     }

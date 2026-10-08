@@ -30,6 +30,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.navigation.NavGraphBuilder
 import id.homebase.chat.conversationlist.chatOwnsWindow
+import id.homebase.chat.conversationlist.showsViewOnceViewer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -437,7 +438,8 @@ fun AppNavHost(
     val paintsUnderTitleBar = chromeDestination?.hasRoute(Route.Login::class) == true
     // The card fills its sheet to the screen's bottom edge; its own chrome pads for the navigation bar.
     // The Vault gallery/editor floor does the same (VaultGalleryScreen pads its sheet content itself).
-    val paintsUnderNavigationBar = chromeDestination.isCardRoute() || isVaultOverlayOpen
+    val isViewOnceViewerOpen = chromeEntry != null && entryShowsViewOnceViewer(chromeEntry)
+    val paintsUnderNavigationBar = chromeDestination.isCardRoute() || isVaultOverlayOpen || isViewOnceViewerOpen
     val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail
     val railVisible = isOnTopLevelScreen && showNavigationRail
     val contentInsets = ScaffoldDefaults.contentWindowInsets.only(
@@ -2344,6 +2346,15 @@ private fun entryOwnsWindow(
         else -> entry.savedStateHandle.getStateFlow(OWNS_WINDOW_KEY, false)
             .collectAsStateWithLifecycle().value
     }
+}
+
+@Composable
+private fun entryShowsViewOnceViewer(entry: NavBackStackEntry): Boolean {
+    if (!entry.destination.hasRoute(Route.ChatList::class)) return false
+    val chat: ConversationListViewModel = koinViewModel(viewModelStoreOwner = entry)
+    val messages = chat.messagesUiState.collectAsStateWithLifecycle()
+    val shows by remember(chat) { derivedStateOf { showsViewOnceViewer(messages.value) } }
+    return shows
 }
 
 private inline fun <reified T : Any> NavGraphBuilder.tab(

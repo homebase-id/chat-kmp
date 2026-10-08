@@ -10,6 +10,7 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -59,11 +60,14 @@ class ChatMessageStreamMapperTest {
         localAppDataJson: String?,
         fileState: String = "active",
         reactionPreviewJson: String = "null",
+        dataType: Int = 0,
+        rawHeaderContent: String? = null,
+        payloadsJson: String = "[]",
     ): HomebaseFile {
         val now = Clock.System.now().epochSeconds
         val messageContent =
             """{"message":"hi","deliveryStatus":20,"isEdited":false,"version":1}"""
-        val escapedContent = messageContent.replace("\"", "\\\"")
+        val escapedContent = (rawHeaderContent ?: messageContent).replace("\"", "\\\"")
         val localAppDataField = localAppDataJson ?: "null"
 
         val jsonHeader = """{
@@ -89,7 +93,7 @@ class ChatMessageStreamMapperTest {
                     "uniqueId": "${Uuid.random()}",
                     "tags": null,
                     "fileType": ${ChatProtocol.MessageFileType},
-                    "dataType": 0,
+                    "dataType": $dataType,
                     "groupId": "${Uuid.random()}",
                     "userDate": ${now}000,
                     "content": "$escapedContent",
@@ -100,7 +104,7 @@ class ChatMessageStreamMapperTest {
                 "referencedFile": null,
                 "reactionPreview": $reactionPreviewJson,
                 "versionTag": "${Uuid.random()}",
-                "payloads": [],
+                "payloads": $payloadsJson,
                 "dataSource": null
             },
             "serverMetadata": {
@@ -200,6 +204,54 @@ class ChatMessageStreamMapperTest {
         assertNotNull(result)
         assertTrue(result.isDeleted)
         assertEquals(expectedOwnReactions, result.ownReactions.toList())
+    }
+
+    @Test
+    fun mapToMessageData_dataType216_mapsToViewOnce() = runTest {
+        val header = buildChatMessageHeader(
+            localAppDataJson = null,
+            dataType = ChatProtocol.ChatViewOnceMessageDataType,
+            rawHeaderContent = """{"schemaVersion":1,"kind":"image"}""",
+            payloadsJson = """[{"key":"chat_web0","contentType":"image/jpeg","bytesWritten":10,"lastModified":1}]""",
+        )
+
+        val result = mapToMessageData(header, createTestCredentialsManager())
+
+        assertNotNull(result)
+        val content = result.messageContent
+        assertTrue(content is id.homebase.chat.services.content.MessageContent.ViewOnce)
+        assertEquals("image", content.descriptor?.kind)
+        assertEquals("Photo", result.content)
+        assertEquals(listOf("chat_web0"), result.payloads?.map { it.key })
+    }
+
+    @Test
+    fun searchNeverMatchesAViewOnceCaption() {
+        val viewOnce = buildChatMessageHeader(
+            localAppDataJson = null,
+            dataType = ChatProtocol.ChatViewOnceMessageDataType,
+            rawHeaderContent = """{"schemaVersion":1,"kind":"image","caption":"surprise party"}""",
+        )
+        val plain = buildChatMessageHeader(localAppDataJson = null)
+
+        assertFalse(matchesSearchQuery(viewOnce, "surprise"))
+        assertFalse(matchesSearchQuery(viewOnce, "image"))
+        assertTrue(matchesSearchQuery(plain, "hi"))
+    }
+
+    @Test
+    fun mapToMessageData_unknownHigherDataType_mapsToUnknown() = runTest {
+        val header = buildChatMessageHeader(
+            localAppDataJson = null,
+            dataType = 217,
+            rawHeaderContent = """{"kind":"image"}""",
+            payloadsJson = """[{"key":"chat_web0","contentType":"image/jpeg","bytesWritten":10,"lastModified":1}]""",
+        )
+
+        val result = mapToMessageData(header, createTestCredentialsManager())
+
+        assertNotNull(result)
+        assertTrue(result.messageContent is id.homebase.chat.services.content.MessageContent.Unknown)
     }
 
     // region isFailedSendTag → Failed bubble (OutboxItemDropped surface)

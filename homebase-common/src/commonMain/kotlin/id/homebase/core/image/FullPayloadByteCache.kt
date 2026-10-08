@@ -99,6 +99,16 @@ internal class FullPayloadByteCache(
         }
     }
 
+    suspend fun evictMatching(predicate: (key: String) -> Boolean) {
+        mutex.withLock {
+            for (key in entries.keys.filter(predicate)) entries.remove(key)?.let { sizeBytes -= it.bytes.size }
+            val loading = inFlight.keys.filter(predicate)
+            for (key in loading) inFlight.remove(key)
+            // A matching load already running must not write its bytes back after the evict.
+            if (loading.isNotEmpty()) generation++
+        }
+    }
+
     suspend fun clear() {
         mutex.withLock {
             entries.clear()

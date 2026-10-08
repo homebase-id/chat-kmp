@@ -28,6 +28,7 @@ import id.homebase.upload.PayloadBundle
 import id.homebase.chat.services.MAX_REACTIONS_PER_USER_PER_MESSAGE
 import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
+import id.homebase.chat.viewonce.sendAttachmentsMessage
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
@@ -523,13 +524,15 @@ internal class MessageActionsHandler(
 
     fun handleSendFile(action: ConversationListUiAction.SendFile) {
         messagesUiState.update { it.copy(scrollPosition = null, isSendingMessage = true) }
-        val replyTo = messagesUiState.value.replyToMessage
+        // View-once headers carry no reply; leaving replyTo null keeps the quote in the composer instead of dropping it silently.
+        val replyTo = messagesUiState.value.replyToMessage.takeUnless { action.viewOnce }
 
         addMessageWithFiles(
             conversationId = action.conversationId,
             content = action.message.trimEnd(),
             files = action.attachments,
             replyTo = replyTo,
+            viewOnce = action.viewOnce,
         )
         // Input is cleared inside addMessageWithFiles after
         // the send is successfully queued.
@@ -706,6 +709,7 @@ internal class MessageActionsHandler(
         replyTo: MessageUiModel? = null,
         // Slow work that runs under the "Preparing…" placeholder instead of delaying it.
         prepare: suspend (List<AttachmentInput>) -> List<AttachmentInput> = { it },
+        viewOnce: Boolean = false,
     ) {
         val sentAt = UnixTimeUtc.now()
         fun payloadKey(index: Int) = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
@@ -810,7 +814,8 @@ internal class MessageActionsHandler(
             // aspect for free; for images we compute aspect asynchronously below and
             // re-put once we have it — avoids blocking the placeholder on image I/O.
             val imagePathsToRefine = mutableListOf<Pair<String, String>>()
-            resolvedFiles.forEachIndexed { index, file ->
+            // View-once media gets no local preview: nothing may render it before the viewer.
+            if (!viewOnce) resolvedFiles.forEachIndexed { index, file ->
                 val payloadKey = payloadKey(index)
                 val ctx: LocalAttachmentContext? = when (file) {
                     is AttachmentPendingFile.FileVideo -> {
@@ -884,7 +889,8 @@ internal class MessageActionsHandler(
             val placeholder = PendingOutgoingMessage(
                 id = newMessageId,
                 conversationId = conversationId,
-                text = content,
+                // A view-once caption is for the viewer only, never the sender's own bubble.
+                text = if (viewOnce) "" else content,
                 attachmentCount = files.size,
                 sentAt = Instant.fromEpochMilliseconds(sentAt.milliseconds),
                 replyPreview = replyTo?.toReplyPreview(),
@@ -921,7 +927,7 @@ internal class MessageActionsHandler(
                                 localVideoContextStore.put(newMessageId, payloadKey(index), preview.copy(localFilePath = input.filePath))
                             }
                         }
-                        bundleAndSend(newMessageId, conversationId, content, prepared, replyTo, sentAt)
+                        bundleAndSend(newMessageId, conversationId, content, prepared, replyTo, sentAt, viewOnce)
                     }
                     jumpToLatestAfterOwnSend(conversationId)
                 } catch (e: Throwable) {
@@ -1045,7 +1051,7 @@ internal class MessageActionsHandler(
                     )
                 }
                 messagesUiState.sendUnderPlaceholder(newMessageId) {
-                    bundleAndSend(newMessageId, conversationId, text, attachments, replyTo = null, sentAt = sentAt)
+                    bundleAndSend(newMessageId, conversationId, text, attachments, replyTo = null, sentAt = sentAt, viewOnce = false)
                 }
             }
         } catch (e: CancellationException) {
@@ -1070,34 +1076,22 @@ internal class MessageActionsHandler(
         attachments: List<AttachmentInput>,
         replyTo: MessageUiModel?,
         sentAt: UnixTimeUtc,
+        viewOnce: Boolean,
     ) {
-        val bundle = MessageAttachmentBuilder.build(
-            attachments = attachments,
-            fileOperationsProvider = fileOperationsProvider,
-            mediaQuality = userPreferences.mediaQuality,
-            payloadKeyFactory = { index, _ -> "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index" },
-        )
         if (replyTo != null) {
             Logger.d(tag = TAG) { "addMessageWithFiles: reply message=$messageId conversation=$conversationId replyTo=${replyTo.id}" }
-            chatMessageSenderService.replyToMessage(
-                messageUniqueId = messageId,
-                conversationId = conversationId,
-                replyTo = replyTo.toReplyPreview(),
-                messageText = content,
-                previousMessageUniqueId = null,
-                payloadBundle = bundle,
-                userDate = sentAt,
-            )
-        } else {
-            chatMessageSenderService.sendNewMessage(
-                messageUniqueId = messageId,
-                conversationId = conversationId,
-                messageText = content,
-                previousMessageUniqueId = null,
-                payloadBundle = bundle,
-                userDate = sentAt,
-            )
         }
+        chatMessageSenderService.sendAttachmentsMessage(
+            viewOnce = viewOnce,
+            messageId = messageId,
+            conversationId = conversationId,
+            text = content,
+            attachments = attachments,
+            replyTo = replyTo?.toReplyPreview(),
+            sentAt = sentAt,
+            fileOperationsProvider = fileOperationsProvider,
+            mediaQuality = userPreferences.mediaQuality,
+        )
     }
 
     private fun editMessage(messageId: Uuid, versionTag: Uuid, content: String) {
@@ -1230,18 +1224,6 @@ internal class MessageActionsHandler(
         }
     }
 
-    private fun MessageUiModel.toReplyPreview() = ReplyPreview(
-        replyUniqueId = id,
-        authorOdinId = originalAuthor?.domainName ?: "null",
-        // trim before truncate: leading newlines would otherwise render as a bare
-        // "…" in the quote and eat into the 80-codepoint budget.
-        message = content.trim().truncateToCodePoints(80),
-        previewThumbnail = previewThumbnail
-            .takeIf { payloads.replyQuoteMediaPayloads().firstOrNull()?.isVisualMedia() == true },
-        context = (messageContent as? MessageContent.Event)?.descriptor
-            ?.let { ReplyContext.event(it.startUtcMs) },
-    )
-
     private fun replyToMessage(
         conversationId: Uuid,
         replyTo: MessageUiModel,
@@ -1309,4 +1291,20 @@ internal class MessageActionsHandler(
             }
         }
     }
+}
+
+internal fun MessageUiModel.toReplyPreview(): ReplyPreview {
+    val viewOnce = messageContent as? MessageContent.ViewOnce
+    return ReplyPreview(
+        replyUniqueId = id,
+        authorOdinId = originalAuthor?.domainName ?: "null",
+        // The kind word only: a view-once descriptor carries the caption and its media must never be quoted.
+        // Trim before truncate: leading newlines would otherwise render as a bare "…" in the quote.
+        message = viewOnce?.displayLabel ?: content.trim().truncateToCodePoints(80),
+        previewThumbnail = previewThumbnail.takeIf {
+            viewOnce == null && payloads.replyQuoteMediaPayloads().firstOrNull()?.isVisualMedia() == true
+        },
+        context = (messageContent as? MessageContent.Event)?.descriptor
+            ?.let { ReplyContext.event(it.startUtcMs) },
+    )
 }

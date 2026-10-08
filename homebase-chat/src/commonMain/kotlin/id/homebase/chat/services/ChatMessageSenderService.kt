@@ -199,6 +199,7 @@ class ChatMessageSenderService(
         // fetch); the payload loads progressively like any chat image. Defaults to
         // null so existing typed-kind callers are unchanged.
         payloadBundle: PayloadBundle? = null,
+        userDate: UnixTimeUtc? = null,
     ): SendMessageResult = sendMessageInternal(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
@@ -210,6 +211,7 @@ class ChatMessageSenderService(
         previousMessageUniqueId = previousMessageUniqueId,
         payloadBundle = payloadBundle,
         dataType = id.homebase.chat.services.content.MessageContentParser.dataTypeFor(content),
+        userDate = userDate,
     )
 
     private data class ResolvedRecipients(val recipients: List<OdinId>, val isLocalOnly: Boolean)
@@ -302,6 +304,7 @@ class ChatMessageSenderService(
                 "payloads=${payloadBundle?.payloads?.size ?: 0}"
         }
         val effectiveUserDate = userDate ?: UnixTimeUtc.now()
+        val isViewOnce = dataType == ChatProtocol.ChatViewOnceMessageDataType
         // previewThumbs pass through encryptBundle unchanged, so derive the preview from the
         // plaintext bundle here — UploadService doesn't need to hand the encrypted result back.
         val unecryptedMetadata =
@@ -315,7 +318,7 @@ class ChatMessageSenderService(
                     dataType = dataType,
                     userDate = effectiveUserDate.milliseconds,
                     content = content,
-                    previewThumbnail = payloadBundle?.previewThumbs?.minByOrNull {
+                    previewThumbnail = payloadBundle?.previewThumbs?.takeUnless { isViewOnce }?.minByOrNull {
                         it.pixelWidth
                     })
             )
@@ -363,6 +366,9 @@ class ChatMessageSenderService(
                 dependencyUniqueId = effectiveDep,
                 priority = 1,
                 originalRecipientCount = recipients.size,
+                // View-once bytes must not land in the payload cache or carry any thumbnail.
+                seedCache = !isViewOnce,
+                omitThumbnails = isViewOnce,
             ),
             scope = scope,
         )
@@ -856,6 +862,7 @@ class ChatMessageSenderService(
         val forwardedDataType = sourceFile.fileMetadata.appData.dataType ?: 0
 
         val typed = MessageContentParser.parse(forwardedDataType, content)
+        require(typed?.actions?.allowForward != false) { "dataType $forwardedDataType cannot be forwarded" }
         val built = if (MessageContentParser.usesRawHeaderContent(typed)) {
             // The descriptor IS the header content for these kinds. Round-tripping it through the
             // MessageAppData envelope drops every field the descriptor requires, so the receiver

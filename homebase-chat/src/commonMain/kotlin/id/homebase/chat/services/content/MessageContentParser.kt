@@ -9,6 +9,7 @@ import id.homebase.chat.groodle.GroodleDescriptor
 import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
+import id.homebase.chat.viewonce.ViewOnceDescriptor
 
 /**
  * Parses the `appData.content` JSON for a typed rich-content message.
@@ -43,6 +44,7 @@ object MessageContentParser {
             ChatProtocol.ChatGroodleMessageDataType -> parseGroodle(content)
             ChatProtocol.ChatPollMessageDataType -> parsePoll(content)
             ChatProtocol.ChatContactCardMessageDataType -> parseContactCard(content)
+            ChatProtocol.ChatViewOnceMessageDataType -> parseViewOnce(content)
             // MessageAppData-shaped dataTypes — caller deserializes content
             // as MessageAppData. 0 = plain text/media; 211 = Location, whose
             // descriptor lives on a payload (the header content is still a
@@ -156,6 +158,19 @@ object MessageContentParser {
         MessageContent.ContactCard(null)
     }
 
+    private fun parseViewOnce(content: String): MessageContent.ViewOnce = try {
+        val descriptor = OdinSystemSerializer.deserialize<ViewOnceDescriptor>(content)
+        if (descriptor.isValid()) {
+            MessageContent.ViewOnce(descriptor)
+        } else {
+            Logger.w(tag = TAG) { "ViewOnce descriptor failed validation; kind=${descriptor.kind}" }
+            MessageContent.ViewOnce(null)
+        }
+    } catch (e: Exception) {
+        Logger.w(tag = TAG, throwable = e) { "ViewOnce parse failed; rendering chip" }
+        MessageContent.ViewOnce(null)
+    }
+
     /**
      * Senders only ever construct a [MessageContent] subtype with a real
      * descriptor, so a null descriptor — or a [MessageContent.Unknown] kind —
@@ -182,6 +197,10 @@ object MessageContentParser {
             OdinSystemSerializer.serialize(
                 requireNotNull(content.descriptor) { "ContactCard descriptor must be non-null on send" }
             )
+        is MessageContent.ViewOnce ->
+            OdinSystemSerializer.serialize(
+                requireNotNull(content.descriptor) { "ViewOnce descriptor must be non-null on send" }
+            )
         is MessageContent.Location ->
             OdinSystemSerializer.serialize(
                 requireNotNull(content.descriptor) { "Location descriptor must be non-null on send" }
@@ -196,6 +215,7 @@ object MessageContentParser {
         is MessageContent.Groodle -> ChatProtocol.ChatGroodleMessageDataType
         is MessageContent.Poll -> ChatProtocol.ChatPollMessageDataType
         is MessageContent.ContactCard -> ChatProtocol.ChatContactCardMessageDataType
+        is MessageContent.ViewOnce -> ChatProtocol.ChatViewOnceMessageDataType
         is MessageContent.Location -> ChatProtocol.ChatLocationMessageDataType
         is MessageContent.Unknown ->
             error("Unknown message kind (dataType=${content.dataType}) cannot be re-sent")
@@ -218,6 +238,7 @@ object MessageContentParser {
         is MessageContent.Groodle,
         is MessageContent.Poll,
         is MessageContent.ContactCard,
+        is MessageContent.ViewOnce,
         is MessageContent.Location -> true
         is MessageContent.Unknown, null -> false
     }

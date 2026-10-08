@@ -1,6 +1,7 @@
 package id.homebase.chat.services
 
 import id.homebase.api.crypto.ByteArrayUtil
+import id.homebase.api.sync.database.TombstoneRetention
 import kotlin.uuid.Uuid
 
 object ChatProtocol {
@@ -32,7 +33,7 @@ object ChatProtocol {
     /**
      * Rich-content message kinds that ride on the message header (no payload fetch
      * on scroll). The full JSON object lives in `appData.content`; receivers branch
-     * off `appData.dataType` to choose a renderer. ContactCard is 215; pick the next
+     * off `appData.dataType` to choose a renderer. ViewOnce is 216; pick the next
      * free integer when adding one.
      */
     const val ChatEventMessageDataType = 210
@@ -81,6 +82,12 @@ object ChatProtocol {
      * fetch on scroll. See [id.homebase.chat.contactcard.ContactCardDescriptor].
      */
     const val ChatContactCardMessageDataType = 215
+
+    /**
+     * View-once photo or video: the descriptor rides in `appData.content`, the single media
+     * payload under [PAYLOAD_KEY_MESSAGE_WEB]`0`. See [id.homebase.chat.viewonce.ViewOnceDescriptor].
+     */
+    const val ChatViewOnceMessageDataType = TombstoneRetention.VIEW_ONCE_DATA_TYPE
 
     const val MessageFileType = 7878
 

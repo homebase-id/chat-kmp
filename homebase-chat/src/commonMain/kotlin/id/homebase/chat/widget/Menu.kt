@@ -290,12 +290,14 @@ internal fun ReceivedMessagePopup(
                             imageVector = HomebaseIcons.MessageForward,
                         )
                     }
-                    ListItemActionNormalIcon(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onCopy,
-                        text = stringResource(MR.string.chat_message_copy),
-                        imageVector = Icons.Default.ContentCopy,
-                    )
+                    if (policy.allowCopy) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onCopy,
+                            text = stringResource(MR.string.chat_message_copy),
+                            imageVector = Icons.Default.ContentCopy,
+                        )
+                    }
                     ListItemActionNormalIcon(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = onTogglePin,
@@ -446,12 +448,14 @@ internal fun SentMessagePopup(
                             imageVector = HomebaseIcons.MessageForward,
                         )
                     }
-                    ListItemActionNormalIcon(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onCopy,
-                        text = stringResource(MR.string.chat_message_copy),
-                        imageVector = Icons.Default.ContentCopy,
-                    )
+                    if (policy.allowCopy) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onCopy,
+                            text = stringResource(MR.string.chat_message_copy),
+                            imageVector = Icons.Default.ContentCopy,
+                        )
+                    }
                     if (onEdit != null) {
                         ListItemActionNormalIcon(
                             modifier = Modifier.fillMaxWidth(),

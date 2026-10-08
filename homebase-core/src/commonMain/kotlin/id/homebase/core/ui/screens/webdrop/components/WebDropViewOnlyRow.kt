@@ -37,7 +37,7 @@ import androidx.graphics.shapes.Morph
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import id.homebase.core.ui.screens.card.MorphShape
+import id.homebase.core.widget.MorphShape
 import id.homebase.resources.MR
 import id.homebase.resources.webdrop_view_only
 import id.homebase.resources.webdrop_view_only_badge
