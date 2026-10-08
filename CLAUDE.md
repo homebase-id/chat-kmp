@@ -43,6 +43,10 @@ follows the "Platform-specific code" principles below. If it doesn't, step back:
 the code in line with them, so the same bug can't be waiting on the other platforms. Do it in
 the same PR, or as a linked issue when it's too big to hold the fix back.
 
+**Web (WASM) crashes.** A production web trace is only `wasm-function[N]:0xOFF` frames. Resolve
+the first error to Kotlin source lines before reasoning about the cause: see
+[`WASM_CRASH_SYMBOLS.md`](WASM_CRASH_SYMBOLS.md).
+
 ## Project Overview
 
 Homebase Chat — a Kotlin Multiplatform (KMP) chat application targeting Android, iOS, Desktop (
