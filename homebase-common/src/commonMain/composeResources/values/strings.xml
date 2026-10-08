@@ -1342,6 +1342,7 @@
     <string name="email_copy_name">Copy name</string>
     <string name="email_copy_value">Copy value</string>
     <string name="email_health_fix_hint">You fix this in the owner console, under Security → Email.</string>
+    <string name="email_dnssec_fix_hint">You set up DNSSEC in the owner console, under Security → DNS.</string>
     <string name="email_open_owner_console">Open the owner console</string>
     <string name="email_health_unavailable">Could not check your email right now.</string>
     <string name="email_mailbox_open_failed">%1$s does not seem to be installed</string>

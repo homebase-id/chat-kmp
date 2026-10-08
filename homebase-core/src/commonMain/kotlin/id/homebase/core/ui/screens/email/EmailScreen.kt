@@ -133,6 +133,9 @@ fun EmailScreen(
                             onOpenOwnerConsole = {
                                 viewModel.ownerEmailSettingsUrl()?.let { uriHandler.openUrl(it) }
                             },
+                            onOpenOwnerDnsSettings = {
+                                viewModel.ownerDnsSettingsUrl()?.let { uriHandler.openUrl(it) }
+                            },
                         )
                     }
 
