@@ -49,6 +49,7 @@ import id.homebase.core.ui.screens.email.thunderbird.SetupCard
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.email_health_attention
+import id.homebase.resources.email_dnssec_fix_hint
 import id.homebase.resources.email_health_fix_hint
 import id.homebase.resources.email_health_unavailable
 import id.homebase.resources.email_home_address_label
@@ -76,6 +77,7 @@ import id.homebase.resources.email_setup_dnssec_missing
 import id.homebase.resources.email_setup_header
 import id.homebase.resources.email_setup_ok
 import id.homebase.resources.email_setup_warning
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -101,6 +103,7 @@ fun EmailHomeContent(
     onCheckHealth: () -> Unit,
     onCopy: (String) -> Unit,
     onOpenOwnerConsole: () -> Unit,
+    onOpenOwnerDnsSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -162,6 +165,7 @@ fun EmailHomeContent(
             onCheckHealth = onCheckHealth,
             onCopy = onCopy,
             onOpenOwnerConsole = onOpenOwnerConsole,
+            onOpenOwnerDnsSettings = onOpenOwnerDnsSettings,
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -277,6 +281,7 @@ private fun EmailSetupCard(
     onCheckHealth: () -> Unit,
     onCopy: (String) -> Unit,
     onOpenOwnerConsole: () -> Unit,
+    onOpenOwnerDnsSettings: () -> Unit,
 ) {
     SetupCard(title = stringResource(MR.string.email_setup_header)) {
         // A failed check must never read as a clean bill of health.
@@ -309,19 +314,25 @@ private fun EmailSetupCard(
             }
             shown.errors.forEach { Body(it) }
             shown.warnings.forEach { Body(it) }
-            shown.dnssec?.let { dnssec ->
+            val dnssecProblem = shown.dnssec?.let { dnssec ->
                 when {
-                    dnssec.breaksResolution -> Body(stringResource(MR.string.email_setup_dnssec_broken))
-                    dnssec.needsAttention -> Body(stringResource(MR.string.email_setup_dnssec_missing))
+                    dnssec.breaksResolution -> MR.string.email_setup_dnssec_broken
+                    dnssec.needsAttention -> MR.string.email_setup_dnssec_missing
+                    else -> null
                 }
             }
             // Publishing DNS is an owner action, so open the owner console on the page that
             // does it rather than duplicating a write button in the app. For a domain whose DNS
-            // is hosted elsewhere, the records above are the instructions.
-            Body(stringResource(MR.string.email_health_fix_hint))
-            Spacer(modifier = Modifier.height(8.dp))
-            FilledTonalButton(onClick = onOpenOwnerConsole) {
-                Text(stringResource(MR.string.email_open_owner_console))
+            // is hosted elsewhere, the records above are the instructions. DNSSEC is not an email
+            // setting, so it points at the DNS tab instead.
+            val emailProblem =
+                shown.brokenRecords.isNotEmpty() || shown.errors.isNotEmpty() || shown.warnings.isNotEmpty()
+            if (emailProblem || dnssecProblem == null) {
+                OwnerConsoleHint(MR.string.email_health_fix_hint, onOpenOwnerConsole)
+            }
+            if (dnssecProblem != null) {
+                Body(stringResource(dnssecProblem))
+                OwnerConsoleHint(MR.string.email_dnssec_fix_hint, onOpenOwnerDnsSettings)
             }
         }
 
@@ -329,6 +340,16 @@ private fun EmailSetupCard(
         TextButton(onClick = onCheckHealth, enabled = !isCheckingHealth) {
             Text(stringResource(MR.string.email_setup_check_again))
         }
+    }
+}
+
+/** Where in the owner console to fix it, and a button that opens it there. */
+@Composable
+private fun OwnerConsoleHint(hint: StringResource, onOpen: () -> Unit) {
+    Body(stringResource(hint))
+    Spacer(modifier = Modifier.height(8.dp))
+    FilledTonalButton(onClick = onOpen) {
+        Text(stringResource(MR.string.email_open_owner_console))
     }
 }
 

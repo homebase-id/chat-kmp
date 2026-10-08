@@ -18,3 +18,8 @@ fun OdinId.buildBlockUrl(targetId: OdinId): String {
 fun OdinId.buildOwnerEmailSettingsUrl(): String {
     return "https://${this.domainName}/owner/security/email"
 }
+
+/** The owner console's Security → DNS tab, where DNSSEC is set up. */
+fun OdinId.buildOwnerDnsSettingsUrl(): String {
+    return "https://${this.domainName}/owner/security/dns"
+}

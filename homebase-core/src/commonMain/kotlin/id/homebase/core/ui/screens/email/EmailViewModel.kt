@@ -12,6 +12,7 @@ import id.homebase.core.email.EmailPreferences
 import id.homebase.core.email.Thunderbird
 import id.homebase.core.email.launchMailClient
 import id.homebase.core.sync.OptionalDriveActivation
+import id.homebase.core.util.buildOwnerDnsSettingsUrl
 import id.homebase.core.util.buildOwnerEmailSettingsUrl
 import id.homebase.core.ui.screens.email.setup.EmailSetupStep
 import id.homebase.core.ui.screens.email.setup.resolveSetupStep
@@ -224,6 +225,10 @@ class EmailViewModel(
     /** Where the owner fixes what the setup check found; null when signed out. */
     fun ownerEmailSettingsUrl(): String? =
         credentialsManager.credentialsFlow.value?.domain?.buildOwnerEmailSettingsUrl()
+
+    /** Where the owner fixes DNSSEC, which is a DNS setting rather than an email one. */
+    fun ownerDnsSettingsUrl(): String? =
+        credentialsManager.credentialsFlow.value?.domain?.buildOwnerDnsSettingsUrl()
 
     fun refreshStatus() {
         viewModelScope.launch { refreshStatusNow() }
