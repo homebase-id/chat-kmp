@@ -1,3 +1,4 @@
+import java.io.ByteArrayOutputStream
 import org.apache.tools.ant.filters.ReplaceTokens
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpack
@@ -35,6 +36,104 @@ tasks.withType<org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec>()
         "--gufa",
         "-Oz",
     )
+    if (name == productionOptimizeTask) keepWasmCrashSymbols()
+}
+
+// A production .wasm has no function names, so a trap reports only `wasm-function[N]:0xOFF`. The
+// optimizer run that makes the shipped binary also writes names (-g) and a source map, and the
+// names are then cut from the shipped copy, which changes no function index or code offset. They
+// must come from that same run: two wasm-opt runs on one input are not byte-identical. Adds
+// ~0.5 GB to wasm-opt's peak (5.4 GB measured 2026-10-08). See WASM_CRASH_SYMBOLS.md.
+val productionOptimizeTask: String get() = "compileProductionExecutableKotlinWasmJsOptimize"
+val wasmSymbolsWorkDir: File get() = layout.buildDirectory.dir("wasm-symbols").get().asFile
+
+fun org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec.keepWasmCrashSymbols() {
+    val linkedWasm = inputFileProperty
+    val workDir = wasmSymbolsWorkDir
+    val binaryenInputMap = File(workDir, "binaryen-input.wasm.map")
+    val namedWasm = File(workDir, "chat-kmp-webApp.wasm")
+    val namedMap = File(workDir, "chat-kmp-webApp.wasm.map")
+    val optimizedWasm = outputFileProperty
+
+    binaryenArgs = (binaryenArgs + listOf(
+        "-g",
+        "--input-source-map", binaryenInputMap.path,
+        "--output-source-map", namedMap.path,
+    )).toMutableList()
+    outputs.dir(workDir)
+
+    doFirst {
+        // binaryen asserts on the null sourcesContent entries Kotlin writes.
+        workDir.mkdirs()
+        val kotlinMap = File(linkedWasm.get().asFile.path + ".map")
+        @Suppress("UNCHECKED_CAST")
+        val map = groovy.json.JsonSlurper().parse(kotlinMap) as MutableMap<String, Any?>
+        map.keys.retainAll(listOf("version", "sources", "names", "mappings"))
+        binaryenInputMap.writeText(groovy.json.JsonOutput.toJson(map))
+    }
+    doLast {
+        fun leb(bytes: ByteArray, start: Int): Pair<Int, Int> {
+            var value = 0
+            var shift = 0
+            var at = start
+            while (true) {
+                val b = bytes[at++].toInt() and 0xff
+                value = value or ((b and 0x7f) shl shift)
+                if (b < 0x80) return value to at
+                shift += 7
+            }
+        }
+
+        val shippedWasm = optimizedWasm.get().asFile
+        val bytes = shippedWasm.readBytes()
+        shippedWasm.copyTo(namedWasm, overwrite = true)
+        val out = ByteArrayOutputStream(bytes.size)
+        out.write(bytes, 0, 8)
+        var at = 8
+        while (at < bytes.size) {
+            val (size, payload) = leb(bytes, at + 1)
+            val end = payload + size
+            val isNameSection = bytes[at].toInt() == 0 && leb(bytes, payload).let { (len, nameAt) ->
+                String(bytes, nameAt, len, Charsets.UTF_8) == "name"
+            }
+            if (!isNameSection) out.write(bytes, at, end - at)
+            at = end
+        }
+        shippedWasm.writeBytes(out.toByteArray())
+    }
+}
+
+// Files the symbols under the content-hashed name webpack gave the shipped .wasm, which is the name
+// a production stack trace shows. dist/wasmJs/symbols is a sibling of the deployed directory.
+val collectWasmCrashSymbols by tasks.registering {
+    val workDir = wasmSymbolsWorkDir
+    val shippedWasm = tasks.named<org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec>(
+        productionOptimizeTask
+    ).flatMap { it.outputFileProperty }
+    val distDir = layout.buildDirectory.dir("dist/wasmJs/productionExecutable").get().asFile
+    val symbolsDir = layout.buildDirectory.dir("dist/wasmJs/symbols").get().asFile
+    dependsOn("wasmJsBrowserDistribution")
+    inputs.file(shippedWasm)
+    inputs.dir(workDir)
+    outputs.dir(symbolsDir)
+
+    doLast {
+        val shipped = shippedWasm.get().asFile.readBytes()
+        val deployed = distDir.listFiles().orEmpty().filter {
+            it.extension == "wasm" && it.length() == shipped.size.toLong() &&
+                it.readBytes().contentEquals(shipped)
+        }
+        val hash = deployed.singleOrNull()?.nameWithoutExtension
+            ?: error("Expected exactly one copy of the optimized .wasm in $distDir, found ${deployed.size}")
+        symbolsDir.deleteRecursively()
+        symbolsDir.mkdirs()
+        File(workDir, "chat-kmp-webApp.wasm").copyTo(File(symbolsDir, "$hash.wasm"))
+        File(workDir, "chat-kmp-webApp.wasm.map").copyTo(File(symbolsDir, "$hash.wasm.map"))
+    }
+}
+
+tasks.matching { it.name == "wasmJsBrowserDistribution" }.configureEach {
+    finalizedBy(collectWasmCrashSymbols)
 }
 
 // Sub-path mount support. Pass -PpublicPath=/apps/chat-wasm/ to host the bundle under a sub-path
