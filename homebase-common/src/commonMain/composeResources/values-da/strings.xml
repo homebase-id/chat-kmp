@@ -1534,6 +1534,8 @@
     <string name="contact_state_new">Ny</string>
     <string name="contact_state_chat">Chat</string>
     <string name="contact_state_circle">I dine kredse</string>
+    <string name="contact_request_incoming">Anmodning modtaget</string>
+    <string name="contact_request_outgoing">Anmodning sendt</string>
 
     <string name="contact_review_action">Gennemgå</string>
     <string name="contact_review_introduced_by">Introduceret af %1$s</string>

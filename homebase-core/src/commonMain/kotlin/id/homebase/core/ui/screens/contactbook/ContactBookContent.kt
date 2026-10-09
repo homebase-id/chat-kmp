@@ -41,6 +41,7 @@ import id.homebase.resources.contactbook_circles_filter_empty
 import id.homebase.resources.contactbook_filter_blocked
 import id.homebase.resources.contactbook_blocked_filter_empty
 import id.homebase.core.ui.screens.contactbook.components.ContactStateIcon
+import id.homebase.core.ui.screens.contactbook.components.RequestDirectionIcon
 import id.homebase.resources.contact_review_action
 import org.jetbrains.compose.resources.stringResource
 
@@ -66,6 +67,13 @@ fun ContactBookContent(
             uiState.requests.filter { it.direction == RequestDirection.INCOMING }
         } else {
             emptyList()
+        }
+
+        val requestDirections = remember(uiState.requests) {
+            uiState.requests
+                .filter { it.entry.odinId != null }
+                .groupBy({ it.entry.odinId!!.lowercase() }, { it.direction })
+                .mapValues { (_, directions) -> directions.distinct().sorted() }
         }
 
         val derivedFromStates = showNew || uiState.filter == ContactFilter.CIRCLES
@@ -158,20 +166,29 @@ fun ContactBookContent(
                                 )
                             }
                             items(entries, key = { it.uniqueId.toString() }) { entry ->
-                                val state = entry.odinId?.lowercase()
-                                    ?.let { uiState.contactStates[it] }
+                                val domain = entry.odinId?.lowercase()
+                                val state = domain?.let { uiState.contactStates[it] }
+                                val directions = domain?.let { requestDirections[it] }.orEmpty()
                                 ContactBookRow(
                                     entry = entry,
                                     onClick = { onAction(ContactBookUiAction.ContactClicked(entry)) },
                                     modifier = Modifier.animateItem(),
                                     // Check shows whenever the identity is connected, in every
                                     // filter (a New contact is still a connection).
-                                    connected = entry.odinId?.lowercase() in uiState.connectedOdinIds,
-                                    trailing = when (state) {
-                                        null -> null
+                                    connected = domain in uiState.connectedOdinIds,
+                                    trailing = when {
+                                        directions.isNotEmpty() -> {
+                                            {
+                                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    directions.forEach { RequestDirectionIcon(it) }
+                                                }
+                                            }
+                                        }
+
+                                        state == null -> null
                                         // New is the one state with something to do, so it gets the
                                         // action rather than the icon that merely reports the state.
-                                        ContactState.New -> {
+                                        state == ContactState.New -> {
                                             {
                                                 TextButton(
                                                     onClick = {
