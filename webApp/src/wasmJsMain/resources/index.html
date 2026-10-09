@@ -189,8 +189,15 @@
     window.__homebaseErrors = homebaseErrors;
     window.__homebaseFirstError = function () {
         const first = homebaseErrors.first;
-        if (first == null) return "No uncaught error recorded.";
-        return first.message + "\n" + first.stack + "\n(" + homebaseErrors.total + " total)";
+        const firstText = first == null
+            ? "No uncaught error recorded."
+            : first.message + "\n" + first.stack + "\n(" + homebaseErrors.total + " total)";
+        // ComposerAutocompleteProbe (#1859): written before any trap, so it survives one.
+        const mismatch = homebaseErrors.autocompleteMismatch;
+        const trace = homebaseErrors.autocompleteTrace;
+        return firstText +
+            (mismatch ? "\n\n" + mismatch : "") +
+            (trace ? "\n\nautocomplete trace (oldest first):\n" + trace : "");
     };
 
     const unhandledError = (event, error) => {

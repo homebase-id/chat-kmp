@@ -20,6 +20,7 @@ import id.homebase.core.config.appPermissions
 import id.homebase.core.config.circleDriveTargetRequest
 import id.homebase.core.config.targetDriveAccessRequest
 import id.homebase.core.di.allModules
+import id.homebase.core.widget.ComposerAutocompleteProbe
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -34,12 +35,22 @@ private fun bootStage(label: String, percent: Int): Unit =
 private fun bootDone(): Unit =
     js("{ if (window.__homebaseBootDone) window.__homebaseBootDone(); }")
 
+private fun recordAutocompleteTrace(trace: String): Unit =
+    js("{ if (window.__homebaseErrors) window.__homebaseErrors.autocompleteTrace = trace; }")
+
+private fun recordAutocompleteMismatch(report: String): Unit =
+    js("{ if (window.__homebaseErrors) window.__homebaseErrors.autocompleteMismatch = report; }")
+
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalResourceApi::class)
 @ExperimentalBrowserHistoryApi
 fun main() {
     configureWebResources {
         resourcePathMapping { path -> "./$path?v=$WEB_RESOURCES_VERSION" }
     }
+    ComposerAutocompleteProbe.install(object : ComposerAutocompleteProbe.Reporter {
+        override fun onTrace(trace: String) = recordAutocompleteTrace(trace)
+        override fun onMismatch(report: String) = recordAutocompleteMismatch(report)
+    })
     // sql.js compiles its wasm asynchronously; finish that and build the in-memory database
     // before Koin (and the DriveSync graph behind the login screen) ever touches DatabaseManager.
     MainScope().launch {
