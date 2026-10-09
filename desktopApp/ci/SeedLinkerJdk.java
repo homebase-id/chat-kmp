@@ -4,28 +4,28 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-// Conveyor finds its linker JDK through Foojay's oracle_open_jdk index, which no longer lists JDK 21+.
-// Pre-answer that lookup in Conveyor's own disk cache so `make` never asks Foojay.
-// ponytail: mirrors LinkerJDKTask's private cache key; if Conveyor changes it this is a no-op and Foojay is asked again.
-// Usage: java -cp '<conveyor>/lib/app/*' SeedLinkerJdk.java <cache-dir> <foojay-query> <jdk-url>
+// Foojay's oracle_open_jdk index lacks JDK 21+, so pre-answer Conveyor's linker-JDK lookup in its disk cache.
+// ponytail: KEY mirrors Conveyor's private LinkerJDKTask key; if it changes this no-ops and Foojay is asked again.
 public class SeedLinkerJdk {
+    static final String KEY = "Foojay API request for oracle_open_jdk using query "
+            + "version=21&operating_system=linux&architecture=x64&latest=available";
+    static final String URL = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.10%2B7/"
+            + "OpenJDK21U-jdk_x64_linux_hotspot_21.0.10_7.tar.gz";
+
     public static void main(String[] args) throws Exception {
-        var url = args[2];
-        var key = "Foojay API request for oracle_open_jdk using query " + args[1];
         try (var cache = new LocalDiskCache(Path.of(args[0]), new LocalDiskCache.Configuration()).open()) {
-            // Written in the reader too: a failed Foojay lookup leaves an empty entry behind.
-            String seeded = cache.compute(key, dir -> {}, dir -> {
+            // Written in the reader: a failed Foojay lookup leaves an empty entry that compute() won't rebuild.
+            cache.compute(KEY, dir -> {}, dir -> {
                 try {
                     var response = dir.resolve("response.txt");
                     if (Files.notExists(response)) {
-                        Files.writeString(response, url + "\n" + url.substring(url.lastIndexOf('/') + 1));
+                        Files.writeString(response, URL + "\n" + URL.substring(URL.lastIndexOf('/') + 1));
                     }
-                    return Files.readString(response);
+                    return null;
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
             });
-            System.out.println("Linker JDK for " + args[1] + ":\n" + seeded);
         }
     }
 }
