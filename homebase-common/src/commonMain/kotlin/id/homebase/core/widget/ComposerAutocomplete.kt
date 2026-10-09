@@ -94,6 +94,7 @@ fun <T> ComposerAutocomplete(
     enabled: Boolean = true,
     itemContent: @Composable (item: T, selected: Boolean) -> Unit,
 ) {
+    ProbeComposerAutocompleteSlots(state, triggerId, enabled)
     if (!enabled) return
 
     DisposableEffect(state, triggerId, triggerChar) {
