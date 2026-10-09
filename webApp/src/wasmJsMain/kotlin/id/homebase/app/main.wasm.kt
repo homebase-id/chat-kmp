@@ -26,6 +26,8 @@ import id.homebase.core.widget.ComposerAutocompleteProbe
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.configureWebResources
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 
@@ -41,9 +43,12 @@ private fun recordAutocompleteTrace(trace: String): Unit =
 private fun recordAutocompleteMismatch(report: String): Unit =
     js("{ if (window.__homebaseErrors) window.__homebaseErrors.autocompleteMismatch = report; }")
 
-@OptIn(ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalResourceApi::class)
 @ExperimentalBrowserHistoryApi
 fun main() {
+    configureWebResources {
+        resourcePathMapping { path -> "./$path?v=$WEB_RESOURCES_VERSION" }
+    }
     ComposerAutocompleteProbe.install(object : ComposerAutocompleteProbe.Reporter {
         override fun onTrace(trace: String) = recordAutocompleteTrace(trace)
         override fun onMismatch(report: String) = recordAutocompleteMismatch(report)
