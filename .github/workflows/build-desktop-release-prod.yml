@@ -112,6 +112,13 @@ jobs:
           echo "::add-mask::$TOKEN"
           echo "AZURE_ACCESS_TOKEN=$TOKEN" >> "$GITHUB_ENV"
 
+      - name: Seed Conveyor linker JDK
+        shell: bash
+        run: |
+          java -cp ".conveyor/install/conveyor-22.3/lib/app/*" desktopApp/ci/SeedLinkerJdk.java .conveyor/cache \
+            "version=21&operating_system=linux&architecture=x64&latest=available" \
+            "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.10%2B7/OpenJDK21U-jdk_x64_linux_hotspot_21.0.10_7.tar.gz"
+
       - name: Run Conveyor
         working-directory: ./desktopApp
         env:
