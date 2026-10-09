@@ -77,6 +77,10 @@ jobs:
         env:
           JDK_21: ${{ env.JAVA_HOME }}
 
+      - name: Seed Conveyor linker JDK
+        shell: bash
+        run: java -cp "$(echo .conveyor/install/conveyor-*)/lib/app/*" desktopApp/ci/SeedLinkerJdk.java .conveyor/cache
+
       - name: Run Conveyor
         working-directory: ./desktopApp
         env:

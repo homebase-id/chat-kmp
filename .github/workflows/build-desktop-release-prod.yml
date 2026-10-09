@@ -112,6 +112,10 @@ jobs:
           echo "::add-mask::$TOKEN"
           echo "AZURE_ACCESS_TOKEN=$TOKEN" >> "$GITHUB_ENV"
 
+      - name: Seed Conveyor linker JDK
+        shell: bash
+        run: java -cp "$(echo .conveyor/install/conveyor-*)/lib/app/*" desktopApp/ci/SeedLinkerJdk.java .conveyor/cache
+
       - name: Run Conveyor
         working-directory: ./desktopApp
         env:
