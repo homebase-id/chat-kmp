@@ -40,11 +40,8 @@ import id.homebase.resources.contactbook_filter_circles
 import id.homebase.resources.contactbook_circles_filter_empty
 import id.homebase.resources.contactbook_filter_blocked
 import id.homebase.resources.contactbook_blocked_filter_empty
-import id.homebase.resources.contactbook_circle_unvetted
-import id.homebase.resources.contactbook_unvetted_empty
-import id.homebase.resources.contactbook_vetted
-import id.homebase.resources.contactbook_vetted_empty
 import id.homebase.core.ui.screens.contactbook.components.ContactStateIcon
+import id.homebase.core.ui.screens.contactbook.components.RequestDirectionIcon
 import id.homebase.resources.contact_review_action
 import org.jetbrains.compose.resources.stringResource
 
@@ -61,24 +58,28 @@ fun ContactBookContent(
     listState: LazyListState,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        if (!showNew) FilterRow(uiState.filter, uiState.reviewEnabled, onAction)
+        if (!showNew) FilterRow(uiState.filter, onAction)
 
         // Incoming requests are the actionable set (outgoing has nothing to do here but Cancel,
         // already reachable from the resolved identity itself). They live with the unreviewed
         // connections because they are the same job: someone is waiting on a decision.
-        // No New tab while the review is dark, so they stay atop the Contacts list.
-        val incomingRequests = if (showNew || !uiState.reviewEnabled) {
+        val incomingRequests = if (showNew) {
             uiState.requests.filter { it.direction == RequestDirection.INCOMING }
         } else {
             emptyList()
+        }
+
+        val requestDirections = remember(uiState.requests) {
+            uiState.requests
+                .filter { it.entry.odinId != null }
+                .groupBy({ it.entry.odinId!!.lowercase() }, { it.direction })
+                .mapValues { (_, directions) -> directions.distinct().sorted() }
         }
 
         val derivedFromStates = showNew || uiState.filter == ContactFilter.CIRCLES
         val list = when {
             showNew -> uiState.newContacts
             uiState.filter == ContactFilter.CIRCLES -> uiState.circleContacts
-            uiState.filter == ContactFilter.UNVETTED -> uiState.unvetted
-            uiState.filter == ContactFilter.VETTED -> uiState.vetted
             uiState.filter == ContactFilter.BLOCKED -> uiState.blockedContacts
             else -> uiState.knownContacts
         }
@@ -110,12 +111,6 @@ fun ContactBookContent(
 
                     uiState.filter == ContactFilter.CIRCLES ->
                         CenterText(stringResource(MR.string.contactbook_circles_filter_empty))
-
-                    uiState.filter == ContactFilter.UNVETTED ->
-                        CenterText(stringResource(MR.string.contactbook_unvetted_empty))
-
-                    uiState.filter == ContactFilter.VETTED ->
-                        CenterText(stringResource(MR.string.contactbook_vetted_empty))
 
                     uiState.filter == ContactFilter.BLOCKED ->
                         CenterText(stringResource(MR.string.contactbook_blocked_filter_empty))
@@ -171,21 +166,29 @@ fun ContactBookContent(
                                 )
                             }
                             items(entries, key = { it.uniqueId.toString() }) { entry ->
-                                val state = entry.odinId?.lowercase()
-                                    ?.takeIf { uiState.reviewEnabled }
-                                    ?.let { uiState.contactStates[it] }
+                                val domain = entry.odinId?.lowercase()
+                                val state = domain?.let { uiState.contactStates[it] }
+                                val directions = domain?.let { requestDirections[it] }.orEmpty()
                                 ContactBookRow(
                                     entry = entry,
                                     onClick = { onAction(ContactBookUiAction.ContactClicked(entry)) },
                                     modifier = Modifier.animateItem(),
                                     // Check shows whenever the identity is connected, in every
                                     // filter (a New contact is still a connection).
-                                    connected = entry.odinId?.lowercase() in uiState.connectedOdinIds,
-                                    trailing = when (state) {
-                                        null -> null
+                                    connected = domain in uiState.connectedOdinIds,
+                                    trailing = when {
+                                        directions.isNotEmpty() -> {
+                                            {
+                                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    directions.forEach { RequestDirectionIcon(it) }
+                                                }
+                                            }
+                                        }
+
+                                        state == null -> null
                                         // New is the one state with something to do, so it gets the
                                         // action rather than the icon that merely reports the state.
-                                        ContactState.New -> {
+                                        state == ContactState.New -> {
                                             {
                                                 TextButton(
                                                     onClick = {
@@ -228,7 +231,6 @@ private fun CenterText(text: String) {
 @Composable
 private fun FilterRow(
     filter: ContactFilter,
-    reviewEnabled: Boolean,
     onAction: (ContactBookUiAction) -> Unit,
 ) {
     Row(
@@ -243,28 +245,15 @@ private fun FilterRow(
             onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.ALL)) },
             label = { Text(stringResource(MR.string.contactbook_filter_all)) },
         )
-        if (reviewEnabled) {
-            FilterChip(
-                selected = filter == ContactFilter.CIRCLES,
-                onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.CIRCLES)) },
-                label = { Text(stringResource(MR.string.contactbook_filter_circles)) },
-            )
-            FilterChip(
-                selected = filter == ContactFilter.BLOCKED,
-                onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.BLOCKED)) },
-                label = { Text(stringResource(MR.string.contactbook_filter_blocked)) },
-            )
-        } else {
-            FilterChip(
-                selected = filter == ContactFilter.UNVETTED,
-                onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.UNVETTED)) },
-                label = { Text(stringResource(MR.string.contactbook_circle_unvetted)) },
-            )
-            FilterChip(
-                selected = filter == ContactFilter.VETTED,
-                onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.VETTED)) },
-                label = { Text(stringResource(MR.string.contactbook_vetted)) },
-            )
-        }
+        FilterChip(
+            selected = filter == ContactFilter.CIRCLES,
+            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.CIRCLES)) },
+            label = { Text(stringResource(MR.string.contactbook_filter_circles)) },
+        )
+        FilterChip(
+            selected = filter == ContactFilter.BLOCKED,
+            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.BLOCKED)) },
+            label = { Text(stringResource(MR.string.contactbook_filter_blocked)) },
+        )
     }
 }

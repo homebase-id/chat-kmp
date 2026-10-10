@@ -62,11 +62,6 @@ class DeveloperMenuViewModel(
         // visible without running the probe (confirms ServerIpCapture is working).
         refreshLastKnownGoodIp()
         viewModelScope.launch {
-            developerPreferences.connectionReviewEnabled.collect { enabled ->
-                _uiState.update { it.copy(connectionReviewEnabled = enabled) }
-            }
-        }
-        viewModelScope.launch {
             developerPreferences.profileCardEnabled.collect { enabled ->
                 _uiState.update { it.copy(profileCardEnabled = enabled) }
             }
@@ -74,10 +69,6 @@ class DeveloperMenuViewModel(
     }
 
     fun onUiAction(action: DeveloperMenuUiAction) {
-        if (action is DeveloperMenuUiAction.SetConnectionReviewEnabled) {
-            viewModelScope.launch { developerPreferences.setConnectionReviewEnabled(action.enabled) }
-            return
-        }
         if (action is DeveloperMenuUiAction.SetProfileCardEnabled) {
             viewModelScope.launch { developerPreferences.setProfileCardEnabled(action.enabled) }
             return
@@ -346,7 +337,6 @@ class DeveloperMenuViewModel(
 @Immutable
 data class DeveloperMenuUiState(
     /** Dark-launched: the connection review's entry points are hidden until this is on. */
-    val connectionReviewEnabled: Boolean = false,
     val profileCardEnabled: Boolean = false,
     val isRunningNetworkDiagnostic: Boolean = false,
     val lastKnownGoodIp: LastKnownServerIp? = null,
@@ -362,7 +352,6 @@ sealed interface DeveloperMenuUiEvent {
 
 sealed interface DeveloperMenuUiAction {
     data object BackClicked : DeveloperMenuUiAction
-    data class SetConnectionReviewEnabled(val enabled: Boolean) : DeveloperMenuUiAction
     data class SetProfileCardEnabled(val enabled: Boolean) : DeveloperMenuUiAction
     data object TestRichNotification : DeveloperMenuUiAction
     data object TestTemporalLocationRead : DeveloperMenuUiAction

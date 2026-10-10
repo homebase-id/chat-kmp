@@ -44,9 +44,6 @@ data class ProfileEditUiState(
     val attributes: List<ProfileAttribute> = emptyList(),
 
     val savingAttributes: Set<String> = emptySet(),
-
-    /** Dark launch: off keeps main's "Vetted" wording. */
-    val reviewEnabled: Boolean = false,
 ) {
     fun value(field: ProfileField): String = values[field].orEmpty()
 

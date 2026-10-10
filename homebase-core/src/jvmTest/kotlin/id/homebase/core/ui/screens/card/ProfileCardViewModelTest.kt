@@ -201,7 +201,6 @@ class ProfileCardViewModelTest {
             return MissingPermissionsResult(
                 missingDrives = emptyList(),
                 missingPermissions = emptyList(),
-                missingAllConnectedCircle = false,
                 buildExtendPermissionUrl = { DESIGN_ACCESS_URL },
             )
         }

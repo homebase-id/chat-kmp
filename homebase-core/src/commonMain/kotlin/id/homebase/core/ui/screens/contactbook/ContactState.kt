@@ -42,35 +42,29 @@ fun RedactedCircleDefinition.isPersonalCircle(): Boolean = !disabled && isPerson
 fun RedactedCircleDefinition.isPersonalKind(): Boolean =
     designation == CircleDesignation.Personal &&
         grantOn != CircleGrantOn.Connect &&
-        grantOn != CircleGrantOn.OwnFlowConnect &&
-        !isLegacySystemCircleId(id)
+        grantOn != CircleGrantOn.OwnFlowConnect
 
 /**
  * True for a circle nobody chose to join: enrolment happens without the owner present. Not
  * hand-assignable — adding or removing a member by hand means nothing when the app re-enrols them.
- *
- * The legacy pair are here because they are auto-connect carriers, and odin-core leaves them at
- * [CircleGrantOn.None] owned by no app, so nothing derivable identifies them.
  */
 fun RedactedCircleDefinition.isAmbientCircle(): Boolean =
     grantOn == CircleGrantOn.Connect ||
-        grantOn == CircleGrantOn.OwnFlowConnect ||
-        isLegacySystemCircleId(id)
+        grantOn == CircleGrantOn.OwnFlowConnect
 
 /**
  * True for a circle whose membership makes the server refuse to clear a review (error 3012).
  *
- * Mirrors `ClearReviewAsync`: skip system circles, then block on Designation == Personal with
- * GrantOn != Connect. Deliberately NOT [isPersonalCircle] — that one also excludes
- * [CircleGrantOn.OwnFlowConnect], and the server does not, so reusing it would let the client
- * offer an un-review the server then rejects.
+ * Mirrors `ClearReviewAsync`: block on Designation == Personal with GrantOn != Connect.
+ * Deliberately NOT [isPersonalCircle] — that one also excludes [CircleGrantOn.OwnFlowConnect],
+ * and the server does not, so reusing it would let the client offer an un-review the server then
+ * rejects.
  *
  * Coarse today for the same reason everything else is: nothing sets Designation to anything but
- * Personal, so in practice this blocks on every non-system circle except the chat one.
+ * Personal, so in practice this blocks on every circle except the chat one.
  */
 fun RedactedCircleDefinition.blocksUnreview(): Boolean =
-    !isLegacySystemCircleId(id) &&
-        designation == CircleDesignation.Personal &&
+    designation == CircleDesignation.Personal &&
         grantOn != CircleGrantOn.Connect
 
 /** Every circle membership that would make [clearReview] fail, so the UI can name them all. */
@@ -83,11 +77,6 @@ fun CircleMembershipState.personalCirclesFor(odinId: String): List<RedactedCircl
 
 /** Whether the owner has reviewed this contact. */
 fun RedactedIdentityConnectionRegistration.isReviewed(): Boolean = reviewedAt != null
-
-/** Whether the circle pickers let this contact be added. Dark launch: `vetted` until the review flag is on. */
-@Suppress("DEPRECATION")
-fun RedactedIdentityConnectionRegistration.canJoinCircles(reviewEnabled: Boolean): Boolean =
-    if (reviewEnabled) isReviewed() else vetted
 
 /**
  * The contact's state, or null when this identity is not a connection — the ladder classifies

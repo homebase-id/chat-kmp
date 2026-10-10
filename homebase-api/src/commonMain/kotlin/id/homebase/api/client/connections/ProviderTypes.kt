@@ -308,13 +308,6 @@ data class RedactedIdentityConnectionRegistration(
      * original value, so this is "first vouched for", never "last reviewed".
      */
     val reviewedAt: Long? = null,
-
-    /**
-     * Legacy alias for `reviewedAt != null`. Read only by the circle pickers while the connection
-     * review flag is off; delete with the flag.
-     */
-    @Deprecated("Read reviewedAt instead", ReplaceWith("reviewedAt != null"))
-    val vetted: Boolean = false
 )
 
 // ------------------------------------------------------------

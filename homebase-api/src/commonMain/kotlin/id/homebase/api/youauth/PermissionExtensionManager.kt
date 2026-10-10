@@ -10,7 +10,6 @@ data class PermissionExtensionConfig(
     val drives: List<TargetDriveAccessRequest>,
     val circleDrives: List<TargetDriveAccessRequest>? = null,
     val permissions: List<AppPermissionType>,
-    val needsAllConnected: Boolean = false,
     /**
      * Resolved at URL-build time, not config-build time. Desktop's localhost
      * callback server can be stopped between checks (the `/focus` route shuts it
@@ -26,7 +25,6 @@ data class PermissionExtensionConfig(
 class MissingPermissionsResult(
     val missingDrives: List<TargetDriveAccessRequest>,
     val missingPermissions: List<AppPermissionType>,
-    val missingAllConnectedCircle: Boolean,
     /**
      * Builds the extend-permission URL with a freshly-resolved `returnUrl` on
      * every invocation — call this at click time, not check time, so the URL
@@ -115,14 +113,7 @@ class PermissionExtensionManager(
                 !permissionKeys.contains(permission.value)
             }
 
-        // Check for connected circle grant
-        val hasAllConnectedCircle = context.caller.isGrantedConnectedIdentitiesSystemCircle
-        val missingAllConnectedCircle = config.needsAllConnected && !hasAllConnectedCircle
-
-        if (missingDrives.isEmpty() &&
-            missingPermissions.isEmpty() &&
-            !missingAllConnectedCircle
-        ) {
+        if (missingDrives.isEmpty() && missingPermissions.isEmpty()) {
             return PermissionCheckResult.AllGranted
         }
 
@@ -132,7 +123,6 @@ class PermissionExtensionManager(
             MissingPermissionsResult(
                 missingDrives = missingDrives,
                 missingPermissions = missingPermissions,
-                missingAllConnectedCircle = missingAllConnectedCircle,
                 buildExtendPermissionUrl = {
                     getExtendPermissionUrl(
                         host = hostIdentity,
@@ -140,7 +130,6 @@ class PermissionExtensionManager(
                         missingDrives = missingDrives,
                         circleDrives = config.circleDrives,
                         missingPermissions = missingPermissionValues,
-                        needsAllConnected = missingAllConnectedCircle,
                         returnUrl = config.returnUrl()
                     )
                 }
@@ -155,7 +144,6 @@ class PermissionExtensionManager(
         missingDrives: List<TargetDriveAccessRequest>,
         circleDrives: List<TargetDriveAccessRequest>?,
         missingPermissions: List<Int>,
-        needsAllConnected: Boolean,
         returnUrl: String
     ): String {
         val params =
@@ -164,7 +152,6 @@ class PermissionExtensionManager(
                 drives = missingDrives,
                 circleDrives = circleDrives,
                 permissionKeys = missingPermissions.takeIf { it.isNotEmpty() },
-                needsAllConnectedOrCircleIds = needsAllConnected,
                 returnUrl = returnUrl
             )
 

@@ -48,14 +48,13 @@ import kotlin.uuid.Uuid
  */
 class ProfileEditViewModel(
     private val repository: ProfileRepository,
-    reviewEnabled: Boolean,
     /** Every circle's name by id; read only when a detail is shared with circles that have no card. */
     private val loadCircleNames: suspend () -> Map<String, String> = { emptyMap() },
     private val loadCircles: suspend () -> List<CardCircle>,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
-        ProfileEditUiState(reviewEnabled = reviewEnabled),
+        ProfileEditUiState(),
     )
     val state: StateFlow<ProfileEditUiState> = _state.asStateFlow()
 
@@ -115,9 +114,10 @@ class ProfileEditViewModel(
             loaded = result.byType
             duplicates = result.duplicates
             loadedLinks = result.links.associateBy { it.id.toString() }
+            // Set before isLoading flips: a save that lands first would diff against nothing and rewrite.
+            loadedAudiences = result.byType.mapValues { (_, attribute) -> attribute.audience(circles) }
+            loadedLinkAudiences = result.links.associate { it.id.toString() to it.audience(circles) }
             _state.update { it.withLoaded(result, circles) }
-            loadedAudiences = _state.value.audiences
-            loadedLinkAudiences = _state.value.links.associate { it.key to it.audience }
             nameOtherCircles()
         }
     }

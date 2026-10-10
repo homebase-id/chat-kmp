@@ -1,7 +1,6 @@
 package id.homebase.core.ui.screens.profile
 
 import id.homebase.api.client.drives.AccessControlList
-import id.homebase.api.client.drives.CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileRepository
@@ -46,17 +45,15 @@ internal fun defaultAudience(type: String, circles: List<CardCircle>): ProfileAu
     else -> ProfileAudience.Circles(circles.map { it.id }.toSet())
 }
 
-/** Connected with no circles means every connection, so it reads as every Contacts circle selected. */
+/** Connected with no circles means every reviewed connection, so it reads as every Contacts circle selected. */
 internal fun ProfileAttribute.audience(circles: List<CardCircle>): ProfileAudience = when (visibility) {
     ProfileVisibility.ANONYMOUS -> ProfileAudience.Public
     ProfileVisibility.OWNER -> ProfileAudience.OnlyMe
     ProfileVisibility.CONNECTED, ProfileVisibility.AUTHENTICATED -> {
         val stored = acl.circleIdList.orEmpty()
         val allIds = circles.map { it.id }.toSet()
-        val everyConnection = stored.isEmpty() || stored.any { compareStringUuId(it, CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE) }
-        val other = stored
-            .filter { s -> circles.none { compareStringUuId(s, it.id) } && !compareStringUuId(s, CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE) }
-            .toSet()
+        val everyConnection = stored.isEmpty()
+        val other = stored.filter { s -> circles.none { compareStringUuId(s, it.id) } }.toSet()
         val known = circles.filter { c -> stored.any { compareStringUuId(it, c.id) } }.map { it.id }.toSet()
         ProfileAudience.Circles(if (everyConnection) allIds else known, other)
     }

@@ -6,7 +6,6 @@ import androidx.compose.runtime.Immutable
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
-import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.core.ui.screens.contactbook.detail.ReviewSheetState
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.ExperimentalUuidApi
@@ -42,14 +41,8 @@ data class AddContactUiState(
     val relation: IdentityRelation = IdentityRelation.NONE,
     /** True when the resolved identity is already saved in the contact book. */
     val alreadySaved: Boolean = false,
-    /**
-     * All user-defined circles the signed-in user could add a contact to (system circles
-     * excluded), A–Z. Feeds the "Add to circles" picker offered next to Accept on an incoming
-     * request — the selection rides the accept call atomically.
-     */
-    val assignableCircles: List<ContactCircleUi> = emptyList(),
     val reviewCircleGroups: ReviewCircleGroups = ReviewCircleGroups(),
-    /** With the review on, an incoming request is reviewed in place; accepting applies it. */
+    /** An incoming request is reviewed in place; submitting the review accepts it. */
     val requestReview: ReviewSheetState? = null,
     val draft: ContactDraft = ContactDraft(),
     val photo: PlatformFile? = null,
@@ -70,12 +63,6 @@ sealed interface AddContactAction {
     data object SaveClicked : AddContactAction
     /** Open (or reuse) the 1:1 conversation with the resolved, already-connected identity. */
     data object MessageClicked : AddContactAction
-    /**
-     * Accept the incoming request from the resolved identity, placing them into [circleIds]
-     * (32-char N-format ids from [AddContactUiState.assignableCircles]) as part of the same
-     * call. Empty = accept without adding to any circle.
-     */
-    data class AcceptRequestClicked(val circleIds: List<String>) : AddContactAction
     /** Accept the incoming request with the circles picked in its review. */
     data class ReviewSubmitted(val circleIds: Set<String>) : AddContactAction
     /** Reject the incoming request from the resolved identity. */

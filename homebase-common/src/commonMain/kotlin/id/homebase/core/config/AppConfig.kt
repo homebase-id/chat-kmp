@@ -86,10 +86,6 @@ expect fun dataUpgradeReturnUrl(): String
  */
 expect fun createAccountReturnUrl(): String?
 
-// Circle IDs for connected identities
-const val CONFIRMED_CONNECTIONS_CIRCLE_ID = "bb2683fa402aff866e771a6495765a15"
-const val AUTO_CONNECTIONS_CIRCLE_ID = "9e22b42952f74d2580e11250b651d343"
-
 /**
  * Well-known GUID (N-format) of the circle whose members may see this identity's location in an
  * emergency. Matching by id rather than name survives a rename; the owner-console "manage" deep link
@@ -258,6 +254,7 @@ val appPermissions: List<AppPermissionType> =
     listOf(
         AppPermissionType.ReadConnections,
         AppPermissionType.ReadConnectionRequests,
+        AppPermissionType.ReadCircleMembers,
         AppPermissionType.SendDataToOtherIdentitiesOnMyBehalf,
         AppPermissionType.ReceiveDataFromOtherIdentitiesOnMyBehalf,
         AppPermissionType.SendPushNotifications,
@@ -467,7 +464,6 @@ fun getPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = targetDriveAccessRequest,
         circleDrives = circleDriveTargetRequest,
         permissions = appPermissions,
-        // needsAllConnected = true,
         returnUrl = ::returnUrl
     )
 }

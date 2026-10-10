@@ -52,8 +52,6 @@ import id.homebase.resources.profile_edit_preview_section_public
 import id.homebase.resources.profile_edit_preview_section_public_desc
 import id.homebase.resources.profile_edit_preview_section_circles
 import id.homebase.resources.profile_edit_preview_section_circles_desc
-import id.homebase.resources.profile_edit_preview_section_vetted
-import id.homebase.resources.profile_edit_preview_section_vetted_desc
 import id.homebase.resources.profile_edit_status
 import id.homebase.resources.profile_edit_tiktok
 import id.homebase.resources.profile_edit_twitter
@@ -154,14 +152,8 @@ internal fun ProfilePreview(
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp))
 
         PreviewSectionHeader(
-            title = stringResource(
-                if (uiState.reviewEnabled) MR.string.profile_edit_preview_section_circles
-                else MR.string.profile_edit_preview_section_vetted
-            ),
-            description = stringResource(
-                if (uiState.reviewEnabled) MR.string.profile_edit_preview_section_circles_desc
-                else MR.string.profile_edit_preview_section_vetted_desc
-            ),
+            title = stringResource(MR.string.profile_edit_preview_section_circles),
+            description = stringResource(MR.string.profile_edit_preview_section_circles_desc),
         )
         PreviewPhoto(circlesPhoto)
         if (circlesRows.isEmpty()) {

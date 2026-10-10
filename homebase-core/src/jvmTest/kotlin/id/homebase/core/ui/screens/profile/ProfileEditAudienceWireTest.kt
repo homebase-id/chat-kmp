@@ -2,7 +2,6 @@
 
 package id.homebase.core.ui.screens.profile
 
-import id.homebase.api.client.drives.CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.core.ui.screens.card.CardAudience
 import id.homebase.core.ui.screens.card.CardCircle
@@ -56,7 +55,7 @@ class ProfileEditAudienceWireTest {
     private fun phoneData() = JsonObject(mapOf(ProfileAttributeTypes.KEY_PHONE to JsonPrimitive(phone)))
 
     private suspend fun viewModel(harness: CardWireHarness): ProfileEditViewModel {
-        val vm = ProfileEditViewModel(harness.profileRepository(), reviewEnabled = true) { circles }
+        val vm = ProfileEditViewModel(harness.profileRepository()) { circles }
         withTimeout(5_000) { vm.state.first { !it.isLoading } }
         return vm
     }
@@ -215,26 +214,6 @@ class ProfileEditAudienceWireTest {
         assertEquals(1, harness.deletes)
         assertEquals(1, harness.storedIds.size)
         assertEquals(1, vm.state.value.attributes.count { it.type == ProfileAttributeTypes.PHONE })
-    }
-
-    @Test
-    fun confirmedConnectionsSystemCircleStillKeepsTheUserCirclesOnSave() = runBlocking {
-        val harness = CardWireHarness()
-        val userCircle = Uuid.random().toString()
-        harness.seed(
-            Uuid.random(), Uuid.random(), ProfileAttributeTypes.PHONE, "connected", phoneData(), 0,
-            listOf(CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE, userCircle),
-        )
-        val vm = viewModel(harness)
-        assertEquals(
-            ProfileAudience.Circles(circles.map { it.id }.toSet(), setOf(userCircle)),
-            vm.state.value.audience(ProfileAttributeTypes.PHONE),
-        )
-
-        vm.onAction(ProfileEditAction.FieldChanged(ProfileField.PHONE, "+14155550199"))
-        assertIs<ProfileEditEvent.AttributeSaved>(vm.act(ProfileEditAction.SaveAttribute(ProfileAttributeTypes.PHONE)))
-        val ids = harness.lastPut()["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet()
-        assertEquals(circles.map { it.id }.toSet() + userCircle, ids)
     }
 
     @Test

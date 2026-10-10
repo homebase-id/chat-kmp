@@ -12,7 +12,6 @@ import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.RequestDirection
-import id.homebase.core.ui.screens.contactbook.isPendingIncomingRequest
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -63,22 +62,16 @@ data class ContactDetailUiState(
     val isAccessRevoked: Boolean = false,
     /** Connected but never reviewed — the one state with something for the owner to do. */
     val needsReview: Boolean = false,
-    /** Dark launch: the review's entry points are hidden until the dev flag is on. */
-    val reviewEnabled: Boolean = false,
     /** Circles the review sheet offers, in its three groups. */
     val reviewCircleGroups: ReviewCircleGroups = ReviewCircleGroups(),
     /** Non-null while the review sheet is open. */
     val review: ReviewSheetState? = null,
-    /** With the review on, a pending incoming request is reviewed in place; accepting applies it. */
+    /** Non-null exactly while an incoming request is pending; it is reviewed in place, and submitting accepts it. */
     val requestReview: ReviewSheetState? = null,
     /** Non-null while the un-review confirmation is open. */
     val unreview: UnreviewState? = null,
     /** User-defined circles this contact belongs to, real or pending (system circles excluded), A–Z. */
     val circles: List<ContactCircleUi> = emptyList(),
-    /** All user-defined circles the signed-in user could add a contact to (system circles excluded),
-     *  A–Z. Independent of this contact's membership — used by the pending-request circle picker to
-     *  choose which circles to grant on Accept (#921 Part B). */
-    val assignableCircles: List<ContactCircleUi> = emptyList(),
     /** Open circle-detail dialog (tapped a chip in [circles]), or null when dismissed. View-only
      *  from this screen — [CircleMembersUi.manageable] is always false here. */
     val circleDetail: CircleMembersUi? = null,
@@ -131,10 +124,7 @@ data class ContactDetailUiState(
      * requester's public profile to inform the Accept/Reject decision (#921).
      */
     val isPendingIncoming: Boolean
-        get() = isPendingIncomingRequest(
-            connectionStatus,
-            requestDirection == RequestDirection.INCOMING,
-        )
+        get() = requestReview != null
 
     /** The "About" tab has content: a short bio, an Experience attribute (text/image), or socials. */
     val hasAboutContent: Boolean
@@ -196,9 +186,6 @@ sealed interface ContactDetailAction {
     data object UnblockClicked : ContactDetailAction
     data object RemoveBlockedClicked : ContactDetailAction
     data object DisconnectClicked : ContactDetailAction
-    /** Accept an incoming request and add the contact to the chosen circles (their 32-char
-     *  N-format ids). Empty list = accept without adding to any circle (#921 Part B). */
-    data class AcceptRequestClicked(val circleIds: List<String>) : ContactDetailAction
     /** Reject (decline) an incoming connection request from this contact. */
     data object RejectRequestClicked : ContactDetailAction
     /** Cancel (withdraw) an outgoing connection request to this contact. */

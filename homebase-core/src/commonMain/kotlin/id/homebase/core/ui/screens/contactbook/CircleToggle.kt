@@ -15,11 +15,10 @@ import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-/** Why this app can't enable/disable the circle, or null when it may try: the server still decides, and still refuses contacts-app circles. */
+/** Why this app can't enable/disable the circle, or null when it may: only the owning app can. */
 fun RedactedCircleDefinition?.toggleBlockedReason(): ContactBookError? = when {
     this == null -> ContactBookError.CircleToggleNotFound
-    isLegacySystemCircleId(id) -> ContactBookError.CircleToggleSystemCircle
-    appId == ChatProtocol.ChatAppId || isOwnedByContactsApp() -> null
+    appId == ChatProtocol.ChatAppId -> null
     else -> ContactBookError.CircleToggleForbidden
 }
 

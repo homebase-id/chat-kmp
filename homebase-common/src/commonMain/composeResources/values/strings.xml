@@ -599,7 +599,7 @@
     <string name="chat_introduce_preflight_reason_not_permitted">%1$s doesn't allow introductions from you.</string>
     <string name="chat_introduce_preflight_reason_rejected">%1$s's server didn't accept the request.</string>
     <string name="chat_introduce_preflight_reason_unreachable">Couldn't reach %1$s right now.</string>
-    <string name="chat_introduce_preflight_reason_not_confirmed">%1$s hasn't confirmed your connection yet — introductions work once they do.</string>
+    <string name="chat_introduce_preflight_reason_not_confirmed">%1$s hasn't reviewed your connection yet — introductions work once they do.</string>
     <string name="chat_introduce_preflight_reason_not_recognized">Your connection with %1$s isn't active on their side.</string>
     <string name="chat_introduce_preflight_reason_needs_repair">Your connection with %1$s is damaged and needs to be set up again.</string>
     <string name="chat_introduce_preflight_reason_sender_connection_invalid">Your saved connection details for %1$s aren't usable.</string>
@@ -1966,7 +1966,6 @@
     <string name="contactbook_blocked_filter_empty">You haven't blocked anyone.</string>
     <string name="contactbook_circles_empty">You don't have any circles yet.</string>
     <string name="contactbook_circle_unvetted">Unvetted</string>
-    <string name="contactbook_circle_new">New</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
     <string name="contactbook_circle_disabled">Disabled</string>
     <string name="contactbook_circle_name_disabled">%1$s (disabled)</string>
@@ -2013,6 +2012,8 @@
     <string name="contact_state_new">New</string>
     <string name="contact_state_chat">Chat</string>
     <string name="contact_state_circle">In your circles</string>
+    <string name="contact_request_incoming">Request received</string>
+    <string name="contact_request_outgoing">Request sent</string>
 
     <string name="contact_review_introduced_by">Introduced by %1$s</string>
     <string name="contact_review_connected_since">Connected %1$s</string>
@@ -2365,8 +2366,6 @@
     <string name="profile_edit_preview_exit">Back to editing</string>
     <string name="profile_edit_preview_section_public">Public</string>
     <string name="profile_edit_preview_section_public_desc">Visible to everyone, including people you haven't connected with.</string>
-    <string name="profile_edit_preview_section_vetted">Vetted</string>
-    <string name="profile_edit_preview_section_vetted_desc">Additional Attributes visible to your vetted (confirmed) connections.</string>
     <string name="profile_edit_preview_section_circles">Visible to my circles</string>
     <string name="profile_edit_preview_section_circles_desc">Additional details shown to anyone you have added to your circles.</string>
     <string name="profile_edit_preview_empty">Nothing is visible at this level yet.</string>
