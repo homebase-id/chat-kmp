@@ -4,7 +4,6 @@ import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Composer
 import androidx.compose.runtime.DontMemoize
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.RecomposeScope
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.currentComposer
@@ -17,8 +16,9 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 
 /**
  * Diagnostic for #1859: after every applied composition of a [ComposerAutocomplete], reads its
- * restart group's slots back through the tooling API and checks them against the layout the code
- * should produce. Off unless [install]ed (web only). Remove once #1859 is understood.
+ * restart group's slots back through the tooling API. Each caller's first layout per `enabled`
+ * becomes its baseline, and a later composition whose slot types differ from it is reported.
+ * Off unless [install]ed (web only). Remove once #1859 is understood.
  */
 object ComposerAutocompleteProbe {
 
@@ -30,13 +30,15 @@ object ComposerAutocompleteProbe {
     }
 
     private const val RingSize = 20
+    private const val MaxReports = 5
     private val log = Logger.withTag("AutocompleteProbe")
 
     private var reporter: Reporter? = null
     private val ring = ArrayDeque<String>(RingSize)
     private val lastObserved = HashMap<String, String>()
+    private val baselines = HashMap<String, List<String?>>()
     private var applies = 0L
-    private var mismatches = 0
+    private var reports = 0
     private var probeFailures = 0
 
     fun install(reporter: Reporter) {
@@ -47,8 +49,9 @@ object ComposerAutocompleteProbe {
         reporter = null
         ring.clear()
         lastObserved.clear()
+        baselines.clear()
         applies = 0
-        mismatches = 0
+        reports = 0
         probeFailures = 0
     }
 
@@ -76,12 +79,22 @@ object ComposerAutocompleteProbe {
         val reporter = reporter ?: return
         applies++
         record(caller, enabled, queryPresent, slots, reporter)
-        val mismatch = findSlotMismatch(enabled, slots) ?: return
-        if (mismatches++ > 0) return
+        val key = "$caller enabled=$enabled"
+        val types = slots.map(::slotType)
+        val baseline = baselines[key]
+        if (baseline == null) {
+            baselines[key] = types
+            return
+        }
+        if (sameLayout(baseline, types)) {
+            if (null in baseline) baselines[key] = baseline.zip(types) { known, now -> known ?: now }
+            return
+        }
+        if (reports++ >= MaxReports) return
         val report = buildString {
-            appendLine("ComposerAutocomplete slot mismatch (#1859) caller=$caller apply=$applies")
-            appendLine("slot[${mismatch.index}] expected ${mismatch.expected}, actual ${mismatch.actual}")
-            appendLine("slots(enabled=$enabled, n=${slots.size}): ${slots.joinToString(", ") { describeSlot(it) }}")
+            appendLine("ComposerAutocomplete slot layout changed (#1859) caller=$key apply=$applies")
+            appendLine("baseline (n=${baseline.size}): ${baseline.joinToString(", ") { it ?: "null" }}")
+            appendLine("now      (n=${types.size}): ${types.joinToString(", ") { it ?: "null" }}")
             appendLine("ring (oldest first):")
             ring.forEach { appendLine("  $it") }
         }
@@ -90,19 +103,7 @@ object ComposerAutocompleteProbe {
     }
 
     private fun record(caller: String, enabled: Boolean, queryPresent: Boolean, slots: List<Any?>, reporter: Reporter) {
-        val suggestions = (slots.getOrNull(SuggestionsSlot) as? MutableState<*>)?.value as? List<*>
-        val visible = slots.getOrNull(VisibleStateSlot) as? MutableTransitionState<*>
-        val shown = slots.getOrNull(ShownSlot) as? MutableState<*>
-        val observed = buildString {
-            append("enabled=").append(enabled)
-            append(" query=").append(queryPresent)
-            if (enabled) {
-                append(" suggestions=").append(suggestions?.size ?: "?")
-                append(" shown=").append(if (shown == null) "?" else if (shown.value == null) "null" else "set")
-                append(" visible=").append(visible?.let { "${it.currentState}->${it.targetState}" } ?: "?")
-            }
-            append(" slots=").append(slots.size)
-        }
+        val observed = "enabled=$enabled query=$queryPresent [${slots.joinToString(", ") { describeSlot(it) }}]"
         if (lastObserved[caller] == observed) return
         lastObserved[caller] = observed
         if (ring.size == RingSize) ring.removeFirst()
@@ -134,77 +135,21 @@ internal inline fun ProbeComposerAutocompleteSlots(state: RichTextState, trigger
     )
 }
 
-internal data class SlotMismatch(val index: Int, val expected: String, val actual: String)
-
-private class SlotExpectation(val description: String, val matches: (Any?) -> Boolean)
-
-private inline fun <reified V> slot(description: String, nullable: Boolean = false) =
-    SlotExpectation(if (nullable) "$description?" else description) { it is V || (nullable && it == null) }
-
-private fun named(simpleName: String) = SlotExpectation(simpleName) { it != null && it::class.simpleName == simpleName }
-
-// Read back from runtime 1.10.5 (JVM), restart-group data only. Effects have no group of their own
-// here, so their keys, memoized lambdas and holders sit flat between the remembers.
-private val LeadingLayout = listOf(
-    named("RecomposeScopeImpl"),
-    slot<RichTextState>("RichTextState"),
-    slot<ComposerAutocompleteController>("ComposerAutocompleteController"),
-    slot<Function<*>>("lambda"),
-)
-
-private val EnabledLayout: List<SlotExpectation> = LeadingLayout + listOf(
-    SlotExpectation("Boolean(true)") { it == true },
-    slot<RichTextState>("RichTextState"), // DisposableEffect lambda memo key
-    slot<Function<*>>("lambda"), // DisposableEffect lambda
-    slot<RichTextState>("RichTextState"), // DisposableEffect key1
-    slot<String>("String"), // DisposableEffect key2 triggerId
-    slot<Char>("Char"), // DisposableEffect key3 triggerChar
-    named("RememberObserverHolder"), // DisposableEffectImpl
-    slot<MutableState<*>>("MutableState<List>"), // suggestions
-    named("TriggerQuery").orNull(), // LaunchedEffect lambda memo key: query
-    slot<Function<*>>("lambda"), // LaunchedEffect lambda memo key: suggestionsFor
-    slot<Function<*>>("lambda"), // LaunchedEffect lambda
-    slot<String>("String", nullable = true), // LaunchedEffect key query?.query
-    named("RememberObserverHolder"), // LaunchedEffectImpl
-    slot<MutableTransitionState<*>>("MutableTransitionState"), // visibleState, the line-110 read
-    slot<MutableState<*>>("MutableState<Pair?>"), // shown
-)
-
-private val DisabledLayout: List<SlotExpectation> = LeadingLayout + SlotExpectation("Boolean(false)") { it == false }
-
-private fun SlotExpectation.orNull() = SlotExpectation("$description?") { it == null || matches(it) }
-
-// Index-addressed reads in record(); keep in step with EnabledLayout.
-private const val SuggestionsSlot = 11
-private const val VisibleStateSlot = 17
-private const val ShownSlot = 18
-
-internal fun findSlotMismatch(enabled: Boolean, slots: List<Any?>): SlotMismatch? {
-    val layout = if (enabled) EnabledLayout else DisabledLayout
-    layout.forEachIndexed { index, expectation ->
-        if (index >= slots.size) return SlotMismatch(index, expectation.description, "<missing>")
-        if (!expectation.matches(slots[index])) {
-            return SlotMismatch(index, expectation.description, describeSlot(slots[index]))
-        }
+// A null slot (an absent query, an unset key) matches any type.
+internal fun sameLayout(baseline: List<String?>, now: List<String?>): Boolean =
+    baseline.size == now.size && baseline.indices.all { i ->
+        baseline[i] == null || now[i] == null || baseline[i] == now[i]
     }
-    if (slots.size > layout.size) return SlotMismatch(layout.size, "<end>", describeSlot(slots[layout.size]))
-    return null
-}
 
-// Class names, sizes and booleans only: slot values hold user text (queries, contact names).
-internal fun describeSlot(slot: Any?): String = when (slot) {
-    null -> "null"
-    is Boolean, is Int, is Long, is Char -> "${slot::class.simpleName}($slot)"
-    is CharSequence -> "${slot::class.simpleName}(len=${slot.length})"
-    is MutableTransitionState<*> -> "MutableTransitionState(${slot.currentState}->${slot.targetState})"
-    is MutableState<*> -> "MutableState<${describeValue(slot.value)}>"
+private fun slotType(slot: Any?): String? = when (slot) {
+    null -> null
     is Function<*> -> "lambda"
     else -> slot::class.simpleName ?: "<anonymous>"
 }
 
-private fun describeValue(value: Any?): String = when (value) {
-    null -> "null"
-    is Collection<*> -> "${value::class.simpleName}(size=${value.size})"
-    is Pair<*, *> -> "Pair<${describeValue(value.first)}, ${describeValue(value.second)}>"
-    else -> describeSlot(value)
+// Types, booleans and transition states only: slot values hold user text (queries, contact names).
+internal fun describeSlot(slot: Any?): String = when (slot) {
+    is Boolean, is Int, is Long, is Char -> "${slot::class.simpleName}($slot)"
+    is MutableTransitionState<*> -> "MutableTransitionState(${slot.currentState}->${slot.targetState})"
+    else -> slotType(slot) ?: "null"
 }

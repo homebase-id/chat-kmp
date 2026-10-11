@@ -200,6 +200,18 @@
             (trace ? "\n\nautocomplete trace (oldest first):\n" + trace : "");
     };
 
+    // A reload wipes the above, and reloading is what a frozen page gets.
+    const lastCrashKey = "homebase.lastCrash";
+    let lastCrash = null;
+    try {
+        lastCrash = localStorage.getItem(lastCrashKey);
+    } catch (e) {
+    }
+    if (lastCrash) console.warn("[homebase] a previous session crashed — read it with __homebaseLastCrash()");
+    window.__homebaseLastCrash = function () {
+        return lastCrash || "No crash recorded from a previous session.";
+    };
+
     const unhandledError = (event, error) => {
         homebaseErrors.total++;
         if (homebaseErrors.first == null) {
@@ -211,6 +223,10 @@
                 "[homebase] first uncaught error — re-read it with __homebaseFirstError()",
                 error || event
             );
+            try {
+                localStorage.setItem(lastCrashKey, new Date().toISOString() + "\n" + window.__homebaseFirstError());
+            } catch (e) {
+            }
         }
 
         if (error instanceof WebAssembly.CompileError) {
