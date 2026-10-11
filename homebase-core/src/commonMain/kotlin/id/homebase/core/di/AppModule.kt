@@ -1284,7 +1284,7 @@ val appModule = module {
     viewModelOf(::HelpViewModel)
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
-    viewModelOf(::DesktopViewModel)
+    singleOf(::DesktopViewModel)
     viewModel {
         WebDropViewModel(
             webDropService = get(),
