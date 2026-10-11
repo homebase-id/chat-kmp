@@ -194,10 +194,11 @@ fun main() {
     val minHeight = 400
     val config = DesktopPreferences()
 
+    val viewModel = koin.get<DesktopViewModel>()
+    StartupLogger.checkpoint("DesktopViewModel resolved")
+
     application {
         remember { StartupLogger.checkpoint("Compose application{} entered") }
-        val viewModel = koin.get<DesktopViewModel>()
-        remember { StartupLogger.checkpoint("DesktopViewModel resolved") }
         val uiState by viewModel.uiState.collectAsState()
         val icon = painterResource(MR.drawable.homebase_icon_round)
         var isWindowVisible by remember { mutableStateOf(true) }
