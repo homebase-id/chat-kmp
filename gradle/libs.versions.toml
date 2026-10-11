@@ -30,6 +30,8 @@ pdfbox = "3.0.5"
 vlcj = "4.8.2"
 composemediaplayer = "0.10.0"
 jna = "5.18.1"
+webrtcKmp = "0.125.11"
+webrtcJava = "0.19.0"
 jetbrains-compose-material3 = "1.10.0-alpha04"
 jetbrains-compose-material3-adaptive = "1.2.0"
 kotlinxHtmlJvm = "0.12.0"
@@ -161,6 +163,8 @@ ktor-client-js = { module = "io.ktor:ktor-client-js", version.ref = "ktor" }
 vlcj = { module = "uk.co.caprica:vlcj", version.ref = "vlcj" }
 composemediaplayer = { module = "io.github.kdroidfilter:composemediaplayer", version.ref = "composemediaplayer" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+webrtc-kmp = { module = "com.shepeliev:webrtc-kmp", version.ref = "webrtcKmp" }
+webrtc-java = { module = "dev.onvoid.webrtc:webrtc-java", version.ref = "webrtcJava" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 ktor-client-encoding = { module = "io.ktor:ktor-client-encoding", version.ref = "ktor" }

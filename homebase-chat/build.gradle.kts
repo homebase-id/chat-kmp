@@ -115,11 +115,13 @@ kotlin {
             // On-device subject segmentation for the "Remove background" sticker tool.
             // Model is downloaded via Google Play services (not bundled) → ~0 APK cost.
             implementation(libs.mlkit.subject.segmentation)
+            implementation(libs.webrtc.kmp)
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)
             implementation(libs.ktor.server.core)
             implementation(libs.ktor.server.cio)
+            implementation(libs.webrtc.kmp)
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
@@ -133,6 +135,10 @@ kotlin {
             implementation(libs.jna)
             implementation(libs.jna.platform)
             implementation(libs.composemediaplayer)
+            implementation(libs.webrtc.java)
+            listOf("macos-aarch64", "macos-x86_64", "windows-x86_64", "linux-x86_64", "linux-aarch64").forEach {
+                runtimeOnly("${libs.webrtc.java.get().module}:${libs.versions.webrtcJava.get()}:$it")
+            }
         }
         // Uncomment when enabling the wasmJs target (post-pre-flight),
         // paired with the `wasmJs { browser() }` block above.
