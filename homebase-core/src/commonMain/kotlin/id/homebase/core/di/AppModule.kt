@@ -55,6 +55,9 @@ import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.calling.CallEngineFactory
+import id.homebase.chat.services.calling.FakeCallEngine
+import id.homebase.chat.services.calling.LoopbackSignaling
 import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.chat.services.livelocation.LiveShareReadiness
 import id.homebase.core.config.locationLabeledDrive
@@ -368,6 +371,9 @@ val appModule = module {
         )
     }
     single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
+    // Fakes until the real engine and LiveRelay signaling land; the Call lab drives CallController with these.
+    single { LoopbackSignaling() }
+    single { CallEngineFactory { FakeCallEngine(scope = get()) } }
     single { EmergencyLocateStore(eventBus = get(), scope = get()) }
     single { EmergencyLocateService(temporalDriveReadProvider = get(), store = get()) }
     // Readiness gate for "Share live location": activated add-on + location permission, so the chat

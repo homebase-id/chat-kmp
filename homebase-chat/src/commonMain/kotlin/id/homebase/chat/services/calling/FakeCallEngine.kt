@@ -1,0 +1,134 @@
+package id.homebase.chat.services.calling
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+data class FakeVideo(val argb: Long, val initials: String)
+
+data class FakeCallScript(
+    val connectAfterMs: Long = 1_000,
+    val dropAtMs: Long? = null,
+    val recoverAfterDropMs: Long? = null,
+    val remoteVideoOffAtMs: Long? = null,
+    val failConnect: Boolean = false,
+)
+
+class FakeCallEngine(
+    private val scope: CoroutineScope,
+    private val script: FakeCallScript = FakeCallScript(),
+    peerLabel: String = "Peer",
+    selfLabel: String = "Me",
+) : CallEngine {
+    private val _events = MutableSharedFlow<MediaEvent>(extraBufferCapacity = 64)
+    override val events: SharedFlow<MediaEvent> = _events.asSharedFlow()
+
+    private val remoteSource = FakeVideo(colorFor(peerLabel), initialsOf(peerLabel))
+    private val localSource = FakeVideo(colorFor(selfLabel), initialsOf(selfLabel))
+    private val _remoteVideo = MutableStateFlow<FakeVideo?>(null)
+    private val _localVideo = MutableStateFlow<FakeVideo?>(null)
+    val remoteVideo: StateFlow<FakeVideo?> = _remoteVideo.asStateFlow()
+    val localVideo: StateFlow<FakeVideo?> = _localVideo.asStateFlow()
+
+    var muted = false
+        private set
+    var route = AudioRoute.Earpiece
+        private set
+    var frontCamera = true
+        private set
+    var closed = false
+        private set
+    val addedIce = mutableListOf<String>()
+
+    private var scriptJob: Job? = null
+
+    override suspend fun createOffer(video: Boolean): String {
+        _localVideo.value = if (video) localSource else null
+        _events.emit(MediaEvent.LocalIce("fake-candidate-local", "0", 0))
+        return "fake-offer"
+    }
+
+    override suspend fun answer(offerSdp: String, video: Boolean): String {
+        _localVideo.value = if (video) localSource else null
+        _remoteVideo.value = null
+        startScript()
+        return "fake-answer"
+    }
+
+    override suspend fun applyRemote(answerSdp: String) = startScript()
+
+    override suspend fun addIce(candidate: String, sdpMid: String?, sdpMLineIndex: Int?) {
+        addedIce += candidate
+    }
+
+    override fun setMuted(muted: Boolean) { this.muted = muted }
+
+    override fun setVideo(on: Boolean) { _localVideo.value = if (on) localSource else null }
+
+    override fun switchCamera() { frontCamera = !frontCamera }
+
+    override fun setAudioRoute(route: AudioRoute) { this.route = route }
+
+    override fun close() {
+        closed = true
+        scriptJob?.cancel()
+        _localVideo.value = null
+        _remoteVideo.value = null
+    }
+
+    fun simulateDrop() { _events.tryEmit(MediaEvent.Disconnected) }
+
+    fun simulateRecover() { _events.tryEmit(MediaEvent.Connected) }
+
+    fun simulateFail(reason: FailReason = FailReason.NoRoute) { _events.tryEmit(MediaEvent.Failed(reason)) }
+
+    fun simulateRemoteVideo(on: Boolean) {
+        _remoteVideo.value = if (on) remoteSource else null
+        _events.tryEmit(MediaEvent.RemoteVideoChanged(on))
+    }
+
+    private fun startScript() {
+        scriptJob?.cancel()
+        scriptJob = scope.launch {
+            delay(script.connectAfterMs)
+            if (script.failConnect) return@launch simulateFail()
+            _events.emit(MediaEvent.Connected)
+            val drop = script.dropAtMs
+            val videoOff = script.remoteVideoOffAtMs
+            if (videoOff != null) launch { delay(videoOff); simulateRemoteVideo(false) }
+            if (drop != null) {
+                delay(drop)
+                simulateDrop()
+                script.recoverAfterDropMs?.let { delay(it); simulateRecover() }
+            }
+        }
+    }
+
+    private companion object {
+        val palette = longArrayOf(0xFF5C6BC0, 0xFF26A69A, 0xFFEF6C00, 0xFF8E24AA, 0xFF2E7D32, 0xFFC62828)
+
+        fun colorFor(label: String) = palette[(label.hashCode() and Int.MAX_VALUE) % palette.size]
+
+        fun initialsOf(label: String): String {
+            val parts = label.split(' ', '.', '-', '_').filter { it.isNotEmpty() }
+            val letters = when {
+                parts.isEmpty() -> "?"
+                parts.size == 1 -> parts[0].firstCodePoint()
+                else -> parts[0].firstCodePoint() + parts[1].firstCodePoint()
+            }
+            return letters.uppercase()
+        }
+
+        fun String.firstCodePoint(): String {
+            val end = if (length > 1 && this[0].isHighSurrogate()) 2 else 1
+            return substring(0, end)
+        }
+    }
+}
