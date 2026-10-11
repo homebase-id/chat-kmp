@@ -190,6 +190,7 @@ import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
+import id.homebase.core.updater.AppUpdates
 import id.homebase.core.ui.screens.contactbook.enrollment.EnrollmentCandidatesViewModel
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestViewModel
@@ -264,6 +265,7 @@ val LocationPermissionQualifier = named("locationPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
+    singleOf(::AppUpdates)
 
     single<ProximityAudioRouter> { getProximityAudioRouter() }
     single<VoiceNotePlayback> {
@@ -1277,7 +1279,7 @@ val appModule = module {
     viewModelOf(::HelpViewModel)
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
-    viewModelOf(::DesktopViewModel)
+    singleOf(::DesktopViewModel)
     viewModel {
         WebDropViewModel(
             webDropService = get(),

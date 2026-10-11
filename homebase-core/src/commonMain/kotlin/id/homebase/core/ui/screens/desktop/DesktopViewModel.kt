@@ -5,7 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
-import id.homebase.core.updater.UpdateAppManager
+import id.homebase.core.updater.AppUpdates
+import id.homebase.core.updater.canOfferUpdate
 import id.homebase.core.util.PlatformInfo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,11 +14,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.hours
 
 class DesktopViewModel(
     private val userPreferences: UserPreferences,
     platformInfo: PlatformInfo,
-    private val updateAppManager: UpdateAppManager,
+    private val appUpdates: AppUpdates,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DesktopUiState(
         theme = userPreferences.theme,
@@ -33,7 +35,12 @@ class DesktopViewModel(
                 )
             }
         }
-        checkForUpdate()
+        viewModelScope.launch {
+            appUpdates.latest.collect { latest ->
+                _uiState.update { it.copy(updateAvailable = latest.canOfferUpdate) }
+            }
+        }
+        pollForUpdates()
     }
 
     fun onUiAction(action: DesktopUiAction) {
@@ -57,18 +64,15 @@ class DesktopViewModel(
 
     fun triggerUpdate() {
         viewModelScope.launch {
-            updateAppManager.downloadUpdate()
+            appUpdates.download()
         }
     }
 
-    private fun checkForUpdate() {
+    private fun pollForUpdates() {
         viewModelScope.launch {
             while (true) {
-                val result = updateAppManager.checkForUpdate()
-                _uiState.update { it.copy(updateAvailable = result.updateAvailable && result.canUpdate) }
-
-                // Wait 12 hour before checking again
-                delay(12 * 60 * 60 * 1000L) // 3,600,000 milliseconds = 1 hour
+                appUpdates.check()
+                delay(12.hours)
             }
         }
     }

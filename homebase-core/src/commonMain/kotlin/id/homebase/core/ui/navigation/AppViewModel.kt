@@ -23,7 +23,8 @@ import id.homebase.core.share.registerShareHandler
 import id.homebase.core.share.sharedMediaAttachment
 import id.homebase.core.share.unregisterMomentShareHandler
 import id.homebase.core.share.unregisterShareHandler
-import id.homebase.core.updater.UpdateAppManager
+import id.homebase.core.updater.AppUpdates
+import id.homebase.core.updater.canOfferUpdate
 import id.homebase.core.upgrade.PendingUpgradeManager
 import id.homebase.core.upgrade.PendingUpgradeState
 import id.homebase.core.upgrade.registerDataUpgradeCallbackHandler
@@ -47,7 +48,7 @@ class AppViewModel(
     private val notificationService: NotificationService,
     private val shareContentProcessor: ShareContentProcessor,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
-    private val updateAppManager: UpdateAppManager,
+    private val appUpdates: AppUpdates,
     private val eventBus: EventBus,
     private val pendingUpgradeManager: PendingUpgradeManager,
     private val conversationStream: ConversationStream,
@@ -88,6 +89,7 @@ class AppViewModel(
             }
         }
         collectNotificationEvents()
+        collectUpdateAvailability()
         syncIconBadge()
         registerShareHandler { conversationId -> handleShareIntent(conversationId) }
         registerMomentShareHandler { handleMomentShareIntent() }
@@ -187,14 +189,24 @@ class AppViewModel(
 
     fun triggerUpdate() {
         viewModelScope.launch {
-            updateAppManager.downloadUpdate()
+            appUpdates.download()
         }
     }
 
     private fun checkForUpdate() {
+        viewModelScope.launch { appUpdates.check() }
+    }
+
+    private fun collectUpdateAvailability() {
         viewModelScope.launch {
-            val result = updateAppManager.checkForUpdate()
-            _uiState.update { it.copy(updateAvailable = result.updateAvailable && result.canUpdate, updateAvailableVersion = result.versionName ?: "") }
+            appUpdates.latest.collect { latest ->
+                _uiState.update {
+                    it.copy(
+                        updateAvailable = latest.canOfferUpdate,
+                        updateAvailableVersion = latest?.versionName ?: "",
+                    )
+                }
+            }
         }
     }
 
