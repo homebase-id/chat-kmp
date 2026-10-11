@@ -23,10 +23,11 @@ is a compile proof only.
 
 ## Known limits
 
-- **iOS link step (not done)**: webrtc-kmp does not bring the WebRTC framework transitively. This repo uses SPM,
-  not CocoaPods, so the first slice that really runs WebRTC on iOS must add the SPM package
-  `https://github.com/stasel/WebRTC` (M125-compatible tag; webrtc-kmp pins the pod `WebRTC-SDK` 125.6422.07) to
-  `iosApp.xcodeproj` for the app target. Kotlin compile is green without it.
+- **iOS link step**: webrtc-kmp does not bring the WebRTC framework transitively, and ComposeApp.framework needs
+  its `RTC*` ObjC classes at link time. `iosApp.xcodeproj` therefore links the SPM package
+  `https://github.com/stasel/WebRTC` pinned to `125.0.0` (M125, matching webrtc-kmp's `WebRTC-SDK` 125.6422.07)
+  on the `iosApp` target only. `NotificationServiceExtension` and `ShareExtension` do not link ComposeApp, so they
+  do not need it. Bump the pin together with webrtc-kmp.
 - No TURN server: callers behind symmetric NAT will fail to connect.
 - iOS VoIP push: the server has no Apple `.p8` key yet; CallKit needs a real iPhone.
 - Desktop: natives for all five platforms are on the runtime classpath of the JVM jar, so each platform jar grows

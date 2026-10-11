@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7A1C0DE02F9000030055AA03 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 7A1C0DE02F9000020055AA02 /* WebRTC */; };
 		031DFB24DCA72A98A492CB45 /* libswscale.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB32F3A0C08000B3AFE /* libswscale.xcframework */; };
 		1B3A45515D60DA2487B59C66 /* fixture_4k.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = E5FC7FF390C4D1659F6B3703 /* fixture_4k.mp4 */; };
 		3C162F9B622E66316002D712 /* libavcodec.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB12F3A0C08000B3AFE /* libavcodec.xcframework */; };
@@ -234,6 +235,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7A1C0DE02F9000030055AA03 /* WebRTC in Frameworks */,
 				43296FC22F3A0C08000B3AFE /* libavdevice.xcframework in Frameworks */,
 				43296FBA2F3A0C08000B3AFE /* libavfilter.xcframework in Frameworks */,
 				4332A0A92F3B761C00F895B5 /* FirebaseMessaging in Frameworks */,
@@ -358,6 +360,7 @@
 				4332A0A62F3B761C00F895B5 /* FirebaseCore */,
 				4332A0A82F3B761C00F895B5 /* FirebaseMessaging */,
 				4332A0AA2F3B761C00F895B5 /* FirebaseCrashlytics */,
+				7A1C0DE02F9000020055AA02 /* WebRTC */,
 			);
 			productName = iosApp;
 			productReference = E036487443061F6060AA1439 /* Homebase.app */;
@@ -463,6 +466,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				7A1C0DE02F9000010055AA01 /* XCRemoteSwiftPackageReference "WebRTC" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 0FA39D98867DA0943346125E /* Products */;
@@ -1317,6 +1321,14 @@
 				minimumVersion = 12.9.0;
 			};
 		};
+		7A1C0DE02F9000010055AA01 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stasel/WebRTC";
+			requirement = {
+				kind = exactVersion;
+				version = 125.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1354,6 +1366,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseCrashlytics;
+		};
+		7A1C0DE02F9000020055AA02 /* WebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7A1C0DE02F9000010055AA01 /* XCRemoteSwiftPackageReference "WebRTC" */;
+			productName = WebRTC;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
