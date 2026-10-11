@@ -11,7 +11,7 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.help.HelpUiEvent.OpenUrl
 import id.homebase.core.ui.screens.help.HelpUiEvent.ShareFile
 import id.homebase.core.ui.screens.help.HelpUiEvent.ShowError
-import id.homebase.core.updater.UpdateAppManager
+import id.homebase.core.updater.AppUpdates
 import id.homebase.core.util.PlatformInfo
 import id.homebase.resources.MR
 import id.homebase.resources.help_developer_menu_enabled
@@ -21,13 +21,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class HelpViewModel(
     platformInfo: PlatformInfo,
     private val userPreferences: UserPreferences,
-    private val updateAppManager: UpdateAppManager,
+    private val appUpdates: AppUpdates,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -41,6 +42,7 @@ class HelpViewModel(
     private var developerTapCount = 0
 
     init {
+        collectUpdateAvailability()
         checkForUpdate()
         loadFfmpegVersion()
     }
@@ -143,13 +145,19 @@ class HelpViewModel(
     private fun checkForUpdate() {
         viewModelScope.launch {
             _uiState.update { it.copy(isCheckingForUpdate = true) }
-            updateAppManager.checkForUpdate().let { data ->
-                delay(1000)
+            appUpdates.check()
+            delay(1000)
+            _uiState.update { it.copy(isCheckingForUpdate = false) }
+        }
+    }
+
+    private fun collectUpdateAvailability() {
+        viewModelScope.launch {
+            appUpdates.latest.filterNotNull().collect { latest ->
                 _uiState.update {
                     it.copy(
-                        isUpdateAvailable = data.updateAvailable,
-                        isUpdateSupported = data.error == null && data.canUpdate,
-                        isCheckingForUpdate = false,
+                        isUpdateAvailable = latest.updateAvailable,
+                        isUpdateSupported = latest.error == null && latest.canUpdate,
                     )
                 }
             }
@@ -158,7 +166,7 @@ class HelpViewModel(
 
     private fun downloadUpdate() {
         viewModelScope.launch {
-            updateAppManager.downloadUpdate()
+            appUpdates.download()
         }
     }
 }
