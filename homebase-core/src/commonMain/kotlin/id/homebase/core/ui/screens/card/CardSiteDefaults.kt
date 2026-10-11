@@ -17,17 +17,9 @@ import kotlinx.serialization.json.longOrNull
 private const val TAG = "CardSiteDefaults"
 
 data class CardSiteDefaults(
-    val design: String = CardDesign.BOARD,
     val tagLine: String? = null,
     val header: HomebaseImageData? = null,
 )
-
-internal fun cardDesignForTheme(themeId: String?): String = when (themeId) {
-    "555" -> CardDesign.POSTER
-    "777" -> CardDesign.COLLAGE
-    "888" -> CardDesign.DOSSIER
-    else -> CardDesign.BOARD
-}
 
 /** The homepage Theme attribute from a `sitedata.json` root; null when it has none. */
 internal fun cardSiteDefaults(siteData: JsonArray): CardSiteDefaults? {
@@ -41,8 +33,6 @@ internal fun cardSiteDefaults(siteData: JsonArray): CardSiteDefaults? {
     val fileId = file.string("fileId")?.let(Uuid::parseOrNull)
     val headerKey = data.string("headerImageKey")?.takeIf(String::isNotBlank)
     return CardSiteDefaults(
-        design = data.string(CARD_DESIGN_KEY)?.takeIf { it in CardDesign.all }
-            ?: cardDesignForTheme((data["themeId"] as? JsonPrimitive)?.content),
         tagLine = data.string("tagLine")?.takeIf(String::isNotBlank),
         header = if (fileId != null && headerKey != null) {
             HomebaseImageData(

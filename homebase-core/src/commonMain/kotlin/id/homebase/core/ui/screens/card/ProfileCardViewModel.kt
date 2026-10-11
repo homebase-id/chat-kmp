@@ -634,7 +634,7 @@ class ProfileCardViewModel(
             _uiState.update { it.copy(isCardBusy = false, previewDesign = null, previewOverrides = null) }
             if (done) {
                 if (card.audience == CardAudience.Public) {
-                    _uiState.update { it.copy(savedDesign = siteDefaults?.design ?: CardDesign.BOARD) }
+                    _uiState.update { it.copy(savedDesign = PUBLIC_CARD_TEMPLATE.design) }
                 }
                 load(force = true)
             } else {
@@ -884,10 +884,13 @@ class ProfileCardViewModel(
         val storedPublic = stored.publicCard()
         val cardDesign = storedPublic?.design?.takeIf { it in CardDesign.all }
         val pending = unsavedCard
-        val saved = pending?.design ?: cardDesign ?: storedDesign ?: defaults.design
+        val saved = pending?.design ?: cardDesign ?: storedDesign ?: PUBLIC_CARD_TEMPLATE.design
         if (pending != null && cardJob?.isActive != true) writeCard(pending)
         val pendingOverrides = pending?.overrides
-        val publicCard = (storedPublic ?: ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, saved))
+        val publicCard = (storedPublic ?: ProfileCard(
+            Uuid.NIL, Uuid.NIL, CardAudience.Public, saved,
+            if (saved == PUBLIC_CARD_TEMPLATE.design) PUBLIC_CARD_TEMPLATE.overrides else CardOverrides.EMPTY,
+        ))
             .let { card -> if (pendingOverrides != null) card.copy(overrides = pendingOverrides) else card }
         val cards = (listOf(publicCard) + circleCards(stored, publicCard)).sortedCards()
         _uiState.update {
@@ -905,7 +908,7 @@ class ProfileCardViewModel(
         render()
     }
 
-    // One card per Contacts circle; a circle never saved, or saved in a design this build doesn't know, shows the public design until its first save.
+    // Circles without a template, or saved in a design this build doesn't know, borrow the public card.
     private fun circleCards(stored: List<ProfileCard>, publicCard: ProfileCard): List<ProfileCard> {
         val priorities = fixedCirclePriorities(circles)
         return circles.map { circle ->
@@ -913,7 +916,9 @@ class ProfileCardViewModel(
             val priority = priorities.getValue(circle.id)
             val saved = stored.firstOrNull { it.audience.isSameAs(audience) }
             when {
-                saved == null -> ProfileCard(Uuid.NIL, Uuid.NIL, audience, publicCard.design, publicCard.overrides, priority)
+                saved == null -> cardTemplateFor(audience)
+                    ?.let { ProfileCard(Uuid.NIL, Uuid.NIL, audience, it.design, it.overrides, priority) }
+                    ?: ProfileCard(Uuid.NIL, Uuid.NIL, audience, publicCard.design, publicCard.overrides, priority)
                 saved.design in CardDesign.all -> saved.copy(audience = audience, priority = priority)
                 else -> saved.copy(audience = audience, design = publicCard.design, overrides = publicCard.overrides, priority = priority)
             }

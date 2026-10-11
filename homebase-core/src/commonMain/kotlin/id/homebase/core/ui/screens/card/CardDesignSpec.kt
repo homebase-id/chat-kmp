@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.card
 
+import id.homebase.api.util.compareStringUuId
+
 enum class CardOption {
     COLOURS,
     ACCENT,
@@ -128,4 +130,25 @@ fun CardOverrides.prunedFor(design: String): CardOverrides {
         blocks = blocks?.takeIf { has(CardOption.BLOCK_ORDER) }?.map { CardBlock(it.kind) },
         socials = socials?.takeIf { has(CardOption.SOCIALS_STYLE) },
     )
+}
+
+/** What a fixed card renders until first saved, and what its reset returns to. */
+internal data class CardTemplate(val design: String, val overrides: CardOverrides)
+
+private fun template(design: String, scheme: String) = CardTemplate(
+    design,
+    CardOverrides(palette = CardDesignSpecs.of(design)!!.schemes.first { it.id == scheme }.applyTo(null)),
+)
+
+private val FIXED_CIRCLE_TEMPLATES = listOf(
+    FRIENDS_CIRCLE_ID to template(CardDesign.COLLAGE, "sage"),
+    FAMILY_CIRCLE_ID to template(CardDesign.POSTER, "wine"),
+    WORK_CIRCLE_ID to template(CardDesign.DOSSIER, "ink"),
+)
+
+internal val PUBLIC_CARD_TEMPLATE = template(CardDesign.BOARD, "forest")
+
+internal fun cardTemplateFor(audience: CardAudience): CardTemplate? = when (audience) {
+    CardAudience.Public -> PUBLIC_CARD_TEMPLATE
+    is CardAudience.Circle -> FIXED_CIRCLE_TEMPLATES.firstOrNull { compareStringUuId(it.first, audience.id) }?.second
 }
