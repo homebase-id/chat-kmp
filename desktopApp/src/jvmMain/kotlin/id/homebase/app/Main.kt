@@ -194,8 +194,7 @@ fun main() {
     val minHeight = 400
     val config = DesktopPreferences()
 
-    // Resolved once, out here: the binding is a factory, and a fresh instance per
-    // recomposition restarted the update check, whose result recomposed again (#1869).
+    // Outside application{}: the binding is a factory and its init starts the update poll.
     val viewModel = koin.get<DesktopViewModel>()
     StartupLogger.checkpoint("DesktopViewModel resolved")
 
