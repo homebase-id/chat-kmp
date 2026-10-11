@@ -2350,7 +2350,8 @@
     <string name="profile_edit_audience_circles_empty">Pick at least one circle.</string>
     <string name="profile_edit_audience_circles_none">All your connections see this. Set up Family, Friends and Work in Contacts to pick circles.</string>
     <string name="profile_edit_photos_title">Photos</string>
-    <string name="profile_edit_photos_desc">Photos can be Public or Only me for now.</string>
+    <string name="profile_edit_photos_desc">Each card can have its own photo. A card without one uses the photo it inherits.</string>
+    <string name="profile_edit_photos_desc_inherited">Each card shows the photo it inherits. Set the public photo to change them all.</string>
     <string name="profile_edit_details_title">Details</string>
     <string name="profile_edit_details_desc">Enter each detail once, then choose which cards show it.</string>
     <string name="profile_edit_bio">Bio</string>
@@ -2702,21 +2703,19 @@
     <string name="camera_recording_started">Recording started</string>
     <string name="camera_recording_stopped">Recording stopped, %1$s</string>
     <string name="camera_ae_af_lock">AE/AF lock</string>
-    <string name="profile_edit_cards_title">Your cards</string>
-    <string name="profile_edit_cards_desc">Tap a card to see which details it shows.</string>
-    <string name="profile_edit_cards_focus">Showing what the %1$s card shows.</string>
-    <string name="profile_edit_card_no_details">Nothing on it yet</string>
     <string name="profile_edit_action_preview">Preview as a visitor</string>
     <string name="profile_edit_action_cards">My cards</string>
     <string name="profile_edit_load_failed_desc">Check your connection, then try again.</string>
     <string name="profile_edit_empty_desc">Start with the basics. Each one is entered once, and you choose which cards show it.</string>
     <string name="profile_edit_add_named">Add %1$s</string>
-    <string name="profile_edit_cards_show_all">Show all</string>
-    <string name="profile_edit_card_shows">Shows %1$s</string>
     <string name="profile_edit_audience_all_connections">All connections</string>
     <string name="profile_edit_audience_other_circle">Other circle</string>
     <string name="profile_edit_audience_change">Visible to %1$s. Change</string>
     <string name="profile_edit_photo_public_caption">Shown on every card</string>
+    <string name="profile_edit_photo_use_different">Use a different photo</string>
+    <string name="profile_edit_photo_inherits_public">Uses your Public photo</string>
+    <string name="profile_edit_photo_inherits_connections">Uses your photo for all connections</string>
+    <string name="profile_edit_photo_inherits_none">No photo yet</string>
     <string name="profile_edit_photo_only_me_caption">Only you see this</string>
     <string name="profile_edit_add_group_about">About you</string>
     <string name="profile_edit_add_group_social">Social</string>
@@ -2727,6 +2726,5 @@
     <string name="profile_edit_label_personal">Personal</string>
     <string name="profile_edit_label_custom">Custom</string>
     <string name="profile_edit_audience_other_circles">Other circles</string>
-    <string name="profile_edit_not_on_card">Not on %1$s</string>
     <string name="profile_edit_birthday_pick">Pick a date</string>
 </resources>

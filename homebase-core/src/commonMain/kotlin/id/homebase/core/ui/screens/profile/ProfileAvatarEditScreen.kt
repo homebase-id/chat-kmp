@@ -206,6 +206,7 @@ internal fun PhotoTierSection(
     onPhotoTap: (() -> Unit)? = null,
     shape: Shape = CircleShape,
     idleBadge: Boolean = false,
+    canPick: Boolean = true,
     existingPhotoContent: @Composable () -> Unit,
 ) {
     val motion = MaterialTheme.motionScheme
@@ -232,7 +233,12 @@ internal fun PhotoTierSection(
                     modifier = Modifier.size(96.dp).clip(shape)
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                         .clickable(
-                        onClick = if (controlsVisible) onPick else (onPhotoTap ?: onPick)
+                        enabled = canPick || onPhotoTap != null,
+                        onClick = when {
+                            !canPick -> onPhotoTap ?: {}
+                            controlsVisible -> onPick
+                            else -> onPhotoTap ?: onPick
+                        },
                     ),
                 ) {
                     val shown: Any? = tier.pendingCroppedAvatar ?: tier.existing.takeIf { !tier.pendingRemoval }
@@ -248,7 +254,7 @@ internal fun PhotoTierSection(
                         }
                     }
                 }
-                if (controlsVisible || idleBadge) {
+                if (canPick && (controlsVisible || idleBadge)) {
                     FilledIconButton(onClick = if (controlsVisible) onPick else (onPhotoTap ?: onPick), modifier = Modifier.size(32.dp)) {
                         Icon(
                             imageVector = Icons.Filled.PhotoCamera,

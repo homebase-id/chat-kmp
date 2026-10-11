@@ -1,0 +1,296 @@
+@file:OptIn(ExperimentalCoroutinesApi::class, ExperimentalUuidApi::class)
+
+package id.homebase.core.ui.screens.profile
+
+import id.homebase.api.client.auth.OwnerSession
+import id.homebase.api.client.profile.ProfileAttribute
+import id.homebase.api.client.profile.ProfileAttributeTypes
+import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.common.OdinId
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageResult
+import id.homebase.api.image.ImageSize
+import id.homebase.core.ui.screens.card.CardAudience
+import id.homebase.core.ui.screens.card.CardCircle
+import id.homebase.core.ui.screens.card.CardWireHarness
+import id.homebase.core.ui.screens.card.FAMILY_CIRCLE_ID
+import id.homebase.core.ui.screens.card.FRIENDS_CIRCLE_ID
+import id.homebase.core.ui.screens.card.ProfileCardViewModel
+import id.homebase.core.ui.screens.card.ProfileCardViewModelTest
+import id.homebase.core.ui.screens.card.WORK_CIRCLE_ID
+import id.homebase.imageeditor.ui.CropResultBus
+import io.github.vinceglb.filekit.PlatformFile
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import java.io.File
+import javax.imageio.ImageIO
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+
+/** The real avatar ViewModel and ProfileRepository over a fake transport that decrypts what the app PUTs. */
+class ProfileCardPhotosTest {
+
+    private val circles = listOf(
+        CardCircle(FAMILY_CIRCLE_ID, "Family"),
+        CardCircle(FRIENDS_CIRCLE_ID, "Friends"),
+        CardCircle(WORK_CIRCLE_ID, "Work"),
+    )
+    private val family = CardAudience.Circle(FAMILY_CIRCLE_ID, "Family")
+    private val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
+
+    @BeforeTest
+    fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
+
+    @AfterTest
+    fun tearDown() = Dispatchers.resetMain()
+
+    private val session = object : AvatarOwnerSession {
+        override val user: Flow<OwnerSession?> = MutableStateFlow(null)
+        override suspend fun reloadAvatar(odinId: OdinId) = Unit
+    }
+
+    private val files = object : FileOperationsProvider {
+        override fun getCacheDirectory() = System.getProperty("java.io.tmpdir")
+        override fun openFileInput(path: String) = error("not used")
+        override suspend fun readFileBytes(path: String) = File(path).readBytes()
+        override fun deleteTempFile(path: String) = false
+        override fun getFileSize(path: String) = File(path).length()
+        override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String =
+            File.createTempFile("K11-$prefix", suffix).also { it.writeBytes(bytes); it.deleteOnExit() }.path
+        override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String) = error("not used")
+        override suspend fun writeStream(path: String, data: Flow<ByteArray>) = error("not used")
+    }
+
+    private fun png(): ByteArray = ByteArrayOutputStream().also {
+        ImageIO.write(BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB), "png", it)
+    }.toByteArray()
+
+    private fun seedPublicPhoto(harness: CardWireHarness): Uuid =
+        Uuid.random().also {
+            harness.seed(
+                it, Uuid.random(), ProfileAttributeTypes.PHOTO, "anonymous",
+                buildJsonObject { put(ProfileAttributeTypes.KEY_PROFILE_IMAGE, "public-key") }, 0, null,
+            )
+        }
+
+    private suspend fun viewModel(harness: CardWireHarness, bus: CropResultBus = CropResultBus(), circlePhotosSupported: Boolean = true): ProfileAvatarEditViewModel {
+        val vm = ProfileAvatarEditViewModel(session, harness.profileRepository(), bus, files, circlePhotosSupported) { circles }
+        withTimeout(5_000) { vm.state.first { !it.isLoading } }
+        return vm
+    }
+
+    private suspend fun uploadFamilyPhoto(vm: ProfileAvatarEditViewModel, bus: CropResultBus, awaitStored: Boolean = true) {
+        val source = File.createTempFile("K11-source", ".png").also { it.writeBytes(png()); it.deleteOnExit() }
+        val requested = vm.events
+        val request = kotlinx.coroutines.CompletableDeferred<Uuid>()
+        val collector = kotlinx.coroutines.CoroutineScope(Dispatchers.Unconfined).let { scope ->
+            scope.launchCollect(requested, request)
+        }
+        vm.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.CONNECTED, PlatformFile(source), FAMILY_CIRCLE_ID))
+        val requestId = withTimeout(5_000) { request.await() }
+        collector.cancel()
+        bus.postResult(requestId, ImageResult(png(), ImageSize(64, 64), ImageSize(64, 64)))
+        withTimeout(5_000) { vm.state.first { it.circleSlot(FAMILY_CIRCLE_ID).pendingCroppedAvatar != null } }
+        vm.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED, FAMILY_CIRCLE_ID))
+        if (awaitStored) withTimeout(10_000) { vm.state.first { it.circleSlot(FAMILY_CIRCLE_ID).existing != null } }
+    }
+
+    private fun kotlinx.coroutines.CoroutineScope.launchCollect(
+        events: Flow<ProfileAvatarEditEvent>,
+        into: kotlinx.coroutines.CompletableDeferred<Uuid>,
+    ) = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+        events.collect { if (it is ProfileAvatarEditEvent.NavigateToCropper) into.complete(it.requestId) }
+    }
+
+    @Test
+    fun familyPhotoIsWrittenAsConnectedPlusTheFamilyCircle() = runBlocking {
+        val harness = CardWireHarness()
+        val bus = CropResultBus()
+        val vm = viewModel(harness, bus)
+
+        uploadFamilyPhoto(vm, bus)
+
+        val body = harness.photoPutBodies.single()
+        assertEquals("Connected", body["visibility"]!!.jsonPrimitive.content)
+        assertEquals(listOf(FAMILY_CIRCLE_ID), body["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
+        val stored = harness.profileRepository().photoAttributes().single()
+        assertEquals(ProfileVisibility.CONNECTED, stored.visibility)
+        assertEquals(listOf(FAMILY_CIRCLE_ID), stored.acl.circleIdList)
+    }
+
+    @Test
+    fun familyCardUsesItsOwnPhotoWhileFriendsKeepsThePublicOne() = runBlocking {
+        val harness = CardWireHarness()
+        val publicId = seedPublicPhoto(harness)
+        val bus = CropResultBus()
+        val vm = viewModel(harness, bus)
+        assertEquals(publicId, vm.state.value.photoFor(family)?.id)
+
+        uploadFamilyPhoto(vm, bus)
+
+        val state = vm.state.value
+        assertEquals(state.circleSlot(FAMILY_CIRCLE_ID).existing?.id, state.photoFor(family)?.id)
+        assertEquals(publicId, state.photoFor(friends)?.id)
+        assertEquals(publicId, state.photoFor(CardAudience.Public)?.id)
+    }
+
+    @Test
+    fun removingTheFamilyPhotoFallsBackToTheInheritedOne() = runBlocking {
+        val harness = CardWireHarness()
+        val publicId = seedPublicPhoto(harness)
+        val bus = CropResultBus()
+        val vm = viewModel(harness, bus)
+        uploadFamilyPhoto(vm, bus)
+        val familyPhoto = vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing!!
+
+        vm.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.CONNECTED, FAMILY_CIRCLE_ID))
+        vm.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED, FAMILY_CIRCLE_ID))
+        withTimeout(5_000) { vm.state.first { it.circleSlot(FAMILY_CIRCLE_ID).existing == null } }
+
+        assertEquals(listOf(familyPhoto.id.toString()), harness.deletedIds.toList())
+        assertEquals(publicId, vm.state.value.photoFor(family)?.id)
+        assertNull(vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing)
+    }
+
+    @Test
+    fun aCirclePhotoIsNotTakenForTheLegacyConnectedOne() = runBlocking {
+        val harness = CardWireHarness()
+        val legacy = Uuid.random()
+        harness.seed(
+            legacy, Uuid.random(), ProfileAttributeTypes.PHOTO, "connected",
+            buildJsonObject { put(ProfileAttributeTypes.KEY_PROFILE_IMAGE, "legacy") }, 0, null,
+        )
+        val bus = CropResultBus()
+        val vm = viewModel(harness, bus)
+        assertEquals(legacy, vm.state.value.connected.existing?.id)
+        assertNull(vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing)
+
+        uploadFamilyPhoto(vm, bus)
+
+        assertEquals(legacy, vm.state.value.connected.existing?.id)
+        assertNotNull(vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing)
+        assertEquals(2, harness.profileRepository().photoAttributes().size)
+        assertNull(harness.photoPutBodies.single()["id"])
+    }
+
+    private fun ProfileAttribute.imageKey() = data[ProfileAttributeTypes.KEY_PROFILE_IMAGE]!!.jsonPrimitive.content
+
+    private suspend fun awaitRendered(host: ProfileCardViewModelTest.FakeHost, src: String) =
+        withContext(Dispatchers.Default) {
+            try {
+                withTimeout(10_000) {
+                    while (host.rendered.lastOrNull()?.data?.photo?.src != src) delay(10)
+                }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                throw AssertionError("wanted $src, rendered ${host.rendered.map { it.audience?.kind to it.data.photo?.src }}")
+            }
+        }
+
+    @Test
+    fun theFamilyCardPayloadCarriesTheFamilyPhotoWhileFriendsKeepsThePublicOne() = runBlocking {
+        val harness = CardWireHarness()
+        seedPublicPhoto(harness)
+        val bus = CropResultBus()
+        val avatar = viewModel(harness, bus)
+        uploadFamilyPhoto(avatar, bus)
+        val familyKey = avatar.state.value.circleSlot(FAMILY_CIRCLE_ID).existing!!.imageKey()
+
+        val repository = harness.profileRepository()
+        val source = ProfileCardViewModelTest.FakeSource(emptyList()).apply {
+            liveCards = { repository.loadAttributes() }
+            circleList = circles
+        }
+        val host = ProfileCardViewModelTest.FakeHost()
+        val cardVm = ProfileCardViewModel(source) { host }.also { it.startHost() }
+
+        withContext(Dispatchers.Default) {
+            withTimeout(10_000) { while (cardVm.uiState.value.cards.none { it.audience == family }) delay(10) }
+        }
+        cardVm.onCardOpened(family)
+        awaitRendered(host, "data:image/jpeg;base64,$familyKey")
+        cardVm.onCardOpened(friends)
+        awaitRendered(host, "data:image/jpeg;base64,public-key")
+        cardVm.onCardOpened(CardAudience.Public)
+        awaitRendered(host, "data:image/jpeg;base64,public-key")
+    }
+
+    @Test
+    fun aServerThatDropsCircleIdsFailsTheUploadAndLeavesNoStrayPhotoBehind() = runBlocking {
+        val harness = CardWireHarness(photoCircleIds = false)
+        val publicId = seedPublicPhoto(harness)
+        val bus = CropResultBus()
+        val vm = viewModel(harness, bus)
+        val failed = kotlinx.coroutines.CompletableDeferred<ProfileAvatarEditEvent>()
+        val job = launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            vm.events.collect { if (it is ProfileAvatarEditEvent.UploadFailed) failed.complete(it) }
+        }
+
+        uploadFamilyPhoto(vm, bus, awaitStored = false)
+        withTimeout(5_000) { failed.await() }
+        job.cancel()
+
+        assertNull(vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing)
+        assertEquals(listOf(publicId.toString()), harness.storedIds)
+        assertEquals(publicId, vm.state.value.photoFor(family)?.id)
+    }
+
+    @Test
+    fun anUnverifiableCirclePhotoIsDeletedAndReportedFailed() = runBlocking {
+        val harness = CardWireHarness(photoCircleIds = false, queryFailsAfterPhotoPut = true)
+        val publicId = seedPublicPhoto(harness)
+        val bus = CropResultBus()
+        val vm = viewModel(harness, bus)
+        val failed = kotlinx.coroutines.CompletableDeferred<ProfileAvatarEditEvent>()
+        val job = launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            vm.events.collect { if (it is ProfileAvatarEditEvent.UploadFailed) failed.complete(it) }
+        }
+
+        uploadFamilyPhoto(vm, bus, awaitStored = false)
+        withTimeout(5_000) { failed.await() }
+        job.cancel()
+
+        assertEquals(1, harness.deletes)
+        assertEquals(listOf(publicId.toString()), harness.storedIds)
+    }
+
+    @Test
+    fun aServerWithoutCirclePhotoSupportNeverReceivesACirclePhoto() = runBlocking {
+        val harness = CardWireHarness(photoCircleIds = false)
+        val bus = CropResultBus()
+        val vm = viewModel(harness, bus, circlePhotosSupported = false)
+        val failed = kotlinx.coroutines.CompletableDeferred<ProfileAvatarEditEvent>()
+        val job = launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            vm.events.collect { if (it is ProfileAvatarEditEvent.UploadFailed) failed.complete(it) }
+        }
+
+        uploadFamilyPhoto(vm, bus, awaitStored = false)
+        withTimeout(5_000) { failed.await() }
+        job.cancel()
+
+        assertEquals(emptyList(), harness.photoPutBodies)
+        assertEquals(emptyList(), harness.storedIds)
+    }
+}
