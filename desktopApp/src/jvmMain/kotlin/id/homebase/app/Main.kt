@@ -194,10 +194,13 @@ fun main() {
     val minHeight = 400
     val config = DesktopPreferences()
 
+    // Resolved once, out here: the binding is a factory, and a fresh instance per
+    // recomposition restarted the update check, whose result recomposed again (#1869).
+    val viewModel = koin.get<DesktopViewModel>()
+    StartupLogger.checkpoint("DesktopViewModel resolved")
+
     application {
         remember { StartupLogger.checkpoint("Compose application{} entered") }
-        val viewModel = koin.get<DesktopViewModel>()
-        remember { StartupLogger.checkpoint("DesktopViewModel resolved") }
         val uiState by viewModel.uiState.collectAsState()
         val icon = painterResource(MR.drawable.homebase_icon_round)
         var isWindowVisible by remember { mutableStateOf(true) }
