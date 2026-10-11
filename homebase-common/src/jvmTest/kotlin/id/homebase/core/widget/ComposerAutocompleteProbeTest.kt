@@ -17,7 +17,6 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 // Same simple names as the runtime/richeditor classes the layout matches by name.
@@ -45,54 +44,63 @@ class ComposerAutocompleteProbeTest {
     @AfterTest
     fun tearDown() = ComposerAutocompleteProbe.uninstall()
 
-    private fun healthySlots(): MutableList<Any?> {
+    private fun enabledSlots(query: Any? = TriggerQuery()): MutableList<Any?> {
         val state = RichTextState()
         return mutableListOf(
-            RecomposeScopeImpl(), state, ComposerAutocompleteController(), {}, true,
-            state, {}, state, "mention", '@', RememberObserverHolder(),
-            mutableStateOf(listOf("a", "b")), TriggerQuery(), {}, {}, "fro", RememberObserverHolder(),
+            RecomposeScopeImpl(), true, state, {}, state, "mention", '@', RememberObserverHolder(),
+            mutableStateOf(listOf("a", "b")), query, {}, {}, "fro", RememberObserverHolder(),
             MutableTransitionState(false), mutableStateOf(null),
         )
     }
 
     @Test
-    fun aSlotOutOfPlaceIsReportedWithTheRingBuffer() {
-        ComposerAutocompleteProbe.check("mention", enabled = false, queryPresent = false, slots = healthySlots().take(5).toMutableList().also { it[4] = false })
-        ComposerAutocompleteProbe.check("mention", enabled = true, queryPresent = true, slots = healthySlots())
-        assertTrue(mismatches.isEmpty(), "healthy layouts must not report: $mismatches")
+    fun aShiftedLayoutIsReportedWithTheRingBuffer() {
+        ComposerAutocompleteProbe.check("mention", enabled = false, queryPresent = false, slots = listOf(RecomposeScopeImpl(), false))
+        ComposerAutocompleteProbe.check("mention", enabled = true, queryPresent = true, slots = enabledSlots())
+        ComposerAutocompleteProbe.check("mention", enabled = true, queryPresent = false, slots = enabledSlots(query = null))
+        assertTrue(mismatches.isEmpty(), "a stable layout must not report: $mismatches")
 
-        val corrupted = healthySlots().also { it[17] = mutableStateOf("secret query text") }
-        ComposerAutocompleteProbe.check("mention", enabled = true, queryPresent = true, slots = corrupted)
+        val shifted = enabledSlots().also { it.add(2, mutableStateOf("secret query text")) }
+        ComposerAutocompleteProbe.check("mention", enabled = true, queryPresent = true, slots = shifted)
 
         val report = mismatches.single()
-        assertTrue("slot[17] expected MutableTransitionState, actual MutableState<String(len=17)>" in report, report)
-        assertTrue("slots(enabled=true, n=19)" in report, report)
-        assertTrue("#1 mention enabled=false query=false slots=5" in report, report)
-        assertTrue("#2 mention enabled=true query=true suggestions=2 shown=null visible=false->false slots=19" in report, report)
-        assertTrue("#3 mention enabled=true query=true suggestions=2 shown=null visible=? slots=19" in report, report)
+        assertTrue("caller=mention enabled=true apply=4" in report, report)
+        assertTrue("baseline (n=16): RecomposeScopeImpl, Boolean, RichTextState, lambda," in report, report)
+        assertTrue("now      (n=17): RecomposeScopeImpl, Boolean(true), MutableState<String(len=17)>, RichTextState," in report, report)
+        assertTrue("#1 mention enabled=false query=false [RecomposeScopeImpl, Boolean(false)]" in report, report)
+        assertTrue("MutableTransitionState(false->false)" in report, report)
         assertFalse("secret" in report, "slot values must never be logged: $report")
-        assertEquals(3, trace.lines().size)
-
-        ComposerAutocompleteProbe.check("mention", enabled = true, queryPresent = true, slots = corrupted)
-        assertEquals(1, mismatches.size, "only the first mismatch is reported")
+        assertEquals(4, trace.lines().size)
     }
 
     @Test
-    fun aMissingOrExtraSlotIsAMismatch() {
-        assertEquals(
-            SlotMismatch(18, "MutableState<Pair?>", "<missing>"),
-            findSlotMismatch(enabled = true, slots = healthySlots().dropLast(1)),
-        )
-        assertEquals(
-            SlotMismatch(5, "<end>", "RichTextState"),
-            findSlotMismatch(enabled = false, slots = healthySlots().also { it[4] = false }),
-        )
-        assertNull(findSlotMismatch(enabled = true, slots = healthySlots()))
+    fun eachCallerAndEnabledStateHasItsOwnBaseline() {
+        ComposerAutocompleteProbe.check("mention", enabled = true, queryPresent = false, slots = enabledSlots())
+        ComposerAutocompleteProbe.check("emoji", enabled = true, queryPresent = false, slots = enabledSlots().drop(2))
+        ComposerAutocompleteProbe.check("mention", enabled = false, queryPresent = false, slots = listOf(RecomposeScopeImpl(), false))
+        assertTrue(mismatches.isEmpty(), mismatches.joinToString())
     }
 
-    /** Guards the expected layout against the real runtime: a Compose upgrade that moves a slot fails here. */
     @Test
-    fun theRealCompositionMatchesTheExpectedLayout() = runComposeUiTest {
+    fun reportsStopAfterTheCap() {
+        ComposerAutocompleteProbe.check("mention", enabled = true, queryPresent = false, slots = enabledSlots())
+        repeat(8) {
+            ComposerAutocompleteProbe.check("mention", enabled = true, queryPresent = false, slots = enabledSlots().drop(1))
+        }
+        assertEquals(5, mismatches.size)
+    }
+
+    @Test
+    fun aNullSlotMatchesAnyType() {
+        assertTrue(sameLayout(listOf("A", null, "C"), listOf("A", "B", "C")))
+        assertTrue(sameLayout(listOf("A", "B", "C"), listOf("A", null, "C")))
+        assertFalse(sameLayout(listOf("A", "B", "C"), listOf("A", "C", "B")))
+        assertFalse(sameLayout(listOf("A", "B"), listOf("A", "B", "C")))
+    }
+
+    /** A real caller's compositions must keep one layout per state, or the probe reports noise. */
+    @Test
+    fun theRealCompositionKeepsOneLayoutPerState() = runComposeUiTest {
         lateinit var state: RichTextState
         var enabled by mutableStateOf(true)
         setContent {
@@ -123,7 +131,7 @@ class ComposerAutocompleteProbeTest {
         waitForIdle()
 
         assertTrue(mismatches.isEmpty(), mismatches.joinToString())
-        assertTrue("query=true suggestions=2 shown=set visible=true->true" in trace, trace)
-        assertTrue("enabled=false query=false slots=5" in trace, trace)
+        assertTrue("MutableTransitionState(true->true)" in trace, trace)
+        assertTrue("enabled=false query=false [" in trace, trace)
     }
 }
