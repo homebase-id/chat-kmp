@@ -19,7 +19,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-// Same simple names as the runtime/richeditor classes the layout matches by name.
 private class RecomposeScopeImpl
 private class RememberObserverHolder
 private class TriggerQuery
@@ -66,7 +65,7 @@ class ComposerAutocompleteProbeTest {
         val report = mismatches.single()
         assertTrue("caller=mention enabled=true apply=4" in report, report)
         assertTrue("baseline (n=16): RecomposeScopeImpl, Boolean, RichTextState, lambda," in report, report)
-        assertTrue("now      (n=17): RecomposeScopeImpl, Boolean(true), MutableState<String(len=17)>, RichTextState," in report, report)
+        assertTrue("now      (n=17): RecomposeScopeImpl, Boolean, SnapshotMutableStateImpl, RichTextState," in report, report)
         assertTrue("#1 mention enabled=false query=false [RecomposeScopeImpl, Boolean(false)]" in report, report)
         assertTrue("MutableTransitionState(false->false)" in report, report)
         assertFalse("secret" in report, "slot values must never be logged: $report")

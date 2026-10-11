@@ -4,7 +4,6 @@ import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Composer
 import androidx.compose.runtime.DontMemoize
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.RecomposeScope
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.currentComposer
@@ -83,15 +82,19 @@ object ComposerAutocompleteProbe {
         val key = "$caller enabled=$enabled"
         val types = slots.map(::slotType)
         val baseline = baselines[key]
-        if (baseline == null || sameLayout(baseline, types)) {
-            baselines[key] = baseline?.zip(types) { known, now -> known ?: now } ?: types
+        if (baseline == null) {
+            baselines[key] = types
+            return
+        }
+        if (sameLayout(baseline, types)) {
+            if (null in baseline) baselines[key] = baseline.zip(types) { known, now -> known ?: now }
             return
         }
         if (reports++ >= MaxReports) return
         val report = buildString {
             appendLine("ComposerAutocomplete slot layout changed (#1859) caller=$key apply=$applies")
             appendLine("baseline (n=${baseline.size}): ${baseline.joinToString(", ") { it ?: "null" }}")
-            appendLine("now      (n=${slots.size}): ${slots.joinToString(", ") { describeSlot(it) }}")
+            appendLine("now      (n=${types.size}): ${types.joinToString(", ") { it ?: "null" }}")
             appendLine("ring (oldest first):")
             ring.forEach { appendLine("  $it") }
         }
@@ -138,26 +141,15 @@ internal fun sameLayout(baseline: List<String?>, now: List<String?>): Boolean =
         baseline[i] == null || now[i] == null || baseline[i] == now[i]
     }
 
-internal fun slotType(slot: Any?): String? = when (slot) {
+private fun slotType(slot: Any?): String? = when (slot) {
     null -> null
     is Function<*> -> "lambda"
     else -> slot::class.simpleName ?: "<anonymous>"
 }
 
-// Class names, sizes and booleans only: slot values hold user text (queries, contact names).
+// Types, booleans and transition states only: slot values hold user text (queries, contact names).
 internal fun describeSlot(slot: Any?): String = when (slot) {
-    null -> "null"
     is Boolean, is Int, is Long, is Char -> "${slot::class.simpleName}($slot)"
-    is CharSequence -> "${slot::class.simpleName}(len=${slot.length})"
     is MutableTransitionState<*> -> "MutableTransitionState(${slot.currentState}->${slot.targetState})"
-    is MutableState<*> -> "MutableState<${describeValue(slot.value)}>"
-    is Function<*> -> "lambda"
-    else -> slot::class.simpleName ?: "<anonymous>"
-}
-
-private fun describeValue(value: Any?): String = when (value) {
-    null -> "null"
-    is Collection<*> -> "${value::class.simpleName}(size=${value.size})"
-    is Pair<*, *> -> "Pair<${describeValue(value.first)}, ${describeValue(value.second)}>"
-    else -> describeSlot(value)
+    else -> slotType(slot) ?: "null"
 }
