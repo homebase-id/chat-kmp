@@ -30,8 +30,10 @@ is a compile proof only.
   do not need it. Bump the pin together with webrtc-kmp.
 - No TURN server: callers behind symmetric NAT will fail to connect.
 - iOS VoIP push: the server has no Apple `.p8` key yet; CallKit needs a real iPhone.
-- Desktop: natives for all five platforms are on the runtime classpath of the JVM jar, so each platform jar grows
-  by the other platforms' natives; splitting them per Conveyor platform (like `ffmpeg/`) is deferred. Mic/camera
-  capture on desktop (`AudioDeviceModule`, `VideoDeviceSource`) is untested.
+- Desktop: desktopApp consumes homebase-chat as a repackaged jar that strips external deps, so webrtc-java and
+  its five native classifier jars are also declared in homebase-core `jvmMain` (like the markdown renderer).
+  Every platform build therefore carries all five natives; splitting them per Conveyor platform
+  configuration in desktopApp is deferred. Mic/camera capture on desktop (`AudioDeviceModule`,
+  `VideoDeviceSource`) is untested.
 - webrtc-kmp is stale (13 months) and pins M125; plan to carry patches or fork if a blocker appears.
 - wasmJs: wire browser `RTCPeerConnection` via JS interop later; until then the backend reports `Unsupported`.
