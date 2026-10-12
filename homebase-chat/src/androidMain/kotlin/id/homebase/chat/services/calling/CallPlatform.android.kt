@@ -5,46 +5,67 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.shepeliev.webrtckmp.WebRtc
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
+import org.webrtc.VideoSink
 
 actual fun platformCallEngineFactory(): CallEngineFactory? = CallEngineFactory { WebRtcKmpCallEngine(it) }
 
 @Composable
-actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier) {
+actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius: Dp) {
     val kmp = handle as? KmpVideoHandle ?: return
     val track = kmp.track
     // Same GL context the camera capturer uses; a private EglBase cannot sample its textures and renders black.
     val eglContext = remember { WebRtc.rootEglBase.eglBaseContext }
-    key(track) {
-        val renderer = remember { arrayOfNulls<SurfaceViewRenderer>(1) }
+    // A SurfaceView composites outside the view hierarchy and ignores the caller's clip; a TextureView is drawn inside it.
+    val rounded = cornerRadius.value > 0f
+    key(track, rounded) {
+        val renderer = remember { arrayOfNulls<VideoSink>(1) }
         DisposableEffect(Unit) {
             onDispose {
                 renderer[0]?.let {
                     runCatching { track.removeSink(it) }
-                    it.release()
+                    when (it) {
+                        is SurfaceViewRenderer -> it.release()
+                        is TextureVideoRenderer -> it.release()
+                    }
                 }
                 renderer[0] = null
             }
         }
-        AndroidView(
-            modifier = modifier,
-            factory = { context ->
-                SurfaceViewRenderer(context).apply {
-                    init(eglContext, if (kmp.local) null else remoteSizeEvents())
-                    setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
-                    setEnableHardwareScaler(true)
-                    setMirror(kmp.mirrored)
-                    // Two SurfaceViews stack in tree order; without the overlay flag the full-screen remote covers the PiP.
-                    setZOrderMediaOverlay(kmp.local)
-                    track.addSink(this)
-                    renderer[0] = this
-                }
-            },
-            update = { it.setMirror(kmp.mirrored) },
-        )
+        if (rounded) {
+            AndroidView(
+                modifier = modifier,
+                factory = { context ->
+                    TextureVideoRenderer(context, eglContext).apply {
+                        setMirror(kmp.mirrored)
+                        track.addSink(this)
+                        renderer[0] = this
+                    }
+                },
+                update = { it.setMirror(kmp.mirrored) },
+            )
+        } else {
+            AndroidView(
+                modifier = modifier,
+                factory = { context ->
+                    SurfaceViewRenderer(context).apply {
+                        init(eglContext, if (kmp.local) null else remoteSizeEvents())
+                        setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
+                        setEnableHardwareScaler(true)
+                        setMirror(kmp.mirrored)
+                        // Two SurfaceViews stack in tree order; without the overlay flag the full-screen remote covers the PiP.
+                        setZOrderMediaOverlay(kmp.local)
+                        track.addSink(this)
+                        renderer[0] = this
+                    }
+                },
+                update = { it.setMirror(kmp.mirrored) },
+            )
+        }
     }
 }
 

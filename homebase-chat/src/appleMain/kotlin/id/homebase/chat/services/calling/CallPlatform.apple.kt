@@ -15,12 +15,13 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import platform.CoreGraphics.CGAffineTransformMakeScale
 import platform.UIKit.UIViewContentMode
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 
 actual fun platformCallEngineFactory(): CallEngineFactory? = CallEngineFactory { WebRtcKmpCallEngine(it) }
 
 @OptIn(ExperimentalForeignApi::class)
 @Composable
-actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier) {
+actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius: Dp) {
     val kmp = handle as? KmpVideoHandle ?: return
     val track = kmp.track
     val view = remember(track) { RTCMTLVideoView().apply { videoContentMode = UIViewContentMode.UIViewContentModeScaleAspectFill } }
@@ -37,7 +38,11 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier) {
     UIKitView(
         factory = { view },
         modifier = modifier,
-        update = { it.transform = CGAffineTransformMakeScale(if (kmp.mirrored) -1.0 else 1.0, 1.0) },
+        update = {
+            it.transform = CGAffineTransformMakeScale(if (kmp.mirrored) -1.0 else 1.0, 1.0)
+            it.layer.cornerRadius = cornerRadius.value.toDouble()
+            it.clipsToBounds = cornerRadius.value > 0f
+        },
     )
 }
 

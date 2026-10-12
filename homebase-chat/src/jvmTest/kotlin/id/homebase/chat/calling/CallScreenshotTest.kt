@@ -211,6 +211,13 @@ class CallScreenshotTest {
     }
 
     @Test
+    fun reconnectingVideoCallSaysSoOnce() = runDesktopComposeUiTest(390, 844) {
+        show(false, shots.first { it.name == "reconnecting" }.state(base(true, Size.Phone)))
+        val said = onAllNodes(hasText("Reconnecting", substring = true), useUnmergedTree = true).fetchSemanticsNodes()
+        assertEquals(1, said.size, "reconnecting status shown ${said.size} times")
+    }
+
+    @Test
     fun localPreviewSnapsToTheNearestCornerOnRelease() = runDesktopComposeUiTest(390, 844) {
         show(false, shots.first { it.name == "connected" }.state(base(true, Size.Phone)))
         val preview = onNodeWithContentDescription("Your camera preview", substring = true)

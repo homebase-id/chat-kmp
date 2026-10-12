@@ -678,12 +678,13 @@ private fun chromeColor() = MaterialTheme.colorScheme.surfaceContainerLowest.cop
 
 private const val MiddleDot = "\u00B7"
 
+private val PreviewCorner = 20.dp
+
 private data class PillStatus(val icon: ImageVector, val text: StringResource, val warn: Boolean)
 
 @Composable
 private fun NamePill(ui: CallUiState, peerName: String, elapsed: String) {
     val status = when {
-        ui.phase == CallPhase.Reconnecting -> PillStatus(Icons.Default.WifiOff, MR.string.call_status_reconnecting, warn = true)
         ui.quality == CallQuality.Poor -> PillStatus(Icons.Default.Warning, MR.string.call_poor_connection, warn = true)
         ui.phase == CallPhase.Connected && !ui.remoteShowing() -> PillStatus(Icons.Default.VideocamOff, MR.string.call_no_video, warn = false)
         else -> null
@@ -772,7 +773,7 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
         val corners = previewCorners(width, height, pipW, pipH, margin, top, bottom)
         val anchor = remember(width, height, compact) { Animatable(corners[1], Offset.VectorConverter) }
         var drag by remember(width, height, compact) { mutableStateOf(Offset.Zero) }
-        val shape = RoundedCornerShape(20.dp)
+        val shape = RoundedCornerShape(PreviewCorner)
         Surface(
             modifier = Modifier
                 .offset { (anchor.value + drag).round() }
@@ -802,7 +803,7 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
             shadowElevation = 8.dp,
         ) {
             if (cameraOn) {
-                CallVideoSurface(handle, Modifier.fillMaxSize().clip(shape), local = true)
+                CallVideoSurface(handle, Modifier.fillMaxSize().clip(shape), local = true, cornerRadius = PreviewCorner)
             } else {
                 Column(
                     Modifier.fillMaxSize(),
@@ -1454,7 +1455,7 @@ private fun EndCallButton(onClick: () -> Unit, modifier: Modifier) {
 }
 
 @Composable
-internal fun CallVideoSurface(handle: VideoHandle?, modifier: Modifier = Modifier, local: Boolean = false) {
+internal fun CallVideoSurface(handle: VideoHandle?, modifier: Modifier = Modifier, local: Boolean = false, cornerRadius: Dp = 0.dp) {
     when (handle) {
         null -> Unit
         // Stand-in camera feed for the lab and screenshot tests, tinted from the theme so either side stays legible.
@@ -1473,7 +1474,7 @@ internal fun CallVideoSurface(handle: VideoHandle?, modifier: Modifier = Modifie
                 )
             }
         }
-        else -> CallVideoView(handle, modifier)
+        else -> CallVideoView(handle, modifier, cornerRadius)
     }
 }
 
