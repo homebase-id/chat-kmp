@@ -99,13 +99,17 @@ class WebRtcJavaCallEngine(
         schedule(timerTask { logVideoStats() }, STATS_PERIOD_MS, STATS_PERIOD_MS)
     }
 
+    @Volatile
+    private var previousStats = emptyList<StatsEntry>()
+
     private fun logVideoStats() {
         synchronized(lock) {
             if (closed) return
             peer.getStats { report ->
                 val entries = report.stats.values.map { StatsEntry(it.type.name.lowercase().replace('_', '-'), it.attributes) }
-                videoStatsLines(entries, localTrack = videoTrack?.let { if (it.isEnabled) "enabled" else "disabled" })
+                videoStatsLines(entries, localTrack = videoTrack?.let { if (it.isEnabled) "enabled" else "disabled" }, previous = previousStats)
                     .forEach { line -> Logger.i("WebRtcJava") { line } }
+                previousStats = entries
             }
         }
     }

@@ -89,11 +89,14 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     }
 
     private suspend fun logVideoStats() {
+        var previous = emptyList<StatsEntry>()
         while (!closed.load()) {
             delay(5_000)
             val stats = runCatching { peer.getStats()?.stats?.values }.getOrNull() ?: continue
             val entries = stats.map { StatsEntry(it.type, it.members) }
-            videoStatsLines(entries, localTrack = videoTrack?.state?.value?.toString()).forEach { line -> Logger.i("WebRtcKmp") { line } }
+            videoStatsLines(entries, localTrack = videoTrack?.state?.value?.toString(), previous = previous)
+                .forEach { line -> Logger.i("WebRtcKmp") { line } }
+            previous = entries
         }
     }
 
