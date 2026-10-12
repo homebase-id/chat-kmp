@@ -1,7 +1,9 @@
 package id.homebase.feed.calls
 
 import android.content.ComponentName
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.telecom.Connection
@@ -12,6 +14,7 @@ import android.telecom.PhoneAccount
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import id.homebase.chat.services.calling.CallService
+import id.homebase.chat.services.calling.isRingingFor
 import java.util.concurrent.ConcurrentHashMap
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -30,11 +33,12 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
         val extras = request?.extras?.getBundle(TelecomManager.EXTRA_INCOMING_CALL_EXTRAS)
         val callId = extras?.getString(IncomingCallNotifier.EXTRA_CALL_ID).orEmpty()
         val label = extras?.getString(EXTRA_LABEL).orEmpty()
+        if (!stillRinging(callId)) return Connection.createCanceledConnection()
         val connection = object : Connection() {
-            override fun onShowIncomingCallUi() = IncomingCallNotifier(applicationContext).show(callId, labels[callId] ?: label)
-            override fun onAnswer() {
-                applicationContext.startActivity(IncomingCallNotifier.openIntent(applicationContext, callId, accept = true))
+            override fun onShowIncomingCallUi() {
+                if (stillRinging(callId)) IncomingCallNotifier(applicationContext).show(callId, labels[callId] ?: label)
             }
+            override fun onAnswer() = answer(callId)
             override fun onReject() {
                 if (callService.state.value.callId == callId) callService.decline()
                 end(DisconnectCause.REJECTED)
@@ -58,7 +62,23 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
     override fun onCreateIncomingConnectionFailed(account: PhoneAccountHandle?, request: ConnectionRequest?) {
         val extras = request?.extras?.getBundle(TelecomManager.EXTRA_INCOMING_CALL_EXTRAS)
         val callId = extras?.getString(IncomingCallNotifier.EXTRA_CALL_ID).orEmpty()
-        IncomingCallNotifier(applicationContext).show(callId, labels[callId] ?: extras?.getString(EXTRA_LABEL).orEmpty())
+        if (stillRinging(callId)) {
+            IncomingCallNotifier(applicationContext).show(callId, labels[callId] ?: extras?.getString(EXTRA_LABEL).orEmpty())
+        }
+    }
+
+    private fun stillRinging(callId: String) = callService.state.value.isRingingFor(callId)
+
+    // Background activity launches are blocked on Android 10+, so answer in place whenever the mic is already allowed.
+    private fun answer(callId: String) {
+        if (!stillRinging(callId)) return
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            applicationContext.startActivity(IncomingCallNotifier.openIntent(applicationContext, callId, accept = true))
+            return
+        }
+        val cameraGranted = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        if (callService.state.value.media.localVideo && !cameraGranted) callService.setVideo(false)
+        callService.accept()
     }
 
     companion object {

@@ -1,5 +1,11 @@
 package id.homebase.chat.services.calling
 
+import id.homebase.api.client.auth.ApiCredentials
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.websockets.StunUrlStore
+import id.homebase.api.common.OdinId
+import id.homebase.api.common.SecureByteArray
 import id.homebase.core.notifications.CallPushRouter
 import java.io.File
 import kotlin.test.AfterTest
@@ -125,6 +131,69 @@ class CallRingCoordinatorTest {
         runCurrent()
         assertFalse(declined.sink.ringing)
         assertTrue("ended:c3" in declined.sink.events)
+    }
+
+    private class ServiceRig(scope: TestScope) {
+        val sink = FakeSink()
+        val credentials = CredentialsManager()
+        val service = CallService(
+            credentialsManager = credentials,
+            eventBus = EventBus(),
+            relay = { _, _, _, _ -> true },
+            engineFactory = CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope, FakeCallScript(), "peer", "me") },
+            stunUrls = StunUrlStore(EventBus(), scope.backgroundScope),
+            scope = scope.backgroundScope,
+            nowMs = { scope.testScheduler.currentTime },
+        )
+        val coordinator = CallRingCoordinator(service, service.state, sink, { null }, scope.backgroundScope)
+            .also { it.start(); CallPushRouter.handler = it }
+
+        suspend fun signIn() = credentials.setActiveCredentials(
+            ApiCredentials.create(OdinId("frodo.baggins.demo.rocks"), "token", SecureByteArray(ByteArray(16))),
+        )
+    }
+
+    @Test
+    fun ringAndHangupPushedBeforeTheIdentityBindsEndTheCallCancelledWithNoRingLeft() = runTest {
+        val rig = ServiceRig(this)
+        runCurrent()
+        assertTrue(ring("c1"))
+        assertTrue(hangup("c1"))
+        runCurrent()
+        assertEquals(CallPhase.Idle, rig.service.state.value.phase)
+
+        rig.signIn()
+        runCurrent()
+        assertEquals(CallPhase.Ended(CallEndReason.Cancelled), rig.service.state.value.phase)
+        assertFalse(rig.sink.ringing)
+    }
+
+    @Test
+    fun ringPushedBeforeTheIdentityBindsRingsOnceItDoes() = runTest {
+        val rig = ServiceRig(this)
+        runCurrent()
+        assertTrue(ring("c1"))
+        runCurrent()
+        assertFalse(rig.sink.ringing)
+
+        rig.signIn()
+        runCurrent()
+        assertEquals(CallPhase.Incoming, rig.service.state.value.phase)
+        assertTrue(rig.sink.ringing)
+        assertTrue(rig.service.state.value.isRingingFor("c1"))
+    }
+
+    @Test
+    fun aRingTheOsAcknowledgesAfterTheHangupIsNotRingableAnyMore() = runTest {
+        val rig = Rig(this, frodo) { null }
+        ring("c1")
+        runCurrent()
+        assertTrue(rig.controller.state.value.isRingingFor("c1"))
+        hangup("c1")
+        runCurrent()
+        assertTrue(rig.sink.events.any { it == "ring:c1:$sam" })
+        assertFalse(rig.controller.state.value.isRingingFor("c1"))
+        assertFalse(rig.sink.ringing)
     }
 
     @Test

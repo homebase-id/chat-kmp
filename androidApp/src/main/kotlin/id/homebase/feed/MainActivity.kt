@@ -3,15 +3,10 @@ package id.homebase.feed
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import androidx.activity.result.contract.ActivityResultContracts
-import id.homebase.chat.services.calling.CallPhase
-import kotlinx.coroutines.withTimeoutOrNull
 import android.os.Bundle
 import androidx.activity.compose.setContent
-import id.homebase.chat.services.calling.CallService
-import id.homebase.feed.calls.IncomingCallNotifier
-import kotlinx.coroutines.flow.first
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
@@ -24,27 +19,36 @@ import id.homebase.api.ActivityProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.youauth.YouAuthFlowManager
+import id.homebase.chat.services.calling.CallPhase
+import id.homebase.chat.services.calling.CallService
 import id.homebase.core.App
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.AppConfig
-import id.homebase.core.util.CreatedIdentityRelay
+import id.homebase.core.logging.StartupLogger
 import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationIntentDecision
 import id.homebase.core.notifications.NotificationNavigationEvent
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
-import id.homebase.core.logging.StartupLogger
 import id.homebase.core.notifications.decideNotificationIntent
 import id.homebase.core.notifications.isReplayedFromHistory
+import id.homebase.core.util.CreatedIdentityRelay
+import id.homebase.feed.calls.IncomingCallNotifier
 import id.homebase.feed.crash.NativeCrashRecovery
 import id.homebase.feed.share.ShareShortcutPublisher
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.dialogs.init
 import io.github.vinceglb.filekit.manualFileKitCoreInitialization
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.android.ext.android.inject
 
 class MainActivity : AppCompatActivity() {
+
+    private companion object {
+        const val STATE_MIC_REQUEST_FOR = "mic_request_for"
+    }
 
     val youAuthFlowManager: YouAuthFlowManager by inject()
     private val notificationService: NotificationService by inject()
@@ -56,7 +60,13 @@ class MainActivity : AppCompatActivity() {
     private val requestMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val callId = micRequestFor
         micRequestFor = null
-        if (granted && callId != null) acceptRingingCall(callId)
+        if (callId == null) return@registerForActivityResult
+        if (granted) acceptRingingCall(callId) else declineRingingCall(callId)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        micRequestFor?.let { outState.putString(STATE_MIC_REQUEST_FOR, it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,6 +75,7 @@ class MainActivity : AppCompatActivity() {
         installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        micRequestFor = savedInstanceState?.getString(STATE_MIC_REQUEST_FOR)
 
         // If the previous run died in a *native* crash (an NDK signal — e.g. a SQLCipher
         // SIGSEGV — that the JVM GlobalCrashHandler can never see), surface the recovery
@@ -162,9 +173,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // The ring may still be on its way (cold process); wait for the call state rather than trusting the notification.
+    private fun declineRingingCall(callId: String) {
+        if (callService.state.value.callId == callId) callService.onPermissionDenied()
+    }
+
+    // The ring may still be on its way (cold process); app scope so a recreation can't drop the accept.
     private fun acceptRingingCall(callId: String) {
-        lifecycleScope.launch {
+        (application as MainApplication).appScope.launch {
             val ringing = withTimeoutOrNull(10_000) {
                 callService.state.first { it.callId == callId && it.phase == CallPhase.Incoming }
             } ?: return@launch

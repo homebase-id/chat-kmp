@@ -14,7 +14,6 @@ interface CallPushTarget {
     fun onPushHangup(callId: String)
 }
 
-/** Platform side of ringing; every call here is derived from [CallState], never from the push that preceded it. */
 interface CallRingSink {
     fun ring(callId: String, label: String)
     fun stopRinging(callId: String)
@@ -23,11 +22,6 @@ interface CallRingSink {
     fun setLive(live: Boolean, video: Boolean, callId: String?)
 }
 
-/**
- * Routes ring/hangup pushes into the call stack and keeps the platform ring UI in step with the call state alone,
- * so a hangup that lands mid-lookup, a ring refused because a call is live, or a ring the user already answered
- * can never leave a notification behind.
- */
 class CallRingCoordinator(
     private val target: CallPushTarget,
     private val state: StateFlow<CallState>,
@@ -91,8 +85,11 @@ class CallRingCoordinator(
     override fun onHangup(callId: String, from: String) = target.onPushHangup(callId)
 
     private val CallState.isRinging: Boolean
-        get() = phase == CallPhase.Incoming && direction == CallDirection.Incoming && !acceptPending
+        get() = callId?.let { isRingingFor(it) } == true
 
     private val CallPhase.isLive: Boolean
         get() = this == CallPhase.Connecting || this == CallPhase.Connected || this == CallPhase.Reconnecting || this == CallPhase.Outgoing
 }
+
+fun CallState.isRingingFor(callId: String): Boolean =
+    this.callId == callId && phase == CallPhase.Incoming && direction == CallDirection.Incoming && !acceptPending
