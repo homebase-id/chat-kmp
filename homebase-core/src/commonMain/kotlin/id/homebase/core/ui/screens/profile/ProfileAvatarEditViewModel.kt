@@ -32,6 +32,7 @@ import io.github.vinceglb.filekit.readBytes
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -123,22 +124,9 @@ class ProfileAvatarEditViewModel(
 
     private fun loadExisting() {
         viewModelScope.launch {
-            val existing = try {
-                profileRepository.photoAttributes()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) { "Failed to load existing profile photos" }
-                emptyList()
-            }
-            val circles = try {
-                loadCircles()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) { "Failed to load card circles" }
-                emptyList()
-            }
+            val pendingExisting = async { orEmpty("existing profile photos") { profileRepository.photoAttributes() } }
+            val circles = orEmpty("card circles") { loadCircles() }
+            val existing = pendingExisting.await()
             _state.update {
                 it.copy(
                     isLoading = false,
@@ -159,6 +147,15 @@ class ProfileAvatarEditViewModel(
                 )
             }
         }
+    }
+
+    private suspend fun <T> orEmpty(what: String, load: suspend () -> List<T>): List<T> = try {
+        load()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.e(throwable = e, tag = TAG) { "Failed to load $what" }
+        emptyList()
     }
 
     fun onAction(action: ProfileAvatarEditAction) {
