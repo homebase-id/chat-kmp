@@ -115,8 +115,8 @@ class CallStateMachine(private val selfOdinId: String) {
 
     private fun userAccept(s: CallState): CallTransition {
         if (s.phase != CallPhase.Incoming) return CallTransition(s)
-        val elsewhere = CallEffect.SendSignal(selfOdinId, CallSignal.Hangup(s.callId!!, HangupReason.AnsweredElsewhere))
-        val offer = s.pendingOfferSdp ?: return CallTransition(s.copy(acceptPending = true), listOf(elsewhere))
+        val offer = s.pendingOfferSdp ?: return CallTransition(s.copy(acceptPending = true))
+        val elsewhere = answeredElsewhere(s.callId!!)
         return CallTransition(
             s.copy(phase = CallPhase.Connecting, pendingOfferSdp = null),
             listOf(
@@ -127,6 +127,9 @@ class CallStateMachine(private val selfOdinId: String) {
             ),
         )
     }
+
+    private fun answeredElsewhere(callId: String) =
+        CallEffect.SendSignal(selfOdinId, CallSignal.Hangup(callId, HangupReason.AnsweredElsewhere))
 
     private fun userHangup(s: CallState): CallTransition = when (s.phase) {
         CallPhase.Outgoing -> end(s, CallEndReason.Cancelled, HangupReason.Cancelled)
@@ -332,6 +335,7 @@ class CallStateMachine(private val selfOdinId: String) {
             listOf(
                 ringing,
                 CallEffect.CancelTimers,
+                answeredElsewhere(sig.callId),
                 CallEffect.CreateAnswer(sig.sdp, sig.video),
                 CallEffect.StartTimer(CallTimer.Connect, sig.callId),
             ),

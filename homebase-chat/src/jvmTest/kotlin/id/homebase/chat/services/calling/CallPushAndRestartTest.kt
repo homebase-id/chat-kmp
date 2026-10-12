@@ -41,11 +41,17 @@ class CallPushAndRestartTest {
         val accepted = step(pushed, CallEvent.UserAccept)
         assertTrue(accepted.state.acceptPending)
         assertEquals(CallPhase.Incoming, accepted.state.phase)
-        assertEquals(listOf<CallEffect>(CallEffect.SendSignal(frodo, CallSignal.Hangup(c, HangupReason.AnsweredElsewhere))), accepted.effects)
+        assertEquals(emptyList<CallEffect>(), accepted.effects)
 
+        val elsewhereSignal = CallSignal.Hangup(c, HangupReason.AnsweredElsewhere)
         val offered = step(accepted.state, fromSam(CallSignal.Offer(c, "sdp", false)))
         assertEquals(CallPhase.Connecting, offered.state.phase)
         assertTrue(CallEffect.CreateAnswer("sdp", false) in offered.effects)
+        assertTrue(CallEffect.SendSignal(frodo, elsewhereSignal) in offered.effects)
+
+        val echoed = step(offered.state, CallEvent.Signal(InboundSignal(frodo, elsewhereSignal, 1_000)))
+        assertEquals(CallPhase.Connecting, echoed.state.phase)
+        assertEquals(CallPhase.Connecting, step(echoed.state, CallEvent.PushHangup(c)).state.phase)
     }
 
     @Test
