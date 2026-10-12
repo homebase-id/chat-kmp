@@ -26,6 +26,8 @@ sealed interface CallEndReason {
     data object Busy : CallEndReason
     data class Failed(val reason: FailReason) : CallEndReason
     data object Cancelled : CallEndReason
+    data object AnsweredElsewhere : CallEndReason
+    data object DeclinedElsewhere : CallEndReason
 }
 
 sealed interface CallPhase {

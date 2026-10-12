@@ -43,6 +43,7 @@ class CallKitMirrorTest {
         override fun reportConnected(callId: String) { log += "connected:$callId" }
         override fun reportVideo(callId: String, video: Boolean) { log += "video:$callId:$video" }
         override fun reportEnded(callId: String, remoteEnded: Boolean) { log += "ended:$callId:remote=$remoteEnded" }
+        override fun reportEndedElsewhere(callId: String, declined: Boolean) { log += "elsewhere:$callId:declined=$declined" }
         override fun requestAnswer(callId: String) { log += "answer:$callId" }
         override fun requestEnd(callId: String) { log += "end-request:$callId" }
     }

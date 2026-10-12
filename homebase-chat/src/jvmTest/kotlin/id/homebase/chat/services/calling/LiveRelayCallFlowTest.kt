@@ -98,6 +98,42 @@ class LiveRelayCallFlowTest {
     }
 
     @Test
+    fun answeringOnOneCalleeDeviceStopsTheSiblingRingingAndIgnoresItsOwnEcho() = flow { relay ->
+        val caller = peer(relay, frodo, relay.device(frodo, online = true))
+        val phone = peer(relay, sam, relay.device(sam, online = true))
+        val desktop = peer(relay, sam, relay.device(sam, online = true))
+
+        caller.controller.startCall(sam, video = false, callId = "c-elsewhere")
+        await("both callee devices ring") { phone.state.phase == CallPhase.Incoming && desktop.state.phase == CallPhase.Incoming }
+
+        phone.controller.accept()
+        await("sibling dismissed") { desktop.state.phase is CallPhase.Ended }
+
+        assertEquals(CallPhase.Ended(CallEndReason.AnsweredElsewhere), desktop.state.phase)
+        await("answering device connected") { phone.state.phase == CallPhase.Connected && caller.state.phase == CallPhase.Connected }
+        val elsewhere = relay.posts.single { it.sender == sam && (it.signal as? CallSignal.Hangup)?.reason == HangupReason.AnsweredElsewhere }
+        assertEquals(listOf(sam), elsewhere.recipients)
+        assertEquals("hangup", elsewhere.body.getValue("push").jsonObject.getValue("kind").jsonPrimitive.content)
+        assertEquals("c-elsewhere", elsewhere.body.getValue("push").jsonObject.getValue("tagId").jsonPrimitive.content)
+    }
+
+    @Test
+    fun decliningOnOneCalleeDeviceStopsTheSiblingRinging() = flow { relay ->
+        val caller = peer(relay, frodo, relay.device(frodo, online = true))
+        val phone = peer(relay, sam, relay.device(sam, online = true))
+        val desktop = peer(relay, sam, relay.device(sam, online = true))
+
+        caller.controller.startCall(sam, video = false, callId = "c-declined-elsewhere")
+        await("both callee devices ring") { phone.state.phase == CallPhase.Incoming && desktop.state.phase == CallPhase.Incoming }
+
+        phone.controller.decline()
+        await("sibling dismissed") { desktop.state.phase is CallPhase.Ended }
+
+        assertEquals(CallPhase.Ended(CallEndReason.DeclinedElsewhere), desktop.state.phase)
+        assertEquals(CallPhase.Ended(CallEndReason.Declined), phone.state.phase)
+    }
+
+    @Test
     fun aSecondCalleeDeviceRingingFirstDoesNotMakeTheCallerTrickleOverTheOffer() = flow { relay ->
         val caller = peer(relay, frodo, relay.device(frodo, online = true), FakeCallScript(localCandidates = candidates))
         val ringingNow = peer(relay, sam, relay.device(sam, online = true))

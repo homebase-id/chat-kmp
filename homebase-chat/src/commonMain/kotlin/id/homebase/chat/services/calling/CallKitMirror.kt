@@ -32,7 +32,10 @@ class CallKitMirror(
                 CallPhase.Incoming, CallPhase.Connecting -> if (direction == CallDirection.Incoming && video) bridge.reportVideo(id, true)
                 CallPhase.Connected -> if (direction == CallDirection.Outgoing) bridge.reportConnected(id)
                 is CallPhase.Ended -> {
-                    if (phase.reason.endedLocally(direction)) bridge.requestEnd(id) else bridge.reportEnded(id, remoteEnded = phase.reason !is CallEndReason.Failed)
+                    val reason = phase.reason
+                    if (reason == CallEndReason.AnsweredElsewhere || reason == CallEndReason.DeclinedElsewhere) {
+                        bridge.reportEndedElsewhere(id, declined = reason == CallEndReason.DeclinedElsewhere)
+                    } else if (phase.reason.endedLocally(direction)) bridge.requestEnd(id) else bridge.reportEnded(id, remoteEnded = phase.reason !is CallEndReason.Failed)
                     if (reported == id) reported = null
                     if (answered == id) answered = null
                 }

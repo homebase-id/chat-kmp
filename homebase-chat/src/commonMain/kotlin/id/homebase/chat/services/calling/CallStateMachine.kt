@@ -115,11 +115,13 @@ class CallStateMachine(private val selfOdinId: String) {
 
     private fun userAccept(s: CallState): CallTransition {
         if (s.phase != CallPhase.Incoming) return CallTransition(s)
-        val offer = s.pendingOfferSdp ?: return CallTransition(s.copy(acceptPending = true))
+        val elsewhere = CallEffect.SendSignal(selfOdinId, CallSignal.Hangup(s.callId!!, HangupReason.AnsweredElsewhere))
+        val offer = s.pendingOfferSdp ?: return CallTransition(s.copy(acceptPending = true), listOf(elsewhere))
         return CallTransition(
             s.copy(phase = CallPhase.Connecting, pendingOfferSdp = null),
             listOf(
                 CallEffect.CancelTimers,
+                elsewhere,
                 CallEffect.CreateAnswer(offer, s.media.localVideo),
                 CallEffect.StartTimer(CallTimer.Connect, s.callId!!),
             ),
@@ -128,7 +130,7 @@ class CallStateMachine(private val selfOdinId: String) {
 
     private fun userHangup(s: CallState): CallTransition = when (s.phase) {
         CallPhase.Outgoing -> end(s, CallEndReason.Cancelled, HangupReason.Cancelled)
-        CallPhase.Incoming -> end(s, CallEndReason.Declined, HangupReason.Declined)
+        CallPhase.Incoming -> end(s, CallEndReason.Declined, HangupReason.Declined, HangupReason.DeclinedElsewhere)
         CallPhase.Connecting, CallPhase.Connected, CallPhase.Reconnecting ->
             end(s, CallEndReason.Hangup(remote = false), HangupReason.Normal)
         else -> CallTransition(s)
@@ -137,6 +139,7 @@ class CallStateMachine(private val selfOdinId: String) {
     private fun signal(s: CallState, inbound: InboundSignal, nowMs: Long): CallTransition {
         val sig = inbound.signal
         if (sig is CallSignal.Offer) return offer(s, inbound.from, sig, inbound.receivedAtMs, nowMs)
+        if (sig is CallSignal.Hangup && sig.reason.isElsewhere) return elsewhere(s, inbound.from, sig)
         if (!s.isActive || sig.callId != s.callId) return CallTransition(s)
         if (inbound.from != s.peer) return CallTransition(s)
         return when (sig) {
@@ -173,6 +176,12 @@ class CallStateMachine(private val selfOdinId: String) {
                 else -> end(s, CallEndReason.Hangup(remote = true))
             }
         }
+    }
+
+    // Our own echo arrives while we are Connecting/Ended, so only a sibling device still ringing for this call ends here.
+    private fun elsewhere(s: CallState, from: String, sig: CallSignal.Hangup): CallTransition {
+        if (from != selfOdinId || s.phase != CallPhase.Incoming || s.callId != sig.callId) return CallTransition(s)
+        return end(s, if (sig.reason == HangupReason.AnsweredElsewhere) CallEndReason.AnsweredElsewhere else CallEndReason.DeclinedElsewhere)
     }
 
     private fun offer(s: CallState, from: String, sig: CallSignal.Offer, receivedAtMs: Long, nowMs: Long): CallTransition {
@@ -339,11 +348,14 @@ class CallStateMachine(private val selfOdinId: String) {
             else -> CallTransition(s)
         }
 
-    private fun end(s: CallState, reason: CallEndReason, notify: HangupReason? = null): CallTransition {
+    private fun end(s: CallState, reason: CallEndReason, notify: HangupReason? = null, notifySelf: HangupReason? = null): CallTransition {
         val effects = buildList {
             add(CallEffect.CancelTimers)
             if (notify != null && s.peer != null && s.callId != null) {
                 add(CallEffect.SendSignal(s.peer, CallSignal.Hangup(s.callId, notify)))
+            }
+            if (notifySelf != null && s.callId != null) {
+                add(CallEffect.SendSignal(selfOdinId, CallSignal.Hangup(s.callId, notifySelf)))
             }
             add(CallEffect.ReleaseEngine)
         }

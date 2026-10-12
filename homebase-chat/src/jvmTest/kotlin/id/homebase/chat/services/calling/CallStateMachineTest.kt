@@ -31,15 +31,16 @@ class CallStateMachineTest {
     private fun assertNoOp(s: CallState, e: CallEvent, now: Long = 1_000) =
         assertEquals(CallTransition(s), machine.step(s, e, now), "no-op expected for $e in ${s.phase}")
 
-    private fun hangupEffects(reason: HangupReason?) = buildList {
+    private fun hangupEffects(reason: HangupReason?, self: HangupReason? = null) = buildList {
         add(CallEffect.CancelTimers)
         if (reason != null) add(CallEffect.SendSignal(sam, CallSignal.Hangup(c, reason)))
+        if (self != null) add(CallEffect.SendSignal(frodo, CallSignal.Hangup(c, self)))
         add(CallEffect.ReleaseEngine)
     }
 
-    private fun assertEnds(t: CallTransition, reason: CallEndReason, notify: HangupReason?) {
+    private fun assertEnds(t: CallTransition, reason: CallEndReason, notify: HangupReason?, self: HangupReason? = null) {
         assertEquals(CallPhase.Ended(reason), t.state.phase)
-        assertEquals(hangupEffects(notify), t.effects)
+        assertEquals(hangupEffects(notify, self), t.effects)
     }
 
     @Test
@@ -137,7 +138,12 @@ class CallStateMachineTest {
         assertEquals(CallPhase.Connecting, t.state.phase)
         assertEquals(null, t.state.pendingOfferSdp)
         assertEquals(
-            listOf(CallEffect.CancelTimers, CallEffect.CreateAnswer("sdp", false), CallEffect.StartTimer(CallTimer.Connect, c)),
+            listOf(
+                CallEffect.CancelTimers,
+                CallEffect.SendSignal(frodo, CallSignal.Hangup(c, HangupReason.AnsweredElsewhere)),
+                CallEffect.CreateAnswer("sdp", false),
+                CallEffect.StartTimer(CallTimer.Connect, c),
+            ),
             t.effects,
         )
     }
@@ -150,8 +156,8 @@ class CallStateMachineTest {
     @Test
     fun localHangupInEveryPhase() {
         assertEnds(machine.step(outgoing, CallEvent.UserHangup), CallEndReason.Cancelled, HangupReason.Cancelled)
-        assertEnds(machine.step(incoming, CallEvent.UserDecline), CallEndReason.Declined, HangupReason.Declined)
-        assertEnds(machine.step(incoming, CallEvent.UserHangup), CallEndReason.Declined, HangupReason.Declined)
+        assertEnds(machine.step(incoming, CallEvent.UserDecline), CallEndReason.Declined, HangupReason.Declined, HangupReason.DeclinedElsewhere)
+        assertEnds(machine.step(incoming, CallEvent.UserHangup), CallEndReason.Declined, HangupReason.Declined, HangupReason.DeclinedElsewhere)
         listOf(connecting, connected, reconnecting).forEach {
             assertEnds(machine.step(it, CallEvent.UserHangup), CallEndReason.Hangup(remote = false), HangupReason.Normal)
         }

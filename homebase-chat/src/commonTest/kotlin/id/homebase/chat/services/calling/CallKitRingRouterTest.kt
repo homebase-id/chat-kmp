@@ -20,6 +20,7 @@ class CallKitRingRouterTest {
         override fun reportConnected(callId: String) = Unit
         override fun reportVideo(callId: String, video: Boolean) = Unit
         override fun reportEnded(callId: String, remoteEnded: Boolean) { ended += callId }
+        override fun reportEndedElsewhere(callId: String, declined: Boolean) { ended += callId }
         override fun requestAnswer(callId: String) = Unit
         override fun requestEnd(callId: String) = Unit
     }

@@ -152,6 +152,17 @@ class CallController(
         }
     }
 
+    // Telling our other devices to stop ringing must never fail the call this device just took or declined.
+    private suspend fun sendToSiblings(self: String, signal: CallSignal, state: CallState) {
+        try {
+            send(self, signal)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.w(e) { "${describe(signal)} call=${signal.callId} not delivered to sibling devices" }
+        }
+    }
+
     private fun describe(signal: CallSignal): String = when (signal) {
         is CallSignal.Hangup -> "hangup(${signal.reason})"
         is CallSignal.Offer -> "offer(seq=${signal.seq})"
@@ -198,7 +209,9 @@ class CallController(
     private suspend fun run(effect: CallEffect, state: CallState) {
         try {
             when (effect) {
-                is CallEffect.SendSignal -> sendUnlessOffline(effect.peer, effect.signal, state)
+                is CallEffect.SendSignal ->
+                    if ((effect.signal as? CallSignal.Hangup)?.reason?.isElsewhere == true) sendToSiblings(effect.peer, effect.signal, state)
+                    else sendUnlessOffline(effect.peer, effect.signal, state)
                 is CallEffect.CreateOffer -> {
                     val sdp = engine().createOffer(effect.video)
                     offerSdp = sdp

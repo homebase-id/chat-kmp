@@ -2759,6 +2759,8 @@
     <string name="call_ended_missed">No answer</string>
     <string name="call_ended_busy">Busy</string>
     <string name="call_ended_cancelled">Call cancelled</string>
+    <string name="call_ended_answered_elsewhere">Answered on another device</string>
+    <string name="call_ended_declined_elsewhere">Declined on another device</string>
     <string name="call_ended_no_route">Couldn't connect</string>
     <string name="call_ended_permission">Allow microphone and camera access to make calls</string>
     <string name="call_ended_failed">Call failed</string>

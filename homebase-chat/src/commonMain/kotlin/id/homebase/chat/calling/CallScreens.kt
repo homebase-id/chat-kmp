@@ -155,7 +155,9 @@ import id.homebase.resources.call_close
 import id.homebase.resources.call_decline
 import id.homebase.resources.call_decline_from
 import id.homebase.resources.call_ended_busy
+import id.homebase.resources.call_ended_answered_elsewhere
 import id.homebase.resources.call_ended_cancelled
+import id.homebase.resources.call_ended_declined_elsewhere
 import id.homebase.resources.call_ended_declined
 import id.homebase.resources.call_ended_failed
 import id.homebase.resources.call_ended_hangup
@@ -1231,6 +1233,8 @@ internal fun endedText(reason: CallEndReason): String = stringResource(
         CallEndReason.Missed -> MR.string.call_ended_missed
         CallEndReason.Busy -> MR.string.call_ended_busy
         CallEndReason.Cancelled -> MR.string.call_ended_cancelled
+        CallEndReason.AnsweredElsewhere -> MR.string.call_ended_answered_elsewhere
+        CallEndReason.DeclinedElsewhere -> MR.string.call_ended_declined_elsewhere
         is CallEndReason.Failed -> when (reason.reason) {
             FailReason.NoRoute -> MR.string.call_ended_no_route
             FailReason.Permission -> MR.string.call_ended_permission

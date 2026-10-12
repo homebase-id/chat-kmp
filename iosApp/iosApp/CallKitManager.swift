@@ -148,6 +148,14 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
         }
     }
 
+    func reportEndedElsewhere(callId: String, declined: Bool) {
+        onMain {
+            guard let id = self.uuidForCall[callId] else { return }
+            self.provider.reportCall(with: id, endedAt: Date(), reason: declined ? .declinedElsewhere : .answeredElsewhere)
+            self.forget(callId)
+        }
+    }
+
     func requestAnswer(callId: String) {
         onMain {
             guard let id = self.uuidForCall[callId], !self.answeredCalls.contains(callId) else { return }

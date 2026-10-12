@@ -41,7 +41,7 @@ class CallPushAndRestartTest {
         val accepted = step(pushed, CallEvent.UserAccept)
         assertTrue(accepted.state.acceptPending)
         assertEquals(CallPhase.Incoming, accepted.state.phase)
-        assertTrue(accepted.effects.isEmpty())
+        assertEquals(listOf<CallEffect>(CallEffect.SendSignal(frodo, CallSignal.Hangup(c, HangupReason.AnsweredElsewhere))), accepted.effects)
 
         val offered = step(accepted.state, fromSam(CallSignal.Offer(c, "sdp", false)))
         assertEquals(CallPhase.Connecting, offered.state.phase)

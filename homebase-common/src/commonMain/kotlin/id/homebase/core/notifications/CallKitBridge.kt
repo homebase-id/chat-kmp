@@ -10,6 +10,8 @@ interface CallKitBridge {
     /** The ring push does not say whether the call is video; the offer does, so CallKit's call is updated once it lands. */
     fun reportVideo(callId: String, video: Boolean)
     fun reportEnded(callId: String, remoteEnded: Boolean)
+    /** Another device of this identity took or declined the call, so CallKit records it as handled elsewhere instead of missed. */
+    fun reportEndedElsewhere(callId: String, declined: Boolean)
     /** The user accepted a call CallKit is still ringing from inside the app; CallKit must answer it too or it never activates the audio session. */
     fun requestAnswer(callId: String)
     /** The user ended the call from inside the app; CallKit ends it through a CXEndCallAction so its UI and history match. */

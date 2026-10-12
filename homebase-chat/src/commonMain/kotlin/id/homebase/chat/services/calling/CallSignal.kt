@@ -9,7 +9,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 @Serializable
-enum class HangupReason { Normal, Declined, Busy, Cancelled, Missed }
+enum class HangupReason { Normal, Declined, Busy, Cancelled, Missed, AnsweredElsewhere, DeclinedElsewhere }
+
+/** Sent by the device that took the call to its own identity, so the callee's other devices stop ringing. */
+val HangupReason.isElsewhere: Boolean get() = this == HangupReason.AnsweredElsewhere || this == HangupReason.DeclinedElsewhere
 
 /**
  * Call signalling payload, carried as the base64 `blob` of an odin-core LiveRelay message.
@@ -90,6 +93,8 @@ object CallChannel {
                 CallPush(CallPushKind.Ring, RING_TYPE_ID, signal.callId, "$selfLabel is calling")
             signal is CallSignal.Hangup && (signal.reason == HangupReason.Cancelled || signal.reason == HangupReason.Missed) ->
                 CallPush(CallPushKind.Hangup, HANGUP_TYPE_ID, signal.callId, "Missed call from $selfLabel")
+            signal is CallSignal.Hangup && signal.reason.isElsewhere ->
+                CallPush(CallPushKind.Hangup, HANGUP_TYPE_ID, signal.callId, "Call handled on another device")
             else -> null
         }
         return OutboundSignal(peer, keyFor(peer), signal, push)
