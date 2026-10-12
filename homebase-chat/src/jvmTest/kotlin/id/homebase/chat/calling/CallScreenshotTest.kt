@@ -122,6 +122,8 @@ class CallScreenshotTest {
         recorder: Recorder = Recorder(),
         fontScale: Float = 1f,
     ) {
+        // Paused before composition so finite animations (the ended countdown) are captured mid-flight, not settled.
+        mainClock.autoAdvance = false
         setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
@@ -139,8 +141,7 @@ class CallScreenshotTest {
             }
             }
         }
-        mainClock.autoAdvance = false
-        mainClock.advanceTimeBy(600)
+        mainClock.advanceTimeBy(900)
     }
 
     private fun androidx.compose.ui.test.ComposeUiTest.assertShown(marker: String) {

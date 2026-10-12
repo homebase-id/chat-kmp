@@ -74,13 +74,11 @@ import androidx.compose.material3.ButtonGroupScope
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.IconToggleButtonShapes
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -101,6 +99,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -171,6 +171,7 @@ import id.homebase.resources.call_incoming_video
 import id.homebase.resources.call_incoming_voice
 import id.homebase.resources.call_label_camera
 import id.homebase.resources.call_label_flip
+import id.homebase.resources.call_label_audio_output
 import id.homebase.resources.call_label_mute
 import id.homebase.resources.call_label_speaker
 import id.homebase.resources.call_local_preview
@@ -203,6 +204,7 @@ import id.homebase.resources.call_unmute
 import id.homebase.resources.call_verification_chip
 import id.homebase.resources.call_verification_show
 import id.homebase.resources.call_you
+import id.homebase.resources.call_you_are_muted
 import kotlin.time.Clock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -549,6 +551,7 @@ private fun AudioCallStatus(ui: CallUiState, elapsed: String) {
                     }
                 }
             }
+            MutedChip(ui.muted)
         }
     }
 }
@@ -616,6 +619,8 @@ private fun ChromeIconButton(
 @Composable
 private fun chromeColor() = MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.9f)
 
+private const val MiddleDot = "\u00B7"
+
 private data class PillStatus(val icon: ImageVector, val text: StringResource, val warn: Boolean)
 
 @Composable
@@ -626,43 +631,63 @@ private fun NamePill(ui: CallUiState, peerName: String, elapsed: String) {
         ui.phase == CallPhase.Connected && !ui.remoteShowing() -> PillStatus(Icons.Default.VideocamOff, MR.string.call_no_video, warn = false)
         else -> null
     }
-    Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = chromeColor(),
-        contentColor = MaterialTheme.colorScheme.onSurface,
-    ) {
-        Column(
-            Modifier.heightIn(min = 48.dp).padding(horizontal = 18.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = chromeColor(),
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                Modifier.heightIn(min = 48.dp).padding(horizontal = 20.dp, vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
                 Text(
                     peerName,
-                    style = MaterialTheme.typography.titleMediumEmphasized,
+                    style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
                 )
-                Text(
-                    if (ui.phase == CallPhase.Connecting) stringResource(MR.string.call_status_connecting) else elapsed,
-                    style = MaterialTheme.typography.titleSmall.tabular(),
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                )
-            }
-            AnimatedVisibility(status != null, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
-                if (status != null) {
-                    val color = if (status.warn) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
-                    Row(
-                        Modifier.padding(top = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Icon(status.icon, null, Modifier.size(16.dp), tint = color)
-                        Text(stringResource(status.text), style = MaterialTheme.typography.labelLarge, color = color)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        if (ui.phase == CallPhase.Connecting) stringResource(MR.string.call_status_connecting) else elapsed,
+                        style = MaterialTheme.typography.labelLarge.tabular(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                    AnimatedVisibility(status != null, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+                        if (status != null) {
+                            val color = if (status.warn) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(MiddleDot, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(status.icon, null, Modifier.size(16.dp), tint = color)
+                                Text(stringResource(status.text), style = MaterialTheme.typography.labelLarge, color = color, maxLines = 1)
+                            }
+                        }
                     }
                 }
+            }
+        }
+        MutedChip(ui.muted)
+    }
+}
+
+/** Mirrors the mute toggle away from the dock, where a glance at the peer will catch it. */
+@Composable
+private fun MutedChip(muted: Boolean) {
+    AnimatedVisibility(
+        muted,
+        enter = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()) + scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()),
+        exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) + scaleOut(MaterialTheme.motionScheme.fastSpatialSpec()),
+    ) {
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.inverseSurface, contentColor = MaterialTheme.colorScheme.inverseOnSurface) {
+            Row(
+                Modifier.padding(start = 10.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(Icons.Default.MicOff, null, Modifier.size(16.dp))
+                Text(stringResource(MR.string.call_you_are_muted), style = MaterialTheme.typography.labelLarge)
             }
         }
     }
@@ -839,18 +864,16 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
 
 private val ToggleSize = 64.dp
 
-private val SegmentOuter = 32.dp
-private val SegmentInner = 10.dp
-
-/** One connected bar: outer ends fully round, inner joins tight; a checked toggle morphs into a free-standing squircle. */
+/** M3 Expressive connected group: round outer ends, tight inner joins, and a checked toggle morphs to a full pill. */
+@Composable
 private fun segmentShapes(index: Int, count: Int): IconToggleButtonShapes {
-    val start = if (index == 0) SegmentOuter else SegmentInner
-    val end = if (index == count - 1) SegmentOuter else SegmentInner
-    return IconToggleButtonShapes(
-        shape = RoundedCornerShape(topStart = start, bottomStart = start, topEnd = end, bottomEnd = end),
-        pressedShape = RoundedCornerShape(6.dp),
-        checkedShape = RoundedCornerShape(22.dp),
-    )
+    val shapes = when {
+        count == 1 -> return IconToggleButtonShapes(CircleShape, RoundedCornerShape(16.dp), CircleShape)
+        index == 0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+        index == count - 1 -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+    }
+    return IconToggleButtonShapes(shapes.shape, shapes.pressedShape, shapes.checkedShape)
 }
 
 @Composable
@@ -947,13 +970,15 @@ private fun RouteToggle(
     modifier: Modifier,
 ) {
     val routes = ui.availableRoutes
-    val label = stringResource(routeName(ui.route)).takeIf { showLabels }
+    // Labels name the control, never the current route: the checked shape and the state description carry that.
+    val speakerToggle = routes.size == 2 && AudioRoute.Speaker in routes
+    val label = stringResource(if (speakerToggle) MR.string.call_label_speaker else MR.string.call_label_audio_output).takeIf { showLabels }
     if (routes.size == 2) {
         val next = routes.first { it != ui.route }
         CallToggle(
-            checked = ui.route != AudioRoute.Earpiece,
+            checked = if (speakerToggle) ui.route == AudioRoute.Speaker else ui.route != AudioRoute.Earpiece,
             onCheckedChange = { actions.setRoute(next) },
-            icon = routeIcon(ui.route),
+            icon = if (speakerToggle) Icons.AutoMirrored.Filled.VolumeUp else routeIcon(ui.route),
             label = label,
             description = stringResource(routeAction(next)),
             state = stringResource(routeName(ui.route)),
@@ -1039,14 +1064,14 @@ private fun BoxScope.EndedLayout(
         large = large,
         modifier = Modifier.align(Alignment.Center).padding(bottom = if (large) 120.dp else 170.dp),
     )
-    val progress = remember(ui.callId) { Animatable(1f) }
-    LaunchedEffect(ui.callId) { progress.animateTo(0f, tween(ENDED_LINGER_MS.toInt(), easing = LinearEasing)) }
+    val elapsed = remember(ui.callId) { Animatable(0f) }
+    LaunchedEffect(ui.callId) { elapsed.animateTo(1f, tween(ENDED_LINGER_MS.toInt(), easing = LinearEasing)) }
     Column(
         Modifier.align(Alignment.BottomCenter).widthIn(max = 360.dp).fillMaxWidth().padding(horizontal = 32.dp).padding(bottom = if (large) 48.dp else 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        FilledTonalButton(
+        Button(
             onClick = actions.retry,
             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
             contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
@@ -1055,20 +1080,30 @@ private fun BoxScope.EndedLayout(
             Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(56.dp)))
             Text(stringResource(MR.string.call_call_back), style = ButtonDefaults.textStyleFor(56.dp))
         }
-        // The ring counts down the auto-dismiss, so it reads as "closing" rather than as a pager.
-        TextButton(
-            onClick = actions.close,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-            contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
+        CountdownCloseButton(progress = { elapsed.value }, onClick = actions.close)
+    }
+}
+
+/** Fills from the start edge as the auto-dismiss runs out, so the button itself is the timer. */
+@Composable
+private fun CountdownCloseButton(progress: () -> Float, onClick: () -> Unit) {
+    val fill = MaterialTheme.colorScheme.secondaryContainer
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+    ) {
+        Box(
+            Modifier.fillMaxWidth().heightIn(min = 56.dp).drawBehind {
+                val w = size.width * progress().coerceIn(0f, 1f)
+                val x = if (layoutDirection == LayoutDirection.Rtl) size.width - w else 0f
+                drawRect(fill, topLeft = Offset(x, 0f), size = Size(w, size.height))
+            },
+            contentAlignment = Alignment.Center,
         ) {
-            CircularProgressIndicator(
-                progress = { progress.value },
-                modifier = Modifier.size(20.dp),
-                strokeWidth = 2.5.dp,
-                trackColor = MaterialTheme.colorScheme.outlineVariant,
-                gapSize = 0.dp,
-            )
-            Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(56.dp)))
             Text(stringResource(MR.string.call_close), style = ButtonDefaults.textStyleFor(56.dp))
         }
     }
@@ -1280,10 +1315,7 @@ private fun AvatarHalo(avatarSize: Dp, mode: HaloMode) {
             val s = 0.96f + breath * 0.06f
             scaleX = s
             scaleY = s
-        }.background(
-            if (mode == HaloMode.Ringing) ringColor.copy(alpha = 0.22f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-            cookie,
-        ),
+        }.background(ringColor.copy(alpha = 0.2f), cookie),
     )
 }
 
@@ -1310,7 +1342,7 @@ private fun RoundCallButton(
     Column(
         Modifier.widthIn(min = 88.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(PulseOverflow + 4.dp),
     ) {
         Box(contentAlignment = Alignment.Center) {
         if (pulse) AcceptPulse(size, container)
@@ -1325,17 +1357,20 @@ private fun RoundCallButton(
             Box(contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(if (size > 72.dp) 36.dp else 32.dp)) }
         }
         }
-        Text(label, style = if (pulse) MaterialTheme.typography.titleSmallEmphasized else MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
     }
 }
 
+private val PulseOverflow = 12.dp
+
+/** Grows by at most [PulseOverflow] per side so the halo never reaches the label below. */
 @Composable
 private fun AcceptPulse(size: Dp, color: Color) {
     val transition = rememberInfiniteTransition(label = "acceptPulse")
     val t by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1_600, easing = LinearEasing)), label = "acceptPulseT")
     Box(
         Modifier.size(size).graphicsLayer {
-            val s = 1f + t * 0.45f
+            val s = 1f + t * (PulseOverflow * 2 / size)
             scaleX = s
             scaleY = s
             alpha = (1f - t) * 0.4f
@@ -1365,18 +1400,18 @@ private fun EndCallButton(onClick: () -> Unit, modifier: Modifier) {
 internal fun CallVideoSurface(handle: VideoHandle?, modifier: Modifier = Modifier, local: Boolean = false) {
     when (handle) {
         null -> Unit
-        // Stand-in camera feed for the lab and screenshot tests: a lit backdrop and a head-and-shoulders silhouette.
+        // Stand-in camera feed for the lab and screenshot tests, tinted from the theme so either side stays legible.
         is FakeVideo -> {
-            val frame = Color(handle.argb)
-            val shade = MaterialTheme.colorScheme.scrim
+            val scheme = MaterialTheme.colorScheme
+            val (frame, ink) = if (local) scheme.primaryContainer to scheme.onPrimaryContainer else scheme.tertiaryContainer to scheme.onTertiaryContainer
             BoxWithConstraints(
-                modifier.background(Brush.verticalGradient(listOf(frame, lerp(frame, shade, 0.45f)))),
+                modifier.background(Brush.verticalGradient(listOf(frame, lerp(frame, ink, 0.18f)))),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     handle.initials,
                     style = MaterialTheme.typography.displayLargeEmphasized.copy(fontSize = (minOf(maxWidth, maxHeight).value * 0.3f).sp),
-                    color = shade.copy(alpha = 0.28f),
+                    color = ink.copy(alpha = 0.72f),
                     modifier = Modifier.offset(y = -maxHeight * 0.04f),
                 )
             }

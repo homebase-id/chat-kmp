@@ -2829,6 +2829,7 @@
     <string name="call_lab_connected_voice">Connected, voice</string>
     <string name="call_lab_connected_video">Connected, video</string>
     <string name="call_state_muted">Muted</string>
+    <string name="call_you_are_muted">You're muted</string>
     <string name="call_state_mic_on">Microphone on</string>
     <string name="call_state_camera_on">Camera on</string>
     <string name="call_route_name_earpiece">Earpiece</string>

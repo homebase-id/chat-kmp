@@ -4,8 +4,6 @@ package id.homebase.chat.calling
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -125,11 +123,8 @@ fun CallEventBubble(
         footer = footer,
         trailing = if (onCallBack == null) null else {
             {
-                val (container, content) = when {
-                    missedForMe -> colors.primary to colors.onPrimary
-                    isOwn -> contentColor.copy(alpha = 0.24f) to contentColor
-                    else -> colors.secondaryContainer to colors.onSecondaryContainer
-                }
+                // Same fill on every received bubble: a missed call's emphasis lives in its error title and glyph.
+                val (container, content) = if (isOwn) contentColor.copy(alpha = 0.24f) to contentColor else colors.secondaryContainer to colors.onSecondaryContainer
                 FilledTonalIconButton(
                     onClick = onCallBack,
                     modifier = Modifier.size(48.dp),
@@ -143,7 +138,6 @@ fun CallEventBubble(
     )
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CallEventLayout(
     modifier: Modifier,
@@ -174,16 +168,11 @@ private fun CallEventLayout(
                 Icon(icon, contentDescription = null, modifier = Modifier.padding(top = 1.dp).size(iconSize), tint = iconTint)
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(title, style = titleStyle.copy(textDirection = TextDirection.Content), color = titleColor)
+                    val metaStyle = MaterialTheme.typography.bodySmall.copy(color = secondary, textDirection = TextDirection.Content)
                     if (subtitle == null) {
                         footer?.let { Box(Modifier.align(Alignment.End)) { it(secondary) } }
                     } else {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            itemVerticalAlignment = Alignment.Bottom,
-                        ) {
-                            KindAndDuration(subtitle, MaterialTheme.typography.bodySmall.copy(color = secondary, textDirection = TextDirection.Content))
-                            footer?.invoke(secondary)
-                        }
+                        SubtitleWithFooter(subtitle, metaStyle, footer?.let { { it(secondary) } })
                     }
                 }
             }
@@ -194,30 +183,55 @@ private fun CallEventLayout(
 
 private class CallSubtitle(val kind: String, val duration: String?, val joined: String?)
 
-/** "Voice call · 12 min 34 s" on one line when it fits, else kind over duration, so neither half is ever split. */
+/**
+ * One rule at every width and font scale: the timestamp always rides at the trailing end of the last line.
+ * "Voice call · 12 min 34 s  12:41" when it fits; else kind, then duration with the timestamp; else each on its own line.
+ */
 @Composable
-private fun KindAndDuration(subtitle: CallSubtitle, style: TextStyle) {
-    if (subtitle.duration == null || subtitle.joined == null) {
-        Text(subtitle.kind.nonBreaking(), style = style)
-        return
-    }
+private fun SubtitleWithFooter(subtitle: CallSubtitle, style: TextStyle, footer: (@Composable () -> Unit)?) {
+    val gap = with(LocalDensity.current) { 10.dp.roundToPx() }
     Layout(
         content = {
-            Text(subtitle.joined.nonBreaking(), style = style, softWrap = false)
+            Text((subtitle.joined ?: subtitle.kind).nonBreaking(), style = style, softWrap = false)
             Text(subtitle.kind.nonBreaking(), style = style)
-            Text(subtitle.duration.nonBreaking(), style = style)
+            Box { subtitle.duration?.let { Text(it.nonBreaking(), style = style) } }
+            Box { footer?.invoke() }
         },
     ) { measurables, constraints ->
+        val max = constraints.maxWidth
         val loose = constraints.copy(minWidth = 0)
+        val foot = measurables[3].measure(loose)
+        val footGap = if (foot.width > 0) gap else 0
         val joined = measurables[0].measure(loose.copy(maxWidth = Constraints.Infinity))
-        if (joined.width <= constraints.maxWidth) {
-            layout(joined.width, joined.height) { joined.place(0, 0) }
+        val oneLine = joined.width + footGap + foot.width
+        if (oneLine <= max) {
+            val h = maxOf(joined.height, foot.height)
+            return@Layout layout(oneLine, h) {
+                joined.placeRelative(0, h - joined.height)
+                foot.placeRelative(oneLine - foot.width, h - foot.height)
+            }
+        }
+        val kind = measurables[1].measure(loose)
+        val duration = measurables[2].measure(loose)
+        // Without a duration the kind is the first and only text line.
+        val firstLine = if (duration.width > 0) kind else null
+        val last = if (duration.width > 0) duration else kind
+        val lastWidth = last.width + footGap + foot.width
+        val top = firstLine?.height ?: 0
+        if (lastWidth <= max) {
+            val width = maxOf(firstLine?.width ?: 0, lastWidth)
+            val h = maxOf(last.height, foot.height)
+            layout(width, top + h) {
+                firstLine?.placeRelative(0, 0)
+                last.placeRelative(0, top + h - last.height)
+                foot.placeRelative(width - foot.width, top + h - foot.height)
+            }
         } else {
-            val kind = measurables[1].measure(loose)
-            val duration = measurables[2].measure(loose)
-            layout(maxOf(kind.width, duration.width), kind.height + duration.height) {
-                kind.placeRelative(0, 0)
-                duration.placeRelative(0, kind.height)
+            val width = maxOf(firstLine?.width ?: 0, last.width, foot.width)
+            layout(width, top + last.height + foot.height) {
+                firstLine?.placeRelative(0, 0)
+                last.placeRelative(0, top)
+                foot.placeRelative(width - foot.width, top + last.height)
             }
         }
     }
