@@ -250,14 +250,12 @@ class PayloadDownloadServiceTest {
     }
 
     @Test
-    fun `exportVerified refuses a missing or unknown hash before downloading`() = runTest {
+    fun `exportVerified refuses an unknown hash algorithm before downloading`() = runTest {
         val (keyHeader, _) = encryptedFixture(1_000)
         val unknown = PayloadHash("sha3", "", "")
 
-        for (hash in listOf(null, unknown)) {
-            assertFailsWith<PayloadDamagedException> {
-                service.exportVerified(driveId, fileId, key, keyHeader, hash, ExportDestination.UploadTemp("fs_", ".bin"))
-            }
+        assertFailsWith<PayloadDamagedException> {
+            service.exportVerified(driveId, fileId, key, keyHeader, unknown, ExportDestination.UploadTemp("fs_", ".bin"))
         }
         assertTrue(mockEngine.requestHistory.isEmpty())
     }

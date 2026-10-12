@@ -34,9 +34,9 @@ Every file and folder is one Homebase file:
 - One `query-batch` with `groupId: [<folder's node id>]`, `fileType: [7101, 7102]` and
   `fileState: [active]`, in pages.
 - Every row is encrypted: names, sizes and times. Decrypt each one, then sort on the device.
-- Skip any row that won't decrypt, isn't encrypted or has a different file type; a name that is
-  empty, `.`, `..` or holds `/` or NUL; and a file without `size` or without a hashed `sync_data`
-  payload.
+- Skip any row that won't decrypt, isn't encrypted or has a different file type; a name that
+  breaks the name rules under "Uploading"; and a file without `size` or without a hashed
+  `sync_data` payload.
 - odin-core has no index on `groupId` yet, so on a big drive each listing scans the whole drive
   (to fix in odin-core).
 

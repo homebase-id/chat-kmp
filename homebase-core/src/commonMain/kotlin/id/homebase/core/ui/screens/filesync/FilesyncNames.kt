@@ -27,10 +27,8 @@ internal object FilesyncNames {
     fun isValid(name: String): Boolean =
         name.isNotEmpty() && name != "." && name != ".." && '/' !in name && '\u0000' !in name
 
-    private fun clean(name: String): String {
-        val replaced = name.toNfc().replace('/', '_').replace('\u0000', '_')
-        return if (replaced.isEmpty() || replaced == "." || replaced == "..") FALLBACK else replaced
-    }
+    private fun clean(name: String): String =
+        name.toNfc().replace('/', '_').replace('\u0000', '_').takeIf(::isValid) ?: FALLBACK
 
     fun split(name: String): Pair<String, String> {
         val dot = name.lastIndexOf('.')

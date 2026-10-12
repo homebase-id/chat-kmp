@@ -99,11 +99,10 @@ class PayloadDownloadService(
         fileId: Uuid,
         key: String,
         keyHeader: KeyHeader,
-        hash: PayloadHash?,
+        hash: PayloadHash,
         destination: ExportDestination,
         onProgress: ((Float) -> Unit)? = null,
     ): String? {
-        if (hash == null) throw PayloadDamagedException("no hash")
         val algorithm = hash.knownAlgorithm ?: throw PayloadDamagedException("unknown algorithm ${hash.algorithm}")
         val expected = hash.plaintextContentHash(keyHeader)
             ?: throw PayloadDamagedException("unreadable ${hash.algorithm} hash")
