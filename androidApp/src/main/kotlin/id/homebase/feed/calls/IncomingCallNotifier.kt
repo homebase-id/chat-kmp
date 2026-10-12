@@ -13,6 +13,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
+import co.touchlab.kermit.Logger
 import id.homebase.feed.MainActivity
 import id.homebase.feed.R
 
@@ -76,17 +77,42 @@ class IncomingCallNotifier(private val context: Context) {
             builder.addAction(0, context.getString(R.string.allow_full_screen_calls), settings)
         }
         manager.notify(notificationId(callId), builder.build())
+        Logger.i(tag = TAG) { "ring notification posted call=$callId ${interruptionState()}" }
+    }
+
+    // The app cannot read whether DND intercepted its own notification, so log every input the system's call filter decides from.
+    fun interruptionState(): String {
+        val filter = when (manager.currentInterruptionFilter) {
+            NotificationManager.INTERRUPTION_FILTER_ALL -> "all"
+            NotificationManager.INTERRUPTION_FILTER_PRIORITY -> "priority"
+            NotificationManager.INTERRUPTION_FILTER_ALARMS -> "alarms"
+            NotificationManager.INTERRUPTION_FILTER_NONE -> "none"
+            else -> "unknown(${manager.currentInterruptionFilter})"
+        }
+        val channel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.getNotificationChannel(CHANNEL_ID)?.let {
+                "importance=${it.importance} bypassDnd=${it.canBypassDnd()} sound=${it.sound != null}"
+            }
+        } else {
+            null
+        }
+        val policy = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) manager.consolidatedNotificationPolicy else manager.notificationPolicy
+        return "dnd=$filter channel=[$channel] fullScreen=${canUseFullScreenIntent()} policy=$policy"
     }
 
     private fun canUseFullScreenIntent() =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE || manager.canUseFullScreenIntent()
 
-    fun cancel(callId: String) = manager.cancel(notificationId(callId))
+    fun cancel(callId: String, reason: String) {
+        Logger.i(tag = TAG) { "ring notification cancelled call=$callId reason=$reason" }
+        manager.cancel(notificationId(callId))
+    }
 
     private fun requestCode(callId: String) = notificationId(callId)
 
     companion object {
         const val CHANNEL_ID = "calls"
+        private const val TAG = "AndroidCall"
         const val EXTRA_CALL_ID = "id.homebase.feed.CALL_ID"
         const val EXTRA_ACCEPT = "id.homebase.feed.CALL_ACCEPT"
         const val ACTION_DECLINE = "id.homebase.feed.CALL_DECLINE"

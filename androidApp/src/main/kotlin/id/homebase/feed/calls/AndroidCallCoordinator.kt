@@ -38,17 +38,21 @@ private class AndroidCallRingSink(private val context: Context) : CallRingSink {
 
     override fun ring(callId: String, label: String) {
         val first = HomebaseConnectionService.labels.put(callId, label) == null
-        if (first && HomebaseConnectionService.reportIncoming(context, callId, label)) return
+        if (first && HomebaseConnectionService.reportIncoming(context, callId, label)) {
+            Logger.i(tag = "AndroidCall") { "ring call=$callId via=telecom ${notifier.interruptionState()}" }
+            return
+        }
+        Logger.i(tag = "AndroidCall") { "ring call=$callId via=notification first=$first" }
         notifier.show(callId, label)
     }
 
-    override fun stopRinging(callId: String) = notifier.cancel(callId)
+    override fun stopRinging(callId: String) = notifier.cancel(callId, reason = "stopRinging")
 
     override fun connected(callId: String) = HomebaseConnectionService.setActive(callId)
 
     override fun ended(callId: String) {
         HomebaseConnectionService.labels.remove(callId)
-        notifier.cancel(callId)
+        notifier.cancel(callId, reason = "ended")
         HomebaseConnectionService.end(callId, remote = true)
     }
 

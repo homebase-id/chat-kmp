@@ -13,6 +13,7 @@ import android.telecom.DisconnectCause
 import android.telecom.PhoneAccount
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
+import co.touchlab.kermit.Logger
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.isRingingFor
 import java.util.concurrent.ConcurrentHashMap
@@ -33,21 +34,34 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
         val extras = request?.extras?.getBundle(TelecomManager.EXTRA_INCOMING_CALL_EXTRAS)
         val callId = extras?.getString(IncomingCallNotifier.EXTRA_CALL_ID).orEmpty()
         val label = extras?.getString(EXTRA_LABEL).orEmpty()
-        if (!stillRinging(callId)) return Connection.createCanceledConnection()
+        if (!stillRinging(callId)) {
+            Logger.i(tag = TAG) { "telecom incoming call=$callId cancelled: no longer ringing" }
+            return Connection.createCanceledConnection()
+        }
         val connection = object : Connection() {
             override fun onShowIncomingCallUi() {
-                if (stillRinging(callId)) IncomingCallNotifier(applicationContext).show(callId, labels[callId] ?: label)
+                val ringing = stillRinging(callId)
+                Logger.i(tag = TAG) { "telecom onShowIncomingCallUi call=$callId stillRinging=$ringing" }
+                if (ringing) IncomingCallNotifier(applicationContext).show(callId, labels[callId] ?: label)
             }
-            override fun onAnswer() = answer(callId)
+            override fun onAnswer() {
+                Logger.i(tag = TAG) { "telecom onAnswer call=$callId" }
+                answer(callId)
+            }
             override fun onReject() {
+                Logger.i(tag = TAG) { "telecom onReject call=$callId" }
                 if (callService.state.value.callId == callId) callService.decline()
                 end(DisconnectCause.REJECTED)
             }
             override fun onDisconnect() {
+                Logger.i(tag = TAG) { "telecom onDisconnect call=$callId" }
                 if (callService.state.value.callId == callId) callService.hangup()
                 end(DisconnectCause.LOCAL)
             }
-            override fun onAbort() = end(DisconnectCause.CANCELED)
+            override fun onAbort() {
+                Logger.i(tag = TAG) { "telecom onAbort call=$callId" }
+                end(DisconnectCause.CANCELED)
+            }
         }.apply {
             connectionProperties = Connection.PROPERTY_SELF_MANAGED
             setAddress(Uri.fromParts("homebase", label.ifBlank { "caller" }, null), TelecomManager.PRESENTATION_ALLOWED)
@@ -62,6 +76,7 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
     override fun onCreateIncomingConnectionFailed(account: PhoneAccountHandle?, request: ConnectionRequest?) {
         val extras = request?.extras?.getBundle(TelecomManager.EXTRA_INCOMING_CALL_EXTRAS)
         val callId = extras?.getString(IncomingCallNotifier.EXTRA_CALL_ID).orEmpty()
+        Logger.w(tag = TAG) { "telecom refused incoming call=$callId stillRinging=${stillRinging(callId)}" }
         if (stillRinging(callId)) {
             IncomingCallNotifier(applicationContext).show(callId, labels[callId] ?: extras?.getString(EXTRA_LABEL).orEmpty())
         }
@@ -83,6 +98,7 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
 
     companion object {
         const val EXTRA_LABEL = "id.homebase.feed.CALL_LABEL"
+        private const val TAG = "AndroidCall"
         private val connections = ConcurrentHashMap<String, Connection>()
         val labels = ConcurrentHashMap<String, String>()
 
@@ -108,7 +124,8 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
                 Bundle().apply { putBundle(TelecomManager.EXTRA_INCOMING_CALL_EXTRAS, extras) },
             )
             true
-        } catch (_: SecurityException) {
+        } catch (e: SecurityException) {
+            Logger.w(e, tag = TAG) { "telecom addNewIncomingCall refused call=$callId" }
             false
         }
 
@@ -116,6 +133,7 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
 
         fun end(callId: String, remote: Boolean) {
             connections.remove(callId)?.let {
+                Logger.i(tag = TAG) { "telecom end call=$callId remote=$remote" }
                 it.setDisconnected(DisconnectCause(if (remote) DisconnectCause.REMOTE else DisconnectCause.LOCAL))
                 it.destroy()
             }
