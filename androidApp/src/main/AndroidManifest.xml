@@ -29,6 +29,13 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Raise-to-ear voice notes: PROXIMITY_SCREEN_OFF_WAKE_LOCK blanks the screen. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Location add-on: background tracking (requires the Play Console
@@ -105,6 +112,22 @@
                 android:name="android.nfc.cardemulation.host_apdu_service"
                 android:resource="@xml/card_nfc_apduservice" />
         </service>
+
+        <service
+            android:name=".calls.HomebaseConnectionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.ConnectionService" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".calls.CallForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|camera" />
+        <receiver
+            android:name=".calls.CallActionReceiver"
+            android:exported="false" />
 
         <!-- FCM service: fast payload parsing + WorkManager expedited sync scheduling -->
         <service

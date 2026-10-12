@@ -79,7 +79,7 @@ class CallStateMachineTest {
         assertEquals("sdp", t.state.pendingOfferSdp)
         assertEquals(true, t.state.media.remoteVideo)
         assertEquals(
-            listOf(CallEffect.SendSignal(sam, CallSignal.Ring(c)), CallEffect.StartTimer(CallTimer.Ring, c)),
+            listOf(CallEffect.SendSignal(sam, CallSignal.Ringing(c)), CallEffect.StartTimer(CallTimer.Ring, c)),
             t.effects,
         )
     }
@@ -173,10 +173,8 @@ class CallStateMachineTest {
     }
 
     @Test
-    fun answerOnAnotherDeviceEndsIncomingOnly() {
-        val t = machine.step(incoming, signal(frodo, CallSignal.Answer(c, "x")))
-        assertEnds(t, CallEndReason.AnsweredElsewhere, null)
-        listOf(outgoing, connecting, connected, reconnecting).forEach {
+    fun answerFromOwnIdentityIsIgnored() {
+        listOf(incoming, outgoing, connecting, connected, reconnecting).forEach {
             assertNoOp(it, signal(frodo, CallSignal.Answer(c, "x")))
         }
     }
@@ -194,8 +192,8 @@ class CallStateMachineTest {
 
     @Test
     fun ringMarksPeerRingingOnlyWhileOutgoing() {
-        assertEquals(true, machine.step(outgoing, fromSam(CallSignal.Ring(c))).state.peerRinging)
-        listOf(incoming, connecting, connected, reconnecting).forEach { assertNoOp(it, fromSam(CallSignal.Ring(c))) }
+        assertEquals(true, machine.step(outgoing, fromSam(CallSignal.Ringing(c))).state.peerRinging)
+        listOf(incoming, connecting, connected, reconnecting).forEach { assertNoOp(it, fromSam(CallSignal.Ringing(c))) }
     }
 
     @Test
@@ -250,7 +248,7 @@ class CallStateMachineTest {
         assertEquals(1, s.reconnectAttempt)
         repeat(MAX_RECONNECT_ATTEMPTS - 1) {
             val t = machine.step(s, CallEvent.TimerFired(CallTimer.Reconnect, c))
-            assertEquals(emptyList(), t.effects)
+            assertEquals(listOf(CallEffect.RestartIce), t.effects)
             s = t.state
         }
         assertEquals(MAX_RECONNECT_ATTEMPTS, s.reconnectAttempt)
@@ -288,7 +286,7 @@ class CallStateMachineTest {
         val t = machine.step(connected, CallEvent.Media(MediaEvent.Disconnected))
         assertEquals(CallPhase.Reconnecting, t.state.phase)
         assertEquals(1, t.state.reconnectAttempt)
-        assertEquals(listOf(CallEffect.StartTimer(CallTimer.Reconnect, c)), t.effects)
+        assertEquals(listOf(CallEffect.StartTimer(CallTimer.Reconnect, c), CallEffect.RestartIce), t.effects)
         listOf(idle, outgoing, incoming, connecting, reconnecting).forEach {
             assertNoOp(it, CallEvent.Media(MediaEvent.Disconnected))
         }

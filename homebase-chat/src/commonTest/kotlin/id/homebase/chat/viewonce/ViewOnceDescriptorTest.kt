@@ -110,7 +110,7 @@ class ViewOnceDescriptorTest {
 
     @Test
     fun unrecognizedHigherKind_isUnknown() {
-        assertIs<MessageContent.Unknown>(MessageContentParser.parse(217, """{"kind":"image"}"""))
+        assertIs<MessageContent.Unknown>(MessageContentParser.parse(218, """{"kind":"image"}"""))
     }
 
     @Test

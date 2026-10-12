@@ -1,0 +1,218 @@
+package id.homebase.chat.services.calling
+
+import co.touchlab.kermit.Logger
+import dev.onvoid.webrtc.CreateSessionDescriptionObserver
+import dev.onvoid.webrtc.PeerConnectionFactory
+import dev.onvoid.webrtc.PeerConnectionObserver
+import dev.onvoid.webrtc.RTCAnswerOptions
+import dev.onvoid.webrtc.RTCConfiguration
+import dev.onvoid.webrtc.RTCIceCandidate
+import dev.onvoid.webrtc.RTCIceServer
+import dev.onvoid.webrtc.RTCOfferOptions
+import dev.onvoid.webrtc.RTCPeerConnection
+import dev.onvoid.webrtc.RTCPeerConnectionState
+import dev.onvoid.webrtc.RTCRtpTransceiver
+import dev.onvoid.webrtc.RTCSdpType
+import dev.onvoid.webrtc.RTCSessionDescription
+import dev.onvoid.webrtc.SetSessionDescriptionObserver
+import dev.onvoid.webrtc.media.MediaStreamTrack
+import dev.onvoid.webrtc.media.audio.AudioDeviceModuleBase
+import dev.onvoid.webrtc.media.audio.AudioOptions
+import dev.onvoid.webrtc.media.audio.AudioTrack
+import dev.onvoid.webrtc.media.video.VideoDeviceSource
+import dev.onvoid.webrtc.media.video.VideoTrack
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
+
+/** Desktop engine over webrtc-java. Pass [audioDevice] (e.g. a headless module) to avoid touching real hardware. */
+class WebRtcJavaCallEngine(
+    stunUrls: List<String>,
+    audioDevice: AudioDeviceModuleBase? = null,
+) : CallEngine {
+    private val _events = MutableSharedFlow<MediaEvent>(extraBufferCapacity = 64)
+    override val events: SharedFlow<MediaEvent> = _events.asSharedFlow()
+
+    private val _local = MutableStateFlow<VideoHandle?>(null)
+    private val _remote = MutableStateFlow<VideoHandle?>(null)
+    override val localVideo: StateFlow<VideoHandle?> = _local.asStateFlow()
+    override val remoteVideo: StateFlow<VideoHandle?> = _remote.asStateFlow()
+
+    private val factory = if (audioDevice != null) PeerConnectionFactory(audioDevice) else PeerConnectionFactory()
+    private var audioTrack: AudioTrack? = null
+    private var videoTrack: VideoTrack? = null
+    private var videoSource: VideoDeviceSource? = null
+    private var localFrames: JvmVideoHandle? = null
+    private var remoteFrames: JvmVideoHandle? = null
+    private var cameraIndex = 0
+    private var everConnected = false
+    private var closed = false
+
+    private val peer: RTCPeerConnection = factory.createPeerConnection(
+        RTCConfiguration().apply {
+            // Every URL as given by the device's own server; nothing is derived or added.
+            if (stunUrls.isNotEmpty()) iceServers = listOf(RTCIceServer().apply { urls = stunUrls })
+        },
+        object : PeerConnectionObserver {
+            override fun onIceCandidate(candidate: RTCIceCandidate) {
+                _events.tryEmit(MediaEvent.LocalIce(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex))
+            }
+
+            override fun onConnectionChange(state: RTCPeerConnectionState) {
+                when (state) {
+                    RTCPeerConnectionState.CONNECTED -> {
+                        everConnected = true
+                        _events.tryEmit(MediaEvent.Connected)
+                    }
+                    RTCPeerConnectionState.DISCONNECTED -> _events.tryEmit(MediaEvent.Disconnected)
+                    RTCPeerConnectionState.FAILED ->
+                        _events.tryEmit(if (everConnected) MediaEvent.Disconnected else MediaEvent.Failed(FailReason.NoRoute))
+                    else -> Unit
+                }
+            }
+
+            override fun onTrack(transceiver: RTCRtpTransceiver) {
+                val track = transceiver.receiver.track as? VideoTrack ?: return
+                val handle = JvmVideoHandle().also { remoteFrames = it }
+                track.addSink(handle.sink)
+                _remote.value = handle
+                _events.tryEmit(MediaEvent.RemoteVideoChanged(true))
+            }
+        },
+    ) ?: error("webrtc-java returned no peer connection")
+
+    private fun addLocalMedia(video: Boolean) {
+        if (audioTrack == null) {
+            val source = factory.createAudioSource(AudioOptions().apply {
+                echoCancellation = true
+                autoGainControl = true
+                noiseSuppression = true
+            })
+            audioTrack = factory.createAudioTrack("audio0", source).also { peer.addTrack(it, listOf(STREAM_ID)) }
+        }
+        if (video && videoTrack == null) startCamera()
+    }
+
+    private fun startCamera() {
+        try {
+            val device = dev.onvoid.webrtc.media.MediaDevices.getVideoCaptureDevices().firstOrNull() ?: return
+            val source = VideoDeviceSource().apply {
+                setVideoCaptureDevice(device)
+                start()
+            }
+            videoSource = source
+            val track = factory.createVideoTrack("video0", source)
+            val handle = JvmVideoHandle(mirrored = true).also { localFrames = it }
+            track.addSink(handle.sink)
+            peer.addTrack(track, listOf(STREAM_ID))
+            videoTrack = track
+            _local.value = handle
+        } catch (e: Exception) {
+            Logger.w(e, "WebRtcJava") { "camera unavailable, continuing audio-only" }
+        }
+    }
+
+    override suspend fun createOffer(video: Boolean): String {
+        addLocalMedia(video)
+        return offer(RTCOfferOptions())
+    }
+
+    override suspend fun answer(offerSdp: String, video: Boolean): String {
+        addLocalMedia(video)
+        setRemote(RTCSessionDescription(RTCSdpType.OFFER, offerSdp))
+        return createAnswer()
+    }
+
+    override suspend fun applyRemote(answerSdp: String) = setRemote(RTCSessionDescription(RTCSdpType.ANSWER, answerSdp))
+
+    override suspend fun restartIce(): String = offer(RTCOfferOptions().apply { iceRestart = true })
+
+    override suspend fun answerRestart(offerSdp: String): String {
+        setRemote(RTCSessionDescription(RTCSdpType.OFFER, offerSdp))
+        return createAnswer()
+    }
+
+    override suspend fun addIce(candidate: String, sdpMid: String?, sdpMLineIndex: Int?) {
+        peer.addIceCandidate(RTCIceCandidate(sdpMid ?: "", sdpMLineIndex ?: 0, candidate))
+    }
+
+    private suspend fun offer(options: RTCOfferOptions): String {
+        val description = suspendCancellableCoroutine { cont ->
+            peer.createOffer(options, object : CreateSessionDescriptionObserver {
+                override fun onSuccess(description: RTCSessionDescription) = cont.resume(description)
+                override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
+            })
+        }
+        setLocal(description)
+        return description.sdp
+    }
+
+    private suspend fun createAnswer(): String {
+        val description = suspendCancellableCoroutine { cont ->
+            peer.createAnswer(RTCAnswerOptions(), object : CreateSessionDescriptionObserver {
+                override fun onSuccess(description: RTCSessionDescription) = cont.resume(description)
+                override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
+            })
+        }
+        setLocal(description)
+        return description.sdp
+    }
+
+    private suspend fun setLocal(description: RTCSessionDescription) = suspendCancellableCoroutine { cont ->
+        peer.setLocalDescription(description, setObserver(cont))
+    }
+
+    private suspend fun setRemote(description: RTCSessionDescription) = suspendCancellableCoroutine { cont ->
+        peer.setRemoteDescription(description, setObserver(cont))
+    }
+
+    private fun setObserver(cont: kotlinx.coroutines.CancellableContinuation<Unit>) = object : SetSessionDescriptionObserver {
+        override fun onSuccess() = cont.resume(Unit)
+        override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
+    }
+
+    override fun setMuted(muted: Boolean) {
+        audioTrack?.isEnabled = !muted
+    }
+
+    override fun setVideo(on: Boolean) {
+        videoTrack?.isEnabled = on
+    }
+
+    override fun switchCamera() {
+        val devices = dev.onvoid.webrtc.media.MediaDevices.getVideoCaptureDevices()
+        val source = videoSource ?: return
+        if (devices.size < 2) return
+        cameraIndex = (cameraIndex + 1) % devices.size
+        source.stop()
+        source.setVideoCaptureDevice(devices[cameraIndex])
+        source.start()
+    }
+
+    override fun setAudioRoute(route: AudioRoute) = Unit
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        runCatching { peer.close() }
+        runCatching { videoSource?.stop() }
+        runCatching { audioTrack?.dispose() }
+        runCatching { videoTrack?.dispose() }
+        runCatching { videoSource?.dispose() }
+        localFrames?.close()
+        remoteFrames?.close()
+        _local.value = null
+        _remote.value = null
+        runCatching { factory.dispose() }
+    }
+
+    private companion object {
+        const val STREAM_ID = "homebase-call"
+    }
+}

@@ -1,6 +1,8 @@
 package id.homebase.chat.services.calling
 
+import id.homebase.api.crypto.HashUtil
 import kotlin.io.encoding.Base64
+import kotlin.uuid.Uuid
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -10,8 +12,9 @@ enum class HangupReason { Normal, Declined, Busy, Cancelled, Missed }
 
 /**
  * Call signalling payload, carried as the base64 `blob` of an odin-core LiveRelay message.
- * An [Offer] doubles as the ring (signaling maps it to push kind `ring`); a [Hangup] sent before
- * the call was answered maps to push kind `hangup` with the same `tagId` = callId.
+ * An [Offer] doubles as the ring (maps to push kind `ring`); a [Hangup] sent before the call was
+ * answered maps to push kind `hangup` with the same `tagId` = callId. [Ringing] is the callee's
+ * "my phone is ringing" acknowledgement and has nothing to do with the push kind.
  */
 @Serializable
 sealed class CallSignal {
@@ -20,8 +23,8 @@ sealed class CallSignal {
     @Serializable @SerialName("offer")
     data class Offer(override val callId: String, val sdp: String, val video: Boolean) : CallSignal()
 
-    @Serializable @SerialName("ring")
-    data class Ring(override val callId: String) : CallSignal()
+    @Serializable @SerialName("ringing")
+    data class Ringing(override val callId: String) : CallSignal()
 
     @Serializable @SerialName("answer")
     data class Answer(override val callId: String, val sdp: String) : CallSignal()
@@ -36,9 +39,61 @@ sealed class CallSignal {
 
     @Serializable @SerialName("hangup")
     data class Hangup(override val callId: String, val reason: HangupReason = HangupReason.Normal) : CallSignal()
+
+    /** Caller's ICE-restart offer for an established call. */
+    @Serializable @SerialName("restart")
+    data class Restart(override val callId: String, val sdp: String) : CallSignal()
+
+    @Serializable @SerialName("restart_answer")
+    data class RestartAnswer(override val callId: String, val sdp: String) : CallSignal()
 }
 
 data class InboundSignal(val from: String, val signal: CallSignal, val receivedAtMs: Long)
+
+enum class CallPushKind(val wire: String) { Ring("ring"), Hangup("hangup") }
+
+data class CallPush(val kind: CallPushKind, val typeId: String, val tagId: String, val message: String)
+
+/** [channelKey] is the callee's [CallChannel] key; the receiver listens on its own and drops the rest. */
+data class OutboundSignal(
+    val peer: String,
+    val channelKey: String,
+    val signal: CallSignal,
+    val push: CallPush? = null,
+)
+
+interface CallSignaling {
+    val incoming: kotlinx.coroutines.flow.Flow<InboundSignal>
+
+    suspend fun send(outbound: OutboundSignal)
+}
+
+object CallChannel {
+    /** Ring and hangup pushes use distinct typeIds because the delivered payload carries no `kind`; both share tagId = callId. */
+    const val RING_TYPE_ID = "ca11ca11-ca11-4ca1-8ca1-ca11ca11ca11"
+    const val HANGUP_TYPE_ID = "ca11ca11-ca11-4ca1-8ca1-ca11ca11ca12"
+
+    /** Every signal addressed to an identity travels on that identity's key, so each side opens only its own. */
+    fun keyFor(odinId: String): String {
+        val hash = HashUtil.sha256Sync("homebase-call-v1:${odinId.lowercase()}".encodeToByteArray())
+        val bytes = hash.copyOf(16)
+        bytes[6] = ((bytes[6].toInt() and 0x0F) or 0x50).toByte()
+        bytes[8] = ((bytes[8].toInt() and 0x3F) or 0x80).toByte()
+        return Uuid.fromByteArray(bytes).toString()
+    }
+
+    /** Ring for an [CallSignal.Offer]; hangup only for a caller-side retraction (Cancelled/Missed) before the answer. */
+    fun outbound(peer: String, signal: CallSignal, selfLabel: String): OutboundSignal {
+        val push = when {
+            signal is CallSignal.Offer ->
+                CallPush(CallPushKind.Ring, RING_TYPE_ID, signal.callId, "$selfLabel is calling")
+            signal is CallSignal.Hangup && (signal.reason == HangupReason.Cancelled || signal.reason == HangupReason.Missed) ->
+                CallPush(CallPushKind.Hangup, HANGUP_TYPE_ID, signal.callId, "Missed call from $selfLabel")
+            else -> null
+        }
+        return OutboundSignal(peer, keyFor(peer), signal, push)
+    }
+}
 
 object CallSignalCodec {
     private val json = Json {
@@ -53,4 +108,18 @@ object CallSignalCodec {
         runCatching {
             json.decodeFromString(CallSignal.serializer(), Base64.decode(blob).decodeToString())
         }.getOrNull()
+}
+
+/** Short code both ends derive from the two DTLS fingerprints; reading it aloud detects a signalling-path swap. */
+object CallVerification {
+    private val fingerprint = Regex("a=fingerprint:(\\S+) (\\S+)")
+
+    fun code(offerSdp: String, answerSdp: String): String? {
+        val a = fingerprint.find(offerSdp)?.value ?: return null
+        val b = fingerprint.find(answerSdp)?.value ?: return null
+        val hash = HashUtil.sha256Sync(listOf(a, b).sorted().joinToString("|").encodeToByteArray())
+        val n = ((hash[0].toInt() and 0xFF) shl 16 or ((hash[1].toInt() and 0xFF) shl 8) or (hash[2].toInt() and 0xFF)) % 1_000_000
+        val s = n.toString().padStart(6, '0')
+        return "${s.substring(0, 3)} ${s.substring(3)}"
+    }
 }

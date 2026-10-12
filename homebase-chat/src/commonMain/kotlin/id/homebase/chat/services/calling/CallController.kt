@@ -7,9 +7,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -19,40 +22,63 @@ class CallController(
     private val signaling: CallSignaling,
     private val engineFactory: CallEngineFactory,
     private val scope: CoroutineScope,
+    private val selfLabel: String = selfOdinId,
+    private val stunUrls: () -> List<String> = { emptyList() },
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
     private val machine = CallStateMachine(selfOdinId)
     private val _state = MutableStateFlow(CallState())
     val state: StateFlow<CallState> = _state.asStateFlow()
 
-    private val inbox = Channel<CallEvent>(Channel.UNLIMITED)
+    private val _videos = MutableStateFlow(CallVideos())
+    val videos: StateFlow<CallVideos> = _videos.asStateFlow()
+
+    // Everything below the inbox is touched only from the inbox loop; other threads just post.
+    private sealed interface Command {
+        class Event(val event: CallEvent) : Command
+        data object Close : Command
+    }
+
+    private val inbox = Channel<Command>(Channel.UNLIMITED)
     private var engine: CallEngine? = null
     private var engineEvents: Job? = null
+    private var engineVideos: Job? = null
     private var remoteReady = false
     private val bufferedIce = mutableListOf<CallEffect.AddIce>()
+    private var offerSdp: String? = null
+    private var answerSdp: String? = null
     private val timers = mutableMapOf<CallTimer, Job>()
 
     private val collectors: List<Job>
-    private var closed = false
 
     init {
         collectors = listOf(
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                signaling.incoming.collect { inbox.trySend(CallEvent.Signal(it)) }
+                signaling.incoming.collect { post(CallEvent.Signal(it)) }
             },
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                for (event in inbox) process(event)
+                try {
+                    for (command in inbox) {
+                        when (command) {
+                            is Command.Event -> process(command.event)
+                            Command.Close -> break
+                        }
+                    }
+                } finally {
+                    withContext(NonCancellable) { teardown() }
+                }
             },
         )
-        scope.coroutineContext[Job]?.invokeOnCompletion { close() }
     }
 
     fun close() {
-        if (closed) return
-        closed = true
+        inbox.trySend(Command.Close)
+    }
+
+    private fun teardown() {
         collectors.forEach { it.cancel() }
-        cancelTimers()
         inbox.close()
+        cancelTimers()
         releaseEngine()
     }
 
@@ -68,9 +94,15 @@ class CallController(
     fun setAudioRoute(route: AudioRoute) = post(CallEvent.SetRoute(route))
     fun onPermissionDenied() = post(CallEvent.EngineError(FailReason.Permission))
 
+    fun onPushRing(callId: String, from: String) = post(CallEvent.PushRing(callId, from))
+    fun onPushHangup(callId: String) = post(CallEvent.PushHangup(callId))
+
     private fun post(event: CallEvent) {
-        inbox.trySend(event)
+        inbox.trySend(Command.Event(event))
     }
+
+    private suspend fun send(peer: String, signal: CallSignal) =
+        signaling.send(CallChannel.outbound(peer, signal, selfLabel))
 
     private suspend fun process(event: CallEvent) {
         val transition = machine.reduce(_state.value, event, clock())
@@ -78,30 +110,49 @@ class CallController(
         for (effect in transition.effects) run(effect, transition.state)
     }
 
-    private fun engine(): CallEngine = engine ?: engineFactory.create().also { created ->
+    private fun engine(): CallEngine = engine ?: engineFactory.create(stunUrls()).also { created ->
         engine = created
         remoteReady = false
         engineEvents = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             created.events.collect { post(CallEvent.Media(it)) }
+        }
+        engineVideos = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            combine(created.localVideo, created.remoteVideo, ::CallVideos).collect { _videos.value = it }
         }
     }
 
     private suspend fun run(effect: CallEffect, state: CallState) {
         try {
             when (effect) {
-                is CallEffect.SendSignal -> signaling.send(effect.peer, effect.signal)
+                is CallEffect.SendSignal -> send(effect.peer, effect.signal)
                 is CallEffect.CreateOffer -> {
                     val sdp = engine().createOffer(effect.video)
-                    signaling.send(state.peer!!, CallSignal.Offer(state.callId!!, sdp, effect.video))
+                    offerSdp = sdp
+                    send(state.peer!!, CallSignal.Offer(state.callId!!, sdp, effect.video))
                 }
                 is CallEffect.CreateAnswer -> {
                     val sdp = engine().answer(effect.offerSdp, effect.video)
-                    signaling.send(state.peer!!, CallSignal.Answer(state.callId!!, sdp))
+                    offerSdp = effect.offerSdp
+                    answerSdp = sdp
+                    send(state.peer!!, CallSignal.Answer(state.callId!!, sdp))
                     markRemoteReady()
+                    announceVerification(state.callId!!)
                 }
                 is CallEffect.ApplyRemoteAnswer -> {
                     engine().applyRemote(effect.sdp)
                     markRemoteReady()
+                    if (answerSdp == null) {
+                        answerSdp = effect.sdp
+                        announceVerification(state.callId!!)
+                    }
+                }
+                CallEffect.RestartIce -> {
+                    val sdp = engine().restartIce()
+                    send(state.peer!!, CallSignal.Restart(state.callId!!, sdp))
+                }
+                is CallEffect.AnswerRestart -> {
+                    val sdp = engine().answerRestart(effect.offerSdp)
+                    send(state.peer!!, CallSignal.RestartAnswer(state.callId!!, sdp))
                 }
                 is CallEffect.AddIce ->
                     if (remoteReady) engine?.addIce(effect.candidate, effect.sdpMid, effect.sdpMLineIndex)
@@ -123,6 +174,11 @@ class CallController(
             Logger.w(e, TAG) { "call effect $effect failed" }
             post(CallEvent.EngineError(FailReason.Other))
         }
+    }
+
+    private fun announceVerification(callId: String) {
+        val code = CallVerification.code(offerSdp ?: return, answerSdp ?: return) ?: return
+        post(CallEvent.Verification(callId, code))
     }
 
     private suspend fun markRemoteReady() {
@@ -157,10 +213,15 @@ class CallController(
     private fun releaseEngine() {
         engineEvents?.cancel()
         engineEvents = null
+        engineVideos?.cancel()
+        engineVideos = null
+        _videos.value = CallVideos()
         engine?.close()
         engine = null
         remoteReady = false
         bufferedIce.clear()
+        offerSdp = null
+        answerSdp = null
     }
 
     private companion object {

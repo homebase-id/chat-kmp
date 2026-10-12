@@ -8,6 +8,10 @@ sealed interface CallEvent {
     data object UserDecline : CallEvent
     data object UserHangup : CallEvent
     data class Signal(val inbound: InboundSignal) : CallEvent
+    /** A `ring` push arrived before (or without) the socket offer; collapses with the offer by [callId]. */
+    data class PushRing(val callId: String, val from: String) : CallEvent
+    data class PushHangup(val callId: String) : CallEvent
+    data class Verification(val callId: String, val code: String) : CallEvent
     data class TimerFired(val timer: CallTimer, val callId: String) : CallEvent
     data class Media(val event: MediaEvent) : CallEvent
     data class EngineError(val reason: FailReason) : CallEvent
@@ -22,6 +26,8 @@ sealed interface CallEffect {
     data class CreateOffer(val video: Boolean) : CallEffect
     data class CreateAnswer(val offerSdp: String, val video: Boolean) : CallEffect
     data class ApplyRemoteAnswer(val sdp: String) : CallEffect
+    data object RestartIce : CallEffect
+    data class AnswerRestart(val offerSdp: String) : CallEffect
     data class AddIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : CallEffect
     data class SetMuted(val muted: Boolean) : CallEffect
     data class SetVideo(val on: Boolean) : CallEffect
@@ -41,6 +47,13 @@ class CallStateMachine(private val selfOdinId: String) {
         CallEvent.UserAccept -> userAccept(state)
         CallEvent.UserDecline, CallEvent.UserHangup -> userHangup(state)
         is CallEvent.Signal -> signal(state, event.inbound, nowMs)
+        is CallEvent.PushRing -> pushRing(state, event)
+        is CallEvent.PushHangup ->
+            if (state.phase == CallPhase.Incoming && state.callId == event.callId) end(state, CallEndReason.Cancelled)
+            else CallTransition(state)
+        is CallEvent.Verification ->
+            if (state.isActive && state.callId == event.callId) CallTransition(state.copy(verificationCode = event.code))
+            else CallTransition(state)
         is CallEvent.TimerFired -> timer(state, event)
         is CallEvent.Media -> media(state, event.event, nowMs)
         is CallEvent.EngineError -> failed(state, event.reason)
@@ -51,6 +64,9 @@ class CallStateMachine(private val selfOdinId: String) {
         }
         is CallEvent.SetRoute -> control(state, CallEffect.SetRoute(event.route)) { it.copy(route = event.route) }
     }
+
+    private fun CallPhase.isEstablishing() =
+        this == CallPhase.Connecting || this == CallPhase.Connected || this == CallPhase.Reconnecting
 
     private fun CallState.canStart() = phase is CallPhase.Idle || phase is CallPhase.Ended
 
@@ -71,7 +87,7 @@ class CallStateMachine(private val selfOdinId: String) {
 
     private fun userAccept(s: CallState): CallTransition {
         if (s.phase != CallPhase.Incoming) return CallTransition(s)
-        val offer = s.pendingOfferSdp ?: return CallTransition(s)
+        val offer = s.pendingOfferSdp ?: return CallTransition(s.copy(acceptPending = true))
         return CallTransition(
             s.copy(phase = CallPhase.Connecting, pendingOfferSdp = null),
             listOf(
@@ -94,17 +110,10 @@ class CallStateMachine(private val selfOdinId: String) {
         val sig = inbound.signal
         if (sig is CallSignal.Offer) return offer(s, inbound.from, sig, inbound.receivedAtMs, nowMs)
         if (!s.isActive || sig.callId != s.callId) return CallTransition(s)
-        if (inbound.from == selfOdinId) {
-            return if (s.phase == CallPhase.Incoming && sig is CallSignal.Answer) {
-                end(s, CallEndReason.AnsweredElsewhere)
-            } else {
-                CallTransition(s)
-            }
-        }
         if (inbound.from != s.peer) return CallTransition(s)
         return when (sig) {
             is CallSignal.Offer -> CallTransition(s)
-            is CallSignal.Ring ->
+            is CallSignal.Ringing ->
                 if (s.phase == CallPhase.Outgoing) CallTransition(s.copy(peerRinging = true)) else CallTransition(s)
             is CallSignal.Answer ->
                 if (s.phase == CallPhase.Outgoing) {
@@ -119,6 +128,10 @@ class CallStateMachine(private val selfOdinId: String) {
                 } else {
                     CallTransition(s)
                 }
+            is CallSignal.Restart ->
+                if (s.phase.isEstablishing()) CallTransition(s, listOf(CallEffect.AnswerRestart(sig.sdp))) else CallTransition(s)
+            is CallSignal.RestartAnswer ->
+                if (s.phase.isEstablishing()) CallTransition(s, listOf(CallEffect.ApplyRemoteAnswer(sig.sdp))) else CallTransition(s)
             is CallSignal.Ice -> CallTransition(s, listOf(CallEffect.AddIce(sig.candidate, sig.sdpMid, sig.sdpMLineIndex)))
             is CallSignal.Hangup -> when (s.phase) {
                 CallPhase.Outgoing -> end(
@@ -135,8 +148,9 @@ class CallStateMachine(private val selfOdinId: String) {
     }
 
     private fun offer(s: CallState, from: String, sig: CallSignal.Offer, receivedAtMs: Long, nowMs: Long): CallTransition {
-        if (from == selfOdinId || sig.callId == s.callId) return CallTransition(s)
+        if (from == selfOdinId) return CallTransition(s)
         if (nowMs - receivedAtMs > RING_TIMEOUT_MS) return CallTransition(s)
+        if (sig.callId == s.callId) return offerForPushedRing(s, from, sig)
         if (s.canStart()) {
             val next = CallState(
                 phase = CallPhase.Incoming,
@@ -149,7 +163,7 @@ class CallStateMachine(private val selfOdinId: String) {
             return CallTransition(
                 next,
                 listOf(
-                    CallEffect.SendSignal(from, CallSignal.Ring(sig.callId)),
+                    CallEffect.SendSignal(from, CallSignal.Ringing(sig.callId)),
                     CallEffect.StartTimer(CallTimer.Ring, sig.callId),
                 ),
             )
@@ -198,7 +212,7 @@ class CallStateMachine(private val selfOdinId: String) {
                     if (attempt > MAX_RECONNECT_ATTEMPTS) {
                         end(s, CallEndReason.Failed(FailReason.NoRoute), HangupReason.Normal)
                     } else {
-                        CallTransition(s.copy(reconnectAttempt = attempt))
+                        CallTransition(s.copy(reconnectAttempt = attempt), restartIce(s))
                     }
                 } else {
                     CallTransition(s)
@@ -224,7 +238,7 @@ class CallStateMachine(private val selfOdinId: String) {
                 if (s.phase == CallPhase.Connected) {
                     CallTransition(
                         s.copy(phase = CallPhase.Reconnecting, reconnectAttempt = 1),
-                        listOf(CallEffect.StartTimer(CallTimer.Reconnect, s.callId!!)),
+                        listOf(CallEffect.StartTimer(CallTimer.Reconnect, s.callId!!)) + restartIce(s),
                     )
                 } else {
                     CallTransition(s)
@@ -242,6 +256,34 @@ class CallStateMachine(private val selfOdinId: String) {
                     )
                 }
         }
+    }
+
+    // Only the original caller drives the renegotiation, so the two sides never offer at once.
+    private fun restartIce(s: CallState): List<CallEffect> =
+        if (s.direction == CallDirection.Outgoing) listOf(CallEffect.RestartIce) else emptyList()
+
+    private fun pushRing(s: CallState, e: CallEvent.PushRing): CallTransition {
+        if (e.from == selfOdinId || e.callId == s.callId || !s.canStart()) return CallTransition(s)
+        return CallTransition(
+            CallState(phase = CallPhase.Incoming, callId = e.callId, peer = e.from, direction = CallDirection.Incoming),
+            listOf(CallEffect.StartTimer(CallTimer.Ring, e.callId)),
+        )
+    }
+
+    private fun offerForPushedRing(s: CallState, from: String, sig: CallSignal.Offer): CallTransition {
+        if (s.phase != CallPhase.Incoming || s.pendingOfferSdp != null || s.peer != from) return CallTransition(s)
+        val ringing = CallEffect.SendSignal(from, CallSignal.Ringing(sig.callId))
+        val media = s.media.copy(localVideo = sig.video, remoteVideo = sig.video)
+        if (!s.acceptPending) return CallTransition(s.copy(pendingOfferSdp = sig.sdp, media = media), listOf(ringing))
+        return CallTransition(
+            s.copy(phase = CallPhase.Connecting, acceptPending = false, media = media),
+            listOf(
+                ringing,
+                CallEffect.CancelTimers,
+                CallEffect.CreateAnswer(sig.sdp, sig.video),
+                CallEffect.StartTimer(CallTimer.Connect, sig.callId),
+            ),
+        )
     }
 
     private fun failed(s: CallState, reason: FailReason): CallTransition =
@@ -263,7 +305,7 @@ class CallStateMachine(private val selfOdinId: String) {
             add(CallEffect.ReleaseEngine)
         }
         return CallTransition(
-            s.copy(phase = CallPhase.Ended(reason), pendingOfferSdp = null, peerRinging = false),
+            s.copy(phase = CallPhase.Ended(reason), pendingOfferSdp = null, acceptPending = false, peerRinging = false),
             effects,
         )
     }

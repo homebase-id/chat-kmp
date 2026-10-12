@@ -13,7 +13,7 @@ class LoopbackSignaling(
     private val latencyMs: Long = 0,
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
-    data class Sent(val from: String, val to: String, val signal: CallSignal)
+    data class Sent(val from: String, val to: String, val signal: CallSignal, val channelKey: String, val push: CallPush?)
 
     private val inboxes = MutableStateFlow<Map<String, MutableSharedFlow<InboundSignal>>>(emptyMap())
     private val _sent = MutableStateFlow<List<Sent>>(emptyList())
@@ -22,10 +22,11 @@ class LoopbackSignaling(
     fun endpoint(selfOdinId: String): CallSignaling = object : CallSignaling {
         override val incoming: SharedFlow<InboundSignal> = inbox(selfOdinId).asSharedFlow()
 
-        override suspend fun send(peer: String, signal: CallSignal) {
-            _sent.update { it + Sent(selfOdinId, peer, signal) }
+        override suspend fun send(outbound: OutboundSignal) {
+            _sent.update { it + Sent(selfOdinId, outbound.peer, outbound.signal, outbound.channelKey, outbound.push) }
             if (latencyMs > 0) delay(latencyMs)
-            deliver(peer, selfOdinId, signal)
+            // Like the relay: the receiver only sees channels it has open (its own key).
+            if (outbound.channelKey == CallChannel.keyFor(outbound.peer)) deliver(outbound.peer, selfOdinId, outbound.signal)
         }
     }
 

@@ -321,6 +321,15 @@ class NotificationService(
      * Called from platform FCM service when a new token is received.
      * Forwards to the same listener path as KMPNotifier's built-in service.
      */
+    @kotlin.concurrent.Volatile
+    private var voipToken: String? = null
+
+    /** PushKit token from iOS; re-registers the subscription so the server learns it next to the FCM token. */
+    fun onVoipToken(token: String) {
+        voipToken = token
+        scope.launch { notificationBackend.getPushToken()?.let { registerToken(it) } }
+    }
+
     fun onNewFcmToken(token: String) {
         Logger.i(tag = "NotificationService") { "New push token (from FCM service): $token" }
         registerToken(token)
@@ -380,7 +389,7 @@ class NotificationService(
             "Registering token with server... ($friendlyName)"
         }
         api.subscribe(
-            deviceToken = token, devicePlatform = platformName, friendlyName = friendlyName
+            deviceToken = token, devicePlatform = platformName, friendlyName = friendlyName, voipDeviceToken = voipToken
         )
         Logger.i(tag = "NotificationService") { "Token registered successfully" }
     }
@@ -392,6 +401,7 @@ class NotificationService(
                 val dataString = data["data"] as? String ?: return@launch
                 val notification = OdinSystemSerializer.deserialize<PushNotification>(dataString)
 
+                if (CallPushRouter.tryHandle(notification)) return@launch
                 if (notification.options.silent) return@launch
 
                 // Suppress chat notifications when user is on the conversation list

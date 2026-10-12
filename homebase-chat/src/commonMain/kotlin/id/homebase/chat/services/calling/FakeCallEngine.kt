@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import id.homebase.core.util.initials
 
-data class FakeVideo(val argb: Long, val initials: String)
+data class FakeVideo(val argb: Long, val initials: String) : VideoHandle
 
 data class FakeCallScript(
     val connectAfterMs: Long = 1_000,
@@ -20,6 +20,7 @@ data class FakeCallScript(
     val recoverAfterDropMs: Long? = null,
     val remoteVideoOffAtMs: Long? = null,
     val failConnect: Boolean = false,
+    val remoteVideoOnConnect: Boolean = false,
     val failOnCreateOffer: Throwable? = null,
 )
 
@@ -36,8 +37,8 @@ class FakeCallEngine(
     private val localSource = FakeVideo(colorFor(selfLabel), selfLabel.dotsToSpaces().initials())
     private val _remoteVideo = MutableStateFlow<FakeVideo?>(null)
     private val _localVideo = MutableStateFlow<FakeVideo?>(null)
-    val remoteVideo: StateFlow<FakeVideo?> = _remoteVideo.asStateFlow()
-    val localVideo: StateFlow<FakeVideo?> = _localVideo.asStateFlow()
+    override val remoteVideo: StateFlow<FakeVideo?> = _remoteVideo.asStateFlow()
+    override val localVideo: StateFlow<FakeVideo?> = _localVideo.asStateFlow()
 
     var muted = false
         private set
@@ -67,13 +68,26 @@ class FakeCallEngine(
 
     override suspend fun applyRemote(answerSdp: String) = startScript()
 
+    var restarts = 0
+        private set
+
+    override suspend fun restartIce(): String {
+        restarts++
+        return "fake-restart-offer"
+    }
+
+    override suspend fun answerRestart(offerSdp: String): String {
+        restarts++
+        return "fake-restart-answer"
+    }
+
     override suspend fun addIce(candidate: String, sdpMid: String?, sdpMLineIndex: Int?) {
         addedIce += candidate
     }
 
     override fun setMuted(muted: Boolean) { this.muted = muted }
 
-    override fun setVideo(on: Boolean) { _localVideo.value = if (on) localSource else null }
+    override fun setVideo(on: Boolean) { if (on) _localVideo.value = localSource }
 
     override fun switchCamera() { frontCamera = !frontCamera }
 
@@ -98,11 +112,12 @@ class FakeCallEngine(
     }
 
     private fun startScript() {
-        scriptJob?.cancel()
+        if (scriptJob != null) return
         scriptJob = scope.launch {
             delay(script.connectAfterMs)
             if (script.failConnect) return@launch simulateFail()
             _events.emit(MediaEvent.Connected)
+            if (script.remoteVideoOnConnect) simulateRemoteVideo(true)
             val drop = script.dropAtMs
             val videoOff = script.remoteVideoOffAtMs
             if (videoOff != null) launch { delay(videoOff); simulateRemoteVideo(false) }

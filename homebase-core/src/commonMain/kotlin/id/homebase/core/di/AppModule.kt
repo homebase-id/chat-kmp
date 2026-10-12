@@ -55,11 +55,8 @@ import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.chat.services.calling.CallController
-import id.homebase.chat.services.calling.CallEngineFactory
-import id.homebase.chat.services.calling.CallSignaling
-import id.homebase.chat.services.calling.FakeCallEngine
-import id.homebase.chat.services.calling.LoopbackSignaling
+import id.homebase.chat.services.calling.CallService
+import id.homebase.chat.services.calling.platformCallEngineFactory
 import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.chat.services.livelocation.LiveShareReadiness
 import id.homebase.core.config.locationLabeledDrive
@@ -70,7 +67,10 @@ import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.viewonce.ViewOnceActions
 import id.homebase.chat.viewonce.ViewOncePayloadLoader
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.XorIdUtil
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.ChatMediaAutoSaveService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatNotificationMessageResolver
@@ -225,7 +225,6 @@ import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
-import org.koin.core.parameter.parametersOf
 import org.koin.core.qualifier.named
 import org.koin.dsl.bind
 import org.koin.dsl.module
@@ -374,17 +373,25 @@ val appModule = module {
         )
     }
     single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
-    // Fakes in every build type (release included) until the real engine and LiveRelay signaling land;
-    // swap the CallSignaling / CallEngineFactory bindings below and CallController callers stay untouched.
-    single { LoopbackSignaling() }
-    factory<CallSignaling> { (selfOdinId: String) -> get<LoopbackSignaling>().endpoint(selfOdinId) }
-    single<CallEngineFactory> { CallEngineFactory { FakeCallEngine(scope = get()) } }
-    factory { (selfOdinId: String) ->
-        CallController(
-            selfOdinId = selfOdinId,
-            signaling = get<CallSignaling> { parametersOf(selfOdinId) },
-            engineFactory = get(),
+    // One CallController per identity behind CallService; platformCallEngineFactory() is null where calling is
+    // unsupported, which hides every call entry point. The fake engine/loopback live only in the Call lab.
+    single {
+        CallService(
+            credentialsManager = get(),
+            eventBus = get(),
+            relay = { channelKey, recipients, blob, push -> get<LiveRelayProvider>().relay(channelKey, recipients, blob, push) },
+            engineFactory = platformCallEngineFactory(),
+            stunUrls = get(),
             scope = get(),
+            recordEvent = { peer, event ->
+                val self = get<CredentialsManager>().getActiveDomain()?.domainName ?: return@CallService
+                get<ChatMessageSenderService>().sendNewTypedMessage(
+                    messageUniqueId = Uuid.random(),
+                    conversationId = XorIdUtil.getNewXorId(self, peer),
+                    content = MessageContent.CallEvent(event),
+                    previousMessageUniqueId = null,
+                )
+            },
         )
     }
     single { EmergencyLocateStore(eventBus = get(), scope = get()) }

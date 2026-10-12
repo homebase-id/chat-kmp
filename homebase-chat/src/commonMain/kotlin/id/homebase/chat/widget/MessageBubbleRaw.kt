@@ -77,6 +77,7 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
 import id.homebase.chat.groodle.GroodleBubble
+import id.homebase.chat.calling.CallEventBubble
 import id.homebase.chat.poll.PollBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
@@ -354,6 +355,14 @@ fun MessageBubbleRaw(
         is MessageContent.Unknown -> {
             UnknownMessageBubble(
                 dataType = content.dataType,
+                modifier = modifier,
+            )
+            return
+        }
+        is MessageContent.CallEvent -> {
+            CallEventBubble(
+                descriptor = content.descriptor,
+                isOwn = sentByYou,
                 modifier = modifier,
             )
             return

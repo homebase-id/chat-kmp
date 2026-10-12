@@ -141,6 +141,7 @@ import id.homebase.chat.createconversation.GroupOrConversationItem
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.OneOnOneConnectionStatus
+import id.homebase.chat.calling.CallActionButtons
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
@@ -819,6 +820,7 @@ fun ConversationContent(
                                 onUiAction(ConversationListUiAction.OpenLiveLocationMap)
                             },
                         )
+                        CallActionButtons(conversation)
                         IconButton(onClick = { showConversationMenu = true }) {
                             Icon(
                                 imageVector = Icons.Default.MoreVert,

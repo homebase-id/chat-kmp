@@ -40,7 +40,7 @@ class CallControllerTest {
         val controller = CallController(
             selfOdinId = id,
             signaling = net.endpoint(id),
-            engineFactory = CallEngineFactory {
+            engineFactory = CallEngineFactory { _ ->
                 FakeCallEngine(scope.backgroundScope, script, peerLabel = "peer", selfLabel = id).also { engines += it }
             },
             scope = scope.backgroundScope,
@@ -137,15 +137,14 @@ class CallControllerTest {
     }
 
     @Test
-    fun answeredOnAnotherDeviceStopsTheRing() = runTest {
+    fun answerFromOwnIdentityIsIgnored() = runTest {
         val (net, a, b) = pair()
         a.controller.startCall(sam, video = false)
         runCurrent()
         val callId = b.state.callId!!
         net.deliver(to = sam, from = sam, signal = CallSignal.Answer(callId, "x"))
         runCurrent()
-        assertEquals(CallPhase.Ended(CallEndReason.AnsweredElsewhere), b.phase)
-        assertTrue(b.engines.isEmpty())
+        assertEquals(CallPhase.Incoming, b.phase)
     }
 
     @Test
@@ -179,7 +178,7 @@ class CallControllerTest {
         assertEquals("call-a", b.state.callId)
         assertEquals(CallDirection.Outgoing, a.state.direction)
         assertEquals(CallDirection.Incoming, b.state.direction)
-        assertTrue(net.sent.contains(LoopbackSignaling.Sent(sam, frodo, CallSignal.Hangup("call-b", HangupReason.Cancelled))))
+        assertTrue(net.sent.any { it.from == sam && it.to == frodo && it.signal == CallSignal.Hangup("call-b", HangupReason.Cancelled) })
         assertEquals(2, b.engines.size)
         assertTrue(b.engines.first().closed)
         assertTrue(!b.engines.last().closed)
@@ -292,7 +291,7 @@ class CallControllerTest {
     fun signalCodecRoundTripsEveryVariantAndRejectsGarbage() {
         val all = listOf(
             CallSignal.Offer("c", "sdp", true),
-            CallSignal.Ring("c"),
+            CallSignal.Ringing("c"),
             CallSignal.Answer("c", "sdp"),
             CallSignal.Ice("c", "cand", "0", 1),
             CallSignal.Hangup("c", HangupReason.Busy),
@@ -305,8 +304,8 @@ class CallControllerTest {
     fun defaultClocksRingTheCallee() = runTest {
         val net = LoopbackSignaling()
         val scope = CoroutineScope(Job() + UnconfinedTestDispatcher(testScheduler))
-        val callee = CallController(sam, net.endpoint(sam), CallEngineFactory { FakeCallEngine(scope) }, scope)
-        val caller = CallController(frodo, net.endpoint(frodo), CallEngineFactory { FakeCallEngine(scope) }, scope)
+        val callee = CallController(sam, net.endpoint(sam), CallEngineFactory { _ -> FakeCallEngine(scope) }, scope)
+        val caller = CallController(frodo, net.endpoint(frodo), CallEngineFactory { _ -> FakeCallEngine(scope) }, scope)
         caller.startCall(sam, video = false)
         runCurrent()
         assertEquals(CallPhase.Incoming, callee.state.value.phase)
@@ -318,7 +317,7 @@ class CallControllerTest {
         val net = LoopbackSignaling(now = { testScheduler.currentTime })
         val scopeA = CoroutineScope(Job() + StandardTestDispatcher(testScheduler))
         val engines = mutableListOf<FakeCallEngine>()
-        val a = CallController(frodo, net.endpoint(frodo), CallEngineFactory {
+        val a = CallController(frodo, net.endpoint(frodo), CallEngineFactory { _ ->
             FakeCallEngine(scopeA).also { engines += it }
         }, scopeA, clock = { testScheduler.currentTime })
         val b = Side(sam, this, net, FakeCallScript())
@@ -352,9 +351,9 @@ class CallControllerTest {
                     repeat(senders) { i ->
                         launch {
                             gate.await()
-                            while (!subscribed.isCompleted) net.deliver("target", "warm", CallSignal.Ring("warm"), 0)
+                            while (!subscribed.isCompleted) net.deliver("target", "warm", CallSignal.Ringing("warm"), 0)
                             subscribed.await()
-                            net.deliver("target", "p$i", CallSignal.Ring("c$i"), 0)
+                            net.deliver("target", "p$i", CallSignal.Ringing("c$i"), 0)
                         }
                     }
                     gate.complete(Unit)
@@ -368,7 +367,7 @@ class CallControllerTest {
                     val job = launch(Dispatchers.Unconfined) {
                         net.endpoint("user$i").incoming.collect { got.trySend(it) }
                     }
-                    net.deliver("user$i", "x", CallSignal.Ring("u$i"), 0)
+                    net.deliver("user$i", "x", CallSignal.Ringing("u$i"), 0)
                     assertEquals("u$i", withTimeout(5_000) { got.receive() }.signal.callId, "round $round user$i")
                     job.cancel()
                 }
@@ -403,4 +402,49 @@ class CallControllerTest {
     @Test
     fun genericEngineExceptionEndsFailedOtherAndClosesEngine() =
         failingOfferEnds(IllegalStateException("boom"), FailReason.Other)
+
+    @Test
+    fun iceRestartRunsThroughTheEnginesOnReconnecting() = runTest {
+        val (net, a, b) = pair()
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        a.engines.single().simulateDrop()
+        runCurrent()
+        assertTrue(net.sent.any { it.from == frodo && it.signal is CallSignal.Restart })
+        assertTrue(net.sent.any { it.from == sam && it.signal is CallSignal.RestartAnswer })
+        assertEquals(1, a.engines.single().restarts)
+        assertEquals(1, b.engines.single().restarts)
+    }
+
+    @Test
+    fun pushRingAndSocketOfferCollapseIntoOneIncomingCall() = runTest {
+        val (net, a, b) = pair()
+        b.controller.onPushRing("pushed", frodo)
+        runCurrent()
+        assertEquals(CallPhase.Incoming, b.phase)
+        a.controller.startCall(sam, video = false, callId = "pushed")
+        runCurrent()
+        assertEquals("pushed", b.state.callId)
+        assertEquals(CallPhase.Incoming, b.phase)
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        assertEquals(CallPhase.Connected, b.phase)
+        assertEquals(CallPhase.Connected, a.phase)
+        assertEquals(1, b.engines.size)
+        assertTrue(net.sent.any { it.signal is CallSignal.Offer && it.push?.kind == CallPushKind.Ring && it.push.tagId == "pushed" })
+    }
+
+    @Test
+    fun closeReleasesTheEngineOnTheInboxLoop() = runTest {
+        val (_, a, b) = pair()
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        a.controller.close()
+        runCurrent()
+        assertTrue(a.engines.all { it.closed })
+    }
 }

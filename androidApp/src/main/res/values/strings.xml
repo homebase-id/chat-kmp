@@ -18,4 +18,6 @@
     <string name="crash_share">Share crash report</string>
     <string name="crash_details_toggle">Technical details</string>
     <string name="crash_report_unavailable">(crash report unavailable)</string>
+    <string name="incoming_call">Incoming call</string>
+    <string name="ongoing_call">Call in progress</string>
 </resources>

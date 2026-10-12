@@ -1,0 +1,42 @@
+package id.homebase.api.client.websockets
+
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.serialization.OdinSystemSerializer
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runTest
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class StunUrlStoreTest {
+    @Test
+    fun handshakeReplyCarriesStunUrlsAtTheTopLevel() {
+        val json = """{"notificationType":"deviceHandshakeSuccess","notificationTypeId":"0000",
+            "stunUrls":["stun:a.example:3478","stun:b.example:3478"]}"""
+        val parsed = OdinSystemSerializer.deserialize<ClientNotificationPayload>(json)
+        assertEquals(ClientNotificationType.deviceHandshakeSuccess, parsed.notificationType)
+        assertEquals(listOf("stun:a.example:3478", "stun:b.example:3478"), parsed.stunUrls)
+    }
+
+    @Test
+    fun handshakeWithoutStunUrlsParsesToEmpty() {
+        val parsed = OdinSystemSerializer.deserialize<ClientNotificationPayload>(
+            """{"notificationType":"deviceHandshakeSuccess"}""",
+        )
+        assertEquals(emptyList(), parsed.stunUrls)
+    }
+
+    @Test
+    fun storeKeepsTheLatestListAsGiven() = runTest(UnconfinedTestDispatcher()) {
+        val bus = EventBus()
+        val store = StunUrlStore(bus, TestScope(UnconfinedTestDispatcher(testScheduler)))
+        assertEquals(emptyList(), store.urls.value)
+        bus.emit(BackendEvent.StunUrlsReceived(listOf("stun:one:3478", "stun:two:3478")))
+        assertEquals(listOf("stun:one:3478", "stun:two:3478"), store.urls.value)
+        bus.emit(BackendEvent.StunUrlsReceived(listOf("stun:three:3478")))
+        assertEquals(listOf("stun:three:3478"), store.urls.value)
+    }
+}

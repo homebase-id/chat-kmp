@@ -108,6 +108,10 @@ sealed class Route {
     data object DevScheduledPushTest : Route()
 
     @Serializable
+    @SerialName("dev-call-lab")
+    data object DevCallLab : Route()
+
+    @Serializable
     @SerialName("storage-settings")
     data object StorageSettings : Route()
 

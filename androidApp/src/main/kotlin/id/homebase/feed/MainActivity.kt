@@ -3,6 +3,9 @@ package id.homebase.feed
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
+import id.homebase.chat.services.calling.CallService
+import id.homebase.feed.calls.IncomingCallNotifier
+import kotlinx.coroutines.flow.first
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.Composable
@@ -43,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     private val notificationEntry: NotificationEntry by inject()
     private val eventBus: EventBus by inject()
     private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
+    private val callService: CallService by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Must run before super.onCreate — swaps Theme.Homebase.Splash for the real app
@@ -70,6 +74,7 @@ class MainActivity : AppCompatActivity() {
         // Idempotent; safe across Activity recreation. See AuthCC.promoteToForeground.
         authConnectionCoordinator.promoteToForeground()
 
+        showOverLockScreenForCall(intent)
         handleIntent(intent)
 
         ActivityProvider.initialize(this)
@@ -94,6 +99,7 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent) // Update the activity's intent
+        showOverLockScreenForCall(intent)
         handleIntent(intent)
 
         // Notify KMPNotifier of new intent
@@ -116,6 +122,18 @@ class MainActivity : AppCompatActivity() {
 
             // If no callback arrived and we're still authenticating, the user likely cancelled
             youAuthFlowManager.onAppResumed()
+        }
+    }
+
+    // An incoming-call launch may show over the lock screen, but only while that call is ringing or live.
+    private fun showOverLockScreenForCall(intent: Intent) {
+        if (!intent.hasExtra(IncomingCallNotifier.EXTRA_CALL_ID)) return
+        setShowWhenLocked(true)
+        setTurnScreenOn(true)
+        lifecycleScope.launch {
+            callService.state.first { !it.isActive }
+            setShowWhenLocked(false)
+            setTurnScreenOn(false)
         }
     }
 

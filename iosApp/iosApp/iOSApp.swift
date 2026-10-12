@@ -240,6 +240,8 @@ struct iOSApp: App {
         CrashlyticsBridgeHolder.shared.setBridge(bridge: CrashlyticsBridgeImpl())
 
         ContinuedProcessingBridgeHolder.shared.bridge = ContinuedProcessingBridgeImpl()
+
+        CallKitManager.shared.start()
     }
     
     var body: some Scene {

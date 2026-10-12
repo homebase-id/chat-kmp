@@ -20,7 +20,6 @@ sealed interface CallEndReason {
     data object Declined : CallEndReason
     data object Missed : CallEndReason
     data object Busy : CallEndReason
-    data object AnsweredElsewhere : CallEndReason
     data class Failed(val reason: FailReason) : CallEndReason
     data object Cancelled : CallEndReason
 }
@@ -55,6 +54,8 @@ data class CallState(
     val reconnectAttempt: Int = 0,
     val peerRinging: Boolean = false,
     val pendingOfferSdp: String? = null,
+    val acceptPending: Boolean = false,
+    val verificationCode: String? = null,
 ) {
     val isActive: Boolean
         get() = phase !is CallPhase.Idle && phase !is CallPhase.Ended

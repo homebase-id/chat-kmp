@@ -1,5 +1,6 @@
 package id.homebase.chat.services.content
 
+import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
@@ -125,6 +126,11 @@ sealed interface MessageContent {
         override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_POLL_LABEL
     }
 
+    /** A call log entry; [descriptor] follows the same nullability contract as [Event.descriptor]. */
+    data class CallEvent(val descriptor: CallEventDescriptor?) : MessageContent {
+        override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_CALL_LABEL
+    }
+
     /**
      * A shared contact card (name, organization, phones, emails) — produced by sharing a vCard
      * into the app. [descriptor] follows the same nullability contract as [Event.descriptor].
@@ -210,6 +216,7 @@ sealed interface MessageContent {
         const val UNPARSEABLE_DICE_LABEL = "Dice roll"
         const val UNPARSEABLE_GROODLE_LABEL = "Groodle"
         const val UNPARSEABLE_POLL_LABEL = "Poll"
+        const val UNPARSEABLE_CALL_LABEL = "Call"
         const val UNPARSEABLE_CONTACT_LABEL = "Contact"
         const val UNPARSEABLE_LOCATION_LABEL = "Location"
         const val UNPARSEABLE_VIEW_ONCE_LABEL = "Media"

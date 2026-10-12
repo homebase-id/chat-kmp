@@ -1,6 +1,10 @@
 package id.homebase.core
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import id.homebase.chat.calling.CallHost
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -52,6 +56,7 @@ fun App(
         val appViewModel = koinViewModel<AppViewModel>()
         // Everything below resolves from the open identity session, so per-identity services and
         // the ViewModels that consume them are destroyed at logout rather than reset.
+        Box(Modifier.fillMaxSize()) {
         IdentityScopeProvider {
             AppNavHost(
                 // koinViewModel(), NOT koinInject(). AppViewModel is registered with
@@ -71,6 +76,8 @@ fun App(
                 youAuthFlowManager = youAuthFlowManager,
                 topInset = topInset,
             )
+        }
+        CallHost()
         }
         LaunchedEffect(navController) {
             onNavigatorReady { route -> navController.navigate(route) { launchSingleTop = true } }

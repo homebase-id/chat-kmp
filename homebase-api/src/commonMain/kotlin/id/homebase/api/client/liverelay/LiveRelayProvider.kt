@@ -23,11 +23,16 @@ class LiveRelayProvider(
      * Relay [blob] to [recipients] (domain strings) on [channelKey]. Returns true on 2xx.
      * Shared-secret-encrypted like every other V2 JSON POST.
      */
-    suspend fun relay(channelKey: String, recipients: List<String>, blob: String): Boolean {
+    suspend fun relay(
+        channelKey: String,
+        recipients: List<String>,
+        blob: String,
+        push: LiveRelayPush? = null,
+    ): Boolean {
         val creds = requireCreds()
         val url = apiUrl(creds.domain, "/live-relay")
         val body = OdinSystemSerializer.serialize(
-            LiveRelayRequest(channelKey = channelKey, recipients = recipients, blob = blob)
+            LiveRelayRequest(channelKey = channelKey, recipients = recipients, blob = blob, push = push)
         )
         val response = encryptedPostJson(
             url = url,
@@ -55,4 +60,14 @@ data class LiveRelayRequest(
     val channelKey: String,
     val recipients: List<String>,
     val blob: String,
+    val push: LiveRelayPush? = null,
+)
+
+/** Optional wake-up riding a relay. `kind` is one of `notify`, `ring`, `hangup`, `wake`; `tagId` collapses ring/hangup pairs. */
+@Serializable
+data class LiveRelayPush(
+    val kind: String,
+    val typeId: String,
+    val tagId: String,
+    val unEncryptedMessage: String,
 )

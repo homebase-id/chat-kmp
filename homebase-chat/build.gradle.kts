@@ -105,6 +105,13 @@ kotlin {
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs.compose)
         }
+        // Android + Apple share one webrtc-kmp engine; webrtc-kmp has no JVM variant, so it cannot live in commonMain.
+        val webrtcKmpMain by creating {
+            dependsOn(commonMain.get())
+            dependencies { implementation(libs.webrtc.kmp) }
+        }
+        androidMain.get().dependsOn(webrtcKmpMain)
+        appleMain.get().dependsOn(webrtcKmpMain)
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
             implementation(libs.androidx.media3.exoplayer)
@@ -115,13 +122,11 @@ kotlin {
             // On-device subject segmentation for the "Remove background" sticker tool.
             // Model is downloaded via Google Play services (not bundled) → ~0 APK cost.
             implementation(libs.mlkit.subject.segmentation)
-            implementation(libs.webrtc.kmp)
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)
             implementation(libs.ktor.server.core)
             implementation(libs.ktor.server.cio)
-            implementation(libs.webrtc.kmp)
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)

@@ -916,7 +916,7 @@
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to take photos and videos for chats, Moments, events and your Vault.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages and the sound in videos you take.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages, the sound in videos you take, and to talk in calls.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving photos and videos from chat to your photo library";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -1014,7 +1014,7 @@
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to take photos and videos for chats, Moments, events and your Vault.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages and the sound in videos you take.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages, the sound in videos you take, and to talk in calls.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving photos and videos from chat to your photo library";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -1203,7 +1203,7 @@
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to take photos and videos for chats, Moments, events and your Vault.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages and the sound in videos you take.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages, the sound in videos you take, and to talk in calls.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving photos and videos from chat to your photo library";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

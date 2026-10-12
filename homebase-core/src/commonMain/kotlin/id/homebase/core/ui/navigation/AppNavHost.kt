@@ -138,6 +138,7 @@ import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
 import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestScreen
+import id.homebase.chat.calling.CallLabScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.feed.FeedTimelineScreen
 import id.homebase.core.ui.screens.feed.PostDetailScreen
@@ -2214,7 +2215,14 @@ fun AppNavHost(
                                     onNavigateToScheduledPushTest = {
                                         navController.navigate(Route.DevScheduledPushTest)
                                     },
+                                    onNavigateToCallLab = { navController.navigate(Route.DevCallLab) },
                                 )
+                            }
+                        }
+
+                        composable<Route.DevCallLab> {
+                            if (isAuthenticated) {
+                                CallLabScreen(onBackClick = { navController.popBackStack() })
                             }
                         }
 

@@ -84,6 +84,13 @@ object ChatProtocol {
     const val ChatContactCardMessageDataType = 215
 
     /**
+     * Call log entry (missed / declined / completed with duration), written once by the caller when a
+     * call ends. The descriptor in `appData.content` carries only the outcome; identity, author and
+     * time come from the envelope. See [id.homebase.chat.calling.CallEventDescriptor].
+     */
+    const val ChatCallEventMessageDataType = 217
+
+    /**
      * View-once photo or video: the descriptor rides in `appData.content`, the single media
      * payload under [PAYLOAD_KEY_MESSAGE_WEB]`0`. See [id.homebase.chat.viewonce.ViewOnceDescriptor].
      */
