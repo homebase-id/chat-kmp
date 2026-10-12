@@ -55,3 +55,5 @@ actual fun CallRingEffect(ringing: Boolean, callerName: String) {
         }
     }
 }
+
+actual fun platformAudioRoutes(): List<AudioRoute> = emptyList()

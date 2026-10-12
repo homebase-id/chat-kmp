@@ -29,7 +29,6 @@ import org.jetbrains.compose.resources.stringResource
 class CallPermissionGate internal constructor(
     private val request: (video: Boolean, onGranted: (video: Boolean) -> Unit) -> Unit,
 ) {
-    /** Asks for the microphone (and camera for [video]); [onGranted] gets the video flag that survived. */
     fun run(video: Boolean, onGranted: (video: Boolean) -> Unit) = request(video, onGranted)
 }
 

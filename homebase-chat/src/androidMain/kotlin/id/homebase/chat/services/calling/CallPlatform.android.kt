@@ -44,3 +44,18 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier) {
 // The "calls" notification channel rings on Android; ringing here too would double up.
 @Composable
 actual fun CallRingEffect(ringing: Boolean, callerName: String) = Unit
+
+actual fun platformAudioRoutes(): List<AudioRoute> {
+    val routes = mutableListOf(AudioRoute.Earpiece, AudioRoute.Speaker)
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return routes
+    val audio = org.koin.mp.KoinPlatformTools.defaultContext().get().get<android.content.Context>()
+        .getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+    val types = audio.availableCommunicationDevices.map { it.type }
+    if (types.any { it == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO || it == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET }) {
+        routes += AudioRoute.Bluetooth
+    }
+    if (types.any { it == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET || it == android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES || it == android.media.AudioDeviceInfo.TYPE_USB_HEADSET }) {
+        routes += AudioRoute.Wired
+    }
+    return routes
+}

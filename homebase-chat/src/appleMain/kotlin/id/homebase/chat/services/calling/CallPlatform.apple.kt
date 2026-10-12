@@ -27,3 +27,5 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier) {
 // CallKit rings on iOS.
 @Composable
 actual fun CallRingEffect(ringing: Boolean, callerName: String) = Unit
+
+actual fun platformAudioRoutes(): List<AudioRoute> = listOf(AudioRoute.Earpiece, AudioRoute.Speaker)

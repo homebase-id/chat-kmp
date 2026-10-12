@@ -77,7 +77,7 @@ fun App(
                 topInset = topInset,
             )
         }
-        CallHost()
+        CallHost(viewModel = koinViewModel())
         }
         LaunchedEffect(navController) {
             onNavigatorReady { route -> navController.navigate(route) { launchSingleTop = true } }

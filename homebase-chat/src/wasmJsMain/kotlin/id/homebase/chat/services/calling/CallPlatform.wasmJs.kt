@@ -10,3 +10,5 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier) = Unit
 
 @Composable
 actual fun CallRingEffect(ringing: Boolean, callerName: String) = Unit
+
+actual fun platformAudioRoutes(): List<AudioRoute> = emptyList()

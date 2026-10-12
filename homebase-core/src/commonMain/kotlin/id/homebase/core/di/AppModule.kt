@@ -55,6 +55,7 @@ import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.calling.CallViewModel
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.platformCallEngineFactory
 import id.homebase.chat.services.livelocation.LiveLocationShareService
@@ -1028,6 +1029,7 @@ val appModule = module {
 
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)
+    viewModel { CallViewModel(get<CallService>()) }
     viewModelOf(::HomeViewModel)
     viewModel { FeedViewModel(get(), get(), get(FeedPermissionQualifier)) }
     // Manual `viewModel { ... }` rather than viewModelOf because the constructor

@@ -5,8 +5,13 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -16,91 +21,100 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
-import id.homebase.chat.services.calling.CallEndReason
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.CallRingEffect
 import id.homebase.chat.services.calling.CallService
-import id.homebase.chat.services.calling.CallState
-import id.homebase.chat.services.calling.CallVideos
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.util.initials
 import id.homebase.resources.MR
+import id.homebase.resources.call_end_confirm_body
+import id.homebase.resources.call_end_confirm_title
+import id.homebase.resources.call_end_keep
+import id.homebase.resources.call_hang_up
 import id.homebase.resources.call_verification_body
 import id.homebase.resources.call_verification_ok
 import id.homebase.resources.call_verification_title
-import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
-private const val ENDED_LINGER_MS = 1_800L
-private const val ENDED_FAILURE_LINGER_MS = 3_500L
-
-/** Full-screen call surface for the single [CallService]; hosted once at the app root, hidden when calling is unsupported. */
 @Composable
-fun CallHost(modifier: Modifier = Modifier) {
-    val service = koinInject<CallService>()
-    if (!service.available) return
-    val state by service.state.collectAsStateWithLifecycle()
-    val videos by service.videos.collectAsStateWithLifecycle()
-    CallHostContent(service, state, videos, modifier)
+fun CallHost(viewModel: CallViewModel, modifier: Modifier = Modifier) {
+    if (!koinInject<CallService>().available) return
+    val ui by viewModel.uiState.collectAsStateWithLifecycle()
+    val name = rememberPeerName(ui.peer)
+    CallRingEffect(ringing = ui.phase == CallPhase.Incoming, callerName = name)
+    CallOverlay(
+        viewModel = viewModel,
+        ui = ui,
+        peerName = name,
+        avatar = { size -> ui.peer?.let { PeerAvatar(it, name, size) } },
+        modifier = modifier,
+    )
 }
 
 @Composable
-private fun CallHostContent(service: CallService, state: CallState, videos: CallVideos, modifier: Modifier) {
-    var dismissedCallId by remember { mutableStateOf<String?>(null) }
-    val phase = state.phase
-    LaunchedEffect(phase is CallPhase.Ended, state.callId) {
-        if (phase is CallPhase.Ended) {
-            delay(if (phase.reason is CallEndReason.Failed) ENDED_FAILURE_LINGER_MS else ENDED_LINGER_MS)
-            dismissedCallId = state.callId
-        }
-    }
-    val visible = phase != CallPhase.Idle && !(phase is CallPhase.Ended && state.callId == dismissedCallId)
-
+fun CallOverlay(
+    viewModel: CallViewModel,
+    ui: CallUiState,
+    peerName: String,
+    avatar: @Composable (Dp) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val gate = rememberCallPermissionGate()
     var showVerification by remember { mutableStateOf(false) }
-    val actions = remember(service) {
+    var confirmEnd by remember { mutableStateOf(false) }
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                CallUiEvent.ShowVerification -> showVerification = true
+                CallUiEvent.ConfirmEnd -> confirmEnd = true
+            }
+        }
+    }
+    val actions = remember(viewModel, gate) {
         CallScreenActions(
-            accept = {
-                val wantsVideo = service.state.value.media.localVideo
-                gate.run(video = wantsVideo) { video ->
-                    if (wantsVideo && !video) service.setVideo(false)
-                    service.accept()
-                }
-            },
-            decline = service::decline,
-            hangup = service::hangup,
-            setMuted = { service.setMuted(it) },
-            setVideo = { service.setVideo(it) },
-            switchCamera = service::switchCamera,
-            setRoute = { service.setAudioRoute(it) },
-            onVerificationClick = { showVerification = true },
+            acceptAudio = { gate.run(video = false) { viewModel.accept(withVideo = false) } },
+            acceptVideo = { gate.run(video = true) { video -> viewModel.accept(withVideo = video) } },
+            decline = viewModel::decline,
+            hangup = viewModel::hangup,
+            toggleMute = viewModel::toggleMute,
+            toggleVideo = viewModel::toggleVideo,
+            switchCamera = viewModel::switchCamera,
+            setRoute = viewModel::setRoute,
+            onVerificationClick = viewModel::onVerificationClick,
+            retry = { gate.run(video = viewModel.uiState.value.localVideo) { video -> viewModel.retry(video) } },
+            close = viewModel::close,
+            minimize = viewModel::minimize,
+            endFromKeyboard = viewModel::endFromKeyboard,
         )
     }
 
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn() + slideInVertically { it / 8 },
-        exit = fadeOut() + slideOutVertically { it / 8 },
-        modifier = modifier,
-    ) {
-        Box(Modifier.fillMaxSize()) {
-            val peer = state.peer
-            val name = rememberPeerName(peer)
-            CallRingEffect(ringing = phase == CallPhase.Incoming, callerName = name)
-            CallScreen(
-                state = state,
-                videos = videos,
-                peerName = name,
-                avatar = { size -> peer?.let { PeerAvatar(it, name, size) } },
-                actions = actions,
+    Box(modifier) {
+        AnimatedVisibility(
+            visible = ui.visible && !ui.minimized,
+            enter = fadeIn() + slideInVertically { it / 8 },
+            exit = fadeOut() + slideOutVertically { it / 8 },
+        ) {
+            Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
+                CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions)
+            }
+        }
+        if (ui.pillVisible) {
+            OngoingCallPill(
+                ui = ui,
+                peerName = peerName,
+                onClick = viewModel::restore,
+                modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 8.dp),
             )
         }
     }
@@ -113,6 +127,17 @@ private fun CallHostContent(service: CallService, state: CallState, videos: Call
             confirmButton = {
                 TextButton(onClick = { showVerification = false }) { Text(stringResource(MR.string.call_verification_ok)) }
             },
+        )
+    }
+    if (confirmEnd) {
+        AlertDialog(
+            onDismissRequest = { confirmEnd = false },
+            title = { Text(stringResource(MR.string.call_end_confirm_title)) },
+            text = { Text(stringResource(MR.string.call_end_confirm_body)) },
+            confirmButton = {
+                TextButton(onClick = { confirmEnd = false; viewModel.hangup() }) { Text(stringResource(MR.string.call_hang_up)) }
+            },
+            dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text(stringResource(MR.string.call_end_keep)) } },
         )
     }
 }

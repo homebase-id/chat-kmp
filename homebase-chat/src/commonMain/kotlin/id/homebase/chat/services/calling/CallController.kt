@@ -25,13 +25,14 @@ class CallController(
     private val selfLabel: String = selfOdinId,
     private val stunUrls: () -> List<String> = { emptyList() },
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
-) {
+    private val ringTimeoutMs: Long = RING_TIMEOUT_MS,
+) : CallSession {
     private val machine = CallStateMachine(selfOdinId)
     private val _state = MutableStateFlow(CallState())
-    val state: StateFlow<CallState> = _state.asStateFlow()
+    override val state: StateFlow<CallState> = _state.asStateFlow()
 
     private val _videos = MutableStateFlow(CallVideos())
-    val videos: StateFlow<CallVideos> = _videos.asStateFlow()
+    override val videos: StateFlow<CallVideos> = _videos.asStateFlow()
 
     // Everything below the inbox is touched only from the inbox loop; other threads just post.
     private sealed interface Command {
@@ -82,16 +83,17 @@ class CallController(
         releaseEngine()
     }
 
-    fun startCall(peer: String, video: Boolean, callId: String = Uuid.random().toString()) =
-        post(CallEvent.UserCall(callId, peer, video))
+    override fun startCall(peer: String, video: Boolean) = startCall(peer, video, Uuid.random().toString())
 
-    fun accept() = post(CallEvent.UserAccept)
-    fun decline() = post(CallEvent.UserDecline)
-    fun hangup() = post(CallEvent.UserHangup)
-    fun setMuted(muted: Boolean) = post(CallEvent.SetMuted(muted))
-    fun setVideo(on: Boolean) = post(CallEvent.SetVideo(on))
-    fun switchCamera() = post(CallEvent.SwitchCamera)
-    fun setAudioRoute(route: AudioRoute) = post(CallEvent.SetRoute(route))
+    fun startCall(peer: String, video: Boolean, callId: String) = post(CallEvent.UserCall(callId, peer, video))
+
+    override fun accept() = post(CallEvent.UserAccept)
+    override fun decline() = post(CallEvent.UserDecline)
+    override fun hangup() = post(CallEvent.UserHangup)
+    override fun setMuted(muted: Boolean) = post(CallEvent.SetMuted(muted))
+    override fun setVideo(on: Boolean) = post(CallEvent.SetVideo(on))
+    override fun switchCamera() = post(CallEvent.SwitchCamera)
+    override fun setAudioRoute(route: AudioRoute) = post(CallEvent.SetRoute(route))
     fun onPermissionDenied() = post(CallEvent.EngineError(FailReason.Permission))
 
     fun onPushRing(callId: String, from: String) = post(CallEvent.PushRing(callId, from))
@@ -192,7 +194,7 @@ class CallController(
         timers.remove(timer)?.cancel()
         timers[timer] = scope.launch {
             when (timer) {
-                CallTimer.Ring -> delay(RING_TIMEOUT_MS)
+                CallTimer.Ring -> delay(ringTimeoutMs)
                 CallTimer.Connect -> delay(CONNECT_TIMEOUT_MS)
                 CallTimer.Reconnect -> {
                     while (true) {

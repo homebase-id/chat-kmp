@@ -34,17 +34,17 @@ class CallService(
     private val scope: CoroutineScope,
     private val recordEvent: suspend (peer: String, event: CallEventDescriptor) -> Unit = { _, _ -> },
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
-) {
+) : CallSession {
     val available: Boolean get() = engineFactory != null
 
     private val controller = MutableStateFlow<CallController?>(null)
     private var controllerJob: Job? = null
 
-    val state: StateFlow<CallState> = controller
+    override val state: StateFlow<CallState> = controller
         .flatMapLatest { it?.state ?: flowOf(CallState()) }
         .stateIn(scope, SharingStarted.Eagerly, CallState())
 
-    val videos: StateFlow<CallVideos> = controller
+    override val videos: StateFlow<CallVideos> = controller
         .flatMapLatest { it?.videos ?: flowOf(CallVideos()) }
         .stateIn(scope, SharingStarted.Eagerly, CallVideos())
 
@@ -91,14 +91,14 @@ class CallService(
         pendingRing = null
     }
 
-    fun startCall(peer: String, video: Boolean) = controller.value?.startCall(peer, video)
-    fun accept() = controller.value?.accept()
-    fun decline() = controller.value?.decline()
-    fun hangup() = controller.value?.hangup()
-    fun setMuted(muted: Boolean) = controller.value?.setMuted(muted)
-    fun setVideo(on: Boolean) = controller.value?.setVideo(on)
-    fun switchCamera() = controller.value?.switchCamera()
-    fun setAudioRoute(route: AudioRoute) = controller.value?.setAudioRoute(route)
+    override fun startCall(peer: String, video: Boolean) { controller.value?.startCall(peer, video) }
+    override fun accept() { controller.value?.accept() }
+    override fun decline() { controller.value?.decline() }
+    override fun hangup() { controller.value?.hangup() }
+    override fun setMuted(muted: Boolean) { controller.value?.setMuted(muted) }
+    override fun setVideo(on: Boolean) { controller.value?.setVideo(on) }
+    override fun switchCamera() { controller.value?.switchCamera() }
+    override fun setAudioRoute(route: AudioRoute) { controller.value?.setAudioRoute(route) }
     fun onPermissionDenied() = controller.value?.onPermissionDenied()
     fun onPushRing(callId: String, from: String) {
         val current = controller.value

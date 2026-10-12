@@ -18,7 +18,6 @@ import id.homebase.resources.call_button_voice
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.getKoin
 
-/** Voice and video call buttons for the chat header; render nothing unless this is a connected 1:1 on a calling-capable target. */
 @Composable
 fun CallActionButtons(conversation: EnrichedConversationUiModel) {
     val service = getKoin().getOrNull<CallService>()?.takeIf { it.available } ?: return
