@@ -105,7 +105,7 @@ class IncomingCallNotifier(private val context: Context) {
         }
         val channel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.getNotificationChannel(CHANNEL_ID)?.let {
-                "importance=${it.importance} bypassDnd=${it.canBypassDnd()} sound=${it.sound != null}"
+                "importance=${it.importance} bypassDnd=${it.canBypassDnd()} sound=${it.sound} defaultRingtone=${RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)} usage=${it.audioAttributes?.usage} vibrate=${it.shouldVibrate()} pattern=${it.vibrationPattern?.toList()}"
             }
         } else {
             null

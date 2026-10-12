@@ -28,6 +28,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
         config.maximumCallsPerCallGroup = 1
         config.supportedHandleTypes = [.generic]
         config.includesCallsInRecents = false
+        config.ringtoneSound = nil
         provider = CXProvider(configuration: config)
         super.init()
         provider.setDelegate(self, queue: nil)
