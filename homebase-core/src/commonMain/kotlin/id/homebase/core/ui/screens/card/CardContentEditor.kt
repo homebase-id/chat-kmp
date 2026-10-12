@@ -99,7 +99,6 @@ import org.jetbrains.compose.resources.stringResource
 
 private val PHOTO_SIZE = 88.dp
 
-/** The photo a card shows, and whether the editor may change it. [own] is false while the card inherits it. */
 internal class CardPhotoUi(
     val photo: ProfileAttribute?,
     val own: Boolean,
@@ -107,7 +106,6 @@ internal class CardPhotoUi(
     val busy: Boolean,
 )
 
-/** What a card shows, as its owner edits it: the photo, the items on it with remove, the ones it could show with add, and new ones. Lays out in the caller's scroll. */
 @Composable
 internal fun CardContentEditor(
     card: CardAudience,

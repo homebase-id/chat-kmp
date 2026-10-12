@@ -30,6 +30,9 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.screens.card.CardCircle
+import id.homebase.core.ui.screens.card.FAMILY_CIRCLE_ID
+import id.homebase.core.ui.screens.card.FRIENDS_CIRCLE_ID
+import id.homebase.core.ui.screens.card.WORK_CIRCLE_ID
 import id.homebase.core.ui.screens.card.CardExpressiveTheme
 import id.homebase.core.ui.theme.HomebaseTheme
 import java.io.File
@@ -53,9 +56,9 @@ class ProfileEditShotsTest {
     /** Comma-separated shot-name prefixes; renders only those, for quick iteration on one state. */
     private val only: List<String> = System.getenv("CARD_SHOTS_ONLY")?.split(',')?.map { it.trim() }.orEmpty()
 
-    private val family = CardCircle("f", "Family")
-    private val friends = CardCircle("fr", "Friends")
-    private val work = CardCircle("w", "Work")
+    private val family = CardCircle(FAMILY_CIRCLE_ID, "Family")
+    private val friends = CardCircle(FRIENDS_CIRCLE_ID, "Friends")
+    private val work = CardCircle(WORK_CIRCLE_ID, "Work")
     private val climbing = CardCircle("c", "Climbing partners from the Tuesday bouldering gym night")
     private val circles = listOf(family, friends, work)
 
@@ -77,17 +80,17 @@ class ProfileEditShotsTest {
         ),
         audiences = mapOf(
             ProfileAttributeTypes.NAME to ProfileAudience.Public,
-            ProfileAttributeTypes.NICKNAME to ProfileAudience.Circles(setOf("f", "fr")),
+            ProfileAttributeTypes.NICKNAME to ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID)),
             ProfileAttributeTypes.BIO_SUMMARY to ProfileAudience.Public,
             ProfileAttributeTypes.BIRTHDAY to ProfileAudience.OnlyMe,
-            ProfileAttributeTypes.EMAIL to ProfileAudience.Circles(setOf("f", "fr", "w")),
-            ProfileAttributeTypes.PHONE to ProfileAudience.Circles(setOf("f")),
-            ProfileAttributeTypes.ADDRESS to ProfileAudience.Circles(setOf("fr", "w")),
+            ProfileAttributeTypes.EMAIL to ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID)),
+            ProfileAttributeTypes.PHONE to ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID)),
+            ProfileAttributeTypes.ADDRESS to ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID)),
             ProfileAttributeTypes.INSTAGRAM to ProfileAudience.Public,
         ),
         links = listOf(
             LinkDraft("l1", "Garden journal", "https://sam.garden", ProfileAudience.Public),
-            LinkDraft("l2", "Recipes", "https://sam.kitchen", ProfileAudience.Circles(setOf("f"))),
+            LinkDraft("l2", "Recipes", "https://sam.kitchen", ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID))),
         ),
     )
 
@@ -106,13 +109,13 @@ class ProfileEditShotsTest {
     )
 
     private val publicPhoto = photo(ProfileVisibility.ANONYMOUS, AccessControlList(requiredSecurityGroup = "anonymous"))
-    private val familyPhoto = photo(ProfileVisibility.CONNECTED, AccessControlList(requiredSecurityGroup = "connected", circleIdList = listOf("f")))
+    private val familyPhoto = photo(ProfileVisibility.CONNECTED, AccessControlList(requiredSecurityGroup = "connected", circleIdList = listOf(FAMILY_CIRCLE_ID)))
 
     /** A seeded Public photo and a set Family photo; Friends and Work inherit the public one. */
     private fun circleAvatar(supported: Boolean) = ProfileAvatarEditUiState(
         isLoading = false,
         anonymous = PhotoTierUiState(ProfileVisibility.ANONYMOUS, existing = publicPhoto),
-        circleSlots = mapOf("f" to PhotoTierUiState(ProfileVisibility.CONNECTED, circleId = "f", existing = familyPhoto)),
+        circleSlots = mapOf(FAMILY_CIRCLE_ID to PhotoTierUiState(ProfileVisibility.CONNECTED, circleId = FAMILY_CIRCLE_ID, existing = familyPhoto)),
         photos = listOf(publicPhoto, familyPhoto),
         circlePhotosSupported = supported,
     )
@@ -143,13 +146,13 @@ class ProfileEditShotsTest {
         Shot("k8-06-no-circle-picked", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(emptySet())), listOf("Phone")),
         Shot(
             "k8-07-other-circles",
-            with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("f"), setOf("x1", "x2")))
+            with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID), setOf("x1", "x2")))
                 .copy(otherCircleNames = mapOf("x1" to "Book club", "x2" to "Hiking crew")),
             listOf("Phone"),
         ),
         Shot("k8-08-no-contacts-circles", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(emptySet()), filled.copy(circles = emptyList())), listOf("Phone")),
-        Shot("k8-09-long-circle", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", "f", "fr")), filled.copy(circles = circles + climbing)), heightDp = FULL_H),
-        Shot("k8-09b-long-circle-open", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", "f")), filled.copy(circles = circles + climbing)), listOf("Phone")),
+        Shot("k8-09-long-circle", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID)), filled.copy(circles = circles + climbing)), heightDp = FULL_H),
+        Shot("k8-09b-long-circle-open", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", FAMILY_CIRCLE_ID)), filled.copy(circles = circles + climbing)), listOf("Phone")),
         Shot("k8-10-link-open", filled, listOf("Recipes")),
         Shot("k8-11-empty-profile", empty),
         Shot("k8-12-loading", ProfileEditUiState()),
@@ -169,9 +172,9 @@ class ProfileEditShotsTest {
         Shot("k8-25-audience-popover-rtl", filled, listOf("cd:Visible to Family. Change"), rtl = true),
         Shot("k8-26-custom-label", filled.copy(values = filled.values + (ProfileField.EMAIL_LABEL to "Hobbit post")), listOf("Email")),
         // A legacy Connected record with no circles loads as every Contacts circle picked.
-        Shot("k8-27-legacy-all-circles-open", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("f", "fr", "w"))), listOf("Phone")),
+        Shot("k8-27-legacy-all-circles-open", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID))), listOf("Phone")),
         Shot("k8-28-birthday-picker", filled, listOf("Birthday", "cd:Birthday")),
-        Shot("k8-29-popover-other-circles", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("f"), setOf("x1")))
+        Shot("k8-29-popover-other-circles", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID), setOf("x1")))
             .copy(otherCircleNames = mapOf("x1" to "Book club")), listOf("cd:Visible to Family, Book club. Change")),
         Shot("k11-03-card-photos-font-scale", filled, fontScale = 1.6f, heightDp = FULL_H),
         Shot("k11-04-circle-photos", filled, heightDp = FULL_H, avatar = circleAvatar(true), inheritedSlots = 2, useDifferentButtons = 2),

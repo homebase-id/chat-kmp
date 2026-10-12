@@ -23,7 +23,9 @@ import id.homebase.api.image.createImageThumbnail
 import id.homebase.api.image.tinyThumbSize
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.clipboard.platformFileFromPath
+import id.homebase.core.ui.screens.card.CardAudience
 import id.homebase.core.ui.screens.card.CardCircle
+import id.homebase.core.ui.screens.card.ownPhotoFor
 import id.homebase.imageeditor.ui.CropResultBus
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.readBytes
@@ -55,7 +57,7 @@ private data class PhotoSlot(val visibility: ProfileVisibility, val circleId: St
 
 private const val TAG = "ProfileAvatarEditViewModel"
 
-/** Flip once odin-core#1928 (SetPhotoAttributeRequest.circleIds) ships; until then a circle photo would be stored visible to every connection. */
+// Until the server takes circleIds on the photo request, a circle photo would be stored visible to every connection.
 const val SERVER_STORES_CIRCLE_PHOTOS = false
 
 /**
@@ -148,11 +150,11 @@ class ProfileAvatarEditViewModel(
                         c.id to PhotoTierUiState(
                             ProfileVisibility.CONNECTED,
                             circleId = c.id,
-                            existing = existing.firstOrNull { a -> a.visibility == ProfileVisibility.CONNECTED && a.isPhotoScopedTo(c.id) },
+                            existing = existing.ownPhotoFor(CardAudience.Circle(c.id, c.name)),
                         )
                     },
                     anonymous = it.anonymous.copy(
-                        existing = existing.firstOrNull { a -> a.visibility == ProfileVisibility.ANONYMOUS },
+                        existing = existing.ownPhotoFor(CardAudience.Public),
                     ),
                     onlyMe = it.onlyMe.copy(
                         existing = existing.firstOrNull { a -> a.visibility == ProfileVisibility.OWNER },
@@ -168,6 +170,7 @@ class ProfileAvatarEditViewModel(
             is ProfileAvatarEditAction.PhotoPicked -> onPhotoPicked(PhotoSlot(action.visibility, action.circleId), action.file, action.saveOnCrop)
             is ProfileAvatarEditAction.SaveClicked -> save(PhotoSlot(action.visibility, action.circleId))
             is ProfileAvatarEditAction.RemoveClicked -> stageRemoval(PhotoSlot(action.visibility, action.circleId))
+            is ProfileAvatarEditAction.RemoveNow -> PhotoSlot(action.visibility, action.circleId).let { stageRemoval(it); save(it) }
             ProfileAvatarEditAction.BackClicked -> _events.tryEmit(ProfileAvatarEditEvent.Back)
         }
     }
@@ -383,4 +386,4 @@ class ProfileAvatarEditViewModel(
 
 /** A Connected photo no card slot claims: the one an earlier version saved for every connection, or scoped to several circles. */
 private fun List<ProfileAttribute>.legacyConnectedPhoto(circles: List<CardCircle>): ProfileAttribute? =
-    firstOrNull { a -> a.visibility == ProfileVisibility.CONNECTED && circles.none { c -> a.isPhotoScopedTo(c.id) } }
+    firstOrNull { a -> a.visibility == ProfileVisibility.CONNECTED && circles.none { c -> listOf(a).ownPhotoFor(CardAudience.Circle(c.id, c.name)) != null } }

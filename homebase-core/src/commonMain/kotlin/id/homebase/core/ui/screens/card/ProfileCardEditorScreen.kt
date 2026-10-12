@@ -132,7 +132,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.SnackbarResult
 import id.homebase.api.client.profile.ProfileVisibility
-import id.homebase.api.client.profile.isPhotoScopedTo
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditAction
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditEvent
@@ -286,7 +285,7 @@ fun ProfileCardEditorScreen(
                     )
                     if (result == SnackbarResult.ActionPerformed) viewModel.onImportUndone()
                 }
-                is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed, ProfileCardEvent.ResetFailed -> Unit
+                is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed, ProfileCardEvent.ResetFailed, ProfileCardEvent.TemplateSaved -> Unit
             }
         }
     }
@@ -323,7 +322,7 @@ fun ProfileCardEditorScreen(
     val photoSlot = if (circle == null) avatarState.anonymous else avatarState.circleSlot(circle.id)
     val photoUi = CardPhotoUi(
         photo = cardPhoto,
-        own = cardPhoto != null && if (circle == null) cardPhoto.visibility == ProfileVisibility.ANONYMOUS else cardPhoto.isPhotoScopedTo(circle.id) && cardPhoto.visibility == ProfileVisibility.CONNECTED,
+        own = cardPhoto != null && cardPhoto.id == avatarState.photos.ownPhotoFor(card)?.id,
         canChange = circle == null || avatarState.circlePhotosSupported,
         busy = avatarState.isLoading || photoSlot.isUploading || photoSlot.isDeleting || photoSlot.pendingCroppedAvatar != null,
     )
@@ -350,8 +349,7 @@ fun ProfileCardEditorScreen(
             },
             onRemovePhoto = {
                 val visibility = if (circle == null) ProfileVisibility.ANONYMOUS else ProfileVisibility.CONNECTED
-                avatarViewModel.onAction(ProfileAvatarEditAction.RemoveClicked(visibility, circle?.id))
-                avatarViewModel.onAction(ProfileAvatarEditAction.SaveClicked(visibility, circle?.id))
+                avatarViewModel.onAction(ProfileAvatarEditAction.RemoveNow(visibility, circle?.id))
             },
             onImport = viewModel::onImportRequested,
             snackbarHostState = snackbarHostState,

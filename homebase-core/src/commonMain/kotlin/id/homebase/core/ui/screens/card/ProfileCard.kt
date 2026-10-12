@@ -4,6 +4,7 @@ import id.homebase.api.client.drives.isVisibleToCircle
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.client.profile.isPhotoScopedTo
 import id.homebase.api.util.compareStringUuId
 import id.homebase.core.ui.screens.profile.AclFilter
 import id.homebase.core.ui.screens.profile.aclFilter
@@ -23,6 +24,8 @@ private const val OTHER_CIRCLE_PRIORITY = 40
 
 private fun CardCircle.fixedPriority(): Int? =
     FIXED_CIRCLE_PRIORITIES.firstOrNull { compareStringUuId(it.first, id) }?.second
+
+internal fun CardCircle.isFixedCard(): Boolean = fixedPriority() != null
 
 /** Family, Friends and Work keep fixed slots by circle id, so a rename can't move them; any other circle follows in name order. */
 internal fun fixedCirclePriorities(circles: List<CardCircle>): Map<String, Int> {
@@ -52,6 +55,13 @@ internal fun CardAudience.aclFilter(): AclFilter = when (this) {
 }
 
 internal fun List<ProfileAttribute>.photoFor(card: CardAudience): ProfileAttribute? = visiblePhoto(card.aclFilter())
+
+internal fun List<ProfileAttribute>.ownPhotoFor(card: CardAudience): ProfileAttribute? = firstOrNull {
+    it.type == ProfileAttributeTypes.PHOTO && when (card) {
+        CardAudience.Public -> it.visibility == ProfileVisibility.ANONYMOUS
+        is CardAudience.Circle -> it.visibility == ProfileVisibility.CONNECTED && it.isPhotoScopedTo(card.id)
+    }
+}
 
 /** [design] stays a raw string so a design this build doesn't know survives a read-modify-write; [extra] keeps unknown `data` keys for the same reason. */
 data class ProfileCard(

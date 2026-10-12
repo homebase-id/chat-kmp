@@ -141,6 +141,7 @@ import id.homebase.resources.profile_edit_retry
 import id.homebase.resources.close
 import id.homebase.resources.cancel
 import id.homebase.resources.profile_card_reset_failed
+import id.homebase.resources.profile_card_template_saved
 import id.homebase.resources.profile_card_circle_unsupported
 import id.homebase.resources.file_saved_to
 import id.homebase.resources.profile_card_audience_circle
@@ -150,6 +151,7 @@ import id.homebase.resources.profile_card_reset_card
 import id.homebase.resources.profile_card_reset_title
 import id.homebase.resources.profile_card_reset_message_public
 import id.homebase.resources.profile_card_reset_message_circle
+import id.homebase.resources.profile_card_reset_message_template
 import id.homebase.resources.profile_card_reset_confirm
 import id.homebase.resources.profile_card_design_board
 import id.homebase.resources.profile_card_design_collage
@@ -290,6 +292,7 @@ private fun ProfileCardViewer(
     val errCard = stringResource(MR.string.profile_card_error)
     val errShare = stringResource(MR.string.profile_card_share_failed)
     val errReset = stringResource(MR.string.profile_card_reset_failed)
+    val templateSaved = stringResource(MR.string.profile_card_template_saved)
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
 
     LaunchedEffect(viewModel) {
@@ -322,6 +325,7 @@ private fun ProfileCardViewer(
                 ProfileCardEvent.ShareFailed -> launch { snackbarHostState.showSnackbar(errShare) }
                 ProfileCardEvent.ResetFailed -> launch { snackbarHostState.showSnackbar(errReset) }
                 ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
+                ProfileCardEvent.TemplateSaved -> launch { snackbarHostState.showSnackbar(templateSaved) }
                 ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed, ProfileCardEvent.ContentSaveFailed, is ProfileCardEvent.ContentImported -> Unit
             }
         }
@@ -816,7 +820,9 @@ internal fun AudienceChip(
 internal fun ResetCardDialog(audience: CardAudience, onReset: () -> Unit, onDismiss: () -> Unit) {
     val message = when (audience) {
         CardAudience.Public -> stringResource(MR.string.profile_card_reset_message_public)
-        is CardAudience.Circle -> stringResource(MR.string.profile_card_reset_message_circle, audienceLabel(audience))
+        is CardAudience.Circle ->
+            if (cardTemplateFor(audience) != null) stringResource(MR.string.profile_card_reset_message_template, audienceLabel(audience))
+            else stringResource(MR.string.profile_card_reset_message_circle, audienceLabel(audience))
     }
     AlertDialog(
         onDismissRequest = onDismiss,

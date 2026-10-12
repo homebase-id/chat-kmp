@@ -1,6 +1,9 @@
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +71,7 @@ import kotlin.uuid.Uuid
 class ProfileCardEditorShotsTest {
 
     private val outDir: File? = System.getenv("CARD_SHOTS_DIR")?.let(::File)?.also { it.mkdirs() }
+    private val realPreviewDir: File? = System.getenv("CARD_REAL_PREVIEW_DIR")?.let(::File)
 
     private data class Shot(
         val name: String,
@@ -85,7 +89,7 @@ class ProfileCardEditorShotsTest {
         val act: ComposeUiTest.() -> Unit = {},
     )
 
-    private enum class Preview { Ready, Loading, LoadFailed, CardFailed }
+    private enum class Preview { Ready, Loading, LoadFailed, CardFailed, Real }
 
     private fun card(audience: CardAudience, design: String = CardDesign.BOARD) =
         ProfileCard(id = Uuid.random(), versionTag = Uuid.random(), audience = audience, design = design)
@@ -293,6 +297,13 @@ class ProfileCardEditorShotsTest {
     }
 
     private val contentShots = listOf(
+        Shot(
+            "k14-editor-real-preview-work",
+            contentBase.copy(cards = listOf(public, card(workCard, CardDesign.LINKS)), selectedAudience = workCard),
+            widthDp = REDMI_W,
+            heightDp = REDMI_H,
+            preview = Preview.Real,
+        ),
         Shot("k9-content-public", contentBase, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
         Shot("k9-content-friends", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
         Shot("k9-content-friends-small", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = 360, heightDp = 640, act = contentTool),
@@ -501,6 +512,7 @@ class ProfileCardEditorShotsTest {
                         ) { layoutWidth ->
                             when (shot.preview) {
                                 Preview.Ready -> StandInCard(shot.state.design, shot.state.overrides.palette, Modifier.fillMaxSize().laidOutAt(layoutWidth))
+                                Preview.Real -> RealCard(dark, shot.state, Modifier.fillMaxSize().laidOutAt(layoutWidth))
                                 else -> CardSurface(
                                     uiState = shot.state,
                                     host = null,
@@ -520,6 +532,18 @@ class ProfileCardEditorShotsTest {
         shot.act(this)
         mainClock.advanceTimeBy(SETTLE_MS)
         save(shot.name, dark)
+    }
+
+    // A web render of the same design from odin-js (card-shots), so the editor is judged against the real page, not a flat stand-in.
+    @Composable
+    private fun RealCard(dark: Boolean, state: ProfileCardUiState, modifier: Modifier) {
+        val file = realPreviewDir?.resolve("links-390-${if (dark) "dark" else "light"}-circle-3.png")?.takeIf { it.exists() }
+        val bitmap = remember(file) { file?.let { ImageIO.read(it).toComposeImageBitmap() } }
+        if (bitmap == null) {
+            StandInCard(state.design, state.overrides.palette, modifier)
+        } else {
+            Image(bitmap, contentDescription = null, modifier = modifier, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter)
+        }
     }
 
     // Real-size type laid out at the viewer's width, so the shot shows the preview's scale-down, not a reflow.

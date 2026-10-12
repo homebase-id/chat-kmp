@@ -68,6 +68,8 @@ sealed interface ProfileAvatarEditAction {
     data class SaveClicked(val visibility: ProfileVisibility, val circleId: String? = null) : ProfileAvatarEditAction
     /** Stages [PhotoTierUiState.existing] for removal; does not call the server. */
     data class RemoveClicked(val visibility: ProfileVisibility, val circleId: String? = null) : ProfileAvatarEditAction
+    /** Stages the removal and commits it in one step, for callers with no Save button. */
+    data class RemoveNow(val visibility: ProfileVisibility, val circleId: String? = null) : ProfileAvatarEditAction
     data object BackClicked : ProfileAvatarEditAction
 }
 

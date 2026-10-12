@@ -162,6 +162,7 @@ import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.screens.card.CardAudience
 import id.homebase.core.ui.screens.card.CardCircle
 import id.homebase.core.ui.screens.card.CookieBadge
+import id.homebase.core.ui.screens.card.isFixedCard
 import id.homebase.core.ui.screens.card.WithTooltip
 import id.homebase.core.ui.screens.card.photoFor
 import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
@@ -523,7 +524,7 @@ private fun ProfileForm(
     var openNewLink by remember { mutableStateOf(false) }
     val motion = MaterialTheme.motionScheme
 
-    val cards = remember(uiState.circles) { listOf<CardCircle?>(null) + uiState.circles }
+    val cards = remember(uiState.circles) { listOf<CardCircle?>(null) + uiState.circles.filter { it.isFixedCard() } }
 
     val present = ATTRIBUTE_SPECS.filter { displayValueFor(it.type, uiState.values) != null }
     val missing = ATTRIBUTE_SPECS - present.toSet()
@@ -801,8 +802,9 @@ private fun PhotoBlock(
             tier = photoState,
             onPick = onPickPhoto,
             onRemove = {
-                onAvatarAction(ProfileAvatarEditAction.RemoveClicked(tier, circleId))
-                if (circleId != null) onAvatarAction(ProfileAvatarEditAction.SaveClicked(tier, circleId))
+                onAvatarAction(
+                    if (circleId != null) ProfileAvatarEditAction.RemoveNow(tier, circleId) else ProfileAvatarEditAction.RemoveClicked(tier),
+                )
             },
             onSaveClicked = {
                 onAvatarAction(ProfileAvatarEditAction.SaveClicked(tier, circleId))

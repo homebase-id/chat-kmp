@@ -146,7 +146,7 @@ fun CardOverrides.prunedFor(design: String): CardOverrides {
     )
 }
 
-/** What a fixed circle card renders until first saved, and what its reset returns to. Public has none: it follows the site default, as the web does. */
+/** What a fixed card renders until first saved, and what its reset returns to. */
 internal data class CardTemplate(val design: String, val overrides: CardOverrides)
 
 private fun template(design: String, scheme: String) = CardTemplate(
@@ -160,5 +160,11 @@ private val FIXED_CIRCLE_TEMPLATES = listOf(
     WORK_CIRCLE_ID to template(CardDesign.LINKS, "cloud"),
 )
 
-internal fun cardTemplateFor(audience: CardAudience.Circle): CardTemplate? =
-    FIXED_CIRCLE_TEMPLATES.firstOrNull { compareStringUuId(it.first, audience.id) }?.second
+internal val PUBLIC_CARD_TEMPLATE = template(CardDesign.BOARD, "forest")
+
+internal fun cardTemplateFor(audience: CardAudience): CardTemplate? = when (audience) {
+    CardAudience.Public -> PUBLIC_CARD_TEMPLATE
+    is CardAudience.Circle -> FIXED_CIRCLE_TEMPLATES.firstOrNull { compareStringUuId(it.first, audience.id) }?.second
+}
+
+internal fun ProfileCard.withTemplate(template: CardTemplate): ProfileCard = copy(design = template.design, overrides = template.overrides)

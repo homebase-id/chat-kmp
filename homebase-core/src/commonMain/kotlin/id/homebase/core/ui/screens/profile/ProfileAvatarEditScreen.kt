@@ -326,8 +326,7 @@ internal fun ConnectionsPhotoBlock(tier: PhotoTierUiState, onAction: (ProfileAva
             TextButton(
                 enabled = !tier.isDeleting,
                 onClick = {
-                    onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.CONNECTED))
-                    onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED))
+                    onAction(ProfileAvatarEditAction.RemoveNow(ProfileVisibility.CONNECTED))
                 },
             ) {
                 Text(stringResource(MR.string.profile_avatar_edit_remove))

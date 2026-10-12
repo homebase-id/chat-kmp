@@ -91,7 +91,7 @@ internal suspend fun ProfileRepository.saveWithAudience(
         )
 }
 
-/** Puts [previous]'s exact ACL (spelling and order of its circles included) back on [current], the same attribute after later writes. */
+// Keeps previous's circle spelling and order, so an undo is byte-identical.
 internal suspend fun ProfileRepository.restoreAcl(current: ProfileAttribute, previous: ProfileAttribute): ProfileAttribute {
     val response = save(
         type = current.type,

@@ -201,9 +201,9 @@ class CardIntroTest {
 
     @Test
     fun anEmptyCardSetShowsFourDifferentDesignsInTheIntro() {
-        fun template(audience: CardAudience.Circle, priority: Int) =
+        fun template(audience: CardAudience, priority: Int) =
             cardTemplateFor(audience)!!.let { ProfileCard(Uuid.NIL, Uuid.NIL, audience, it.design, it.overrides, priority) }
-        val state = ProfileUiStateForTemplates(listOf(card(CardAudience.Public), template(family, 10), template(friends, 20), template(work, 30)))
+        val state = ProfileUiStateForTemplates(listOf(template(CardAudience.Public, PUBLIC_CARD_PRIORITY), template(family, 10), template(friends, 20), template(work, 30)))
         assertEquals(4, state.cards.map { it.design }.toSet().size)
         assertEquals(setOf(CardDesign.BOARD, CardDesign.POSTER, CardDesign.COLLAGE, CardDesign.LINKS), state.cards.map { it.design }.toSet())
         runDesktopComposeUiTest(width = 824, height = 1784) {
