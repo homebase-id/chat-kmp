@@ -54,6 +54,8 @@ data class CallUiState(
 
     val pipEligible: Boolean get() = isVideoCall && (phase == CallPhase.Connected || phase == CallPhase.Reconnecting)
 
+    val keepScreenAwake: Boolean get() = inProgress
+
     val pillVisible: Boolean get() = minimized && inProgress
 
     val endReason: CallEndReason? get() = (phase as? CallPhase.Ended)?.reason

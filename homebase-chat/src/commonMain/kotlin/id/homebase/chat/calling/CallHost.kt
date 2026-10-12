@@ -47,6 +47,7 @@ import id.homebase.resources.call_hang_up
 import id.homebase.resources.call_verification_body
 import id.homebase.resources.call_verification_ok
 import id.homebase.resources.call_verification_title
+import id.homebase.core.util.KeepScreenOn
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
@@ -75,6 +76,7 @@ fun CallOverlay(
 ) {
     val gate = rememberCallPermissionGate()
     val inPip = rememberInPictureInPicture()
+    KeepScreenOn(ui.keepScreenAwake)
     CallPictureInPictureEffect(
         eligible = ui.pipEligible,
         remote = ui.videos.remote,

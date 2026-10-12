@@ -27,4 +27,13 @@ class PictureInPictureTest {
         assertEquals(239 to 100, pipAspectRatio(4000 to 100))
         assertEquals(100 to 239, pipAspectRatio(100 to 4000))
     }
+
+    @Test
+    fun screenStaysAwakeOnlyWhileCallIsInProgress() {
+        assertTrue(CallUiState(phase = CallPhase.Connecting).keepScreenAwake)
+        assertTrue(CallUiState(phase = CallPhase.Connected).keepScreenAwake)
+        assertTrue(CallUiState(phase = CallPhase.Reconnecting).keepScreenAwake)
+        assertFalse(CallUiState(phase = CallPhase.Incoming).keepScreenAwake)
+        assertFalse(CallUiState().keepScreenAwake)
+    }
 }
