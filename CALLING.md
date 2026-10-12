@@ -16,7 +16,7 @@ Engines       WebRtcKmpCallEngine (Android, iOS)   webrtcKmpMain source set shar
               WebRtcJavaCallEngine (desktop JVM)   webrtc-java
 Platform glue AndroidCallCoordinator (FCM, Telecom, full-screen notification, foreground service)
               AppleCallCoordinator + CallKitManager.swift (PushKit, CallKit)
-              CallRingEffect (desktop: beep + tray message)
+              CallRingEffect (no-op; desktop rings from DesktopCallRingSink)
 ```
 
 `CallService` is a Koin `single`. It tracks the active credentials and builds a new `CallController` whenever the
@@ -154,14 +154,26 @@ exercises a real ICE restart. It also proves the natives load on the host.
   `CXEndCallAction`, which the app maps to a user hangup, so the caller cancelled its own call 1-3 s after the offer.
   A real device keeps the call. Call controller decisions are logged under the tags `CallController` and
   `CallStateMachine`; every `hangup()` and `decline()` logs its caller's stack.
-- **iOS**: `CallKitManager.swift` registers PushKit, reports every VoIP ring to CallKit immediately, forwards the
-  payload to `CallPushRouter`, and mirrors outgoing/connected/ended state. The VoIP token is sent as
-  `voipDeviceToken` next to the FCM token (`NotificationService.onVoipToken`). The relay needs the Apple `.p8` key
-  before VoIP pushes arrive; until then rings arrive as time-sensitive alerts. While a call is registered with CallKit,
-  `RTCAudioSession.useManualAudio` is on and audio is enabled in the provider's `didActivate` (off in `didDeactivate`);
-  with no CallKit call it is off. `CXCallUpdate.hasVideo` is set from the offer via `reportVideo`. **Not verified on a device.**
-- **Desktop**: the app is the receiver (socket offers). `CallRingEffect` beeps and shows a tray message while
-  ringing. No background ring when the app is closed.
+- **iOS** (the `CallSystemUi` seam: `CallKitBridge`/`CallKitActions` in homebase-common, `CallKitManager.swift` is the iOS
+  actual, `CallKitActionsAdapter` and `CallKitMirror` in homebase-chat are the Kotlin side). `CallKitManager.swift`
+  registers PushKit, reports every VoIP push to CallKit before any other work, and forwards the payload to `CallPushRouter`.
+  Every bridge call is hopped onto the main queue, which owns the call-UUID maps and `RTCAudioSession.useManualAudio`.
+  `CallKitRingRouter` ends the CallKit call of any ring that does not leave the service ringing on that callId (replayed
+  or ended id, busy, from self), and Swift ends it when no handler is set or the push is not a call. `CallKitMirror`
+  mirrors outgoing/connected state, asks CallKit to answer (`requestAnswer`, a `CXAnswerCallAction`) when the user
+  accepts a call CallKit is still ringing from inside the app so `didActivate` fires, and ends a locally declined or
+  hung-up call through `requestEnd` (`CXEndCallAction`); remote ends use `reportCall(endedAt:)`. CallKit's answer, end and
+  mute buttons go through `CallKitActionsAdapter` to the controller (tested in commonTest with a fake bridge). The VoIP
+  token is sent as `voipDeviceToken` next to the FCM token (`NotificationService.onVoipToken`) and held in `VoipTokenRelay`
+  until Koin is up. The relay needs the Apple `.p8` key before VoIP pushes arrive; until then rings arrive as
+  time-sensitive alerts. While a call is registered with CallKit, `RTCAudioSession.useManualAudio` is on and audio is
+  enabled in the provider's `didActivate` (off in `didDeactivate`); with no CallKit call it is off.
+  `CXCallUpdate.hasVideo` is set from the offer via `reportVideo`. **Not verified on a device.**
+- **Desktop**: the app is the receiver (socket offers). `DesktopCallRingSink` (driven by `CallRingCoordinator` from
+  `CallService.state`, started in `startDesktopCallCoordinator`, so it works with the window minimised) posts the
+  incoming-call notification through `RichNotificationDisplayer`, raises the window with
+  `DesktopAppFocusManager.requestFocus("incoming-call")`, and beeps every 2 s until the call stops ringing; the in-app
+  incoming screen is `CallHost`. No background ring when the app is closed.
 
 ## Known limits
 

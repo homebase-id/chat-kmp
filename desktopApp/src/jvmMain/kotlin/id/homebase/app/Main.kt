@@ -197,6 +197,8 @@ fun main() {
     val viewModel = koin.get<DesktopViewModel>()
     StartupLogger.checkpoint("DesktopViewModel resolved")
 
+    id.homebase.core.calling.startDesktopCallCoordinator()
+
     application {
         remember { StartupLogger.checkpoint("Compose application{} entered") }
         val uiState by viewModel.uiState.collectAsState()

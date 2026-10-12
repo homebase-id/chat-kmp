@@ -34,26 +34,6 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier) {
 }
 
 @Composable
-actual fun CallRingEffect(ringing: Boolean, callerName: String) {
-    androidx.compose.runtime.LaunchedEffect(ringing, callerName) {
-        if (!ringing) return@LaunchedEffect
-        val tray = runCatching { if (java.awt.SystemTray.isSupported()) java.awt.SystemTray.getSystemTray() else null }.getOrNull()
-        val icon = tray?.let {
-            java.awt.TrayIcon(java.awt.image.BufferedImage(16, 16, java.awt.image.BufferedImage.TYPE_INT_ARGB), "Homebase").also { icon ->
-                icon.isImageAutoSize = true
-                runCatching { it.add(icon) }
-            }
-        }
-        try {
-            icon?.displayMessage(callerName, "Incoming call", java.awt.TrayIcon.MessageType.INFO)
-            while (true) {
-                java.awt.Toolkit.getDefaultToolkit().beep()
-                kotlinx.coroutines.delay(2_000)
-            }
-        } finally {
-            if (icon != null) runCatching { tray.remove(icon) }
-        }
-    }
-}
+actual fun CallRingEffect(ringing: Boolean, callerName: String) = Unit
 
 actual fun platformAudioRoutes(): List<AudioRoute> = emptyList()

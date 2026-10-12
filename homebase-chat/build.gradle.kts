@@ -153,6 +153,7 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
             implementation(libs.jetbrains.compose.ui.test)
             // Composing a real composer field pulls koinInject<UserPreferences>, which a test can
             // only satisfy by building one over a Settings.

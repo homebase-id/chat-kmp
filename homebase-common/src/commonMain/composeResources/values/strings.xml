@@ -2733,6 +2733,7 @@
     <!-- Calling -->
     <string name="call_button_voice">Voice call</string>
     <string name="call_button_video">Video call</string>
+    <string name="call_incoming_generic">Incoming call</string>
     <string name="call_incoming_voice">Incoming voice call</string>
     <string name="call_incoming_video">Incoming video call</string>
     <string name="call_status_calling">Calling…</string>

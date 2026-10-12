@@ -8,7 +8,9 @@ import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.calling.CallOutcome
 import kotlin.time.Clock
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -40,7 +42,7 @@ class CallService(
     private val scope: CoroutineScope,
     private val recordEvent: suspend (peer: String, event: CallEventDescriptor) -> Unit = { _, _ -> },
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
-) : CallSession, CallPushTarget {
+) : CallSession, CallPushTarget, CallRingPushTarget {
     val available: Boolean get() = engineFactory != null
 
     private val controller = MutableStateFlow<CallController?>(null)
@@ -61,7 +63,12 @@ class CallService(
                 for (push in pushes) {
                     val target = controller.filterNotNull().first()
                     when (push) {
-                        is Push.Ring -> target.onPushRing(push.callId, push.from)
+                        is Push.Ring -> {
+                            val processed = target.pushRing(push.callId, push.from)
+                            push.ack?.let { ack ->
+                                processed.invokeOnCompletion { error -> if (error == null) ack.complete(processed.getCompleted()) else ack.cancel() }
+                            }
+                        }
                         is Push.Hangup -> target.onPushHangup(push.callId)
                     }
                 }
@@ -76,7 +83,7 @@ class CallService(
     }
 
     private sealed interface Push {
-        data class Ring(val callId: String, val from: String) : Push
+        data class Ring(val callId: String, val from: String, val ack: CompletableDeferred<CallState>? = null) : Push
         data class Hangup(val callId: String) : Push
     }
 
@@ -111,6 +118,9 @@ class CallService(
     override fun setAudioRoute(route: AudioRoute) { controller.value?.setAudioRoute(route) }
     fun onPermissionDenied() = controller.value?.onPermissionDenied()
     override fun onPushRing(callId: String, from: String) { pushes.trySend(Push.Ring(callId, from)) }
+
+    override fun pushRing(callId: String, from: String): Deferred<CallState> =
+        CompletableDeferred<CallState>().also { pushes.trySend(Push.Ring(callId, from, it)) }
 
     override fun onPushHangup(callId: String) { pushes.trySend(Push.Hangup(callId)) }
 }

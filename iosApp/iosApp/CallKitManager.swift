@@ -18,6 +18,8 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
     // CallKit identifies a call by UUID; ours is the callId string.
     private var uuidForCall: [String: UUID] = [:]
     private var callForUuid: [UUID: String] = [:]
+    // Calls CallKit has answered (or been asked to): stops an in-app accept from looping back through CXAnswerCallAction.
+    private var answeredCalls: Set<String> = []
 
     private override init() {
         let config = CXProviderConfiguration()
@@ -60,7 +62,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
 
     func pushRegistry(_ registry: PKPushRegistry, didUpdate pushCredentials: PKPushCredentials, for type: PKPushType) {
         let token = pushCredentials.token.map { String(format: "%02x", $0) }.joined()
-        NotificationEntry.companion.fromKoin().onVoipToken(token: token)
+        VoipTokenRelay.shared.onToken(token: token)
     }
 
     func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType, completion: @escaping () -> Void) {
@@ -85,7 +87,15 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
             if error != nil { self.forget(callId) }
             completion()
         }
-        _ = CallPushRouter.shared.tryHandle(data: data)
+        let routed = CallPushRouter.shared.handler != nil && CallPushRouter.shared.tryHandle(data: data)
+        if !routed { endUnrouted(callId) }
+    }
+
+    // A VoIP push must be reported to CallKit, but one nothing will handle (not a call, or the handler is not set yet) must not keep ringing.
+    private func endUnrouted(_ callId: String) {
+        guard let id = uuidForCall[callId] else { return }
+        provider.reportCall(with: id, endedAt: Date(), reason: .failed)
+        forget(callId)
     }
 
     // MARK: CallKitBridge (Kotlin -> CallKit)
@@ -98,35 +108,74 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
         #endif
     }
 
+    // Kotlin calls these from background threads; every piece of state below is main-queue only.
+    private func onMain(_ work: @escaping () -> Void) {
+        DispatchQueue.main.async(execute: work)
+    }
+
     func reportOutgoing(callId: String, handle: String, video: Bool) {
-        let id = uuid(for: callId)
-        let action = CXStartCallAction(call: id, handle: CXHandle(type: .generic, value: handle))
-        action.isVideo = video
-        controller.request(CXTransaction(action: action)) { error in
-            NSLog("[Call] CallKit start request call=%@ error=%@", callId, String(describing: error))
+        onMain {
+            let id = self.uuid(for: callId)
+            let action = CXStartCallAction(call: id, handle: CXHandle(type: .generic, value: handle))
+            action.isVideo = video
+            self.controller.request(CXTransaction(action: action)) { error in
+                NSLog("[Call] CallKit start request call=%@ error=%@", callId, String(describing: error))
+            }
         }
     }
 
     func reportConnected(callId: String) {
-        guard let id = uuidForCall[callId] else { return }
-        provider.reportOutgoingCall(with: id, connectedAt: Date())
+        onMain {
+            guard let id = self.uuidForCall[callId] else { return }
+            self.provider.reportOutgoingCall(with: id, connectedAt: Date())
+        }
     }
 
     func reportVideo(callId: String, video: Bool) {
-        guard let id = uuidForCall[callId] else { return }
-        let update = CXCallUpdate()
-        update.hasVideo = video
-        provider.reportCall(with: id, updated: update)
+        onMain {
+            guard let id = self.uuidForCall[callId] else { return }
+            let update = CXCallUpdate()
+            update.hasVideo = video
+            self.provider.reportCall(with: id, updated: update)
+        }
     }
 
     func reportEnded(callId: String, remoteEnded: Bool) {
-        guard let id = uuidForCall[callId] else { return }
-        provider.reportCall(with: id, endedAt: Date(), reason: remoteEnded ? .remoteEnded : .failed)
+        onMain {
+            guard let id = self.uuidForCall[callId] else { return }
+            self.provider.reportCall(with: id, endedAt: Date(), reason: remoteEnded ? .remoteEnded : .failed)
+            self.forget(callId)
+        }
+    }
+
+    func requestAnswer(callId: String) {
+        onMain {
+            guard let id = self.uuidForCall[callId], !self.answeredCalls.contains(callId) else { return }
+            self.answeredCalls.insert(callId)
+            self.controller.request(CXTransaction(action: CXAnswerCallAction(call: id))) { error in
+                NSLog("[Call] CallKit answer request call=%@ error=%@", callId, String(describing: error))
+            }
+        }
+    }
+
+    func requestEnd(callId: String) {
+        onMain {
+            guard let id = self.uuidForCall[callId] else { return }
+            self.controller.request(CXTransaction(action: CXEndCallAction(call: id))) { error in
+                if error != nil { self.forgetEndedCall(callId, id) }
+            }
+        }
+    }
+
+    private func forgetEndedCall(_ callId: String, _ id: UUID) {
+        guard uuidForCall[callId] == id else { return }
+        provider.reportCall(with: id, endedAt: Date(), reason: .remoteEnded)
         forget(callId)
     }
 
     private func forget(_ callId: String) {
         if let id = uuidForCall.removeValue(forKey: callId) { callForUuid.removeValue(forKey: id) }
+        answeredCalls.remove(callId)
         syncManualAudio()
     }
 
@@ -136,6 +185,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
         NSLog("[Call] CallKit provider reset")
         uuidForCall.removeAll()
         callForUuid.removeAll()
+        answeredCalls.removeAll()
         syncManualAudio()
     }
 
@@ -147,7 +197,9 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
 
     func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
         if let callId = callForUuid[action.callUUID] {
-            CallKitBridgeHolder.shared.actions?.accept(callId: callId)
+            let askedByApp = answeredCalls.contains(callId)
+            answeredCalls.insert(callId)
+            if !askedByApp { CallKitBridgeHolder.shared.actions?.accept(callId: callId) }
         }
         action.fulfill()
     }

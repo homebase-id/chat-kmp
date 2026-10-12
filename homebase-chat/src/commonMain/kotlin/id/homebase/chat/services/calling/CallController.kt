@@ -4,7 +4,9 @@ import co.touchlab.kermit.Logger
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -38,7 +40,7 @@ class CallController(
 
     // Everything below the inbox is touched only from the inbox loop; other threads just post.
     private sealed interface Command {
-        class Event(val event: CallEvent) : Command
+        class Event(val event: CallEvent, val processed: CompletableDeferred<CallState>? = null) : Command
         class RepublishOffer(val callId: String) : Command
         data object Close : Command
     }
@@ -71,7 +73,11 @@ class CallController(
                 try {
                     for (command in inbox) {
                         when (command) {
-                            is Command.Event -> process(command.event)
+                            is Command.Event -> try {
+                                process(command.event)
+                            } finally {
+                                command.processed?.complete(_state.value)
+                            }
                             is Command.RepublishOffer -> republishOffer(command.callId)
                             Command.Close -> break
                         }
@@ -90,6 +96,10 @@ class CallController(
     private fun teardown() {
         collectors.forEach { it.cancel() }
         inbox.close()
+        while (true) {
+            val left = inbox.tryReceive().getOrNull() ?: break
+            (left as? Command.Event)?.processed?.cancel()
+        }
         cancelTimers()
         releaseEngine()
     }
@@ -115,6 +125,9 @@ class CallController(
     fun onPermissionDenied() = post(CallEvent.EngineError(FailReason.Permission))
 
     fun onPushRing(callId: String, from: String) = post(CallEvent.PushRing(callId, from))
+    fun pushRing(callId: String, from: String): Deferred<CallState> =
+        CompletableDeferred<CallState>().also { inbox.trySend(Command.Event(CallEvent.PushRing(callId, from), it)) }
+
     fun onPushHangup(callId: String) = post(CallEvent.PushHangup(callId))
 
     private fun post(event: CallEvent) {
