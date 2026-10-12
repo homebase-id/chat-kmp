@@ -10,7 +10,6 @@ package id.homebase.core.ui.screens.profile
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -90,13 +89,11 @@ import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material.icons.outlined.WorkOutline
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextDirection
+import id.homebase.resources.profile_card_photo_own_circle
 import id.homebase.resources.profile_edit_photo_public_caption
 import id.homebase.resources.profile_edit_photo_inherits_connections
 import id.homebase.resources.profile_edit_photo_inherits_none
@@ -136,12 +133,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -191,7 +188,6 @@ import id.homebase.resources.profile_edit_address2
 import id.homebase.resources.profile_edit_address_label
 import id.homebase.resources.profile_edit_bio
 import id.homebase.resources.profile_edit_birthday
-import id.homebase.resources.profile_edit_birthday_hint
 import id.homebase.resources.profile_edit_city
 import id.homebase.resources.profile_edit_conflict_detail
 import id.homebase.resources.profile_edit_conflict_remove
@@ -730,7 +726,7 @@ private fun CardPhotoBlock(
     if (slot.existing != null || slot.pendingCroppedAvatar != null) {
         PhotoBlock(
             audience = audience,
-            caption = circle.name,
+            caption = stringResource(MR.string.profile_card_photo_own_circle),
             tier = ProfileVisibility.CONNECTED,
             circleId = circle.id,
             circles = listOf(circle),

@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -379,9 +380,10 @@ class CardContentTest {
         }
 
     @Test
-    fun copyingFamilyToFriendsAlsoWidensFamilysOwnPhotoAndUndoRestoresIt() = runTest(dispatcher) {
+    fun copyingFromFamilyLeavesFamilysOwnPhotoScopedToFamilyAlone() = runTest(dispatcher) {
         val wire = CardWireHarness()
         val photo = wire.seedPhoto("connected", listOf(FAMILY_CIRCLE_ID))
+        wire.seed(ProfileAttributeTypes.PHONE, "connected", data(ProfileAttributeTypes.KEY_PHONE, phone), listOf(FAMILY_CIRCLE_ID))
         val rig = rig(wire)
         rig.open(friends)
         assertEquals(1, rig.vm.uiState.value.importSources.single { it.audience == family }.newItems)
@@ -389,18 +391,22 @@ class CardContentTest {
         rig.import(family, expectedPuts = 1)
 
         val put = wire.putBodies.single().jsonObject
-        assertEquals(ProfileAttributeTypes.PHOTO, put.str("type"))
-        assertEquals(photo.toString(), put.str("id"))
-        assertEquals("connected", put.str("visibility"))
-        assertEquals(setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID), rig.circleIds()!!.toSet())
+        assertEquals(ProfileAttributeTypes.PHONE, put.str("type"))
+        val attributes = rig.vm.uiState.value.attributes
+        assertEquals(photo, attributes.ownPhotoFor(family)?.id)
+        assertNull(attributes.ownPhotoFor(friends))
+        assertEquals(listOf(FAMILY_CIRCLE_ID), attributes.single { it.id == photo }.acl.circleIdList)
+    }
+
+    @Test
+    fun aCardWithOnlyAPhotoHasNothingToCopyFromIt() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        wire.seedPhoto("connected", listOf(FAMILY_CIRCLE_ID))
+        val rig = rig(wire)
+
+        rig.open(friends)
+
         assertTrue(rig.vm.uiState.value.importSources.none { it.audience == family })
-
-        rig.vm.onImportUndone()
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 2) delay(10) } }
-        rig.vm.await { !it.isContentBusy }
-
-        assertEquals(listOf(FAMILY_CIRCLE_ID), rig.circleIds())
-        assertEquals("connected", wire.putBodies.last().jsonObject.str("visibility"))
     }
 
     @Test
@@ -458,25 +464,80 @@ class CardContentTest {
     }
 
     @Test
+    fun aThirdPutFailingAfterTwoSucceededRollsBothEarlierAclsBackToTheOriginals() = runTest(dispatcher) {
+        val wire = CardWireHarness(putReply = { n -> if (n == 3) CardWireHarness.Reply.Problem(500, "{}") else CardWireHarness.Reply.Ok })
+        wire.seedFriendsAndFamilyContent()
+        val rig = rig(wire)
+        val before = wire.acls()
+        rig.open(work)
+
+        rig.import(friends, expectedPuts = 5)
+
+        assertEquals(5, wire.puts)
+        assertEquals(before, wire.acls())
+        assertEquals(1, rig.vm.uiState.value.contentFailures)
+    }
+
+    @Test
+    fun aRollbackThatFailsTooReportsTheFailureAndKeepsTheListAtWhatTheServerHolds() = runTest(dispatcher) {
+        val wire = CardWireHarness(putReply = { n -> if (n == 3 || n == 4) CardWireHarness.Reply.Problem(500, "{}") else CardWireHarness.Reply.Ok })
+        wire.seedFriendsAndFamilyContent()
+        val rig = rig(wire)
+        rig.open(work)
+        val events = mutableListOf<ProfileCardEvent>()
+        val collecting = backgroundScope.launch(Dispatchers.Unconfined) { rig.vm.events.collect { events += it } }
+
+        rig.import(friends, expectedPuts = 5)
+
+        assertEquals(1, rig.vm.uiState.value.contentFailures)
+        assertTrue(ProfileCardEvent.ContentSaveFailed in events)
+        val widened = wire.acls()["${ProfileAttributeTypes.PHONE}:"]
+        assertEquals(widened?.second?.contains(WORK_CIRCLE_ID), rig.item(ProfileAttributeTypes.PHONE).shown)
+        collecting.cancel()
+    }
+
+    @Test
+    fun anUndoWhoseRestoreFailsReportsItAndCanBeRetried() = runTest(dispatcher) {
+        val wire = CardWireHarness(putReply = { n -> if (n == 5) CardWireHarness.Reply.Problem(500, "{}") else CardWireHarness.Reply.Ok })
+        wire.seedFriendsAndFamilyContent()
+        val rig = rig(wire)
+        val before = wire.acls()
+        rig.open(work)
+        rig.import(friends, expectedPuts = 3)
+
+        rig.vm.onImportUndone()
+        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 6) delay(10) } }
+        rig.vm.await { !it.isContentBusy }
+
+        assertEquals(1, rig.vm.uiState.value.contentFailures)
+        assertTrue(before != wire.acls())
+        rig.vm.onImportUndone()
+        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 7) delay(10) } }
+        rig.vm.await { !it.isContentBusy }
+        assertEquals(before, wire.acls())
+    }
+
+    @Test
     fun removingAFriendsItemDropsItFromFriendsAndLeavesThePublicCardUnchanged() = runTest(dispatcher) {
         val wire = CardWireHarness()
         wire.seed(ProfileAttributeTypes.LINK, "connected", data(ProfileAttributeTypes.KEY_LINK_TARGET, "https://shire.example/f"), listOf(FRIENDS_CIRCLE_ID))
         wire.seed(ProfileAttributeTypes.LINK, "anonymous", data(ProfileAttributeTypes.KEY_LINK_TARGET, "https://shire.example/p"))
         val rig = rig(wire, withCards = true)
-        rig.open(CardAudience.Public, stored = true)
+        rig.open(CardAudience.Public)
         val publicBefore = rig.host.rendered.last()
-        rig.open(friends, stored = true)
+        rig.open(friends)
+        assertEquals(0, wire.puts)
         assertEquals(setOf("https://shire.example/f", "https://shire.example/p"), rig.host.rendered.last().data.links.map { it.target }.toSet())
         val friendsLink = rig.vm.uiState.value.contentItems.single { it.text == "https://shire.example/f" }
 
         rig.write { rig.vm.onContentToggled(friendsLink.id, false) }
 
-        assertEquals(3, wire.puts)
+        assertEquals(2, wire.puts)
         val bodies = wire.putBodies.map { it.jsonObject }
-        assertEquals(ProfileAttributeTypes.PROFILE_CARD, bodies[1].str("type"))
-        assertEquals(listOf(FRIENDS_CIRCLE_ID), bodies[1]["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
-        assertEquals(ProfileAttributeTypes.LINK, bodies[2].str("type"))
-        assertEquals("owner", bodies[2].str("visibility"))
+        assertEquals(ProfileAttributeTypes.PROFILE_CARD, bodies[0].str("type"))
+        assertEquals(listOf(FRIENDS_CIRCLE_ID), bodies[0]["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(ProfileAttributeTypes.LINK, bodies[1].str("type"))
+        assertEquals("owner", bodies[1].str("visibility"))
         assertEquals(listOf("https://shire.example/p"), rig.host.rendered.last().data.links.map { it.target })
         rig.open(CardAudience.Public)
         assertEquals(publicBefore.data, rig.host.rendered.last().data)
@@ -503,13 +564,13 @@ class CardContentTest {
     }
 
     @Test
-    fun openingAnUnsavedCircleCardSavesItsTemplateSoTheWebServesTheSameCard() = runTest(dispatcher) {
+    fun theFirstEditOfAnUnsavedCircleCardSavesItsTemplateSoTheWebServesTheSameCard() = runTest(dispatcher) {
         val wire = CardWireHarness()
         wire.seed(ProfileAttributeTypes.PHONE, "owner", data(ProfileAttributeTypes.KEY_PHONE, phone))
         val rig = rig(wire, withCards = true)
-        rig.open(work, stored = true)
+        rig.open(work)
         assertEquals(CardDesign.LINKS, rig.vm.uiState.value.design)
-        assertEquals(1, wire.puts)
+        assertEquals(0, wire.puts)
 
         rig.write { rig.vm.onContentToggled(rig.item(ProfileAttributeTypes.PHONE).id, true) }
         withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 2) delay(10) } }

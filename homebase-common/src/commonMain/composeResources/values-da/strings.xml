@@ -1820,7 +1820,7 @@
     <string name="profile_card_photo_circle_pending">Et eget billede til dette kort kræver en opdatering af din Homebase-server, som endnu ikke er udgivet. Indtil da viser det det billede, det arver.</string>
     <string name="profile_card_import_action">Kopiér fra…</string>
     <string name="profile_card_import_title">Kopiér fra et andet kort</string>
-    <string name="profile_card_import_hint">Viser det, det andet kort viser, også på dette. Intet duplikeres, og du kan fortryde.</string>
+    <string name="profile_card_import_hint">Viser det, det andet kort viser, også på dette. Dets billede bliver på det kort. Intet duplikeres, og du kan fortryde.</string>
     <string name="profile_card_import_count_one">1 nyt element</string>
     <string name="profile_card_import_count_other">%1$d nye elementer</string>
     <string name="profile_card_import_done">Kopieret fra %1$s</string>
@@ -1829,7 +1829,6 @@
     <string name="profile_card_import_public_message">Disse elementer bliver synlige for alle, der ser dit offentlige kort.</string>
     <string name="profile_card_import_public_confirm">Vis for alle</string>
     <string name="profile_card_editor_title">Kortdesign</string>
-    <string name="profile_card_edit_profile">Rediger profiloplysninger</string>
     <string name="profile_card_design_save_failed">Kunne ikke gemme kortdesignet.</string>
     <string name="profile_card_nfc">Del kort ved at holde telefonerne sammen</string>
     <string name="profile_card_nfc_title">Hold din telefon tæt på en anden telefon</string>

@@ -265,37 +265,14 @@ class ProfileCardEditorShotsTest {
         circles = contentCircles,
         cards = listOf(public, card(friendsCard)),
     )
-    private val contentTool = tool("What this card shows")
     private val familyCard = CardAudience.Circle(FAMILY_CIRCLE_ID, "Family")
     private val workCard = CardAudience.Circle(WORK_CIRCLE_ID, "Work")
-    private val longContentCircle = CardCircle("c-long", "Climbing partners from the Tuesday bouldering gym night")
-    private val longContentCard = CardAudience.Circle(longContentCircle.id, longContentCircle.name)
     private val fullAttributes = listOf(
         attribute(ProfileAttributeTypes.EMAIL, ProfileAttributeTypes.KEY_EMAIL, "sam@shire.example", ProfileVisibility.ANONYMOUS),
         attribute(ProfileAttributeTypes.TWITTER, ProfileAttributeTypes.KEY_TWITTER, "samwise", ProfileVisibility.ANONYMOUS),
         attribute(ProfileAttributeTypes.LINKEDIN, ProfileAttributeTypes.KEY_LINKEDIN, "samwise-gamgee", ProfileVisibility.CONNECTED, listOf(WORK_CIRCLE_ID)),
         attribute(ProfileAttributeTypes.FACEBOOK, ProfileAttributeTypes.KEY_FACEBOOK, "sam.gamgee", ProfileVisibility.CONNECTED),
     )
-    private val firstSwitch: ComposeUiTest.() -> Unit = {
-        onAllNodesWithContentDescription("on this card", substring = true).onFirst().performSemanticsAction(SemanticsActions.OnClick)
-        mainClock.advanceTimeBy(SETTLE_MS)
-    }
-    private val openLockedRow: ComposeUiTest.() -> Unit = {
-        onAllNodesWithContentDescription("Change who can see", substring = true).onFirst().performSemanticsAction(SemanticsActions.OnClick)
-        mainClock.advanceTimeBy(SETTLE_MS)
-    }
-    private val pickCircles: ComposeUiTest.() -> Unit = {
-        onAllNodesWithText("Circles").onFirst().performSemanticsAction(SemanticsActions.OnClick)
-        mainClock.advanceTimeBy(SETTLE_MS)
-    }
-    private val scrollToEnd: ComposeUiTest.() -> Unit = {
-        mainClock.autoAdvance = true
-        onAllNodes(hasScrollAction() and hasAnyDescendant(hasContentDescription("Add to this card: Bio"))).onLast()
-            .performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 100_000f) }
-        mainClock.autoAdvance = false
-        mainClock.advanceTimeBy(SETTLE_MS)
-    }
-
     private val contentShots = listOf(
         Shot(
             "k14-editor-real-preview-work",
@@ -304,27 +281,6 @@ class ProfileCardEditorShotsTest {
             heightDp = REDMI_H,
             preview = Preview.Real,
         ),
-        Shot("k9-content-public", contentBase, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-friends", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-friends-small", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = 360, heightDp = 640, act = contentTool),
-        Shot("k9-content-font-scale", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, fontScale = 1.6f, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-rtl", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, rtl = true, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-empty", base, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-wide", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = 900, heightDp = 820, act = contentTool),
-        Shot("k9-content-family", contentBase.copy(cards = listOf(public, card(familyCard)), selectedAudience = familyCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-busy", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); firstSwitch() }),
-        Shot("k9-content-long-circle", contentBase.copy(circles = contentCircles + longContentCircle, cards = listOf(public, card(longContentCard)), selectedAudience = longContentCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-everything", contentBase.copy(attributes = contentAttributes + fullAttributes), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); scrollToEnd() }),
-        Shot("k9-content-everything-work", contentBase.copy(attributes = contentAttributes + fullAttributes, cards = listOf(public, card(workCard)), selectedAudience = workCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); scrollToEnd() }),
-        Shot("k9-content-wide-everything", contentBase.copy(attributes = contentAttributes + fullAttributes, selectedAudience = friendsCard), EditorStep.Customise, widthDp = 900, heightDp = 820, act = contentTool),
-        Shot("k9-content-small-font-scale", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, fontScale = 1.3f, widthDp = 360, heightDp = 640, act = contentTool),
-        Shot("k9-content-saved", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, completesToggle = true, act = { contentTool(); firstSwitch() }),
-        Shot("k9-content-everything-top", contentBase.copy(attributes = contentAttributes + fullAttributes), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-public-hint", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); openLockedRow() }),
-        Shot("k9-content-public-hint-circles", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); openLockedRow(); pickCircles() }),
-        Shot("k9-content-error", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, failsToggle = true, act = { contentTool(); firstSwitch() }),
-        Shot("k9-content-error-rtl", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, rtl = true, widthDp = REDMI_W, heightDp = REDMI_H, failsToggle = true, act = { contentTool(); firstSwitch() }),
-        Shot("k9-content-wide-public", contentBase.copy(attributes = contentAttributes + fullAttributes), EditorStep.Customise, widthDp = 1200, heightDp = 800, act = contentTool),
     )
 
     private val editorBase = contentBase.copy(
@@ -338,7 +294,19 @@ class ProfileCardEditorShotsTest {
     private fun editor(name: String, state: ProfileCardUiState, w: Int = REDMI_W, h: Int = REDMI_H, fontScale: Float = 1f, rtl: Boolean = false, photo: CardPhotoUi = CardPhotoUi(null, false, true, false), act: ComposeUiTest.() -> Unit = {}) =
         Shot(name, state, mode = EditorMode.Content, widthDp = w, heightDp = h, fontScale = fontScale, rtl = rtl, photo = photo, act = act)
 
-    private val contentEditorShots = listOf(
+    private fun templateCard(audience: CardAudience) = cardTemplateFor(audience)!!.let {
+        ProfileCard(Uuid.NIL, Uuid.NIL, audience, it.design, it.overrides)
+    }
+    private val templateShots = listOf(
+        "k15-editor-template-public" to CardAudience.Public,
+        "k15-editor-template-family" to familyCard,
+        "k15-editor-template-friends" to friendsCard,
+        "k15-editor-template-work" to workCard,
+    ).map { (name, audience) ->
+        editor(name, editorBase.copy(cards = listOf(templateCard(audience)), selectedAudience = audience))
+    }
+
+    private val contentEditorShots = templateShots + listOf(
         editor("k12-editor-friends", editorBase),
         editor("k12-editor-public", editorPublic),
         editor("k12-editor-work", editorWork),
@@ -365,7 +333,7 @@ class ProfileCardEditorShotsTest {
     }
 
     @Test
-    fun contentToolRendersOnThePublicAndACircleCard() {
+    fun theEditorPreviewRendersTheWorkCardsRealTemplate() {
         for (dark in listOf(false, true)) {
             for (shot in contentShots) render(shot, dark)
         }

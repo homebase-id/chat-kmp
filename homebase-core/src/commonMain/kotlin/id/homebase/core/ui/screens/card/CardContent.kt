@@ -105,18 +105,13 @@ private fun contentText(attribute: ProfileAttribute): String? {
 
 internal class ImportStep(val attribute: ProfileAttribute, val previous: ProfileAudience, val next: ProfileAudience)
 
-// [from]'s own photo comes along only when [into] has none.
+// A card's photo is never copied: widening it onto another card would stop it being scoped to one circle.
 internal fun importPlan(attributes: List<ProfileAttribute>, circles: List<CardCircle>, from: CardAudience, into: CardAudience): List<ImportStep> {
     val byId = attributes.associateBy { it.id }
-    val items = cardContentItems(attributes, circles, from)
+    return cardContentItems(attributes, circles, from)
         .filter { it.shown && !into.shows(it.audience) }
         .mapNotNull { item ->
             val attribute = byId[item.id] ?: return@mapNotNull null
             item.audience.shownOn(into, true, null)?.let { ImportStep(attribute, item.audience, it) }
         }
-    val photo = attributes.ownPhotoFor(from)?.takeIf { attributes.ownPhotoFor(into) == null }?.let { source ->
-        val audience = source.audience(circles)
-        audience.shownOn(into, true, null)?.let { ImportStep(source, audience, it) }
-    }
-    return items + listOfNotNull(photo)
 }

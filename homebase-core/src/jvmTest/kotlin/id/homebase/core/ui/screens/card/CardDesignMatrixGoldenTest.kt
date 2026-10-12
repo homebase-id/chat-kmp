@@ -138,6 +138,18 @@ class CardDesignMatrixGoldenTest {
             put("portraitShapes", buildJsonArray { CardDesignSpecs.PORTRAIT_SHAPES.forEach { add(JsonPrimitive(it)) } })
             put("socialsStyles", buildJsonArray { CardDesignSpecs.SOCIALS_STYLES.forEach { add(JsonPrimitive(it)) } })
             put("blockKinds", buildJsonArray { CardDesignSpecs.BLOCK_KINDS.forEach { add(JsonPrimitive(it)) } })
+            put("audienceTemplates", buildJsonObject {
+                fun template(audience: CardAudience) = cardTemplateFor(audience)!!.let {
+                    buildJsonObject {
+                        put("design", it.design)
+                        put("overrides", it.overrides.toJson())
+                    }
+                }
+                put("public", template(CardAudience.Public))
+                put("circles", buildJsonObject {
+                    listOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID).forEach { put(it, template(CardAudience.Circle(it, ""))) }
+                })
+            })
             put("schemeGrounds", buildJsonObject {
                 for (design in designs) CardDesignSpecs.of(design)?.let { s -> put(design, buildJsonArray { s.schemes.forEach { add(JsonPrimitive(it.ground)) } }) }
             })

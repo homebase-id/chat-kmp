@@ -91,6 +91,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableFloatStateOf
@@ -98,8 +100,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -141,7 +141,6 @@ import id.homebase.resources.profile_edit_retry
 import id.homebase.resources.close
 import id.homebase.resources.cancel
 import id.homebase.resources.profile_card_reset_failed
-import id.homebase.resources.profile_card_template_saved
 import id.homebase.resources.profile_card_circle_unsupported
 import id.homebase.resources.file_saved_to
 import id.homebase.resources.profile_card_audience_circle
@@ -292,7 +291,6 @@ private fun ProfileCardViewer(
     val errCard = stringResource(MR.string.profile_card_error)
     val errShare = stringResource(MR.string.profile_card_share_failed)
     val errReset = stringResource(MR.string.profile_card_reset_failed)
-    val templateSaved = stringResource(MR.string.profile_card_template_saved)
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
 
     LaunchedEffect(viewModel) {
@@ -325,7 +323,6 @@ private fun ProfileCardViewer(
                 ProfileCardEvent.ShareFailed -> launch { snackbarHostState.showSnackbar(errShare) }
                 ProfileCardEvent.ResetFailed -> launch { snackbarHostState.showSnackbar(errReset) }
                 ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
-                ProfileCardEvent.TemplateSaved -> launch { snackbarHostState.showSnackbar(templateSaved) }
                 ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed, ProfileCardEvent.ContentSaveFailed, is ProfileCardEvent.ContentImported -> Unit
             }
         }

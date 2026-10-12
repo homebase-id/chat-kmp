@@ -5,15 +5,10 @@ package id.homebase.core.ui.screens.card
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
 import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.resources.profile_card_content_save_failed
-import id.homebase.resources.profile_card_content_saved
-import id.homebase.resources.profile_card_more_actions
 import id.homebase.resources.profile_card_read_only
 import id.homebase.resources.profile_card_read_only_reason
 import id.homebase.resources.profile_card_read_only_title
@@ -23,11 +18,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.liveRegion
-import kotlinx.coroutines.delay
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -72,7 +63,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.ManageAccounts
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -87,6 +77,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -95,14 +86,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -126,7 +117,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material.icons.outlined.Public
@@ -198,11 +188,6 @@ private val CONTENT_HERO_MIN = 152.dp
 private const val LARGE_TEXT_HERO_GIVE = 0.06f
 private val TOP_BAR_HEIGHT = 64.dp
 private const val HERO_PULSE_SCALE = 0.97f
-private const val SAVED_NOTE_MS = 4_000L
-// Top bar, the row's padding and the panel's own header and edges, which the wide Content list fills the rest beside.
-private val WIDE_CONTENT_CHROME = 220.dp
-// The wide panel's top and bottom edges, step header and gap, around the Content list.
-private val WIDE_PANEL_CHROME = 24.dp * 2 + 48.dp + 12.dp
 private val WIDE_CHIP_GAP = 12.dp
 private const val DISABLED_TILE_ALPHA = 0.38f
 private const val UNSELECTED_TILE_SCALE = 0.92f
@@ -282,10 +267,11 @@ fun ProfileCardEditorScreen(
                         message = TranslationUtil.getString(MR.string.profile_card_import_done, (event.from as? CardAudience.Circle)?.label?.ifBlank { null } ?: publicLabel),
                         actionLabel = importUndo,
                         withDismissAction = true,
+                        duration = SnackbarDuration.Indefinite,
                     )
                     if (result == SnackbarResult.ActionPerformed) viewModel.onImportUndone()
                 }
-                is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed, ProfileCardEvent.ResetFailed, ProfileCardEvent.TemplateSaved -> Unit
+                is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed, ProfileCardEvent.ResetFailed -> Unit
             }
         }
     }
@@ -318,11 +304,11 @@ fun ProfileCardEditorScreen(
     }
     val card = uiState.selectedAudience
     val circle = card as? CardAudience.Circle
-    val cardPhoto = avatarState.photos.photoFor(card)
+    val cardPhoto = uiState.attributes.photoFor(card)
     val photoSlot = if (circle == null) avatarState.anonymous else avatarState.circleSlot(circle.id)
     val photoUi = CardPhotoUi(
         photo = cardPhoto,
-        own = cardPhoto != null && cardPhoto.id == avatarState.photos.ownPhotoFor(card)?.id,
+        own = cardPhoto != null && cardPhoto.id == uiState.attributes.ownPhotoFor(card)?.id,
         canChange = circle == null || avatarState.circlePhotosSupported,
         busy = avatarState.isLoading || photoSlot.isUploading || photoSlot.isDeleting || photoSlot.pendingCroppedAvatar != null,
     )
@@ -435,9 +421,8 @@ internal fun ProfileCardEditorContent(
             }
             // The viewer's sheet width: the preview lays the card out there and scales it down, so it wraps like the saved card.
             val cardWidth = minOf(maxWidth, WIDE_SHEET_MAX_WIDTH)
-            var contentToolOpen by remember { mutableStateOf(false) }
-            // The Content editor is the same long list as the Customise tool, so the card steps back the same way.
-            val contentOpen = contentToolOpen || mode == EditorMode.Content
+            // The Content editor is a long list, so the card steps back to a whole, smaller preview.
+            val contentOpen = mode == EditorMode.Content
             val textGrowth = (LocalDensity.current.fontScale - 1f).coerceIn(0f, 1f)
             val grow = (1f + textGrowth).coerceAtMost(LARGE_TEXT_SCALE)
             // The Content step is a list to read through, so it takes the room and the card steps back to a whole, smaller preview.
@@ -448,14 +433,6 @@ internal fun ProfileCardEditorContent(
             )
             val density = LocalDensity.current
             var wideCard by remember { mutableStateOf(IntSize.Zero) }
-            var wideChipHeight by remember { mutableIntStateOf(0) }
-            val contentBody = if (wide) {
-                // The panel ends where the card does, so both columns share a bottom line.
-                val column = with(density) { (wideChipHeight + wideCard.height).toDp() } + WIDE_CHIP_GAP
-                if (wideCard.height > 0) column - WIDE_PANEL_CHROME * grow else maxHeight - WIDE_CONTENT_CHROME
-            } else {
-                contentPanelMax - metrics.edge * 2 - ACTION_HEIGHT * grow - metrics.gap
-            }
             val panelMaxHeight = if (contentOpen) contentPanelMax else maxHeight * PANEL_MAX_SHARE
             // A content change lands on the card, so the card answers it with a brief pulse.
             val heroPulse = remember { Animatable(1f) }
@@ -484,15 +461,12 @@ internal fun ProfileCardEditorContent(
                     onContentToggle = onContentToggle,
                     onContentAudience = onContentAudience,
                     onContentAdd = onContentAdd,
-                    contentOpen = contentOpen,
-                    onContentOpen = { contentToolOpen = it },
                     mode = mode,
                     photo = photo,
                     onChangeDesign = onChangeDesign,
                     onChangePhoto = onChangePhoto,
                     onRemovePhoto = onRemovePhoto,
                     onImport = onImport,
-                    contentBody = contentBody,
                     metrics = metrics,
                     shape = shape,
                     modifier = modifier,
@@ -535,7 +509,6 @@ internal fun ProfileCardEditorContent(
                                 elevated = false,
                                 modifier = Modifier
                                     .widthIn(max = with(density) { wideCard.width.toDp() }.takeIf { it > 0.dp } ?: Dp.Unspecified)
-                                    .onSizeChanged { wideChipHeight = it.height }
                                     .clearAndSetSemantics { contentDescription = chipDescription },
                             )
                             CardPreviewFrame(
@@ -691,15 +664,12 @@ private fun EditorPanel(
     onContentToggle: (Uuid, Boolean) -> Unit,
     onContentAudience: (Uuid, ProfileAudience) -> Unit,
     onContentAdd: (String, Map<String, String>) -> Unit,
-    contentOpen: Boolean,
-    onContentOpen: (Boolean) -> Unit,
     mode: EditorMode,
     photo: CardPhotoUi,
     onChangeDesign: () -> Unit,
     onChangePhoto: () -> Unit,
     onRemovePhoto: () -> Unit,
     onImport: (CardAudience) -> Unit,
-    contentBody: Dp,
     metrics: PanelMetrics,
     shape: Shape,
     modifier: Modifier = Modifier,
@@ -711,10 +681,7 @@ private fun EditorPanel(
     val grow = fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     // Grows with the text so a large font scale shortens the preview rather than clipping the controls.
     val optionsNeeded = CAPTION_LINE * fontScale + CHIP_HEIGHT * grow + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
-    val body by animateDpAsState(
-        if (contentOpen) maxOf(contentBody, optionsNeeded) else maxOf(metrics.body, optionsNeeded),
-        motion.defaultSpatialSpec(),
-    )
+    val body by animateDpAsState(maxOf(metrics.body, optionsNeeded), motion.defaultSpatialSpec())
     val items = remember(uiState.attributes, uiState.circles, uiState.selectedAudience) { uiState.contentItems }
     val importSources = remember(uiState.attributes, uiState.circles, uiState.cards, uiState.selectedAudience) { uiState.importSources }
     Surface(
@@ -758,8 +725,6 @@ private fun EditorPanel(
                 canSave = uiState.canSaveDesign,
                 canCustomise = !uiState.loadFailed,
                 showsAppOnly = uiState.showsAppOnlyTag,
-                contentOpen = contentOpen,
-                contentSaves = uiState.contentSaves,
                 onAppOnly = onAppOnly,
                 onSave = onSave,
                 onStep = onStep,
@@ -789,17 +754,6 @@ private fun EditorPanel(
                         enabled = !isSaving,
                         onOption = onOption,
                         onBlockOrder = onBlockOrder,
-                        content = CardContentTool(
-                            card = uiState.selectedAudience,
-                            items = items,
-                            circles = uiState.circles,
-                            enabled = !uiState.isContentBusy,
-                            failures = uiState.contentFailures,
-                            onToggle = onContentToggle,
-                            onAudience = onContentAudience,
-                            onAdd = onContentAdd,
-                            onOpen = onContentOpen,
-                        ),
                         gap = metrics.gap,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -818,8 +772,6 @@ private fun StepHeader(
     canSave: Boolean,
     canCustomise: Boolean,
     showsAppOnly: Boolean,
-    contentOpen: Boolean,
-    contentSaves: Int,
     onAppOnly: () -> Unit,
     onSave: () -> Unit,
     onStep: (EditorStep) -> Unit,
@@ -895,11 +847,6 @@ private fun StepHeader(
                             }
                         }
                     }
-                    // Content writes straight to the profile, so with no design change pending Save gives way to a note that it landed.
-                    if (contentOpen && !canSave && !isSaving) {
-                        ContentSavedNote(saves = contentSaves)
-                        return@Row
-                    }
                     Button(
                         onClick = save,
                         enabled = canSave || isSaving,
@@ -913,39 +860,6 @@ private fun StepHeader(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun ContentSavedNote(saves: Int) {
-    val motion = MaterialTheme.motionScheme
-    val seen = remember { saves }
-    var shown by remember { mutableStateOf(false) }
-    LaunchedEffect(saves) {
-        if (saves == seen) return@LaunchedEffect
-        shown = true
-        delay(SAVED_NOTE_MS)
-        shown = false
-    }
-    // A confirmation, not a control: no container, so nothing here looks tappable.
-    AnimatedVisibility(
-        visible = shown,
-        enter = fadeIn(motion.defaultEffectsSpec()),
-        exit = fadeOut(motion.defaultEffectsSpec()),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
-        ) {
-            Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-            Text(
-                stringResource(MR.string.profile_card_content_saved),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
         }
     }
 }

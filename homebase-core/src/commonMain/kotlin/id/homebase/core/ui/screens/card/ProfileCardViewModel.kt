@@ -159,7 +159,6 @@ sealed interface ProfileCardEvent {
     data object ResetFailed : ProfileCardEvent
     data object CircleCardsUnsupported : ProfileCardEvent
     data object ContentSaveFailed : ProfileCardEvent
-    data object TemplateSaved : ProfileCardEvent
     data class ContentImported(val count: Int, val from: CardAudience) : ProfileCardEvent
 }
 
@@ -450,7 +449,6 @@ class ProfileCardViewModel(
         if (state.isExporting || card == null) return
         selectAudience(card.audience)
         _uiState.update { it.copy(viewing = true) }
-        if (card.isDefault) viewModelScope.launch { if (persistTemplateIfUnsaved(card.audience)) _events.tryEmit(ProfileCardEvent.TemplateSaved) }
     }
 
     fun onIntroReturned() {
@@ -569,19 +567,11 @@ class ProfileCardViewModel(
         }
     }
 
-    // /card only serves a stored card, so the template the app shows has to be written for viewers to see it.
+    // The web resolves a Public template itself but can't tell which circle a visitor is in, so a circle card is stored on its first edit.
     private suspend fun persistTemplateIfUnsaved(audience: CardAudience): Boolean = templateLock.withLock {
         val card = _uiState.value.cards.firstOrNull { it.audience.isSameAs(audience) }
-        if (card == null || !card.isDefault || cardTemplateFor(card.audience) == null || !source.supportsCircleCards) return@withLock false
-        val stored = attempt("saving the ${card.audience.logName()} card template") {
-            when (card.audience) {
-                CardAudience.Public -> {
-                    source.savePublicCard(card.design, card.overrides)
-                    source.attributes().profileCards().publicCard()
-                }
-                is CardAudience.Circle -> source.saveCircleCard(card)
-            }
-        }
+        if (card == null || card.audience !is CardAudience.Circle || !card.isDefault || cardTemplateFor(card.audience) == null || !source.supportsCircleCards) return@withLock false
+        val stored = attempt("saving the ${card.audience.logName()} card template") { source.saveCircleCard(card) }
         _uiState.update(::withCircleSupport)
         if (stored == null) return@withLock false
         _uiState.update { state -> state.copy(cards = state.cards.map { if (it.audience.isSameAs(stored.audience)) stored else it }) }
@@ -620,7 +610,7 @@ class ProfileCardViewModel(
                 }
                 if (saved == null) {
                     plan.forEach { audiencesBeforePublic.remove(it.attribute.id) }
-                    val rolledBack = restoreAcls(written)
+                    val rolledBack = restoreAcls(written).attributes
                     applyAttributes(rolledBack, saved = false)
                     _uiState.update { it.copy(contentFailures = it.contentFailures + 1) }
                     _events.tryEmit(ProfileCardEvent.ContentSaveFailed)
@@ -642,14 +632,27 @@ class ProfileCardViewModel(
         _uiState.update { it.copy(isContentBusy = true) }
         viewModelScope.launch {
             val current = _uiState.value.attributes.associateBy { it.id }
-            applyAttributes(restoreAcls(previous.mapNotNull { p -> current[p.id]?.let { p to it } }), saved = true)
+            val restored = restoreAcls(previous.mapNotNull { p -> current[p.id]?.let { p to it } })
+            importUndo = restored.failed.takeIf { it.isNotEmpty() }
+            applyAttributes(restored.attributes, saved = restored.failed.isEmpty())
+            if (restored.failed.isNotEmpty()) {
+                _uiState.update { it.copy(contentFailures = it.contentFailures + 1) }
+                _events.tryEmit(ProfileCardEvent.ContentSaveFailed)
+            }
         }
     }
 
-    private suspend fun restoreAcls(pairs: List<Pair<ProfileAttribute, ProfileAttribute>>): List<ProfileAttribute> =
-        pairs.map { (previous, current) ->
-            attempt("restoring the access of ${previous.type}") { source.restoreProfileAttribute(current, previous) } ?: current
+    private class Restored(val attributes: List<ProfileAttribute>, val failed: List<ProfileAttribute>)
+
+    // A restore that fails keeps the attribute as the server has it, so the list never shows an access that was not written.
+    private suspend fun restoreAcls(pairs: List<Pair<ProfileAttribute, ProfileAttribute>>): Restored {
+        val failed = mutableListOf<ProfileAttribute>()
+        val attributes = pairs.map { (previous, current) ->
+            attempt("restoring the access of ${previous.type}") { source.restoreProfileAttribute(current, previous) }
+                ?: current.also { failed += previous }
         }
+        return Restored(attributes, failed)
+    }
 
     private fun applyAttributes(changed: List<ProfileAttribute>, saved: Boolean) {
         val ids = changed.map { it.id }.toSet()

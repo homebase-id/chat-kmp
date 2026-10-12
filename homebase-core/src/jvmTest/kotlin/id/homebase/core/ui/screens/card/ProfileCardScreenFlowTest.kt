@@ -140,7 +140,7 @@ class ProfileCardScreenFlowTest {
 
         runDesktopComposeUiTest(width = 824, height = 1784) {
             val source = ProfileCardViewModelTest.FakeSource(
-                fixtures.profile,
+                fixtures.profile.filterNot { it.type == ProfileAttributeTypes.PHOTO },
                 cardRepository = CardRepository(ProfileRepositoryCardStore(repository)),
             ).apply {
                 liveCards = { repository.loadAttributes() }
