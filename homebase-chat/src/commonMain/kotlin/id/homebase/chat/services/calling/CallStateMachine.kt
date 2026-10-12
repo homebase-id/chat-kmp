@@ -284,6 +284,7 @@ class CallStateMachine(private val selfOdinId: String) {
             is MediaEvent.Failed -> failed(s, e.reason)
             is MediaEvent.RemoteVideoChanged -> CallTransition(s.copy(media = s.media.copy(remoteVideo = e.on)))
             is MediaEvent.QualityChanged -> CallTransition(s.copy(quality = e.quality))
+            is MediaEvent.RouteChanged -> CallTransition(s.copy(media = s.media.copy(route = e.route)))
             is MediaEvent.LocalIce -> when (s.phase) {
                 CallPhase.Incoming -> CallTransition(s)
                 CallPhase.Outgoing -> CallTransition(s, listOf(CallEffect.HoldIce(e.candidate, e.sdpMid, e.sdpMLineIndex)))

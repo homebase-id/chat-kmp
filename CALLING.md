@@ -119,6 +119,19 @@ webrtc-kmp has no JVM variant, so Android and Apple share the `webrtcKmpMain` in
 duplicating the engine. Desktop bundles all five webrtc-java natives (also declared in homebase-core because
 desktopApp consumes a repackaged chat jar).
 
+Both engines map native callbacks through `PeerEventMapper` (`MediaEventMappingTest` drives it from a fake peer connection
+through real controllers). Both are idempotent on `close()`; the desktop engine serialises native calls with the close lock,
+so a late ICE candidate is dropped instead of reaching a disposed connection.
+
+Local self-preview is mirrored only for the user-facing camera (`CameraFacing.mirrorsLocalPreview`), at the renderer: the
+Android `SurfaceViewRenderer`, the iOS view transform and the desktop canvas. The transmitted stream is never mirrored.
+Android renders on webrtc-kmp's `WebRtc.rootEglBase` (the capturer's GL context) and keys the renderer on the track.
+The engine reports its initial audio route (`MediaEvent.RouteChanged`): wired, then Bluetooth, else speaker for video and
+earpiece for voice. Android also takes `AUDIOFOCUS_GAIN_TRANSIENT` for the call.
+
+Desktop camera and microphone: macOS prompts on first capture (the JVM permission gate has nothing to ask); the packaged app
+needs `NSCameraUsageDescription` and `NSMicrophoneUsageDescription` (Compose `infoPlist` and Conveyor `mac.info-plist`).
+
 Tests: `WebRtcJavaCallEngineTest` runs two real webrtc-java engines over `LoopbackSignaling` through two
 `CallController`s, reaches `Connected`, checks both sides compute the same verification code, then hangs up and
 exercises a real ICE restart. It also proves the natives load on the host.

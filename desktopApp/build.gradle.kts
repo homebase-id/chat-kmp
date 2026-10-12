@@ -216,10 +216,12 @@ compose.desktop {
 
                 // Add Info.plist configuration for macOS
                 infoPlist {
-                    // Microphone permission
+                    // Camera and microphone permissions (voice/video calls and audio messages)
                     extraKeysRawXml = """
                         <key>NSMicrophoneUsageDescription</key>
-                        <string>Allow access to the microphone to record audio for message attachment.</string>
+                        <string>Allow access to the microphone for voice and video calls and to record audio messages.</string>
+                        <key>NSCameraUsageDescription</key>
+                        <string>Allow access to the camera for video calls.</string>
                     """.trimIndent()
                 }
             }

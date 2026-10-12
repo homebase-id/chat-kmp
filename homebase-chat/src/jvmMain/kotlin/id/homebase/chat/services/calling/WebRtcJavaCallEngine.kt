@@ -50,9 +50,13 @@ class WebRtcJavaCallEngine(
     private var videoSource: VideoDeviceSource? = null
     private var localFrames: JvmVideoHandle? = null
     private var remoteFrames: JvmVideoHandle? = null
+    private var remoteTrack: VideoTrack? = null
     private var cameraIndex = 0
-    private var everConnected = false
-    private var closed = false
+    private val mapper = PeerEventMapper { _events.tryEmit(it) }
+
+    // Native callbacks arrive on WebRTC threads; the lock keeps close() from disposing the connection under a live call.
+    private val lock = Any()
+    @Volatile private var closed = false
 
     private val peer: RTCPeerConnection = factory.createPeerConnection(
         RTCConfiguration().apply {
@@ -61,33 +65,42 @@ class WebRtcJavaCallEngine(
         },
         object : PeerConnectionObserver {
             override fun onIceCandidate(candidate: RTCIceCandidate) {
-                _events.tryEmit(MediaEvent.LocalIce(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex))
+                if (!closed) mapper.localIce(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex)
             }
 
             override fun onConnectionChange(state: RTCPeerConnectionState) {
-                when (state) {
-                    RTCPeerConnectionState.CONNECTED -> {
-                        everConnected = true
-                        _events.tryEmit(MediaEvent.Connected)
-                    }
-                    RTCPeerConnectionState.DISCONNECTED -> _events.tryEmit(MediaEvent.Disconnected)
-                    RTCPeerConnectionState.FAILED ->
-                        _events.tryEmit(if (everConnected) MediaEvent.Disconnected else MediaEvent.Failed(FailReason.NoRoute))
-                    else -> Unit
-                }
+                if (!closed) mapper.linkState(state.toLinkState())
             }
 
             override fun onTrack(transceiver: RTCRtpTransceiver) {
                 val track = transceiver.receiver.track as? VideoTrack ?: return
-                val handle = JvmVideoHandle().also { remoteFrames = it }
-                track.addSink(handle.sink)
-                _remote.value = handle
-                _events.tryEmit(MediaEvent.RemoteVideoChanged(true))
+                synchronized(lock) {
+                    if (closed) return
+                    val handle = JvmVideoHandle().also { remoteFrames = it }
+                    track.addSink(handle.sink)
+                    remoteTrack = track
+                    _remote.value = handle
+                }
+                mapper.remoteVideo(true)
             }
         },
     ) ?: error("webrtc-java returned no peer connection")
 
-    private fun addLocalMedia(video: Boolean) {
+    private fun RTCPeerConnectionState.toLinkState() = when (this) {
+        RTCPeerConnectionState.NEW -> PeerLinkState.New
+        RTCPeerConnectionState.CONNECTING -> PeerLinkState.Connecting
+        RTCPeerConnectionState.CONNECTED -> PeerLinkState.Connected
+        RTCPeerConnectionState.DISCONNECTED -> PeerLinkState.Disconnected
+        RTCPeerConnectionState.FAILED -> PeerLinkState.Failed
+        RTCPeerConnectionState.CLOSED -> PeerLinkState.Closed
+    }
+
+    private fun checkOpen() {
+        if (closed) throw CallEngineException(FailReason.Other, "engine closed")
+    }
+
+    private fun addLocalMedia(video: Boolean) = synchronized(lock) {
+        checkOpen()
         if (audioTrack == null) {
             val source = factory.createAudioSource(AudioOptions().apply {
                 echoCancellation = true
@@ -108,7 +121,8 @@ class WebRtcJavaCallEngine(
             }
             videoSource = source
             val track = factory.createVideoTrack("video0", source)
-            val handle = JvmVideoHandle(mirrored = true).also { localFrames = it }
+            // The Mac camera faces the user, so its preview is mirrored; the transmitted frames are untouched.
+            val handle = JvmVideoHandle.localPreview(DESKTOP_CAMERA_FACING).also { localFrames = it }
             track.addSink(handle.sink)
             peer.addTrack(track, listOf(STREAM_ID))
             videoTrack = track
@@ -139,10 +153,14 @@ class WebRtcJavaCallEngine(
     }
 
     override suspend fun addIce(candidate: String, sdpMid: String?, sdpMLineIndex: Int?) {
-        peer.addIceCandidate(RTCIceCandidate(sdpMid ?: "", sdpMLineIndex ?: 0, candidate))
+        synchronized(lock) {
+            if (closed) return
+            peer.addIceCandidate(RTCIceCandidate(sdpMid ?: "", sdpMLineIndex ?: 0, candidate))
+        }
     }
 
     private suspend fun offer(options: RTCOfferOptions): String {
+        checkOpen()
         val description = suspendCancellableCoroutine { cont ->
             peer.createOffer(options, object : CreateSessionDescriptionObserver {
                 override fun onSuccess(description: RTCSessionDescription) = cont.resume(description)
@@ -154,6 +172,7 @@ class WebRtcJavaCallEngine(
     }
 
     private suspend fun createAnswer(): String {
+        checkOpen()
         val description = suspendCancellableCoroutine { cont ->
             peer.createAnswer(RTCAnswerOptions(), object : CreateSessionDescriptionObserver {
                 override fun onSuccess(description: RTCSessionDescription) = cont.resume(description)
@@ -165,10 +184,12 @@ class WebRtcJavaCallEngine(
     }
 
     private suspend fun setLocal(description: RTCSessionDescription) = suspendCancellableCoroutine { cont ->
+        checkOpen()
         peer.setLocalDescription(description, setObserver(cont))
     }
 
     private suspend fun setRemote(description: RTCSessionDescription) = suspendCancellableCoroutine { cont ->
+        checkOpen()
         peer.setRemoteDescription(description, setObserver(cont))
     }
 
@@ -178,41 +199,49 @@ class WebRtcJavaCallEngine(
     }
 
     override fun setMuted(muted: Boolean) {
-        audioTrack?.isEnabled = !muted
+        synchronized(lock) { if (!closed) audioTrack?.isEnabled = !muted }
     }
 
     override fun setVideo(on: Boolean) {
-        videoTrack?.isEnabled = on
+        synchronized(lock) { if (!closed) videoTrack?.isEnabled = on }
     }
 
     override fun switchCamera() {
-        val devices = dev.onvoid.webrtc.media.MediaDevices.getVideoCaptureDevices()
-        val source = videoSource ?: return
-        if (devices.size < 2) return
-        cameraIndex = (cameraIndex + 1) % devices.size
-        source.stop()
-        source.setVideoCaptureDevice(devices[cameraIndex])
-        source.start()
+        synchronized(lock) {
+            if (closed) return
+            val devices = dev.onvoid.webrtc.media.MediaDevices.getVideoCaptureDevices()
+            val source = videoSource ?: return
+            if (devices.size < 2) return
+            cameraIndex = (cameraIndex + 1) % devices.size
+            source.stop()
+            source.setVideoCaptureDevice(devices[cameraIndex])
+            source.start()
+        }
     }
 
     override fun setAudioRoute(route: AudioRoute) = Unit
 
     override fun close() {
-        if (closed) return
-        closed = true
-        runCatching { peer.close() }
-        runCatching { videoSource?.stop() }
-        runCatching { audioTrack?.dispose() }
-        runCatching { videoTrack?.dispose() }
-        runCatching { videoSource?.dispose() }
-        localFrames?.close()
-        remoteFrames?.close()
-        _local.value = null
-        _remote.value = null
-        runCatching { factory.dispose() }
+        synchronized(lock) {
+            if (closed) return
+            closed = true
+            localFrames?.let { sink -> videoTrack?.let { runCatching { it.removeSink(sink.sink) } } }
+            remoteFrames?.let { sink -> remoteTrack?.let { runCatching { it.removeSink(sink.sink) } } }
+            runCatching { peer.close() }
+            runCatching { videoSource?.stop() }
+            runCatching { audioTrack?.dispose() }
+            runCatching { videoTrack?.dispose() }
+            runCatching { videoSource?.dispose() }
+            localFrames?.close()
+            remoteFrames?.close()
+            _local.value = null
+            _remote.value = null
+            runCatching { factory.dispose() }
+        }
     }
 
     private companion object {
         const val STREAM_ID = "homebase-call"
+        val DESKTOP_CAMERA_FACING = CameraFacing.Front
     }
 }

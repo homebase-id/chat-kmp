@@ -6,6 +6,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.cinterop.ExperimentalForeignApi
+import platform.CoreGraphics.CGAffineTransformMakeScale
 import platform.UIKit.UIViewContentMode
 import androidx.compose.ui.Modifier
 
@@ -19,9 +20,13 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier) {
     val view = remember(track) { RTCMTLVideoView().apply { videoContentMode = UIViewContentMode.UIViewContentModeScaleAspectFill } }
     DisposableEffect(track) {
         track.addRenderer(view)
-        onDispose { track.removeRenderer(view) }
+        onDispose { runCatching { track.removeRenderer(view) } }
     }
-    UIKitView(factory = { view }, modifier = modifier, update = {})
+    UIKitView(
+        factory = { view },
+        modifier = modifier,
+        update = { it.transform = CGAffineTransformMakeScale(if (kmp.mirrored) -1.0 else 1.0, 1.0) },
+    )
 }
 
 // CallKit rings on iOS.

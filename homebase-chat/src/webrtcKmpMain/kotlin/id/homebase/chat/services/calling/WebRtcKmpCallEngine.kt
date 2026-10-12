@@ -2,6 +2,7 @@ package id.homebase.chat.services.calling
 
 import co.touchlab.kermit.Logger
 import com.shepeliev.webrtckmp.IceCandidate
+import com.shepeliev.webrtckmp.FacingMode
 import com.shepeliev.webrtckmp.IceServer
 import com.shepeliev.webrtckmp.MediaDevices
 import com.shepeliev.webrtckmp.MediaStream
@@ -20,6 +21,8 @@ import com.shepeliev.webrtckmp.onTrack
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -34,6 +37,7 @@ import kotlinx.coroutines.launch
 class KmpVideoHandle(val track: VideoTrack, val mirrored: Boolean) : VideoHandle
 
 /** Android and iOS engine over webrtc-kmp. Platform audio routing is delegated to [CallAudioRouter]. */
+@OptIn(ExperimentalAtomicApi::class)
 class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val router = CallAudioRouter()
@@ -54,46 +58,56 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private var stream: MediaStream? = null
     private var audioTrack: MediaStreamTrack? = null
     private var videoTrack: VideoTrack? = null
-    private var frontCamera = true
-    private var everConnected = false
-    private var closed = false
+    private val closed = AtomicBoolean(false)
+    private val mapper = PeerEventMapper { _events.tryEmit(it) }
 
     init {
-        router.start()
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            peer.onIceCandidate.collect { _events.tryEmit(MediaEvent.LocalIce(it.candidate, it.sdpMid, it.sdpMLineIndex)) }
+            peer.onIceCandidate.collect { mapper.localIce(it.candidate, it.sdpMid, it.sdpMLineIndex) }
         }
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            peer.onConnectionStateChange.collect { state ->
-                when (state) {
-                    PeerConnectionState.Connected -> {
-                        everConnected = true
-                        _events.tryEmit(MediaEvent.Connected)
-                    }
-                    PeerConnectionState.Disconnected -> _events.tryEmit(MediaEvent.Disconnected)
-                    PeerConnectionState.Failed ->
-                        _events.tryEmit(if (everConnected) MediaEvent.Disconnected else MediaEvent.Failed(FailReason.NoRoute))
-                    else -> Unit
-                }
-            }
+            peer.onConnectionStateChange.collect { mapper.linkState(it.toLinkState()) }
         }
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             peer.onTrack.collect { event ->
                 val track = event.track as? VideoTrack ?: return@collect
                 _remote.value = KmpVideoHandle(track, mirrored = false)
-                _events.tryEmit(MediaEvent.RemoteVideoChanged(true))
+                mapper.remoteVideo(true)
             }
         }
     }
 
+    private fun PeerConnectionState.toLinkState() = when (this) {
+        PeerConnectionState.New -> PeerLinkState.New
+        PeerConnectionState.Connecting -> PeerLinkState.Connecting
+        PeerConnectionState.Connected -> PeerLinkState.Connected
+        PeerConnectionState.Disconnected -> PeerLinkState.Disconnected
+        PeerConnectionState.Failed -> PeerLinkState.Failed
+        PeerConnectionState.Closed -> PeerLinkState.Closed
+    }
+
+    private fun localFacing(track: VideoTrack) =
+        if (track.settings.facingMode == FacingMode.Environment) CameraFacing.Back else CameraFacing.Front
+
+    private fun publishLocal(track: VideoTrack) {
+        _local.value = KmpVideoHandle(track, mirrored = localFacing(track).mirrorsLocalPreview)
+    }
+
     private suspend fun addLocalMedia(video: Boolean) {
+        if (closed.load()) throw CallEngineException(FailReason.Other, "engine closed")
         if (stream != null) return
+        _events.tryEmit(MediaEvent.RouteChanged(router.start(video)))
         val media = try {
             MediaDevices.getUserMedia(audio = true, video = video)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             throw CallEngineException(if (e.isPermissionError()) FailReason.Permission else FailReason.Other, e.message)
+        }
+        if (closed.load()) {
+            runCatching { media.tracks.forEach { it.stop() } }
+            runCatching { media.release() }
+            throw CallEngineException(FailReason.Other, "engine closed")
         }
         stream = media
         for (track in media.tracks) {
@@ -102,7 +116,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
                 MediaStreamTrackKind.Audio -> audioTrack = track
                 MediaStreamTrackKind.Video -> (track as? VideoTrack)?.let {
                     videoTrack = it
-                    _local.value = KmpVideoHandle(it, mirrored = true)
+                    publishLocal(it)
                 }
             }
         }
@@ -133,6 +147,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     }
 
     override suspend fun addIce(candidate: String, sdpMid: String?, sdpMLineIndex: Int?) {
+        if (closed.load()) return
         peer.addIceCandidate(IceCandidate(sdpMid ?: "", sdpMLineIndex ?: 0, candidate))
     }
 
@@ -161,16 +176,17 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         val track = videoTrack ?: return
         scope.launch {
             runCatching { track.switchCamera() }
-                .onSuccess { frontCamera = !frontCamera }
+                .onSuccess { if (!closed.load()) publishLocal(track) }
                 .onFailure { Logger.w(it, "WebRtcKmp") { "switchCamera failed" } }
         }
     }
 
-    override fun setAudioRoute(route: AudioRoute) = router.setRoute(route)
+    override fun setAudioRoute(route: AudioRoute) {
+        if (!closed.load()) router.setRoute(route)
+    }
 
     override fun close() {
-        if (closed) return
-        closed = true
+        if (!closed.compareAndSet(false, true)) return
         scope.cancel()
         runCatching { stream?.tracks?.forEach { it.stop() } }
         runCatching { stream?.release() }

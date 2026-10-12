@@ -1,12 +1,12 @@
 package id.homebase.chat.services.calling
 
-import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
-import org.webrtc.EglBase
+import com.shepeliev.webrtckmp.WebRtc
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 
@@ -16,29 +16,34 @@ actual fun platformCallEngineFactory(): CallEngineFactory? = CallEngineFactory {
 actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier) {
     val kmp = handle as? KmpVideoHandle ?: return
     val track = kmp.track
-    val egl = remember { EglBase.create() }
-    val renderer = remember { arrayOfNulls<SurfaceViewRenderer>(1) }
-    DisposableEffect(track) {
-        onDispose {
-            renderer[0]?.let { track.removeSink(it); it.release() }
-            renderer[0] = null
-        }
-    }
-    DisposableEffect(Unit) { onDispose { egl.release() } }
-    AndroidView(
-        modifier = modifier,
-        factory = { context ->
-            SurfaceViewRenderer(context).apply {
-                init(egl.eglBaseContext, null)
-                setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
-                setEnableHardwareScaler(true)
-                setMirror(kmp.mirrored)
-                visibility = View.VISIBLE
-                track.addSink(this)
-                renderer[0] = this
+    // Same GL context the camera capturer uses; a private EglBase cannot sample its textures and renders black.
+    val eglContext = remember { WebRtc.rootEglBase.eglBaseContext }
+    key(track) {
+        val renderer = remember { arrayOfNulls<SurfaceViewRenderer>(1) }
+        DisposableEffect(Unit) {
+            onDispose {
+                renderer[0]?.let {
+                    runCatching { track.removeSink(it) }
+                    it.release()
+                }
+                renderer[0] = null
             }
-        },
-    )
+        }
+        AndroidView(
+            modifier = modifier,
+            factory = { context ->
+                SurfaceViewRenderer(context).apply {
+                    init(eglContext, null)
+                    setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
+                    setEnableHardwareScaler(true)
+                    setMirror(kmp.mirrored)
+                    track.addSink(this)
+                    renderer[0] = this
+                }
+            },
+            update = { it.setMirror(kmp.mirrored) },
+        )
+    }
 }
 
 // The "calls" notification channel rings on Android; ringing here too would double up.

@@ -1,7 +1,9 @@
 package id.homebase.chat.services.calling
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
 import org.koin.mp.KoinPlatformTools
@@ -10,22 +12,48 @@ actual class CallAudioRouter actual constructor() {
     private val audio: AudioManager =
         KoinPlatformTools.defaultContext().get().get<Context>().getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var previousMode = AudioManager.MODE_NORMAL
+    private var focus: AudioFocusRequest? = null
+    private var started = false
 
-    actual fun start() {
+    actual fun start(video: Boolean): AudioRoute {
+        if (started) return AudioRoute.Earpiece
+        started = true
         previousMode = audio.mode
+        focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build(),
+            )
+            .setOnAudioFocusChangeListener { }
+            .build()
+            .also { audio.requestAudioFocus(it) }
         audio.mode = AudioManager.MODE_IN_COMMUNICATION
-        setRoute(AudioRoute.Earpiece)
+        val routes = platformAudioRoutes()
+        val route = when {
+            AudioRoute.Wired in routes -> AudioRoute.Wired
+            AudioRoute.Bluetooth in routes -> AudioRoute.Bluetooth
+            video -> AudioRoute.Speaker
+            else -> AudioRoute.Earpiece
+        }
+        setRoute(route)
+        return route
     }
 
     actual fun setRoute(route: AudioRoute) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val type = when (route) {
-                AudioRoute.Earpiece -> AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
-                AudioRoute.Speaker -> AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
-                AudioRoute.Bluetooth -> AudioDeviceInfo.TYPE_BLUETOOTH_SCO
-                AudioRoute.Wired -> AudioDeviceInfo.TYPE_WIRED_HEADSET
+            val types = when (route) {
+                AudioRoute.Earpiece -> setOf(AudioDeviceInfo.TYPE_BUILTIN_EARPIECE)
+                AudioRoute.Speaker -> setOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+                AudioRoute.Bluetooth -> setOf(AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET)
+                AudioRoute.Wired -> setOf(
+                    AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                    AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                    AudioDeviceInfo.TYPE_USB_HEADSET,
+                )
             }
-            audio.availableCommunicationDevices.firstOrNull { it.type == type }?.let { audio.setCommunicationDevice(it) }
+            audio.availableCommunicationDevices.firstOrNull { it.type in types }?.let { audio.setCommunicationDevice(it) }
                 ?: audio.clearCommunicationDevice()
         } else {
             @Suppress("DEPRECATION")
@@ -34,9 +62,13 @@ actual class CallAudioRouter actual constructor() {
     }
 
     actual fun stop() {
+        if (!started) return
+        started = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audio.clearCommunicationDevice()
         @Suppress("DEPRECATION")
         audio.isSpeakerphoneOn = false
         audio.mode = previousMode
+        focus?.let { audio.abandonAudioFocusRequest(it) }
+        focus = null
     }
 }

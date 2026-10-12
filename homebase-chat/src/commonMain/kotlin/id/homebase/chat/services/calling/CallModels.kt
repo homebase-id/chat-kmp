@@ -10,6 +10,9 @@ enum class CallDirection { Outgoing, Incoming }
 
 enum class CameraFacing { Front, Back }
 
+/** Only the user-facing camera's local preview is mirrored, like FaceTime/Meet; the transmitted stream never is. */
+val CameraFacing.mirrorsLocalPreview: Boolean get() = this == CameraFacing.Front
+
 enum class AudioRoute { Earpiece, Speaker, Bluetooth, Wired }
 
 enum class CallQuality { Good, Poor, Unknown }
@@ -70,5 +73,6 @@ sealed interface MediaEvent {
     data class Failed(val reason: FailReason) : MediaEvent
     data class RemoteVideoChanged(val on: Boolean) : MediaEvent
     data class QualityChanged(val quality: CallQuality) : MediaEvent
+    data class RouteChanged(val route: AudioRoute) : MediaEvent
     data class LocalIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : MediaEvent
 }

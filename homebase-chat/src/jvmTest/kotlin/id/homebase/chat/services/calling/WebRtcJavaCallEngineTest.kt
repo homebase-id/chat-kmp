@@ -9,7 +9,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CompletableDeferred
@@ -50,8 +49,11 @@ class WebRtcJavaCallEngineTest {
             caller.hangup()
             withTimeout(10_000) { callee.state.first { it.phase is CallPhase.Ended } }
             assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = true)), callee.state.value.phase)
+            caller.close()
+            callee.close()
         } finally {
-            scope.cancel()
+            // Join so every controller teardown (engine.close, native dispose) finishes before the next test starts.
+            scope.coroutineContext[Job]!!.cancelAndJoin()
         }
     }
 
@@ -90,6 +92,9 @@ class WebRtcJavaCallEngineTest {
             scope.coroutineContext[Job]!!.cancelAndJoin()
             a.close()
             b.close()
+            // A candidate that lands after close() must be dropped, not hit a disposed native connection.
+            a.addIce("candidate:1 1 udp 2122260223 127.0.0.1 50000 typ host", "0", 0)
+            a.close()
         }
     }
 }
