@@ -15,6 +15,8 @@ import dev.onvoid.webrtc.RTCRtpTransceiver
 import dev.onvoid.webrtc.RTCSdpType
 import dev.onvoid.webrtc.RTCSessionDescription
 import dev.onvoid.webrtc.SetSessionDescriptionObserver
+import dev.onvoid.webrtc.logging.LogSink
+import dev.onvoid.webrtc.logging.Logging
 import dev.onvoid.webrtc.media.MediaStreamTrack
 import dev.onvoid.webrtc.media.audio.AudioDeviceModuleBase
 import dev.onvoid.webrtc.media.audio.AudioOptions
@@ -45,6 +47,10 @@ class WebRtcJavaCallEngine(
     private val _remote = MutableStateFlow<VideoHandle?>(null)
     override val localVideo: StateFlow<VideoHandle?> = _local.asStateFlow()
     override val remoteVideo: StateFlow<VideoHandle?> = _remote.asStateFlow()
+
+    init {
+        nativeLogs
+    }
 
     private val factory = if (audioDevice != null) PeerConnectionFactory(audioDevice) else PeerConnectionFactory()
     private var audioTrack: AudioTrack? = null
@@ -267,5 +273,10 @@ class WebRtcJavaCallEngine(
         const val STREAM_ID = "homebase-call"
         const val STATS_PERIOD_MS = 5_000L
         val DESKTOP_CAMERA_FACING = CameraFacing.Front
+
+        // The capturer reports a failed camera start only through the native log, which otherwise goes nowhere.
+        val nativeLogs: Unit by lazy {
+            Logging.addLogSink(Logging.Severity.WARNING, LogSink { _, message -> Logger.w("WebRTC") { message.trimEnd() } })
+        }
     }
 }

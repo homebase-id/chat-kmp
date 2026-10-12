@@ -53,6 +53,10 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     override val localVideo: StateFlow<VideoHandle?> = _local.asStateFlow()
     override val remoteVideo: StateFlow<VideoHandle?> = _remote.asStateFlow()
 
+    init {
+        capLocalVideoSource()
+    }
+
     // Every URL as given by the device's own server; nothing is derived or added.
     private val peer = PeerConnection(
         RtcConfiguration(iceServers = if (stunUrls.isEmpty()) emptyList() else listOf(IceServer(urls = stunUrls))),
