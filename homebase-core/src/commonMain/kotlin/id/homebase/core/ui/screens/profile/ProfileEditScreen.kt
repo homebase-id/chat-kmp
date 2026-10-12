@@ -163,6 +163,7 @@ import id.homebase.core.ui.screens.card.CardAudience
 import id.homebase.core.ui.screens.card.CardCircle
 import id.homebase.core.ui.screens.card.CookieBadge
 import id.homebase.core.ui.screens.card.WithTooltip
+import id.homebase.core.ui.screens.card.photoFor
 import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
@@ -702,7 +703,6 @@ private fun ProfileForm(
     }
 }
 
-/** One card's photo: its own when set, else the one the card inherits, with a way to give it its own. */
 @Composable
 private fun CardPhotoBlock(
     circle: CardCircle?,
@@ -725,13 +725,14 @@ private fun CardPhotoBlock(
     }
     val slot = avatarUiState.circleSlot(circle.id)
     val audience = ProfileAudience.Circles(setOf(circle.id))
-    val inherited = avatarUiState.photoFor(CardAudience.Circle(circle.id, circle.name))
+    val inherited = avatarUiState.photos.photoFor(CardAudience.Circle(circle.id, circle.name))
     if (slot.existing != null || slot.pendingCroppedAvatar != null) {
         PhotoBlock(
             audience = audience,
             caption = circle.name,
             tier = ProfileVisibility.CONNECTED,
             circleId = circle.id,
+            circles = listOf(circle),
             canPick = avatarUiState.circlePhotosSupported,
             photoState = slot,
             onAvatarAction = onAvatarAction,
@@ -782,6 +783,7 @@ private fun PhotoBlock(
     tier: ProfileVisibility,
     photoState: PhotoTierUiState,
     circleId: String? = null,
+    circles: List<CardCircle> = emptyList(),
     canPick: Boolean = true,
     onAvatarAction: (ProfileAvatarEditAction) -> Unit,
     onPickPhoto: () -> Unit,
@@ -816,7 +818,7 @@ private fun PhotoBlock(
             ExistingAvatarContent(photoState.existing, "ProfileEditScreen")
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            AudienceBadge(audience = audience, circles = emptyList())
+            AudienceBadge(audience = audience, circles = circles)
             Text(
                 text = caption,
                 style = MaterialTheme.typography.bodySmall,

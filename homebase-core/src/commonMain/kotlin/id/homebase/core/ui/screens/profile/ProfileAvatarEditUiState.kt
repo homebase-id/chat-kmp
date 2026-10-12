@@ -7,7 +7,6 @@ import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.chat.conversationlist.AttachmentPendingFile
-import id.homebase.core.ui.screens.card.CardAudience
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -29,25 +28,18 @@ data class ProfileAvatarEditUiState(
     val onlyMe: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.OWNER),
     /** A photo an earlier version saved for connections. It can no longer be added, only removed. */
     val connected: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.CONNECTED),
-    /** One photo slot per fixed card circle, by circle id. */
     val circleSlots: Map<String, PhotoTierUiState> = emptyMap(),
-    /** Every photo attribute the owner holds, so a card can resolve the one it shows. */
     val photos: List<ProfileAttribute> = emptyList(),
-    /** False while the server cannot store a circle-scoped photo; the "use a different photo" action is hidden. */
     val circlePhotosSupported: Boolean = false,
 ) {
     fun circleSlot(circleId: String): PhotoTierUiState =
         circleSlots[circleId] ?: PhotoTierUiState(ProfileVisibility.CONNECTED, circleId = circleId)
-
-    /** The photo [card] shows: its own circle photo if set, else the one it inherits. */
-    fun photoFor(card: CardAudience): ProfileAttribute? = photos.photoFor(card)
 }
 
 /** One [ProfileVisibility] tier's photo slot: what's currently stored, and any in-flight edit. */
 @Immutable
 data class PhotoTierUiState(
     val visibility: ProfileVisibility,
-    /** Set for a card's circle-only photo slot (Connected visibility scoped to this circle). */
     val circleId: String? = null,
     /** The currently-uploaded attribute for this tier, if any — null means "not set". */
     val existing: ProfileAttribute? = null,

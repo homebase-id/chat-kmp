@@ -34,7 +34,6 @@ import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.ui.screens.contactbook.isOwnedByContactsApp
 import id.homebase.core.ui.screens.profile.LoadedProfileAttributes
 import id.homebase.core.ui.screens.profile.ProfileAudience
-import id.homebase.core.ui.screens.profile.photoFor
 import id.homebase.core.ui.screens.profile.restoreAcl
 import id.homebase.core.ui.screens.profile.ProfileEditViewModel
 import id.homebase.core.ui.screens.profile.audience

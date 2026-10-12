@@ -7,6 +7,7 @@ import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.util.compareStringUuId
 import id.homebase.core.ui.screens.profile.AclFilter
 import id.homebase.core.ui.screens.profile.aclFilter
+import id.homebase.core.ui.screens.profile.visiblePhoto
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -49,6 +50,8 @@ internal fun CardAudience.aclFilter(): AclFilter = when (this) {
     CardAudience.Public -> ProfileVisibility.ANONYMOUS.aclFilter()
     is CardAudience.Circle -> { acl -> acl.isVisibleToCircle(id) }
 }
+
+internal fun List<ProfileAttribute>.photoFor(card: CardAudience): ProfileAttribute? = visiblePhoto(card.aclFilter())
 
 /** [design] stays a raw string so a design this build doesn't know survives a read-modify-write; [extra] keeps unknown `data` keys for the same reason. */
 data class ProfileCard(

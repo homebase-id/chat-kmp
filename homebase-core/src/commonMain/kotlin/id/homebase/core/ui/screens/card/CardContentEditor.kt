@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
@@ -354,7 +355,7 @@ private fun EditorRow(
                     enabled = enabled,
                     modifier = Modifier.semantics { stateDescription = hint },
                 ) {
-                    Icon(Icons.Filled.Close, contentDescription = changeAudience)
+                    Icon(Icons.Outlined.Tune, contentDescription = changeAudience)
                 }
                 item.shown -> IconButton(onClick = onAction, enabled = enabled) {
                     Icon(Icons.Filled.Close, contentDescription = remove)

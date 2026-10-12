@@ -207,7 +207,7 @@ class ProfileRepository(
     suspend fun photoAttributes(): List<ProfileAttribute> =
         loadAttributes().filter { it.type == ProfileAttributeTypes.PHOTO }
 
-    /** The current photo attribute at [visibility] scoped to [circleId] (null: scoped to no circle), if the owner already has one. */
+    // circleId null matches only an unscoped photo, so a circle's photo is never taken for the all-connections one.
     suspend fun photoAttribute(visibility: ProfileVisibility, circleId: String? = null): ProfileAttribute? =
         photoAttributes().firstOrNull { it.visibility == visibility && it.isPhotoScopedTo(circleId) }
 

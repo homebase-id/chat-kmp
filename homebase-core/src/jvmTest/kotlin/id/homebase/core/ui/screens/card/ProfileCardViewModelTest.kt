@@ -702,6 +702,16 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun aLocallySavedBoardWithNoCardAttributeKeepsEmptyPublicOverrides() = runTest(dispatcher) {
+        val source = FakeSource(profile).apply { savedDesigns += CardDesign.BOARD }
+        val vm = viewModel(FakeHost(), source)
+
+        val publicCard = vm.uiState.value.cards.single { it.audience == CardAudience.Public }
+        assertEquals(CardDesign.BOARD, publicCard.design)
+        assertEquals(CardOverrides.EMPTY, publicCard.overrides)
+    }
+
+    @Test
     fun edgesAreProbedOnlyOnceTheRenderHasPaintedAndFollowTheirDesign() = runTest(dispatcher) {
         val host = FakeHost().apply { onPaintRequest = { send(CardEvent.Painted) } }
         val vm = viewModel(host, FakeSource(profile))

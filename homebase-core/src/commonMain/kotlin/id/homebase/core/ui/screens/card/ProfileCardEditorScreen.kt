@@ -137,7 +137,6 @@ import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditAction
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditEvent
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditViewModel
-import id.homebase.core.ui.screens.profile.photoFor
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import id.homebase.core.util.getUriHandler
@@ -320,7 +319,7 @@ fun ProfileCardEditorScreen(
     }
     val card = uiState.selectedAudience
     val circle = card as? CardAudience.Circle
-    val cardPhoto = avatarState.photoFor(card)
+    val cardPhoto = avatarState.photos.photoFor(card)
     val photoSlot = if (circle == null) avatarState.anonymous else avatarState.circleSlot(circle.id)
     val photoUi = CardPhotoUi(
         photo = cardPhoto,
@@ -719,6 +718,7 @@ private fun EditorPanel(
         motion.defaultSpatialSpec(),
     )
     val items = remember(uiState.attributes, uiState.circles, uiState.selectedAudience) { uiState.contentItems }
+    val importSources = remember(uiState.attributes, uiState.circles, uiState.cards, uiState.selectedAudience) { uiState.importSources }
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = shape,
@@ -738,7 +738,7 @@ private fun EditorPanel(
                     circles = uiState.circles,
                     photo = photo,
                     enabled = !uiState.isContentBusy && !uiState.loadFailed,
-                    importSources = uiState.importSources,
+                    importSources = importSources,
                     onToggle = onContentToggle,
                     onAudience = onContentAudience,
                     onAdd = onContentAdd,

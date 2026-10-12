@@ -6,8 +6,6 @@ import id.homebase.api.client.drives.isVisibleTo
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
-import id.homebase.core.ui.screens.card.CardAudience
-import id.homebase.core.ui.screens.card.aclFilter
 
 private val mostRestrictiveThenPriority: Comparator<ProfileAttribute> =
     compareBy(aclMostRestrictiveFirst, ProfileAttribute::acl).thenBy { it.priority }
@@ -41,9 +39,6 @@ internal fun List<ProfileAttribute>.visibleValues(tier: ProfileVisibility): Map<
 
 internal fun List<ProfileAttribute>.visiblePhoto(canSee: AclFilter): ProfileAttribute? =
     visibleAttribute(ProfileAttributeTypes.PHOTO, canSee, listOf(ProfileAttributeTypes.KEY_PROFILE_IMAGE))
-
-/** The photo [card]'s viewers see: its own circle photo if set, else the one it inherits. The one place a card's photo is resolved. */
-internal fun List<ProfileAttribute>.photoFor(card: CardAudience): ProfileAttribute? = visiblePhoto(card.aclFilter())
 
 internal fun List<ProfileAttribute>.visiblePhoto(tier: ProfileVisibility): ProfileAttribute? = visiblePhoto(tier.aclFilter())
 

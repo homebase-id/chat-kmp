@@ -4,6 +4,8 @@ package id.homebase.core.ui.screens.card
 
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
+import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.client.profile.isPhotoScopedTo
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.core.ui.screens.profile.LoadedProfileAttributes
 import id.homebase.core.ui.screens.profile.ProfileAudience
@@ -105,13 +107,25 @@ private fun contentText(attribute: ProfileAttribute): String? {
 
 internal class ImportStep(val attribute: ProfileAttribute, val previous: ProfileAudience, val next: ProfileAudience)
 
-/** Every item [from] shows that [into] doesn't yet, with the audience that would make [into] show it. */
+private fun List<ProfileAttribute>.ownPhoto(card: CardAudience): ProfileAttribute? = firstOrNull {
+    it.type == ProfileAttributeTypes.PHOTO && when (card) {
+        CardAudience.Public -> it.visibility == ProfileVisibility.ANONYMOUS
+        is CardAudience.Circle -> it.visibility == ProfileVisibility.CONNECTED && it.isPhotoScopedTo(card.id)
+    }
+}
+
+/** Every item [from] shows that [into] doesn't yet, with the audience that would make [into] show it; [from]'s own photo goes too when [into] has none. */
 internal fun importPlan(attributes: List<ProfileAttribute>, circles: List<CardCircle>, from: CardAudience, into: CardAudience): List<ImportStep> {
     val byId = attributes.associateBy { it.id }
-    return cardContentItems(attributes, circles, from)
+    val items = cardContentItems(attributes, circles, from)
         .filter { it.shown && !into.shows(it.audience) }
         .mapNotNull { item ->
             val attribute = byId[item.id] ?: return@mapNotNull null
             item.audience.shownOn(into, true, null)?.let { ImportStep(attribute, item.audience, it) }
         }
+    val photo = attributes.ownPhoto(from)?.takeIf { attributes.ownPhoto(into) == null }?.let { source ->
+        val audience = source.audience(circles)
+        audience.shownOn(into, true, null)?.let { ImportStep(source, audience, it) }
+    }
+    return items + listOfNotNull(photo)
 }
