@@ -24,10 +24,6 @@
         <item quantity="one">Sender til %1$d samtale…</item>
         <item quantity="other">Sender til %1$d samtaler…</item>
     </plurals>
-    <plurals name="profile_edit_card_details">
-        <item quantity="one">%1$d oplysning</item>
-        <item quantity="other">%1$d oplysninger</item>
-    </plurals>
     <plurals name="profile_card_import_count">
         <item quantity="one">%1$d nyt element</item>
         <item quantity="other">%1$d nye elementer</item>

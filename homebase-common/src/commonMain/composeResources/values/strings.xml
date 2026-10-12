@@ -2398,7 +2398,7 @@
     <string name="profile_card_photo_circle_pending">A photo of its own for this card needs a Homebase server update that hasn't shipped yet. Until then it shows the photo it inherits.</string>
     <string name="profile_card_import_action">Copy from…</string>
     <string name="profile_card_import_title">Copy from another card</string>
-    <string name="profile_card_import_hint">Shows what that card shows on this one too. Photos are not copied: a photo stays only on the card it was added for. Nothing is duplicated, and you can undo it.</string>
+    <string name="profile_card_import_hint">Shows that card's details on this one too. You can undo it.</string>
     <string name="profile_card_import_done">Copied from %1$s</string>
     <string name="profile_card_import_undo">Undo</string>
     <string name="profile_card_import_public_title">Show these to everyone?</string>
