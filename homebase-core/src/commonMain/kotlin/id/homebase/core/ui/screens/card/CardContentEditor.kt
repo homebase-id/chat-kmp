@@ -82,8 +82,7 @@ import id.homebase.resources.profile_card_content_on_card
 import id.homebase.resources.profile_card_content_public_hint
 import id.homebase.resources.profile_card_content_remove_this
 import id.homebase.resources.profile_card_import_action
-import id.homebase.resources.profile_card_import_count_one
-import id.homebase.resources.profile_card_import_count_other
+import id.homebase.resources.profile_card_import_count
 import id.homebase.resources.profile_card_import_hint
 import id.homebase.resources.profile_card_import_title
 import id.homebase.resources.profile_card_photo_circle_pending
@@ -95,6 +94,7 @@ import id.homebase.resources.profile_edit_photo_inherits_public
 import id.homebase.resources.profile_edit_photo_public_caption
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 private val PHOTO_SIZE = 88.dp
@@ -380,11 +380,7 @@ private fun CopyFromSheet(sources: List<CardImportSource>, onPick: (CardAudience
             )
             sources.forEach { source ->
                 val name = audienceLabel(source.audience)
-                val count = if (source.newItems == 1) {
-                    stringResource(MR.string.profile_card_import_count_one)
-                } else {
-                    stringResource(MR.string.profile_card_import_count_other, source.newItems)
-                }
+                val count = pluralStringResource(MR.plurals.profile_card_import_count, source.newItems, source.newItems)
                 Surface(
                     onClick = { dismiss { onPick(source.audience) } },
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,

@@ -121,7 +121,7 @@ class ProfileCardViewModelTest {
 
     internal class FakeSource(
         var attributes: List<ProfileAttribute>,
-        private val defaults: suspend () -> CardSiteDefaults = { CardSiteDefaults(design = CardDesign.POSTER) },
+        private val defaults: suspend () -> CardSiteDefaults = { CardSiteDefaults() },
         private val posts: suspend () -> List<CardPostEntry> = { emptyList() },
         private val cardRepository: CardRepository? = null,
     ) : ProfileCardSource {
@@ -1944,22 +1944,6 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun aCollageSiteThemeDoesNotMakePublicLookLikeFriends() = runTest(dispatcher) {
-        val work = CardCircle(WORK_CIRCLE_ID, "Work")
-        val store = FakeCardStore(keepWrites = true)
-        val source = FakeSource(profile, defaults = { CardSiteDefaults(design = cardDesignForTheme("777")) }, cardRepository = CardRepository(store)).apply {
-            liveCards = { store.attributes }
-            circleList = listOf(work, friendsCircle, family)
-        }
-        val vm = viewModel(FakeHost(), source)
-
-        val cards = vm.uiState.value.cards
-        assertEquals(CardDesign.BOARD, cards.first { it.audience == CardAudience.Public }.design)
-        assertEquals(setOf(CardDesign.BOARD, CardDesign.POSTER, CardDesign.COLLAGE, CardDesign.LINKS), cards.map { it.design }.toSet())
-        assertEquals(4, cards.map { it.design to it.overrides.palette?.ground }.distinct().size)
-    }
-
-    @Test
     fun openingTheUnsavedPublicCardWritesNothingAndTellsNoOne() = runTest(dispatcher) {
         val store = FakeCardStore(keepWrites = true)
         val (vm, _, host) = circleVm(store)
@@ -2044,15 +2028,25 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun aNeverSavedPublicCardRendersItsTemplateWhateverTheSiteTheme() = runTest(dispatcher) {
+    fun aNeverSavedPublicCardFollowsTheSiteDesignLikeTheWeb() = runTest(dispatcher) {
         for (theme in listOf(CardDesign.DOSSIER, CardDesign.COLLAGE, CardDesign.BOARD)) {
             val host = FakeHost()
             val vm = viewModel(host, FakeSource(profile, defaults = { CardSiteDefaults(design = theme) }))
 
-            assertEquals(CardDesign.BOARD, vm.uiState.value.design)
-            assertEquals(PUBLIC_CARD_TEMPLATE.overrides, vm.uiState.value.overrides)
-            assertEquals(CardDesign.BOARD, host.rendered.last().design)
+            assertEquals(theme, vm.uiState.value.design)
+            assertEquals(CardOverrides.EMPTY, vm.uiState.value.overrides)
+            assertEquals(theme, host.rendered.last().design)
         }
+    }
+
+    @Test
+    fun aNeverSavedPublicCardWithNoSiteDesignRendersItsTemplate() = runTest(dispatcher) {
+        val host = FakeHost()
+        val vm = viewModel(host, FakeSource(profile, defaults = { CardSiteDefaults() }))
+
+        assertEquals(PUBLIC_CARD_TEMPLATE.design, vm.uiState.value.design)
+        assertEquals(PUBLIC_CARD_TEMPLATE.overrides, vm.uiState.value.overrides)
+        assertEquals(PUBLIC_CARD_TEMPLATE.design, host.rendered.last().design)
     }
 
     @Test

@@ -233,7 +233,16 @@ fun ProfileCardEditorScreen(
     }
     var mode by rememberSaveable { mutableStateOf(EditorMode.Content) }
     var step by rememberSaveable { mutableStateOf(EditorStep.Design) }
-    LaunchedEffect(mode) { if (mode == EditorMode.Design) viewModel.onEditorOpened() else viewModel.onEditorClosed() }
+    var designOpened by remember { mutableStateOf(false) }
+    LaunchedEffect(mode) {
+        if (mode == EditorMode.Design) {
+            designOpened = true
+            viewModel.onEditorOpened()
+        } else if (designOpened) {
+            designOpened = false
+            viewModel.onEditorClosed()
+        }
+    }
     var confirmDiscard by remember { mutableStateOf(false) }
     val backToContent = {
         viewModel.onPreviewDiscarded()
@@ -271,6 +280,7 @@ fun ProfileCardEditorScreen(
                     )
                     if (result == SnackbarResult.ActionPerformed) viewModel.onImportUndone()
                 }
+                ProfileCardEvent.ImportUndoExpired -> snackbarHostState.currentSnackbarData?.dismiss()
                 is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed, ProfileCardEvent.ResetFailed -> Unit
             }
         }

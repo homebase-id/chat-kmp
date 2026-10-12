@@ -353,6 +353,39 @@ class CardContentTest {
     }
 
     @Test
+    fun editingAnImportedItemRetiresTheUndo() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        wire.seedFriendsAndFamilyContent()
+        val rig = rig(wire)
+        rig.open(work)
+        rig.import(friends, expectedPuts = 3)
+        val phoneId = rig.vm.uiState.value.attributes.single { it.type == ProfileAttributeTypes.PHONE }.id
+
+        rig.write { rig.vm.onContentAudienceChanged(phoneId, ProfileAudience.Public) }
+        val putsAfterEdit = wire.puts
+        rig.vm.onImportUndone()
+        rig.vm.await { !it.isContentBusy }
+
+        assertEquals(putsAfterEdit, wire.puts)
+    }
+
+    @Test
+    fun leavingTheCardRetiresTheUndo() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        wire.seedFriendsAndFamilyContent()
+        val rig = rig(wire)
+        rig.open(work)
+        rig.import(friends, expectedPuts = 3)
+
+        rig.vm.onEditorClosed()
+        val puts = wire.puts
+        rig.vm.onImportUndone()
+        rig.vm.await { !it.isContentBusy }
+
+        assertEquals(puts, wire.puts)
+    }
+
+    @Test
     fun anUndoneImportOntoPublicLeavesNoStaleAudienceForALaterRemoval() = runTest(dispatcher) {
         val wire = CardWireHarness()
         wire.seedFriendsAndFamilyContent()

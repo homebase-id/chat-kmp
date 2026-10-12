@@ -17,7 +17,7 @@ import kotlinx.serialization.json.longOrNull
 private const val TAG = "CardSiteDefaults"
 
 data class CardSiteDefaults(
-    val design: String = CardDesign.BOARD,
+    val design: String? = null,
     val tagLine: String? = null,
     val header: HomebaseImageData? = null,
 )

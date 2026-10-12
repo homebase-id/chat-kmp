@@ -160,6 +160,7 @@ sealed interface ProfileCardEvent {
     data object CircleCardsUnsupported : ProfileCardEvent
     data object ContentSaveFailed : ProfileCardEvent
     data class ContentImported(val count: Int, val from: CardAudience) : ProfileCardEvent
+    data object ImportUndoExpired : ProfileCardEvent
 }
 
 interface ProfileCardSource {
@@ -511,6 +512,7 @@ class ProfileCardViewModel(
     private fun selectAudience(audience: CardAudience) {
         val state = _uiState.value
         if (audience == state.selectedAudience || state.cards.none { it.audience == audience }) return
+        dropImportUndo()
         designSwitchJob?.cancel()
         _cover.value = null
         _uiState.update { it.copy(selectedAudience = audience, previewDesign = null, previewOverrides = null) }
@@ -548,7 +550,14 @@ class ProfileCardViewModel(
         writeContent(edit.type, edit.data, edit.audience, existing)
     }
 
+    private fun dropImportUndo() {
+        if (importUndo == null) return
+        importUndo = null
+        _events.tryEmit(ProfileCardEvent.ImportUndoExpired)
+    }
+
     private fun writeContent(type: String, data: JsonObject, audience: ProfileAudience, existing: ProfileAttribute?) {
+        dropImportUndo()
         val card = _uiState.value.selectedAudience
         _uiState.update { it.copy(isContentBusy = true) }
         viewModelScope.launch {
@@ -599,6 +608,7 @@ class ProfileCardViewModel(
         val state = _uiState.value
         val plan = importPlan(state.attributes, state.circles, from, state.selectedAudience)
         if (plan.isEmpty()) return
+        dropImportUndo()
         if (state.selectedAudience == CardAudience.Public) plan.forEach { audiencesBeforePublic[it.attribute.id] = it.previous }
         _uiState.update { it.copy(isContentBusy = true) }
         viewModelScope.launch {
@@ -800,6 +810,7 @@ class ProfileCardViewModel(
 
     fun onEditorClosed() {
         designAccessWanted = false
+        dropImportUndo()
     }
 
     private fun promptForDesignAccessIfWanted() {
@@ -1004,12 +1015,14 @@ class ProfileCardViewModel(
         val storedPublic = stored.publicCard()
         val cardDesign = storedPublic?.design?.takeIf { it in CardDesign.all }
         val pending = unsavedCard
-        val saved = pending?.design ?: cardDesign ?: storedDesign ?: PUBLIC_CARD_TEMPLATE.design
+        val siteDesign = defaults.design?.takeIf { it in CardDesign.all }
+        val useTemplate = storedDesign == null && pending == null && siteDesign == null
+        val saved = pending?.design ?: cardDesign ?: storedDesign ?: siteDesign ?: PUBLIC_CARD_TEMPLATE.design
         if (pending != null && cardJob?.isActive != true) writeCard(pending)
         val pendingOverrides = pending?.overrides
         val publicCard = (storedPublic ?: ProfileCard(
             Uuid.NIL, Uuid.NIL, CardAudience.Public, saved,
-            if (storedDesign == null && pending == null) PUBLIC_CARD_TEMPLATE.overrides else CardOverrides.EMPTY,
+            if (useTemplate) PUBLIC_CARD_TEMPLATE.overrides else CardOverrides.EMPTY,
         ))
             .let { card -> if (pendingOverrides != null) card.copy(overrides = pendingOverrides) else card }
         val cards = (listOf(publicCard) + circleCards(stored, publicCard)).sortedCards()

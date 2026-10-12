@@ -482,6 +482,32 @@ class ProfileCardPhotosTest {
     }
 
     @Test
+    fun aSaveOnCropUploadRejectedAsTooLargeLeavesTheSlotFreeToRemoveAndRetry() = runBlocking {
+        val harness = CardWireHarness(
+            photoReply = CardWireHarness.Reply.Problem(
+                400,
+                """{"type":"x","title":"x","status":400,"errorCode":"maxContentLengthExceeded"}""",
+            ),
+        )
+        seedPublicPhoto(harness)
+        val bus = CropResultBus()
+        val vm = viewModel(harness, bus)
+        val tooLarge = kotlinx.coroutines.CompletableDeferred<ProfileAvatarEditEvent>()
+        val job = launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            vm.events.collect { if (it is ProfileAvatarEditEvent.UploadTooLarge) tooLarge.complete(it) }
+        }
+
+        uploadFamilyPhoto(vm, bus, awaitStored = false, saveOnCrop = true)
+        withTimeout(5_000) { tooLarge.await() }
+        job.cancel()
+
+        val slot = vm.state.value.circleSlot(FAMILY_CIRCLE_ID)
+        assertEquals(false, slot.isUploading)
+        assertNull(slot.pendingCroppedAvatar)
+        assertEquals(false, slot.canUpload)
+    }
+
+    @Test
     fun pickingWithSaveOnCropUploadsWithoutASavePressAndAnnouncesIt() = runBlocking {
         val harness = CardWireHarness()
         val publicId = seedPublicPhoto(harness)

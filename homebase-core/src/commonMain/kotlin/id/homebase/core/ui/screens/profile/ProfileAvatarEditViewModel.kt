@@ -323,11 +323,13 @@ class ProfileAvatarEditViewModel(
                 // maxContentLengthExceeded is common enough (an unresized/oversized source photo)
                 // to warrant its own "choose a smaller one" message rather than a generic failure.
                 Logger.w(throwable = e, tag = TAG) { "Profile photo too large for $slot" }
-                updateTier(slot) { it.copy(isUploading = false) }
+                pendingCroppedBytes.remove(slot)
+                updateTier(slot) { it.copy(isUploading = false, pendingCroppedAvatar = null) }
                 _events.tryEmit(ProfileAvatarEditEvent.UploadTooLarge(slot.visibility))
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) { "Profile photo upload failed for $slot" }
-                updateTier(slot) { it.copy(isUploading = false) }
+                pendingCroppedBytes.remove(slot)
+                updateTier(slot) { it.copy(isUploading = false, pendingCroppedAvatar = null) }
                 _events.tryEmit(ProfileAvatarEditEvent.UploadFailed(slot.visibility))
             }
         }

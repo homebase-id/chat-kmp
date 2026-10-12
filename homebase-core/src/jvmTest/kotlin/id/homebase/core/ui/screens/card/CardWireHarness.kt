@@ -47,6 +47,7 @@ class CardWireHarness(
     private val cardType: Boolean = true,
     private val photoCircleIds: Boolean = true,
     private val queryFailsAfterPhotoPut: Boolean = false,
+    private val photoReply: Reply = Reply.Ok,
     private val putReply: (Int) -> Reply = { Reply.Ok },
 ) {
     sealed interface Reply {
@@ -163,6 +164,9 @@ class CardWireHarness(
                 val plain = CryptoHelper.decryptContentAsString((request.body as TextContent).text, secret.unsafeBytes)
                 val obj = OdinSystemSerializer.json.parseToJsonElement(plain).jsonObject
                 photoRecorded += obj
+                if (photoReply is Reply.Problem) {
+                    return@MockEngine respond(photoReply.json, HttpStatusCode.fromValue(photoReply.status), json)
+                }
                 val circleIds = obj["circleIds"]
                 if (photoCircleIds && circleIds != null && obj["visibility"]!!.jsonPrimitive.content != "Connected") {
                     return@MockEngine respond(CIRCLES_NEED_CONNECTED_400, HttpStatusCode.BadRequest, json)
