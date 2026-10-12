@@ -31,8 +31,9 @@ Every file and folder is one Homebase file:
   - Ignore keys you don't know. If `v` > 1, show the item but don't change it.
 
 ## Listing a folder
-- One `query-batch` with `groupId: [<folder's node id>]`, `fileType: [7101, 7102]` and
-  `fileState: [active]`, in pages.
+- One `query-batch` with `groupId: [<folder's node id>]`, `fileType: [7101, 7102]`,
+  `fileState: [active]` and `archivalStatus: [0]`, in pages. A deleted node is only removed:
+  `archivalStatus` 2 with a content key `rm`, still in its folder (filesync's "Recently deleted").
 - Every row is encrypted: names, sizes and times. Decrypt each one, then sort on the device.
 - Skip any row that won't decrypt, isn't encrypted or has a different file type; a name that
   breaks the name rules under "Uploading"; and a file without `size` or without a hashed

@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.filesync
 
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.ExportDestination
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.query.DriveQueryProvider
@@ -32,6 +33,8 @@ class FilesyncRepository(
                     queryParams = FileQueryParams(
                         fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType),
                         fileState = listOf(FileState.Active),
+                        // A node in Recently deleted keeps its groupId, so it would otherwise list as live.
+                        archivalStatus = listOf(ArchivalStatus.None.value),
                         groupId = listOf(folderId),
                     ),
                     resultOptionsRequest = QueryBatchResultOptionsRequest(
