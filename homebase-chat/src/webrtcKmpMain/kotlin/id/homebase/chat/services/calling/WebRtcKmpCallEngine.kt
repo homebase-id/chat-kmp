@@ -8,6 +8,7 @@ import com.shepeliev.webrtckmp.MediaDevices
 import com.shepeliev.webrtckmp.MediaStream
 import com.shepeliev.webrtckmp.MediaStreamTrack
 import com.shepeliev.webrtckmp.MediaStreamTrackKind
+import com.shepeliev.webrtckmp.MediaStreamTrackState
 import com.shepeliev.webrtckmp.OfferAnswerOptions
 import com.shepeliev.webrtckmp.PeerConnection
 import com.shepeliev.webrtckmp.PeerConnectionState
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -76,20 +78,37 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
                 mapper.remoteVideo(true)
             }
         }
-        scope.launch { logInboundVideoStats() }
+        scope.launch { logVideoStats() }
     }
 
-    private suspend fun logInboundVideoStats() {
+    // A stalled inbound counter cannot tell a stopped sender from a lost path; the sender's own line can.
+    private suspend fun logVideoStats() {
         while (!closed.load()) {
             delay(5_000)
-            val inbound = runCatching { peer.getStats()?.stats?.values }.getOrNull()
-                ?.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "video" } ?: continue
-            val m = inbound.members
-            Logger.i("WebRtcKmp") {
-                "inbound video packets=${m["packetsReceived"]} lost=${m["packetsLost"]} bytes=${m["bytesReceived"]} " +
-                    "decoded=${m["framesDecoded"]} dropped=${m["framesDropped"]} freezes=${m["freezeCount"]} " +
-                    "plis=${m["pliCount"]} nacks=${m["nackCount"]} decoder=${m["decoderImplementation"]}"
+            val stats = runCatching { peer.getStats()?.stats?.values }.getOrNull() ?: continue
+            stats.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "video" }?.members?.let { m ->
+                Logger.i("WebRtcKmp") {
+                    "inbound video packets=${m["packetsReceived"]} lost=${m["packetsLost"]} bytes=${m["bytesReceived"]} " +
+                        "decoded=${m["framesDecoded"]} dropped=${m["framesDropped"]} freezes=${m["freezeCount"]} " +
+                        "plis=${m["pliCount"]} nacks=${m["nackCount"]} decoder=${m["decoderImplementation"]}"
+                }
             }
+            stats.firstOrNull { it.type == "outbound-rtp" && it.members["kind"] == "video" }?.members?.let { m ->
+                Logger.i("WebRtcKmp") {
+                    "outbound video packets=${m["packetsSent"]} bytes=${m["bytesSent"]} encoded=${m["framesEncoded"]} " +
+                        "sent=${m["framesSent"]} keyframes=${m["keyFramesEncoded"]} size=${m["frameWidth"]}x${m["frameHeight"]} " +
+                        "target=${m["targetBitrate"]} limit=${m["qualityLimitationReason"]} plisIn=${m["pliCount"]} " +
+                        "firsIn=${m["firCount"]} nacksIn=${m["nackCount"]} encoder=${m["encoderImplementation"]} " +
+                        "track=${videoTrack?.state?.value}"
+                }
+            }
+            stats.firstOrNull { it.type == "candidate-pair" && it.members["nominated"] == true && it.members["state"] == "succeeded" }
+                ?.members?.let { m ->
+                    Logger.i("WebRtcKmp") {
+                        "pair sent=${m["bytesSent"]} received=${m["bytesReceived"]} rtt=${m["currentRoundTripTime"]} " +
+                            "outBitrate=${m["availableOutgoingBitrate"]} local=${m["localCandidateId"]} remote=${m["remoteCandidateId"]}"
+                    }
+                }
         }
     }
 
@@ -133,6 +152,11 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
                 MediaStreamTrackKind.Video -> (track as? VideoTrack)?.let {
                     videoTrack = it
                     publishLocal(it)
+                    // webrtc-kmp stops the track itself on a camera error or freeze; nothing else reports it.
+                    scope.launch {
+                        it.state.first { state -> state is MediaStreamTrackState.Ended }
+                        if (!closed.load()) Logger.w("WebRtcKmp") { "local video track ended by capturer device=${it.settings.deviceId}" }
+                    }
                 }
             }
         }
@@ -190,7 +214,11 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     override fun switchCamera() {
         val track = videoTrack ?: return
         scope.launch {
-            runCatching { track.switchCamera() }
+            val current = track.settings.deviceId
+            // Cycling (null) on Android walks into auxiliary lenses that may deliver no frames; a freeze then ends the track.
+            val target = flipTarget(current, platformCameras())
+            Logger.i("WebRtcKmp") { "switchCamera from=$current to=${target ?: "next"}" }
+            runCatching { track.switchCamera(target) }
                 .onSuccess { if (!closed.load()) publishLocal(track) }
                 .onFailure { Logger.w(it, "WebRtcKmp") { "switchCamera failed" } }
         }
