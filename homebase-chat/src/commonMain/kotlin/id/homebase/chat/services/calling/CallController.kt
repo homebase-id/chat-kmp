@@ -10,6 +10,8 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -64,34 +66,43 @@ class CallController(
     private val endedCalls = ArrayDeque<String>()
 
     private val collectors: List<Job>
+    private val inboxLoop: Job
 
     init {
-        collectors = listOf(
-            scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                signaling.incoming.collect { post(CallEvent.Signal(it)) }
-            },
-            scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                try {
-                    for (command in inbox) {
-                        when (command) {
-                            is Command.Event -> try {
-                                process(command.event)
-                            } finally {
-                                command.processed?.complete(_state.value)
-                            }
-                            is Command.RepublishOffer -> republishOffer(command.callId)
-                            Command.Close -> break
+        val signals = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            signaling.incoming.collect { post(CallEvent.Signal(it)) }
+        }
+        inboxLoop = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                for (command in inbox) {
+                    when (command) {
+                        is Command.Event -> try {
+                            process(command.event)
+                        } finally {
+                            command.processed?.complete(_state.value)
                         }
+                        is Command.RepublishOffer -> republishOffer(command.callId)
+                        Command.Close -> break
                     }
-                } finally {
-                    withContext(NonCancellable) { teardown() }
                 }
-            },
-        )
+            } finally {
+                withContext(NonCancellable) { teardown() }
+            }
+        }
+        collectors = listOf(signals, inboxLoop)
     }
 
     fun close() {
         inbox.trySend(Command.Close)
+    }
+
+    /** Hangs up any call and releases camera and mic before returning; a hangup still unsent after [hangupBudgetMs] is dropped. */
+    suspend fun endForQuit(hangupBudgetMs: Long = QUIT_HANGUP_BUDGET_MS) {
+        val hungUp = CompletableDeferred<CallState>()
+        if (inbox.trySend(Command.Event(CallEvent.UserHangup, hungUp)).isSuccess) {
+            withTimeoutOrNull(hangupBudgetMs) { hungUp.await() }
+        }
+        inboxLoop.cancelAndJoin()
     }
 
     private fun teardown() {
@@ -375,5 +386,6 @@ class CallController(
     private companion object {
         const val TAG = "CallController"
         const val ENDED_CALLS_REMEMBERED = 32
+        const val QUIT_HANGUP_BUDGET_MS = 2_000L
     }
 }

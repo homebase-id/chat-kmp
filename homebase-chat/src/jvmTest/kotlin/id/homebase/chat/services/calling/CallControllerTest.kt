@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.onSubscription
@@ -40,12 +41,14 @@ class CallControllerTest {
     ) {
         val engines = mutableListOf<FakeCallEngine>()
         var offline = false
+        var sendHangs = false
         private val link = net.endpoint(id)
         val controller = CallController(
             selfOdinId = id,
             signaling = object : CallSignaling by link {
                 override suspend fun send(outbound: OutboundSignal) {
                     if (offline) throw IllegalStateException("Unable to resolve host")
+                    if (sendHangs) awaitCancellation()
                     link.send(outbound)
                 }
             },
@@ -95,6 +98,42 @@ class CallControllerTest {
         assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = true)), b.phase)
         assertTrue(a.engines.single().closed)
         assertTrue(b.engines.single().closed)
+    }
+
+    @Test
+    fun quittingMidCallHangsUpThePeerAndReleasesTheEngine() = runTest {
+        val (_, a, b) = pair()
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+        b.controller.accept()
+        runCurrent()
+        advanceTimeBy(1_001)
+        assertEquals(CallPhase.Connected, a.phase)
+
+        a.controller.endForQuit()
+        runCurrent()
+
+        assertTrue(a.engines.single().closed)
+        assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = true)), b.phase)
+    }
+
+    @Test
+    fun quittingWhileTheHangupCannotBeSentStillReleasesTheEngine() = runTest {
+        val (_, a, b) = pair()
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+        b.controller.accept()
+        runCurrent()
+        advanceTimeBy(1_001)
+        a.sendHangs = true
+
+        val quit = launch { a.controller.endForQuit(hangupBudgetMs = 2_000) }
+        runCurrent()
+        assertTrue(quit.isActive)
+        advanceTimeBy(2_001)
+
+        assertTrue(quit.isCompleted)
+        assertTrue(a.engines.single().closed)
     }
 
     @Test

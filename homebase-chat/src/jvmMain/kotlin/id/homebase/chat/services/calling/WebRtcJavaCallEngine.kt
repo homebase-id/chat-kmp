@@ -138,7 +138,7 @@ class WebRtcJavaCallEngine(
 
     private fun startCamera() {
         try {
-            val devices = dev.onvoid.webrtc.media.MediaDevices.getVideoCaptureDevices()
+            val devices = cameras()
             val device = devices.firstOrNull() ?: run {
                 Logger.w("WebRtcJava") { "no camera found, continuing audio-only" }
                 return
@@ -242,7 +242,7 @@ class WebRtcJavaCallEngine(
     override fun switchCamera() {
         synchronized(lock) {
             if (closed) return
-            val devices = dev.onvoid.webrtc.media.MediaDevices.getVideoCaptureDevices()
+            val devices = cameras()
             val source = videoSource ?: return
             if (devices.size < 2) return
             cameraIndex = (cameraIndex + 1) % devices.size
@@ -251,6 +251,8 @@ class WebRtcJavaCallEngine(
             source.start()
         }
     }
+
+    private fun cameras() = preferredCameraOrder(dev.onvoid.webrtc.media.MediaDevices.getVideoCaptureDevices()) { it.name }
 
     override fun setAudioRoute(route: AudioRoute) = Unit
 
@@ -285,6 +287,23 @@ class WebRtcJavaCallEngine(
         }
     }
 }
+
+/**
+ * Built-in cameras first and virtual ones last: AVFoundation lists OBS Virtual Camera first, refuses it
+ * ("Cannot use OBS Virtual Camera") and the source then delivers no frame without throwing.
+ */
+internal fun <T> preferredCameraOrder(devices: List<T>, name: (T) -> String): List<T> =
+    devices.sortedBy { device ->
+        val label = name(device).lowercase()
+        when {
+            BUILT_IN_CAMERA_HINTS.any { it in label } -> 0
+            VIRTUAL_CAMERA_HINTS.any { it in label } -> 2
+            else -> 1
+        }
+    }
+
+private val BUILT_IN_CAMERA_HINTS = listOf("facetime", "built-in", "integrated")
+private val VIRTUAL_CAMERA_HINTS = listOf("virtual", "obs", "snap camera", "ndi", "manycam", "mmhmm")
 
 /** Bounds the video sender to [SendVideoCap]'s bitrate window; webrtc-java exposes no degradation preference. */
 internal fun configureVideoSender(sender: RTCRtpSender) {

@@ -240,6 +240,7 @@ fun main() {
         }
         val quitApplication = {
             saveWindowGeometry()
+            id.homebase.core.calling.endDesktopCallForQuit()
             exitApplication()
         }
 
@@ -264,6 +265,7 @@ fun main() {
                 awtDesktop?.takeIf { it.isSupported(Desktop.Action.APP_QUIT_HANDLER) }
             quitHandlerDesktop?.setQuitHandler { _, response ->
                 saveWindowGeometry()
+                id.homebase.core.calling.endDesktopCallForQuit()
                 response.performQuit()
             }
             val prefsDesktop =

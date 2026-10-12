@@ -120,6 +120,7 @@ class CallService(
     override fun switchCamera() { controller.value?.switchCamera() }
     override fun setAudioRoute(route: AudioRoute) { controller.value?.setAudioRoute(route) }
     fun onPermissionDenied() = controller.value?.onPermissionDenied()
+    suspend fun endForQuit() { controller.value?.endForQuit() }
     override fun onPushRing(callId: String, from: String) { pushes.trySend(Push.Ring(callId, from)) }
 
     override fun pushRing(callId: String, from: String): Deferred<CallState> =

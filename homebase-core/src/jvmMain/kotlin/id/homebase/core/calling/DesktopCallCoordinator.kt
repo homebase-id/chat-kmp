@@ -13,6 +13,7 @@ import id.homebase.resources.call_incoming_generic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.runBlocking
 import org.koin.mp.KoinPlatformTools
 
 private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -36,4 +37,10 @@ fun startDesktopCallCoordinator() {
         labelFor = { contacts.displayName(OdinId(it)) },
         scope = scope,
     ).start()
+}
+
+/** Blocks the quitting thread until any call is hung up and its camera and mic are released. */
+fun endDesktopCallForQuit() {
+    val service = KoinPlatformTools.defaultContext().getOrNull()?.getOrNull<CallService>() ?: return
+    runBlocking { service.endForQuit() }
 }
