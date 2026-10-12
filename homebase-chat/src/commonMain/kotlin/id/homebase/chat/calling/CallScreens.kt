@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -120,6 +121,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -131,6 +133,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.staticCompositionLocalOf
+import id.homebase.chat.services.calling.RemoteVideoSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
@@ -235,8 +241,31 @@ private val LargeWidth = 840.dp
 private val StageMaxWidth = 1040.dp
 private val StageMaxHeight = 720.dp
 private val PipTop = 84.dp
+internal const val RemoteVideoTag = "call-remote-video"
 private val PhoneDockReserve = 236.dp
 private val DesktopDockReserve = 128.dp
+private val CompactHeight = 480.dp
+private val CompactDockReserve = 112.dp
+private val CompactPipTop = 72.dp
+
+/** A phone on its side: too short for the stacked phone layout, and its width must not pass it off as a desktop. */
+private val LocalCompactHeight = staticCompositionLocalOf { false }
+
+internal fun isCompactHeight(width: Dp, height: Dp): Boolean = height < CompactHeight && width > height
+
+/** Self-view snap corners: top-start, top-end, bottom-start, bottom-end. A short window clamps the bottom pair to the top. */
+internal fun previewCorners(width: Float, height: Float, pipW: Float, pipH: Float, margin: Float, top: Float, bottomReserve: Float): List<Offset> {
+    val bottom = (height - pipH - bottomReserve).coerceAtLeast(top)
+    val end = width - pipW - margin
+    return listOf(Offset(margin, top), Offset(end, top), Offset(margin, bottom), Offset(end, bottom))
+}
+
+/** Width:height to fit the remote video at, or null to fill: a stream turned the other way from the screen is shown whole. */
+internal fun remoteVideoLetterbox(video: Pair<Int, Int>?, viewWidth: Float, viewHeight: Float): Float? {
+    val (w, h) = video ?: return null
+    if (w <= 0 || h <= 0 || viewWidth <= 0f || viewHeight <= 0f) return null
+    return if ((w > h) != (viewWidth > viewHeight)) w.toFloat() / h else null
+}
 
 private enum class HaloMode { None, Still, Ringing, Waiting }
 
@@ -259,7 +288,8 @@ fun CallScreen(
             .onPreviewKeyEvent { handleCallKey(it, ui, actions) },
     ) {
         CallBackdrop()
-        if (maxWidth >= LargeWidth) {
+        val compact = isCompactHeight(maxWidth, maxHeight)
+        if (!compact && maxWidth >= LargeWidth) {
             Box(
                 Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(32.dp),
                 contentAlignment = Alignment.Center,
@@ -275,7 +305,9 @@ fun CallScreen(
                 }
             }
         } else {
-            CallStage(ui, large = false, peerName, avatar, actions, Modifier.windowInsetsPadding(WindowInsets.safeDrawing))
+            CompositionLocalProvider(LocalCompactHeight provides compact) {
+                CallStage(ui, large = false, peerName, avatar, actions, Modifier.windowInsetsPadding(WindowInsets.safeDrawing))
+            }
         }
     }
 }
@@ -314,7 +346,7 @@ private fun CallStage(
     Box(Modifier.fillMaxSize()) {
         if (videoMode) VideoStage(ui, large, avatar)
         Box(contentInsets.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-            Box(Modifier.then(if (large) Modifier else Modifier.widthIn(max = ContentMaxWidth)).fillMaxSize()) {
+            Box(Modifier.then(if (large || LocalCompactHeight.current) Modifier else Modifier.widthIn(max = ContentMaxWidth)).fillMaxSize()) {
                 when (val phase = ui.phase) {
                     CallPhase.Incoming -> IncomingLayout(ui, large, peerName, avatar, actions)
                     CallPhase.Outgoing -> OutgoingLayout(ui, large, peerName, avatar, actions)
@@ -349,7 +381,16 @@ private fun CallUiState.remoteShowing(): Boolean =
 @Composable
 internal fun CallPipLayout(ui: CallUiState, avatar: @Composable (Dp) -> Unit) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLowest), contentAlignment = Alignment.Center) {
-        if (ui.remoteShowing()) CallVideoSurface(ui.videos.remote, Modifier.fillMaxSize()) else avatar(48.dp)
+        if (ui.remoteShowing()) RemoteVideo(ui.videos.remote) else avatar(48.dp)
+    }
+}
+
+@Composable
+private fun RemoteVideo(handle: VideoHandle?) {
+    val videoSize by RemoteVideoSize.current.collectAsState()
+    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim), contentAlignment = Alignment.Center) {
+        val letterbox = remoteVideoLetterbox(videoSize, maxWidth.value, maxHeight.value)
+        CallVideoSurface(handle, (if (letterbox != null) Modifier.aspectRatio(letterbox) else Modifier.fillMaxSize()).testTag(RemoteVideoTag))
     }
 }
 
@@ -358,7 +399,7 @@ private fun VideoStage(ui: CallUiState, large: Boolean, avatar: @Composable (Dp)
     val reconnecting = ui.phase == CallPhase.Reconnecting
     Box(Modifier.fillMaxSize()) {
         if (ui.remoteShowing()) {
-            CallVideoSurface(ui.videos.remote, Modifier.fillMaxSize())
+            RemoteVideo(ui.videos.remote)
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.verticalGradient(
@@ -422,18 +463,24 @@ private fun BoxScope.IncomingLayout(
     actions: CallScreenActions,
 ) {
     val video = ui.isVideoCall
+    val compact = LocalCompactHeight.current
     PeerHeader(
         name = peerName,
         status = stringResource(if (video) MR.string.call_incoming_video else MR.string.call_incoming_voice),
         avatar = avatar,
         halo = HaloMode.Ringing,
         large = large,
-        modifier = Modifier.align(Alignment.Center).padding(bottom = if (large) 120.dp else 160.dp),
+        modifier = Modifier.align(Alignment.Center).padding(bottom = if (large) 120.dp else if (compact) 144.dp else 160.dp),
     )
     Row(
-        Modifier.align(Alignment.BottomCenter)
-            .then(if (large) Modifier.padding(bottom = 56.dp) else Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 32.dp)),
-        horizontalArrangement = if (large) Arrangement.spacedBy(64.dp) else Arrangement.SpaceEvenly,
+        Modifier.align(Alignment.BottomCenter).then(
+            when {
+                large -> Modifier.padding(bottom = 56.dp)
+                compact -> Modifier.padding(bottom = 16.dp)
+                else -> Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 32.dp)
+            },
+        ),
+        horizontalArrangement = if (large || compact) Arrangement.spacedBy(64.dp) else Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.Bottom,
     ) {
         RoundCallButton(
@@ -481,7 +528,7 @@ private fun BoxScope.OutgoingLayout(
         avatar = avatar,
         halo = HaloMode.Ringing,
         large = large,
-        modifier = Modifier.align(Alignment.Center).padding(bottom = if (large) 120.dp else 190.dp),
+        modifier = Modifier.align(Alignment.Center).padding(bottom = if (large) 120.dp else if (LocalCompactHeight.current) 104.dp else 190.dp),
     )
     ControlDock(ui, large, actions, Modifier.align(Alignment.BottomCenter), placing = true)
 }
@@ -501,7 +548,7 @@ private fun BoxScope.InCallLayout(
 
     if (!videoMode) {
         Column(
-            Modifier.align(Alignment.Center).padding(bottom = if (large) 110.dp else 200.dp),
+            Modifier.align(Alignment.Center).padding(bottom = if (large) 110.dp else if (LocalCompactHeight.current) 104.dp else 200.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             PeerHeader(
@@ -710,31 +757,28 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
     val scope = rememberCoroutineScope()
     val springSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Offset>()
     BoxWithConstraints(Modifier.matchParentSize().then(if (large) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing))) {
-        val pipWidth = if (large) 192.dp else 108.dp
-        val pipHeight = if (large) 132.dp else 156.dp
+        val compact = LocalCompactHeight.current
+        // A phone on its side captures landscape frames, so the inset turns with it.
+        val pipWidth = if (large) 192.dp else if (compact) 156.dp else 108.dp
+        val pipHeight = if (large) 132.dp else if (compact) 108.dp else 156.dp
         val width = with(density) { maxWidth.toPx() }
         val height = with(density) { maxHeight.toPx() }
         val pipW = with(density) { pipWidth.toPx() }
         val pipH = with(density) { pipHeight.toPx() }
         val margin = with(density) { 16.dp.toPx() }
-        val top = with(density) { (if (large) 80.dp else PipTop).toPx() }
-        val bottom = with(density) { (if (large) DesktopDockReserve else PhoneDockReserve).toPx() }
+        val top = with(density) { (if (large) 80.dp else if (compact) CompactPipTop else PipTop).toPx() }
+        val bottom = with(density) { (if (large) DesktopDockReserve else if (compact) CompactDockReserve else PhoneDockReserve).toPx() }
         val previewDescription = stringResource(MR.string.call_local_preview)
-        val corners = listOf(
-            Offset(margin, top),
-            Offset(width - pipW - margin, top),
-            Offset(margin, height - pipH - bottom),
-            Offset(width - pipW - margin, height - pipH - bottom),
-        )
-        val anchor = remember(width, height) { Animatable(corners[1], Offset.VectorConverter) }
-        var drag by remember(width, height) { mutableStateOf(Offset.Zero) }
+        val corners = previewCorners(width, height, pipW, pipH, margin, top, bottom)
+        val anchor = remember(width, height, compact) { Animatable(corners[1], Offset.VectorConverter) }
+        var drag by remember(width, height, compact) { mutableStateOf(Offset.Zero) }
         val shape = RoundedCornerShape(20.dp)
         Surface(
             modifier = Modifier
                 .offset { (anchor.value + drag).round() }
                 .size(pipWidth, pipHeight)
                 .semantics { contentDescription = previewDescription }
-                .pointerInput(width, height, rtl) {
+                .pointerInput(width, height, rtl, compact) {
                     detectDragGestures(
                         onDrag = { change, amount ->
                             change.consume()
@@ -776,7 +820,8 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
 /** [placing] is the outgoing ring: only the controls that matter before the peer answers. */
 @Composable
 private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActions, modifier: Modifier, placing: Boolean) {
-    val showLabels = !large
+    val compact = LocalCompactHeight.current
+    val showLabels = !large && !compact
     val showRoute = ui.availableRoutes.size > 1
     val showCamera = ui.videos.local != null
     // Desktop webcams are single-facing, so flip only earns a slot on phone widths.
@@ -831,9 +876,9 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
         }
     }
     val dockColor = MaterialTheme.colorScheme.surfaceContainerLowest
-    if (large) {
+    if (large || compact) {
         Surface(
-            modifier = modifier.padding(bottom = 28.dp),
+            modifier = modifier.padding(bottom = if (compact) 12.dp else 28.dp),
             shape = RoundedCornerShape(40.dp),
             color = dockColor,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
@@ -1072,31 +1117,45 @@ private fun BoxScope.EndedLayout(
         halo = HaloMode.None,
         dimmed = true,
         large = large,
-        modifier = Modifier.align(Alignment.Center).padding(bottom = if (large) 120.dp else 170.dp),
+        modifier = Modifier.align(Alignment.Center).padding(bottom = if (large) 120.dp else if (LocalCompactHeight.current) 80.dp else 170.dp),
     )
-    Column(
-        Modifier.align(Alignment.BottomCenter).widthIn(max = 360.dp).fillMaxWidth().padding(horizontal = 32.dp).padding(bottom = if (large) 48.dp else 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
+    EndActions(large, spacing = 12.dp) { slot ->
         Button(
             onClick = actions.retry,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            modifier = slot.heightIn(min = 56.dp),
             contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
         ) {
             Icon(if (ui.isVideoCall) Icons.Default.Videocam else Icons.Default.Call, null, Modifier.size(ButtonDefaults.iconSizeFor(56.dp)))
             Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(56.dp)))
             Text(stringResource(MR.string.call_call_back), style = ButtonDefaults.textStyleFor(56.dp))
         }
-        CloseButton(onClick = actions.close)
+        CloseButton(onClick = actions.close, modifier = slot)
     }
 }
 
+/** Stacked under the header in portrait; side by side on a phone in landscape, where a stack would not fit. */
 @Composable
-private fun CloseButton(onClick: () -> Unit) {
+private fun BoxScope.EndActions(large: Boolean, spacing: Dp, content: @Composable (slot: Modifier) -> Unit) {
+    if (LocalCompactHeight.current) {
+        Row(
+            Modifier.align(Alignment.BottomCenter).widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 32.dp).padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(spacing),
+            verticalAlignment = Alignment.CenterVertically,
+        ) { content(Modifier.weight(1f)) }
+        return
+    }
+    Column(
+        Modifier.align(Alignment.BottomCenter).widthIn(max = 360.dp).fillMaxWidth().padding(horizontal = 32.dp).padding(bottom = if (large) 48.dp else 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(spacing),
+    ) { content(Modifier.fillMaxWidth()) }
+}
+
+@Composable
+private fun CloseButton(onClick: () -> Unit, modifier: Modifier) {
     OutlinedButton(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+        modifier = modifier.heightIn(min = 56.dp),
         contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
     ) {
         Text(stringResource(MR.string.call_close), style = ButtonDefaults.textStyleFor(56.dp))
@@ -1125,29 +1184,31 @@ private fun BoxScope.FailedLayout(
             FailReason.Other -> MR.string.call_failed_other_body
         },
     )
+    val compact = LocalCompactHeight.current
     val badge = when (reason) {
         FailReason.NoRoute -> Icons.Default.WifiOff
         FailReason.Permission -> Icons.Default.MicOff
         FailReason.Other -> Icons.Default.ErrorOutline
     }
     Column(
-        Modifier.align(Alignment.Center).widthIn(max = 420.dp).padding(horizontal = 32.dp).padding(bottom = if (large) 72.dp else 120.dp),
+        Modifier.align(Alignment.Center).widthIn(max = 420.dp).padding(horizontal = 32.dp)
+            .padding(bottom = if (large) 72.dp else if (compact) 80.dp else 120.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(Modifier.size(132.dp)) {
-            Box(Modifier.align(Alignment.Center).alpha(0.6f)) { avatar(112.dp) }
+        Box(Modifier.size(if (compact) 88.dp else 132.dp)) {
+            Box(Modifier.align(Alignment.Center).alpha(0.6f)) { avatar(if (compact) 72.dp else 112.dp) }
             val badgeShape = MaterialShapes.Cookie9Sided.toShape()
             Box(
-                Modifier.align(Alignment.BottomEnd).size(56.dp)
+                Modifier.align(Alignment.BottomEnd).size(if (compact) 40.dp else 56.dp)
                     .background(MaterialTheme.colorScheme.surfaceContainerLow, badgeShape)
                     .padding(4.dp)
                     .background(MaterialTheme.colorScheme.errorContainer, badgeShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(badge, null, Modifier.size(26.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
+                Icon(badge, null, Modifier.size(if (compact) 20.dp else 26.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
             }
         }
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(if (compact) 8.dp else 20.dp))
         Text(
             title,
             style = MaterialTheme.typography.headlineMediumEmphasized.copy(fontWeight = FontWeight.SemiBold),
@@ -1165,14 +1226,10 @@ private fun BoxScope.FailedLayout(
         Spacer(Modifier.height(16.dp))
         Text(body, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
     }
-    Column(
-        Modifier.align(Alignment.BottomCenter).widthIn(max = 360.dp).fillMaxWidth().padding(horizontal = 32.dp).padding(bottom = if (large) 48.dp else 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
+    EndActions(large, spacing = 8.dp) { slot ->
         Button(
             onClick = actions.retry,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            modifier = slot.heightIn(min = 56.dp),
             contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
         ) {
             Icon(Icons.Default.Refresh, null, Modifier.size(ButtonDefaults.iconSizeFor(56.dp)))
@@ -1181,7 +1238,7 @@ private fun BoxScope.FailedLayout(
         }
         TextButton(
             onClick = actions.close,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            modifier = slot.heightIn(min = 56.dp),
             contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
         ) {
             Text(stringResource(MR.string.call_close), style = ButtonDefaults.textStyleFor(56.dp))
@@ -1247,21 +1304,25 @@ private fun PeerHeader(
     modifier: Modifier = Modifier,
     dimmed: Boolean = false,
 ) {
-    val avatarSize = if (large) 152.dp else 136.dp
+    val compact = LocalCompactHeight.current
+    val avatarSize = if (large) 152.dp else if (compact) 72.dp else 136.dp
     val avatarAlpha by animateFloatAsState(if (dimmed) 0.55f else 1f, MaterialTheme.motionScheme.defaultEffectsSpec())
     Column(modifier.fillMaxWidth().padding(horizontal = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(avatarSize * 1.5f), contentAlignment = Alignment.Center) {
             if (halo != HaloMode.None) AvatarHalo(avatarSize, halo)
             Box(Modifier.alpha(avatarAlpha)) { avatar(avatarSize) }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(if (compact) 4.dp else 12.dp))
         Text(
             name,
-            style = (if (large) MaterialTheme.typography.displayMediumEmphasized else MaterialTheme.typography.displaySmallEmphasized)
-                .copy(fontWeight = FontWeight.SemiBold),
+            style = when {
+                large -> MaterialTheme.typography.displayMediumEmphasized
+                compact -> MaterialTheme.typography.headlineMediumEmphasized
+                else -> MaterialTheme.typography.displaySmallEmphasized
+            }.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
-            maxLines = 3,
+            maxLines = if (compact) 1 else 3,
             overflow = TextOverflow.Ellipsis,
         )
         if (status != null) {

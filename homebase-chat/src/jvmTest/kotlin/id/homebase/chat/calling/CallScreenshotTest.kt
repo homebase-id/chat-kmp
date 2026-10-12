@@ -27,7 +27,9 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
@@ -50,6 +52,7 @@ import id.homebase.chat.services.calling.CallQuality
 import id.homebase.chat.services.calling.CallVideos
 import id.homebase.chat.services.calling.FailReason
 import id.homebase.chat.services.calling.FakeVideo
+import id.homebase.chat.services.calling.RemoteVideoSize
 import id.homebase.core.ui.theme.HomebaseTheme
 import java.io.File
 import javax.imageio.ImageIO
@@ -219,6 +222,75 @@ class CallScreenshotTest {
         val end = onNodeWithContentDescription("Your camera preview", substring = true).getBoundsInRoot()
         assertEquals(16f, end.left.value, 1f)
         assertTrue(end.top.value > 300, "snapped to a bottom corner: $end")
+    }
+
+    @Test
+    fun phoneLandscapeKeepsNameControlsAndSelfViewOnScreenAndApart() {
+        val width = 844
+        val height = 390
+        val cases = listOf(
+            "incoming" to false, "incoming" to true, "outgoing" to false, "outgoing" to true,
+            "connected" to false, "connected" to true, "ended" to false, "failed" to false,
+        )
+        for ((name, video) in cases) runDesktopComposeUiTest(width, height) {
+            show(false, shots.first { it.name == name }.state(base(video, Size.Phone)))
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "$name-landscape-${if (video) "video" else "audio"}-phone.png"))
+            val buttons = onAllNodes(hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot }
+            val names = onAllNodes(hasText("Samwise Gamgee"), useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot }
+            val preview = onAllNodes(hasContentDescription("Your camera preview", substring = true)).fetchSemanticsNodes().map { it.boundsInRoot }
+            // boundsInRoot is clipped by ancestors, so a name pushed out of its container reports zero height.
+            assertTrue(names.isNotEmpty() && names.all { it.height > 12f }, "$name video=$video: peer name visible $names")
+            assertTrue(buttons.none { it.height < 40f }, "$name video=$video: a control is clipped $buttons")
+            for (r in buttons + names + preview) {
+                assertTrue(r.left >= 0f && r.top >= 0f && r.right <= width && r.bottom <= height, "$name video=$video: $r off screen")
+            }
+            for (n in names) for (b in buttons) assertTrue(!n.overlaps(b), "$name video=$video: name $n under control $b")
+            for (p in preview) {
+                assertTrue(p.width > p.height, "$name: self-view follows the landscape camera: $p")
+                for (b in buttons) assertTrue(!p.overlaps(b), "$name: self-view $p covers control $b")
+            }
+        }
+    }
+
+    @Test
+    fun landscapeSelfViewSnapsToABottomCornerBelowTheTopOne() = runDesktopComposeUiTest(844, 390) {
+        show(false, shots.first { it.name == "connected" }.state(base(true, Size.Phone)))
+        val preview = onNodeWithContentDescription("Your camera preview", substring = true)
+        val start = preview.getBoundsInRoot()
+        preview.performTouchInput { swipe(center, center + Offset(-600f, 300f), durationMillis = 200) }
+        mainClock.advanceTimeBy(1_500)
+        val end = onNodeWithContentDescription("Your camera preview", substring = true).getBoundsInRoot()
+        assertTrue(end.top > start.top && end.bottom.value <= 390f, "bottom corner sits below the top one and on screen: $start -> $end")
+        val buttons = onAllNodes(hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot }
+        val endRect = androidx.compose.ui.geometry.Rect(end.left.value, end.top.value, end.right.value, end.bottom.value)
+        for (b in buttons) assertTrue(!endRect.overlaps(b), "snapped self-view $endRect covers control $b")
+    }
+
+    @Test
+    fun remoteVideoLetterboxesOnlyWhenItsOrientationDiffersFromTheScreen() {
+        fun remoteBounds(width: Int, height: Int, video: Pair<Int, Int>?): androidx.compose.ui.geometry.Rect {
+            var rect = androidx.compose.ui.geometry.Rect.Zero
+            RemoteVideoSize.current.value = video
+            try {
+                runDesktopComposeUiTest(width, height) {
+                    show(false, shots.first { it.name == "connected" }.state(base(true, Size.Phone)))
+                    rect = onAllNodes(hasTestTag(RemoteVideoTag), useUnmergedTree = true).fetchSemanticsNodes().single().boundsInRoot
+                }
+            } finally {
+                RemoteVideoSize.current.value = null
+            }
+            return rect
+        }
+        val landscapeOnPortrait = remoteBounds(390, 844, 1280 to 720)
+        assertEquals(390f, landscapeOnPortrait.width, 1f)
+        assertEquals(390f * 720 / 1280, landscapeOnPortrait.height, 2f)
+        assertEquals(844f / 2, landscapeOnPortrait.center.y, 2f)
+        val portraitOnLandscape = remoteBounds(844, 390, 720 to 1280)
+        assertEquals(390f, portraitOnLandscape.height, 1f)
+        assertEquals(390f * 720 / 1280, portraitOnLandscape.width, 2f)
+        assertEquals(844f, remoteBounds(390, 844, 720 to 1280).height, 1f)
+        assertEquals(844f, remoteBounds(844, 390, 1280 to 720).width, 1f)
+        assertEquals(844f, remoteBounds(390, 844, null).height, 1f)
     }
 
     @Test
