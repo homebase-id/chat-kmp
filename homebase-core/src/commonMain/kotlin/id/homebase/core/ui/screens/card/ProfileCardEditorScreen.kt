@@ -330,7 +330,7 @@ fun ProfileCardEditorScreen(
             step = step,
             onStep = { step = it },
             onBack = requestBack,
-            onSelect = viewModel::onDesignSelected,
+            onSelect = viewModel::onDesignPicked,
             onOption = viewModel::onOptionSelected,
             onBlockOrder = viewModel::onBlockOrderChanged,
             onSave = viewModel::onSaveDesign,
@@ -750,7 +750,7 @@ private fun EditorPanel(
                 when (shown) {
                     EditorStep.Design -> DesignStrip(
                         selected = design,
-                        enabled = !isSaving && !uiState.loadFailed,
+                        enabled = !uiState.loadFailed,
                         dimmed = uiState.loadFailed,
                         onSelect = onSelect,
                         modifier = Modifier.fillMaxSize(),

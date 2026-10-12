@@ -346,6 +346,7 @@ class ProfileCardViewModel(
     private val _designCover = MutableStateFlow<ImageBitmap?>(null)
     val designCover: StateFlow<ImageBitmap?> = _designCover.asStateFlow()
     private var designSwitchJob: Job? = null
+    private var designSaveJob: Job? = null
 
     private val _events = MutableSharedFlow<ProfileCardEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<ProfileCardEvent> = _events.asSharedFlow()
@@ -420,6 +421,26 @@ class ProfileCardViewModel(
         designSwitchJob = viewModelScope.launch {
             coverOutgoingDesign()
             render()
+        }
+    }
+
+    /** The design picker saves as it picks; Customise's own Save is for the options. */
+    fun onDesignPicked(design: String) {
+        onDesignSelected(design)
+        saveLatestPick()
+    }
+
+    // One save in flight; picks made meanwhile collapse into the last one, saved when it lands.
+    private fun saveLatestPick() {
+        if (designSaveJob?.isActive == true) return
+        designSaveJob = viewModelScope.launch {
+            while (true) {
+                _uiState.first { !it.isSavingDesign }
+                val picked = _uiState.value.previewDesign
+                if (picked == null || !_uiState.value.canSaveDesign) break
+                saveDesign(leaveAfter = false).join()
+                if (_uiState.value.previewDesign == picked) break
+            }
         }
     }
 
@@ -678,29 +699,35 @@ class ProfileCardViewModel(
     }
 
     fun onPreviewDiscarded() {
+        if (designSaveJob?.isActive == true) return
         if (_uiState.value.previewDesign == null && _uiState.value.previewOverrides == null) return
         _uiState.update { it.copy(previewDesign = null, previewOverrides = null) }
         render()
     }
 
     fun onSaveDesign() {
+        saveDesign(leaveAfter = true)
+    }
+
+    private fun saveDesign(leaveAfter: Boolean): Job {
         val state = _uiState.value
-        if (!state.canSaveDesign) return
-        if (state.isCircleSelected) return saveCircleCard(state)
+        if (!state.canSaveDesign) return Job().apply { complete() }
+        if (state.isCircleSelected) return saveCircleCard(state, leaveAfter)
         val design = state.design
         val overrides = state.overrides.takeIf { state.previewOverrides != null }
         val designChanged = design != state.savedDesign
         _uiState.update { it.copy(isSavingDesign = true) }
-        viewModelScope.launch {
+        return viewModelScope.launch {
             val saved = attempt("saving card design $design") { source.saveDesign(design) } != null
             if (saved) writeCard(UnsavedCard(design, overrides).also { unsavedCard = it })
             _uiState.update {
+                val newerPick = it.previewDesign?.takeIf { p -> p != design }
                 if (saved) it.copy(
                     isSavingDesign = false,
                     savedDesign = design,
                     hasLocalPublicDesign = true,
-                    previewDesign = null,
-                    previewOverrides = null,
+                    previewDesign = newerPick,
+                    previewOverrides = it.previewOverrides.takeIf { newerPick != null },
                     cards = it.cards.map { card ->
                         if (card.audience != CardAudience.Public) card else card.withDesign(design, overrides)
                     },
@@ -712,23 +739,24 @@ class ProfileCardViewModel(
                 unpublishedDesign = design
                 if (designAccess == null) publishDesign(design)
             }
-            _events.tryEmit(if (saved) ProfileCardEvent.DesignSaved else ProfileCardEvent.DesignSaveFailed)
+            if (!saved) _events.tryEmit(ProfileCardEvent.DesignSaveFailed) else if (leaveAfter) _events.tryEmit(ProfileCardEvent.DesignSaved)
         }
     }
 
-    private fun saveCircleCard(state: ProfileCardUiState) {
-        val card = state.selectedCard ?: return
+    private fun saveCircleCard(state: ProfileCardUiState, leaveAfter: Boolean): Job {
+        val card = state.selectedCard ?: return Job().apply { complete() }
         val overrides = state.overrides.takeIf { state.previewOverrides != null }
         val updated = card.withDesign(state.design, overrides)
         _uiState.update { it.copy(isSavingDesign = true) }
-        viewModelScope.launch {
+        return viewModelScope.launch {
             val stored = attempt("saving the ${card.audience} card") { source.saveCircleCard(updated) }
             _uiState.update {
+                val newerPick = it.previewDesign?.takeIf { p -> p != updated.design }
                 withCircleSupport(
                     if (stored != null) it.copy(
                         isSavingDesign = false,
-                        previewDesign = null,
-                        previewOverrides = null,
+                        previewDesign = newerPick,
+                        previewOverrides = it.previewOverrides.takeIf { newerPick != null },
                         cards = it.cards.map { c -> if (c.audience == updated.audience) stored else c },
                     )
                     else it.copy(isSavingDesign = false),
@@ -739,11 +767,11 @@ class ProfileCardViewModel(
                 load()
             }
             val event = when {
-                stored != null -> ProfileCardEvent.DesignSaved
+                stored != null -> ProfileCardEvent.DesignSaved.takeIf { leaveAfter }
                 !source.supportsCircleCards -> ProfileCardEvent.CircleCardsUnsupported
                 else -> ProfileCardEvent.DesignSaveFailed
             }
-            _events.tryEmit(event)
+            event?.let(_events::tryEmit)
         }
     }
 
