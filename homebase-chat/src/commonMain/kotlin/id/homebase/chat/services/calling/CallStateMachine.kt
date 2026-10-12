@@ -164,8 +164,7 @@ class CallStateMachine(private val selfOdinId: String) {
                 }
             is CallSignal.Restart ->
                 if (s.phase.isEstablishing()) CallTransition(s, listOf(CallEffect.AnswerRestart(sig.sdp))) else CallTransition(s)
-            is CallSignal.RestartAnswer ->
-                if (s.phase.isEstablishing()) CallTransition(s, listOf(CallEffect.ApplyRemoteAnswer(sig.sdp))) else CallTransition(s)
+            is CallSignal.RestartAnswer -> restartAnswer(s, sig.sdp)
             is CallSignal.Ice -> CallTransition(s, listOf(CallEffect.AddIce(sig.candidate, sig.sdpMid, sig.sdpMLineIndex)))
             is CallSignal.Hangup -> when (s.phase) {
                 CallPhase.Outgoing -> end(
@@ -262,7 +261,7 @@ class CallStateMachine(private val selfOdinId: String) {
                     if (attempt > MAX_RECONNECT_ATTEMPTS) {
                         end(s, CallEndReason.Failed(FailReason.NoRoute), HangupReason.Normal)
                     } else {
-                        CallTransition(s.copy(reconnectAttempt = attempt), restartIce(s))
+                        CallTransition(s.copy(reconnectAttempt = attempt).restarting(), restartIce(s))
                     }
                 } else {
                     CallTransition(s)
@@ -275,21 +274,26 @@ class CallStateMachine(private val selfOdinId: String) {
         return when (e) {
             MediaEvent.Connected -> when (s.phase) {
                 CallPhase.Connecting -> CallTransition(
-                    s.copy(phase = CallPhase.Connected, connectedAtMs = nowMs),
+                    s.copy(phase = CallPhase.Connected, connectedAtMs = nowMs, linkUp = true),
                     listOf(CallEffect.CancelTimers),
                 )
-                CallPhase.Reconnecting -> CallTransition(
-                    s.copy(phase = CallPhase.Connected, reconnectAttempt = 0),
-                    listOf(CallEffect.CancelTimers),
-                )
+                CallPhase.Reconnecting ->
+                    if (s.restartPending) {
+                        Logger.i(TAG) { "call=${s.callId} link up while the ICE restart is unanswered; still reconnecting" }
+                        CallTransition(s.copy(linkUp = true))
+                    } else {
+                        reconnected(s)
+                    }
                 else -> CallTransition(s)
             }
             MediaEvent.Disconnected ->
                 if (s.phase == CallPhase.Connected) {
                     CallTransition(
-                        s.copy(phase = CallPhase.Reconnecting, reconnectAttempt = 1),
+                        s.copy(phase = CallPhase.Reconnecting, reconnectAttempt = 1, linkUp = false).restarting(),
                         listOf(CallEffect.StartTimer(CallTimer.Reconnect, s.callId!!)) + restartIce(s),
                     )
+                } else if (s.phase == CallPhase.Reconnecting) {
+                    CallTransition(s.copy(linkUp = false))
                 } else {
                     CallTransition(s)
                 }
@@ -311,6 +315,24 @@ class CallStateMachine(private val selfOdinId: String) {
     // Only the original caller drives the renegotiation, so the two sides never offer at once.
     private fun restartIce(s: CallState): List<CallEffect> =
         if (s.direction == CallDirection.Outgoing) listOf(CallEffect.RestartIce) else emptyList()
+
+    // A restart offer set locally but never answered leaves the caller on ICE credentials the peer
+    // has not seen: the caller's link can report up while the peer's checks are rejected.
+    private fun CallState.restarting() = if (direction == CallDirection.Outgoing) copy(restartPending = true) else this
+
+    private fun reconnected(s: CallState) =
+        CallTransition(s.copy(phase = CallPhase.Connected, reconnectAttempt = 0, linkUp = true), listOf(CallEffect.CancelTimers))
+
+    private fun restartAnswer(s: CallState, sdp: String): CallTransition {
+        if (!s.phase.isEstablishing() || !s.restartPending) return CallTransition(s)
+        val answered = s.copy(restartPending = false)
+        val apply = CallEffect.ApplyRemoteAnswer(sdp)
+        if (answered.phase != CallPhase.Reconnecting || !answered.linkUp) return CallTransition(answered, listOf(apply))
+        return CallTransition(
+            answered.copy(phase = CallPhase.Connected, reconnectAttempt = 0, linkUp = true),
+            listOf(apply, CallEffect.CancelTimers),
+        )
+    }
 
     private fun pushRing(s: CallState, e: CallEvent.PushRing): CallTransition {
         if (e.from == selfOdinId || e.callId == s.callId || !s.canStart()) return CallTransition(s)

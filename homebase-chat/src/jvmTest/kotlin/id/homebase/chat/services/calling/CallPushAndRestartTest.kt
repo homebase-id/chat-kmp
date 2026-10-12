@@ -75,9 +75,11 @@ class CallPushAndRestartTest {
             listOf(CallEffect.AnswerRestart("r")),
             step(connecting, fromSam(CallSignal.Restart(c, "r"))).effects,
         )
+        assertEquals(CallTransition(connecting), step(connecting, fromSam(CallSignal.RestartAnswer(c, "ra"))))
+        val reconnecting = step(step(connecting, CallEvent.Media(MediaEvent.Connected)).state, CallEvent.Media(MediaEvent.Disconnected)).state
         assertEquals(
             listOf(CallEffect.ApplyRemoteAnswer("ra")),
-            step(connecting, fromSam(CallSignal.RestartAnswer(c, "ra"))).effects,
+            step(reconnecting, fromSam(CallSignal.RestartAnswer(c, "ra"))).effects,
         )
         assertEquals(CallTransition(outgoing), step(outgoing, fromSam(CallSignal.Restart(c, "r"))))
     }

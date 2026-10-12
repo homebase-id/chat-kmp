@@ -489,6 +489,35 @@ class CallControllerTest {
     }
 
     @Test
+    fun callerLinkUpBeforeItsUndeliveredRestartKeepsRestartingUntilAnswered() = runTest {
+        val (net, a, b) = pair()
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        a.offline = true
+        a.engines.single().simulateDrop()
+        b.engines.single().simulateDrop()
+        runCurrent()
+        a.engines.single().simulateRecover()
+        runCurrent()
+        assertEquals(CallPhase.Reconnecting, a.phase)
+
+        a.offline = false
+        advanceTimeBy(RECONNECT_TICK_MS + 1)
+        assertTrue(net.sent.any { it.from == frodo && it.signal is CallSignal.Restart })
+        assertTrue(net.sent.any { it.from == sam && it.signal is CallSignal.RestartAnswer })
+        assertEquals(1, a.engines.single().restarts)
+        assertEquals(CallPhase.Connected, a.phase)
+        b.engines.single().simulateRecover()
+        runCurrent()
+        assertEquals(CallPhase.Connected, b.phase)
+        advanceTimeBy(RECONNECT_TICK_MS * MAX_RECONNECT_ATTEMPTS + 1)
+        assertEquals(CallPhase.Connected, a.phase)
+        assertEquals(CallPhase.Connected, b.phase)
+    }
+
+    @Test
     fun pushRingAndSocketOfferCollapseIntoOneIncomingCall() = runTest {
         val (net, a, b) = pair()
         b.controller.onPushRing("pushed", frodo)

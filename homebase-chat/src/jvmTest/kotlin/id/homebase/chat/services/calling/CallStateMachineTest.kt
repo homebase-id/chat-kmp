@@ -279,13 +279,27 @@ class CallStateMachineTest {
         assertEquals(7_000L, t.state.connectedAtMs)
         assertEquals(listOf(CallEffect.CancelTimers), t.effects)
 
-        val r = machine.step(reconnecting, CallEvent.Media(MediaEvent.Connected))
+        val answered = machine.step(reconnecting, fromSam(CallSignal.RestartAnswer(c, "ra"))).state
+        val r = machine.step(answered, CallEvent.Media(MediaEvent.Connected))
         assertEquals(CallPhase.Connected, r.state.phase)
         assertEquals(0, r.state.reconnectAttempt)
         assertEquals(5_000L, r.state.connectedAtMs)
         assertEquals(listOf(CallEffect.CancelTimers), r.effects)
 
         listOf(idle, ended, outgoing, incoming, connected).forEach { assertNoOp(it, CallEvent.Media(MediaEvent.Connected)) }
+    }
+
+    @Test
+    fun callerLinkUpBeforeTheRestartAnswerStaysReconnectingUntilItArrives() {
+        val linkUp = machine.step(reconnecting, CallEvent.Media(MediaEvent.Connected))
+        assertEquals(CallPhase.Reconnecting, linkUp.state.phase)
+        assertEquals(emptyList(), linkUp.effects)
+
+        val answered = machine.step(linkUp.state, fromSam(CallSignal.RestartAnswer(c, "ra")))
+        assertEquals(CallPhase.Connected, answered.state.phase)
+        assertEquals(listOf(CallEffect.ApplyRemoteAnswer("ra"), CallEffect.CancelTimers), answered.effects)
+
+        assertNoOp(answered.state, fromSam(CallSignal.RestartAnswer(c, "ra")))
     }
 
     @Test

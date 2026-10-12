@@ -60,6 +60,7 @@ class CallController(
     private var offerVideo = false
     private var publishedOfferSdp: String? = null
     private var republishJob: Job? = null
+    private var restartOfferSdp: String? = null
     private val endedCalls = ArrayDeque<String>()
 
     private val collectors: List<Job>
@@ -234,6 +235,7 @@ class CallController(
                 }
                 is CallEffect.ApplyRemoteAnswer -> {
                     engine().applyRemote(effect.sdp)
+                    restartOfferSdp = null
                     markRemoteReady()
                     flushHeldIce(state)
                     if (answerSdp == null) {
@@ -242,7 +244,8 @@ class CallController(
                     }
                 }
                 CallEffect.RestartIce -> {
-                    val sdp = engine().restartIce()
+                    // Resend the unanswered offer: a fresh one would orphan an answer already in flight for it.
+                    val sdp = restartOfferSdp ?: engine().restartIce().also { restartOfferSdp = it }
                     sendUnlessOffline(state.peer!!, CallSignal.Restart(state.callId!!, sdp), state)
                 }
                 is CallEffect.AnswerRestart -> {
@@ -366,6 +369,7 @@ class CallController(
         publishedOfferSdp = null
         offerSdp = null
         answerSdp = null
+        restartOfferSdp = null
     }
 
     private companion object {
