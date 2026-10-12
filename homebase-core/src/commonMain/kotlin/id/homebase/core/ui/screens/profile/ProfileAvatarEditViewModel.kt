@@ -110,6 +110,9 @@ class ProfileAvatarEditViewModel(
     /** Which tier an in-flight crop request belongs to, so the result routes back correctly. */
     private val cropRequestSlot = mutableMapOf<Uuid, PhotoSlot>()
 
+    /** Slots whose cropped photo uploads without a separate Save press. */
+    private val saveOnCropSlots = mutableSetOf<PhotoSlot>()
+
     init {
         viewModelScope.launch {
             ownerSession.user.collect { session ->
@@ -154,9 +157,7 @@ class ProfileAvatarEditViewModel(
                     onlyMe = it.onlyMe.copy(
                         existing = existing.firstOrNull { a -> a.visibility == ProfileVisibility.OWNER },
                     ),
-                    connected = it.connected.copy(
-                        existing = existing.firstOrNull { a -> a.visibility == ProfileVisibility.CONNECTED && a.isPhotoScopedTo(null) },
-                    ),
+                    connected = it.connected.copy(existing = existing.legacyConnectedPhoto(circles)),
                 )
             }
         }
@@ -164,7 +165,7 @@ class ProfileAvatarEditViewModel(
 
     fun onAction(action: ProfileAvatarEditAction) {
         when (action) {
-            is ProfileAvatarEditAction.PhotoPicked -> onPhotoPicked(PhotoSlot(action.visibility, action.circleId), action.file)
+            is ProfileAvatarEditAction.PhotoPicked -> onPhotoPicked(PhotoSlot(action.visibility, action.circleId), action.file, action.saveOnCrop)
             is ProfileAvatarEditAction.SaveClicked -> save(PhotoSlot(action.visibility, action.circleId))
             is ProfileAvatarEditAction.RemoveClicked -> stageRemoval(PhotoSlot(action.visibility, action.circleId))
             ProfileAvatarEditAction.BackClicked -> _events.tryEmit(ProfileAvatarEditEvent.Back)
@@ -197,9 +198,10 @@ class ProfileAvatarEditViewModel(
      * goes straight into the crop pipeline instead of landing on an intermediate preview screen
      * with a crop tool the user would have to notice and choose to use.
      */
-    private fun onPhotoPicked(slot: PhotoSlot, file: PlatformFile) {
+    private fun onPhotoPicked(slot: PhotoSlot, file: PlatformFile, saveOnCrop: Boolean) {
         viewModelScope.launch {
             try {
+                if (saveOnCrop) saveOnCropSlots += slot else saveOnCropSlots -= slot
                 val bytes = file.readBytes()
                 val requestId = Uuid.random()
                 cropRequestSlot[requestId] = slot
@@ -237,6 +239,7 @@ class ProfileAvatarEditViewModel(
                 ),
             )
         }
+        if (saveOnCropSlots.remove(slot)) save(slot)
     }
 
     private fun save(slot: PhotoSlot) {
@@ -309,6 +312,7 @@ class ProfileAvatarEditViewModel(
                     }
                 }
                 updateTier(slot) { it.copy(isUploading = false, pendingCroppedAvatar = null) }
+                _events.tryEmit(ProfileAvatarEditEvent.PhotoSaved(slot.visibility, slot.circleId))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ProfilePhotoTooLargeException) {
@@ -343,6 +347,7 @@ class ProfileAvatarEditViewModel(
             if (success) {
                 updateTier(slot) { it.copy(isDeleting = false, pendingRemoval = false, existing = null) }
                 _state.update { it.copy(photos = it.photos.filter { p -> p.id != existing.id }) }
+                _events.tryEmit(ProfileAvatarEditEvent.PhotoSaved(slot.visibility, slot.circleId))
                 if (slot == PhotoSlot(ProfileVisibility.ANONYMOUS)) {
                     _state.value.currentAvatar?.odinId?.let {
                         ownerSession.reloadAvatar(it)
@@ -375,3 +380,7 @@ class ProfileAvatarEditViewModel(
         return loaded
     }
 }
+
+/** A Connected photo no card slot claims: the one an earlier version saved for every connection, or scoped to several circles. */
+private fun List<ProfileAttribute>.legacyConnectedPhoto(circles: List<CardCircle>): ProfileAttribute? =
+    firstOrNull { a -> a.visibility == ProfileVisibility.CONNECTED && circles.none { c -> a.isPhotoScopedTo(c.id) } }

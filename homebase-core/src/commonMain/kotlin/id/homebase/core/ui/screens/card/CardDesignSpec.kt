@@ -100,6 +100,20 @@ object CardDesignSpecs {
                 CardColourScheme("sand", "#E8DCC6", "#2A2216", "#6E604A", "#D6C7AB", "#2A2216"),
             ),
         ),
+        CardDesignSpec(
+            CardDesign.LINKS,
+            ALL_OPTIONS,
+            portraitSlots = 1,
+            schemes = listOf(
+                CardColourScheme("cloud", "#F1F3F6", "#1B1F24", "#5C6673", "#FFFFFF", "#1B1F24"),
+                CardColourScheme("slate", "#1B1F24", "#F1F3F6", "#A3ACB8", "#2A3037", "#F1F3F6"),
+                CardColourScheme("mint", "#DDF0E6", "#12301F", "#4A6B58", "#FFFFFF", "#12301F"),
+                CardColourScheme("peach", "#FBE3D6", "#43210F", "#7D5A45", "#FFFFFF", "#43210F"),
+                CardColourScheme("lavender", "#E7E3F7", "#2A2350", "#5F5A85", "#FFFFFF", "#2A2350"),
+                CardColourScheme("navy", "#14213D", "#F0F4FA", "#A9B7CE", "#22345A", "#F0F4FA"),
+                CardColourScheme("lemon", "#F8F2C8", "#3B3405", "#6E6420", "#FFFFFF", "#3B3405"),
+            ),
+        ),
     ).associateBy { it.design }
 
     fun of(design: String): CardDesignSpec? = specs[design]
@@ -132,7 +146,7 @@ fun CardOverrides.prunedFor(design: String): CardOverrides {
     )
 }
 
-/** What a fixed card renders until first saved, and what its reset returns to. */
+/** What a fixed circle card renders until first saved, and what its reset returns to. Public has none: it follows the site default, as the web does. */
 internal data class CardTemplate(val design: String, val overrides: CardOverrides)
 
 private fun template(design: String, scheme: String) = CardTemplate(
@@ -143,12 +157,8 @@ private fun template(design: String, scheme: String) = CardTemplate(
 private val FIXED_CIRCLE_TEMPLATES = listOf(
     FRIENDS_CIRCLE_ID to template(CardDesign.COLLAGE, "sage"),
     FAMILY_CIRCLE_ID to template(CardDesign.POSTER, "wine"),
-    WORK_CIRCLE_ID to template(CardDesign.DOSSIER, "ink"),
+    WORK_CIRCLE_ID to template(CardDesign.LINKS, "cloud"),
 )
 
-internal val PUBLIC_CARD_TEMPLATE = template(CardDesign.BOARD, "forest")
-
-internal fun cardTemplateFor(audience: CardAudience): CardTemplate? = when (audience) {
-    CardAudience.Public -> PUBLIC_CARD_TEMPLATE
-    is CardAudience.Circle -> FIXED_CIRCLE_TEMPLATES.firstOrNull { compareStringUuId(it.first, audience.id) }?.second
-}
+internal fun cardTemplateFor(audience: CardAudience.Circle): CardTemplate? =
+    FIXED_CIRCLE_TEMPLATES.firstOrNull { compareStringUuId(it.first, audience.id) }?.second

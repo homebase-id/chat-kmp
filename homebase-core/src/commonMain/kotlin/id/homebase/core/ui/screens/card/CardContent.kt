@@ -102,3 +102,16 @@ private fun contentText(attribute: ProfileAttribute): String? {
         else -> fields.firstOrNull()?.first?.let { values[it] }
     }
 }
+
+internal class ImportStep(val attribute: ProfileAttribute, val previous: ProfileAudience, val next: ProfileAudience)
+
+/** Every item [from] shows that [into] doesn't yet, with the audience that would make [into] show it. */
+internal fun importPlan(attributes: List<ProfileAttribute>, circles: List<CardCircle>, from: CardAudience, into: CardAudience): List<ImportStep> {
+    val byId = attributes.associateBy { it.id }
+    return cardContentItems(attributes, circles, from)
+        .filter { it.shown && !into.shows(it.audience) }
+        .mapNotNull { item ->
+            val attribute = byId[item.id] ?: return@mapNotNull null
+            item.audience.shownOn(into, true, null)?.let { ImportStep(attribute, item.audience, it) }
+        }
+}

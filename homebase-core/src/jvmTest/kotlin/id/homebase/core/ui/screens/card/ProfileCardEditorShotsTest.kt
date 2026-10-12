@@ -73,6 +73,8 @@ class ProfileCardEditorShotsTest {
         val name: String,
         val state: ProfileCardUiState,
         val step: EditorStep = EditorStep.Design,
+        val mode: EditorMode = EditorMode.Design,
+        val photo: CardPhotoUi = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
         val preview: Preview = Preview.Ready,
         val fontScale: Float = 1f,
         val rtl: Boolean = false,
@@ -314,6 +316,43 @@ class ProfileCardEditorShotsTest {
         Shot("k9-content-wide-public", contentBase.copy(attributes = contentAttributes + fullAttributes), EditorStep.Customise, widthDp = 1200, heightDp = 800, act = contentTool),
     )
 
+    private val editorBase = contentBase.copy(
+        attributes = contentAttributes + fullAttributes,
+        cards = listOf(public, card(friendsCard), card(workCard)),
+        selectedAudience = friendsCard,
+    )
+    private val editorWork = editorBase.copy(selectedAudience = workCard)
+    private val editorPublic = editorBase.copy(selectedAudience = CardAudience.Public)
+    private val editorEmpty = base.copy(attributes = emptyList(), circles = contentCircles, cards = listOf(public, card(friendsCard)), selectedAudience = friendsCard)
+    private fun editor(name: String, state: ProfileCardUiState, w: Int = REDMI_W, h: Int = REDMI_H, fontScale: Float = 1f, rtl: Boolean = false, photo: CardPhotoUi = CardPhotoUi(null, false, true, false), act: ComposeUiTest.() -> Unit = {}) =
+        Shot(name, state, mode = EditorMode.Content, widthDp = w, heightDp = h, fontScale = fontScale, rtl = rtl, photo = photo, act = act)
+
+    private val contentEditorShots = listOf(
+        editor("k12-editor-friends", editorBase),
+        editor("k12-editor-public", editorPublic),
+        editor("k12-editor-work", editorWork),
+        editor("k12-editor-empty", editorEmpty),
+        editor("k12-editor-small", editorBase, w = 360, h = 640),
+        editor("k12-editor-font-scale", editorBase, fontScale = 1.6f),
+        editor("k12-editor-rtl", editorBase, rtl = true),
+        editor("k12-editor-wide", editorBase, w = 900, h = 820),
+        editor("k12-editor-photo-own", editorBase, photo = CardPhotoUi(null, true, true, false)),
+        editor("k12-editor-photo-circle-readonly", editorBase, photo = CardPhotoUi(null, false, false, false)),
+        editor("k12-editor-photo-busy", editorBase, photo = CardPhotoUi(null, true, true, true)),
+        editor("k12-editor-busy", editorBase.copy(isContentBusy = true)),
+        editor("k13-editor-copy-from", editorBase, act = {
+            onNodeWithText("Copy from…").performClick()
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }),
+    )
+
+    @Test
+    fun contentEditorRendersEveryState() {
+        for (dark in listOf(false, true)) {
+            for (shot in contentEditorShots) render(shot, dark)
+        }
+    }
+
     @Test
     fun contentToolRendersOnThePublicAndACircleCard() {
         for (dark in listOf(false, true)) {
@@ -441,6 +480,8 @@ class ProfileCardEditorShotsTest {
                         var uiState by remember { mutableStateOf(shot.state) }
                         ProfileCardEditorContent(
                             uiState = uiState,
+                            mode = shot.mode,
+                            photo = shot.photo,
                             step = step,
                             onStep = { step = it },
                             onBack = { step = EditorStep.Design },
@@ -448,7 +489,6 @@ class ProfileCardEditorShotsTest {
                             onOption = { _, _ -> },
                             onBlockOrder = {},
                             onSave = {},
-                            onEditProfile = {},
                             snackbarHostState = remember { SnackbarHostState() },
                             // A toggle leaves the save in flight, so the busy state shows on the row that was changed.
                             onContentToggle = { _, _ ->

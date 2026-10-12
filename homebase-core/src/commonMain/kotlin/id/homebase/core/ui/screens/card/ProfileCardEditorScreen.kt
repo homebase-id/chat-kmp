@@ -129,6 +129,17 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material3.SnackbarResult
+import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.client.profile.isPhotoScopedTo
+import id.homebase.core.localization.TranslationUtil
+import id.homebase.core.ui.screens.profile.ProfileAvatarEditAction
+import id.homebase.core.ui.screens.profile.ProfileAvatarEditEvent
+import id.homebase.core.ui.screens.profile.ProfileAvatarEditViewModel
+import id.homebase.core.ui.screens.profile.photoFor
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
@@ -141,7 +152,6 @@ import id.homebase.resources.profile_card_discard_confirm
 import id.homebase.resources.profile_card_discard_keep
 import id.homebase.resources.profile_card_discard_message
 import id.homebase.resources.profile_card_discard_title
-import id.homebase.resources.profile_card_edit_profile
 import id.homebase.resources.profile_card_circle_unsupported
 import id.homebase.resources.profile_card_error
 import id.homebase.resources.profile_card_step_count
@@ -152,6 +162,16 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.resources.profile_card_import_undo
+import id.homebase.resources.profile_card_import_public_title
+import id.homebase.resources.profile_card_import_public_message
+import id.homebase.resources.profile_card_import_public_confirm
+import id.homebase.resources.profile_card_import_done
+import id.homebase.resources.profile_avatar_edit_error_upload
+import id.homebase.resources.profile_avatar_edit_error_too_large
+import id.homebase.resources.profile_avatar_edit_error_delete
+import id.homebase.resources.cancel
+import id.homebase.resources.profile_card_audience_public
 
 private val ACTION_HEIGHT = ButtonDefaults.MinHeight
 private val APP_ONLY_LABEL_MIN_ROOM = 216.dp
@@ -195,13 +215,22 @@ private const val PEEK_LEAD = 2
 @Composable
 fun ProfileCardEditorScreen(
     viewModel: ProfileCardViewModel,
+    avatarViewModel: ProfileAvatarEditViewModel,
     onBack: () -> Unit,
-    onEditProfile: () -> Unit,
+    onNavigateToCropper: (Uuid) -> Unit,
+    preview: (@Composable BoxScope.(layoutWidth: Dp) -> Unit)? = null,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val avatarState by avatarViewModel.state.collectAsStateWithLifecycle()
     val host by viewModel.host.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val uriHandler = getUriHandler()
+    val scope = rememberCoroutineScope()
+    val errAvatarUpload = stringResource(MR.string.profile_avatar_edit_error_upload)
+    val errAvatarTooLarge = stringResource(MR.string.profile_avatar_edit_error_too_large)
+    val errAvatarDelete = stringResource(MR.string.profile_avatar_edit_error_delete)
+    val importUndo = stringResource(MR.string.profile_card_import_undo)
+    val publicLabel = stringResource(MR.string.profile_card_audience_public)
     val errCard = stringResource(MR.string.profile_card_error)
     val errSave = stringResource(MR.string.profile_card_design_save_failed)
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
@@ -209,7 +238,6 @@ fun ProfileCardEditorScreen(
 
     LaunchedEffect(viewModel) { viewModel.startHost() }
     DisposableEffect(viewModel) {
-        viewModel.onEditorOpened()
         onDispose {
             viewModel.onEditorClosed()
             viewModel.onPreviewDiscarded()
@@ -220,18 +248,26 @@ fun ProfileCardEditorScreen(
         viewModel.onPreviewDiscarded()
         onBack()
     }
+    var mode by rememberSaveable { mutableStateOf(EditorMode.Content) }
     var step by rememberSaveable { mutableStateOf(EditorStep.Design) }
+    LaunchedEffect(mode) { if (mode == EditorMode.Design) viewModel.onEditorOpened() else viewModel.onEditorClosed() }
     var confirmDiscard by remember { mutableStateOf(false) }
+    val backToContent = {
+        viewModel.onPreviewDiscarded()
+        step = EditorStep.Design
+        mode = EditorMode.Content
+    }
     val requestBack = {
         when {
+            mode == EditorMode.Content -> leave()
             step == EditorStep.Customise -> step = EditorStep.Design
             uiState.hasUnsavedChanges && !uiState.isSavingDesign -> confirmDiscard = true
-            else -> leave()
+            else -> backToContent()
         }
     }
     @Suppress("DEPRECATION") BackHandler { requestBack() }
     if (confirmDiscard) {
-        DiscardDialog(onKeep = { confirmDiscard = false }, onDiscard = { confirmDiscard = false; leave() })
+        DiscardDialog(onKeep = { confirmDiscard = false }, onDiscard = { confirmDiscard = false; backToContent() })
     }
 
     LaunchedEffect(viewModel) {
@@ -243,14 +279,60 @@ fun ProfileCardEditorScreen(
                 ProfileCardEvent.CardFailed -> launch { snackbarHostState.showSnackbar(errCard) }
                 ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
                 ProfileCardEvent.ContentSaveFailed -> launch { snackbarHostState.showSnackbar(errContent) }
+                is ProfileCardEvent.ContentImported -> launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = TranslationUtil.getString(MR.string.profile_card_import_done, (event.from as? CardAudience.Circle)?.label?.ifBlank { null } ?: publicLabel),
+                        actionLabel = importUndo,
+                        withDismissAction = true,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) viewModel.onImportUndone()
+                }
                 is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed, ProfileCardEvent.ResetFailed -> Unit
             }
         }
     }
 
+    var pickFor by remember { mutableStateOf<CardAudience?>(null) }
+    val photoPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
+        val target = pickFor
+        if (file != null && target != null) {
+            avatarViewModel.onAction(
+                ProfileAvatarEditAction.PhotoPicked(
+                    visibility = if (target is CardAudience.Circle) ProfileVisibility.CONNECTED else ProfileVisibility.ANONYMOUS,
+                    file = file,
+                    circleId = (target as? CardAudience.Circle)?.id,
+                    saveOnCrop = true,
+                ),
+            )
+        }
+    }
+    LaunchedEffect(avatarViewModel) {
+        avatarViewModel.events.collect { event ->
+            when (event) {
+                is ProfileAvatarEditEvent.NavigateToCropper -> onNavigateToCropper(event.requestId)
+                is ProfileAvatarEditEvent.PhotoSaved -> viewModel.onPhotoChanged()
+                is ProfileAvatarEditEvent.UploadFailed -> launch { snackbarHostState.showSnackbar(errAvatarUpload) }
+                is ProfileAvatarEditEvent.UploadTooLarge -> launch { snackbarHostState.showSnackbar(errAvatarTooLarge) }
+                is ProfileAvatarEditEvent.DeleteFailed -> launch { snackbarHostState.showSnackbar(errAvatarDelete) }
+                ProfileAvatarEditEvent.Back -> Unit
+            }
+        }
+    }
+    val card = uiState.selectedAudience
+    val circle = card as? CardAudience.Circle
+    val cardPhoto = avatarState.photoFor(card)
+    val photoSlot = if (circle == null) avatarState.anonymous else avatarState.circleSlot(circle.id)
+    val photoUi = CardPhotoUi(
+        photo = cardPhoto,
+        own = cardPhoto != null && if (circle == null) cardPhoto.visibility == ProfileVisibility.ANONYMOUS else cardPhoto.isPhotoScopedTo(circle.id) && cardPhoto.visibility == ProfileVisibility.CONNECTED,
+        canChange = circle == null || avatarState.circlePhotosSupported,
+        busy = avatarState.isLoading || photoSlot.isUploading || photoSlot.isDeleting || photoSlot.pendingCroppedAvatar != null,
+    )
+
     CardExpressiveTheme {
         ProfileCardEditorContent(
             uiState = uiState,
+            mode = mode,
             step = step,
             onStep = { step = it },
             onBack = requestBack,
@@ -258,13 +340,31 @@ fun ProfileCardEditorScreen(
             onOption = viewModel::onOptionSelected,
             onBlockOrder = viewModel::onBlockOrderChanged,
             onSave = viewModel::onSaveDesign,
-            onEditProfile = onEditProfile,
+            photo = photoUi,
+            onChangeDesign = {
+                step = EditorStep.Design
+                mode = EditorMode.Design
+            },
+            onChangePhoto = {
+                pickFor = card
+                photoPicker.launch()
+            },
+            onRemovePhoto = {
+                val visibility = if (circle == null) ProfileVisibility.ANONYMOUS else ProfileVisibility.CONNECTED
+                avatarViewModel.onAction(ProfileAvatarEditAction.RemoveClicked(visibility, circle?.id))
+                avatarViewModel.onAction(ProfileAvatarEditAction.SaveClicked(visibility, circle?.id))
+            },
+            onImport = viewModel::onImportRequested,
             snackbarHostState = snackbarHostState,
             onRequestDesignAccess = viewModel::onPublishRetry,
             onContentToggle = viewModel::onContentToggled,
             onContentAudience = viewModel::onContentAudienceChanged,
             onContentAdd = viewModel::onContentAdded,
         ) { layoutWidth ->
+            if (preview != null) {
+                preview(layoutWidth)
+                return@ProfileCardEditorContent
+            }
             val backdrop by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
             val designCover by viewModel.designCover.collectAsStateWithLifecycle()
             CardSurface(
@@ -281,7 +381,26 @@ fun ProfileCardEditorScreen(
             )
         }
         DesignAccessPrompt(shown = uiState.isDesignAccessPromptShown, viewModel = viewModel)
+        if (uiState.pendingImport != null) {
+            ImportPublicDialog(onConfirm = viewModel::onImportConfirmed, onDismiss = viewModel::onImportCancelled)
+        }
     }
+}
+
+@Composable
+private fun ImportPublicDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
+        title = { Text(stringResource(MR.string.profile_card_import_public_title), textAlign = TextAlign.Center) },
+        text = { Text(stringResource(MR.string.profile_card_import_public_message)) },
+        confirmButton = {
+            Button(onClick = onConfirm, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.profile_card_import_public_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
+        },
+    )
 }
 
 /** Stateless so the capture test can render it around a stand-in for the card. */
@@ -295,8 +414,13 @@ internal fun ProfileCardEditorContent(
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
     onSave: () -> Unit,
-    onEditProfile: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    mode: EditorMode = EditorMode.Design,
+    photo: CardPhotoUi = CardPhotoUi(photo = null, own = false, canChange = false, busy = false),
+    onChangeDesign: () -> Unit = {},
+    onChangePhoto: () -> Unit = {},
+    onRemovePhoto: () -> Unit = {},
+    onImport: (CardAudience) -> Unit = {},
     onRequestDesignAccess: () -> Unit = {},
     onContentToggle: (Uuid, Boolean) -> Unit = { _, _ -> },
     onContentAudience: (Uuid, ProfileAudience) -> Unit = { _, _ -> },
@@ -314,7 +438,9 @@ internal fun ProfileCardEditorContent(
             }
             // The viewer's sheet width: the preview lays the card out there and scales it down, so it wraps like the saved card.
             val cardWidth = minOf(maxWidth, WIDE_SHEET_MAX_WIDTH)
-            var contentOpen by remember { mutableStateOf(false) }
+            var contentToolOpen by remember { mutableStateOf(false) }
+            // The Content editor is the same long list as the Customise tool, so the card steps back the same way.
+            val contentOpen = contentToolOpen || mode == EditorMode.Content
             val textGrowth = (LocalDensity.current.fontScale - 1f).coerceIn(0f, 1f)
             val grow = (1f + textGrowth).coerceAtMost(LARGE_TEXT_SCALE)
             // The Content step is a list to read through, so it takes the room and the card steps back to a whole, smaller preview.
@@ -362,7 +488,13 @@ internal fun ProfileCardEditorContent(
                     onContentAudience = onContentAudience,
                     onContentAdd = onContentAdd,
                     contentOpen = contentOpen,
-                    onContentOpen = { contentOpen = it },
+                    onContentOpen = { contentToolOpen = it },
+                    mode = mode,
+                    photo = photo,
+                    onChangeDesign = onChangeDesign,
+                    onChangePhoto = onChangePhoto,
+                    onRemovePhoto = onRemovePhoto,
+                    onImport = onImport,
                     contentBody = contentBody,
                     metrics = metrics,
                     shape = shape,
@@ -381,7 +513,6 @@ internal fun ProfileCardEditorContent(
                     readOnly = uiState.isCircleReadOnly,
                     unsaved = uiState.isUnsavedCard,
                     onBack = onBack,
-                    onEditProfile = onEditProfile,
                 )
                 if (wide) {
                     // Two columns that start and end on the same lines: the audience over its card, and the panel beside them.
@@ -514,9 +645,7 @@ private fun EditorTopBar(
     readOnly: Boolean,
     unsaved: Boolean,
     onBack: () -> Unit,
-    onEditProfile: () -> Unit,
 ) {
-    var menuOpen by remember { mutableStateOf(false) }
     val editing = stringResource(MR.string.profile_card_audience_editing, audienceLabel(audience))
     val readOnlyLabel = stringResource(MR.string.profile_card_read_only)
     val unsavedLabel = stringResource(MR.string.profile_card_not_saved)
@@ -546,26 +675,8 @@ private fun EditorTopBar(
             ) {
                 if (showsChip) AudienceChip(audience = audience, locked = readOnly, unsaved = unsaved, elevated = false)
             }
-            Box {
-                IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(MR.string.profile_card_more_actions))
-                }
-                DropdownMenu(
-                    expanded = menuOpen,
-                    onDismissRequest = { menuOpen = false },
-                    shape = MaterialTheme.shapes.large,
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(MR.string.profile_card_edit_profile)) },
-                        leadingIcon = { Icon(Icons.Outlined.ManageAccounts, contentDescription = null) },
-                        onClick = {
-                            menuOpen = false
-                            onEditProfile()
-                        },
-                    )
-                }
-            }
+            // Balances the back button so the audience chip sits centred.
+            Spacer(Modifier.size(48.dp))
         }
     }
 }
@@ -585,6 +696,12 @@ private fun EditorPanel(
     onContentAdd: (String, Map<String, String>) -> Unit,
     contentOpen: Boolean,
     onContentOpen: (Boolean) -> Unit,
+    mode: EditorMode,
+    photo: CardPhotoUi,
+    onChangeDesign: () -> Unit,
+    onChangePhoto: () -> Unit,
+    onRemovePhoto: () -> Unit,
+    onImport: (CardAudience) -> Unit,
     contentBody: Dp,
     metrics: PanelMetrics,
     shape: Shape,
@@ -614,6 +731,24 @@ private fun EditorPanel(
                 .padding(top = metrics.edge, bottom = metrics.edge),
             verticalArrangement = Arrangement.spacedBy(metrics.gap),
         ) {
+            if (mode == EditorMode.Content) {
+                CardContentEditor(
+                    card = uiState.selectedAudience,
+                    items = items,
+                    circles = uiState.circles,
+                    photo = photo,
+                    enabled = !uiState.isContentBusy && !uiState.loadFailed,
+                    importSources = uiState.importSources,
+                    onToggle = onContentToggle,
+                    onAudience = onContentAudience,
+                    onAdd = onContentAdd,
+                    onChangePhoto = onChangePhoto,
+                    onRemovePhoto = onRemovePhoto,
+                    onImport = onImport,
+                    onChangeDesign = onChangeDesign,
+                )
+                return@Column
+            }
             if (uiState.isCircleReadOnly) {
                 ReadOnlyCard(designName = stringResource(designLabel(design)), modifier = Modifier.padding(horizontal = 16.dp))
                 return@Column
@@ -1115,6 +1250,8 @@ private fun DesignTile(
 }
 
 internal enum class EditorStep { Design, Customise }
+
+internal enum class EditorMode { Content, Design }
 
 @Composable
 private fun DiscardDialog(onKeep: () -> Unit, onDiscard: () -> Unit) {

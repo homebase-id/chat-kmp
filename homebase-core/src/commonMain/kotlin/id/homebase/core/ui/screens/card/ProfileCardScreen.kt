@@ -154,6 +154,7 @@ import id.homebase.resources.profile_card_reset_confirm
 import id.homebase.resources.profile_card_design_board
 import id.homebase.resources.profile_card_design_collage
 import id.homebase.resources.profile_card_design_dossier
+import id.homebase.resources.profile_card_design_links
 import id.homebase.resources.profile_card_design_poster
 import id.homebase.resources.profile_card_edit
 import id.homebase.resources.profile_card_error
@@ -321,7 +322,7 @@ private fun ProfileCardViewer(
                 ProfileCardEvent.ShareFailed -> launch { snackbarHostState.showSnackbar(errShare) }
                 ProfileCardEvent.ResetFailed -> launch { snackbarHostState.showSnackbar(errReset) }
                 ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
-                ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed, ProfileCardEvent.ContentSaveFailed -> Unit
+                ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed, ProfileCardEvent.ContentSaveFailed, is ProfileCardEvent.ContentImported -> Unit
             }
         }
     }
@@ -1013,6 +1014,7 @@ internal fun designLabel(design: String): StringResource = when (design) {
     CardDesign.POSTER -> MR.string.profile_card_design_poster
     CardDesign.COLLAGE -> MR.string.profile_card_design_collage
     CardDesign.DOSSIER -> MR.string.profile_card_design_dossier
+    CardDesign.LINKS -> MR.string.profile_card_design_links
     else -> MR.string.profile_card_design_board
 }
 

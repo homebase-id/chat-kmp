@@ -38,7 +38,7 @@ class CardDesignMatrixGoldenTest {
         socials = "handles",
     )
 
-    private val designs = CardDesign.all + "links"
+    private val designs = CardDesign.all
 
     private fun record(type: String, tier: ProfileVisibility, data: Map<String, JsonPrimitive>, circles: List<String> = emptyList()) = ProfileAttribute(
         id = Uuid.random(),

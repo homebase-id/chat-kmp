@@ -69,6 +69,13 @@ import id.homebase.resources.profile_card_colours_kraft
 import id.homebase.resources.profile_card_colours_night
 import id.homebase.resources.profile_card_colours_mono
 import id.homebase.resources.profile_card_colours_ink
+import id.homebase.resources.profile_card_colours_cloud
+import id.homebase.resources.profile_card_colours_slate
+import id.homebase.resources.profile_card_colours_mint
+import id.homebase.resources.profile_card_colours_peach
+import id.homebase.resources.profile_card_colours_lavender
+import id.homebase.resources.profile_card_colours_navy
+import id.homebase.resources.profile_card_colours_lemon
 import id.homebase.resources.profile_card_colours_moss
 import id.homebase.resources.profile_card_colours_oxblood
 import id.homebase.resources.profile_card_colours_graphite
@@ -890,5 +897,12 @@ private fun schemeLabel(id: String): StringResource = when (id) {
     "paper" -> MR.string.profile_card_colours_paper
     "blueprint" -> MR.string.profile_card_colours_blueprint
     "sand" -> MR.string.profile_card_colours_sand
+    "cloud" -> MR.string.profile_card_colours_cloud
+    "slate" -> MR.string.profile_card_colours_slate
+    "mint" -> MR.string.profile_card_colours_mint
+    "peach" -> MR.string.profile_card_colours_peach
+    "lavender" -> MR.string.profile_card_colours_lavender
+    "navy" -> MR.string.profile_card_colours_navy
+    "lemon" -> MR.string.profile_card_colours_lemon
     else -> MR.string.profile_card_colours_midnight
 }

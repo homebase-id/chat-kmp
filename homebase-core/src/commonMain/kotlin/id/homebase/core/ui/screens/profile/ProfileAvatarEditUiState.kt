@@ -8,7 +8,6 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.ui.screens.card.CardAudience
-import id.homebase.core.ui.screens.card.aclFilter
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -41,7 +40,7 @@ data class ProfileAvatarEditUiState(
         circleSlots[circleId] ?: PhotoTierUiState(ProfileVisibility.CONNECTED, circleId = circleId)
 
     /** The photo [card] shows: its own circle photo if set, else the one it inherits. */
-    fun photoFor(card: CardAudience): ProfileAttribute? = photos.visiblePhoto(card.aclFilter())
+    fun photoFor(card: CardAudience): ProfileAttribute? = photos.photoFor(card)
 }
 
 /** One [ProfileVisibility] tier's photo slot: what's currently stored, and any in-flight edit. */
@@ -66,7 +65,13 @@ data class PhotoTierUiState(
 
 sealed interface ProfileAvatarEditAction {
     /** Photo was picked — goes straight into the (mandatory, square-locked) crop pipeline. */
-    data class PhotoPicked(val visibility: ProfileVisibility, val file: PlatformFile, val circleId: String? = null) : ProfileAvatarEditAction
+    data class PhotoPicked(
+        val visibility: ProfileVisibility,
+        val file: PlatformFile,
+        val circleId: String? = null,
+        /** Uploads as soon as the crop returns, for callers with no Save button of their own. */
+        val saveOnCrop: Boolean = false,
+    ) : ProfileAvatarEditAction
     /** Commits whatever is currently pending for this tier — a cropped upload or a staged removal. */
     data class SaveClicked(val visibility: ProfileVisibility, val circleId: String? = null) : ProfileAvatarEditAction
     /** Stages [PhotoTierUiState.existing] for removal; does not call the server. */
@@ -83,4 +88,6 @@ sealed interface ProfileAvatarEditEvent {
      *  [UploadFailed] so the UI can prompt for a smaller photo instead of a generic error. */
     data class UploadTooLarge(val visibility: ProfileVisibility) : ProfileAvatarEditEvent
     data class DeleteFailed(val visibility: ProfileVisibility) : ProfileAvatarEditEvent
+    /** A photo was stored or removed on the server, so anything built from the attribute list is stale. */
+    data class PhotoSaved(val visibility: ProfileVisibility, val circleId: String?) : ProfileAvatarEditEvent
 }

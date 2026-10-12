@@ -77,6 +77,21 @@ class CardSiteDefaultsTest {
     }
 
     @Test
+    fun cardThemesMapToTheirDesign() {
+        assertEquals(CardDesign.POSTER, cardDesignForTheme("555"))
+        assertEquals(CardDesign.BOARD, cardDesignForTheme("666"))
+        assertEquals(CardDesign.COLLAGE, cardDesignForTheme("777"))
+        assertEquals(CardDesign.DOSSIER, cardDesignForTheme("888"))
+    }
+
+    @Test
+    fun disabledLegacyAndGarbageThemesFallBackToBoard() {
+        listOf("0", "111", "222", "333", "444", "999", "", " 555", "poster", "null", null).forEach {
+            assertEquals(CardDesign.BOARD, cardDesignForTheme(it), "themeId=$it")
+        }
+    }
+
+    @Test
     fun tagLineWinsOverStatus() {
         assertEquals("Ring-bearer", headline(tagLine = "Ring-bearer", status = "Bag End"))
         assertEquals("Ring-bearer", headline(tagLine = "  Ring-bearer \n", status = null))
@@ -90,8 +105,9 @@ class CardSiteDefaultsTest {
     }
 
     @Test
-    fun cardThemeGivesTagLineAndHeader() {
+    fun cardThemeGivesDesignTagLineAndHeader() {
         val defaults = assertNotNull(cardSiteDefaults(siteData(statusSection, posterTheme)))
+        assertEquals(CardDesign.POSTER, defaults.design)
         assertEquals("Ring-bearer", defaults.tagLine)
         val header = assertNotNull(defaults.header)
         assertEquals(SystemDriveConstants.homePageConfigDrive.alias, header.driveId)
@@ -110,11 +126,37 @@ class CardSiteDefaultsTest {
     }
 
     @Test
-    fun themeWithoutTagLineOrHeaderHasNeither() {
+    fun themeWithoutTagLineOrHeaderKeepsOnlyTheDesign() {
         val defaults = assertNotNull(cardSiteDefaults(siteData(themeSection("""{"themeId":"777","isProtected":true}"""))))
-        assertEquals(CardSiteDefaults(), defaults)
+        assertEquals(CardSiteDefaults(design = CardDesign.COLLAGE), defaults)
         val blank = assertNotNull(cardSiteDefaults(siteData(themeSection("""{"themeId":"888","tagLine":"  ","headerImageKey":""}"""))))
-        assertEquals(CardSiteDefaults(), blank)
+        assertEquals(CardSiteDefaults(design = CardDesign.DOSSIER), blank)
+    }
+
+    @Test
+    fun legacyOrDisabledThemeFallsBackToBoardButKeepsTagLineAndHeader() {
+        val legacy = assertNotNull(cardSiteDefaults(siteData(themeSection("""{"themeId":"222","tagLine":"Hi","headerImageKey":"headr_key"}"""))))
+        assertEquals(CardDesign.BOARD, legacy.design)
+        assertEquals("Hi", legacy.tagLine)
+        assertEquals("headr_key", legacy.header?.payloadKey)
+        assertEquals(CardDesign.BOARD, assertNotNull(cardSiteDefaults(siteData(themeSection("""{"themeId":"0"}""")))).design)
+        assertEquals(CardDesign.BOARD, assertNotNull(cardSiteDefaults(siteData(themeSection("""{}""")))).design)
+    }
+
+    @Test
+    fun aStoredCardDesignWinsOverTheThemeMapping() {
+        val stored = assertNotNull(cardSiteDefaults(siteData(themeSection("""{"themeId":"555","cardDesign":"dossier"}"""))))
+        assertEquals(CardDesign.DOSSIER, stored.design)
+        val noTheme = assertNotNull(cardSiteDefaults(siteData(themeSection("""{"themeId":"0","cardDesign":"collage"}"""))))
+        assertEquals(CardDesign.COLLAGE, noTheme.design)
+    }
+
+    @Test
+    fun anUnknownCardDesignFallsBackToTheThemeMapping() {
+        listOf("\"neon\"", "\"\"", "\"Poster\"", "3", "null").forEach {
+            val defaults = assertNotNull(cardSiteDefaults(siteData(themeSection("""{"themeId":"555","cardDesign":$it}"""))))
+            assertEquals(CardDesign.POSTER, defaults.design, "cardDesign=$it")
+        }
     }
 
     @Test
@@ -128,13 +170,14 @@ class CardSiteDefaultsTest {
     fun repositoryReadsThemeFromPublicSitedataOnly() = runTest {
         val (repository, requests) = repository { HttpStatusCode.OK to siteDataText(statusSection, posterTheme) }
         val defaults = repository.loadCardSiteDefaults(odinId)
+        assertEquals(CardDesign.POSTER, defaults.design)
         assertEquals("Ring-bearer", defaults.tagLine)
         assertEquals("headr_key", defaults.header?.payloadKey)
         assertEquals(listOf("${HttpMethod.Get.value} https://frodo.baggins.demo.rocks/cdn/sitedata.json"), requests)
     }
 
     @Test
-    fun repositoryFallsBackToStatusWhenThemeIsMissing() = runTest {
+    fun repositoryFallsBackToBoardAndStatusWhenThemeIsMissing() = runTest {
         val (unreachable, _) = repository { HttpStatusCode.NotFound to "" }
         assertEquals(CardSiteDefaults(), unreachable.loadCardSiteDefaults(odinId))
         assertEquals(CardSiteDefaults(), unreachable.loadCardSiteDefaults(odinId))

@@ -22,7 +22,6 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileProvider
 import id.homebase.api.client.profile.ProfileRepository
-import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
@@ -35,11 +34,12 @@ import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.ui.screens.contactbook.isOwnedByContactsApp
 import id.homebase.core.ui.screens.profile.LoadedProfileAttributes
 import id.homebase.core.ui.screens.profile.ProfileAudience
+import id.homebase.core.ui.screens.profile.photoFor
+import id.homebase.core.ui.screens.profile.restoreAcl
 import id.homebase.core.ui.screens.profile.ProfileEditViewModel
 import id.homebase.core.ui.screens.profile.audience
 import id.homebase.core.ui.screens.profile.photoImageData
 import id.homebase.core.ui.screens.profile.saveWithAudience
-import id.homebase.core.ui.screens.profile.visiblePhoto
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -108,8 +108,16 @@ data class ProfileCardUiState(
     val isContentBusy: Boolean = false,
     val contentSaves: Int = 0,
     val contentFailures: Int = 0,
+    val pendingImport: CardAudience? = null,
 ) {
     internal val contentItems: List<CardContentItem> get() = cardContentItems(attributes, circles, selectedAudience)
+
+    internal val importSources: List<CardImportSource>
+        get() = cards.map { it.audience }
+            .filterNot { it.isSameAs(selectedAudience) }
+            .mapNotNull { from ->
+                importPlan(attributes, circles, from, selectedAudience).takeIf { it.isNotEmpty() }?.let { CardImportSource(from, it.size) }
+            }
 
     val selectedCard: ProfileCard? get() = cards.firstOrNull { it.audience == selectedAudience }
     private val baseDesign: String get() = selectedCard?.takeIf { it.audience is CardAudience.Circle }?.design ?: savedDesign
@@ -136,6 +144,8 @@ data class ProfileCardUiState(
 
 data class CardCircle(val id: String, val name: String)
 
+internal data class CardImportSource(val audience: CardAudience, val newItems: Int)
+
 sealed interface ProfileCardEvent {
     data class ShareImage(val path: String, val fileName: String) : ProfileCardEvent
     data class OpenLink(val url: String) : ProfileCardEvent
@@ -146,6 +156,7 @@ sealed interface ProfileCardEvent {
     data object ResetFailed : ProfileCardEvent
     data object CircleCardsUnsupported : ProfileCardEvent
     data object ContentSaveFailed : ProfileCardEvent
+    data class ContentImported(val count: Int, val from: CardAudience) : ProfileCardEvent
 }
 
 interface ProfileCardSource {
@@ -165,6 +176,8 @@ interface ProfileCardSource {
     suspend fun circles(): List<CardCircle>
     suspend fun saveCircleCard(card: ProfileCard): ProfileCard?
     suspend fun saveProfileAttribute(type: String, data: JsonObject, audience: ProfileAudience, existing: ProfileAttribute?): ProfileAttribute
+    /** Puts [previous]'s exact ACL back on [current], which is the same attribute after a later write. */
+    suspend fun restoreProfileAttribute(current: ProfileAttribute, previous: ProfileAttribute): ProfileAttribute
     suspend fun resetPublicCard()
     suspend fun resetCircleCard(card: ProfileCard)
     suspend fun clearSavedDesign()
@@ -245,6 +258,9 @@ class DefaultProfileCardSource(
         audience: ProfileAudience,
         existing: ProfileAttribute?,
     ) = profileRepository.saveWithAudience(type, data, audience, existing)
+
+    override suspend fun restoreProfileAttribute(current: ProfileAttribute, previous: ProfileAttribute) =
+        profileRepository.restoreAcl(current, previous)
 
     override suspend fun resetPublicCard() = cardRepository.resetPublic()
 
@@ -347,6 +363,7 @@ class ProfileCardViewModel(
     private var unsavedCard: UnsavedCard? = null
     private var cardJob: Job? = null
     private var circles: List<CardCircle> = emptyList()
+    private var importUndo: List<ProfileAttribute>? = null
     private val audiencesBeforePublic = mutableMapOf<Uuid, ProfileAudience>()
     private var publishJob: Job? = null
     private var shownBefore = false
@@ -530,6 +547,7 @@ class ProfileCardViewModel(
     private fun writeContent(type: String, data: JsonObject, audience: ProfileAudience, existing: ProfileAttribute?) {
         _uiState.update { it.copy(isContentBusy = true) }
         viewModelScope.launch {
+            persistTemplateIfUnsaved()
             val saved = attempt("saving profile content $type") { source.saveProfileAttribute(type, data, audience, existing) }
             if (saved == null) {
                 _uiState.update { it.copy(isContentBusy = false, contentFailures = it.contentFailures + 1) }
@@ -542,6 +560,89 @@ class ProfileCardViewModel(
             }
             render()
         }
+    }
+
+    // A circle card is only a template in the app until the first edit; saving it then makes /card serve what the owner sees.
+    private suspend fun persistTemplateIfUnsaved() {
+        val card = _uiState.value.selectedCard ?: return
+        if (card.audience !is CardAudience.Circle || !card.isDefault || !source.supportsCircleCards) return
+        val stored = attempt("saving the ${card.audience.label} card template") { source.saveCircleCard(card) } ?: return
+        _uiState.update { state -> state.copy(cards = state.cards.map { if (it.audience == stored.audience) stored else it }) }
+    }
+
+    fun onPhotoChanged() = load(force = true)
+
+    fun onImportRequested(from: CardAudience) {
+        val state = _uiState.value
+        if (state.isContentBusy || state.isCircleReadOnly || state.importSources.none { it.audience.isSameAs(from) }) return
+        if (state.selectedAudience == CardAudience.Public) _uiState.update { it.copy(pendingImport = from) } else runImport(from)
+    }
+
+    fun onImportConfirmed() {
+        val from = _uiState.value.pendingImport ?: return
+        _uiState.update { it.copy(pendingImport = null) }
+        runImport(from)
+    }
+
+    fun onImportCancelled() = _uiState.update { it.copy(pendingImport = null) }
+
+    // The server has no multi-attribute write, so "one batch" is one operation: every widening is sent in a row, then the state and the card update once; a failure part-way puts the earlier ones back.
+    private fun runImport(from: CardAudience) {
+        val state = _uiState.value
+        val plan = importPlan(state.attributes, state.circles, from, state.selectedAudience)
+        if (plan.isEmpty()) return
+        if (state.selectedAudience == CardAudience.Public) plan.forEach { audiencesBeforePublic[it.attribute.id] = it.previous }
+        _uiState.update { it.copy(isContentBusy = true) }
+        viewModelScope.launch {
+            persistTemplateIfUnsaved()
+            val written = mutableListOf<Pair<ProfileAttribute, ProfileAttribute>>()
+            for (step in plan) {
+                val saved = attempt("importing ${step.attribute.type}") {
+                    source.saveProfileAttribute(step.attribute.type, step.attribute.data, step.next, step.attribute)
+                }
+                if (saved == null) {
+                    val rolledBack = restoreAcls(written)
+                    applyAttributes(rolledBack, saved = false)
+                    _uiState.update { it.copy(contentFailures = it.contentFailures + 1) }
+                    _events.tryEmit(ProfileCardEvent.ContentSaveFailed)
+                    return@launch
+                }
+                written += step.attribute to saved
+            }
+            importUndo = written.map { it.first }
+            applyAttributes(written.map { it.second }, saved = true)
+            _events.tryEmit(ProfileCardEvent.ContentImported(written.size, from))
+        }
+    }
+
+    fun onImportUndone() {
+        val previous = importUndo ?: return
+        if (_uiState.value.isContentBusy) return
+        importUndo = null
+        _uiState.update { it.copy(isContentBusy = true) }
+        viewModelScope.launch {
+            val current = _uiState.value.attributes.associateBy { it.id }
+            applyAttributes(restoreAcls(previous.mapNotNull { p -> current[p.id]?.let { p to it } }), saved = true)
+        }
+    }
+
+    // Each pair is the attribute as it was and as it is now; one that fails to restore is left as it is now.
+    private suspend fun restoreAcls(pairs: List<Pair<ProfileAttribute, ProfileAttribute>>): List<ProfileAttribute> =
+        pairs.map { (previous, current) ->
+            attempt("restoring the access of ${previous.type}") { source.restoreProfileAttribute(current, previous) } ?: current
+        }
+
+    private fun applyAttributes(changed: List<ProfileAttribute>, saved: Boolean) {
+        val ids = changed.map { it.id }.toSet()
+        content = content?.let { c -> c.copy(attributes = c.attributes.filterNot { it.id in ids } + changed) }
+        _uiState.update {
+            it.copy(
+                isContentBusy = false,
+                contentSaves = if (saved) it.contentSaves + 1 else it.contentSaves,
+                attributes = it.attributes.filterNot { a -> a.id in ids } + changed,
+            )
+        }
+        render()
     }
 
     fun onPreviewDiscarded() {
@@ -634,7 +735,7 @@ class ProfileCardViewModel(
             _uiState.update { it.copy(isCardBusy = false, previewDesign = null, previewOverrides = null) }
             if (done) {
                 if (card.audience == CardAudience.Public) {
-                    _uiState.update { it.copy(savedDesign = PUBLIC_CARD_TEMPLATE.design) }
+                    _uiState.update { it.copy(savedDesign = siteDefaults?.design ?: CardDesign.BOARD) }
                 }
                 load(force = true)
             } else {
@@ -877,20 +978,17 @@ class ProfileCardViewModel(
         defaults: CardSiteDefaults,
         storedDesign: String?,
     ) {
-        val photo = attributes.visiblePhoto(ProfileVisibility.ANONYMOUS)?.photoImageData()
+        val photo = attributes.photoFor(CardAudience.Public)?.photoImageData()
         content = CardContent(odinId, attributes, defaults, photo)
         photo?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE) }
         val stored = attributes.profileCards()
         val storedPublic = stored.publicCard()
         val cardDesign = storedPublic?.design?.takeIf { it in CardDesign.all }
         val pending = unsavedCard
-        val saved = pending?.design ?: cardDesign ?: storedDesign ?: PUBLIC_CARD_TEMPLATE.design
+        val saved = pending?.design ?: cardDesign ?: storedDesign ?: defaults.design
         if (pending != null && cardJob?.isActive != true) writeCard(pending)
         val pendingOverrides = pending?.overrides
-        val publicCard = (storedPublic ?: ProfileCard(
-            Uuid.NIL, Uuid.NIL, CardAudience.Public, saved,
-            if (saved == PUBLIC_CARD_TEMPLATE.design) PUBLIC_CARD_TEMPLATE.overrides else CardOverrides.EMPTY,
-        ))
+        val publicCard = (storedPublic ?: ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, saved))
             .let { card -> if (pendingOverrides != null) card.copy(overrides = pendingOverrides) else card }
         val cards = (listOf(publicCard) + circleCards(stored, publicCard)).sortedCards()
         _uiState.update {
@@ -908,7 +1006,7 @@ class ProfileCardViewModel(
         render()
     }
 
-    // Circles without a template, or saved in a design this build doesn't know, borrow the public card.
+    // Circles without a template, saved in a design this build doesn't know, or on a server that can't keep circle cards, borrow the public card: that is what /card serves them.
     private fun circleCards(stored: List<ProfileCard>, publicCard: ProfileCard): List<ProfileCard> {
         val priorities = fixedCirclePriorities(circles)
         return circles.map { circle ->
@@ -916,7 +1014,7 @@ class ProfileCardViewModel(
             val priority = priorities.getValue(circle.id)
             val saved = stored.firstOrNull { it.audience.isSameAs(audience) }
             when {
-                saved == null -> cardTemplateFor(audience)
+                saved == null -> cardTemplateFor(audience)?.takeIf { source.supportsCircleCards }
                     ?.let { ProfileCard(Uuid.NIL, Uuid.NIL, audience, it.design, it.overrides, priority) }
                     ?: ProfileCard(Uuid.NIL, Uuid.NIL, audience, publicCard.design, publicCard.overrides, priority)
                 saved.design in CardDesign.all -> saved.copy(audience = audience, priority = priority)
@@ -954,8 +1052,7 @@ class ProfileCardViewModel(
 
     private suspend fun payloadFor(design: String, audience: CardAudience): CardPayload? {
         val content = content ?: return null
-        val photo = if (audience == CardAudience.Public) content.photo
-        else content.attributes.visiblePhoto(audience.aclFilter())?.photoImageData()
+        val photo = content.attributes.photoFor(audience)?.photoImageData()
         val card = _uiState.value.cards.firstOrNull { it.audience == audience }
         val stored = _uiState.value.previewOverrides.takeIf { audience == _uiState.value.selectedAudience } ?: card?.overrides ?: CardOverrides.EMPTY
         return buildCardPayload(

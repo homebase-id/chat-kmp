@@ -270,7 +270,7 @@ class ProfileEditShotsTest {
         onAllNodesWithText("Shown on every card", useUnmergedTree = true).assertCountEquals(1)
         shot.inheritedSlots?.let { onAllNodesWithText("Uses your Public photo", useUnmergedTree = true).assertCountEquals(it) }
         onAllNodesWithText("Use a different photo", useUnmergedTree = true).assertCountEquals(shot.useDifferentButtons)
-        val intro = if (shot.useDifferentButtons > 0) "Each card can have its own photo" else "Each card shows the photo it inherits"
+        val intro = if (shot.useDifferentButtons > 0) "Each card can have its own photo" else "Friends, Family and Work show the photo they inherit for now"
         assertTrue(onAllNodesWithText(intro, substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(), "intro for ${shot.name}")
     }
 

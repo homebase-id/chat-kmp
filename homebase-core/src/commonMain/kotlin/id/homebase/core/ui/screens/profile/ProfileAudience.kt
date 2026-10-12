@@ -90,3 +90,17 @@ internal suspend fun ProfileRepository.saveWithAudience(
             acl = audience.toAcl(),
         )
 }
+
+/** Puts [previous]'s exact ACL (spelling and order of its circles included) back on [current], the same attribute after later writes. */
+internal suspend fun ProfileRepository.restoreAcl(current: ProfileAttribute, previous: ProfileAttribute): ProfileAttribute {
+    val response = save(
+        type = current.type,
+        data = current.data,
+        visibility = previous.visibility,
+        knownId = current.id,
+        knownVersionTag = current.versionTag,
+        priority = previous.priority,
+        circleIds = previous.acl.circleIdList.orEmpty(),
+    )
+    return current.copy(versionTag = response.versionTag, visibility = previous.visibility, acl = previous.acl)
+}

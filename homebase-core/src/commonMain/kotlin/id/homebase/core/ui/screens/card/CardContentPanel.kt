@@ -131,7 +131,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
 
-private enum class AddKind(val type: String) {
+internal enum class AddKind(val type: String) {
     Phone(ProfileAttributeTypes.PHONE),
     Email(ProfileAttributeTypes.EMAIL),
     Link(ProfileAttributeTypes.LINK),
@@ -140,12 +140,12 @@ private enum class AddKind(val type: String) {
 }
 
 // The Board button's inset, so the step's header, heading, rows and add group share one start edge.
-private val SECTION_INSET = 24.dp
-private val GROUP_OUTER_CORNER = 20.dp
-private val GROUP_INNER_CORNER = 4.dp
-private val ROW_GAP = 2.dp
-private val BADGE_SIZE = 40.dp
-private val BADGE_GAP = 16.dp
+internal val SECTION_INSET = 24.dp
+internal val GROUP_OUTER_CORNER = 20.dp
+internal val GROUP_INNER_CORNER = 4.dp
+internal val ROW_GAP = 2.dp
+internal val BADGE_SIZE = 40.dp
+internal val BADGE_GAP = 16.dp
 private val HEADING_BADGE_SIZE = 36.dp
 private val ADD_PADDING = 12.dp
 private const val PENDING_TEXT_ALPHA = 0.38f
@@ -246,7 +246,7 @@ internal fun CardContentPanel(
 }
 
 @Composable
-private fun AudienceHeading(card: CardAudience) {
+internal fun AudienceHeading(card: CardAudience) {
     val text = when (card) {
         CardAudience.Public -> stringResource(MR.string.profile_card_content_shown_everyone)
         is CardAudience.Circle -> stringResource(MR.string.profile_card_content_shown_to, audienceLabel(card))
@@ -275,8 +275,12 @@ private fun AudienceHeading(card: CardAudience) {
 
 // Fixed positions so the group never reshuffles between cards; a type the profile already has stays, disabled.
 @Composable
-private fun AddGroup(isAvailable: (AddKind) -> Boolean, enabled: Boolean, onAdd: (AddKind) -> Unit) {
-    val title = stringResource(MR.string.profile_card_content_add_to_card)
+internal fun AddGroup(
+    isAvailable: (AddKind) -> Boolean,
+    enabled: Boolean,
+    onAdd: (AddKind) -> Unit,
+    title: String = stringResource(MR.string.profile_card_content_add_to_card),
+) {
     val kinds = AddKind.entries
     val labels = kinds.map { stringResource(addLabel(it)) }
     Text(
@@ -322,7 +326,7 @@ private fun AddGroup(isAvailable: (AddKind) -> Boolean, enabled: Boolean, onAdd:
 }
 
 @Composable
-private fun EmptyContent() {
+internal fun EmptyContent() {
     val colors = MaterialTheme.colorScheme
     Surface(
         color = colors.surfaceContainerHigh,
@@ -345,7 +349,7 @@ private fun EmptyContent() {
 }
 
 // The M3 Expressive grouped list: one rounded block whose rows meet with tight inner corners.
-private fun groupedShape(index: Int, count: Int) = RoundedCornerShape(
+internal fun groupedShape(index: Int, count: Int) = RoundedCornerShape(
     topStart = if (index == 0) GROUP_OUTER_CORNER else GROUP_INNER_CORNER,
     topEnd = if (index == 0) GROUP_OUTER_CORNER else GROUP_INNER_CORNER,
     bottomStart = if (index == count - 1) GROUP_OUTER_CORNER else GROUP_INNER_CORNER,
@@ -492,7 +496,7 @@ private fun SaveFailedStrip(onRetry: () -> Unit) {
 
 // The row's own reason, set inline so a wrapped line keeps its glyph; only an [accent] glyph takes the primary colour.
 @Composable
-private fun RowHint(icon: ImageVector, text: String, accent: Boolean) {
+internal fun RowHint(icon: ImageVector, text: String, accent: Boolean) {
     val colors = MaterialTheme.colorScheme
     val glyph = "glyph"
     Text(
@@ -515,7 +519,7 @@ private fun RowHint(icon: ImageVector, text: String, accent: Boolean) {
 
 // Off is an outlined circle, on is a filled cookie: the badge morphs between them on the spatial spring as the switch flips.
 @Composable
-private fun ShownBadge(icon: ImageVector, shown: Boolean) {
+internal fun ShownBadge(icon: ImageVector, shown: Boolean) {
     val motion = MaterialTheme.motionScheme
     val colors = MaterialTheme.colorScheme
     val morph = remember { Morph(MaterialShapes.Circle, MaterialShapes.Cookie9Sided) }
@@ -541,7 +545,7 @@ private fun ShownBadge(icon: ImageVector, shown: Boolean) {
 
 // Applied as the sheet closes, not through a second Save: the change is the choice itself.
 @Composable
-private fun AudienceSheet(
+internal fun AudienceSheet(
     item: CardContentItem,
     circles: List<CardCircle>,
     onApply: (ProfileAudience) -> Unit,
@@ -581,7 +585,7 @@ private fun AudienceSheet(
 }
 
 @Composable
-private fun AddContentSheet(
+internal fun AddContentSheet(
     kind: AddKind,
     card: CardAudience,
     circles: List<CardCircle>,
@@ -671,8 +675,8 @@ private fun addLabel(kind: AddKind) = when (kind) {
     AddKind.Bio -> MR.string.profile_edit_bio
 }
 
-private fun typeIcon(type: String): ImageVector =
+internal fun typeIcon(type: String): ImageVector =
     ATTRIBUTE_SPECS.firstOrNull { it.type == type }?.icon ?: Icons.Outlined.Link
 
-private fun typeLabel(type: String) =
+internal fun typeLabel(type: String) =
     ATTRIBUTE_SPECS.firstOrNull { it.type == type }?.labelRes ?: MR.string.profile_edit_link
