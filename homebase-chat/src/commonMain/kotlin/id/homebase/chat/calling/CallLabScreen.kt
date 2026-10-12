@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -284,13 +285,13 @@ private fun LabAvatar(size: Dp) {
 private fun LabPanel(actions: List<LabAction>, modifier: Modifier) {
     var open by remember { mutableStateOf(false) }
     val description = stringResource(MR.string.call_lab_controls)
-    Box(modifier.padding(end = 8.dp)) {
+    Box(modifier) {
         if (open) {
             Surface(
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 shadowElevation = 8.dp,
-                modifier = Modifier.widthIn(max = 260.dp).heightIn(max = 480.dp),
+                modifier = Modifier.padding(end = 8.dp).widthIn(max = 260.dp).heightIn(max = 480.dp),
             ) {
                 Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     IconButton(onClick = { open = false }, modifier = Modifier.align(Alignment.End)) {
@@ -300,14 +301,15 @@ private fun LabPanel(actions: List<LabAction>, modifier: Modifier) {
                 }
             }
         } else {
+            // A slim edge tab so the lab's own handle stays off the call screen it is driving.
             Surface(
                 onClick = { open = true },
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.tertiaryContainer,
-                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                modifier = Modifier.size(48.dp),
+                shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(width = 24.dp, height = 56.dp),
             ) {
-                Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Tune, description) }
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Tune, description, Modifier.size(16.dp)) }
             }
         }
     }
@@ -342,7 +344,10 @@ private fun labPreviewStates(): List<Pair<StringResource, CallUiState>> {
         MR.string.call_status_reconnecting to connected.copy(phase = CallPhase.Reconnecting),
         MR.string.call_failed_title to voice.copy(phase = CallPhase.Ended(CallEndReason.Failed(FailReason.NoRoute))),
         MR.string.call_permission_title to voice.copy(phase = CallPhase.Ended(CallEndReason.Failed(FailReason.Permission))),
-        MR.string.call_ended_hangup to connected.copy(phase = CallPhase.Ended(CallEndReason.Hangup(remote = true))),
+        MR.string.call_ended_hangup to connected.copy(
+            phase = CallPhase.Ended(CallEndReason.Hangup(remote = true)),
+            endedAtMs = Clock.System.now().toEpochMilliseconds(),
+        ),
         MR.string.call_ended_declined to voice.copy(phase = CallPhase.Ended(CallEndReason.Declined)),
     )
 }

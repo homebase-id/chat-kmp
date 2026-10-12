@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
@@ -15,8 +16,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.captureToImage
@@ -89,7 +93,7 @@ class CallScreenshotTest {
 
     private val shots = listOf(
         Shot("outgoing", { "End call" }) { it.copy(phase = CallPhase.Outgoing, peerRinging = true, connectedAtMs = null, verificationCode = null) },
-        Shot("incoming", { if (it) "Accept as video call" else "Accept as voice call" }) {
+        Shot("incoming", { if (it) "Accept video call from" else "Accept voice call from" }) {
             it.copy(phase = CallPhase.Incoming, direction = CallDirection.Incoming, connectedAtMs = null, verificationCode = null)
         },
         Shot("connecting", { "End call" }) { it.copy(phase = CallPhase.Connecting, connectedAtMs = null, verificationCode = null) },
@@ -97,12 +101,22 @@ class CallScreenshotTest {
         Shot("reconnecting", { "End call" }) { it.copy(phase = CallPhase.Reconnecting) },
         Shot("muted", { "Unmute microphone" }) { it.copy(phase = CallPhase.Connected, muted = true, route = AudioRoute.Speaker, quality = CallQuality.Poor) },
         Shot("peercamoff", { "End call" }) { it.copy(phase = CallPhase.Connected, remoteVideo = false) },
+        Shot("selfcamoff", { "End call" }) { it.copy(phase = CallPhase.Connected, localVideo = false, route = AudioRoute.Bluetooth) },
         Shot("failed", { "Retry" }) { it.copy(phase = CallPhase.Ended(CallEndReason.Failed(FailReason.NoRoute)), verificationCode = null) },
-        Shot("ended", { "Call ended" }) { it.copy(phase = CallPhase.Ended(CallEndReason.Hangup(remote = true))) },
+        Shot("ended", { "Call back" }) {
+            it.copy(phase = CallPhase.Ended(CallEndReason.Hangup(remote = true)), endedAtMs = it.connectedAtMs!! + 754_000)
+        },
     )
 
-    private fun androidx.compose.ui.test.ComposeUiTest.show(dark: Boolean, state: CallUiState, recorder: Recorder = Recorder()) {
+    private fun androidx.compose.ui.test.ComposeUiTest.show(
+        dark: Boolean,
+        state: CallUiState,
+        recorder: Recorder = Recorder(),
+        fontScale: Float = 1f,
+    ) {
         setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
             HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
                 CallScreen(
                     ui = state,
@@ -114,6 +128,7 @@ class CallScreenshotTest {
                     },
                     actions = recorder.actions(),
                 )
+            }
             }
         }
         mainClock.autoAdvance = false
@@ -160,10 +175,27 @@ class CallScreenshotTest {
     fun incomingVideoCallOffersSeparateAudioAndVideoAcceptAndDecline() = runDesktopComposeUiTest(390, 844) {
         val recorder = Recorder()
         show(false, shots.first { it.name == "incoming" }.state(base(true, Size.Phone)), recorder)
-        onNodeWithContentDescription("Accept as voice call").performClick()
-        onNodeWithContentDescription("Accept as video call").performClick()
-        onNodeWithContentDescription("Decline").performClick()
+        onNodeWithContentDescription("Accept voice call from Samwise Gamgee").performClick()
+        onNodeWithContentDescription("Accept video call from Samwise Gamgee").performClick()
+        onNodeWithContentDescription("Decline call from Samwise Gamgee").performClick()
         assertEquals(listOf("acceptAudio", "acceptVideo", "decline"), recorder.calls)
+    }
+
+    @Test
+    fun incomingCallWrapsAtDoubleFontScaleWithoutClippingTheActions() = runDesktopComposeUiTest(390, 844) {
+        show(false, shots.first { it.name == "incoming" }.state(base(true, Size.Phone)), fontScale = 2f)
+        val decline = onNodeWithContentDescription("Decline call from", substring = true).getBoundsInRoot()
+        val video = onNodeWithContentDescription("Accept video call from", substring = true).getBoundsInRoot()
+        assertTrue(decline.left.value >= 0 && video.right.value <= 390, "actions fit: $decline $video")
+        ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "incoming-fontscale2-light-video-phone.png"))
+    }
+
+    @Test
+    fun togglesHighlightOnlyTheNonDefaultStateAndAnnounceIt() = runDesktopComposeUiTest(390, 844) {
+        show(false, base(true, Size.Phone).copy(phase = CallPhase.Connected, muted = true, localVideo = false))
+        onNode(hasContentDescription("Unmute microphone") and hasStateDescription("Muted")).assertExists()
+        onNode(hasContentDescription("Turn camera on") and hasStateDescription("Camera off")).assertExists()
+        onNode(hasContentDescription("Choose audio output") and hasStateDescription("Earpiece")).assertExists()
     }
 
     @Test
@@ -237,6 +269,7 @@ class CallScreenshotTest {
                                 modifier = Modifier.align(if (own) Alignment.End else Alignment.Start),
                                 containerColor = if (own) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh,
                                 contentColor = if (own) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface,
+                                onCallBack = descriptor?.let { {} },
                                 footer = { color -> Text("12:41", style = MaterialTheme.typography.labelSmall, color = color) },
                             )
                         }
@@ -244,6 +277,7 @@ class CallScreenshotTest {
                 }
             }
             assertShown("Missed call")
+            assertShown("12 min 34 s")
             ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "bubbles-${if (dark) "dark" else "light"}.png"))
         }
     }

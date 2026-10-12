@@ -440,7 +440,9 @@ fun AppNavHost(
     // The card fills its sheet to the screen's bottom edge; its own chrome pads for the navigation bar.
     // The Vault gallery/editor floor does the same (VaultGalleryScreen pads its sheet content itself).
     val isViewOnceViewerOpen = chromeEntry != null && entryShowsViewOnceViewer(chromeEntry)
-    val paintsUnderNavigationBar = chromeDestination.isCardRoute() || isVaultOverlayOpen || isViewOnceViewerOpen
+    // The Call lab drives the real call screen, which must be edge-to-edge like CallHost to show its insets truthfully.
+    val isCallLabOpen = chromeDestination?.hasRoute(Route.DevCallLab::class) == true
+    val paintsUnderNavigationBar = chromeDestination.isCardRoute() || isVaultOverlayOpen || isViewOnceViewerOpen || isCallLabOpen
     val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail
     val railVisible = isOnTopLevelScreen && showNavigationRail
     val contentInsets = ScaffoldDefaults.contentWindowInsets.only(

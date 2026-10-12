@@ -10,6 +10,7 @@ import id.homebase.chat.services.calling.CallQuality
 import id.homebase.chat.services.calling.CallSession
 import id.homebase.chat.services.calling.CallVideos
 import id.homebase.chat.services.calling.platformAudioRoutes
+import kotlin.time.Clock
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -22,7 +23,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-internal const val ENDED_LINGER_MS = 1_800L
+internal const val ENDED_LINGER_MS = 2_400L
 
 data class CallUiState(
     val phase: CallPhase = CallPhase.Idle,
@@ -37,6 +38,7 @@ data class CallUiState(
     val availableRoutes: List<AudioRoute> = emptyList(),
     val quality: CallQuality = CallQuality.Unknown,
     val connectedAtMs: Long? = null,
+    val endedAtMs: Long? = null,
     val verificationCode: String? = null,
     val videos: CallVideos = CallVideos(),
     val minimized: Boolean = false,
@@ -94,6 +96,11 @@ class CallViewModel(
                         availableRoutes = routes,
                         quality = state.quality,
                         connectedAtMs = state.connectedAtMs,
+                        endedAtMs = when {
+                            state.phase !is CallPhase.Ended -> null
+                            previous.phase is CallPhase.Ended && !newCall -> previous.endedAtMs
+                            else -> Clock.System.now().toEpochMilliseconds()
+                        },
                         verificationCode = state.verificationCode,
                         videos = videos,
                         minimized = previous.minimized && !newCall,

@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -18,20 +19,32 @@ import id.homebase.resources.call_button_voice
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.getKoin
 
+/** Starts a call to the open conversation's peer, or null where calling it isn't possible right now. */
+val LocalCallBack = compositionLocalOf<((video: Boolean) -> Unit)?> { null }
+
+class CallStarter(val idle: Boolean, val start: (video: Boolean) -> Unit)
+
 @Composable
-fun CallActionButtons(conversation: EnrichedConversationUiModel) {
-    val service = getKoin().getOrNull<CallService>()?.takeIf { it.available } ?: return
-    val status = conversation.oneOnOneConnectionStatus as? OneOnOneConnectionStatus.Connected ?: return
-    if (conversation.conversation.isGroupConversation || conversation.conversation.isWithSelf) return
+fun rememberCallStarter(conversation: EnrichedConversationUiModel): CallStarter? {
+    val service = getKoin().getOrNull<CallService>()?.takeIf { it.available } ?: return null
+    val status = conversation.oneOnOneConnectionStatus as? OneOnOneConnectionStatus.Connected ?: return null
+    if (conversation.conversation.isGroupConversation || conversation.conversation.isWithSelf) return null
     val state by service.state.collectAsStateWithLifecycle()
     val gate = rememberCallPermissionGate()
     val peer = remember(status) { status.otherOdinId.domainName }
-    val idle = !state.isActive
+    val start = remember(service, gate, peer) {
+        { video: Boolean -> gate.run(video = video) { granted -> service.startCall(peer, video = granted) } }
+    }
+    return CallStarter(idle = !state.isActive, start = start)
+}
 
-    IconButton(enabled = idle, onClick = { gate.run(video = false) { service.startCall(peer, video = false) } }) {
+@Composable
+fun CallActionButtons(starter: CallStarter?) {
+    starter ?: return
+    IconButton(enabled = starter.idle, onClick = { starter.start(false) }) {
         Icon(Icons.Default.Call, contentDescription = stringResource(MR.string.call_button_voice))
     }
-    IconButton(enabled = idle, onClick = { gate.run(video = true) { video -> service.startCall(peer, video = video) } }) {
+    IconButton(enabled = starter.idle, onClick = { starter.start(true) }) {
         Icon(Icons.Default.Videocam, contentDescription = stringResource(MR.string.call_button_video))
     }
 }

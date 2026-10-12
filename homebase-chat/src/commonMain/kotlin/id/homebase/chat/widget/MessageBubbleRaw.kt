@@ -78,6 +78,7 @@ import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
 import id.homebase.chat.groodle.GroodleBubble
 import id.homebase.chat.calling.CallEventBubble
+import id.homebase.chat.calling.LocalCallBack
 import id.homebase.chat.poll.PollBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
@@ -360,10 +361,13 @@ fun MessageBubbleRaw(
             return
         }
         is MessageContent.CallEvent -> {
+            val callBack = LocalCallBack.current?.takeIf { !displayOnly }
+            val descriptor = content.descriptor
             CallEventBubble(
-                descriptor = content.descriptor,
+                descriptor = descriptor,
                 isOwn = sentByYou,
                 modifier = modifier,
+                onCallBack = if (callBack != null && descriptor != null) ({ callBack(descriptor.video) }) else null,
                 shape = remember(sentByYou, clusterPosition) { messageBubbleShape(sentByYou, clusterPosition) },
                 containerColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface,

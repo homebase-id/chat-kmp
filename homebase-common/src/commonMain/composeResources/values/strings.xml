@@ -2828,4 +2828,18 @@
     <string name="call_lab_glare">Both call at once</string>
     <string name="call_lab_connected_voice">Connected, voice</string>
     <string name="call_lab_connected_video">Connected, video</string>
+    <string name="call_state_muted">Muted</string>
+    <string name="call_state_mic_on">Microphone on</string>
+    <string name="call_state_camera_on">Camera on</string>
+    <string name="call_route_name_earpiece">Earpiece</string>
+    <string name="call_route_name_bluetooth">Bluetooth</string>
+    <string name="call_route_name_wired">Headset</string>
+    <string name="call_verification_show">Show verification code</string>
+    <string name="call_accept_audio_from">Accept voice call from %1$s</string>
+    <string name="call_accept_video_from">Accept video call from %1$s</string>
+    <string name="call_decline_from">Decline call from %1$s</string>
+    <string name="call_call_back">Call back</string>
+    <string name="call_duration_hours">%1$d h %2$d min</string>
+    <string name="call_duration_minutes">%1$d min %2$d s</string>
+    <string name="call_duration_seconds">%1$d s</string>
 </resources>
