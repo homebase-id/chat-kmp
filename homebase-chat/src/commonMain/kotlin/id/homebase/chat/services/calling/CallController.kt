@@ -153,10 +153,10 @@ class CallController(
         }
     }
 
-    // Telling our other devices to stop ringing must never fail the call this device just took or declined.
-    private suspend fun sendToSiblings(self: String, signal: CallSignal, state: CallState) {
+    // Telling the callee's other devices to stop ringing must never fail the call this device just took or declined.
+    private suspend fun sendToSiblings(peer: String, signal: CallSignal, state: CallState) {
         try {
-            send(self, signal)
+            send(peer, signal)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

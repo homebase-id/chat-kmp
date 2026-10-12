@@ -213,7 +213,7 @@ class CallControllerTest {
         assertEquals(CallDirection.Outgoing, a.state.direction)
         assertEquals(CallDirection.Incoming, b.state.direction)
         assertTrue(net.sent.any { it.from == sam && it.to == frodo && it.signal == CallSignal.Hangup("call-b", HangupReason.Normal) })
-        assertTrue(net.sent.none { it.signal is CallSignal.Hangup && it.push != null })
+        assertTrue(net.sent.none { it.signal is CallSignal.Hangup && !it.signal.reason.isElsewhere && it.push != null })
         assertEquals(1, net.sent.count { it.push?.kind == CallPushKind.Ring && it.from == frodo })
         assertEquals(1, net.sent.count { it.push?.kind == CallPushKind.Ring && it.from == sam })
         assertEquals(2, b.engines.size)

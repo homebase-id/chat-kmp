@@ -2,6 +2,7 @@ package id.homebase.chat.services.calling
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -140,12 +141,26 @@ class CallStateMachineTest {
         assertEquals(
             listOf(
                 CallEffect.CancelTimers,
-                CallEffect.SendSignal(frodo, CallSignal.Hangup(c, HangupReason.AnsweredElsewhere)),
                 CallEffect.CreateAnswer("sdp", false),
                 CallEffect.StartTimer(CallTimer.Connect, c),
             ),
             t.effects,
         )
+    }
+
+    @Test
+    fun callerTellsTheCalleeDevicesWhichOneAnswered() {
+        val t = machine.step(outgoing, CallEvent.Signal(InboundSignal(sam, CallSignal.Answer(c, "answer"), 1_000)))
+        assertTrue(CallEffect.SendSignal(sam, CallSignal.Hangup(c, HangupReason.AnsweredElsewhere)) in t.effects)
+    }
+
+    @Test
+    fun callerTellsTheCalleeDevicesWhichOneDeclined() {
+        val t = machine.step(outgoing, CallEvent.Signal(InboundSignal(sam, CallSignal.Hangup(c, HangupReason.Declined), 1_000)))
+        assertEquals(CallPhase.Ended(CallEndReason.Declined), t.state.phase)
+        assertTrue(CallEffect.SendSignal(sam, CallSignal.Hangup(c, HangupReason.DeclinedElsewhere)) in t.effects)
+        val busy = machine.step(outgoing, CallEvent.Signal(InboundSignal(sam, CallSignal.Hangup(c, HangupReason.Busy), 1_000)))
+        assertTrue(busy.effects.none { it is CallEffect.SendSignal })
     }
 
     @Test
@@ -156,8 +171,8 @@ class CallStateMachineTest {
     @Test
     fun localHangupInEveryPhase() {
         assertEnds(machine.step(outgoing, CallEvent.UserHangup), CallEndReason.Cancelled, HangupReason.Cancelled)
-        assertEnds(machine.step(incoming, CallEvent.UserDecline), CallEndReason.Declined, HangupReason.Declined, HangupReason.DeclinedElsewhere)
-        assertEnds(machine.step(incoming, CallEvent.UserHangup), CallEndReason.Declined, HangupReason.Declined, HangupReason.DeclinedElsewhere)
+        assertEnds(machine.step(incoming, CallEvent.UserDecline), CallEndReason.Declined, HangupReason.Declined)
+        assertEnds(machine.step(incoming, CallEvent.UserHangup), CallEndReason.Declined, HangupReason.Declined)
         listOf(connecting, connected, reconnecting).forEach {
             assertEnds(machine.step(it, CallEvent.UserHangup), CallEndReason.Hangup(remote = false), HangupReason.Normal)
         }
@@ -170,7 +185,7 @@ class CallStateMachineTest {
     @Test
     fun remoteHangupInEveryPhase() {
         fun hang(reason: HangupReason = HangupReason.Normal) = fromSam(CallSignal.Hangup(c, reason))
-        assertEnds(machine.step(outgoing, hang(HangupReason.Declined)), CallEndReason.Declined, null)
+        assertEnds(machine.step(outgoing, hang(HangupReason.Declined)), CallEndReason.Declined, HangupReason.DeclinedElsewhere)
         assertEnds(machine.step(outgoing, hang(HangupReason.Busy)), CallEndReason.Busy, null)
         assertEnds(machine.step(incoming, hang(HangupReason.Cancelled)), CallEndReason.Cancelled, null)
         assertEnds(machine.step(incoming, hang(HangupReason.Missed)), CallEndReason.Missed, null)
@@ -191,7 +206,10 @@ class CallStateMachineTest {
         val t = machine.step(outgoing, fromSam(CallSignal.Answer(c, "ans")))
         assertEquals(CallPhase.Connecting, t.state.phase)
         assertEquals(
-            listOf(CallEffect.CancelTimers, CallEffect.ApplyRemoteAnswer("ans"), CallEffect.StartTimer(CallTimer.Connect, c)),
+            listOf(
+                CallEffect.CancelTimers,
+                CallEffect.SendSignal(sam, CallSignal.Hangup(c, HangupReason.AnsweredElsewhere)),
+                CallEffect.ApplyRemoteAnswer("ans"), CallEffect.StartTimer(CallTimer.Connect, c)),
             t.effects,
         )
         listOf(incoming, connecting, connected, reconnecting).forEach { assertNoOp(it, fromSam(CallSignal.Answer(c, "ans"))) }

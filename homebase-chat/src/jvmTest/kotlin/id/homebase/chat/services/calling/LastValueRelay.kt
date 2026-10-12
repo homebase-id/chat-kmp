@@ -61,7 +61,8 @@ class LastValueRelay {
         val blob = body.getValue("blob").jsonPrimitive.content
         val recipients = (body.getValue("recipients") as JsonArray).map { it.jsonPrimitive.content }
         posts += Post(sender, recipients, channelKey, checkNotNull(CallSignalCodec.decode(blob)), body)
-        for (recipient in recipients) {
+        // The real relay is peer-to-peer over connections; an identity is not connected to itself, so a self-addressed post is accepted (204) and dropped.
+        for (recipient in recipients.filter { it != sender }) {
             retained[recipient to sender] = Retained(channelKey, blob)
             devices.filter { it.identity == recipient && it.online }.forEach { deliver(it, sender, channelKey, blob) }
         }

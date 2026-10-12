@@ -47,7 +47,6 @@ class CallPushAndRestartTest {
         val offered = step(accepted.state, fromSam(CallSignal.Offer(c, "sdp", false)))
         assertEquals(CallPhase.Connecting, offered.state.phase)
         assertTrue(CallEffect.CreateAnswer("sdp", false) in offered.effects)
-        assertTrue(CallEffect.SendSignal(frodo, elsewhereSignal) in offered.effects)
 
         val echoed = step(offered.state, CallEvent.Signal(InboundSignal(frodo, elsewhereSignal, 1_000)))
         assertEquals(CallPhase.Connecting, echoed.state.phase)

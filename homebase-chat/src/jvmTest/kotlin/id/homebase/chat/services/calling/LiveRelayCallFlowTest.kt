@@ -111,8 +111,9 @@ class LiveRelayCallFlowTest {
 
         assertEquals(CallPhase.Ended(CallEndReason.AnsweredElsewhere), desktop.state.phase)
         await("answering device connected") { phone.state.phase == CallPhase.Connected && caller.state.phase == CallPhase.Connected }
-        val elsewhere = relay.posts.single { it.sender == sam && (it.signal as? CallSignal.Hangup)?.reason == HangupReason.AnsweredElsewhere }
+        val elsewhere = relay.posts.single { it.sender == frodo && (it.signal as? CallSignal.Hangup)?.reason == HangupReason.AnsweredElsewhere }
         assertEquals(listOf(sam), elsewhere.recipients)
+        assertTrue(relay.posts.none { it.sender == sam && it.recipients == listOf(sam) }, "the relay drops self-addressed posts, so none may carry the signal")
         assertEquals("hangup", elsewhere.body.getValue("push").jsonObject.getValue("kind").jsonPrimitive.content)
         assertEquals("c-elsewhere", elsewhere.body.getValue("push").jsonObject.getValue("tagId").jsonPrimitive.content)
     }
@@ -131,6 +132,7 @@ class LiveRelayCallFlowTest {
 
         assertEquals(CallPhase.Ended(CallEndReason.DeclinedElsewhere), desktop.state.phase)
         assertEquals(CallPhase.Ended(CallEndReason.Declined), phone.state.phase)
+        assertEquals(CallPhase.Ended(CallEndReason.Declined), caller.state.phase)
     }
 
     @Test
