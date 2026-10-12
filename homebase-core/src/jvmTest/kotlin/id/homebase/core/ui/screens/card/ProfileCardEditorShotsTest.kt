@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.toComposeImageBitmap
@@ -46,6 +47,7 @@ import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
@@ -86,6 +88,7 @@ class ProfileCardEditorShotsTest {
         val heightDp: Int = PHONE_H,
         val completesToggle: Boolean = false,
         val failsToggle: Boolean = false,
+        val showCard: Boolean = true,
         val act: ComposeUiTest.() -> Unit = {},
     )
 
@@ -291,8 +294,8 @@ class ProfileCardEditorShotsTest {
     private val editorWork = editorBase.copy(selectedAudience = workCard)
     private val editorPublic = editorBase.copy(selectedAudience = CardAudience.Public)
     private val editorEmpty = base.copy(attributes = emptyList(), circles = contentCircles, cards = listOf(public, card(friendsCard)), selectedAudience = friendsCard)
-    private fun editor(name: String, state: ProfileCardUiState, w: Int = REDMI_W, h: Int = REDMI_H, fontScale: Float = 1f, rtl: Boolean = false, photo: CardPhotoUi = CardPhotoUi(null, false, true, false), act: ComposeUiTest.() -> Unit = {}) =
-        Shot(name, state, mode = EditorMode.Content, widthDp = w, heightDp = h, fontScale = fontScale, rtl = rtl, photo = photo, act = act)
+    private fun editor(name: String, state: ProfileCardUiState, w: Int = REDMI_W, h: Int = REDMI_H, fontScale: Float = 1f, rtl: Boolean = false, photo: CardPhotoUi = CardPhotoUi(null, false, true, false), showCard: Boolean = true, act: ComposeUiTest.() -> Unit = {}) =
+        Shot(name, state, mode = EditorMode.Content, widthDp = w, heightDp = h, fontScale = fontScale, rtl = rtl, photo = photo, showCard = showCard, act = act)
 
     private fun templateCard(audience: CardAudience) = cardTemplateFor(audience)!!.let {
         ProfileCard(Uuid.NIL, Uuid.NIL, audience, it.design, it.overrides)
@@ -321,6 +324,16 @@ class ProfileCardEditorShotsTest {
         editor("k12-editor-busy", editorBase.copy(isContentBusy = true)),
         editor("k13-editor-copy-from", editorBase, act = {
             onNodeWithText("Copy from…").performClick()
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }),
+        editor("k16-profile-cards-off", editorPublic, showCard = false),
+        editor("k16-profile-cards-off-friends", editorBase, showCard = false),
+        editor("k16-profile-edit-item", editorBase, showCard = false, act = {
+            onNode(SemanticsMatcher("edits the phone") { it.config.getOrNull(SemanticsActions.OnClick)?.label == "Edit Phone" }).performClick()
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }),
+        editor("k16-profile-add-more", editorBase, showCard = false, act = {
+            onNodeWithContentDescription("Add new: More").performClick()
             mainClock.advanceTimeBy(SETTLE_MS)
         }),
     )
@@ -461,6 +474,8 @@ class ProfileCardEditorShotsTest {
                             uiState = uiState,
                             mode = shot.mode,
                             photo = shot.photo,
+                            showCard = shot.showCard,
+                            onChangeDesign = if (shot.showCard) ({}) else null,
                             step = step,
                             onStep = { step = it },
                             onBack = { step = EditorStep.Design },

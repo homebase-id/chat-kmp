@@ -160,6 +160,7 @@ import id.homebase.resources.profile_avatar_edit_error_too_large
 import id.homebase.resources.profile_avatar_edit_error_delete
 import id.homebase.resources.cancel
 import id.homebase.resources.profile_card_audience_public
+import id.homebase.resources.profile_edit_title
 
 private val ACTION_HEIGHT = ButtonDefaults.MinHeight
 private val APP_ONLY_LABEL_MIN_ROOM = 216.dp
@@ -201,6 +202,8 @@ fun ProfileCardEditorScreen(
     avatarViewModel: ProfileAvatarEditViewModel,
     onBack: () -> Unit,
     onNavigateToCropper: (Uuid) -> Unit,
+    // Off, it edits the profile behind the cards without drawing or designing one.
+    cardsEnabled: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val avatarState by avatarViewModel.state.collectAsStateWithLifecycle()
@@ -217,7 +220,10 @@ fun ProfileCardEditorScreen(
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
     val errContent = stringResource(MR.string.profile_card_content_save_failed)
 
-    LaunchedEffect(viewModel) { viewModel.startHost() }
+    LaunchedEffect(viewModel) {
+        if (cardsEnabled) viewModel.startHost()
+        viewModel.onContentEditorShown()
+    }
     DisposableEffect(viewModel) {
         onDispose {
             viewModel.onEditorClosed()
@@ -336,7 +342,10 @@ fun ProfileCardEditorScreen(
             onChangeDesign = {
                 step = EditorStep.Design
                 mode = EditorMode.Design
-            },
+            }.takeIf { cardsEnabled },
+            showCard = cardsEnabled,
+            onSelectCard = viewModel::onCardSelected,
+            onRetryLoad = viewModel::onRetry,
             onChangePhoto = {
                 pickFor = card
                 photoPicker.launch()
@@ -348,7 +357,8 @@ fun ProfileCardEditorScreen(
             snackbarHostState = snackbarHostState,
             onRequestDesignAccess = viewModel::onPublishRetry,
             onContentToggle = viewModel::onContentToggled,
-            onContentAudience = viewModel::onContentAudienceChanged,
+            onContentEdit = viewModel::onContentEdited,
+            onContentDelete = viewModel::onContentDeleted,
             onContentAdd = viewModel::onContentAdded,
         ) { layoutWidth ->
             val backdrop by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
@@ -404,13 +414,17 @@ internal fun ProfileCardEditorContent(
     snackbarHostState: SnackbarHostState,
     mode: EditorMode = EditorMode.Design,
     photo: CardPhotoUi = CardPhotoUi(photo = null, own = false, canChange = false, busy = false),
-    onChangeDesign: () -> Unit = {},
+    onChangeDesign: (() -> Unit)? = {},
+    showCard: Boolean = true,
+    onSelectCard: (CardAudience) -> Unit = {},
+    onRetryLoad: () -> Unit = {},
     onChangePhoto: () -> Unit = {},
     onRemovePhoto: () -> Unit = {},
     onImport: (CardAudience) -> Unit = {},
     onRequestDesignAccess: () -> Unit = {},
     onContentToggle: (Uuid, Boolean) -> Unit = { _, _ -> },
-    onContentAudience: (Uuid, ProfileAudience) -> Unit = { _, _ -> },
+    onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit = { _, _, _ -> },
+    onContentDelete: (Uuid) -> Unit = {},
     onContentAdd: (String, Map<String, String>) -> Unit = { _, _ -> },
     preview: @Composable BoxScope.(layoutWidth: Dp) -> Unit,
 ) {
@@ -462,7 +476,9 @@ internal fun ProfileCardEditorContent(
                     onSave = onSave,
                     onAppOnly = onRequestDesignAccess,
                     onContentToggle = onContentToggle,
-                    onContentAudience = onContentAudience,
+                    onContentEdit = onContentEdit,
+                    onContentDelete = onContentDelete,
+                    onRetry = onRetryLoad,
                     onContentAdd = onContentAdd,
                     mode = mode,
                     photo = photo,
@@ -487,8 +503,22 @@ internal fun ProfileCardEditorContent(
                     readOnly = uiState.isCircleReadOnly,
                     unsaved = uiState.isUnsavedCard,
                     onBack = onBack,
+                    title = if (contentOpen) stringResource(MR.string.profile_edit_title) else null,
                 )
-                if (wide) {
+                if (contentOpen && uiState.cards.size > 1) {
+                    CardSwitcher(
+                        cards = uiState.cards.map { it.audience },
+                        selected = uiState.selectedAudience,
+                        onSelect = onSelectCard,
+                        modifier = Modifier.padding(bottom = metrics.gap),
+                    )
+                }
+                if (!showCard) {
+                    panel(
+                        Modifier.weight(1f).widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(),
+                        cardSheetShape(),
+                    )
+                } else if (wide) {
                     // Two columns that start and end on the same lines: the audience over its card, and the panel beside them.
                     Row(
                         modifier = Modifier
@@ -618,6 +648,7 @@ private fun EditorTopBar(
     readOnly: Boolean,
     unsaved: Boolean,
     onBack: () -> Unit,
+    title: String? = null,
 ) {
     val editing = stringResource(MR.string.profile_card_audience_editing, audienceLabel(audience))
     val readOnlyLabel = stringResource(MR.string.profile_card_read_only)
@@ -638,15 +669,26 @@ private fun EditorTopBar(
                     contentDescription = stringResource(MR.string.menu_back),
                 )
             }
-            // The viewer's chip, static here: which card is edited is decided before the editor opens.
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 8.dp)
-                    .clearAndSetSemantics { if (showsChip) contentDescription = chipDescription },
-            ) {
-                if (showsChip) AudienceChip(audience = audience, locked = readOnly, unsaved = unsaved, elevated = false)
+            if (title != null) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp).semantics { heading() },
+                )
+            } else {
+                // The viewer's chip, static here: which card is edited is decided before the design opens.
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp)
+                        .clearAndSetSemantics { if (showsChip) contentDescription = chipDescription },
+                ) {
+                    if (showsChip) AudienceChip(audience = audience, locked = readOnly, unsaved = unsaved, elevated = false)
+                }
             }
             // Balances the back button so the audience chip sits centred.
             Spacer(Modifier.size(48.dp))
@@ -665,11 +707,13 @@ private fun EditorPanel(
     onSave: () -> Unit,
     onAppOnly: () -> Unit,
     onContentToggle: (Uuid, Boolean) -> Unit,
-    onContentAudience: (Uuid, ProfileAudience) -> Unit,
+    onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit,
+    onContentDelete: (Uuid) -> Unit,
+    onRetry: () -> Unit,
     onContentAdd: (String, Map<String, String>) -> Unit,
     mode: EditorMode,
     photo: CardPhotoUi,
-    onChangeDesign: () -> Unit,
+    onChangeDesign: (() -> Unit)?,
     onChangePhoto: () -> Unit,
     onRemovePhoto: () -> Unit,
     onImport: (CardAudience) -> Unit,
@@ -699,6 +743,10 @@ private fun EditorPanel(
                 .padding(top = metrics.edge, bottom = metrics.edge),
             verticalArrangement = Arrangement.spacedBy(metrics.gap),
         ) {
+            if (mode == EditorMode.Content && uiState.cards.isEmpty()) {
+                ContentLoading(failed = uiState.loadFailed, onRetry = onRetry)
+                return@Column
+            }
             if (mode == EditorMode.Content) {
                 CardContentEditor(
                     card = uiState.selectedAudience,
@@ -708,7 +756,8 @@ private fun EditorPanel(
                     enabled = !uiState.isContentBusy && !uiState.loadFailed,
                     importSources = importSources,
                     onToggle = onContentToggle,
-                    onAudience = onContentAudience,
+                    onEdit = onContentEdit,
+                    onDelete = onContentDelete,
                     onAdd = onContentAdd,
                     onChangePhoto = onChangePhoto,
                     onRemovePhoto = onRemovePhoto,

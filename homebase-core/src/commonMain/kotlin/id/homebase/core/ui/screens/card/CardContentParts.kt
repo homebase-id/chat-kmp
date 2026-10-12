@@ -25,8 +25,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.InlineTextContent
-import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Link
@@ -56,15 +54,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.Placeholder
-import androidx.compose.ui.text.PlaceholderVerticalAlign
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import androidx.graphics.shapes.Morph
 import id.homebase.core.widget.MorphShape
 import id.homebase.api.client.profile.ProfileAttributeTypes
@@ -75,7 +68,6 @@ import id.homebase.core.ui.screens.profile.AudiencePicker
 import id.homebase.core.ui.screens.profile.EditorActions
 import id.homebase.core.ui.screens.profile.PanelHeader
 import id.homebase.core.ui.screens.profile.ProfileAudience
-import id.homebase.core.ui.screens.profile.ProfileEditViewModel
 import id.homebase.core.ui.screens.profile.ProfileField
 import id.homebase.core.ui.screens.profile.isAttributeValid
 import id.homebase.core.ui.screens.profile.otherCirclesOf
@@ -90,7 +82,6 @@ import id.homebase.resources.profile_card_content_public_off_note
 import id.homebase.resources.profile_card_content_shown_everyone
 import id.homebase.resources.profile_card_content_shown_to
 import id.homebase.resources.profile_edit_add_group_social
-import id.homebase.resources.profile_edit_audience_title
 import id.homebase.resources.profile_edit_bio
 import id.homebase.resources.profile_edit_email
 import id.homebase.resources.profile_edit_link
@@ -99,6 +90,15 @@ import id.homebase.resources.profile_edit_link_text
 import id.homebase.resources.profile_edit_phone
 import kotlin.uuid.ExperimentalUuidApi
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
+import id.homebase.core.ui.screens.profile.ConflictRow
+import id.homebase.core.ui.screens.profile.conflictValue
+import id.homebase.core.ui.screens.profile.audienceSummary
+import id.homebase.core.ui.screens.profile.audience
+import id.homebase.resources.profile_card_content_edit_title
+import id.homebase.resources.profile_card_content_delete
+import id.homebase.resources.profile_card_content_more
+import id.homebase.core.ui.screens.profile.PROFILE_TYPE_FIELDS
 
 internal enum class AddKind(val type: String) {
     Phone(ProfileAttributeTypes.PHONE),
@@ -106,7 +106,17 @@ internal enum class AddKind(val type: String) {
     Link(ProfileAttributeTypes.LINK),
     Social(ProfileAttributeTypes.TWITTER),
     Bio(ProfileAttributeTypes.BIO_SUMMARY),
+    More(""),
 }
+
+// The kinds the add group has no button of its own for.
+internal val MORE_TYPES = listOf(
+    ProfileAttributeTypes.NAME,
+    ProfileAttributeTypes.NICKNAME,
+    ProfileAttributeTypes.STATUS,
+    ProfileAttributeTypes.BIRTHDAY,
+    ProfileAttributeTypes.ADDRESS,
+)
 
 // The Board button's inset, so the step's header, heading, rows and add group share one start edge.
 internal val SECTION_INSET = 24.dp
@@ -216,29 +226,6 @@ internal fun groupedShape(index: Int, count: Int) = RoundedCornerShape(
     bottomEnd = if (index == count - 1) GROUP_OUTER_CORNER else GROUP_INNER_CORNER,
 )
 
-// The row's own reason, set inline so a wrapped line keeps its glyph; only an [accent] glyph takes the primary colour.
-@Composable
-internal fun RowHint(icon: ImageVector, text: String, accent: Boolean) {
-    val colors = MaterialTheme.colorScheme
-    val glyph = "glyph"
-    Text(
-        text = buildAnnotatedString {
-            appendInlineContent(glyph, " ")
-            append(" ")
-            append(text)
-        },
-        inlineContent = mapOf(
-            glyph to InlineTextContent(Placeholder(1.2.em, 1.2.em, PlaceholderVerticalAlign.TextCenter)) {
-                Icon(icon, contentDescription = null, tint = if (accent) colors.primary else colors.onSurfaceVariant)
-            },
-        ),
-        style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content),
-        color = colors.onSurfaceVariant,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
-    )
-}
-
 // Off is an outlined circle, on is a filled cookie: the badge morphs between them on the spatial spring as the switch flips.
 @Composable
 internal fun ShownBadge(icon: ImageVector, shown: Boolean) {
@@ -265,73 +252,38 @@ internal fun ShownBadge(icon: ImageVector, shown: Boolean) {
     }
 }
 
-// Applied as the sheet closes, not through a second Save: the change is the choice itself.
+/**
+ * Adds an item ([editing] null, shown on [card]) or edits one: its fields, who sees it, older conflicting
+ * records, and Delete, which takes it off every card.
+ */
 @Composable
-internal fun AudienceSheet(
-    item: CardContentItem,
-    circles: List<CardCircle>,
-    onApply: (ProfileAudience) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var draft by remember(item.id) { mutableStateOf(item.audience) }
-    val close = {
-        if (draft != item.audience && draft.isSavableWith(circles)) onApply(draft)
-        onDismiss()
-    }
-    AdaptiveSheet(onDismiss = close) {
-        Column(
-            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-        ) {
-            PanelHeader(
-                icon = typeIcon(item.type),
-                title = stringResource(typeLabel(item.type)),
-                subtitle = stringResource(MR.string.profile_edit_audience_title),
-            )
-            AudiencePicker(
-                audience = draft,
-                circles = circles,
-                onChange = { draft = it },
-                otherCircles = otherCirclesOf(item.audience, draft, names = emptyMap()),
-                showTitle = false,
-            )
-            if (item.audience == ProfileAudience.Public) {
-                Text(
-                    text = stringResource(MR.string.profile_card_content_public_off_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-internal fun AddContentSheet(
-    kind: AddKind,
+internal fun ContentSheet(
+    type: String,
     card: CardAudience,
     circles: List<CardCircle>,
-    socials: List<String>,
-    onAdd: (String, Map<String, String>) -> Unit,
     onDismiss: () -> Unit,
+    editing: CardContentItem? = null,
+    socials: List<String> = emptyList(),
+    onAdd: (String, Map<String, String>) -> Unit = { _, _ -> },
+    onEdit: (Map<String, String>, ProfileAudience) -> Unit = { _, _ -> },
+    onDelete: ((Uuid) -> Unit)? = null,
 ) {
     // Opens expanded: from the half-height anchor the keyboard covers the field and Save.
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {
-        var type by remember { mutableStateOf(if (kind == AddKind.Social) socials.firstOrNull() ?: kind.type else kind.type) }
-        val values = remember(type) { mutableStateMapOf<ProfileField, String>() }
-        var linkText by remember { mutableStateOf("") }
-        var linkTarget by remember { mutableStateOf("") }
-        val linkUrl = linkTarget.trim().let { if ("://" in it) it else "https://$it" }
-        val main = ProfileEditViewModel.TYPE_FIELDS[type]?.firstOrNull()?.first
-        val canSave = if (type == ProfileAttributeTypes.LINK) {
-            linkTarget.isNotBlank() && isWebUrl(linkUrl)
+        var shownType by remember { mutableStateOf(type) }
+        val data = remember(shownType) { mutableStateMapOf<String, String>().apply { editing?.let { putAll(it.data) } } }
+        var audience by remember(editing?.id) { mutableStateOf(editing?.audience ?: card.newItemAudience()) }
+        val link = shownType == ProfileAttributeTypes.LINK
+        val linkUrl = data[ProfileAttributeTypes.KEY_LINK_TARGET].orEmpty().trim().let { if (it.isEmpty() || "://" in it) it else "https://$it" }
+        val fields = PROFILE_TYPE_FIELDS[shownType].orEmpty()
+        fun value(field: ProfileField) = fields.firstOrNull { it.first == field }?.let { data[it.second] }.orEmpty()
+        val main = fields.firstOrNull()?.first
+        val filled = if (link) linkUrl.isNotEmpty() && isWebUrl(linkUrl) else main != null && value(main).isNotBlank()
+        val canSave = filled && (link || isAttributeValid(shownType, ::value)) && audience.isSavableWith(circles)
+        val updates = if (link) {
+            mapOf(ProfileAttributeTypes.KEY_LINK_TEXT to data[ProfileAttributeTypes.KEY_LINK_TEXT].orEmpty(), ProfileAttributeTypes.KEY_LINK_TARGET to linkUrl)
         } else {
-            main != null && values[main].orEmpty().isNotBlank() && isAttributeValid(type) { values[it].orEmpty() }
-        }
-        val updates = if (type == ProfileAttributeTypes.LINK) {
-            mapOf(ProfileAttributeTypes.KEY_LINK_TEXT to linkText, ProfileAttributeTypes.KEY_LINK_TARGET to linkUrl)
-        } else {
-            ProfileEditViewModel.TYPE_FIELDS[type].orEmpty().associate { (field, key) -> key to values[field].orEmpty() }
+            fields.associate { (_, key) -> key to data[key].orEmpty() }
         }
         Column(
             modifier = Modifier
@@ -341,49 +293,88 @@ internal fun AddContentSheet(
                 .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            PanelHeader(icon = typeIcon(type), title = stringResource(typeLabel(type)), subtitle = stringResource(MR.string.profile_card_content_add_title))
-            if (kind == AddKind.Social && socials.size > 1) {
+            PanelHeader(
+                icon = typeIcon(shownType),
+                title = stringResource(typeLabel(shownType)),
+                subtitle = stringResource(if (editing == null) MR.string.profile_card_content_add_title else MR.string.profile_card_content_edit_title),
+            )
+            if (editing == null && socials.size > 1) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     socials.forEach { social ->
                         FilterChip(
-                            selected = social == type,
-                            onClick = { type = social },
+                            selected = social == shownType,
+                            onClick = { shownType = social },
                             label = { Text(stringResource(typeLabel(social))) },
                         )
                     }
                 }
             }
-            if (type == ProfileAttributeTypes.LINK) {
+            if (link) {
                 ProfileField(
-                    linkText,
+                    data[ProfileAttributeTypes.KEY_LINK_TEXT].orEmpty(),
                     stringResource(MR.string.profile_edit_link_text),
                     modifier = Modifier.fillMaxWidth(),
-                ) { linkText = it }
+                ) { data[ProfileAttributeTypes.KEY_LINK_TEXT] = it }
                 ProfileField(
-                    linkTarget,
+                    data[ProfileAttributeTypes.KEY_LINK_TARGET].orEmpty(),
                     stringResource(MR.string.profile_edit_link_target),
                     keyboardType = KeyboardType.Uri,
                     ltr = true,
                     modifier = Modifier.fillMaxWidth(),
-                ) { linkTarget = it }
+                ) { data[ProfileAttributeTypes.KEY_LINK_TARGET] = it }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    AttributeFields(type, { values[it].orEmpty() }) { field, value -> values[field] = value }
+                    AttributeFields(shownType, ::value) { field, v ->
+                        fields.firstOrNull { it.first == field }?.let { data[it.second] = v }
+                    }
                 }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                AudienceBadge(audience = card.newItemAudience(), circles = circles)
-                Text(
-                    text = stringResource(MR.string.profile_card_content_add_visible, audienceLabel(card)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            if (editing == null) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    AudienceBadge(audience = audience, circles = circles)
+                    Text(
+                        text = stringResource(MR.string.profile_card_content_add_visible, audienceLabel(card)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                AudiencePicker(
+                    audience = audience,
+                    circles = circles,
+                    onChange = { audience = it },
+                    otherCircles = otherCirclesOf(editing.audience, audience, names = emptyMap()),
                 )
+                if (editing.audience == ProfileAudience.Public && audience != ProfileAudience.Public) {
+                    Text(
+                        text = stringResource(MR.string.profile_card_content_public_off_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                editing.conflicts.forEach { record ->
+                    ConflictRow(
+                        value = conflictValue(record.type, record),
+                        audience = audienceSummary(record.audience(circles), circles),
+                        onDiscard = { onDelete?.invoke(record.id) },
+                    )
+                }
             }
             EditorActions(
                 canSave = canSave,
-                onSave = { dismiss { onAdd(type, updates); onDismiss() } },
+                onSave = {
+                    dismiss {
+                        if (editing == null) onAdd(shownType, updates) else onEdit(updates, audience)
+                        onDismiss()
+                    }
+                },
                 onCancel = { dismiss() },
-                onRemove = null,
+                onRemove = if (editing != null && onDelete != null && !editing.required && editing.type != ProfileAttributeTypes.NAME) {
+                    { dismiss { onDelete(editing.id); onDismiss() } }
+                } else {
+                    null
+                },
+                removeLabel = stringResource(MR.string.profile_card_content_delete),
             )
         }
     }
@@ -395,6 +386,7 @@ private fun addLabel(kind: AddKind) = when (kind) {
     AddKind.Link -> MR.string.profile_edit_link
     AddKind.Social -> MR.string.profile_edit_add_group_social
     AddKind.Bio -> MR.string.profile_edit_bio
+    AddKind.More -> MR.string.profile_card_content_more
 }
 
 internal fun typeIcon(type: String): ImageVector =

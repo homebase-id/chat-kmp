@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -22,13 +21,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.Public
-import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
@@ -58,7 +54,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -74,13 +69,9 @@ import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.profile_avatar_edit_remove
 import id.homebase.resources.profile_card_change_design
 import id.homebase.resources.profile_card_content_add_new
-import id.homebase.resources.profile_card_content_add_this
-import id.homebase.resources.profile_card_content_change_audience
 import id.homebase.resources.profile_card_content_could_add
 import id.homebase.resources.profile_card_content_name_required
 import id.homebase.resources.profile_card_content_on_card
-import id.homebase.resources.profile_card_content_public_hint
-import id.homebase.resources.profile_card_content_remove_this
 import id.homebase.resources.profile_card_import_action
 import id.homebase.resources.profile_card_import_count
 import id.homebase.resources.profile_card_import_hint
@@ -96,6 +87,27 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.ui.semantics.onClick
+import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
+import id.homebase.core.ui.screens.profile.AddAttributeSheet
+import id.homebase.core.ui.screens.profile.AudienceBadge
+import id.homebase.resources.profile_card_content_every_card
+import id.homebase.resources.profile_card_content_every_card_desc
+import id.homebase.resources.profile_card_content_hide_this
+import id.homebase.resources.profile_card_content_show_this
+import id.homebase.resources.profile_card_content_edit_this
+import id.homebase.resources.profile_card_content_every_card_circle
+import id.homebase.resources.profile_card_switcher
+import id.homebase.resources.profile_edit_load_failed
+import id.homebase.resources.profile_edit_load_failed_desc
+import id.homebase.resources.profile_edit_retry
 
 private val PHOTO_SIZE = 88.dp
 
@@ -115,23 +127,41 @@ internal fun CardContentEditor(
     enabled: Boolean,
     importSources: List<CardImportSource>,
     onToggle: (Uuid, Boolean) -> Unit,
-    onAudience: (Uuid, ProfileAudience) -> Unit,
+    onEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit,
+    onDelete: (Uuid) -> Unit,
     onAdd: (String, Map<String, String>) -> Unit,
     onChangePhoto: () -> Unit,
     onRemovePhoto: () -> Unit,
     onImport: (CardAudience) -> Unit,
-    onChangeDesign: () -> Unit,
+    onChangeDesign: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    var audienceFor by remember { mutableStateOf<Uuid?>(null) }
-    var adding by remember { mutableStateOf<AddKind?>(null) }
+    var editingId by remember { mutableStateOf<Uuid?>(null) }
+    var adding by remember { mutableStateOf<String?>(null) }
+    var choosingMore by remember { mutableStateOf(false) }
     var copying by remember { mutableStateOf(false) }
     var pendingId by remember { mutableStateOf<Uuid?>(null) }
     LaunchedEffect(enabled) { if (enabled) pendingId = null }
-    val onCard = items.filter { it.shown }
-    val couldAdd = items.filterNot { it.shown }
+    val everyCard = items.filter { it.everyCard }
+    val onlyHere = items.filter { it.shown && !it.everyCard }
+    val couldAdd = items.filterNot { it.shown || it.everyCard }
     val present = items.map { it.type }.toSet()
     val missingSocials = CARD_SOCIAL_TYPES.filter { it !in present }
+    val missingMore = ATTRIBUTE_SPECS.filter { it.type in MORE_TYPES && it.type !in present }
+    val row: @Composable (CardContentItem, Int, Int) -> Unit = { item, index, count ->
+        EditorRow(
+            item = item,
+            circles = circles,
+            shape = groupedShape(index, count),
+            enabled = enabled,
+            pending = !enabled && pendingId == item.id,
+            onToggle = {
+                pendingId = item.id
+                onToggle(item.id, !item.shown)
+            },
+            onOpen = { editingId = item.id },
+        )
+    }
 
     Column(
         modifier = modifier.fillMaxWidth().padding(horizontal = SECTION_INSET).padding(bottom = 8.dp),
@@ -139,56 +169,48 @@ internal fun CardContentEditor(
         AudienceHeading(card)
         Spacer(Modifier.height(16.dp))
         PhotoRow(card = card, photo = photo, onChange = onChangePhoto, onRemove = onRemovePhoto)
-        Spacer(Modifier.height(16.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(onClick = onChangeDesign, shapes = ButtonDefaults.shapes()) {
-                Icon(Icons.Outlined.Palette, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                Text(stringResource(MR.string.profile_card_change_design), maxLines = 1)
-            }
-            if (importSources.isNotEmpty()) {
-                OutlinedButton(onClick = { copying = true }, enabled = enabled, shapes = ButtonDefaults.shapes()) {
-                    Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                    Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                    Text(stringResource(MR.string.profile_card_import_action), maxLines = 1)
+        if (onChangeDesign != null || importSources.isNotEmpty()) {
+            Spacer(Modifier.height(16.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (onChangeDesign != null) {
+                    FilledTonalButton(onClick = onChangeDesign, shapes = ButtonDefaults.shapes()) {
+                        Icon(Icons.Outlined.Palette, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text(stringResource(MR.string.profile_card_change_design), maxLines = 1)
+                    }
+                }
+                if (importSources.isNotEmpty()) {
+                    OutlinedButton(onClick = { copying = true }, enabled = enabled, shapes = ButtonDefaults.shapes()) {
+                        Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text(stringResource(MR.string.profile_card_import_action), maxLines = 1)
+                    }
                 }
             }
         }
-        Spacer(Modifier.height(24.dp))
-        SectionLabel(stringResource(MR.string.profile_card_content_on_card))
-        Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
-            if (onCard.isEmpty()) EmptyContent()
-            onCard.forEachIndexed { index, item ->
-                EditorRow(
-                    item = item,
-                    shape = groupedShape(index, onCard.size),
-                    enabled = enabled,
-                    pending = !enabled && pendingId == item.id,
-                    onAction = {
-                        pendingId = item.id
-                        onToggle(item.id, false)
-                    },
-                    onOpenAudience = { audienceFor = item.id },
-                )
+        if (everyCard.isNotEmpty()) {
+            Spacer(Modifier.height(24.dp))
+            SectionLabel(
+                stringResource(MR.string.profile_card_content_every_card),
+                stringResource(if (card is CardAudience.Circle) MR.string.profile_card_content_every_card_circle else MR.string.profile_card_content_every_card_desc),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+                everyCard.forEachIndexed { index, item -> row(item, index, everyCard.size) }
+            }
+        }
+        if (card is CardAudience.Circle) {
+            Spacer(Modifier.height(24.dp))
+            SectionLabel(stringResource(MR.string.profile_card_content_on_card))
+            Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+                if (onlyHere.isEmpty()) EmptyContent()
+                onlyHere.forEachIndexed { index, item -> row(item, index, onlyHere.size) }
             }
         }
         if (couldAdd.isNotEmpty()) {
             Spacer(Modifier.height(24.dp))
             SectionLabel(stringResource(MR.string.profile_card_content_could_add))
             Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
-                couldAdd.forEachIndexed { index, item ->
-                    EditorRow(
-                        item = item,
-                        shape = groupedShape(index, couldAdd.size),
-                        enabled = enabled,
-                        pending = !enabled && pendingId == item.id,
-                        onAction = {
-                            pendingId = item.id
-                            onToggle(item.id, true)
-                        },
-                        onOpenAudience = { audienceFor = item.id },
-                    )
-                }
+                couldAdd.forEachIndexed { index, item -> row(item, index, couldAdd.size) }
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -196,34 +218,57 @@ internal fun CardContentEditor(
             isAvailable = { kind ->
                 when (kind) {
                     AddKind.Social -> missingSocials.isNotEmpty()
+                    AddKind.More -> missingMore.isNotEmpty()
                     else -> kind.type in REPEATABLE_TYPES || kind.type !in present
                 }
             },
             enabled = enabled,
-            onAdd = { adding = it },
+            onAdd = { kind ->
+                when (kind) {
+                    AddKind.More -> choosingMore = true
+                    AddKind.Social -> adding = missingSocials.firstOrNull()
+                    else -> adding = kind.type
+                }
+            },
             title = stringResource(MR.string.profile_card_content_add_new),
         )
     }
 
-    items.firstOrNull { it.id == audienceFor }?.let { item ->
-        AudienceSheet(
-            item = item,
-            circles = circles,
-            onApply = { audience ->
-                pendingId = item.id
-                onAudience(item.id, audience)
-            },
-            onDismiss = { audienceFor = null },
-        )
-    }
-    adding?.let { kind ->
-        AddContentSheet(
-            kind = kind,
+    items.firstOrNull { it.id == editingId }?.let { item ->
+        ContentSheet(
+            type = item.type,
             card = card,
             circles = circles,
-            socials = missingSocials,
+            editing = item,
+            onEdit = { updates, audience ->
+                pendingId = item.id
+                onEdit(item.id, updates, audience)
+            },
+            onDelete = { id ->
+                pendingId = item.id
+                onDelete(id)
+            },
+            onDismiss = { editingId = null },
+        )
+    }
+    adding?.let { type ->
+        ContentSheet(
+            type = type,
+            card = card,
+            circles = circles,
+            socials = if (type in CARD_SOCIAL_TYPES) missingSocials else emptyList(),
             onAdd = onAdd,
             onDismiss = { adding = null },
+        )
+    }
+    if (choosingMore) {
+        AddAttributeSheet(
+            missing = missingMore,
+            onPick = {
+                choosingMore = false
+                adding = it.type
+            },
+            onDismiss = { choosingMore = false },
         )
     }
     if (copying) {
@@ -232,13 +277,18 @@ internal fun CardContentEditor(
 }
 
 @Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 8.dp).semantics { heading() },
-    )
+private fun SectionLabel(text: String, description: String? = null) {
+    Column(modifier = Modifier.padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.semantics { heading() },
+        )
+        if (description != null) {
+            Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
 
 @Composable
@@ -296,24 +346,31 @@ private fun PhotoRow(card: CardAudience, photo: CardPhotoUi, onChange: () -> Uni
     }
 }
 
+// Tapping a row edits the item everywhere; its trailing control only hides it from, or shows it on, this card.
 @Composable
 private fun EditorRow(
     item: CardContentItem,
+    circles: List<CardCircle>,
     shape: Shape,
     enabled: Boolean,
     pending: Boolean,
-    onAction: () -> Unit,
-    onOpenAudience: () -> Unit,
+    onToggle: () -> Unit,
+    onOpen: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val label = stringResource(typeLabel(item.type))
     val prose = item.type == ProfileAttributeTypes.NAME || item.type == ProfileAttributeTypes.BIO_SUMMARY
-    val hint = stringResource(MR.string.profile_card_content_public_hint)
-    val changeAudience = stringResource(MR.string.profile_card_content_change_audience, label)
-    val remove = stringResource(MR.string.profile_card_content_remove_this, item.text)
-    val add = stringResource(MR.string.profile_card_content_add_this, item.text)
+    val hide = stringResource(MR.string.profile_card_content_hide_this, item.text)
+    val show = stringResource(MR.string.profile_card_content_show_this, item.text)
+    val edit = stringResource(MR.string.profile_card_content_edit_this, label)
     val required = stringResource(MR.string.profile_card_content_name_required)
-    Surface(color = colors.surfaceContainerHigh, shape = shape, modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        onClick = onOpen,
+        enabled = enabled,
+        color = colors.surfaceContainerHigh,
+        shape = shape,
+        modifier = Modifier.fillMaxWidth().semantics { onClick(label = edit) { onOpen(); true } },
+    ) {
         Row(
             modifier = Modifier.heightIn(min = 64.dp).padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -336,7 +393,11 @@ private fun EditorRow(
                     softWrap = prose,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (item.locked) RowHint(icon = Icons.Outlined.Public, text = hint, accent = true)
+                // The section already says who sees an item on every card.
+                if (!item.everyCard) {
+                    Spacer(Modifier.height(2.dp))
+                    AudienceBadge(audience = item.audience, circles = circles)
+                }
             }
             Spacer(Modifier.width(8.dp))
             when {
@@ -347,18 +408,12 @@ private fun EditorRow(
                     tint = colors.onSurfaceVariant,
                     modifier = Modifier.size(40.dp).padding(8.dp),
                 )
-                item.locked -> IconButton(
-                    onClick = onOpenAudience,
-                    enabled = enabled,
-                    modifier = Modifier.semantics { stateDescription = hint },
-                ) {
-                    Icon(Icons.Outlined.Tune, contentDescription = changeAudience)
+                item.locked -> Unit
+                item.shown -> IconButton(onClick = onToggle, enabled = enabled) {
+                    Icon(Icons.Outlined.VisibilityOff, contentDescription = hide)
                 }
-                item.shown -> IconButton(onClick = onAction, enabled = enabled) {
-                    Icon(Icons.Filled.Close, contentDescription = remove)
-                }
-                else -> FilledTonalIconButton(onClick = onAction, enabled = enabled) {
-                    Icon(Icons.Filled.Add, contentDescription = add)
+                else -> FilledTonalIconButton(onClick = onToggle, enabled = enabled) {
+                    Icon(Icons.Filled.Add, contentDescription = show)
                 }
             }
         }
@@ -405,6 +460,63 @@ internal fun CopyFromSheet(sources: List<CardImportSource>, onPick: (CardAudienc
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun CardSwitcher(
+    cards: List<CardAudience>,
+    selected: CardAudience,
+    onSelect: (CardAudience) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val label = stringResource(MR.string.profile_card_switcher)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+            .semantics { contentDescription = label }
+            .selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        cards.forEach { card ->
+            FilterChip(
+                selected = card.isSameAs(selected),
+                onClick = { onSelect(card) },
+                label = { Text(audienceLabel(card), maxLines = 1) },
+                leadingIcon = { Icon(audienceIcon(card), contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun ContentLoading(failed: Boolean, onRetry: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (!failed) {
+            LoadingIndicator()
+            return@Column
+        }
+        Text(
+            text = stringResource(MR.string.profile_edit_load_failed),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = stringResource(MR.string.profile_edit_load_failed_desc),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(onClick = onRetry, shapes = ButtonDefaults.shapes()) {
+            Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+            Text(stringResource(MR.string.profile_edit_retry))
         }
     }
 }

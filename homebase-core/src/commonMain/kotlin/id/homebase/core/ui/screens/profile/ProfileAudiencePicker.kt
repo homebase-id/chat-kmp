@@ -3,14 +3,11 @@
 package id.homebase.core.ui.screens.profile
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
@@ -40,7 +37,6 @@ import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -49,19 +45,15 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -71,20 +63,12 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntRect
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupPositionProvider
-import androidx.compose.ui.window.PopupProperties
 import id.homebase.core.ui.screens.card.CardCircle
 import id.homebase.core.ui.screens.card.CookieBadge
 import id.homebase.core.ui.screens.card.WithTooltip
 import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
-import id.homebase.resources.cancel
 import id.homebase.resources.moments_detail_shared_with_more
 import id.homebase.resources.profile_edit_audience_all_connections
 import id.homebase.resources.profile_edit_audience_change
@@ -99,7 +83,6 @@ import id.homebase.resources.profile_edit_audience_public_hint
 import id.homebase.resources.profile_edit_audience_title
 import id.homebase.resources.profile_edit_visibility_circles
 import id.homebase.resources.profile_edit_visibility_public
-import id.homebase.resources.save
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -449,95 +432,7 @@ internal fun otherCirclesOf(vararg audiences: ProfileAudience, names: Map<String
         .map { CardCircle(it, names[it] ?: fallback) }
 }
 
-/** Below the anchor, centred in the window; above it when there is no room underneath. */
-private class AnchoredPopoverPosition(private val gap: Int, private val margin: Int) : PopupPositionProvider {
-    override fun calculatePosition(
-        anchorBounds: IntRect,
-        windowSize: IntSize,
-        layoutDirection: LayoutDirection,
-        popupContentSize: IntSize,
-    ): IntOffset {
-        val x = ((windowSize.width - popupContentSize.width) / 2).coerceAtLeast(0)
-        val below = anchorBounds.bottom + gap
-        val y = if (below + popupContentSize.height <= windowSize.height - margin) {
-            below
-        } else {
-            (anchorBounds.top - gap - popupContentSize.height).coerceAtLeast(margin)
-        }
-        return IntOffset(x, y)
-    }
-}
-
-/**
- * The audience control on its own, floated over the page from a detail's audience pill, so who
- * sees it can change without opening the detail. Nothing is written until Save.
- */
-@Composable
-internal fun AudiencePopover(
-    title: String,
-    icon: ImageVector,
-    initial: ProfileAudience,
-    circles: List<CardCircle>,
-    otherNames: Map<String, String>,
-    onSave: (ProfileAudience) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val motion = MaterialTheme.motionScheme
-    var draft by remember { mutableStateOf(initial) }
-    val others = otherCirclesOf(initial, draft, names = otherNames)
-    val density = LocalDensity.current
-    val position = remember(density) {
-        with(density) { AnchoredPopoverPosition(gap = 4.dp.roundToPx(), margin = 16.dp.roundToPx()) }
-    }
-    val visible = remember { MutableTransitionState(false).apply { targetState = true } }
-    Popup(
-        popupPositionProvider = position,
-        onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true),
-    ) {
-        AnimatedVisibility(
-            visibleState = visible,
-            enter = scaleIn(motion.defaultSpatialSpec(), initialScale = 0.9f, transformOrigin = TransformOrigin(0.5f, 0f)) +
-                fadeIn(motion.defaultEffectsSpec()),
-            exit = scaleOut(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
-        ) {
-            Surface(
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shadowElevation = 6.dp,
-                modifier = Modifier.padding(horizontal = 16.dp).widthIn(max = 440.dp),
-            ) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    PanelHeader(icon = icon, title = title, subtitle = stringResource(MR.string.profile_edit_audience_title))
-                    AudiencePicker(
-                        audience = draft,
-                        circles = circles,
-                        onChange = { draft = it },
-                        otherCircles = others,
-                        showTitle = false,
-                    )
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
-                            Text(stringResource(MR.string.cancel))
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Button(
-                            enabled = draft.isSavableWith(circles),
-                            onClick = { onSave(draft) },
-                            modifier = Modifier.heightIn(min = 48.dp),
-                        ) {
-                            Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                            Text(stringResource(MR.string.save), maxLines = 1, softWrap = false)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** A detail's icon in a cookie badge beside its name: the header of its editor and of its audience popover. */
+/** A detail's icon in a cookie badge beside its name: the header of its editor. */
 @Composable
 internal fun PanelHeader(icon: ImageVector, title: String, subtitle: String? = null, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme

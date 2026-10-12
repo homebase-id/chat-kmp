@@ -39,7 +39,6 @@ import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.core.ui.screens.profile.keepingCircles
 import id.homebase.core.ui.screens.profile.keepingOtherCircles
 import id.homebase.core.ui.screens.profile.restoreAcl
-import id.homebase.core.ui.screens.profile.ProfileEditViewModel
 import id.homebase.core.ui.screens.profile.audience
 import id.homebase.core.ui.screens.profile.photoImageData
 import id.homebase.core.ui.screens.profile.saveWithAudience
@@ -78,6 +77,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import id.homebase.core.ui.screens.profile.computeAttributeEdit
 
 private const val TAG = "ProfileCard"
 
@@ -188,6 +188,7 @@ interface ProfileCardSource {
     suspend fun saveProfileAttribute(type: String, data: JsonObject, audience: ProfileAudience, existing: ProfileAttribute?): ProfileAttribute
     /** Puts [previous]'s exact ACL back on [current], which is the same attribute after a later write. */
     suspend fun restoreProfileAttribute(current: ProfileAttribute, previous: ProfileAttribute): ProfileAttribute
+    suspend fun deleteProfileAttribute(attribute: ProfileAttribute): Boolean
     suspend fun resetPublicCard()
     suspend fun resetCircleCard(card: ProfileCard)
     suspend fun clearSavedDesign()
@@ -277,6 +278,9 @@ class DefaultProfileCardSource(
     override suspend fun restoreProfileAttribute(current: ProfileAttribute, previous: ProfileAttribute) =
         profileRepository.restoreAcl(current, previous)
 
+    override suspend fun deleteProfileAttribute(attribute: ProfileAttribute) =
+        profileRepository.delete(attribute.id, attribute.versionTag)
+
     override suspend fun resetPublicCard() = cardRepository.resetPublic()
 
     override suspend fun resetCircleCard(card: ProfileCard) = cardRepository.resetCircle(card)
@@ -334,8 +338,8 @@ private data class ImageKey(
 )
 
 /**
- * Owns the pre-warmed [host] for the part of the graph that can open the card (Settings and
- * ProfileEdit), so the card screen only attaches it; [onCleared] disposes it. The host is built by
+ * Owns the pre-warmed [host] for the part of the graph that can open the card (Settings), so the
+ * card screen only attaches it; [onCleared] disposes it. The host is built by
  * [startHost], not here, so the owning screen decides when its cost lands.
  */
 class ProfileCardViewModel(
@@ -559,17 +563,9 @@ class ProfileCardViewModel(
         if (state.isContentBusy) return
         val item = state.contentItems.firstOrNull { it.id == id }?.takeUnless { it.required } ?: return
         val attribute = state.attributes.firstOrNull { it.id == id } ?: return
-        val next = item.audience.shownOn(state.selectedAudience, on, audiencesBeforePublic[id]) ?: return
+        val next = item.audience.shownOn(state.selectedAudience, on, audiencesBeforePublic[id], state.circles) ?: return
         if (on && state.selectedAudience == CardAudience.Public) audiencesBeforePublic[id] = item.audience
         writeContent(attribute.type, attribute.data, next, attribute)
-    }
-
-    fun onContentAudienceChanged(id: Uuid, audience: ProfileAudience) {
-        val state = _uiState.value
-        if (state.isContentBusy || !audience.isSavableWith(state.circles)) return
-        val attribute = state.attributes.firstOrNull { it.id == id } ?: return
-        if (audience == attribute.audience(state.circles)) return
-        writeContent(attribute.type, attribute.data, audience, attribute)
     }
 
     fun onContentAdded(type: String, updates: Map<String, String>) {
@@ -580,8 +576,41 @@ class ProfileCardViewModel(
             ?.takeUnless { type in REPEATABLE_TYPES && state.contentItems.any { item -> item.id == it.id } }
         val existingAudience = existing?.audience(state.circles)
         val audience = existingAudience?.let { it.shownOn(state.selectedAudience, true, null) ?: it } ?: state.selectedAudience.newItemAudience()
-        val edit = ProfileEditViewModel.computeAttributeEdit(existing, type, updates, audience, existingAudience) ?: return
+        val edit = computeAttributeEdit(existing, type, updates, audience, existingAudience) ?: return
         writeContent(edit.type, edit.data, edit.audience, existing)
+    }
+
+    fun onCardSelected(audience: CardAudience) = selectAudience(audience)
+
+    // The editor can open long after the card was loaded, and the profile may have changed since.
+    fun onContentEditorShown() = load()
+
+    fun onContentEdited(id: Uuid, updates: Map<String, String>, audience: ProfileAudience) {
+        val state = _uiState.value
+        if (state.isContentBusy || !audience.isSavableWith(state.circles)) return
+        val attribute = state.attributes.firstOrNull { it.id == id } ?: return
+        val edit = computeAttributeEdit(attribute, attribute.type, updates, audience, attribute.audience(state.circles)) ?: return
+        writeContent(edit.type, edit.data, edit.audience, attribute)
+    }
+
+    fun onContentDeleted(id: Uuid) {
+        val state = _uiState.value
+        if (state.isContentBusy) return
+        val attribute = state.attributes.firstOrNull { it.id == id } ?: return
+        dropImportUndo()
+        _uiState.update { it.copy(isContentBusy = true) }
+        viewModelScope.launch {
+            if (attempt("deleting profile content ${attribute.type}") { source.deleteProfileAttribute(attribute) } != true) {
+                _uiState.update { it.copy(isContentBusy = false, contentFailures = it.contentFailures + 1) }
+                _events.tryEmit(ProfileCardEvent.ContentSaveFailed)
+                return@launch
+            }
+            content = content?.let { c -> c.copy(attributes = c.attributes.filterNot { it.id == id }) }
+            _uiState.update {
+                it.copy(isContentBusy = false, contentSaves = it.contentSaves + 1, attributes = it.attributes.filterNot { a -> a.id == id })
+            }
+            render()
+        }
     }
 
     private fun dropImportUndo() {
@@ -598,8 +627,32 @@ class ProfileCardViewModel(
             persistTemplateIfUnsaved(card)
             val kept = existingCircles(audience.circleIds)
             val saved = attempt("saving profile content $type") { source.saveProfileAttribute(type, data, audience.keepingOtherCircles(kept), existing) }
-            if (saved == null) contentSaveFailed() else applyAttributes(listOf(saved), saved = true)
+            if (saved == null) {
+                contentSaveFailed()
+                return@launch
+            }
+            val gone = deleteDuplicates(existing)
+            content = content?.let { c -> c.copy(attributes = c.attributes.filterNot { it.id == saved.id || it.id in gone } + saved) }
+            _uiState.update {
+                it.copy(
+                    isContentBusy = false,
+                    contentSaves = it.contentSaves + 1,
+                    attributes = it.attributes.filterNot { a -> a.id == saved.id || a.id in gone } + saved,
+                )
+            }
+            render()
         }
+    }
+
+    // A same-data leftover from the old two-tier editor would keep showing the item to every connection after it was hidden.
+    private suspend fun deleteDuplicates(edited: ProfileAttribute?): Set<Uuid> {
+        if (edited == null || edited.type == ProfileAttributeTypes.LINK) return emptySet()
+        val loaded = LoadedProfileAttributes.from(_uiState.value.attributes)
+        if (loaded.byType[edited.type]?.id != edited.id) return emptySet()
+        return loaded.duplicates[edited.type].orEmpty()
+            .filter { attempt("deleting a leftover ${it.type}") { source.deleteProfileAttribute(it) } == true }
+            .map { it.id }
+            .toSet()
     }
 
     // The web resolves a Public template itself but can't tell which circle a visitor is in, so a circle card is stored on its first edit.

@@ -25,8 +25,6 @@ private const val OTHER_CIRCLE_PRIORITY = 40
 private fun CardCircle.fixedPriority(): Int? =
     FIXED_CIRCLE_PRIORITIES.firstOrNull { compareStringUuId(it.first, id) }?.second
 
-internal fun CardCircle.isFixedCard(): Boolean = fixedPriority() != null
-
 /** Family, Friends and Work keep fixed slots by circle id, so a rename can't move them; any other circle follows in name order. */
 internal fun fixedCirclePriorities(circles: List<CardCircle>): Map<String, Int> {
     val others = circles.filter { it.fixedPriority() == null }

@@ -24,7 +24,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -215,7 +217,7 @@ class CardContentTest {
         assertEquals(0, wire.puts)
         assertTrue(rig.item(ProfileAttributeTypes.BIO_SUMMARY).shown)
 
-        rig.write { rig.vm.onContentAudienceChanged(bio, ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID))) }
+        rig.write { rig.vm.onContentEdited(bio, emptyMap(), ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID))) }
         assertEquals(listOf(FAMILY_CIRCLE_ID), rig.circleIds())
         assertFalse(rig.item(ProfileAttributeTypes.BIO_SUMMARY).shown)
         assertFalse(rig.item(ProfileAttributeTypes.BIO_SUMMARY).locked)
@@ -241,18 +243,6 @@ class CardContentTest {
         assertEquals("connected", wire.putBodies.last().jsonObject.str("visibility"))
         assertEquals(setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID), rig.circleIds()!!.toSet())
         assertNull(rig.host.rendered.last().data.bio)
-    }
-
-    @Test
-    fun publicCardOffWithNoPreviousCirclesFallsBackToOnlyMe() = runTest(dispatcher) {
-        val wire = CardWireHarness()
-        val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
-        val rig = rig(wire)
-
-        rig.write { rig.vm.onContentToggled(bio, false) }
-
-        assertEquals("owner", wire.putBodies.last().jsonObject.str("visibility"))
-        assertNull(rig.circleIds())
     }
 
     @Test
@@ -395,7 +385,7 @@ class CardContentTest {
         rig.import(friends, expectedPuts = 3)
         val phoneId = rig.vm.uiState.value.attributes.single { it.type == ProfileAttributeTypes.PHONE }.id
 
-        rig.write { rig.vm.onContentAudienceChanged(phoneId, ProfileAudience.Public) }
+        rig.write { rig.vm.onContentEdited(phoneId, emptyMap(), ProfileAudience.Public) }
         val putsAfterEdit = wire.puts
         rig.vm.onImportUndone()
         rig.vm.await { !it.isContentBusy }
@@ -434,11 +424,11 @@ class CardContentTest {
         rig.vm.await { !it.isContentBusy }
         val phoneId = rig.vm.uiState.value.attributes.single { it.type == ProfileAttributeTypes.PHONE }.id
 
-        rig.write { rig.vm.onContentAudienceChanged(phoneId, ProfileAudience.Public) }
+        rig.write { rig.vm.onContentEdited(phoneId, emptyMap(), ProfileAudience.Public) }
         rig.write { rig.vm.onContentToggled(phoneId, false) }
 
-        assertEquals("owner", wire.putBodies.last().jsonObject.str("visibility"))
-        assertNull(rig.circleIds())
+        assertEquals("connected", wire.putBodies.last().jsonObject.str("visibility"))
+        assertEquals(listOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID).sorted(), rig.circleIds()?.sorted())
     }
 
     private fun CardWireHarness.seedPhoto(visibility: String, circles: List<String>?): Uuid =
@@ -743,4 +733,156 @@ class CardContentTest {
         assertEquals(ProfileAudience.OnlyMe, ProfileAudience.Public.shownOn(CardAudience.Public, false, null))
         assertEquals(ProfileAudience.OnlyMe, ProfileAudience.Public.shownOn(CardAudience.Public, false, ProfileAudience.Circles(emptySet())))
     }
+
+    private suspend fun Rig.delete(block: () -> Unit) {
+        vm.await { !it.isContentBusy }
+        val before = wire.deletes
+        block()
+        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.deletes == before) delay(10) } }
+        vm.await { !it.isContentBusy }
+    }
+
+    @Test
+    fun hidingAPublicItemFromThePublicCardKeepsItOnEveryCircleCard() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
+        val rig = rig(wire)
+        rig.open(CardAudience.Public)
+        assertTrue(rig.item(ProfileAttributeTypes.BIO_SUMMARY).everyCard)
+
+        rig.write { rig.vm.onContentToggled(bio, false) }
+
+        assertEquals("connected", wire.putBodies.last().jsonObject.str("visibility"))
+        assertEquals(listOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID).sorted(), rig.circleIds()?.sorted())
+        assertFalse(rig.item(ProfileAttributeTypes.BIO_SUMMARY).shown)
+        for (circle in listOf(friends, family, work)) {
+            rig.open(circle)
+            assertTrue(rig.item(ProfileAttributeTypes.BIO_SUMMARY).shown, circle.label)
+        }
+    }
+
+    @Test
+    fun hidingFromOneCircleCardLeavesTheOtherCardsAsTheyWere() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val phoneId = wire.seed(ProfileAttributeTypes.PHONE, "connected", data(ProfileAttributeTypes.KEY_PHONE, phone), listOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID))
+        val rig = rig(wire)
+        rig.open(friends)
+
+        rig.write { rig.vm.onContentToggled(phoneId, false) }
+
+        assertEquals("connected", wire.putBodies.last().jsonObject.str("visibility"))
+        assertEquals(listOf(FAMILY_CIRCLE_ID), rig.circleIds())
+        assertEquals(0, wire.deletes)
+        rig.open(family)
+        assertTrue(rig.item(ProfileAttributeTypes.PHONE).shown)
+    }
+
+    @Test
+    fun editingAValueRewritesTheOneRecordAndKeepsWhoSeesIt() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val phoneId = wire.seed(ProfileAttributeTypes.PHONE, "connected", data(ProfileAttributeTypes.KEY_PHONE, phone), listOf(FRIENDS_CIRCLE_ID))
+        val rig = rig(wire)
+        rig.open(friends)
+        val item = rig.item(ProfileAttributeTypes.PHONE)
+        assertEquals(phone, item.data[ProfileAttributeTypes.KEY_PHONE])
+
+        rig.write { rig.vm.onContentEdited(phoneId, mapOf(ProfileAttributeTypes.KEY_PHONE to "+4520000000"), item.audience) }
+
+        val put = wire.putBodies.single().jsonObject
+        assertEquals(phoneId.toString(), put.str("id"))
+        assertEquals("+4520000000", put.str("data", ProfileAttributeTypes.KEY_PHONE))
+        assertEquals(listOf(FRIENDS_CIRCLE_ID), rig.circleIds())
+        assertEquals(1, wire.storedBodies.count { it.str("type") == ProfileAttributeTypes.PHONE })
+    }
+
+    @Test
+    fun deletingAnItemTakesItOffEveryCard() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val email = wire.seed(ProfileAttributeTypes.EMAIL, "connected", data(ProfileAttributeTypes.KEY_EMAIL, "frodo@shire.me"), listOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID))
+        val rig = rig(wire)
+        rig.open(work)
+
+        rig.delete { rig.vm.onContentDeleted(email) }
+
+        assertEquals(listOf(email.toString()), wire.deletedIds.toList())
+        assertEquals(0, wire.puts)
+        assertTrue(rig.vm.uiState.value.contentItems.none { it.type == ProfileAttributeTypes.EMAIL })
+        assertTrue(wire.profileRepository().loadAttributes().none { it.type == ProfileAttributeTypes.EMAIL })
+    }
+
+    @Test
+    fun aFailedDeleteKeepsTheItemAndSaysSo() = runTest(dispatcher) {
+        val wire = CardWireHarness(deleteReply = { CardWireHarness.Reply.Problem(500, "{}") })
+        val email = wire.seed(ProfileAttributeTypes.EMAIL, "connected", data(ProfileAttributeTypes.KEY_EMAIL, "frodo@shire.me"), listOf(WORK_CIRCLE_ID))
+        val rig = rig(wire)
+        rig.open(work)
+        val failed = async { withContext(Dispatchers.Default) { withTimeout(10.seconds) { rig.vm.events.first { it == ProfileCardEvent.ContentSaveFailed } } } }
+        yield()
+
+        rig.delete { rig.vm.onContentDeleted(email) }
+
+        failed.await()
+        assertTrue(rig.item(ProfileAttributeTypes.EMAIL).shown)
+    }
+
+    @Test
+    fun hidingAnItemAlsoDeletesASameDataLeftoverThatWouldStillShowIt() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
+        val leftover = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "connected", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
+        val rig = rig(wire)
+        rig.open(CardAudience.Public)
+
+        rig.write { rig.vm.onContentToggled(bio, false) }
+        rig.vm.await { state -> state.attributes.none { it.id == leftover } }
+
+        assertEquals(listOf(leftover.toString()), wire.deletedIds.toList())
+        assertEquals(listOf(bio), rig.vm.uiState.value.attributes.filter { it.type == ProfileAttributeTypes.BIO_SUMMARY }.map { it.id })
+    }
+
+    @Test
+    fun aLeftoverWithOtherDataIsShownForTheUserToRemove() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        wire.seed(ProfileAttributeTypes.STATUS, "anonymous", data(ProfileAttributeTypes.KEY_STATUS, "Off on an adventure"))
+        val other = wire.seed(ProfileAttributeTypes.STATUS, "connected", data(ProfileAttributeTypes.KEY_STATUS, "At home"))
+        val rig = rig(wire)
+
+        assertEquals(listOf(other), rig.item(ProfileAttributeTypes.STATUS).conflicts.map { it.id })
+        rig.delete { rig.vm.onContentDeleted(other) }
+
+        assertTrue(rig.item(ProfileAttributeTypes.STATUS).conflicts.isEmpty())
+        assertEquals("Off on an adventure", rig.item(ProfileAttributeTypes.STATUS).text)
+    }
+
+    @Test
+    fun detailsNoCardDrawsStillListWithWhoSeesThem() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        wire.seed(ProfileAttributeTypes.BIRTHDAY, "owner", data(ProfileAttributeTypes.KEY_BIRTHDAY, "2968-09-22"))
+        wire.seed(ProfileAttributeTypes.NICKNAME, "connected", data(ProfileAttributeTypes.KEY_NICKNAME, "Mr. Underhill"), listOf(FRIENDS_CIRCLE_ID))
+        val rig = rig(wire)
+        rig.open(friends)
+
+        val birthday = rig.item(ProfileAttributeTypes.BIRTHDAY)
+        assertEquals(ProfileAudience.OnlyMe, birthday.audience)
+        assertFalse(birthday.shown)
+        val nickname = rig.item(ProfileAttributeTypes.NICKNAME)
+        assertTrue(nickname.shown && !nickname.everyCard)
+        assertEquals("Mr. Underhill", nickname.text)
+    }
+
+    @Test
+    fun theSwitcherMovesTheEditorToAnotherCard() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        wire.seed(ProfileAttributeTypes.PHONE, "connected", data(ProfileAttributeTypes.KEY_PHONE, phone), listOf(FAMILY_CIRCLE_ID))
+        val rig = rig(wire)
+
+        rig.vm.onCardSelected(family)
+        rig.vm.await { it.selectedAudience == family }
+        assertTrue(rig.item(ProfileAttributeTypes.PHONE).shown)
+        rig.vm.onCardSelected(work)
+        rig.vm.await { it.selectedAudience == work }
+        assertFalse(rig.item(ProfileAttributeTypes.PHONE).shown)
+        assertFalse(rig.vm.uiState.value.viewing)
+    }
+
 }

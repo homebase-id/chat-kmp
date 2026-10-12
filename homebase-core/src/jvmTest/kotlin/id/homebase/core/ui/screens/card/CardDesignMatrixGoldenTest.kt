@@ -5,7 +5,8 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.core.ui.screens.profile.ProfileEditViewModel
+import id.homebase.core.ui.screens.profile.PROFILE_TYPE_FIELDS
+import id.homebase.core.ui.screens.profile.computeAttributeEdit
 import id.homebase.core.ui.screens.profile.ProfileField
 import id.homebase.core.ui.screens.profile.visiblePhoto
 import java.io.File
@@ -52,7 +53,7 @@ class CardDesignMatrixGoldenTest {
 
     private fun fields(tier: ProfileVisibility, vararg values: Pair<ProfileField, String>): List<ProfileAttribute> {
         val byField = mapOf(*values)
-        return ProfileEditViewModel.TYPE_FIELDS.mapNotNull { (type, fs) ->
+        return PROFILE_TYPE_FIELDS.mapNotNull { (type, fs) ->
             val data = fs.mapNotNull { (field, key) -> byField[field]?.let { key to JsonPrimitive(it) } }.toMap()
             if (data.isEmpty()) null else record(type, tier, data)
         }

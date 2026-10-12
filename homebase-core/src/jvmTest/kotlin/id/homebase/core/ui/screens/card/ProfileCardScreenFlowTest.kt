@@ -172,7 +172,7 @@ class ProfileCardScreenFlowTest {
                                 onSave = viewModel::onSaveDesign,
                                 onChangeDesign = { mode = EditorMode.Design },
                                 onContentToggle = viewModel::onContentToggled,
-                                onContentAudience = viewModel::onContentAudienceChanged,
+                                onContentEdit = viewModel::onContentEdited,
                                 onContentAdd = viewModel::onContentAdded,
                                 snackbarHostState = remember { SnackbarHostState() },
                             ) { Box(Modifier.fillMaxSize()) }
@@ -202,8 +202,10 @@ class ProfileCardScreenFlowTest {
             waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Shown to Friends").fetchSemanticsNodes().isNotEmpty() }
             onAllNodesWithText("Choose a design").assertCountEquals(0)
             onNodeWithText("Change design").assertExists()
-            assertTrue(onAllNodes(hasContentDescription("Remove ", substring = true)).fetchSemanticsNodes().isNotEmpty())
-            onNodeWithContentDescription("Add frodo@shire.me to this card").assertExists()
+            onNodeWithText("Edit profile").assertExists()
+            onNodeWithContentDescription("Card to edit").assertExists()
+            assertTrue(onAllNodes(hasContentDescription("Hide ", substring = true)).fetchSemanticsNodes().isNotEmpty())
+            onNodeWithContentDescription("Show frodo@shire.me on this card").assertExists()
 
             onNodeWithText("Change design").performClick()
             waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Choose a design").fetchSemanticsNodes().isNotEmpty() }

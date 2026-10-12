@@ -209,7 +209,6 @@ import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
 import id.homebase.core.ui.screens.profile.OwnerSessionAvatar
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditViewModel
-import id.homebase.core.ui.screens.profile.ProfileEditViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
 import id.homebase.core.ui.screens.defragmenter.DefragmenterViewModel
 import id.homebase.core.ui.screens.defragmenter.service.DefragSource
@@ -1260,17 +1259,6 @@ val appModule = module {
         )
     }
     viewModelOf(::SettingsViewModel)
-    viewModel {
-        val cards = get<ProfileCardSource>()
-        val connections = get<ConnectionNetworkProvider>()
-        ProfileEditViewModel(
-            get(),
-            get<DeveloperPreferences>().connectionReviewEnabled.value,
-            loadCircleNames = {
-                connections.getCirclesWithMembers(includeSystemCircle = false).associate { it.circle.id to it.circle.name }
-            },
-        ) { cards.circles() }
-    }
     viewModel {
         val cards = get<ProfileCardSource>()
         ProfileAvatarEditViewModel(OwnerSessionAvatar(get()), get(), get(), get()) { cards.circles() }

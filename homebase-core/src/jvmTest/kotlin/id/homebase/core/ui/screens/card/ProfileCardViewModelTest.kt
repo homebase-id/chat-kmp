@@ -157,6 +157,8 @@ class ProfileCardViewModelTest {
         ) = profileRepository!!.saveWithAudience(type, data, audience, existing)
         override suspend fun restoreProfileAttribute(current: ProfileAttribute, previous: ProfileAttribute) =
             profileRepository!!.restoreAcl(current, previous)
+        override suspend fun deleteProfileAttribute(attribute: ProfileAttribute) =
+            profileRepository!!.delete(attribute.id, attribute.versionTag)
         override suspend fun resetPublicCard() = cardRepository!!.resetPublic()
         override suspend fun resetCircleCard(card: ProfileCard) = cardRepository!!.resetCircle(card)
         override suspend fun clearSavedDesign() {
