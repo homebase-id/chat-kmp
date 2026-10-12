@@ -22,6 +22,7 @@ data class FakeCallScript(
     val failConnect: Boolean = false,
     val remoteVideoOnConnect: Boolean = false,
     val failOnCreateOffer: Throwable? = null,
+    val localCandidates: List<String> = listOf(FakeCallEngine.FAKE_CANDIDATE),
 )
 
 class FakeCallEngine(
@@ -55,8 +56,8 @@ class FakeCallEngine(
     override suspend fun createOffer(video: Boolean): String {
         script.failOnCreateOffer?.let { throw it }
         _localVideo.value = if (video) localSource else null
-        _events.emit(MediaEvent.LocalIce("fake-candidate-local", "0", 0))
-        return "fake-offer"
+        script.localCandidates.forEach { _events.emit(MediaEvent.LocalIce(it, "0", 0)) }
+        return FAKE_OFFER_SDP
     }
 
     override suspend fun answer(offerSdp: String, video: Boolean): String {
@@ -129,11 +130,14 @@ class FakeCallEngine(
         }
     }
 
-    private companion object {
-        val palette = longArrayOf(0xFF5C6BC0, 0xFF26A69A, 0xFFEF6C00, 0xFF8E24AA, 0xFF2E7D32, 0xFFC62828)
+    companion object {
+        const val FAKE_CANDIDATE = "candidate:1 1 udp 2122260223 192.0.2.1 50000 typ host"
+        const val FAKE_OFFER_SDP = "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\nc=IN IP4 0.0.0.0\r\na=mid:0\r\n"
 
-        fun colorFor(label: String) = palette[(label.hashCode() and Int.MAX_VALUE) % palette.size]
+        private val palette = longArrayOf(0xFF5C6BC0, 0xFF26A69A, 0xFFEF6C00, 0xFF8E24AA, 0xFF2E7D32, 0xFFC62828)
 
-        fun String.dotsToSpaces() = replace('.', ' ')
+        private fun colorFor(label: String) = palette[(label.hashCode() and Int.MAX_VALUE) % palette.size]
+
+        private fun String.dotsToSpaces() = replace('.', ' ')
     }
 }

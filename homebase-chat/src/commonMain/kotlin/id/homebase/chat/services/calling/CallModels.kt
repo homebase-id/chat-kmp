@@ -3,6 +3,7 @@ package id.homebase.chat.services.calling
 const val RING_TIMEOUT_MS = 45_000L
 const val CONNECT_TIMEOUT_MS = 30_000L
 const val RECONNECT_TICK_MS = 5_000L
+const val OFFER_REPUBLISH_MS = 250L
 const val MAX_RECONNECT_ATTEMPTS = 3
 
 enum class CallDirection { Outgoing, Incoming }
@@ -54,6 +55,7 @@ data class CallState(
     val reconnectAttempt: Int = 0,
     val peerRinging: Boolean = false,
     val pendingOfferSdp: String? = null,
+    val offerSeq: Int = 0,
     val acceptPending: Boolean = false,
     val verificationCode: String? = null,
     val placedWithVideo: Boolean = false,

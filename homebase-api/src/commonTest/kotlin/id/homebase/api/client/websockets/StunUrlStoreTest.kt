@@ -22,6 +22,19 @@ class StunUrlStoreTest {
     }
 
     @Test
+    fun handshakeSampleFromTheServerDocsKeepsEveryUrlAsGivenAndIgnoresUnknownFields() {
+        val json = """{ "notificationType": "deviceHandshakeSuccess", "notificationTypeId": "00000000-0000-0000-0000-000000000000",
+            "data": "", "future": {"x": 1},
+            "stunUrls": ["stun:stun1-1.eu.ravenhosting.cloud:3478", "stun:stun1-2.eu.ravenhosting.cloud:3478"] }"""
+        val parsed = OdinSystemSerializer.deserialize<ClientNotificationPayload>(json)
+        assertEquals(ClientNotificationType.deviceHandshakeSuccess, parsed.notificationType)
+        assertEquals(
+            listOf("stun:stun1-1.eu.ravenhosting.cloud:3478", "stun:stun1-2.eu.ravenhosting.cloud:3478"),
+            parsed.stunUrls,
+        )
+    }
+
+    @Test
     fun handshakeWithoutStunUrlsParsesToEmpty() {
         val parsed = OdinSystemSerializer.deserialize<ClientNotificationPayload>(
             """{"notificationType":"deviceHandshakeSuccess"}""",

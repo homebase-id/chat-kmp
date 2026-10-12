@@ -37,10 +37,20 @@ Every signal is one `POST /api/v2/live-relay` with `{channelKey, recipients, blo
   (live location uses its own constant key).
 - **blob**: base64 of the `CallSignal` JSON (`offer`, `ringing`, `answer`, `ice`, `hangup`, `restart`,
   `restart_answer`). `CallSignal.Ringing` is the callee's "my phone is ringing" ack, unrelated to push kind `ring`.
-- **push**: `Offer` carries `{kind: ring, typeId: RING_TYPE_ID, tagId: callId, unEncryptedMessage: "<name> is calling"}`.
+- **push**: the first `Offer` (seq 0) carries `{kind: ring, typeId: RING_TYPE_ID, tagId: callId, unEncryptedMessage: "<name> is calling"}`.
   A caller-side `Hangup` with reason `Cancelled` or `Missed` carries `kind: hangup` with the same `tagId` and
-  `HANGUP_TYPE_ID`. Ring and hangup use distinct typeIds because the delivered push payload has no `kind`.
-  Everything else (answer, ICE, ringing, declined, normal hangup, restart) is sent without a push.
+  `HANGUP_TYPE_ID`. Ring and hangup use distinct typeIds (defined once, in `CallPushRouter`, which also routes the
+  delivered push by typeId because the payload has no `kind`).
+  Everything else (re-published offers, answer, ICE, ringing, declined, normal hangup, glare yield, restart) is sent without a push.
+- **last blob wins**: odin-core keeps only the LAST blob per sender per app and flushes it when a socket (re)connects.
+  While a call is unanswered every blob the caller sends must therefore be a complete offer. The caller holds its
+  local ICE candidates (`CallEffect.HoldIce`) instead of trickling them and re-publishes the offer with the candidates
+  folded into the SDP (`SdpCandidates`), silent, with `seq` 1, 2, ... (debounced by `OFFER_REPUBLISH_MS`). Only when an
+  `Answer` selects a device does the caller flush the held candidates as `ice` signals and trickle from then on. A
+  second callee device that rings first (`Ringing`) changes nothing; a push-woken device reads the retained offer.
+  The callee keeps the newest `seq` for the call it is ringing on and ignores older or equal ones.
+- **replay**: the controller remembers the last 32 ended call ids and drops any signal or ring push for them, so a
+  replayed offer of a finished call neither rings nor answers `Busy`.
 - **receive**: `BackendEvent.LiveRelayReceived` becomes `InboundSignal(senderOdinId, signal, receivedAt)`.
   The state machine rejects offers older than the ring timeout, which also covers the event bus replay.
 - A relay refusal (non-2xx) for an `Offer` fails the call with `NoRoute`; for ICE or hangup it is only logged.
@@ -76,7 +86,8 @@ inbound signals, push ring/hangup, timers, media events. Effects are the only si
   (`PushRing`). The offer with the same callId fills it in; accepting before the offer arrives sets `acceptPending`
   and answers the moment it lands. A hangup push retracts an unanswered ring.
 - **Busy and glare.** A second inbound call is refused with `Busy`; crossed offers between the same pair resolve by
-  odin id ordering.
+  odin id ordering: the lower id keeps its offer and ignores the peer's, the higher id abandons its own call, sends
+  `Hangup(Normal)` for it (no push, so no missed-call alert) and answers the lower id's offer.
 - **ICE restart.** `Disconnected` moves to `Reconnecting`, starts the reconnect timer and, on the original caller's
   side only, emits `RestartIce`. Every timer tick (up to `MAX_RECONNECT_ATTEMPTS`) restarts again. The engine's new
   offer travels as `Restart`, the answer as `RestartAnswer`. Only the caller drives it so the sides never offer at once.
@@ -120,6 +131,12 @@ exercises a real ICE restart. It also proves the natives load on the host.
   starts a microphone/camera foreground service while a call is live, and cancels on state change. The launch from
   the notification may show over the lock screen only until the call ends. Outgoing calls are not Telecom-registered.
   "Answer" opens the app on the incoming screen; the user taps Accept (permission prompt lives there).
+- **iOS Simulator**: `CallKitBridge.hostsOutgoingCalls` is false there and `CallKitMirror` then does not register
+  outgoing calls. Evidence (unified log of the simulator, 5 of 5 outgoing attempts): `callservicesd` fails to open
+  `facetime://?showInCallUI=1`, logs "Disconnecting call because there wont be a UI to host the call" and sends
+  `CXEndCallAction`, which the app maps to a user hangup, so the caller cancelled its own call 1-3 s after the offer.
+  A real device keeps the call. Call controller decisions are logged under the tags `CallController` and
+  `CallStateMachine`; every `hangup()` and `decline()` logs its caller's stack.
 - **iOS**: `CallKitManager.swift` registers PushKit, reports every VoIP ring to CallKit immediately, forwards the
   payload to `CallPushRouter`, and mirrors outgoing/connected/ended state. The VoIP token is sent as
   `voipDeviceToken` next to the FCM token (`NotificationService.onVoipToken`). The relay needs the Apple `.p8` key

@@ -8,8 +8,8 @@ import id.homebase.api.serialization.OdinSystemSerializer
  * by typeId because the delivered payload carries no `kind`; tagId is the callId for both.
  */
 object CallPushRouter {
-    const val RING_TYPE_ID = "ca11ca11-ca11-4ca1-8ca1-ca11ca11ca11"
-    const val HANGUP_TYPE_ID = "ca11ca11-ca11-4ca1-8ca1-ca11ca11ca12"
+    const val RING_TYPE_ID = "6f0d2b8e-3c41-4a7f-9b52-d1e8a4c7f603"
+    const val HANGUP_TYPE_ID = "b94e7a15-d2f8-4c60-a381-5e0c9d7b2f48"
 
     interface Handler {
         fun onRing(callId: String, from: String, message: String?)

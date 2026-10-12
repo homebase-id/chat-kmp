@@ -1,6 +1,7 @@
 package id.homebase.chat.services.calling
 
 import id.homebase.api.crypto.HashUtil
+import id.homebase.core.notifications.CallPushRouter
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 import kotlinx.serialization.SerialName
@@ -20,8 +21,9 @@ enum class HangupReason { Normal, Declined, Busy, Cancelled, Missed }
 sealed class CallSignal {
     abstract val callId: String
 
+    /** [seq] orders re-published offers of one call; the first offer is 0 and is omitted from the wire. */
     @Serializable @SerialName("offer")
-    data class Offer(override val callId: String, val sdp: String, val video: Boolean) : CallSignal()
+    data class Offer(override val callId: String, val sdp: String, val video: Boolean, val seq: Int = 0) : CallSignal()
 
     @Serializable @SerialName("ringing")
     data class Ringing(override val callId: String) : CallSignal()
@@ -69,9 +71,8 @@ interface CallSignaling {
 }
 
 object CallChannel {
-    /** Ring and hangup pushes use distinct typeIds because the delivered payload carries no `kind`; both share tagId = callId. */
-    const val RING_TYPE_ID = "ca11ca11-ca11-4ca1-8ca1-ca11ca11ca11"
-    const val HANGUP_TYPE_ID = "ca11ca11-ca11-4ca1-8ca1-ca11ca11ca12"
+    const val RING_TYPE_ID = CallPushRouter.RING_TYPE_ID
+    const val HANGUP_TYPE_ID = CallPushRouter.HANGUP_TYPE_ID
 
     /** Every signal addressed to an identity travels on that identity's key, so each side opens only its own. */
     fun keyFor(odinId: String): String {
@@ -82,10 +83,10 @@ object CallChannel {
         return Uuid.fromByteArray(bytes).toString()
     }
 
-    /** Ring for an [CallSignal.Offer]; hangup only for a caller-side retraction (Cancelled/Missed) before the answer. */
+    /** Ring only for the first [CallSignal.Offer] (re-published offers are silent); hangup only for a caller-side retraction (Cancelled/Missed) before the answer. */
     fun outbound(peer: String, signal: CallSignal, selfLabel: String): OutboundSignal {
         val push = when {
-            signal is CallSignal.Offer ->
+            signal is CallSignal.Offer && signal.seq == 0 ->
                 CallPush(CallPushKind.Ring, RING_TYPE_ID, signal.callId, "$selfLabel is calling")
             signal is CallSignal.Hangup && (signal.reason == HangupReason.Cancelled || signal.reason == HangupReason.Missed) ->
                 CallPush(CallPushKind.Hangup, HANGUP_TYPE_ID, signal.callId, "Missed call from $selfLabel")

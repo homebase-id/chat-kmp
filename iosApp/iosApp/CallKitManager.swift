@@ -79,11 +79,21 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
 
     // MARK: CallKitBridge (Kotlin -> CallKit)
 
+    var hostsOutgoingCalls: Bool {
+        #if targetEnvironment(simulator)
+        return false
+        #else
+        return true
+        #endif
+    }
+
     func reportOutgoing(callId: String, handle: String, video: Bool) {
         let id = uuid(for: callId)
         let action = CXStartCallAction(call: id, handle: CXHandle(type: .generic, value: handle))
         action.isVideo = video
-        controller.request(CXTransaction(action: action)) { _ in }
+        controller.request(CXTransaction(action: action)) { error in
+            NSLog("[Call] CallKit start request call=%@ error=%@", callId, String(describing: error))
+        }
     }
 
     func reportConnected(callId: String) {
@@ -104,11 +114,13 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
     // MARK: CXProviderDelegate (CallKit -> Kotlin)
 
     func providerDidReset(_ provider: CXProvider) {
+        NSLog("[Call] CallKit provider reset")
         uuidForCall.removeAll()
         callForUuid.removeAll()
     }
 
     func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
+        NSLog("[Call] CXStartCallAction call=%@", action.callUUID.uuidString)
         provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: Date())
         action.fulfill()
     }
@@ -121,6 +133,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+        NSLog("[Call] CXEndCallAction call=%@ known=%d", action.callUUID.uuidString, callForUuid[action.callUUID] != nil ? 1 : 0)
         if let callId = callForUuid[action.callUUID] {
             CallKitBridgeHolder.shared.actions?.endOrDecline(callId: callId)
             forget(callId)
@@ -133,6 +146,15 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
         action.fulfill()
     }
 
-    func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {}
-    func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {}
+    func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+        NSLog("[Call] CallKit audio session activated")
+    }
+
+    func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+        NSLog("[Call] CallKit audio session deactivated")
+    }
+
+    func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
+        NSLog("[Call] CallKit timed out performing %@", String(describing: type(of: action)))
+    }
 }

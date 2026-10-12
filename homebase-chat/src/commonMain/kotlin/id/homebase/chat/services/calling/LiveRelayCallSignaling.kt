@@ -1,5 +1,6 @@
 package id.homebase.chat.services.calling
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.liverelay.LiveRelayPush
@@ -26,7 +27,13 @@ class LiveRelayCallSignaling(
         .filterIsInstance<BackendEvent.LiveRelayReceived>()
         .filter { it.channelKey.equals(ownChannel, ignoreCase = true) }
         .mapNotNull { event ->
-            CallSignalCodec.decode(event.blob)?.let { InboundSignal(event.senderOdinId.domainName, it, event.receivedAt) }
+            val signal = CallSignalCodec.decode(event.blob)
+            if (signal == null) {
+                Logger.w(tag = TAG) { "dropping undecodable blob from=${event.senderOdinId.domainName}" }
+                return@mapNotNull null
+            }
+            Logger.i(tag = TAG) { "recv ${signal::class.simpleName} call=${signal.callId} from=${event.senderOdinId.domainName}" }
+            InboundSignal(event.senderOdinId.domainName, signal, event.receivedAt)
         }
 
     override suspend fun send(outbound: OutboundSignal) {
@@ -40,3 +47,5 @@ class LiveRelayCallSignaling(
         }
     }
 }
+
+private const val TAG = "CallSignaling"

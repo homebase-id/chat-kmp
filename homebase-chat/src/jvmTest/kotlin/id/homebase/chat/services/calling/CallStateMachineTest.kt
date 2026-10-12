@@ -3,6 +3,7 @@ package id.homebase.chat.services.calling
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class CallStateMachineTest {
     private val frodo = "frodo.baggins.demo.rocks"
@@ -121,7 +122,7 @@ class CallStateMachineTest {
         assertEquals(
             listOf(
                 CallEffect.CancelTimers,
-                CallEffect.SendSignal(frodo, CallSignal.Hangup("c-sam", HangupReason.Cancelled)),
+                CallEffect.SendSignal(frodo, CallSignal.Hangup("c-sam", HangupReason.Normal)),
                 CallEffect.ReleaseEngine,
                 CallEffect.CreateAnswer("sdp", false),
                 CallEffect.StartTimer(CallTimer.Connect, c),
@@ -322,9 +323,13 @@ class CallStateMachineTest {
     }
 
     @Test
-    fun localIceIsSentExceptWhileIncoming() {
+    fun localIceIsHeldWhileOutgoingTrickledAfterTheAnswerAndDroppedWhileIncoming() {
         val ice = CallEvent.Media(MediaEvent.LocalIce("cand", "0", 1))
-        listOf(outgoing, connecting, connected, reconnecting).forEach {
+        machine.step(outgoing, ice).let {
+            assertEquals(outgoing, it.state)
+            assertEquals(listOf(CallEffect.HoldIce("cand", "0", 1)), it.effects)
+        }
+        listOf(connecting, connected, reconnecting).forEach {
             val t = machine.step(it, ice)
             assertEquals(it, t.state)
             assertEquals(listOf(CallEffect.SendSignal(sam, CallSignal.Ice(c, "cand", "0", 1))), t.effects)
@@ -365,5 +370,53 @@ class CallStateMachineTest {
         val back = machine.step(connected, CallEvent.SwitchCamera).state
         assertEquals(CameraFacing.Front, machine.step(back, CallEvent.SwitchCamera).state.media.camera)
         assertNotNull(back.callId)
+    }
+
+    @Test
+    fun glareYieldNeverTriggersAMissedCallPush() {
+        val samMachine = CallStateMachine(sam)
+        val out = samMachine.step(idle, CallEvent.UserCall("c-sam", frodo, false)).state
+        val yielded = samMachine.step(out, signal(frodo, CallSignal.Offer(c, "sdp", true)))
+        val hangup = yielded.effects.filterIsInstance<CallEffect.SendSignal>().map { it.signal }.filterIsInstance<CallSignal.Hangup>().single()
+        assertNull(CallChannel.outbound(frodo, hangup, "sam").push)
+        assertNull(CallChannel.outbound(frodo, CallSignal.Hangup("c-sam", HangupReason.Busy), "sam").push)
+    }
+
+    @Test
+    fun glareIsDecidedByOdinIdOrderWhicheverOfferArrivesFirst() {
+        val samMachine = CallStateMachine(sam)
+        val samOut = samMachine.step(idle, CallEvent.UserCall("c-sam", frodo, false)).state
+        val frodoOut = machine.step(idle, CallEvent.UserCall("c-frodo", sam, false)).state
+        val atSam = samMachine.step(samOut, signal(frodo, CallSignal.Offer("c-frodo", "o1", false)))
+        val atFrodo = machine.step(frodoOut, fromSam(CallSignal.Offer("c-sam", "o2", false)))
+        assertEquals(CallPhase.Connecting, atSam.state.phase)
+        assertEquals("c-frodo", atSam.state.callId)
+        assertEquals(CallTransition(frodoOut), atFrodo)
+        assertEquals(CallTransition(frodoOut), machine.step(frodoOut, fromSam(CallSignal.Offer("c-sam", "o3", false).copy(seq = 1))))
+    }
+
+    @Test
+    fun aRepublishedOfferReplacesTheHeldOneOnlyWhenNewerAndNeverRerings() {
+        val first = machine.step(idle, fromSam(CallSignal.Offer(c, "bare", false)), now = 0).state
+        val newer = machine.step(first, fromSam(CallSignal.Offer(c, "with-candidates", false, seq = 2)), now = 0)
+        assertEquals("with-candidates", newer.state.pendingOfferSdp)
+        assertEquals(2, newer.state.offerSeq)
+        assertEquals(emptyList(), newer.effects)
+        assertEquals(CallTransition(newer.state), machine.step(newer.state, fromSam(CallSignal.Offer(c, "older", false, seq = 1)), now = 0))
+        assertEquals(CallTransition(newer.state), machine.step(newer.state, fromSam(CallSignal.Offer(c, "dup", false, seq = 2)), now = 0))
+    }
+
+    @Test
+    fun aLateRepublishedOfferAfterAcceptIsIgnored() {
+        val accepted = machine.step(incoming, CallEvent.UserAccept).state
+        assertEquals(CallTransition(accepted), machine.step(accepted, fromSam(CallSignal.Offer(c, "late", false, seq = 3)), now = 0))
+    }
+
+    @Test
+    fun aPushWokenCalleeTakesTheRetainedOfferWithItsSeq() {
+        val pushed = machine.step(idle, CallEvent.PushRing(c, sam)).state
+        val offered = machine.step(pushed, fromSam(CallSignal.Offer(c, "rich", false, seq = 4)), now = 0)
+        assertEquals("rich", offered.state.pendingOfferSdp)
+        assertEquals(4, offered.state.offerSeq)
     }
 }

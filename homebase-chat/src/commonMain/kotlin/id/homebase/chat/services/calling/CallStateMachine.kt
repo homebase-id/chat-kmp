@@ -1,5 +1,7 @@
 package id.homebase.chat.services.calling
 
+import co.touchlab.kermit.Logger
+
 enum class CallTimer { Ring, Connect, Reconnect }
 
 sealed interface CallEvent {
@@ -29,6 +31,8 @@ sealed interface CallEffect {
     data object RestartIce : CallEffect
     data class AnswerRestart(val offerSdp: String) : CallEffect
     data class AddIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : CallEffect
+    /** Caller-side candidate gathered before any device answered: folded into the retained offer, not trickled. */
+    data class HoldIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : CallEffect
     data class SetMuted(val muted: Boolean) : CallEffect
     data class SetVideo(val on: Boolean) : CallEffect
     data object SwitchCamera : CallEffect
@@ -42,7 +46,28 @@ data class CallTransition(val state: CallState, val effects: List<CallEffect> = 
 
 class CallStateMachine(private val selfOdinId: String) {
 
-    fun reduce(state: CallState, event: CallEvent, nowMs: Long): CallTransition = when (event) {
+    fun reduce(state: CallState, event: CallEvent, nowMs: Long): CallTransition =
+        decide(state, event, nowMs).also { log(state, event, it) }
+
+    private fun log(before: CallState, event: CallEvent, t: CallTransition) {
+        val after = t.state
+        if (before.phase == after.phase && before.callId == after.callId) return
+        val hangup = t.effects.filterIsInstance<CallEffect.SendSignal>().map { it.signal }.filterIsInstance<CallSignal.Hangup>().firstOrNull()
+        Logger.i(TAG) {
+            "call=${after.callId} ${before.phase} -> ${after.phase} on ${describe(event)}" +
+                (hangup?.let { " sends hangup(${it.reason})" } ?: "")
+        }
+    }
+
+    private fun describe(event: CallEvent): String = when (event) {
+        is CallEvent.Signal -> "signal ${event.inbound.signal::class.simpleName} from ${event.inbound.from}"
+        is CallEvent.TimerFired -> "timer ${event.timer}"
+        is CallEvent.Media -> "media ${event.event::class.simpleName}"
+        is CallEvent.EngineError -> "engine error ${event.reason}"
+        else -> event::class.simpleName.orEmpty()
+    }
+
+    private fun decide(state: CallState, event: CallEvent, nowMs: Long): CallTransition = when (event) {
         is CallEvent.UserCall -> userCall(state, event)
         CallEvent.UserAccept -> userAccept(state)
         CallEvent.UserDecline, CallEvent.UserHangup -> userHangup(state)
@@ -152,7 +177,10 @@ class CallStateMachine(private val selfOdinId: String) {
 
     private fun offer(s: CallState, from: String, sig: CallSignal.Offer, receivedAtMs: Long, nowMs: Long): CallTransition {
         if (from == selfOdinId) return CallTransition(s)
-        if (nowMs - receivedAtMs > RING_TIMEOUT_MS) return CallTransition(s)
+        if (nowMs - receivedAtMs > RING_TIMEOUT_MS) {
+            Logger.i(TAG) { "stale offer call=${sig.callId} age=${nowMs - receivedAtMs}ms dropped" }
+            return CallTransition(s)
+        }
         if (sig.callId == s.callId) return offerForPushedRing(s, from, sig)
         if (s.canStart()) {
             val next = CallState(
@@ -163,6 +191,7 @@ class CallStateMachine(private val selfOdinId: String) {
                 media = CallMedia(localVideo = sig.video, remoteVideo = sig.video),
                 placedWithVideo = sig.video,
                 pendingOfferSdp = sig.sdp,
+                offerSeq = sig.seq,
             )
             return CallTransition(
                 next,
@@ -174,7 +203,11 @@ class CallStateMachine(private val selfOdinId: String) {
         }
         val glare = s.phase == CallPhase.Outgoing && from == s.peer
         if (glare) {
-            if (selfOdinId < from) return CallTransition(s)
+            if (selfOdinId < from) {
+                Logger.i(TAG) { "glare: keeping own call=${s.callId}, ignoring peer offer call=${sig.callId}" }
+                return CallTransition(s)
+            }
+            Logger.i(TAG) { "glare: yielding own call=${s.callId} to peer offer call=${sig.callId}" }
             val next = s.copy(
                 phase = CallPhase.Connecting,
                 callId = sig.callId,
@@ -186,13 +219,14 @@ class CallStateMachine(private val selfOdinId: String) {
                 next,
                 listOf(
                     CallEffect.CancelTimers,
-                    CallEffect.SendSignal(from, CallSignal.Hangup(s.callId!!, HangupReason.Cancelled)),
+                    CallEffect.SendSignal(from, CallSignal.Hangup(s.callId!!, HangupReason.Normal)),
                     CallEffect.ReleaseEngine,
                     CallEffect.CreateAnswer(sig.sdp, s.media.localVideo),
                     CallEffect.StartTimer(CallTimer.Connect, sig.callId),
                 ),
             )
         }
+        Logger.i(TAG) { "busy: refusing offer call=${sig.callId} from=$from while ${s.phase} call=${s.callId}" }
         return CallTransition(s, listOf(CallEffect.SendSignal(from, CallSignal.Hangup(sig.callId, HangupReason.Busy))))
     }
 
@@ -250,15 +284,14 @@ class CallStateMachine(private val selfOdinId: String) {
             is MediaEvent.Failed -> failed(s, e.reason)
             is MediaEvent.RemoteVideoChanged -> CallTransition(s.copy(media = s.media.copy(remoteVideo = e.on)))
             is MediaEvent.QualityChanged -> CallTransition(s.copy(quality = e.quality))
-            is MediaEvent.LocalIce ->
-                if (s.phase == CallPhase.Incoming) {
-                    CallTransition(s)
-                } else {
-                    CallTransition(
-                        s,
-                        listOf(CallEffect.SendSignal(s.peer!!, CallSignal.Ice(s.callId!!, e.candidate, e.sdpMid, e.sdpMLineIndex))),
-                    )
-                }
+            is MediaEvent.LocalIce -> when (s.phase) {
+                CallPhase.Incoming -> CallTransition(s)
+                CallPhase.Outgoing -> CallTransition(s, listOf(CallEffect.HoldIce(e.candidate, e.sdpMid, e.sdpMLineIndex)))
+                else -> CallTransition(
+                    s,
+                    listOf(CallEffect.SendSignal(s.peer!!, CallSignal.Ice(s.callId!!, e.candidate, e.sdpMid, e.sdpMLineIndex))),
+                )
+            }
         }
     }
 
@@ -275,12 +308,17 @@ class CallStateMachine(private val selfOdinId: String) {
     }
 
     private fun offerForPushedRing(s: CallState, from: String, sig: CallSignal.Offer): CallTransition {
-        if (s.phase != CallPhase.Incoming || s.pendingOfferSdp != null || s.peer != from) return CallTransition(s)
+        if (s.phase != CallPhase.Incoming || s.peer != from) return CallTransition(s)
+        if (s.pendingOfferSdp != null) {
+            // A re-published offer of the same call carries more candidates; only a newer seq replaces the one we hold.
+            if (sig.seq <= s.offerSeq) return CallTransition(s)
+            return CallTransition(s.copy(pendingOfferSdp = sig.sdp, offerSeq = sig.seq))
+        }
         val ringing = CallEffect.SendSignal(from, CallSignal.Ringing(sig.callId))
         val media = s.media.copy(localVideo = sig.video && !s.acceptPending, remoteVideo = sig.video)
-        if (!s.acceptPending) return CallTransition(s.copy(pendingOfferSdp = sig.sdp, media = media), listOf(ringing))
+        if (!s.acceptPending) return CallTransition(s.copy(pendingOfferSdp = sig.sdp, offerSeq = sig.seq, media = media), listOf(ringing))
         return CallTransition(
-            s.copy(phase = CallPhase.Connecting, acceptPending = false, media = media),
+            s.copy(phase = CallPhase.Connecting, acceptPending = false, media = media, offerSeq = sig.seq),
             listOf(
                 ringing,
                 CallEffect.CancelTimers,
@@ -314,3 +352,5 @@ class CallStateMachine(private val selfOdinId: String) {
         )
     }
 }
+
+private const val TAG = "CallStateMachine"

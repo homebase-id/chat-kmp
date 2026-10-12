@@ -1,19 +1,19 @@
 package id.homebase.core.calling
 
-import id.homebase.chat.services.calling.CallDirection
-import id.homebase.chat.services.calling.CallEndReason
 import id.homebase.chat.services.calling.CallPhase
+import id.homebase.chat.services.calling.CallKitMirror
 import id.homebase.chat.services.calling.CallService
 import id.homebase.core.notifications.CallKitActions
 import id.homebase.core.notifications.CallKitBridgeHolder
 import id.homebase.core.notifications.CallPushRouter
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatformTools
+
+private const val TAG = "AppleCallCoordinator"
 
 private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -41,6 +41,7 @@ fun startAppleCallCoordinator() {
         }
 
         override fun endOrDecline(callId: String) {
+            Logger.i(TAG) { "CallKit CXEndCallAction call=$callId phase=${service.state.value.phase} current=${service.state.value.callId}" }
             if (service.state.value.phase == CallPhase.Incoming) service.decline() else service.hangup()
         }
 
@@ -49,24 +50,5 @@ fun startAppleCallCoordinator() {
         }
     }
 
-    scope.launch {
-        var reported: String? = null
-        service.state.map { Triple(it.callId, it.phase, it.direction) }.distinctUntilChanged().collect { (callId, phase, direction) ->
-            val bridge = CallKitBridgeHolder.bridge ?: return@collect
-            val id = callId ?: return@collect
-            val state = service.state.value
-            when (phase) {
-                CallPhase.Outgoing -> if (reported != id) {
-                    reported = id
-                    bridge.reportOutgoing(id, state.peer.orEmpty(), state.media.localVideo)
-                }
-                CallPhase.Connected -> bridge.reportConnected(id)
-                is CallPhase.Ended -> {
-                    bridge.reportEnded(id, remoteEnded = direction == CallDirection.Incoming || phase.reason is CallEndReason.Hangup)
-                    if (reported == id) reported = null
-                }
-                else -> Unit
-            }
-        }
-    }
+    scope.launch { CallKitMirror(service) { CallKitBridgeHolder.bridge }.run() }
 }

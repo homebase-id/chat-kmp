@@ -1,5 +1,6 @@
 package id.homebase.chat.services.calling
 
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -18,6 +19,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -78,7 +80,7 @@ class CallControllerTest {
         assertEquals(CallPhase.Connected, b.phase)
         assertNotNull(a.state.connectedAtMs)
         assertEquals(emptyList(), a.engines.single().addedIce)
-        assertEquals(listOf("fake-candidate-local"), b.engines.single().addedIce)
+        assertEquals(listOf(FakeCallEngine.FAKE_CANDIDATE), b.engines.single().addedIce)
 
         a.controller.hangup()
         runCurrent()
@@ -120,7 +122,7 @@ class CallControllerTest {
         runCurrent()
         b.controller.accept()
         runCurrent()
-        assertEquals(listOf("fake-candidate-local"), b.engines.single().addedIce)
+        assertEquals(listOf(FakeCallEngine.FAKE_CANDIDATE), b.engines.single().addedIce)
     }
 
     @Test
@@ -203,7 +205,10 @@ class CallControllerTest {
         assertEquals("call-a", b.state.callId)
         assertEquals(CallDirection.Outgoing, a.state.direction)
         assertEquals(CallDirection.Incoming, b.state.direction)
-        assertTrue(net.sent.any { it.from == sam && it.to == frodo && it.signal == CallSignal.Hangup("call-b", HangupReason.Cancelled) })
+        assertTrue(net.sent.any { it.from == sam && it.to == frodo && it.signal == CallSignal.Hangup("call-b", HangupReason.Normal) })
+        assertTrue(net.sent.none { it.signal is CallSignal.Hangup && it.push != null })
+        assertEquals(1, net.sent.count { it.push?.kind == CallPushKind.Ring && it.from == frodo })
+        assertEquals(1, net.sent.count { it.push?.kind == CallPushKind.Ring && it.from == sam })
         assertEquals(2, b.engines.size)
         assertTrue(b.engines.first().closed)
         assertTrue(!b.engines.last().closed)
@@ -361,13 +366,16 @@ class CallControllerTest {
     fun concurrentFirstUseOfOneInboxLosesNoSignal() = runTest {
         val users = 8
         val senders = 8
-        withContext(Dispatchers.Default) {
+        withContext(Dispatchers.Default.limitedParallelism(2)) {
             repeat(300) { round ->
                 val net = LoopbackSignaling(now = { 0L })
                 val subscribed = CompletableDeferred<Unit>()
                 val gate = CompletableDeferred<Unit>()
                 val received = Channel<InboundSignal>(Channel.UNLIMITED)
+                val spinning = AtomicInteger()
+                val allSpinning = CompletableDeferred<Unit>()
                 val collector = launch {
+                    allSpinning.await()
                     (net.endpoint("target").incoming as SharedFlow<InboundSignal>).onSubscription { subscribed.complete(Unit) }
                         .collect { if (it.signal.callId.startsWith("c")) received.trySend(it) }
                 }
@@ -376,7 +384,11 @@ class CallControllerTest {
                     repeat(senders) { i ->
                         launch {
                             gate.await()
-                            while (!subscribed.isCompleted) net.deliver("target", "warm", CallSignal.Ringing("warm"), 0)
+                            if (spinning.incrementAndGet() == senders) allSpinning.complete(Unit)
+                            while (!subscribed.isCompleted) {
+                                net.deliver("target", "warm", CallSignal.Ringing("warm"), 0)
+                                yield()
+                            }
                             subscribed.await()
                             net.deliver("target", "p$i", CallSignal.Ringing("c$i"), 0)
                         }

@@ -26,7 +26,9 @@ class CallController(
     private val stunUrls: () -> List<String> = { emptyList() },
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val ringTimeoutMs: Long = RING_TIMEOUT_MS,
+    private val offerRepublishMs: Long = OFFER_REPUBLISH_MS,
 ) : CallSession {
+    private val log = Logger.withTag(TAG)
     private val machine = CallStateMachine(selfOdinId)
     private val _state = MutableStateFlow(CallState())
     override val state: StateFlow<CallState> = _state.asStateFlow()
@@ -37,6 +39,7 @@ class CallController(
     // Everything below the inbox is touched only from the inbox loop; other threads just post.
     private sealed interface Command {
         class Event(val event: CallEvent) : Command
+        class RepublishOffer(val callId: String) : Command
         data object Close : Command
     }
 
@@ -49,6 +52,13 @@ class CallController(
     private var offerSdp: String? = null
     private var answerSdp: String? = null
     private val timers = mutableMapOf<CallTimer, Job>()
+    private val heldIce = mutableListOf<LocalCandidate>()
+    private var publishedIce = 0
+    private var offerSeq = 0
+    private var offerVideo = false
+    private var publishedOfferSdp: String? = null
+    private var republishJob: Job? = null
+    private val endedCalls = ArrayDeque<String>()
 
     private val collectors: List<Job>
 
@@ -62,6 +72,7 @@ class CallController(
                     for (command in inbox) {
                         when (command) {
                             is Command.Event -> process(command.event)
+                            is Command.RepublishOffer -> republishOffer(command.callId)
                             Command.Close -> break
                         }
                     }
@@ -88,8 +99,15 @@ class CallController(
     fun startCall(peer: String, video: Boolean, callId: String) = post(CallEvent.UserCall(callId, peer, video))
 
     override fun accept() = post(CallEvent.UserAccept)
-    override fun decline() = post(CallEvent.UserDecline)
-    override fun hangup() = post(CallEvent.UserHangup)
+    override fun decline() {
+        log.i(Throwable("decline() requested")) { "decline requested in ${_state.value.phase} call=${_state.value.callId}" }
+        post(CallEvent.UserDecline)
+    }
+
+    override fun hangup() {
+        log.i(Throwable("hangup() requested")) { "hangup requested in ${_state.value.phase} call=${_state.value.callId}" }
+        post(CallEvent.UserHangup)
+    }
     override fun setMuted(muted: Boolean) = post(CallEvent.SetMuted(muted))
     override fun setVideo(on: Boolean) = post(CallEvent.SetVideo(on))
     override fun switchCamera() = post(CallEvent.SwitchCamera)
@@ -103,13 +121,42 @@ class CallController(
         inbox.trySend(Command.Event(event))
     }
 
-    private suspend fun send(peer: String, signal: CallSignal) =
-        signaling.send(CallChannel.outbound(peer, signal, selfLabel))
+    private suspend fun send(peer: String, signal: CallSignal) {
+        val outbound = CallChannel.outbound(peer, signal, selfLabel)
+        log.i { "send ${describe(signal)} call=${signal.callId} to=$peer push=${outbound.push?.kind?.wire}" }
+        signaling.send(outbound)
+    }
+
+    private fun describe(signal: CallSignal): String = when (signal) {
+        is CallSignal.Hangup -> "hangup(${signal.reason})"
+        is CallSignal.Offer -> "offer(seq=${signal.seq})"
+        else -> signal::class.simpleName.orEmpty()
+    }
 
     private suspend fun process(event: CallEvent) {
+        if (isReplayOfEndedCall(event)) return
         val transition = machine.reduce(_state.value, event, clock())
         _state.value = transition.state
+        if (transition.state.phase is CallPhase.Ended) transition.state.callId?.let(::rememberEnded)
         for (effect in transition.effects) run(effect, transition.state)
+    }
+
+    // The relay replays the last blob per sender on every socket reconnect, so an offer for a call that already ended comes back.
+    private fun isReplayOfEndedCall(event: CallEvent): Boolean {
+        val callId = when (event) {
+            is CallEvent.Signal -> event.inbound.signal.callId
+            is CallEvent.PushRing -> event.callId
+            else -> return false
+        }
+        if (callId !in endedCalls) return false
+        log.i { "ignored replay for ended call=$callId (${event::class.simpleName})" }
+        return true
+    }
+
+    private fun rememberEnded(callId: String) {
+        if (callId in endedCalls) return
+        endedCalls.addLast(callId)
+        if (endedCalls.size > ENDED_CALLS_REMEMBERED) endedCalls.removeFirst()
     }
 
     private fun engine(): CallEngine = engine ?: engineFactory.create(stunUrls()).also { created ->
@@ -130,7 +177,14 @@ class CallController(
                 is CallEffect.CreateOffer -> {
                     val sdp = engine().createOffer(effect.video)
                     offerSdp = sdp
+                    offerVideo = effect.video
+                    offerSeq = 0
+                    publishedOfferSdp = sdp
                     send(state.peer!!, CallSignal.Offer(state.callId!!, sdp, effect.video))
+                }
+                is CallEffect.HoldIce -> {
+                    heldIce += LocalCandidate(effect.candidate, effect.sdpMid, effect.sdpMLineIndex)
+                    scheduleOfferRepublish(state.callId!!)
                 }
                 is CallEffect.CreateAnswer -> {
                     val sdp = engine().answer(effect.offerSdp, effect.video)
@@ -143,6 +197,7 @@ class CallController(
                 is CallEffect.ApplyRemoteAnswer -> {
                     engine().applyRemote(effect.sdp)
                     markRemoteReady()
+                    flushHeldIce(state)
                     if (answerSdp == null) {
                         answerSdp = effect.sdp
                         announceVerification(state.callId!!)
@@ -178,6 +233,48 @@ class CallController(
         }
     }
 
+    // Live Relay keeps only the last blob per sender, so while the call is unanswered every blob must be a complete offer.
+    private fun scheduleOfferRepublish(callId: String) {
+        if (republishJob?.isActive == true) return
+        republishJob = scope.launch {
+            delay(offerRepublishMs)
+            inbox.trySend(Command.RepublishOffer(callId))
+        }
+    }
+
+    private suspend fun republishOffer(callId: String) {
+        republishJob = null
+        val s = _state.value
+        val base = offerSdp
+        if (s.phase != CallPhase.Outgoing || s.callId != callId || base == null || heldIce.size == publishedIce) return
+        val held = heldIce.toList()
+        publishedIce = held.size
+        val sdp = SdpCandidates.withCandidates(base, held)
+        if (sdp == publishedOfferSdp) return
+        publishedOfferSdp = sdp
+        offerSeq++
+        try {
+            log.i { "republishing offer call=$callId seq=$offerSeq candidates=${held.size}" }
+            send(s.peer!!, CallSignal.Offer(callId, sdp, offerVideo, offerSeq))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.w(e) { "offer republish call=$callId seq=$offerSeq failed" }
+        }
+        if (heldIce.size > publishedIce) scheduleOfferRepublish(callId)
+    }
+
+    private suspend fun flushHeldIce(state: CallState) {
+        republishJob?.cancel()
+        republishJob = null
+        val pending = heldIce.toList()
+        heldIce.clear()
+        publishedIce = 0
+        if (pending.isEmpty()) return
+        log.i { "answer selected a device: trickling ${pending.size} held candidates call=${state.callId}" }
+        for (c in pending) send(state.peer!!, CallSignal.Ice(state.callId!!, c.candidate, c.sdpMid, c.sdpMLineIndex))
+    }
+
     private fun announceVerification(callId: String) {
         val code = CallVerification.code(offerSdp ?: return, answerSdp ?: return) ?: return
         post(CallEvent.Verification(callId, code))
@@ -192,6 +289,7 @@ class CallController(
 
     private fun startTimer(timer: CallTimer, callId: String) {
         timers.remove(timer)?.cancel()
+        log.d { "timer $timer started call=$callId" }
         timers[timer] = scope.launch {
             when (timer) {
                 CallTimer.Ring -> delay(ringTimeoutMs)
@@ -210,6 +308,8 @@ class CallController(
     private fun cancelTimers() {
         timers.values.forEach { it.cancel() }
         timers.clear()
+        republishJob?.cancel()
+        republishJob = null
     }
 
     private fun releaseEngine() {
@@ -222,11 +322,16 @@ class CallController(
         engine = null
         remoteReady = false
         bufferedIce.clear()
+        heldIce.clear()
+        publishedIce = 0
+        offerSeq = 0
+        publishedOfferSdp = null
         offerSdp = null
         answerSdp = null
     }
 
     private companion object {
         const val TAG = "CallController"
+        const val ENDED_CALLS_REMEMBERED = 32
     }
 }

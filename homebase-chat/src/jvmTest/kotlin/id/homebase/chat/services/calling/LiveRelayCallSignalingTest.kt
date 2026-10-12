@@ -121,4 +121,47 @@ class LiveRelayCallSignalingTest {
 
         assertEquals(listOf(InboundSignal(sam, offer, 1_700L)), got)
     }
+
+    @Test
+    fun everySignalGoesOutAsExactJsonOnTheWireWithTheDocumentedPushKinds() = runTest {
+        val sink = mutableListOf<Captured>()
+        val s = signaling(sink = sink)
+        val id = "0b1a2c3d-0000-4000-8000-000000000001"
+        val cases = listOf(
+            CallSignal.Offer(id, "v=0", video = true) to """{"type":"offer","callId":"$id","sdp":"v=0","video":true}""",
+            CallSignal.Offer(id, "v=0", video = true, seq = 2) to """{"type":"offer","callId":"$id","sdp":"v=0","video":true,"seq":2}""",
+            CallSignal.Ringing(id) to """{"type":"ringing","callId":"$id"}""",
+            CallSignal.Answer(id, "v=0") to """{"type":"answer","callId":"$id","sdp":"v=0"}""",
+            CallSignal.Ice(id, "candidate:1", "0", 0) to """{"type":"ice","callId":"$id","candidate":"candidate:1","sdpMid":"0","sdpMLineIndex":0}""",
+            CallSignal.Hangup(id, HangupReason.Cancelled) to """{"type":"hangup","callId":"$id","reason":"Cancelled"}""",
+            CallSignal.Hangup(id, HangupReason.Missed) to """{"type":"hangup","callId":"$id","reason":"Missed"}""",
+            CallSignal.Hangup(id, HangupReason.Declined) to """{"type":"hangup","callId":"$id","reason":"Declined"}""",
+            CallSignal.Hangup(id) to """{"type":"hangup","callId":"$id"}""",
+        )
+        val pushKinds = listOf("ring", null, null, null, null, "hangup", "hangup", null, null)
+
+        cases.forEach { (signal, _) -> s.send(CallChannel.outbound(sam, signal, "Frodo")) }
+
+        assertEquals(cases.size, sink.size)
+        sink.forEachIndexed { i, sent ->
+            val blob = sent.body.getValue("blob").jsonPrimitive.content
+            assertEquals(cases[i].second, kotlin.io.encoding.Base64.decode(blob).decodeToString(), "blob #$i")
+            assertEquals(pushKinds[i], sent.body["push"]?.jsonObject?.getValue("kind")?.jsonPrimitive?.content, "push kind #$i")
+        }
+        val ring = sink.first().body.getValue("push").jsonObject
+        val hangup = sink[5].body.getValue("push").jsonObject
+        assertEquals(CallChannel.RING_TYPE_ID, ring.getValue("typeId").jsonPrimitive.content)
+        assertEquals(CallChannel.HANGUP_TYPE_ID, hangup.getValue("typeId").jsonPrimitive.content)
+        assertEquals(id, hangup.getValue("tagId").jsonPrimitive.content)
+    }
+
+    @Test
+    fun ringAndHangupPushTypeIdsAreDistinctWellFormedAndSingleSourced() {
+        val guid = Regex("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
+        assertTrue(guid.matches(CallChannel.RING_TYPE_ID))
+        assertTrue(guid.matches(CallChannel.HANGUP_TYPE_ID))
+        assertTrue(CallChannel.RING_TYPE_ID != CallChannel.HANGUP_TYPE_ID)
+        assertEquals(id.homebase.core.notifications.CallPushRouter.RING_TYPE_ID, CallChannel.RING_TYPE_ID)
+        assertEquals(id.homebase.core.notifications.CallPushRouter.HANGUP_TYPE_ID, CallChannel.HANGUP_TYPE_ID)
+    }
 }
