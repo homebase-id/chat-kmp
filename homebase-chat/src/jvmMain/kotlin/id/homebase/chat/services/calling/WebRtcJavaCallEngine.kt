@@ -11,6 +11,7 @@ import dev.onvoid.webrtc.RTCIceServer
 import dev.onvoid.webrtc.RTCOfferOptions
 import dev.onvoid.webrtc.RTCPeerConnection
 import dev.onvoid.webrtc.RTCPeerConnectionState
+import dev.onvoid.webrtc.RTCRtpSender
 import dev.onvoid.webrtc.RTCRtpTransceiver
 import dev.onvoid.webrtc.RTCSdpType
 import dev.onvoid.webrtc.RTCSessionDescription
@@ -152,7 +153,7 @@ class WebRtcJavaCallEngine(
             // The Mac camera faces the user, so its preview is mirrored; the transmitted frames are untouched.
             val handle = JvmVideoHandle.localPreview(DESKTOP_CAMERA_FACING).also { localFrames = it }
             track.addSink(handle.sink)
-            peer.addTrack(track, listOf(STREAM_ID))
+            configureVideoSender(peer.addTrack(track, listOf(STREAM_ID)))
             videoTrack = track
             _local.value = handle
         } catch (e: Exception) {
@@ -195,8 +196,7 @@ class WebRtcJavaCallEngine(
                 override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
             })
         }
-        setLocal(description)
-        return description.sdp
+        return setLocalRaised(description)
     }
 
     private suspend fun createAnswer(): String {
@@ -207,6 +207,11 @@ class WebRtcJavaCallEngine(
                 override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
             })
         }
+        return setLocalRaised(description)
+    }
+
+    private suspend fun setLocalRaised(created: RTCSessionDescription): String {
+        val description = RTCSessionDescription(created.sdpType, withH264SendLevel(created.sdp))
         setLocal(description)
         return description.sdp
     }
@@ -279,4 +284,15 @@ class WebRtcJavaCallEngine(
             Logging.addLogSink(Logging.Severity.WARNING, LogSink { _, message -> Logger.w("WebRTC") { message.trimEnd() } })
         }
     }
+}
+
+/** Bounds the video sender to [SendVideoCap]'s bitrate window; webrtc-java exposes no degradation preference. */
+internal fun configureVideoSender(sender: RTCRtpSender) {
+    val params = sender.parameters
+    params.encodings?.forEach {
+        it.maxBitrate = SendVideoCap.MAX_BITRATE_BPS
+        it.minBitrate = SendVideoCap.MIN_BITRATE_BPS
+        it.maxFramerate = SendVideoCap.FPS.toDouble()
+    }
+    sender.parameters = params
 }

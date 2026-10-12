@@ -13,8 +13,8 @@ internal fun videoStatsLines(stats: Collection<StatsEntry>, localTrack: String? 
     video("inbound-rtp")?.let { m ->
         add(
             "inbound video packets=${m["packetsReceived"]} lost=${m["packetsLost"]} bytes=${m["bytesReceived"]} " +
-                "decoded=${m["framesDecoded"]} dropped=${m["framesDropped"]} freezes=${m["freezeCount"]} " +
-                "size=${m["frameWidth"]}x${m["frameHeight"]} plis=${m["pliCount"]} nacks=${m["nackCount"]} decoder=${m["decoderImplementation"]}",
+                "received=${m["framesReceived"]} decoded=${m["framesDecoded"]} dropped=${m["framesDropped"]} " +
+                "fps=${m["framesPerSecond"]} freezes=${m["freezeCount"]} size=${m["frameWidth"]}x${m["frameHeight"]} plis=${m["pliCount"]} nacks=${m["nackCount"]} decoder=${m["decoderImplementation"]}",
         )
     }
     video("media-source")?.let { m ->
@@ -24,7 +24,8 @@ internal fun videoStatsLines(stats: Collection<StatsEntry>, localTrack: String? 
         add(
             "outbound video packets=${m["packetsSent"]} bytes=${m["bytesSent"]} encoded=${m["framesEncoded"]} " +
                 "sent=${m["framesSent"]} keyframes=${m["keyFramesEncoded"]} size=${m["frameWidth"]}x${m["frameHeight"]} " +
-                "target=${m["targetBitrate"]} limit=${m["qualityLimitationReason"]} plisIn=${m["pliCount"]} " +
+                "fps=${m["framesPerSecond"]} target=${m["targetBitrate"]} limit=${m["qualityLimitationReason"]} " +
+                "resChanges=${m["qualityLimitationResolutionChanges"]} plisIn=${m["pliCount"]} " +
                 "firsIn=${m["firCount"]} nacksIn=${m["nackCount"]} encoder=${m["encoderImplementation"]}",
         )
     }

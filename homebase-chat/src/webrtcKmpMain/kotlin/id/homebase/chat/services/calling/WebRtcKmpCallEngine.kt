@@ -13,6 +13,7 @@ import com.shepeliev.webrtckmp.OfferAnswerOptions
 import com.shepeliev.webrtckmp.PeerConnection
 import com.shepeliev.webrtckmp.PeerConnectionState
 import com.shepeliev.webrtckmp.RtcConfiguration
+import com.shepeliev.webrtckmp.RtpSender
 import com.shepeliev.webrtckmp.SessionDescription
 import com.shepeliev.webrtckmp.SessionDescriptionType
 import com.shepeliev.webrtckmp.VideoTrack
@@ -65,6 +66,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private var stream: MediaStream? = null
     private var audioTrack: MediaStreamTrack? = null
     private var videoTrack: VideoTrack? = null
+    private var videoSender: RtpSender? = null
     private val closed = AtomicBoolean(false)
     private val mapper = PeerEventMapper { _events.tryEmit(it) }
     private val stopPipelineWatch = watchVideoPipeline()
@@ -116,7 +118,10 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         if (stream != null) return
         _events.tryEmit(MediaEvent.RouteChanged(router.start(video)))
         val media = try {
-            MediaDevices.getUserMedia(audio = true, video = video)
+            MediaDevices.getUserMedia {
+                audio(true)
+                if (video) requestCamera()
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -129,11 +134,13 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         }
         stream = media
         for (track in media.tracks) {
-            peer.addTrack(track, media)
+            val sender = peer.addTrack(track, media)
             when (track.kind) {
                 MediaStreamTrackKind.Audio -> audioTrack = track
                 MediaStreamTrackKind.Video -> (track as? VideoTrack)?.let {
                     videoTrack = it
+                    videoSender = sender
+                    configureVideoSender(sender)
                     publishLocal(it)
                     Logger.i("WebRtcKmp") { "local video settings=${it.settings}" }
                     // webrtc-kmp stops the track itself on a camera error or freeze; nothing else reports it.
@@ -157,11 +164,18 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     override suspend fun answer(offerSdp: String, video: Boolean): String {
         addLocalMedia(video)
         peer.setRemoteDescription(SessionDescription(SessionDescriptionType.Offer, offerSdp))
-        return createAnswer()
+        return createAnswer().also { logVideoSender() }
     }
 
-    override suspend fun applyRemote(answerSdp: String) =
+    override suspend fun applyRemote(answerSdp: String) {
         peer.setRemoteDescription(SessionDescription(SessionDescriptionType.Answer, answerSdp))
+        logVideoSender()
+    }
+
+    private fun logVideoSender() {
+        val sender = videoSender ?: return
+        Logger.i("WebRtcKmp") { "video sender ${describeVideoSender(sender)}" }
+    }
 
     override suspend fun restartIce(): String = offer(OfferAnswerOptions(iceRestart = true))
 
@@ -175,14 +189,12 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         peer.addIceCandidate(IceCandidate(sdpMid ?: "", sdpMLineIndex ?: 0, candidate))
     }
 
-    private suspend fun offer(options: OfferAnswerOptions): String {
-        val description = peer.createOffer(options)
-        peer.setLocalDescription(description)
-        return description.sdp
-    }
+    private suspend fun offer(options: OfferAnswerOptions): String = setLocal(peer.createOffer(options))
 
-    private suspend fun createAnswer(): String {
-        val description = peer.createAnswer(OfferAnswerOptions())
+    private suspend fun createAnswer(): String = setLocal(peer.createAnswer(OfferAnswerOptions()))
+
+    private suspend fun setLocal(created: SessionDescription): String {
+        val description = SessionDescription(created.type, withH264SendLevel(created.sdp))
         peer.setLocalDescription(description)
         return description.sdp
     }
