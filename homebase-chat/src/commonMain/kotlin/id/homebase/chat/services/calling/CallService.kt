@@ -56,6 +56,11 @@ class CallService(
         .flatMapLatest { it?.videos ?: flowOf(CallVideos()) }
         .stateIn(scope, SharingStarted.Eagerly, CallVideos())
 
+    // Declared before init: the init-launched loop reads it, and a field initialised later is null there.
+    // A push can land on any thread before the identity has loaded (cold FCM/PushKit wake); the channel keeps
+    // ring and hangup in arrival order and replays them to whichever controller is bound.
+    private val pushes = Channel<Push>(Channel.UNLIMITED)
+
     init {
         if (engineFactory != null) {
             scope.launch { recordCallEvents(state, nowMs, recordEvent) }
@@ -86,10 +91,6 @@ class CallService(
         data class Ring(val callId: String, val from: String, val ack: CompletableDeferred<CallState>? = null) : Push
         data class Hangup(val callId: String) : Push
     }
-
-    // A push can land on any thread before the identity has loaded (cold FCM/PushKit wake); the channel keeps
-    // ring and hangup in arrival order and replays them to whichever controller is bound.
-    private val pushes = Channel<Push>(Channel.UNLIMITED)
 
     private fun bind(selfOdinId: String?) {
         controller.value?.close()
