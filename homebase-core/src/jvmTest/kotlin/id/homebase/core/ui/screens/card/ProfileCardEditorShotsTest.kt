@@ -319,6 +319,10 @@ class ProfileCardEditorShotsTest {
         editor("k12-editor-photo-circle-readonly", editorBase, photo = CardPhotoUi(null, false, false, false)),
         editor("k12-editor-photo-busy", editorBase, photo = CardPhotoUi(null, true, true, true)),
         editor("k12-editor-busy", editorBase.copy(isContentBusy = true)),
+        editor("k13-editor-copy-from", editorBase, act = {
+            onNodeWithText("Copy from…").performClick()
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }),
     )
 
     @Test

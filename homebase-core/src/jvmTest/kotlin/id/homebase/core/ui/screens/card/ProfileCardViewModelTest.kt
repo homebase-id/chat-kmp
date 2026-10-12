@@ -23,6 +23,7 @@ import id.homebase.api.image.ImageUtils
 import id.homebase.api.youauth.MissingPermissionsResult
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.ui.screens.profile.ProfileAudience
+import id.homebase.core.ui.screens.profile.restoreAcl
 import id.homebase.core.ui.screens.profile.saveWithAudience
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.io.encoding.Base64
@@ -140,7 +141,12 @@ class ProfileCardViewModelTest {
         override suspend fun circles(): List<CardCircle> {
             return circleList
         }
-
+        var serverCircles: Set<String>? = null
+        var serverCircleReads = 0
+        override suspend fun serverCircleIds(): Set<String> {
+            serverCircleReads++
+            return serverCircles ?: circleList.map { it.id }.toSet()
+        }
         override suspend fun saveCircleCard(card: ProfileCard) = cardRepository?.saveCircle(card)
         var profileRepository: ProfileRepository? = null
         override suspend fun saveProfileAttribute(
@@ -149,6 +155,8 @@ class ProfileCardViewModelTest {
             audience: ProfileAudience,
             existing: ProfileAttribute?,
         ) = profileRepository!!.saveWithAudience(type, data, audience, existing)
+        override suspend fun restoreProfileAttribute(current: ProfileAttribute, previous: ProfileAttribute) =
+            profileRepository!!.restoreAcl(current, previous)
         override suspend fun resetPublicCard() = cardRepository!!.resetPublic()
         override suspend fun resetCircleCard(card: ProfileCard) = cardRepository!!.resetCircle(card)
         override suspend fun clearSavedDesign() {

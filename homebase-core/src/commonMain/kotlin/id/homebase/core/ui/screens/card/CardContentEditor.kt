@@ -18,11 +18,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Tune
@@ -36,6 +39,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -61,7 +66,9 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.screens.profile.ExistingAvatarContent
+import id.homebase.core.ui.screens.profile.PanelHeader
 import id.homebase.core.ui.screens.profile.ProfileAudience
+import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.MR
 import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.profile_avatar_edit_remove
@@ -74,6 +81,10 @@ import id.homebase.resources.profile_card_content_name_required
 import id.homebase.resources.profile_card_content_on_card
 import id.homebase.resources.profile_card_content_public_hint
 import id.homebase.resources.profile_card_content_remove_this
+import id.homebase.resources.profile_card_import_action
+import id.homebase.resources.profile_card_import_count
+import id.homebase.resources.profile_card_import_hint
+import id.homebase.resources.profile_card_import_title
 import id.homebase.resources.profile_card_photo_circle_pending
 import id.homebase.resources.profile_card_photo_label
 import id.homebase.resources.profile_card_photo_own_circle
@@ -83,6 +94,7 @@ import id.homebase.resources.profile_edit_photo_inherits_public
 import id.homebase.resources.profile_edit_photo_public_caption
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 private val PHOTO_SIZE = 88.dp
@@ -101,16 +113,19 @@ internal fun CardContentEditor(
     circles: List<CardCircle>,
     photo: CardPhotoUi,
     enabled: Boolean,
+    importSources: List<CardImportSource>,
     onToggle: (Uuid, Boolean) -> Unit,
     onAudience: (Uuid, ProfileAudience) -> Unit,
     onAdd: (String, Map<String, String>) -> Unit,
     onChangePhoto: () -> Unit,
     onRemovePhoto: () -> Unit,
+    onImport: (CardAudience) -> Unit,
     onChangeDesign: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var audienceFor by remember { mutableStateOf<Uuid?>(null) }
     var adding by remember { mutableStateOf<AddKind?>(null) }
+    var copying by remember { mutableStateOf(false) }
     var pendingId by remember { mutableStateOf<Uuid?>(null) }
     LaunchedEffect(enabled) { if (enabled) pendingId = null }
     val onCard = items.filter { it.shown }
@@ -130,6 +145,13 @@ internal fun CardContentEditor(
                 Icon(Icons.Outlined.Palette, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
                 Spacer(Modifier.size(ButtonDefaults.IconSpacing))
                 Text(stringResource(MR.string.profile_card_change_design), maxLines = 1)
+            }
+            if (importSources.isNotEmpty()) {
+                OutlinedButton(onClick = { copying = true }, enabled = enabled, shapes = ButtonDefaults.shapes()) {
+                    Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                    Text(stringResource(MR.string.profile_card_import_action), maxLines = 1)
+                }
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -203,6 +225,9 @@ internal fun CardContentEditor(
             onAdd = onAdd,
             onDismiss = { adding = null },
         )
+    }
+    if (copying) {
+        CopyFromSheet(sources = importSources, onPick = onImport, onDismiss = { copying = false })
     }
 }
 
@@ -334,6 +359,50 @@ private fun EditorRow(
                 }
                 else -> FilledTonalIconButton(onClick = onAction, enabled = enabled) {
                     Icon(Icons.Filled.Add, contentDescription = add)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CopyFromSheet(sources: List<CardImportSource>, onPick: (CardAudience) -> Unit, onDismiss: () -> Unit) {
+    AdaptiveSheet(onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            PanelHeader(
+                icon = Icons.Outlined.ContentCopy,
+                title = stringResource(MR.string.profile_card_import_title),
+                subtitle = stringResource(MR.string.profile_card_import_hint),
+            )
+            sources.forEach { source ->
+                val name = audienceLabel(source.audience)
+                val count = pluralStringResource(MR.plurals.profile_card_import_count, source.newItems, source.newItems)
+                Surface(
+                    onClick = { dismiss { onPick(source.audience) } },
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = "$name, $count" },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        CookieBadge(
+                            icon = audienceIcon(source.audience),
+                            container = audienceContainer(source.audience),
+                            content = onAudienceContainer(source.audience),
+                            size = 40.dp,
+                            iconSize = 20.dp,
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(count, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
         }

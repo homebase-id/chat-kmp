@@ -1818,6 +1818,14 @@
     <string name="profile_card_photo_label">Kortets billede</string>
     <string name="profile_card_photo_own_circle">Kun på dette kort</string>
     <string name="profile_card_photo_circle_pending">Et eget billede til dette kort kræver en opdatering af din Homebase-server, som endnu ikke er udgivet. Indtil da viser det det billede, det arver.</string>
+    <string name="profile_card_import_action">Kopiér fra…</string>
+    <string name="profile_card_import_title">Kopiér fra et andet kort</string>
+    <string name="profile_card_import_hint">Viser det andet korts oplysninger også på dette kort. Du kan fortryde det.</string>
+    <string name="profile_card_import_done">Kopieret fra %1$s</string>
+    <string name="profile_card_import_undo">Fortryd</string>
+    <string name="profile_card_import_public_title">Vis disse for alle?</string>
+    <string name="profile_card_import_public_message">Disse elementer bliver synlige for alle, der ser dit offentlige kort.</string>
+    <string name="profile_card_import_public_confirm">Vis for alle</string>
     <string name="profile_card_editor_title">Kortdesign</string>
     <string name="profile_card_design_save_failed">Kunne ikke gemme kortdesignet.</string>
     <string name="profile_card_nfc">Del kort ved at holde telefonerne sammen</string>

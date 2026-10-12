@@ -31,6 +31,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -41,6 +42,7 @@ import kotlinx.serialization.json.put
  * `circleIds` shipped together in odin-core 6e0032f24, so no server keeps one without the other); true plays one that
  * refuses `circleIds` on anything but Connected, as the real one does. The photo PUT takes `circleIds` only once odin-core
  * adds them to `SetPhotoAttributeRequest`; [photoCircleIds] false plays the server of today, which drops the field.
+ * [circlesOnServer] refuses a write naming any other circle, as ProfileAttributeService.AssertValidCircleIdsAsync does.
  */
 class CardWireHarness(
     private val deleteReply: (Int) -> Reply? = { null },
@@ -48,6 +50,7 @@ class CardWireHarness(
     private val photoCircleIds: Boolean = true,
     private val queryFailsAfterPhotoPut: Boolean = false,
     private val photoReply: Reply = Reply.Ok,
+    private val circlesOnServer: Set<String>? = null,
     private val putReply: (Int) -> Reply = { Reply.Ok },
 ) {
     sealed interface Reply {
@@ -146,6 +149,9 @@ class CardWireHarness(
                     Reply.Problem(400, UNKNOWN_CARD_TYPE_400)
                 } else if (scoped && body.jsonObject["visibility"]?.jsonPrimitive?.content != "connected") {
                     Reply.Problem(400, CIRCLES_NEED_CONNECTED_400)
+                } else if (circlesOnServer != null && body.jsonObject["circleIds"]?.jsonArray.orEmpty().any { it.jsonPrimitive.content !in circlesOnServer }) {
+                    val missing = body.jsonObject["circleIds"]!!.jsonArray.first { it.jsonPrimitive.content !in circlesOnServer }.jsonPrimitive.content
+                    Reply.Problem(400, """{"title":"Circle $missing does not exist","status":400,"errorCode":"argumentError"}""")
                 } else {
                     putReply(putNumber)
                 }

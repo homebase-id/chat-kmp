@@ -330,6 +330,53 @@ class ProfileCardPhotosTest {
     }
 
     @Test
+    fun copyingFamilyToFriendsLeavesFamilyOwningItsPhotoAndALaterFamilyUploadReplacesIt() = runBlocking {
+        val harness = CardWireHarness()
+        val familyPhoto = Uuid.random()
+        harness.seed(
+            familyPhoto, Uuid.random(), ProfileAttributeTypes.PHOTO, "connected",
+            buildJsonObject { put(ProfileAttributeTypes.KEY_PROFILE_IMAGE, "family-key") }, 0, listOf(FAMILY_CIRCLE_ID),
+        )
+        harness.seed(
+            Uuid.random(), Uuid.random(), ProfileAttributeTypes.PHONE, "connected",
+            buildJsonObject { put(ProfileAttributeTypes.KEY_PHONE, "+14155550123") }, 0, listOf(FAMILY_CIRCLE_ID),
+        )
+        val repository = harness.profileRepository()
+        val source = ProfileCardViewModelTest.FakeSource(emptyList()).apply {
+            profileRepository = repository
+            liveCards = { repository.loadAttributes() }
+            circleList = circles
+        }
+        val cardVm = ProfileCardViewModel(source) { ProfileCardViewModelTest.FakeHost() }.also { it.startHost() }
+        suspend fun awaitCard(condition: (ProfileCardUiState) -> Boolean) =
+            withContext(Dispatchers.Default) { withTimeout(10_000) { cardVm.uiState.first(condition) } }
+        awaitCard { it.cards.any { c -> c.audience == friends } && it.attributes.isNotEmpty() }
+        cardVm.onCardOpened(friends)
+        awaitCard { it.selectedAudience == friends && it.importSources.any { s -> s.audience == family } }
+
+        cardVm.onImportRequested(family)
+        withContext(Dispatchers.Default) { withTimeout(10_000) { while (harness.puts < 1) delay(10) } }
+        awaitCard { !it.isContentBusy && it.importSources.none { s -> s.audience == family } }
+
+        val after = repository.loadAttributes()
+        assertEquals(familyPhoto, after.ownPhotoFor(family)?.id)
+        assertNull(after.ownPhotoFor(friends))
+        assertEquals(listOf(FAMILY_CIRCLE_ID), after.single { it.id == familyPhoto }.acl.circleIdList)
+        assertEquals(0, harness.photoPutBodies.size)
+
+        val bus = CropResultBus()
+        val avatar = viewModel(harness, bus)
+        assertEquals(familyPhoto, avatar.state.value.circleSlot(FAMILY_CIRCLE_ID).existing?.id)
+        assertNull(avatar.state.value.circleSlot(FRIENDS_CIRCLE_ID).existing)
+
+        uploadFamilyPhoto(avatar, bus, awaitStored = false)
+        withContext(Dispatchers.Default) { withTimeout(10_000) { while (harness.photoPutBodies.isEmpty()) delay(10) } }
+
+        assertEquals(familyPhoto.toString(), harness.photoPutBodies.single()["id"]!!.jsonPrimitive.content)
+        assertEquals(1, repository.photoAttributes().size)
+    }
+
+    @Test
     fun aServerThatDropsCircleIdsFailsTheUploadAndLeavesNoStrayPhotoBehind() = runBlocking {
         val harness = CardWireHarness(photoCircleIds = false)
         val publicId = seedPublicPhoto(harness)

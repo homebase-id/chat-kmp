@@ -78,6 +78,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -119,6 +120,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material3.SnackbarResult
+import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditAction
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditEvent
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditViewModel
@@ -146,9 +150,16 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.resources.profile_card_import_undo
+import id.homebase.resources.profile_card_import_public_title
+import id.homebase.resources.profile_card_import_public_message
+import id.homebase.resources.profile_card_import_public_confirm
+import id.homebase.resources.profile_card_import_done
 import id.homebase.resources.profile_avatar_edit_error_upload
 import id.homebase.resources.profile_avatar_edit_error_too_large
 import id.homebase.resources.profile_avatar_edit_error_delete
+import id.homebase.resources.cancel
+import id.homebase.resources.profile_card_audience_public
 
 private val ACTION_HEIGHT = ButtonDefaults.MinHeight
 private val APP_ONLY_LABEL_MIN_ROOM = 216.dp
@@ -199,6 +210,8 @@ fun ProfileCardEditorScreen(
     val errAvatarUpload = stringResource(MR.string.profile_avatar_edit_error_upload)
     val errAvatarTooLarge = stringResource(MR.string.profile_avatar_edit_error_too_large)
     val errAvatarDelete = stringResource(MR.string.profile_avatar_edit_error_delete)
+    val importUndo = stringResource(MR.string.profile_card_import_undo)
+    val publicLabel = stringResource(MR.string.profile_card_audience_public)
     val errCard = stringResource(MR.string.profile_card_error)
     val errSave = stringResource(MR.string.profile_card_design_save_failed)
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
@@ -256,6 +269,16 @@ fun ProfileCardEditorScreen(
                 ProfileCardEvent.CardFailed -> launch { snackbarHostState.showSnackbar(errCard) }
                 ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
                 ProfileCardEvent.ContentSaveFailed -> launch { snackbarHostState.showSnackbar(errContent) }
+                is ProfileCardEvent.ContentImported -> launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = TranslationUtil.getString(MR.string.profile_card_import_done, (event.from as? CardAudience.Circle)?.label?.ifBlank { null } ?: publicLabel),
+                        actionLabel = importUndo,
+                        withDismissAction = true,
+                        duration = SnackbarDuration.Indefinite,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) viewModel.onImportUndone()
+                }
+                ProfileCardEvent.ImportUndoExpired -> snackbarHostState.currentSnackbarData?.dismiss()
                 is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed, ProfileCardEvent.ResetFailed -> Unit
             }
         }
@@ -321,6 +344,7 @@ fun ProfileCardEditorScreen(
             onRemovePhoto = {
                 avatarViewModel.onAction(ProfileAvatarEditAction.RemoveRequested(card.photoVisibility, circle?.id))
             },
+            onImport = viewModel::onImportRequested,
             snackbarHostState = snackbarHostState,
             onRequestDesignAccess = viewModel::onPublishRetry,
             onContentToggle = viewModel::onContentToggled,
@@ -344,7 +368,26 @@ fun ProfileCardEditorScreen(
         }
         DesignAccessPrompt(shown = uiState.isDesignAccessPromptShown, viewModel = viewModel)
         PhotoRemovalConfirmDialog(avatarState.removalToConfirm, avatarViewModel::onAction)
+        if (uiState.pendingImport != null) {
+            ImportPublicDialog(onConfirm = viewModel::onImportConfirmed, onDismiss = viewModel::onImportCancelled)
+        }
     }
+}
+
+@Composable
+private fun ImportPublicDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
+        title = { Text(stringResource(MR.string.profile_card_import_public_title), textAlign = TextAlign.Center) },
+        text = { Text(stringResource(MR.string.profile_card_import_public_message)) },
+        confirmButton = {
+            Button(onClick = onConfirm, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.profile_card_import_public_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
+        },
+    )
 }
 
 /** Stateless so the capture test can render it around a stand-in for the card. */
@@ -364,6 +407,7 @@ internal fun ProfileCardEditorContent(
     onChangeDesign: () -> Unit = {},
     onChangePhoto: () -> Unit = {},
     onRemovePhoto: () -> Unit = {},
+    onImport: (CardAudience) -> Unit = {},
     onRequestDesignAccess: () -> Unit = {},
     onContentToggle: (Uuid, Boolean) -> Unit = { _, _ -> },
     onContentAudience: (Uuid, ProfileAudience) -> Unit = { _, _ -> },
@@ -425,6 +469,7 @@ internal fun ProfileCardEditorContent(
                     onChangeDesign = onChangeDesign,
                     onChangePhoto = onChangePhoto,
                     onRemovePhoto = onRemovePhoto,
+                    onImport = onImport,
                     metrics = metrics,
                     shape = shape,
                     modifier = modifier,
@@ -627,6 +672,7 @@ private fun EditorPanel(
     onChangeDesign: () -> Unit,
     onChangePhoto: () -> Unit,
     onRemovePhoto: () -> Unit,
+    onImport: (CardAudience) -> Unit,
     metrics: PanelMetrics,
     shape: Shape,
     modifier: Modifier = Modifier,
@@ -640,6 +686,7 @@ private fun EditorPanel(
     val optionsNeeded = CAPTION_LINE * fontScale + CHIP_HEIGHT * grow + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
     val body by animateDpAsState(maxOf(metrics.body, optionsNeeded), motion.defaultSpatialSpec())
     val items = remember(uiState.attributes, uiState.circles, uiState.selectedAudience) { uiState.contentItems }
+    val importSources = remember(uiState.attributes, uiState.circles, uiState.cards, uiState.selectedAudience) { uiState.importSources }
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = shape,
@@ -659,11 +706,13 @@ private fun EditorPanel(
                     circles = uiState.circles,
                     photo = photo,
                     enabled = !uiState.isContentBusy && !uiState.loadFailed,
+                    importSources = importSources,
                     onToggle = onContentToggle,
                     onAudience = onContentAudience,
                     onAdd = onContentAdd,
                     onChangePhoto = onChangePhoto,
                     onRemovePhoto = onRemovePhoto,
+                    onImport = onImport,
                     onChangeDesign = onChangeDesign,
                 )
                 return@Column

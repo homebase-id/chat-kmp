@@ -2396,6 +2396,14 @@
     <string name="profile_card_photo_label">Card photo</string>
     <string name="profile_card_photo_own_circle">Only on this card</string>
     <string name="profile_card_photo_circle_pending">A photo of its own for this card needs a Homebase server update that hasn't shipped yet. Until then it shows the photo it inherits.</string>
+    <string name="profile_card_import_action">Copy from…</string>
+    <string name="profile_card_import_title">Copy from another card</string>
+    <string name="profile_card_import_hint">Shows that card's details on this one too. You can undo it.</string>
+    <string name="profile_card_import_done">Copied from %1$s</string>
+    <string name="profile_card_import_undo">Undo</string>
+    <string name="profile_card_import_public_title">Show these to everyone?</string>
+    <string name="profile_card_import_public_message">These items become visible to everyone who sees your public card.</string>
+    <string name="profile_card_import_public_confirm">Show to everyone</string>
     <string name="profile_card_audience_public">Public</string>
     <string name="profile_card_audience_circle">Circle</string>
     <string name="profile_card_intro_title">Your cards</string>

@@ -90,3 +90,34 @@ internal suspend fun ProfileRepository.saveWithAudience(
             acl = audience.toAcl(),
         )
 }
+
+// Keeps previous's circle spelling and order, so an undo is byte-identical.
+internal suspend fun ProfileRepository.restoreAcl(current: ProfileAttribute, previous: ProfileAttribute): ProfileAttribute {
+    val response = save(
+        type = current.type,
+        data = current.data,
+        visibility = previous.visibility,
+        knownId = current.id,
+        knownVersionTag = current.versionTag,
+        priority = previous.priority,
+        circleIds = previous.acl.circleIdList.orEmpty(),
+    )
+    return current.copy(versionTag = response.versionTag, visibility = previous.visibility, acl = previous.acl)
+}
+
+// Every circle gone: only the owner could see it, while Connected with no circles would mean every connection.
+internal fun ProfileAudience.keepingOtherCircles(kept: (String) -> Boolean): ProfileAudience {
+    if (this !is ProfileAudience.Circles) return this
+    val other = otherIds.filter(kept).toSet()
+    return if (ids.isEmpty() && other.isEmpty() && otherIds.isNotEmpty()) ProfileAudience.OnlyMe else copy(otherIds = other)
+}
+
+internal fun ProfileAttribute.keepingCircles(kept: (String) -> Boolean): ProfileAttribute {
+    val stored = acl.circleIdList.orEmpty()
+    val left = stored.filter(kept)
+    return when {
+        left.size == stored.size -> this
+        left.isEmpty() -> copy(visibility = ProfileVisibility.OWNER, acl = AccessControlList(requiredSecurityGroup = ProfileVisibility.OWNER.wireValue))
+        else -> copy(acl = acl.copy(circleIdList = left))
+    }
+}

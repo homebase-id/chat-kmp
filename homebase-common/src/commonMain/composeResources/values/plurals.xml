@@ -48,4 +48,8 @@
         <item quantity="one">%1$d email still trying to send</item>
         <item quantity="other">%1$d emails still trying to send</item>
     </plurals>
+    <plurals name="profile_card_import_count">
+        <item quantity="one">%1$d new item</item>
+        <item quantity="other">%1$d new items</item>
+    </plurals>
 </resources>
