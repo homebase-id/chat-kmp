@@ -170,6 +170,24 @@ class ProfileCardPhotosTest {
     }
 
     @Test
+    fun withTwoPublicPhotosTheSlotHoldsTheOneThePublicCardShows() = runBlocking {
+        val harness = CardWireHarness()
+        harness.seed(
+            Uuid.random(), Uuid.random(), ProfileAttributeTypes.PHOTO, "anonymous",
+            buildJsonObject { put(ProfileAttributeTypes.KEY_PROFILE_IMAGE, "later") }, 9000, null,
+        )
+        val shown = Uuid.random()
+        harness.seed(
+            shown, Uuid.random(), ProfileAttributeTypes.PHOTO, "anonymous",
+            buildJsonObject { put(ProfileAttributeTypes.KEY_PROFILE_IMAGE, "shown") }, 1000, null,
+        )
+        val vm = viewModel(harness)
+
+        assertEquals(shown, vm.state.value.photos.photoFor(CardAudience.Public)?.id)
+        assertEquals(shown, vm.state.value.anonymous.existing?.id)
+    }
+
+    @Test
     fun removeAsksFirstAndOnlyDeletesOnceConfirmed() = runBlocking {
         val harness = CardWireHarness()
         val publicId = seedPublicPhoto(harness)

@@ -56,12 +56,13 @@ internal fun CardAudience.aclFilter(): AclFilter = when (this) {
 
 internal fun List<ProfileAttribute>.photoFor(card: CardAudience): ProfileAttribute? = visiblePhoto(card.aclFilter())
 
-internal fun List<ProfileAttribute>.ownPhotoFor(card: CardAudience): ProfileAttribute? = firstOrNull {
-    it.type == ProfileAttributeTypes.PHOTO && when (card) {
+// Picked in the same order as photoFor, so with several Public photos the one the card shows is the one it owns.
+internal fun List<ProfileAttribute>.ownPhotoFor(card: CardAudience): ProfileAttribute? = filter {
+    when (card) {
         CardAudience.Public -> it.visibility == ProfileVisibility.ANONYMOUS
         is CardAudience.Circle -> it.visibility == ProfileVisibility.CONNECTED && it.isPhotoScopedTo(card.id)
     }
-}
+}.visiblePhoto { true }
 
 /** [design] stays a raw string so a design this build doesn't know survives a read-modify-write; [extra] keeps unknown `data` keys for the same reason. */
 data class ProfileCard(
