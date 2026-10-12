@@ -13,6 +13,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
+import id.homebase.feed.MainActivity
 import id.homebase.feed.R
 
 /** Heads-up / full-screen "incoming call" notification, replaced or cancelled by callId. */
@@ -92,9 +93,8 @@ class IncomingCallNotifier(private val context: Context) {
         const val ACTION_HANGUP = "id.homebase.feed.CALL_HANGUP"
         private const val RING_TIMEOUT_MS = 45_000L
 
-        fun openIntent(context: Context, callId: String, accept: Boolean): Intent = Intent(Intent.ACTION_MAIN).apply {
-            setPackage(context.packageName)
-            addCategory(Intent.CATEGORY_LAUNCHER)
+        // Explicit: the launcher filter has no CATEGORY_DEFAULT, so an implicit MAIN/LAUNCHER start resolves to nothing.
+        fun openIntent(context: Context, callId: String, accept: Boolean): Intent = Intent(context, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             putExtra(EXTRA_CALL_ID, callId)
             if (accept) putExtra(EXTRA_ACCEPT, true)
