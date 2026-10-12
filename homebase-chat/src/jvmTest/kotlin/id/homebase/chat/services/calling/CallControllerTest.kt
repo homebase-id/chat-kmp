@@ -8,7 +8,12 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.onSubscription
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -330,20 +335,57 @@ class CallControllerTest {
 
     @Test
     fun concurrentFirstUseOfOneInboxLosesNoSignal() = runTest {
-        val net = LoopbackSignaling(now = { testScheduler.currentTime })
+        val users = 8
+        val senders = 8
         withContext(Dispatchers.Default) {
-            coroutineScope {
-                repeat(8) { i -> launch { repeat(200) { net.endpoint("user$i") } } }
+            repeat(300) { round ->
+                val net = LoopbackSignaling(now = { 0L })
+                val subscribed = CompletableDeferred<Unit>()
+                val gate = CompletableDeferred<Unit>()
+                val received = Channel<InboundSignal>(Channel.UNLIMITED)
+                val collector = launch {
+                    (net.endpoint("target").incoming as SharedFlow<InboundSignal>).onSubscription { subscribed.complete(Unit) }
+                        .collect { if (it.signal.callId.startsWith("c")) received.trySend(it) }
+                }
+                coroutineScope {
+                    repeat(users) { i -> launch { gate.await(); repeat(users) { net.endpoint("user$it") } } }
+                    repeat(senders) { i ->
+                        launch {
+                            gate.await()
+                            while (!subscribed.isCompleted) net.deliver("target", "warm", CallSignal.Ring("warm"), 0)
+                            subscribed.await()
+                            net.deliver("target", "p$i", CallSignal.Ring("c$i"), 0)
+                        }
+                    }
+                    gate.complete(Unit)
+                }
+                val ids = withTimeout(5_000) { List(senders) { received.receive().signal.callId } }
+                assertEquals((0 until senders).map { "c$it" }.toSet(), ids.toSet(), "round $round")
+                collector.cancel()
+
+                repeat(users) { i ->
+                    val got = Channel<InboundSignal>(Channel.UNLIMITED)
+                    val job = launch(Dispatchers.Unconfined) {
+                        net.endpoint("user$i").incoming.collect { got.trySend(it) }
+                    }
+                    net.deliver("user$i", "x", CallSignal.Ring("u$i"), 0)
+                    assertEquals("u$i", withTimeout(5_000) { got.receive() }.signal.callId, "round $round user$i")
+                    job.cancel()
+                }
             }
         }
-        val ep = net.endpoint("target")
-        val got = mutableListOf<InboundSignal>()
-        val job = launch(UnconfinedTestDispatcher(testScheduler)) { ep.incoming.collect { got += it } }
-        withContext(Dispatchers.Default) {
-            coroutineScope { repeat(8) { i -> launch { net.deliver("target", "p$i", CallSignal.Ring("c$i"), 0) } } }
-        }
-        assertEquals(8, got.size)
-        job.cancel()
+    }
+
+    @Test
+    fun ringTimeoutMissesOnBothSidesWithNetworkLatency() = runTest {
+        val net = LoopbackSignaling(latencyMs = 500, now = { testScheduler.currentTime })
+        val a = Side(frodo, this, net, FakeCallScript())
+        val b = Side(sam, this, net, FakeCallScript())
+        a.controller.startCall(sam, video = false)
+        advanceTimeBy(RING_TIMEOUT_MS + 5_000)
+        assertEquals(CallPhase.Ended(CallEndReason.Missed), a.phase)
+        assertEquals(CallPhase.Ended(CallEndReason.Missed), b.phase)
+        assertTrue(net.sent.any { it.from == frodo && it.signal == CallSignal.Hangup(a.state.callId!!, HangupReason.Missed) })
     }
 
     private fun failingOfferEnds(error: Throwable, expected: FailReason) = runTest {

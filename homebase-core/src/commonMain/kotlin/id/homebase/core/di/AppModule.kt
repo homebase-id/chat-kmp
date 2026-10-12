@@ -55,7 +55,9 @@ import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.calling.CallController
 import id.homebase.chat.services.calling.CallEngineFactory
+import id.homebase.chat.services.calling.CallSignaling
 import id.homebase.chat.services.calling.FakeCallEngine
 import id.homebase.chat.services.calling.LoopbackSignaling
 import id.homebase.chat.services.livelocation.LiveLocationShareService
@@ -223,6 +225,7 @@ import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
+import org.koin.core.parameter.parametersOf
 import org.koin.core.qualifier.named
 import org.koin.dsl.bind
 import org.koin.dsl.module
@@ -371,9 +374,19 @@ val appModule = module {
         )
     }
     single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
-    // Fakes until the real engine and LiveRelay signaling land; the Call lab drives CallController with these.
+    // Fakes in every build type (release included) until the real engine and LiveRelay signaling land;
+    // swap the CallSignaling / CallEngineFactory bindings below and CallController callers stay untouched.
     single { LoopbackSignaling() }
-    single { CallEngineFactory { FakeCallEngine(scope = get()) } }
+    factory<CallSignaling> { (selfOdinId: String) -> get<LoopbackSignaling>().endpoint(selfOdinId) }
+    single<CallEngineFactory> { CallEngineFactory { FakeCallEngine(scope = get()) } }
+    factory { (selfOdinId: String) ->
+        CallController(
+            selfOdinId = selfOdinId,
+            signaling = get<CallSignaling> { parametersOf(selfOdinId) },
+            engineFactory = get(),
+            scope = get(),
+        )
+    }
     single { EmergencyLocateStore(eventBus = get(), scope = get()) }
     single { EmergencyLocateService(temporalDriveReadProvider = get(), store = get()) }
     // Readiness gate for "Share live location": activated add-on + location permission, so the chat

@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 @Serializable
-enum class HangupReason { Normal, Declined, Busy, Cancelled }
+enum class HangupReason { Normal, Declined, Busy, Cancelled, Missed }
 
 /**
  * Call signalling payload, carried as the base64 `blob` of an odin-core LiveRelay message.

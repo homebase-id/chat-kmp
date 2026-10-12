@@ -125,7 +125,10 @@ class CallStateMachine(private val selfOdinId: String) {
                     s,
                     if (sig.reason == HangupReason.Busy) CallEndReason.Busy else CallEndReason.Declined,
                 )
-                CallPhase.Incoming -> end(s, CallEndReason.Cancelled)
+                CallPhase.Incoming -> end(
+                    s,
+                    if (sig.reason == HangupReason.Missed) CallEndReason.Missed else CallEndReason.Cancelled,
+                )
                 else -> end(s, CallEndReason.Hangup(remote = true))
             }
         }
@@ -179,7 +182,7 @@ class CallStateMachine(private val selfOdinId: String) {
         if (!s.isActive || e.callId != s.callId) return CallTransition(s)
         return when (e.timer) {
             CallTimer.Ring -> when (s.phase) {
-                CallPhase.Outgoing -> end(s, CallEndReason.Missed, HangupReason.Cancelled)
+                CallPhase.Outgoing -> end(s, CallEndReason.Missed, HangupReason.Missed)
                 CallPhase.Incoming -> end(s, CallEndReason.Missed)
                 else -> CallTransition(s)
             }
