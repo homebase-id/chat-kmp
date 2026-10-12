@@ -213,6 +213,8 @@ compose.desktop {
                 iconFile.set(project.rootProject.file("icons/icon.icns"))  // Path to your .icns file
                 packageName = "Homebase Chat"
                 bundleID = "id.homebase.feed"
+                entitlementsFile.set(project.file("packaging/macos/entitlements.plist"))
+                runtimeEntitlementsFile.set(project.file("packaging/macos/runtime-entitlements.plist"))
 
                 // Add Info.plist configuration for macOS
                 infoPlist {
