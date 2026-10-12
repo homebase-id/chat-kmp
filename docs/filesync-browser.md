@@ -70,3 +70,27 @@ Every file and folder is one Homebase file:
 - Delete: delete a folder's contents from the bottom up, then the folder. Desktop clients move
   local copies they lose to `.hbsync/trash/`, so a deletion from the phone can be recovered there.
 - A retry that gets 4105 (`ExistingFileWithUniqueId`) means the first create already succeeded.
+
+## Recently deleted
+filesync's own rules are in its node schema ("Recently deleted") and `deleted.rs`; the mini-app follows them exactly.
+- **Removed:** `archivalStatus` 2. Its `rm: {at, root}` says when, and which delete took it along (itself, or a
+  folder it was in). With status 2 and no readable `rm`, it was removed at the header's `updated`, on its own.
+  Any other status is live, even with an `rm` left behind.
+- **Lists:** the whole drive with `archivalStatus: [2]`. The topmost items are the ones whose parent isn't
+  removed too; each counts the items below it with the same `root`.
+- **Restore** is a metadata-only update by fileId:
+  - It uses the node's own key with a new IV, its `versionTag`, an empty manifest (the payload stays) and
+    `archivalStatus` 0.
+  - The content is written back as read, unknown keys included, minus `rm`.
+  - Order: the removed folders above the item first, outermost first, then the item, then what its delete
+    took along.
+  - An item whose folder is gone for good goes to the top level; one whose folder didn't come back stays
+    removed.
+  - A name a live sibling took meanwhile gets ` (restored)`, then ` (restored 2)` up to 99, before the
+    extension.
+  - A `VersionTagMismatch` or not-found skips the item: another device changed it.
+- **Delete forever:** only what the user saw.
+  - Re-read each item first, and leave it if its `versionTag` changed.
+  - Delete files before folders (`delete-batch/by-file-id`), which leaves tombstones.
+  - The 30-day purge is the desktops' job; the phone never purges on its own.
+- **Every write sends `archivalStatus`:** the server replaces the whole header and takes a missing one for 0.

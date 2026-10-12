@@ -156,6 +156,14 @@ sealed class Route {
     data object Filesync : Route()
 
     @Serializable
+    @SerialName("filesync-trash")
+    data object FilesyncTrash : Route()
+
+    @Serializable
+    @SerialName("filesync-recent")
+    data object FilesyncRecent : Route()
+
+    @Serializable
     @SerialName("vault-settings")
     data object VaultSettings : Route()
 

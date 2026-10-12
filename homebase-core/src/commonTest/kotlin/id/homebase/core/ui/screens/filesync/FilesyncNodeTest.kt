@@ -6,10 +6,12 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.AppFileMetaData
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlin.io.encoding.Base64
 import kotlin.test.Test
@@ -32,6 +34,7 @@ class FilesyncNodeTest {
         content: String?,
         payloads: List<PayloadDescriptor>? = null,
         isEncrypted: Boolean = true,
+        status: ArchivalStatus? = null,
     ) = HomebaseFile(
         fileId = Uuid.random(),
         driveId = FilesyncProtocol.DriveAlias,
@@ -40,7 +43,14 @@ class FilesyncNodeTest {
         keyHeader = KeyHeader(ByteArray(16), SecureByteArray(fileKey)),
         fileMetadata = FileMetadata(
             isEncrypted = isEncrypted,
-            appData = AppFileMetaData(uniqueId = nodeId, groupId = FilesyncProtocol.RootNodeId, fileType = fileType, content = content),
+            updated = UnixTimeUtc(UPDATED_MS),
+            appData = AppFileMetaData(
+                uniqueId = nodeId,
+                groupId = FilesyncProtocol.RootNodeId,
+                fileType = fileType,
+                content = content,
+                archivalStatus = status,
+            ),
             payloads = payloads,
         ),
         serverMetadata = ServerMetadata(),
@@ -50,20 +60,22 @@ class FilesyncNodeTest {
 
     @Test
     fun aFolderHasANameAndNoPayload() {
-        val (node, payload) = row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"Photos"}""").toFilesyncNode()!!
+        val (node, handle) = row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"Photos"}""").toFilesyncNode()!!
         assertTrue(node.isFolder)
         assertEquals("Photos", node.name)
         assertEquals(nodeId, node.nodeId)
-        assertNull(payload)
+        assertNull(handle.payload)
+        assertNull(node.removal)
     }
 
     @Test
     fun aFileCarriesItsPayloadKeyAndHashAndIgnoresUnknownKeys() {
-        val (node, payload) = row(
+        val (node, handle) = row(
             FilesyncProtocol.FileFileType,
             """{"v":1,"name":"Report.pdf","mtime":1759920000123,"size":52311,"x":true,"later":"field"}""",
             listOf(syncData),
         ).toFilesyncNode()!!
+        val payload = handle.payload
         assertFalse(node.isFolder)
         assertEquals(1759920000123, node.modifiedMs)
         assertEquals(52311, node.sizeBytes)
@@ -96,5 +108,52 @@ class FilesyncNodeTest {
     @Test
     fun aLaterVersionIsStillListed() {
         assertEquals("next.txt", row(FilesyncProtocol.FolderFileType, """{"v":2,"name":"next.txt"}""").toFilesyncNode()!!.first.name)
+    }
+
+    @Test
+    fun aWriteKeepsEveryKeyItRead() {
+        val (_, handle) = row(
+            FilesyncProtocol.FileFileType,
+            """{"v":1,"name":"a.txt","mtime":1,"size":5,"x":true,"ct":1451606400123,"later":{"k":1}}""",
+            listOf(syncData),
+        ).toFilesyncNode()!!
+        assertEquals(setOf("v", "name", "mtime", "size", "x", "ct", "later"), handle.content.keys)
+    }
+
+    // The content of filesync's fixture removed-node.json.
+    @Test
+    fun aRemovedNodeTakesItsRemovalFromRm() {
+        val content = """{"v":1,"name":"Résumé.txt","mtime":1759920000123,"size":1025,"rm":{"at":1759920005000,"root":"c9f0f895-fb98-4b91-9b5e-0a1b2c3d4e60"}}"""
+        val (node, _) = row(FilesyncProtocol.FileFileType, content, listOf(syncData), status = ArchivalStatus.Removed).toFilesyncNode()!!
+        assertEquals(FilesyncRemoval(1759920005000, Uuid.parse("c9f0f895-fb98-4b91-9b5e-0a1b2c3d4e60")), node.removal)
+    }
+
+    @Test
+    fun aRemovedNodeWithoutAReadableRmIsRemovedOnItsOwnAtItsUpdate() {
+        for (rm in listOf("", ""","rm":{"at":"soon","root":"x"}""", ""","rm":{"at":5}""")) {
+            val content = """{"v":1,"name":"a"$rm}"""
+            val (node, _) = row(FilesyncProtocol.FolderFileType, content, status = ArchivalStatus.Removed).toFilesyncNode()!!
+            assertEquals(FilesyncRemoval(UPDATED_MS, nodeId), node.removal, rm)
+        }
+    }
+
+    @Test
+    fun aFractionalRemovalTimeIsRounded() {
+        val root = Uuid.random()
+        val content = """{"v":1,"name":"a","rm":{"at":1759920005000.6,"root":"$root"}}"""
+        val (node, _) = row(FilesyncProtocol.FolderFileType, content, status = ArchivalStatus.Removed).toFilesyncNode()!!
+        assertEquals(FilesyncRemoval(1759920005001, root), node.removal)
+    }
+
+    @Test
+    fun onlyStatusTwoRemoves() {
+        val content = """{"v":1,"name":"a","rm":{"at":5,"root":"${Uuid.random()}"}}"""
+        for (status in listOf(null, ArchivalStatus.None, ArchivalStatus.Archived)) {
+            assertNull(row(FilesyncProtocol.FolderFileType, content, status = status).toFilesyncNode()!!.first.removal)
+        }
+    }
+
+    private companion object {
+        const val UPDATED_MS = 1759920009000
     }
 }

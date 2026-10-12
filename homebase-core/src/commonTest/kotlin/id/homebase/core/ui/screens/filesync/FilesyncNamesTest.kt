@@ -60,4 +60,31 @@ class FilesyncNamesTest {
         assertTrue(name.endsWith(".jpeg"))
         assertEquals(name, name.encodeToByteArray().decodeToString())
     }
+
+    @Test
+    fun aRestoredItemKeepsItsNameWhileNoLiveSiblingHasIt() {
+        assertEquals("Report.pdf", FilesyncNames.restoredName("Report.pdf", taken("other.pdf")))
+    }
+
+    @Test
+    fun aRestoredItemWhoseNameWasTakenIsTaggedBeforeItsExtension() {
+        val once = taken("report.PDF")
+        assertEquals("Report (restored).pdf", FilesyncNames.restoredName("Report.pdf", once))
+        assertEquals(
+            "Report (restored 2).pdf",
+            FilesyncNames.restoredName("Report.pdf", once + FilesyncNames.key("Report (restored).pdf")),
+        )
+        assertEquals(".env (restored)", FilesyncNames.restoredName(".env", taken(".env")))
+        assertEquals("Makefile (restored)", FilesyncNames.restoredName("Makefile", taken("Makefile")))
+    }
+
+    @Test
+    fun aRestoredNameStaysWithinTheLimitAndGivesUpAfter99() {
+        val long = "a".repeat(251) + ".txt"
+        val restored = FilesyncNames.restoredName(long, taken(long))!!
+        assertTrue(restored.endsWith(" (restored).txt") && restored.encodeToByteArray().size <= 255, restored)
+
+        val all = taken("x.txt", "x (restored).txt") + (2..99).map { FilesyncNames.key("x (restored $it).txt") }
+        assertEquals(null, FilesyncNames.restoredName("x.txt", all))
+    }
 }

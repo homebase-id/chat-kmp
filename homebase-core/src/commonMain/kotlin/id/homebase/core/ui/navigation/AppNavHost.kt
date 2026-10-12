@@ -199,7 +199,9 @@ import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.webdrop.onboarding.WebDropOnboardingScreen
 import id.homebase.core.filesync.FilesyncPreferences
 import id.homebase.core.ui.screens.filesync.FilesyncCheckingScreen
+import id.homebase.core.ui.screens.filesync.FilesyncRecentScreen
 import id.homebase.core.ui.screens.filesync.FilesyncScreen
+import id.homebase.core.ui.screens.filesync.FilesyncTrashScreen
 import id.homebase.core.ui.screens.filesync.FilesyncUiAction
 import id.homebase.core.ui.screens.filesync.FilesyncViewModel
 import id.homebase.core.ui.screens.filesync.onboarding.FilesyncOnboardingScreen
@@ -2132,9 +2134,25 @@ fun AppNavHost(
                                             setupInitiated = filesyncUiState.setupInitiated,
                                             onDismiss = { navController.popBackStack() },
                                         )
-                                        true -> FilesyncScreen(viewModel = filesyncViewModel)
+                                        true -> FilesyncScreen(
+                                            viewModel = filesyncViewModel,
+                                            onOpenTrash = { navController.navigate(Route.FilesyncTrash) },
+                                            onOpenRecent = { navController.navigate(Route.FilesyncRecent) },
+                                        )
                                     }
                                 }
+                            }
+                        }
+
+                        composable<Route.FilesyncTrash> {
+                            if (isAuthenticated) {
+                                FilesyncTrashScreen(viewModel = koinViewModel(), onBack = { navController.popBackStack() })
+                            }
+                        }
+
+                        composable<Route.FilesyncRecent> {
+                            if (isAuthenticated) {
+                                FilesyncRecentScreen(viewModel = koinViewModel(), onBack = { navController.popBackStack() })
                             }
                         }
 

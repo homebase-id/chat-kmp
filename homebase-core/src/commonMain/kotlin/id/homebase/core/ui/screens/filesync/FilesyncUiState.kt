@@ -4,9 +4,9 @@ import androidx.compose.runtime.Immutable
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
-/** One step of the breadcrumb trail; [name] is null for the top level. */
+/** One step of the breadcrumb trail; [name] is null for the top level, [removed] when it's in Recently deleted. */
 @Immutable
-data class FilesyncCrumb(val nodeId: Uuid, val name: String?)
+data class FilesyncCrumb(val nodeId: Uuid, val name: String?, val removed: Boolean = false)
 
 @Immutable
 data class FilesyncTransfer(val nodeId: Uuid, val progress: Float = 0f)
@@ -36,6 +36,7 @@ data class FilesyncUiState(
     val isLoading: Boolean = false,
     val loadFailed: Boolean = false,
     val transfer: FilesyncTransfer? = null,
+    val showDeleted: Boolean = false,
 )
 
 sealed interface FilesyncUiAction {
@@ -53,12 +54,18 @@ sealed interface FilesyncUiAction {
     data class CreateFolder(val name: String) : FilesyncUiAction
     data class RetryUpload(val id: Uuid) : FilesyncUiAction
     data class DismissUpload(val id: Uuid) : FilesyncUiAction
+    data object ToggleShowDeleted : FilesyncUiAction
+    data class Restore(val nodeId: Uuid) : FilesyncUiAction
 }
 
-enum class FilesyncError { DownloadFailed, Damaged, UploadFailed, TooLarge, FolderFailed }
+enum class FilesyncError { DownloadFailed, Damaged, UploadFailed, TooLarge, FolderFailed, RestoreFailed, DeleteFailed }
+
+/** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */
+enum class FilesyncNotice { Restored, DeletedForever, ChangedElsewhere }
 
 sealed interface FilesyncUiEvent {
     data class OpenFile(val path: String) : FilesyncUiEvent
     data class SaveFile(val path: String, val name: String) : FilesyncUiEvent
     data class Error(val error: FilesyncError) : FilesyncUiEvent
+    data class Notice(val notice: FilesyncNotice) : FilesyncUiEvent
 }

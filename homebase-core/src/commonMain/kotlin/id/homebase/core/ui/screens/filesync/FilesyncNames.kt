@@ -7,6 +7,7 @@ import id.homebase.core.util.trimToUtf8Boundary
 internal object FilesyncNames {
     private const val MAX_BYTES = 255
     private const val FALLBACK = "untitled"
+    private const val MAX_RESTORED = 99
 
     /** Two names collide in a folder when their keys match: case and Unicode form are ignored, as on macOS and Windows. */
     fun key(name: String): String = name.toNfc().lowercase()
@@ -21,6 +22,15 @@ internal object FilesyncNames {
             n++
         }
         return candidate
+    }
+
+    /** [name] if no live sibling uses it, else "(restored)", "(restored 2)"… up to 99 as the desktop names it; null when all are taken. */
+    fun restoredName(name: String, takenKeys: Set<String>): String? {
+        if (key(name) !in takenKeys) return name
+        val (stem, extension) = split(name)
+        return (1..MAX_RESTORED).asSequence()
+            .map { n -> fit(stem, if (n == 1) " (restored)" else " (restored $n)", extension) }
+            .firstOrNull { key(it) !in takenKeys }
     }
 
     /** Whether a name read from a node keeps the rules; NFC isn't checked, as another client's name is shown as it is. */

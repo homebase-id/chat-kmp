@@ -3,12 +3,10 @@ package id.homebase.core.ui.screens.filesync
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.drives.files.PayloadDamagedException
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.filesync.FilesyncPreferences
 import id.homebase.core.filesync.FilesyncProtocol
-import id.homebase.core.util.isWeb
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -28,6 +26,7 @@ private const val TAG = "FilesyncViewModel"
 class FilesyncViewModel(
     private val repository: FilesyncRepository,
     private val uploadQueue: FilesyncUploadQueue,
+    private val editor: FilesyncEditor,
     val extendPermissionViewModel: ExtendPermissionViewModel,
     private val filesyncPreferences: FilesyncPreferences,
 ) : ViewModel() {
@@ -41,9 +40,14 @@ class FilesyncViewModel(
     private val _events = Channel<FilesyncUiEvent>(Channel.BUFFERED)
     val events: Flow<FilesyncUiEvent> = _events.receiveAsFlow()
 
-    private var payloads: Map<Uuid, FilesyncPayload> = emptyMap()
+    private var handles: Map<Uuid, FilesyncHandle> = emptyMap()
     private var loadJob: Job? = null
-    private var transferJob: Job? = null
+    private val transfers = FilesyncTransfers(
+        viewModelScope,
+        repository,
+        onTransfer = { change -> _uiState.update { it.copy(transfer = change(it.transfer)) } },
+        send = _events::send,
+    )
 
     // Not cleared by the dialog closing: its confirm button dismisses it before the grant arrives.
     private var setupRequested = false
@@ -70,6 +74,10 @@ class FilesyncViewModel(
             uploadQueue.changedFolders.collect { folderId ->
                 if (_uiState.value.path.last().nodeId == folderId) loadCurrentFolder()
             }
+        }
+
+        viewModelScope.launch {
+            editor.changed.collect { loadCurrentFolder() }
         }
 
         viewModelScope.launch {
@@ -111,16 +119,15 @@ class FilesyncViewModel(
             is FilesyncUiAction.NodeClicked -> {
                 val node = action.node
                 if (node.isFolder) {
-                    openPath(_uiState.value.path + FilesyncCrumb(node.nodeId, node.name))
+                    openPath(_uiState.value.path + FilesyncCrumb(node.nodeId, node.name, removed = node.removal != null))
                 } else {
-                    // The web can't hand a file to another app, so opening it means downloading it.
-                    transfer(node, save = isWeb())
+                    handles[node.nodeId]?.payload?.let { transfers.open(node, it) }
                 }
             }
 
-            is FilesyncUiAction.SaveClicked -> transfer(action.node, save = true)
+            is FilesyncUiAction.SaveClicked -> handles[action.node.nodeId]?.payload?.let { transfers.save(action.node, it) }
 
-            FilesyncUiAction.CancelTransfer -> transferJob?.cancel()
+            FilesyncUiAction.CancelTransfer -> transfers.cancel()
 
             is FilesyncUiAction.SaveHandedOff -> repository.discard(action.path)
 
@@ -131,6 +138,21 @@ class FilesyncViewModel(
             is FilesyncUiAction.DismissUpload -> uploadQueue.dismiss(action.id)
 
             is FilesyncUiAction.CreateFolder -> uploadQueue.createFolder(_uiState.value.path.last().nodeId, action.name)
+
+            FilesyncUiAction.ToggleShowDeleted -> {
+                val show = !_uiState.value.showDeleted
+                // A removed folder can only be browsed while deleted files show.
+                val path = if (show) _uiState.value.path else _uiState.value.path.takeWhile { !it.removed }
+                _uiState.update { it.copy(showDeleted = show, path = path, nodes = if (path == it.path) it.nodes else emptyList()) }
+                loadCurrentFolder()
+            }
+
+            is FilesyncUiAction.Restore -> viewModelScope.launch {
+                if (reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(action.nodeId) }) {
+                    // Its removed folders came back with it.
+                    _uiState.update { state -> state.copy(path = state.path.map { it.copy(removed = false) }) }
+                }
+            }
         }
     }
 
@@ -145,44 +167,14 @@ class FilesyncViewModel(
         loadJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, loadFailed = false) }
             try {
-                val folder = repository.listFolder(folderId)
-                payloads = folder.payloads
+                val folder = repository.listFolder(folderId, includeRemoved = _uiState.value.showDeleted)
+                handles = folder.handles
                 _uiState.update { it.copy(nodes = folder.nodes, isLoading = false) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Logger.e(e, TAG) { "listing folder $folderId failed" }
                 _uiState.update { it.copy(isLoading = false, loadFailed = true) }
-            }
-        }
-    }
-
-    private fun transfer(node: FilesyncNode, save: Boolean) {
-        val payload = payloads[node.nodeId] ?: return
-        if (transferJob?.isActive == true) return
-        transferJob = viewModelScope.launch {
-            _uiState.update { it.copy(transfer = FilesyncTransfer(node.nodeId)) }
-            try {
-                val path = repository.download(node.name, payload, forOpen = !save) { progress ->
-                    _uiState.update { it.copy(transfer = it.transfer?.copy(progress = progress)) }
-                }
-                _events.send(
-                    when {
-                        path == null -> FilesyncUiEvent.Error(FilesyncError.DownloadFailed)
-                        save -> FilesyncUiEvent.SaveFile(path, node.name)
-                        else -> FilesyncUiEvent.OpenFile(path)
-                    }
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: PayloadDamagedException) {
-                Logger.e(e, TAG) { "file ${node.nodeId} failed its hash check" }
-                _events.send(FilesyncUiEvent.Error(FilesyncError.Damaged))
-            } catch (e: Exception) {
-                Logger.e(e, TAG) { "download of ${node.nodeId} failed" }
-                _events.send(FilesyncUiEvent.Error(FilesyncError.DownloadFailed))
-            } finally {
-                _uiState.update { it.copy(transfer = null) }
             }
         }
     }

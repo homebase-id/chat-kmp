@@ -6,6 +6,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.RetryConfig
 import id.homebase.api.client.ServerException
 import id.homebase.api.client.drives.AccessControlList
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.client.drives.files.wholePercentBytes
@@ -76,18 +77,8 @@ class FilesyncUploader(
         onProgress: ((Float) -> Unit)? = null,
     ): Uuid {
         val nodeId = Uuid.random()
-        val metadata = UploadFileMetadata(
-            allowDistribution = false,
-            isEncrypted = true,
-            accessControlList = AccessControlList(requiredSecurityGroup = SecurityGroupType.Owner.value),
-            appData = UploadAppFileMetaData(
-                uniqueId = nodeId,
-                groupId = parentId,
-                fileType = fileType,
-                dataType = 0,
-                content = OdinSystemSerializer.serialize(content),
-            ),
-        ).encryptContent(keyHeader)
+        val metadata = filesyncMetadata(nodeId, parentId, fileType, OdinSystemSerializer.serialize(content), ArchivalStatus.None)
+            .encryptContent(keyHeader)
         val request = UploadFileRequest(
             driveId = FilesyncProtocol.DriveAlias,
             keyHeader = keyHeader,
@@ -113,3 +104,26 @@ class FilesyncUploader(
         const val CONTENT_VERSION = 1
     }
 }
+
+/** The whole header of a node: the server replaces it on every write and takes a missing archivalStatus for 0, so nothing is left out. */
+internal fun filesyncMetadata(
+    nodeId: Uuid,
+    parentId: Uuid,
+    fileType: Int,
+    content: String,
+    archivalStatus: ArchivalStatus,
+    versionTag: Uuid? = null,
+) = UploadFileMetadata(
+    allowDistribution = false,
+    isEncrypted = true,
+    accessControlList = AccessControlList(requiredSecurityGroup = SecurityGroupType.Owner.value),
+    appData = UploadAppFileMetaData(
+        uniqueId = nodeId,
+        groupId = parentId,
+        fileType = fileType,
+        dataType = 0,
+        archivalStatus = archivalStatus,
+        content = content,
+    ),
+    versionTag = versionTag,
+)

@@ -139,6 +139,9 @@ import id.homebase.core.ui.screens.webdrop.WebDropStream
 import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncRepository
 import id.homebase.core.ui.screens.filesync.FilesyncViewModel
+import id.homebase.core.ui.screens.filesync.FilesyncEditor
+import id.homebase.core.ui.screens.filesync.FilesyncRecentViewModel
+import id.homebase.core.ui.screens.filesync.FilesyncTrashViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
 import id.homebase.core.filesync.FilesyncPreferences
@@ -937,6 +940,7 @@ val appModule = module {
     single { FilesyncRepository(get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncUploadQueue(get(), get(), get()) }
+    single { FilesyncEditor(get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
     single { WebDropShareFlowState() }
 
@@ -1311,10 +1315,13 @@ val appModule = module {
         FilesyncViewModel(
             repository = get(),
             uploadQueue = get(),
+            editor = get(),
             extendPermissionViewModel = get(FilesyncPermissionQualifier),
             filesyncPreferences = get(),
         )
     }
+    viewModel { FilesyncTrashViewModel(get(), get()) }
+    viewModel { FilesyncRecentViewModel(get(), get()) }
     viewModel {
         WebDropViewModel(
             webDropService = get(),
