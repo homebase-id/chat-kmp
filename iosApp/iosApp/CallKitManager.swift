@@ -254,23 +254,33 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
 /// by the remote track; PiP starts by itself when the app backgrounds. Capturing the local camera in the background needs
 /// the com.apple.developer.avfoundation.multitasking-camera-access entitlement, which this app does not declare, so
 /// outgoing video freezes there while the remote video and audio keep going.
-final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVideoViewDelegate {
+final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVideoViewDelegate, AVPictureInPictureControllerDelegate {
     static let shared = PictureInPictureManager()
 
     private var controller: AVPictureInPictureController?
     private var content: AVPictureInPictureVideoCallViewController?
     private var renderer: RTCMTLVideoView?
     private var track: RTCVideoTrack?
+    private var possibleObservation: NSKeyValueObservation?
 
     func start(remoteTrack: Any) {
-        guard let remote = remoteTrack as? RTCVideoTrack else { return }
+        guard let remote = remoteTrack as? RTCVideoTrack else {
+            NSLog("[Call] PiP start skipped: remote track is %@", String(describing: type(of: remoteTrack)))
+            return
+        }
         DispatchQueue.main.async { [self] in
             teardown()
-            guard AVPictureInPictureController.isPictureInPictureSupported(),
-                  let source = UIApplication.shared.connectedScenes
+            guard AVPictureInPictureController.isPictureInPictureSupported() else {
+                NSLog("[Call] PiP start skipped: isPictureInPictureSupported=false")
+                return
+            }
+            guard let source = UIApplication.shared.connectedScenes
                     .compactMap({ $0 as? UIWindowScene }).flatMap({ $0.windows })
                     .first(where: { $0.isKeyWindow })?.rootViewController?.view
-            else { return }
+            else {
+                NSLog("[Call] PiP start skipped: no key window root view")
+                return
+            }
 
             let vc = AVPictureInPictureVideoCallViewController()
             vc.preferredContentSize = CGSize(width: 9, height: 16)
@@ -285,6 +295,12 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
                 contentSource: AVPictureInPictureController.ContentSource(
                     activeVideoCallSourceView: source, contentViewController: vc))
             pip.canStartPictureInPictureAutomaticallyFromInline = true
+            pip.delegate = self
+            possibleObservation = pip.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { c, _ in
+                NSLog("[Call] PiP possible=%d", c.isPictureInPicturePossible ? 1 : 0)
+            }
+            let audio = AVAudioSession.sharedInstance()
+            NSLog("[Call] PiP armed: audioCategory=%@ mode=%@", audio.category.rawValue, audio.mode.rawValue)
             controller = pip
             content = vc
             renderer = view
@@ -297,6 +313,7 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
     }
 
     private func teardown() {
+        possibleObservation = nil
         controller?.canStartPictureInPictureAutomaticallyFromInline = false
         if controller?.isPictureInPictureActive == true { controller?.stopPictureInPicture() }
         if let renderer { track?.remove(renderer); renderer.delegate = nil; renderer.removeFromSuperview() }
@@ -305,6 +322,13 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
         renderer = nil
         track = nil
     }
+
+    func pictureInPictureControllerWillStartPictureInPicture(_ c: AVPictureInPictureController) { NSLog("[Call] PiP will start") }
+    func pictureInPictureControllerDidStartPictureInPicture(_ c: AVPictureInPictureController) { NSLog("[Call] PiP started") }
+    func pictureInPictureController(_ c: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        NSLog("[Call] PiP failed to start: %@", String(describing: error))
+    }
+    func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) { NSLog("[Call] PiP stopped") }
 
     func videoView(_ videoView: RTCVideoRenderer, didChangeVideoSize size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
