@@ -8,6 +8,13 @@ import android.media.AudioManager
 import android.os.Build
 import org.koin.mp.KoinPlatformTools
 
+internal val BluetoothDeviceTypes = setOf(AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET)
+internal val WiredDeviceTypes = setOf(
+    AudioDeviceInfo.TYPE_WIRED_HEADSET,
+    AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+    AudioDeviceInfo.TYPE_USB_HEADSET,
+)
+
 actual class CallAudioRouter actual constructor() {
     private val audio: AudioManager =
         KoinPlatformTools.defaultContext().get().get<Context>().getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -46,12 +53,8 @@ actual class CallAudioRouter actual constructor() {
             val types = when (route) {
                 AudioRoute.Earpiece -> setOf(AudioDeviceInfo.TYPE_BUILTIN_EARPIECE)
                 AudioRoute.Speaker -> setOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
-                AudioRoute.Bluetooth -> setOf(AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET)
-                AudioRoute.Wired -> setOf(
-                    AudioDeviceInfo.TYPE_WIRED_HEADSET,
-                    AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-                    AudioDeviceInfo.TYPE_USB_HEADSET,
-                )
+                AudioRoute.Bluetooth -> BluetoothDeviceTypes
+                AudioRoute.Wired -> WiredDeviceTypes
             }
             audio.availableCommunicationDevices.firstOrNull { it.type in types }?.let { audio.setCommunicationDevice(it) }
                 ?: audio.clearCommunicationDevice()

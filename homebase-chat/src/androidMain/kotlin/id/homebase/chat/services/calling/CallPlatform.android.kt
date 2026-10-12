@@ -56,10 +56,10 @@ actual fun platformAudioRoutes(): List<AudioRoute> {
     val audio = org.koin.mp.KoinPlatformTools.defaultContext().get().get<android.content.Context>()
         .getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
     val types = audio.availableCommunicationDevices.map { it.type }
-    if (types.any { it == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO || it == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET }) {
+    if (types.any { it in BluetoothDeviceTypes }) {
         routes += AudioRoute.Bluetooth
     }
-    if (types.any { it == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET || it == android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES || it == android.media.AudioDeviceInfo.TYPE_USB_HEADSET }) {
+    if (types.any { it in WiredDeviceTypes }) {
         routes += AudioRoute.Wired
     }
     return routes

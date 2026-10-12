@@ -168,8 +168,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     }
 
     override fun setVideo(on: Boolean) {
-        val track = videoTrack ?: return
-        track.enabled = on
+        videoTrack?.enabled = on
     }
 
     override fun switchCamera() {
