@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -58,6 +59,7 @@ import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
 import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.profile_avatar_edit_acl_anonymous
 import id.homebase.resources.profile_avatar_edit_acl_connected
@@ -69,6 +71,9 @@ import id.homebase.resources.profile_avatar_edit_error_delete
 import id.homebase.resources.profile_avatar_edit_error_too_large
 import id.homebase.resources.profile_avatar_edit_error_upload
 import id.homebase.resources.profile_avatar_edit_remove
+import id.homebase.resources.profile_photo_remove_message
+import id.homebase.resources.profile_photo_remove_message_shared
+import id.homebase.resources.profile_photo_remove_title
 import id.homebase.resources.profile_avatar_edit_title
 import id.homebase.resources.profile_avatar_edit_upload
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -154,6 +159,7 @@ fun ProfileAvatarEditScreen(
 
             ConnectionsPhotoBlock(uiState.connected, viewModel::onAction)
         }
+        PhotoRemovalConfirmDialog(uiState.removalToConfirm, viewModel::onAction)
     }
 }
 
@@ -326,13 +332,39 @@ internal fun ConnectionsPhotoBlock(tier: PhotoTierUiState, onAction: (ProfileAva
             TextButton(
                 enabled = !tier.isDeleting,
                 onClick = {
-                    onAction(ProfileAvatarEditAction.RemoveNow(ProfileVisibility.CONNECTED))
+                    onAction(ProfileAvatarEditAction.RemoveRequested(ProfileVisibility.CONNECTED))
                 },
             ) {
                 Text(stringResource(MR.string.profile_avatar_edit_remove))
             }
         }
     }
+}
+
+@Composable
+internal fun PhotoRemovalConfirmDialog(removal: PhotoRemoval?, onAction: (ProfileAvatarEditAction) -> Unit) {
+    if (removal == null) return
+    AlertDialog(
+        onDismissRequest = { onAction(ProfileAvatarEditAction.RemoveCancelled) },
+        title = { Text(stringResource(MR.string.profile_photo_remove_title)) },
+        text = {
+            Text(
+                stringResource(
+                    if (removal.sharedByOtherCards) MR.string.profile_photo_remove_message_shared else MR.string.profile_photo_remove_message,
+                ),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onAction(ProfileAvatarEditAction.RemoveConfirmed) }) {
+                Text(stringResource(MR.string.profile_avatar_edit_remove), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { onAction(ProfileAvatarEditAction.RemoveCancelled) }) {
+                Text(stringResource(MR.string.cancel))
+            }
+        },
+    )
 }
 
 @Composable

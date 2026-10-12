@@ -31,10 +31,14 @@ data class ProfileAvatarEditUiState(
     val circleSlots: Map<String, PhotoTierUiState> = emptyMap(),
     val photos: List<ProfileAttribute> = emptyList(),
     val circlePhotosSupported: Boolean = false,
+    val removalToConfirm: PhotoRemoval? = null,
 ) {
     fun circleSlot(circleId: String): PhotoTierUiState =
         circleSlots[circleId] ?: PhotoTierUiState(ProfileVisibility.CONNECTED, circleId = circleId)
 }
+
+@Immutable
+data class PhotoRemoval(val visibility: ProfileVisibility, val circleId: String?, val sharedByOtherCards: Boolean)
 
 /** One [ProfileVisibility] tier's photo slot: what's currently stored, and any in-flight edit. */
 @Immutable
@@ -68,8 +72,10 @@ sealed interface ProfileAvatarEditAction {
     data class SaveClicked(val visibility: ProfileVisibility, val circleId: String? = null) : ProfileAvatarEditAction
     /** Stages [PhotoTierUiState.existing] for removal; does not call the server. */
     data class RemoveClicked(val visibility: ProfileVisibility, val circleId: String? = null) : ProfileAvatarEditAction
-    /** Stages the removal and commits it in one step, for callers with no Save button. */
-    data class RemoveNow(val visibility: ProfileVisibility, val circleId: String? = null) : ProfileAvatarEditAction
+    /** For callers with no Save button: asks first, then deletes on [RemoveConfirmed]. */
+    data class RemoveRequested(val visibility: ProfileVisibility, val circleId: String? = null) : ProfileAvatarEditAction
+    data object RemoveConfirmed : ProfileAvatarEditAction
+    data object RemoveCancelled : ProfileAvatarEditAction
     data object BackClicked : ProfileAvatarEditAction
 }
 

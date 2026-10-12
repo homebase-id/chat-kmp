@@ -584,6 +584,7 @@ private fun ProfileForm(
                 }
             }
             ConnectionsPhotoBlock(avatarUiState.connected, onAvatarAction)
+            PhotoRemovalConfirmDialog(avatarUiState.removalToConfirm, onAvatarAction)
 
             Spacer(Modifier.height(32.dp))
             SectionHeader(
@@ -799,7 +800,7 @@ private fun PhotoBlock(
             onPick = onPickPhoto,
             onRemove = {
                 onAvatarAction(
-                    if (circleId != null) ProfileAvatarEditAction.RemoveNow(tier, circleId) else ProfileAvatarEditAction.RemoveClicked(tier),
+                    if (circleId != null) ProfileAvatarEditAction.RemoveRequested(tier, circleId) else ProfileAvatarEditAction.RemoveClicked(tier),
                 )
             },
             onSaveClicked = {

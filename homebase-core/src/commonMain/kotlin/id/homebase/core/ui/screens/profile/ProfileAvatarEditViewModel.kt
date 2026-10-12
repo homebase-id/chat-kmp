@@ -170,7 +170,12 @@ class ProfileAvatarEditViewModel(
             is ProfileAvatarEditAction.PhotoPicked -> onPhotoPicked(PhotoSlot(action.visibility, action.circleId), action.file, action.saveOnCrop)
             is ProfileAvatarEditAction.SaveClicked -> save(PhotoSlot(action.visibility, action.circleId))
             is ProfileAvatarEditAction.RemoveClicked -> stageRemoval(PhotoSlot(action.visibility, action.circleId))
-            is ProfileAvatarEditAction.RemoveNow -> PhotoSlot(action.visibility, action.circleId).let { stageRemoval(it); save(it) }
+            is ProfileAvatarEditAction.RemoveRequested -> requestRemoval(PhotoSlot(action.visibility, action.circleId))
+            ProfileAvatarEditAction.RemoveConfirmed -> _state.value.removalToConfirm?.let { pending ->
+                _state.update { it.copy(removalToConfirm = null) }
+                PhotoSlot(pending.visibility, pending.circleId).let { stageRemoval(it); save(it) }
+            }
+            ProfileAvatarEditAction.RemoveCancelled -> _state.update { it.copy(removalToConfirm = null) }
             ProfileAvatarEditAction.BackClicked -> _events.tryEmit(ProfileAvatarEditEvent.Back)
         }
     }
@@ -250,6 +255,19 @@ class ProfileAvatarEditViewModel(
         when {
             tier.pendingCroppedAvatar != null -> upload(slot)
             tier.pendingRemoval -> commitRemoval(slot)
+        }
+    }
+
+    private fun requestRemoval(slot: PhotoSlot) {
+        if (tierState(slot).existing == null) return
+        _state.update {
+            it.copy(
+                removalToConfirm = PhotoRemoval(
+                    visibility = slot.visibility,
+                    circleId = slot.circleId,
+                    sharedByOtherCards = slot == PhotoSlot(ProfileVisibility.ANONYMOUS),
+                ),
+            )
         }
     }
 
@@ -378,7 +396,7 @@ class ProfileAvatarEditViewModel(
             throw e
         } catch (e: Exception) {
             Logger.w(throwable = e, tag = TAG) { "Failed to refresh $slot photo attribute after upload" }
-            Result.failure(e)
+            return Result.failure(e)
         }
         val fresh = loaded.getOrNull()
         updateTier(slot) { it.copy(existing = fresh) }

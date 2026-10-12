@@ -170,6 +170,28 @@ class ProfileCardPhotosTest {
     }
 
     @Test
+    fun removeAsksFirstAndOnlyDeletesOnceConfirmed() = runBlocking {
+        val harness = CardWireHarness()
+        val publicId = seedPublicPhoto(harness)
+        val vm = viewModel(harness)
+
+        vm.onAction(ProfileAvatarEditAction.RemoveRequested(ProfileVisibility.ANONYMOUS))
+        assertEquals(true, vm.state.value.removalToConfirm?.sharedByOtherCards)
+        vm.onAction(ProfileAvatarEditAction.RemoveCancelled)
+
+        assertNull(vm.state.value.removalToConfirm)
+        assertEquals(0, harness.deletes)
+        assertEquals(publicId, vm.state.value.anonymous.existing?.id)
+
+        vm.onAction(ProfileAvatarEditAction.RemoveRequested(ProfileVisibility.ANONYMOUS))
+        assertEquals(0, harness.deletes)
+        vm.onAction(ProfileAvatarEditAction.RemoveConfirmed)
+        withTimeout(5_000) { vm.state.first { it.anonymous.existing == null } }
+
+        assertEquals(listOf(publicId.toString()), harness.deletedIds.toList())
+    }
+
+    @Test
     fun aCirclePhotoIsNotTakenForTheLegacyConnectedOne() = runBlocking {
         val harness = CardWireHarness()
         val legacy = Uuid.random()

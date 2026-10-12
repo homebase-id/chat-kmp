@@ -2551,6 +2551,9 @@
     <string name="profile_avatar_edit_only_me_desc">Visible only to you. Circles can't be chosen for photos yet.</string>
     <string name="profile_avatar_edit_upload">Save</string>
     <string name="profile_avatar_edit_remove">Remove</string>
+    <string name="profile_photo_remove_title">Remove this photo?</string>
+    <string name="profile_photo_remove_message">The photo is deleted from your profile.</string>
+    <string name="profile_photo_remove_message_shared">This is your public photo. Every card that uses it loses it too.</string>
     <string name="profile_avatar_edit_error_upload">Couldn't upload your photo. Please try again.</string>
     <string name="profile_avatar_edit_error_too_large">That photo is too large — please choose a smaller one.</string>
     <string name="profile_avatar_edit_error_delete">Couldn't remove your photo. Please try again.</string>

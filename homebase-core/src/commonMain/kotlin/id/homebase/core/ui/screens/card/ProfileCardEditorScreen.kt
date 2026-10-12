@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
+import id.homebase.core.ui.screens.profile.PhotoRemovalConfirmDialog
 import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.resources.profile_card_content_save_failed
 import id.homebase.resources.profile_card_read_only
@@ -344,7 +345,7 @@ fun ProfileCardEditorScreen(
             },
             onRemovePhoto = {
                 val visibility = if (circle == null) ProfileVisibility.ANONYMOUS else ProfileVisibility.CONNECTED
-                avatarViewModel.onAction(ProfileAvatarEditAction.RemoveNow(visibility, circle?.id))
+                avatarViewModel.onAction(ProfileAvatarEditAction.RemoveRequested(visibility, circle?.id))
             },
             onImport = viewModel::onImportRequested,
             snackbarHostState = snackbarHostState,
@@ -369,6 +370,7 @@ fun ProfileCardEditorScreen(
             )
         }
         DesignAccessPrompt(shown = uiState.isDesignAccessPromptShown, viewModel = viewModel)
+        PhotoRemovalConfirmDialog(avatarState.removalToConfirm, avatarViewModel::onAction)
         if (uiState.pendingImport != null) {
             ImportPublicDialog(onConfirm = viewModel::onImportConfirmed, onDismiss = viewModel::onImportCancelled)
         }

@@ -1850,6 +1850,9 @@
     <string name="profile_avatar_edit_only_me_desc">Kun synligt for dig. Kredse kan endnu ikke vælges for fotos.</string>
     <string name="profile_avatar_edit_upload">Gem</string>
     <string name="profile_avatar_edit_remove">Fjern</string>
+    <string name="profile_photo_remove_title">Fjern dette billede?</string>
+    <string name="profile_photo_remove_message">Billedet slettes fra din profil.</string>
+    <string name="profile_photo_remove_message_shared">Dette er dit offentlige billede. Alle kort, der bruger det, mister det også.</string>
     <string name="profile_avatar_edit_error_upload">Kunne ikke uploade dit foto. Prøv igen.</string>
     <string name="profile_avatar_edit_error_too_large">Fotoet er for stort — vælg venligst et mindre.</string>
     <string name="profile_avatar_edit_error_delete">Kunne ikke fjerne dit foto. Prøv igen.</string>
