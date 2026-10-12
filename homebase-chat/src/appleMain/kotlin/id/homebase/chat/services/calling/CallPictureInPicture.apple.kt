@@ -24,7 +24,10 @@ actual fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, m
             return@DisposableEffect onDispose { }
         }
         Logger.i("CallPiP") { "pip arming bridge.start" }
-        bridge.start(track)
-        onDispose { bridge.stop() }
+        bridge.start(track) { Logger.i("CallPiP") { it } }
+        onDispose {
+            Logger.i("CallPiP") { "pip disarming bridge.stop" }
+            bridge.stop()
+        }
     }
 }

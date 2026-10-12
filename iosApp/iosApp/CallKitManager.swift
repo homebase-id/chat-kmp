@@ -262,23 +262,27 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
     private var renderer: RTCMTLVideoView?
     private var track: RTCVideoTrack?
     private var possibleObservation: NSKeyValueObservation?
+    private var lifecycleObservers: [NSObjectProtocol] = []
+    private var firstFrameLogged = false
+    private var log: (String) -> Void = { NSLog("%@", $0) }
 
-    func start(remoteTrack: Any) {
+    func start(remoteTrack: Any, log: @escaping (String) -> Void) {
         guard let remote = remoteTrack as? RTCVideoTrack else {
-            NSLog("[Call] PiP start skipped: remote track is %@", String(describing: type(of: remoteTrack)))
+            log("pip start skipped: remote track is \(type(of: remoteTrack))")
             return
         }
         DispatchQueue.main.async { [self] in
             teardown()
+            self.log = log
             guard AVPictureInPictureController.isPictureInPictureSupported() else {
-                NSLog("[Call] PiP start skipped: isPictureInPictureSupported=false")
+                log("pip start skipped: isPictureInPictureSupported=false")
                 return
             }
             guard let source = UIApplication.shared.connectedScenes
                     .compactMap({ $0 as? UIWindowScene }).flatMap({ $0.windows })
                     .first(where: { $0.isKeyWindow })?.rootViewController?.view
             else {
-                NSLog("[Call] PiP start skipped: no key window root view")
+                log("pip start skipped: no key window root view")
                 return
             }
 
@@ -296,23 +300,44 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
                     activeVideoCallSourceView: source, contentViewController: vc))
             pip.canStartPictureInPictureAutomaticallyFromInline = true
             pip.delegate = self
-            possibleObservation = pip.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { c, _ in
-                NSLog("[Call] PiP possible=%d", c.isPictureInPicturePossible ? 1 : 0)
+            possibleObservation = pip.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { [weak self] c, _ in
+                self?.log("pip possible=\(c.isPictureInPicturePossible)")
             }
-            let audio = AVAudioSession.sharedInstance()
-            NSLog("[Call] PiP armed: audioCategory=%@ mode=%@", audio.category.rawValue, audio.mode.rawValue)
             controller = pip
             content = vc
             renderer = view
             track = remote
+            firstFrameLogged = false
+            log("pip armed: \(state(source: source))")
+            let center = NotificationCenter.default
+            lifecycleObservers = [UIApplication.willResignActiveNotification, UIApplication.didEnterBackgroundNotification].map { name in
+                center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                    guard let self else { return }
+                    self.log("pip at \(name.rawValue): \(self.state(source: source))")
+                }
+            }
         }
     }
 
     func stop() {
-        DispatchQueue.main.async { [self] in teardown() }
+        DispatchQueue.main.async { [self] in
+            if controller != nil { log("pip teardown: \(state(source: nil))") }
+            teardown()
+        }
+    }
+
+    private func state(source: UIView?) -> String {
+        let audio = AVAudioSession.sharedInstance()
+        let sourceState = source.map { "sourceInWindow=\($0.window != nil) sourceHidden=\($0.isHidden) sourceSize=\($0.bounds.size)" } ?? ""
+        return "possible=\(controller?.isPictureInPicturePossible ?? false) active=\(controller?.isPictureInPictureActive ?? false) "
+            + "autoFromInline=\(controller?.canStartPictureInPictureAutomaticallyFromInline ?? false) controllerRetained=\(controller != nil) "
+            + "rtcAudioActive=\(RTCAudioSession.sharedInstance().isActive) audioCategory=\(audio.category.rawValue) mode=\(audio.mode.rawValue) "
+            + "firstFrame=\(firstFrameLogged) appState=\(UIApplication.shared.applicationState.rawValue) \(sourceState)"
     }
 
     private func teardown() {
+        lifecycleObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        lifecycleObservers = []
         possibleObservation = nil
         controller?.canStartPictureInPictureAutomaticallyFromInline = false
         if controller?.isPictureInPictureActive == true { controller?.stopPictureInPicture() }
@@ -323,15 +348,18 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
         track = nil
     }
 
-    func pictureInPictureControllerWillStartPictureInPicture(_ c: AVPictureInPictureController) { NSLog("[Call] PiP will start") }
-    func pictureInPictureControllerDidStartPictureInPicture(_ c: AVPictureInPictureController) { NSLog("[Call] PiP started") }
+    func pictureInPictureControllerWillStartPictureInPicture(_ c: AVPictureInPictureController) { log("pip will start") }
+    func pictureInPictureControllerDidStartPictureInPicture(_ c: AVPictureInPictureController) { log("pip started") }
     func pictureInPictureController(_ c: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
-        NSLog("[Call] PiP failed to start: %@", String(describing: error))
+        log("pip failed to start: \(error)")
     }
-    func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) { NSLog("[Call] PiP stopped") }
+    func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) { log("pip stopped") }
 
     func videoView(_ videoView: RTCVideoRenderer, didChangeVideoSize size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
-        DispatchQueue.main.async { [self] in content?.preferredContentSize = size }
+        DispatchQueue.main.async { [self] in
+            if !firstFrameLogged { firstFrameLogged = true; log("pip renderer got frames size=\(size)") }
+            content?.preferredContentSize = size
+        }
     }
 }

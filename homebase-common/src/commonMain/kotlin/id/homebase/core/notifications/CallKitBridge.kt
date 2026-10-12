@@ -27,8 +27,8 @@ interface CallKitActions {
 
 /** Implemented in Swift: shows the remote call video in the system PiP window; AVKit's video-call content source has no Kotlin binding. */
 interface CallPictureInPictureBridge {
-    /** [remoteTrack] is the WebRTC RTCVideoTrack. PiP then starts by itself when the app backgrounds. */
-    fun start(remoteTrack: Any)
+    /** [remoteTrack] is the WebRTC RTCVideoTrack. PiP then starts by itself when the app backgrounds. [log] reaches homebase.log; NSLog does not. */
+    fun start(remoteTrack: Any, log: (String) -> Unit)
     fun stop()
 }
 
