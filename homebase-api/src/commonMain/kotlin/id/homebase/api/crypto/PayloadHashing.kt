@@ -42,7 +42,8 @@ suspend fun PayloadHash.plaintextContentHash(payloadKey: KeyHeader?): ByteArray?
             AesCbc.decrypt(raw, payloadKey.aesKey, contentHashIv(payloadKey.iv))
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
+            // On wasmJs a failed WebCrypto decrypt is a bare Throwable, not an Exception.
             return null
         }
     }
