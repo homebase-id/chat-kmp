@@ -13,6 +13,7 @@ import com.shepeliev.webrtckmp.OfferAnswerOptions
 import com.shepeliev.webrtckmp.PeerConnection
 import com.shepeliev.webrtckmp.PeerConnectionState
 import com.shepeliev.webrtckmp.RtcConfiguration
+import com.shepeliev.webrtckmp.RtpReceiver
 import com.shepeliev.webrtckmp.RtpSender
 import com.shepeliev.webrtckmp.SessionDescription
 import com.shepeliev.webrtckmp.SessionDescriptionType
@@ -38,7 +39,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-class KmpVideoHandle(val track: VideoTrack, val mirrored: Boolean, val local: Boolean = false) : VideoHandle
+/** [receiver] is set for remote video: iOS PiP needs the native RTCVideoTrack, which only the receiver exposes. */
+class KmpVideoHandle(
+    val track: VideoTrack,
+    val mirrored: Boolean,
+    val local: Boolean = false,
+    val receiver: RtpReceiver? = null,
+) : VideoHandle
 
 /** Android and iOS engine over webrtc-kmp. Platform audio routing is delegated to [CallAudioRouter]. */
 @OptIn(ExperimentalAtomicApi::class)
@@ -81,7 +88,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             peer.onTrack.collect { event ->
                 val track = event.track as? VideoTrack ?: return@collect
-                _remote.value = KmpVideoHandle(track, mirrored = false)
+                _remote.value = KmpVideoHandle(track, mirrored = false, receiver = event.receiver)
                 mapper.remoteVideo(true)
             }
         }
