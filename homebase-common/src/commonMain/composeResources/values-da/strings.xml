@@ -1949,7 +1949,6 @@
     <string name="profile_edit_load_failed_desc">Tjek din forbindelse, og prøv igen.</string>
     <string name="profile_edit_audience_all_connections">Alle forbindelser</string>
     <string name="profile_edit_audience_other_circle">Anden kreds</string>
-    <string name="profile_edit_audience_change">Synlig for %1$s. Skift</string>
     <string name="profile_edit_photo_public_caption">Vises på alle kort</string>
     <string name="profile_edit_photo_inherits_public">Bruger dit offentlige billede</string>
     <string name="profile_edit_photo_inherits_earlier">Bruger et billede gemt af en tidligere version</string>

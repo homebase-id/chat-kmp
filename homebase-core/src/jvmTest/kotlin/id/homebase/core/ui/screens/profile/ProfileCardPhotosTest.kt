@@ -141,14 +141,14 @@ class ProfileCardPhotosTest {
         val publicId = seedPublicPhoto(harness)
         val bus = CropResultBus()
         val vm = viewModel(harness, bus)
-        assertEquals(publicId, vm.state.value.photos.photoFor(family)?.id)
+        assertEquals(publicId, harness.profileRepository().photoAttributes().photoFor(family)?.id)
 
         uploadFamilyPhoto(vm, bus)
 
-        val state = vm.state.value
-        assertEquals(state.circleSlot(FAMILY_CIRCLE_ID).existing?.id, state.photos.photoFor(family)?.id)
-        assertEquals(publicId, state.photos.photoFor(friends)?.id)
-        assertEquals(publicId, state.photos.photoFor(CardAudience.Public)?.id)
+        val stored = harness.profileRepository().photoAttributes()
+        assertEquals(vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing?.id, stored.photoFor(family)?.id)
+        assertEquals(publicId, stored.photoFor(friends)?.id)
+        assertEquals(publicId, stored.photoFor(CardAudience.Public)?.id)
     }
 
     @Test
@@ -165,7 +165,7 @@ class ProfileCardPhotosTest {
         withTimeout(5_000) { vm.state.first { it.circleSlot(FAMILY_CIRCLE_ID).existing == null } }
 
         assertEquals(listOf(familyPhoto.id.toString()), harness.deletedIds.toList())
-        assertEquals(publicId, vm.state.value.photos.photoFor(family)?.id)
+        assertEquals(publicId, harness.profileRepository().photoAttributes().photoFor(family)?.id)
         assertNull(vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing)
     }
 
@@ -183,7 +183,7 @@ class ProfileCardPhotosTest {
         )
         val vm = viewModel(harness)
 
-        assertEquals(shown, vm.state.value.photos.photoFor(CardAudience.Public)?.id)
+        assertEquals(shown, harness.profileRepository().photoAttributes().photoFor(CardAudience.Public)?.id)
         assertEquals(shown, vm.state.value.anonymous.existing?.id)
     }
 
@@ -393,7 +393,7 @@ class ProfileCardPhotosTest {
 
         assertNull(vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing)
         assertEquals(listOf(publicId.toString()), harness.storedIds)
-        assertEquals(publicId, vm.state.value.photos.photoFor(family)?.id)
+        assertEquals(publicId, harness.profileRepository().photoAttributes().photoFor(family)?.id)
         assertEquals(1, harness.deletes)
         assertNotNull(harness.photoPutBodies.single())
         assertEquals(1, harness.deletedIds.size)
@@ -529,22 +529,18 @@ class ProfileCardPhotosTest {
 
         assertEquals(FAMILY_CIRCLE_ID, event.circleId)
         assertEquals(listOf(FAMILY_CIRCLE_ID), harness.photoPutBodies.single()["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
-        assertEquals(vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing?.id, vm.state.value.photos.photoFor(family)?.id)
-        assertEquals(publicId, vm.state.value.photos.photoFor(friends)?.id)
+        assertEquals(vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing?.id, harness.profileRepository().photoAttributes().photoFor(family)?.id)
+        assertEquals(publicId, harness.profileRepository().photoAttributes().photoFor(friends)?.id)
     }
 
     @Test
-    fun theCardViewModelAndTheAvatarStateResolveAPhotoThroughTheSameHelper() {
+    fun aCircleCardPrefersItsOwnPhotoOverThePublicOne() {
         val attributes = listOf(
             photoAttribute(ProfileVisibility.ANONYMOUS, "pub", null),
             photoAttribute(ProfileVisibility.CONNECTED, "fam", listOf(FAMILY_CIRCLE_ID)),
         )
-        val state = ProfileAvatarEditUiState(photos = attributes)
-        for (card in listOf(CardAudience.Public, family, friends)) {
-            assertEquals(attributes.photoFor(card), state.photos.photoFor(card))
-        }
-        assertEquals("fam", state.photos.photoFor(family)!!.imageKey())
-        assertEquals("pub", state.photos.photoFor(friends)!!.imageKey())
+        assertEquals("fam", attributes.photoFor(family)!!.imageKey())
+        assertEquals("pub", attributes.photoFor(friends)!!.imageKey())
     }
 
     private fun photoAttribute(visibility: ProfileVisibility, key: String, circles: List<String>?) = ProfileAttribute(

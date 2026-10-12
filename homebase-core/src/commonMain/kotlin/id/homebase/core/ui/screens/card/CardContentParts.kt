@@ -74,8 +74,8 @@ import id.homebase.core.ui.screens.profile.otherCirclesOf
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
+import id.homebase.resources.profile_card_content_add_new
 import id.homebase.resources.profile_card_content_add_title
-import id.homebase.resources.profile_card_content_add_to_card
 import id.homebase.resources.profile_card_content_add_visible
 import id.homebase.resources.profile_card_content_empty
 import id.homebase.resources.profile_card_content_public_off_note
@@ -162,11 +162,11 @@ internal fun AddGroup(
     isAvailable: (AddKind) -> Boolean,
     enabled: Boolean,
     onAdd: (AddKind) -> Unit,
-    title: String = stringResource(MR.string.profile_card_content_add_to_card),
 ) {
     val kinds = AddKind.entries.filter(isAvailable)
     if (kinds.isEmpty()) return
     val labels = kinds.map { stringResource(addLabel(it)) }
+    val title = stringResource(MR.string.profile_card_content_add_new)
     Text(
         text = title,
         style = MaterialTheme.typography.labelLarge,
@@ -343,7 +343,7 @@ internal fun ContentSheet(
                     audience = audience,
                     circles = circles,
                     onChange = { audience = it },
-                    otherCircles = otherCirclesOf(editing.audience, audience, names = emptyMap()),
+                    otherCircles = otherCirclesOf(editing.audience, audience),
                 )
                 if (editing.audience == ProfileAudience.Public && audience != ProfileAudience.Public) {
                     Text(

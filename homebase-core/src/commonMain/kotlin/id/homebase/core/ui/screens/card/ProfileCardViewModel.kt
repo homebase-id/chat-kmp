@@ -600,16 +600,8 @@ class ProfileCardViewModel(
         dropImportUndo()
         _uiState.update { it.copy(isContentBusy = true) }
         viewModelScope.launch {
-            if (attempt("deleting profile content ${attribute.type}") { source.deleteProfileAttribute(attribute) } != true) {
-                _uiState.update { it.copy(isContentBusy = false, contentFailures = it.contentFailures + 1) }
-                _events.tryEmit(ProfileCardEvent.ContentSaveFailed)
-                return@launch
-            }
-            content = content?.let { c -> c.copy(attributes = c.attributes.filterNot { it.id == id }) }
-            _uiState.update {
-                it.copy(isContentBusy = false, contentSaves = it.contentSaves + 1, attributes = it.attributes.filterNot { a -> a.id == id })
-            }
-            render()
+            val deleted = attempt("deleting profile content ${attribute.type}") { source.deleteProfileAttribute(attribute) } == true
+            if (deleted) applyAttributes(emptyList(), saved = true, removed = setOf(id)) else contentSaveFailed()
         }
     }
 
@@ -631,20 +623,11 @@ class ProfileCardViewModel(
                 contentSaveFailed()
                 return@launch
             }
-            val gone = deleteDuplicates(existing)
-            content = content?.let { c -> c.copy(attributes = c.attributes.filterNot { it.id == saved.id || it.id in gone } + saved) }
-            _uiState.update {
-                it.copy(
-                    isContentBusy = false,
-                    contentSaves = it.contentSaves + 1,
-                    attributes = it.attributes.filterNot { a -> a.id == saved.id || a.id in gone } + saved,
-                )
-            }
-            render()
+            applyAttributes(listOf(saved), saved = true, removed = deleteDuplicates(existing))
         }
     }
 
-    // A same-data leftover from the old two-tier editor would keep showing the item to every connection after it was hidden.
+    // A same-data leftover would keep showing the item to every connection after it was hidden.
     private suspend fun deleteDuplicates(edited: ProfileAttribute?): Set<Uuid> {
         if (edited == null || edited.type == ProfileAttributeTypes.LINK) return emptySet()
         val loaded = LoadedProfileAttributes.from(_uiState.value.attributes)
@@ -749,8 +732,8 @@ class ProfileCardViewModel(
         return Restored(attributes, failed)
     }
 
-    private fun applyAttributes(changed: List<ProfileAttribute>, saved: Boolean) {
-        val ids = changed.map { it.id }.toSet()
+    private fun applyAttributes(changed: List<ProfileAttribute>, saved: Boolean, removed: Set<Uuid> = emptySet()) {
+        val ids = changed.map { it.id }.toSet() + removed
         content = content?.let { c -> c.copy(attributes = c.attributes.filterNot { it.id in ids } + changed) }
         _uiState.update {
             it.copy(

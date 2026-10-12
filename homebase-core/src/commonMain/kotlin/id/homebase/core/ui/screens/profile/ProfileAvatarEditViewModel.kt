@@ -12,7 +12,6 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfilePhotoTooLargeException
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
-import id.homebase.api.client.profile.isPhotoScopedTo
 import id.homebase.api.client.websockets.PublicProfileArtifact
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
@@ -132,7 +131,6 @@ class ProfileAvatarEditViewModel(
             _state.update {
                 it.copy(
                     isLoading = false,
-                    photos = existing,
                     circleSlots = circles.associate { c ->
                         c.id to PhotoTierUiState(
                             ProfileVisibility.CONNECTED,
@@ -366,7 +364,6 @@ class ProfileAvatarEditViewModel(
 
             if (success) {
                 updateTier(slot) { it.copy(isDeleting = false, pendingRemoval = false, existing = null) }
-                _state.update { it.copy(photos = it.photos.filter { p -> p.id != existing.id }) }
                 _events.tryEmit(ProfileAvatarEditEvent.PhotoSaved(slot.visibility, slot.circleId))
                 if (slot == PhotoSlot(ProfileVisibility.ANONYMOUS)) {
                     _state.value.currentAvatar?.odinId?.let {
@@ -393,10 +390,6 @@ class ProfileAvatarEditViewModel(
         }
         val fresh = loaded.getOrNull()
         updateTier(slot) { it.copy(existing = fresh) }
-        _state.update { state ->
-            val stale = state.photos.filter { it.visibility == slot.visibility && it.isPhotoScopedTo(slot.circleId) }
-            state.copy(photos = state.photos - stale.toSet() + listOfNotNull(fresh))
-        }
         return loaded
     }
 }

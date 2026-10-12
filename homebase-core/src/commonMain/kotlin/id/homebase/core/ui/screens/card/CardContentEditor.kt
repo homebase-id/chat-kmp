@@ -68,7 +68,6 @@ import id.homebase.resources.MR
 import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.profile_avatar_edit_remove
 import id.homebase.resources.profile_card_change_design
-import id.homebase.resources.profile_card_content_add_new
 import id.homebase.resources.profile_card_content_could_add
 import id.homebase.resources.profile_card_content_name_required
 import id.homebase.resources.profile_card_content_on_card
@@ -230,7 +229,6 @@ internal fun CardContentEditor(
                     else -> adding = kind.type
                 }
             },
-            title = stringResource(MR.string.profile_card_content_add_new),
         )
     }
 

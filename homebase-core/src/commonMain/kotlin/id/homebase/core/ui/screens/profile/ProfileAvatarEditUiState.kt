@@ -27,7 +27,6 @@ data class ProfileAvatarEditUiState(
     val anonymous: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.ANONYMOUS),
     val onlyMe: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.OWNER),
     val circleSlots: Map<String, PhotoTierUiState> = emptyMap(),
-    val photos: List<ProfileAttribute> = emptyList(),
     val circlePhotosSupported: Boolean = false,
     val removalToConfirm: PhotoRemoval? = null,
 ) {

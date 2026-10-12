@@ -26,7 +26,6 @@ internal data class CardContentItem(
     val locked: Boolean,
     // The Public card can't render without a name, so it can't be switched off there.
     val required: Boolean = false,
-    // The stored strings by data key, which the editor's fields start from.
     val data: Map<String, String> = emptyMap(),
     // Older records of the same type with other data; the editor shows them so the user can remove them.
     val conflicts: List<ProfileAttribute> = emptyList(),

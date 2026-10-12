@@ -2427,7 +2427,6 @@
     <string name="profile_card_content_empty">Nothing else on this card yet. Add something below.</string>
     <string name="profile_card_content_shown_to">Shown to %1$s</string>
     <string name="profile_card_content_shown_everyone">Shown to everyone</string>
-    <string name="profile_card_content_add_to_card">Add to this card</string>
     <string name="profile_card_content_public_off_note">Turning Public off takes this off the Public card.</string>
     <string name="profile_card_content_add_title">Add content</string>
     <string name="profile_card_content_add_visible">Shown on the %1$s card</string>
@@ -2717,7 +2716,6 @@
     <string name="profile_edit_load_failed_desc">Check your connection, then try again.</string>
     <string name="profile_edit_audience_all_connections">All connections</string>
     <string name="profile_edit_audience_other_circle">Other circle</string>
-    <string name="profile_edit_audience_change">Visible to %1$s. Change</string>
     <string name="profile_edit_photo_public_caption">Shown on every card</string>
     <string name="profile_edit_photo_inherits_public">Uses your Public photo</string>
     <string name="profile_edit_photo_inherits_earlier">Uses a photo saved by an earlier version</string>

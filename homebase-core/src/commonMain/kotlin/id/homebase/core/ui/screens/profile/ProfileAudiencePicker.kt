@@ -15,7 +15,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -31,7 +30,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Lock
@@ -47,7 +45,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -57,9 +54,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,7 +65,6 @@ import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
 import id.homebase.resources.moments_detail_shared_with_more
 import id.homebase.resources.profile_edit_audience_all_connections
-import id.homebase.resources.profile_edit_audience_change
 import id.homebase.resources.profile_edit_audience_circles_empty
 import id.homebase.resources.profile_edit_audience_circles_hint
 import id.homebase.resources.profile_edit_audience_circles_none
@@ -181,11 +174,10 @@ internal fun AudiencePicker(
     onChange: (ProfileAudience) -> Unit,
     modifier: Modifier = Modifier,
     otherCircles: List<CardCircle> = emptyList(),
-    showTitle: Boolean = true,
 ) {
     val motion = MaterialTheme.motionScheme
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (showTitle) ChoiceCaption(stringResource(MR.string.profile_edit_audience_title))
+        ChoiceCaption(stringResource(MR.string.profile_edit_audience_title))
         ConnectedChoices(count = AudienceKind.entries.size) { index, shapes, sizing ->
             val kind = AudienceKind.entries[index]
             ToggleButton(
@@ -339,58 +331,35 @@ private fun CircleChip(name: String, selected: Boolean, onToggle: (Boolean) -> U
     }
 }
 
-/**
- * Who sees a detail, as a tonal pill in its audience's colour role. With [onClick] it is the way to
- * change that audience in place, so it gets a full touch target and a drop-down cue.
- */
+/** Who sees a detail, as a tonal pill in its audience's colour role. */
 @Composable
 internal fun AudienceBadge(
     audience: ProfileAudience,
     circles: List<CardCircle>,
     modifier: Modifier = Modifier,
-    otherNames: Map<String, String> = emptyMap(),
-    onClick: (() -> Unit)? = null,
 ) {
     val kind = audience.kind
     val colors = kind.colors()
-    val summary = audienceSummary(audience, circles, otherNames)
-    val content: @Composable () -> Unit = {
+    Surface(
+        shape = CircleShape,
+        color = colors.container,
+        contentColor = colors.content,
+        border = colors.edge?.let { BorderStroke(1.dp, it) },
+        modifier = modifier,
+    ) {
         Row(
-            modifier = Modifier.padding(start = 8.dp, end = if (onClick != null) 4.dp else 12.dp, top = 4.dp, bottom = 4.dp),
+            modifier = Modifier.padding(start = 8.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(kind.icon, contentDescription = null, tint = colors.icon, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text(
-                text = summary,
+                text = audienceSummary(audience, circles),
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            if (onClick != null) {
-                Icon(Icons.Filled.ArrowDropDown, contentDescription = null, modifier = Modifier.size(20.dp))
-            }
-        }
-    }
-    val edge = colors.edge?.let { BorderStroke(1.dp, it) }
-    if (onClick == null) {
-        Surface(shape = CircleShape, color = colors.container, contentColor = colors.content, border = edge, modifier = modifier, content = content)
-    } else {
-        val description = stringResource(MR.string.profile_edit_audience_change, summary)
-        Box(
-            modifier = modifier
-                .minimumInteractiveComponentSize()
-                // Its own node, so a screen reader reaches it apart from the row it sits in.
-                .semantics(mergeDescendants = true) {}
-                .clearAndSetSemantics {
-                    contentDescription = description
-                    role = Role.Button
-                    onClick { onClick(); true }
-                },
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Surface(onClick = onClick, shape = CircleShape, color = colors.container, contentColor = colors.content, border = edge, content = content)
         }
     }
 }
@@ -402,14 +371,13 @@ private const val SUMMARY_NAMES = 2
 internal fun audienceSummary(
     audience: ProfileAudience,
     circles: List<CardCircle>,
-    otherNames: Map<String, String> = emptyMap(),
 ): String = when (audience) {
     ProfileAudience.Public -> stringResource(MR.string.profile_edit_visibility_public)
     ProfileAudience.OnlyMe -> stringResource(MR.string.profile_edit_audience_only_me)
     is ProfileAudience.Circles -> {
         val other = stringResource(MR.string.profile_edit_audience_other_circle)
         val names = circles.filter { it.id in audience.ids }.map { it.name } +
-            audience.otherIds.sorted().map { otherNames[it] ?: other }
+            audience.otherIds.map { other }
         val more = names.size - SUMMARY_NAMES
         when {
             names.isEmpty() && circles.isEmpty() -> stringResource(MR.string.profile_edit_audience_all_connections)
@@ -423,13 +391,13 @@ internal fun audienceSummary(
 
 /** Stored circles without a card that [audiences] hold, named where the name is known. */
 @Composable
-internal fun otherCirclesOf(vararg audiences: ProfileAudience, names: Map<String, String>): List<CardCircle> {
+internal fun otherCirclesOf(vararg audiences: ProfileAudience): List<CardCircle> {
     val fallback = stringResource(MR.string.profile_edit_audience_other_circle)
     return audiences
         .flatMap { (it as? ProfileAudience.Circles)?.otherIds.orEmpty() }
         .distinct()
         .sorted()
-        .map { CardCircle(it, names[it] ?: fallback) }
+        .map { CardCircle(it, fallback) }
 }
 
 /** A detail's icon in a cookie badge beside its name: the header of its editor. */

@@ -214,7 +214,6 @@ internal fun ProfileField(
     value: String,
     label: String,
     showLabel: Boolean = true,
-    placeholder: String? = null,
     keyboardType: KeyboardType = KeyboardType.Text,
     isError: Boolean = false,
     errorText: String? = null,
@@ -230,7 +229,6 @@ internal fun ProfileField(
         // Addresses and URLs read left to right in every locale.
         textStyle = if (ltr) LocalTextStyle.current.copy(textDirection = TextDirection.Ltr) else LocalTextStyle.current,
         label = if (showLabel) { { Text(label) } } else null,
-        placeholder = placeholder?.let { { Text(it) } },
         singleLine = maxLines == 1,
         minLines = minLines,
         maxLines = maxLines,
@@ -247,7 +245,6 @@ internal data class AttributeSpec(
     val type: String,
     val icon: ImageVector,
     val labelRes: StringResource,
-    val social: Boolean = false,
 )
 
 internal val ATTRIBUTE_SPECS = listOf(
@@ -259,11 +256,11 @@ internal val ATTRIBUTE_SPECS = listOf(
     AttributeSpec(ProfileAttributeTypes.EMAIL, Icons.Outlined.Email, MR.string.profile_edit_email),
     AttributeSpec(ProfileAttributeTypes.PHONE, Icons.Outlined.Call, MR.string.profile_edit_phone),
     AttributeSpec(ProfileAttributeTypes.ADDRESS, Icons.Outlined.LocationOn, MR.string.contactbook_detail_location),
-    AttributeSpec(ProfileAttributeTypes.TWITTER, Icons.Outlined.Tag, MR.string.profile_edit_twitter, social = true),
-    AttributeSpec(ProfileAttributeTypes.FACEBOOK, Icons.Outlined.ThumbUp, MR.string.profile_edit_facebook, social = true),
-    AttributeSpec(ProfileAttributeTypes.INSTAGRAM, Icons.Outlined.PhotoCamera, MR.string.profile_edit_instagram, social = true),
-    AttributeSpec(ProfileAttributeTypes.TIKTOK, Icons.Outlined.MusicNote, MR.string.profile_edit_tiktok, social = true),
-    AttributeSpec(ProfileAttributeTypes.LINKEDIN, Icons.Outlined.WorkOutline, MR.string.profile_edit_linkedin, social = true),
+    AttributeSpec(ProfileAttributeTypes.TWITTER, Icons.Outlined.Tag, MR.string.profile_edit_twitter),
+    AttributeSpec(ProfileAttributeTypes.FACEBOOK, Icons.Outlined.ThumbUp, MR.string.profile_edit_facebook),
+    AttributeSpec(ProfileAttributeTypes.INSTAGRAM, Icons.Outlined.PhotoCamera, MR.string.profile_edit_instagram),
+    AttributeSpec(ProfileAttributeTypes.TIKTOK, Icons.Outlined.MusicNote, MR.string.profile_edit_tiktok),
+    AttributeSpec(ProfileAttributeTypes.LINKEDIN, Icons.Outlined.WorkOutline, MR.string.profile_edit_linkedin),
 )
 
 
@@ -317,10 +314,6 @@ internal fun isAttributeValid(type: String, value: (ProfileField) -> String): Bo
     else -> true
 }
 
-/**
- * The editable field(s) for one attribute type, bound generically via [value]/[onChange] so both an
- * existing row's inline editor and a newly added one share the exact same field UI.
- */
 @Composable
 internal fun AttributeFields(
     type: String,

@@ -118,7 +118,6 @@ private fun mergeData(existing: JsonObject?, updates: Map<String, String>): Json
  */
 internal class LoadedProfileAttributes(
     val byType: Map<String, ProfileAttribute>,
-    val all: List<ProfileAttribute>,
     val duplicates: Map<String, List<ProfileAttribute>>,
     val conflicts: Map<String, List<ProfileAttribute>>,
     val links: List<ProfileAttribute>,
@@ -134,7 +133,6 @@ internal class LoadedProfileAttributes(
                 .filterValues { it.isNotEmpty() }
             return LoadedProfileAttributes(
                 byType = byType,
-                all = attributes,
                 duplicates = leftovers.mapValues { (type, attrs) -> attrs.filter { it.data == byType[type]?.data } }.filterValues { it.isNotEmpty() },
                 conflicts = leftovers.mapValues { (type, attrs) -> attrs.filter { it.data != byType[type]?.data } }.filterValues { it.isNotEmpty() },
                 links = attributes.filter { it.type == ProfileAttributeTypes.LINK }.sortedBy { it.priority },
