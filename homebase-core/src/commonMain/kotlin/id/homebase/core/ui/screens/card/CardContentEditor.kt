@@ -173,9 +173,8 @@ internal fun CardContentEditor(
         AddGroup(
             isAvailable = { kind ->
                 when (kind) {
-                    AddKind.Link -> true
                     AddKind.Social -> missingSocials.isNotEmpty()
-                    else -> kind.type !in present
+                    else -> kind.type in REPEATABLE_TYPES || kind.type !in present
                 }
             },
             enabled = enabled,

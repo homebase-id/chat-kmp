@@ -34,6 +34,9 @@ internal val CARD_SOCIAL_TYPES = listOf(
     ProfileAttributeTypes.LINKEDIN,
 )
 
+// Each add makes a new record, so the profile can hold several.
+internal val REPEATABLE_TYPES = setOf(ProfileAttributeTypes.LINK, ProfileAttributeTypes.PHONE, ProfileAttributeTypes.EMAIL)
+
 private val LEADING_TYPES = listOf(
     ProfileAttributeTypes.NAME,
     ProfileAttributeTypes.BIO_SUMMARY,
@@ -86,7 +89,9 @@ internal fun cardContentItems(attributes: List<ProfileAttribute>, circles: List<
             required = card == CardAudience.Public && attribute.type == ProfileAttributeTypes.NAME && card.shows(audience),
         )
     }
-    return LEADING_TYPES.mapNotNull { type -> loaded.byType[type]?.let { item(it, contentText(it)) } } +
+    fun recordsOf(type: String) =
+        if (type in REPEATABLE_TYPES) attributes.filter { it.type == type }.sortedBy { it.priority } else listOfNotNull(loaded.byType[type])
+    return LEADING_TYPES.flatMap(::recordsOf).mapNotNull { item(it, contentText(it)) } +
         loaded.links.mapNotNull { link ->
             item(link, link.string(ProfileAttributeTypes.KEY_LINK_TEXT)?.ifBlank { null } ?: link.string(ProfileAttributeTypes.KEY_LINK_TARGET))
         } +

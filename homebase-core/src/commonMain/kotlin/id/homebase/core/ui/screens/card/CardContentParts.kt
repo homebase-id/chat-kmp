@@ -29,7 +29,6 @@ import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.ButtonDefaults
@@ -41,7 +40,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
@@ -74,7 +72,6 @@ import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
 import id.homebase.core.ui.screens.profile.AttributeFields
 import id.homebase.core.ui.screens.profile.AudienceBadge
 import id.homebase.core.ui.screens.profile.AudiencePicker
-import id.homebase.core.ui.screens.profile.CookieIcon
 import id.homebase.core.ui.screens.profile.EditorActions
 import id.homebase.core.ui.screens.profile.PanelHeader
 import id.homebase.core.ui.screens.profile.ProfileAudience
@@ -149,7 +146,7 @@ internal fun AudienceHeading(card: CardAudience) {
     }
 }
 
-// Fixed positions so the group never reshuffles between cards; a type the profile already has stays, disabled.
+// Only what can be added shows; a kind that can't be added is left out rather than shown disabled.
 @Composable
 internal fun AddGroup(
     isAvailable: (AddKind) -> Boolean,
@@ -157,7 +154,8 @@ internal fun AddGroup(
     onAdd: (AddKind) -> Unit,
     title: String = stringResource(MR.string.profile_card_content_add_to_card),
 ) {
-    val kinds = AddKind.entries
+    val kinds = AddKind.entries.filter(isAvailable)
+    if (kinds.isEmpty()) return
     val labels = kinds.map { stringResource(addLabel(it)) }
     Text(
         text = title,
@@ -179,7 +177,7 @@ internal fun AddGroup(
                 val toggle = connectedButtonShapes(index, kinds.size)
                 FilledTonalButton(
                     onClick = { onAdd(kind) },
-                    enabled = enabled && isAvailable(kind),
+                    enabled = enabled,
                     shapes = ButtonShapes(shape = toggle.shape, pressedShape = toggle.pressedShape),
                     contentPadding = PaddingValues(horizontal = ADD_PADDING),
                     modifier = weighted
@@ -203,25 +201,11 @@ internal fun AddGroup(
 
 @Composable
 internal fun EmptyContent() {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        color = colors.surfaceContainerHigh,
-        shape = RoundedCornerShape(GROUP_OUTER_CORNER),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            CookieIcon(Icons.Outlined.Dashboard)
-            Text(
-                text = stringResource(MR.string.profile_card_content_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.onSurfaceVariant,
-            )
-        }
-    }
+    Text(
+        text = stringResource(MR.string.profile_card_content_empty),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 // The M3 Expressive grouped list: one rounded block whose rows meet with tight inner corners.

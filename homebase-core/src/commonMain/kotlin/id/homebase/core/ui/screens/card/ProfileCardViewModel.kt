@@ -19,7 +19,6 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.profile.ProfileAttribute
-import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileProvider
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.common.OdinId
@@ -544,7 +543,9 @@ class ProfileCardViewModel(
     fun onContentAdded(type: String, updates: Map<String, String>) {
         val state = _uiState.value
         if (state.isContentBusy) return
-        val existing = if (type == ProfileAttributeTypes.LINK) null else LoadedProfileAttributes.from(state.attributes).byType[type]
+        // A repeatable type only refills a blank record; one with a value stays and the add is a new record.
+        val existing = LoadedProfileAttributes.from(state.attributes).byType[type]
+            ?.takeUnless { type in REPEATABLE_TYPES && state.contentItems.any { item -> item.id == it.id } }
         val existingAudience = existing?.audience(state.circles)
         val audience = existingAudience?.let { it.shownOn(state.selectedAudience, true, null) ?: it } ?: state.selectedAudience.newItemAudience()
         val edit = ProfileEditViewModel.computeAttributeEdit(existing, type, updates, audience, existingAudience) ?: return

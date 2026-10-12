@@ -169,6 +169,37 @@ class CardContentTest {
     }
 
     @Test
+    fun aSecondEmailIsItsOwnItemAndEachGoesOnACardOnItsOwn() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val home = wire.seed(ProfileAttributeTypes.EMAIL, "owner", data(ProfileAttributeTypes.KEY_EMAIL, "frodo@shire.me"))
+        val rig = rig(wire)
+        rig.open(work)
+
+        rig.write { rig.vm.onContentAdded(ProfileAttributeTypes.EMAIL, mapOf(ProfileAttributeTypes.KEY_EMAIL to "baggins@bagend.me")) }
+
+        assertEquals(2, wire.storedBodies.count { it.str("type") == ProfileAttributeTypes.EMAIL })
+        fun emails() = rig.vm.uiState.value.contentItems.filter { it.type == ProfileAttributeTypes.EMAIL }
+        assertEquals(setOf("frodo@shire.me", "baggins@bagend.me"), emails().map { it.text }.toSet())
+        val work2 = emails().single { it.id != home }
+        assertTrue(work2.shown)
+        assertFalse(emails().single { it.id == home }.shown)
+
+        rig.open(friends)
+        rig.write { rig.vm.onContentToggled(home, true) }
+        assertTrue(emails().single { it.id == home }.shown)
+        assertFalse(emails().single { it.id == work2.id }.shown)
+
+        rig.open(work)
+        assertTrue(emails().single { it.id == work2.id }.shown)
+        assertFalse(emails().single { it.id == home }.shown)
+        rig.write { rig.vm.onContentToggled(work2.id, false) }
+        assertTrue(emails().none { it.shown })
+        rig.open(friends)
+        assertTrue(emails().single { it.id == home }.shown)
+        assertEquals(2, wire.storedBodies.count { it.str("type") == ProfileAttributeTypes.EMAIL })
+    }
+
+    @Test
     fun aPublicItemIsLockedOnACircleCardAndCannotBeSwitchedOffSilently() = runTest(dispatcher) {
         val wire = CardWireHarness()
         val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
