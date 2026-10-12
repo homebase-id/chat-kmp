@@ -616,12 +616,12 @@ private class PanelMetrics(val body: Dp, val gap: Dp, val edge: Dp) {
 private fun CardPreviewFrame(
     keepProportions: Boolean,
     modifier: Modifier = Modifier,
-    shape: Shape = MaterialTheme.shapes.extraLargeIncreased,
     alignment: Alignment = Alignment.Center,
     fadeInto: (() -> Color)? = null,
     onCardSize: ((IntSize) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    val shape = MaterialTheme.shapes.extraLargeIncreased
     Box(modifier = modifier, contentAlignment = alignment) {
         Box(
             modifier = Modifier
