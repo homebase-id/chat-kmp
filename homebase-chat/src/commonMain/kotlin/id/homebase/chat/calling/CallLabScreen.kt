@@ -71,6 +71,7 @@ import id.homebase.resources.call_lab_controls
 import id.homebase.resources.call_lab_drop
 import id.homebase.resources.call_lab_fail
 import id.homebase.resources.call_lab_glare
+import id.homebase.resources.call_lab_hide
 import id.homebase.resources.call_lab_incoming_video
 import id.homebase.resources.call_lab_incoming_voice
 import id.homebase.resources.call_lab_intro
@@ -86,7 +87,12 @@ import id.homebase.resources.call_lab_scenarios
 import id.homebase.resources.call_lab_screens
 import id.homebase.resources.call_lab_bubbles
 import id.homebase.chat.conversationlist.MessageClusterPosition
+import id.homebase.chat.widget.MessageTimestampFooter
+import id.homebase.chat.widget.bottomSpacing
 import id.homebase.chat.widget.messageBubbleShape
+import id.homebase.chat.widget.topSpacing
+import id.homebase.core.util.formatMessageTimestamp
+import kotlin.time.Duration.Companion.hours
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.call_lab_live
 import id.homebase.resources.call_lab_stop
@@ -113,7 +119,7 @@ private const val ME = "frodo.baggins.demo.rocks"
 private const val PEER = "samwise.gamgee.demo.rocks"
 private const val OTHER = "gandalf.the.grey.demo.rocks"
 private const val LAB_RING_TIMEOUT_MS = 4_000L
-private val PeerName = PEER.substringBefore('.').replaceFirstChar { it.uppercase() }
+private val PeerName = PEER.substringBefore(".demo").split('.').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
 
 private class Lab(
     val scope: CoroutineScope,
@@ -241,7 +247,7 @@ fun CallLabScreen(onBackClick: () -> Unit) {
             PreviewLayer(shown, onChange = { preview = it })
         }
         if (active != null || shown != null) {
-            LabPanel(scenarios + live, Modifier.align(Alignment.CenterEnd))
+            key(active, shown?.phase) { LabPanel(scenarios + live, Modifier.align(Alignment.CenterEnd)) }
         }
     }
 }
@@ -259,18 +265,45 @@ private fun LabCallBubbles() {
             null to false,
         )
     }
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        samples.forEach { (descriptor, own) ->
+    val positions = remember(samples) { clusterPositions(samples.map { it.second }) }
+    val sentAt = remember { Clock.System.now() - 3.hours }
+    Column(Modifier.fillMaxWidth()) {
+        samples.forEachIndexed { index, (descriptor, own) ->
+            val position = positions[index]
             CallEventBubble(
                 descriptor = descriptor,
                 isOwn = own,
-                modifier = Modifier.align(if (own) Alignment.End else Alignment.Start).widthIn(max = 320.dp),
-                shape = messageBubbleShape(own, MessageClusterPosition.ALONE),
+                modifier = Modifier.align(if (own) Alignment.End else Alignment.Start)
+                    .padding(top = position.topSpacing(), bottom = position.bottomSpacing())
+                    .widthIn(max = 320.dp),
+                shape = messageBubbleShape(own, position),
                 containerColor = if (own) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = if (own) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface,
                 onCallBack = descriptor?.let { {} },
+                footer = { color ->
+                    MessageTimestampFooter(
+                        infoText = formatMessageTimestamp(sentAt),
+                        contentColor = color,
+                        showDeliveryStatus = false,
+                        isPendingSend = false,
+                        deliveryStatus = 0,
+                        pendingSince = null,
+                    )
+                },
             )
         }
+    }
+}
+
+/** Same run rule as the chat list's clustering, for galleries that have no timestamps to compare. */
+internal fun clusterPositions(owners: List<Boolean>): List<MessageClusterPosition> = owners.mapIndexed { i, own ->
+    val prev = owners.getOrNull(i - 1) == own
+    val next = owners.getOrNull(i + 1) == own
+    when {
+        prev && next -> MessageClusterPosition.MIDDLE
+        prev -> MessageClusterPosition.END
+        next -> MessageClusterPosition.START
+        else -> MessageClusterPosition.ALONE
     }
 }
 
@@ -311,13 +344,15 @@ private fun LabAvatar(size: Dp) {
         Modifier.size(size).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Text(PEER.replace('.', ' ').initials(), style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+        Text(PeerName.initials(), style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
     }
 }
 
 @Composable
 private fun LabPanel(actions: List<LabAction>, modifier: Modifier) {
     var open by remember { mutableStateOf(false) }
+    var hidden by remember { mutableStateOf(false) }
+    if (hidden) return
     val description = stringResource(MR.string.call_lab_controls)
     Box(modifier) {
         if (open) {
@@ -331,6 +366,8 @@ private fun LabPanel(actions: List<LabAction>, modifier: Modifier) {
                     IconButton(onClick = { open = false }, modifier = Modifier.align(Alignment.End)) {
                         Icon(Icons.Default.Close, description)
                     }
+                    // Lets a capture judge the call screen without the lab's own chrome on top; returns on the next state.
+                    LabButton(LabAction(MR.string.call_lab_hide) { hidden = true })
                     actions.forEach { LabButton(it) }
                 }
             }

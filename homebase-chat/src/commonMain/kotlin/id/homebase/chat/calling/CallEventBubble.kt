@@ -1,19 +1,15 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package id.homebase.chat.calling
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
@@ -24,8 +20,13 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.PhoneDisabled
 import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.Cancel
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Update
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -35,10 +36,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.Box
 import id.homebase.resources.MR
 import id.homebase.resources.call_button_video
 import id.homebase.resources.call_button_voice
@@ -73,21 +79,21 @@ fun CallEventBubble(
     val colors = MaterialTheme.colorScheme
     if (descriptor == null) {
         CallEventLayout(
-            modifier, shape, containerColor, contentColor, Modifier.semantics(mergeDescendants = true) {},
-            icon = Icons.Default.Warning, badgeColor = contentColor.copy(alpha = 0.12f), iconTint = contentColor,
+            modifier, shape, containerColor, contentColor,
+            icon = Icons.Outlined.Update, iconTint = contentColor.copy(alpha = 0.72f),
             title = stringResource(MR.string.call_event_unparseable), titleStyle = MaterialTheme.typography.bodyMedium,
             titleColor = contentColor, subtitle = null, footer = footer, trailing = null,
         )
         return
     }
-    val missed = descriptor.outcome == CallOutcome.NoAnswer || descriptor.outcome == CallOutcome.Cancelled
-    val missedForMe = missed && !isOwn
+    val missedForMe = !isOwn && (descriptor.outcome == CallOutcome.NoAnswer || descriptor.outcome == CallOutcome.Cancelled)
     val icon: ImageVector = when {
+        missedForMe -> Icons.AutoMirrored.Filled.CallMissed
+        descriptor.outcome == CallOutcome.NoAnswer -> Icons.AutoMirrored.Filled.CallMissedOutgoing
+        descriptor.outcome == CallOutcome.Cancelled -> Icons.Outlined.Cancel
         descriptor.outcome == CallOutcome.Declined -> Icons.Default.CallEnd
         descriptor.outcome == CallOutcome.Busy -> Icons.Default.PhoneDisabled
-        descriptor.outcome == CallOutcome.Failed -> Icons.Default.Warning
-        missedForMe -> Icons.AutoMirrored.Filled.CallMissed
-        missed -> Icons.AutoMirrored.Filled.CallMissedOutgoing
+        descriptor.outcome == CallOutcome.Failed -> Icons.Outlined.ErrorOutline
         isOwn -> Icons.AutoMirrored.Filled.CallMade
         else -> Icons.AutoMirrored.Filled.CallReceived
     }
@@ -102,20 +108,16 @@ fun CallEventBubble(
         },
     )
     val kind = stringResource(if (descriptor.video) MR.string.call_button_video else MR.string.call_button_voice)
-    val subtitle = if (descriptor.outcome == CallOutcome.Completed && descriptor.durationSeconds > 0) {
-        // Non-breaking so a narrow bubble wraps between kind and duration, never inside "12 min".
-        stringResource(MR.string.call_event_duration, kind, spokenCallDuration(descriptor.durationSeconds).replace(' ', '\u00A0'))
-    } else kind
+    val duration = if (descriptor.outcome == CallOutcome.Completed && descriptor.durationSeconds > 0) {
+        spokenCallDuration(descriptor.durationSeconds)
+    } else null
+    val subtitle = CallSubtitle(kind, duration, duration?.let { stringResource(MR.string.call_event_duration, kind, it) })
 
     val callBackLabel = stringResource(MR.string.call_call_back)
     CallEventLayout(
         modifier, shape, containerColor, contentColor,
-        interaction = if (onCallBack != null) {
-            Modifier.clickable(onClickLabel = callBackLabel, role = Role.Button, onClick = onCallBack)
-        } else Modifier.semantics(mergeDescendants = true) {},
         icon = icon,
-        badgeColor = if (missedForMe) colors.error.copy(alpha = 0.14f) else contentColor.copy(alpha = 0.12f),
-        iconTint = if (missedForMe) colors.error else contentColor,
+        iconTint = if (missedForMe) colors.error else contentColor.copy(alpha = 0.72f),
         title = title,
         titleStyle = MaterialTheme.typography.titleSmall,
         titleColor = if (missedForMe) colors.error else contentColor,
@@ -123,50 +125,65 @@ fun CallEventBubble(
         footer = footer,
         trailing = if (onCallBack == null) null else {
             {
-                val (actionColor, onAction) =
-                    if (missedForMe) colors.primary to colors.onPrimary else contentColor.copy(alpha = 0.12f) to contentColor
-                Box(Modifier.size(40.dp).background(actionColor, CircleShape), contentAlignment = Alignment.Center) {
-                    Icon(if (descriptor.video) Icons.Default.Videocam else Icons.Default.Call, null, Modifier.size(20.dp), tint = onAction)
+                val (container, content) = when {
+                    missedForMe -> colors.primary to colors.onPrimary
+                    isOwn -> contentColor.copy(alpha = 0.24f) to contentColor
+                    else -> colors.secondaryContainer to colors.onSecondaryContainer
+                }
+                FilledTonalIconButton(
+                    onClick = onCallBack,
+                    modifier = Modifier.size(48.dp),
+                    shapes = IconButtonDefaults.shapes(shape = RoundedCornerShape(16.dp), pressedShape = RoundedCornerShape(10.dp)),
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = container, contentColor = content),
+                ) {
+                    Icon(if (descriptor.video) Icons.Default.Videocam else Icons.Default.Call, callBackLabel, Modifier.size(22.dp))
                 }
             }
         },
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CallEventLayout(
     modifier: Modifier,
     shape: Shape,
     containerColor: Color,
     contentColor: Color,
-    interaction: Modifier,
     icon: ImageVector,
-    badgeColor: Color,
     iconTint: Color,
     title: String,
     titleStyle: TextStyle,
     titleColor: Color,
-    subtitle: String?,
+    subtitle: CallSubtitle?,
     footer: (@Composable (Color) -> Unit)?,
     trailing: (@Composable () -> Unit)?,
 ) {
     val secondary = contentColor.copy(alpha = 0.72f)
-    Surface(modifier.widthIn(min = 232.dp), shape = shape, color = containerColor, contentColor = contentColor) {
+    Surface(modifier.widthIn(min = 200.dp), shape = shape, color = containerColor, contentColor = contentColor) {
         Row(
-            interaction.padding(10.dp),
+            Modifier.padding(start = 14.dp, end = if (trailing != null) 8.dp else 14.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(Modifier.size(44.dp).background(badgeColor, CircleShape), contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp), tint = iconTint)
-            }
-            Column(Modifier.weight(1f, fill = false).width(IntrinsicSize.Max)) {
-                Text(title, style = titleStyle, color = titleColor)
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                    Text(subtitle.orEmpty(), style = MaterialTheme.typography.bodySmall, color = secondary, modifier = Modifier.weight(1f))
-                    if (footer != null) {
-                        Spacer(Modifier.width(12.dp))
-                        footer(secondary)
+            Row(
+                Modifier.weight(1f, fill = false).semantics(mergeDescendants = true) {},
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                val iconSize = with(LocalDensity.current) { 18.sp.toDp() }
+                Icon(icon, contentDescription = null, modifier = Modifier.padding(top = 1.dp).size(iconSize), tint = iconTint)
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(title, style = titleStyle.copy(textDirection = TextDirection.Content), color = titleColor)
+                    if (subtitle == null) {
+                        footer?.let { Box(Modifier.align(Alignment.End)) { it(secondary) } }
+                    } else {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            itemVerticalAlignment = Alignment.Bottom,
+                        ) {
+                            KindAndDuration(subtitle, MaterialTheme.typography.bodySmall.copy(color = secondary, textDirection = TextDirection.Content))
+                            footer?.invoke(secondary)
+                        }
                     }
                 }
             }
@@ -174,6 +191,39 @@ private fun CallEventLayout(
         }
     }
 }
+
+private class CallSubtitle(val kind: String, val duration: String?, val joined: String?)
+
+/** "Voice call · 12 min 34 s" on one line when it fits, else kind over duration, so neither half is ever split. */
+@Composable
+private fun KindAndDuration(subtitle: CallSubtitle, style: TextStyle) {
+    if (subtitle.duration == null || subtitle.joined == null) {
+        Text(subtitle.kind.nonBreaking(), style = style)
+        return
+    }
+    Layout(
+        content = {
+            Text(subtitle.joined.nonBreaking(), style = style, softWrap = false)
+            Text(subtitle.kind.nonBreaking(), style = style)
+            Text(subtitle.duration.nonBreaking(), style = style)
+        },
+    ) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0)
+        val joined = measurables[0].measure(loose.copy(maxWidth = Constraints.Infinity))
+        if (joined.width <= constraints.maxWidth) {
+            layout(joined.width, joined.height) { joined.place(0, 0) }
+        } else {
+            val kind = measurables[1].measure(loose)
+            val duration = measurables[2].measure(loose)
+            layout(maxOf(kind.width, duration.width), kind.height + duration.height) {
+                kind.placeRelative(0, 0)
+                duration.placeRelative(0, kind.height)
+            }
+        }
+    }
+}
+
+private fun String.nonBreaking() = replace(' ', '\u00A0')
 
 @Composable
 internal fun spokenCallDuration(totalSeconds: Long): String {

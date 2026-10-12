@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Surface
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
-import id.homebase.chat.conversationlist.MessageClusterPosition
+import id.homebase.chat.widget.bottomSpacing
 import id.homebase.chat.widget.messageBubbleShape
+import id.homebase.chat.widget.topSpacing
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
@@ -280,18 +282,24 @@ class CallScreenshotTest {
                     LocalLayoutDirection provides if (v.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
                 ) {
                     HomebaseTheme(darkTheme = v.dark, followsSystemTheme = false) {
-                        Column(
-                            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            for ((item, own) in rows) {
+                        val positions = clusterPositions(rows.map { it.second })
+                        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(12.dp)) {
+                            for ((index, row) in rows.withIndex()) {
+                                val (item, own) = row
                                 val container = if (own) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh
                                 val content = if (own) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface
-                                val shape = messageBubbleShape(own, MessageClusterPosition.ALONE)
-                                val placed = Modifier.align(if (own) Alignment.End else Alignment.Start).widthIn(max = 320.dp)
+                                val position = positions[index]
+                                val shape = messageBubbleShape(own, position)
+                                val placed = Modifier.align(if (own) Alignment.End else Alignment.Start)
+                                    .padding(top = position.topSpacing(), bottom = position.bottomSpacing())
+                                    .widthIn(max = 320.dp)
                                 if (item is String) {
                                     Surface(placed, shape = shape, color = container, contentColor = content) {
-                                        Text(item, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyLarge)
+                                        Text(
+                                            item,
+                                            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
+                                        )
                                     }
                                 } else {
                                     val descriptor = item as CallEventDescriptor?

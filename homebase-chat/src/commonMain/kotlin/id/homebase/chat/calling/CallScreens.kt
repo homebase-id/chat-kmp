@@ -59,7 +59,6 @@ import androidx.compose.material.icons.filled.Headset
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhoneInTalk
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VerifiedUser
@@ -70,6 +69,7 @@ import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroup
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ButtonGroupScope
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -80,7 +80,7 @@ import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.IconToggleButtonShapes
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -107,6 +107,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -132,6 +133,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
+import androidx.compose.ui.unit.sp
 import id.homebase.chat.services.calling.AudioRoute
 import id.homebase.chat.services.calling.CallEndReason
 import id.homebase.chat.services.calling.CallPhase
@@ -142,10 +144,10 @@ import id.homebase.chat.services.calling.FakeVideo
 import id.homebase.chat.services.calling.VideoHandle
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
+import id.homebase.resources.call_accept
 import id.homebase.resources.call_accept_audio_from
 import id.homebase.resources.call_accept_audio_label
 import id.homebase.resources.call_accept_video_from
-import id.homebase.resources.call_accept_video_label
 import id.homebase.resources.call_call_back
 import id.homebase.resources.call_camera_off
 import id.homebase.resources.call_camera_on
@@ -231,7 +233,7 @@ private val PipTop = 84.dp
 private val PhoneDockReserve = 236.dp
 private val DesktopDockReserve = 128.dp
 
-private enum class HaloMode { None, Ringing, Waiting }
+private enum class HaloMode { None, Still, Ringing, Waiting }
 
 @Composable
 fun CallScreen(
@@ -357,7 +359,12 @@ private fun VideoStage(ui: CallUiState, large: Boolean, avatar: @Composable (Dp)
             )
         } else {
             Box(
-                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(
+                        0f to MaterialTheme.colorScheme.surfaceContainerHighest,
+                        1f to MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
+                ),
                 contentAlignment = Alignment.Center,
             ) {
                 val size = if (large) 168.dp else 152.dp
@@ -365,7 +372,7 @@ private fun VideoStage(ui: CallUiState, large: Boolean, avatar: @Composable (Dp)
                     Modifier.size(size * 1.5f).padding(bottom = if (large) 24.dp else 64.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (ui.phase == CallPhase.Connecting) AvatarHalo(size, HaloMode.Waiting)
+                    AvatarHalo(size, if (ui.phase == CallPhase.Connecting) HaloMode.Waiting else HaloMode.Still)
                     avatar(size)
                 }
             }
@@ -415,7 +422,7 @@ private fun BoxScope.IncomingLayout(
         Modifier.align(Alignment.BottomCenter)
             .then(if (large) Modifier.padding(bottom = 56.dp) else Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 32.dp)),
         horizontalArrangement = if (large) Arrangement.spacedBy(64.dp) else Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.Top,
+        verticalAlignment = Alignment.Bottom,
     ) {
         RoundCallButton(
             icon = Icons.Default.CallEnd,
@@ -425,24 +432,26 @@ private fun BoxScope.IncomingLayout(
             content = HomebaseTheme.extendedColors.onCameraRecord,
             onClick = actions.decline,
         )
-        RoundCallButton(
-            icon = Icons.Default.Call,
-            label = stringResource(MR.string.call_accept_audio_label),
-            description = stringResource(MR.string.call_accept_audio_from, peerName),
-            container = if (video) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primary,
-            content = if (video) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onPrimary,
-            onClick = actions.acceptAudio,
-        )
         if (video) {
             RoundCallButton(
-                icon = Icons.Default.Videocam,
-                label = stringResource(MR.string.call_accept_video_label),
-                description = stringResource(MR.string.call_accept_video_from, peerName),
-                container = MaterialTheme.colorScheme.primary,
-                content = MaterialTheme.colorScheme.onPrimary,
-                onClick = actions.acceptVideo,
+                icon = Icons.Default.Call,
+                label = stringResource(MR.string.call_accept_audio_label),
+                description = stringResource(MR.string.call_accept_audio_from, peerName),
+                container = MaterialTheme.colorScheme.secondaryContainer,
+                content = MaterialTheme.colorScheme.onSecondaryContainer,
+                onClick = actions.acceptAudio,
             )
         }
+        RoundCallButton(
+            icon = if (video) Icons.Default.Videocam else Icons.Default.Call,
+            label = stringResource(MR.string.call_accept),
+            description = stringResource(if (video) MR.string.call_accept_video_from else MR.string.call_accept_audio_from, peerName),
+            container = MaterialTheme.colorScheme.primary,
+            content = MaterialTheme.colorScheme.onPrimary,
+            onClick = if (video) actions.acceptVideo else actions.acceptAudio,
+            size = 84.dp,
+            pulse = true,
+        )
     }
 }
 
@@ -523,7 +532,11 @@ private fun AudioCallStatus(ui: CallUiState, elapsed: String) {
             )
         }
         else -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(elapsed, style = MaterialTheme.typography.titleMedium.tabular(), color = MaterialTheme.colorScheme.primary)
+            Text(
+                elapsed,
+                style = MaterialTheme.typography.titleLargeEmphasized.copy(fontWeight = FontWeight.SemiBold).tabular(),
+                color = MaterialTheme.colorScheme.primary,
+            )
             AnimatedVisibility(ui.quality == CallQuality.Poor, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
                 Surface(shape = CircleShape, color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer) {
                     Row(
@@ -729,6 +742,14 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
 @Composable
 private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActions, modifier: Modifier, placing: Boolean) {
     val showLabels = !large
+    val showRoute = ui.availableRoutes.size > 1
+    val showCamera = ui.videos.local != null
+    // Desktop webcams are single-facing, so flip only earns a slot on phone widths.
+    val showFlip = ui.localVideo && !large && !placing
+    val count = 1 + listOf(showRoute, showCamera, showFlip).count { it }
+    val routeSlot = 1
+    val cameraSlot = if (showRoute) 2 else 1
+    val flipSlot = cameraSlot + if (showCamera) 1 else 0
     val toggles: @Composable ButtonGroupScope.() -> Unit = {
         val muteInteraction = remember { MutableInteractionSource() }
         CallToggle(
@@ -738,14 +759,15 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
             label = stringResource(MR.string.call_label_mute).takeIf { showLabels },
             description = stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute),
             state = stringResource(if (ui.muted) MR.string.call_state_muted else MR.string.call_state_mic_on),
+            shapes = segmentShapes(0, count),
             interaction = muteInteraction,
             modifier = Modifier.animateWidth(muteInteraction),
         )
-        if (ui.availableRoutes.size > 1) {
+        if (showRoute) {
             val routeInteraction = remember { MutableInteractionSource() }
-            RouteToggle(ui, actions, showLabels, routeInteraction, Modifier.animateWidth(routeInteraction))
+            RouteToggle(ui, actions, showLabels, segmentShapes(routeSlot, count), routeInteraction, Modifier.animateWidth(routeInteraction))
         }
-        if (ui.videos.local != null) {
+        if (showCamera) {
             val cameraInteraction = remember { MutableInteractionSource() }
             val off = !ui.localVideo
             CallToggle(
@@ -755,18 +777,19 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
                 label = stringResource(MR.string.call_label_camera).takeIf { showLabels },
                 description = stringResource(if (off) MR.string.call_camera_on else MR.string.call_camera_off),
                 state = stringResource(if (off) MR.string.call_no_video else MR.string.call_state_camera_on),
+                shapes = segmentShapes(cameraSlot, count),
                 interaction = cameraInteraction,
                 modifier = Modifier.animateWidth(cameraInteraction),
             )
         }
-        // Desktop webcams are single-facing, so flip only earns a slot on phone widths.
-        if (ui.localVideo && !large && !placing) {
+        if (showFlip) {
             val flipInteraction = remember { MutableInteractionSource() }
             CallAction(
                 icon = Icons.Default.Cameraswitch,
                 label = stringResource(MR.string.call_label_flip).takeIf { showLabels },
                 description = stringResource(MR.string.call_switch_camera),
                 onClick = actions.switchCamera,
+                shapes = segmentShapes(flipSlot, count),
                 interaction = flipInteraction,
                 modifier = Modifier.animateWidth(flipInteraction),
             )
@@ -786,7 +809,7 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ButtonGroup(horizontalArrangement = Arrangement.spacedBy(8.dp)) { toggles() }
+                ButtonGroup(horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) { toggles() }
                 VerticalDivider(Modifier.height(40.dp).padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 EndCallButton(actions.hangup, Modifier.size(width = 96.dp, height = 56.dp))
             }
@@ -807,7 +830,7 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
         ) {
             ButtonGroup(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween, Alignment.CenterHorizontally),
             ) { toggles() }
             EndCallButton(actions.hangup, Modifier.fillMaxWidth(0.6f).height(64.dp))
         }
@@ -816,12 +839,19 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
 
 private val ToggleSize = 64.dp
 
-@Composable
-private fun toggleShapes() = IconToggleButtonShapes(
-    shape = CircleShape,
-    pressedShape = RoundedCornerShape(14.dp),
-    checkedShape = RoundedCornerShape(22.dp),
-)
+private val SegmentOuter = 32.dp
+private val SegmentInner = 10.dp
+
+/** One connected bar: outer ends fully round, inner joins tight; a checked toggle morphs into a free-standing squircle. */
+private fun segmentShapes(index: Int, count: Int): IconToggleButtonShapes {
+    val start = if (index == 0) SegmentOuter else SegmentInner
+    val end = if (index == count - 1) SegmentOuter else SegmentInner
+    return IconToggleButtonShapes(
+        shape = RoundedCornerShape(topStart = start, bottomStart = start, topEnd = end, bottomEnd = end),
+        pressedShape = RoundedCornerShape(6.dp),
+        checkedShape = RoundedCornerShape(22.dp),
+    )
+}
 
 @Composable
 private fun CallToggle(
@@ -831,6 +861,7 @@ private fun CallToggle(
     label: String?,
     description: String,
     state: String,
+    shapes: IconToggleButtonShapes,
     interaction: MutableInteractionSource,
     modifier: Modifier,
 ) {
@@ -838,7 +869,7 @@ private fun CallToggle(
         FilledTonalIconToggleButton(
             checked = checked,
             onCheckedChange = onCheckedChange,
-            shapes = toggleShapes(),
+            shapes = shapes,
             colors = IconButtonDefaults.filledTonalIconToggleButtonColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = MaterialTheme.colorScheme.onSurface,
@@ -862,6 +893,7 @@ private fun CallAction(
     label: String?,
     description: String,
     onClick: () -> Unit,
+    shapes: IconToggleButtonShapes,
     interaction: MutableInteractionSource,
     modifier: Modifier,
     role: Role = Role.Button,
@@ -869,7 +901,7 @@ private fun CallAction(
     ToggleColumn(label, modifier) {
         FilledTonalIconButton(
             onClick = onClick,
-            shapes = IconButtonDefaults.shapes(shape = CircleShape, pressedShape = RoundedCornerShape(14.dp)),
+            shapes = IconButtonDefaults.shapes(shape = shapes.shape, pressedShape = shapes.pressedShape),
             colors = IconButtonDefaults.filledTonalIconButtonColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = MaterialTheme.colorScheme.onSurface,
@@ -910,6 +942,7 @@ private fun RouteToggle(
     ui: CallUiState,
     actions: CallScreenActions,
     showLabels: Boolean,
+    shapes: IconToggleButtonShapes,
     interaction: MutableInteractionSource,
     modifier: Modifier,
 ) {
@@ -924,6 +957,7 @@ private fun RouteToggle(
             label = label,
             description = stringResource(routeAction(next)),
             state = stringResource(routeName(ui.route)),
+            shapes = shapes,
             interaction = interaction,
             modifier = modifier,
         )
@@ -938,6 +972,7 @@ private fun RouteToggle(
             label = label,
             description = stringResource(MR.string.call_route_picker),
             state = stringResource(routeName(ui.route)),
+            shapes = shapes,
             interaction = interaction,
             modifier = Modifier,
         )
@@ -993,7 +1028,7 @@ private fun BoxScope.EndedLayout(
     val endedAt = ui.endedAtMs
     val reasonText = endedText(reason)
     val status = if (connectedAt != null && endedAt != null && endedAt > connectedAt) {
-        stringResource(MR.string.call_event_duration, reasonText, formatCallDuration((endedAt - connectedAt) / 1000))
+        stringResource(MR.string.call_event_duration, reasonText, spokenCallDuration((endedAt - connectedAt) / 1000))
     } else reasonText
     PeerHeader(
         name = peerName,
@@ -1020,16 +1055,22 @@ private fun BoxScope.EndedLayout(
             Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(56.dp)))
             Text(stringResource(MR.string.call_call_back), style = ButtonDefaults.textStyleFor(56.dp))
         }
-        TextButton(onClick = actions.close, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-            Text(stringResource(MR.string.call_close))
+        // The ring counts down the auto-dismiss, so it reads as "closing" rather than as a pager.
+        TextButton(
+            onClick = actions.close,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
+        ) {
+            CircularProgressIndicator(
+                progress = { progress.value },
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.5.dp,
+                trackColor = MaterialTheme.colorScheme.outlineVariant,
+                gapSize = 0.dp,
+            )
+            Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(56.dp)))
+            Text(stringResource(MR.string.call_close), style = ButtonDefaults.textStyleFor(56.dp))
         }
-        LinearProgressIndicator(
-            progress = { progress.value },
-            modifier = Modifier.width(96.dp).padding(top = 4.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            trackColor = MaterialTheme.colorScheme.outlineVariant,
-            drawStopIndicator = {},
-        )
     }
 }
 
@@ -1068,19 +1109,19 @@ private fun BoxScope.FailedLayout(
             Box(Modifier.align(Alignment.Center).alpha(0.6f)) { avatar(112.dp) }
             val badgeShape = MaterialShapes.Cookie9Sided.toShape()
             Box(
-                Modifier.align(Alignment.BottomEnd).size(52.dp)
+                Modifier.align(Alignment.BottomEnd).size(56.dp)
                     .background(MaterialTheme.colorScheme.surfaceContainerLow, badgeShape)
                     .padding(4.dp)
-                    .background(MaterialTheme.colorScheme.tertiaryContainer, badgeShape),
+                    .background(MaterialTheme.colorScheme.errorContainer, badgeShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(badge, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                Icon(badge, null, Modifier.size(26.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
             }
         }
         Spacer(Modifier.height(20.dp))
         Text(
             title,
-            style = MaterialTheme.typography.headlineMediumEmphasized,
+            style = MaterialTheme.typography.headlineMediumEmphasized.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
         )
@@ -1109,8 +1150,12 @@ private fun BoxScope.FailedLayout(
             Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(56.dp)))
             Text(stringResource(MR.string.call_retry), style = ButtonDefaults.textStyleFor(56.dp))
         }
-        TextButton(onClick = actions.close, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-            Text(stringResource(MR.string.call_close))
+        TextButton(
+            onClick = actions.close,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
+        ) {
+            Text(stringResource(MR.string.call_close), style = ButtonDefaults.textStyleFor(56.dp))
         }
     }
 }
@@ -1227,8 +1272,10 @@ private fun AvatarHalo(avatarSize: Dp, mode: HaloMode) {
             }.background(ringColor, CircleShape),
         )
     }
+    val still = mode == HaloMode.Still
     Box(
         Modifier.size(avatarSize * 1.26f).graphicsLayer {
+            if (still) return@graphicsLayer
             rotationZ = rotation
             val s = 0.96f + breath * 0.06f
             scaleX = s
@@ -1255,6 +1302,7 @@ private fun RoundCallButton(
     content: Color,
     onClick: () -> Unit,
     size: Dp = 72.dp,
+    pulse: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -1264,6 +1312,8 @@ private fun RoundCallButton(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        Box(contentAlignment = Alignment.Center) {
+        if (pulse) AcceptPulse(size, container)
         Surface(
             onClick = onClick,
             shape = RoundedCornerShape(corner),
@@ -1272,10 +1322,25 @@ private fun RoundCallButton(
             interactionSource = interaction,
             modifier = Modifier.size(size).semantics { contentDescription = description; role = Role.Button },
         ) {
-            Box(contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(32.dp)) }
+            Box(contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(if (size > 72.dp) 36.dp else 32.dp)) }
         }
-        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
+        }
+        Text(label, style = if (pulse) MaterialTheme.typography.titleSmallEmphasized else MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
     }
+}
+
+@Composable
+private fun AcceptPulse(size: Dp, color: Color) {
+    val transition = rememberInfiniteTransition(label = "acceptPulse")
+    val t by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1_600, easing = LinearEasing)), label = "acceptPulseT")
+    Box(
+        Modifier.size(size).graphicsLayer {
+            val s = 1f + t * 0.45f
+            scaleX = s
+            scaleY = s
+            alpha = (1f - t) * 0.4f
+        }.background(color, CircleShape),
+    )
 }
 
 @Composable
@@ -1302,17 +1367,17 @@ internal fun CallVideoSurface(handle: VideoHandle?, modifier: Modifier = Modifie
         null -> Unit
         // Stand-in camera feed for the lab and screenshot tests: a lit backdrop and a head-and-shoulders silhouette.
         is FakeVideo -> {
-            val top = if (local) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.tertiaryContainer
-            val figure = if (local) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onTertiaryContainer
+            val frame = Color(handle.argb)
+            val shade = MaterialTheme.colorScheme.scrim
             BoxWithConstraints(
-                modifier.background(Brush.verticalGradient(listOf(top, MaterialTheme.colorScheme.surfaceContainerHighest))),
+                modifier.background(Brush.verticalGradient(listOf(frame, lerp(frame, shade, 0.45f)))),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    Icons.Default.Person,
-                    contentDescription = null,
-                    tint = figure.copy(alpha = 0.32f),
-                    modifier = Modifier.size(minOf(maxWidth, maxHeight) * 0.66f).offset(y = -maxHeight * 0.06f),
+                Text(
+                    handle.initials,
+                    style = MaterialTheme.typography.displayLargeEmphasized.copy(fontSize = (minOf(maxWidth, maxHeight).value * 0.3f).sp),
+                    color = shade.copy(alpha = 0.28f),
+                    modifier = Modifier.offset(y = -maxHeight * 0.04f),
                 )
             }
         }
