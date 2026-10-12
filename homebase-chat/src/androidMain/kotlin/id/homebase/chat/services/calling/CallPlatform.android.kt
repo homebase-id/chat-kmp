@@ -37,6 +37,8 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier) {
                     setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
                     setEnableHardwareScaler(true)
                     setMirror(kmp.mirrored)
+                    // Two SurfaceViews stack in tree order; without the overlay flag the full-screen remote covers the PiP.
+                    setZOrderMediaOverlay(kmp.local)
                     track.addSink(this)
                     renderer[0] = this
                 }

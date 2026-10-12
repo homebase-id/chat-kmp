@@ -32,9 +32,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-class KmpVideoHandle(val track: VideoTrack, val mirrored: Boolean) : VideoHandle
+class KmpVideoHandle(val track: VideoTrack, val mirrored: Boolean, val local: Boolean = false) : VideoHandle
 
 /** Android and iOS engine over webrtc-kmp. Platform audio routing is delegated to [CallAudioRouter]. */
 @OptIn(ExperimentalAtomicApi::class)
@@ -75,6 +76,21 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
                 mapper.remoteVideo(true)
             }
         }
+        scope.launch { logInboundVideoStats() }
+    }
+
+    private suspend fun logInboundVideoStats() {
+        while (!closed.load()) {
+            delay(5_000)
+            val inbound = runCatching { peer.getStats()?.stats?.values }.getOrNull()
+                ?.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "video" } ?: continue
+            val m = inbound.members
+            Logger.i("WebRtcKmp") {
+                "inbound video packets=${m["packetsReceived"]} lost=${m["packetsLost"]} bytes=${m["bytesReceived"]} " +
+                    "decoded=${m["framesDecoded"]} dropped=${m["framesDropped"]} freezes=${m["freezeCount"]} " +
+                    "plis=${m["pliCount"]} nacks=${m["nackCount"]} decoder=${m["decoderImplementation"]}"
+            }
+        }
     }
 
     private fun PeerConnectionState.toLinkState() = when (this) {
@@ -90,7 +106,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         if (track.settings.facingMode == FacingMode.Environment) CameraFacing.Back else CameraFacing.Front
 
     private fun publishLocal(track: VideoTrack) {
-        _local.value = KmpVideoHandle(track, mirrored = localFacing(track).mirrorsLocalPreview)
+        _local.value = KmpVideoHandle(track, mirrored = localFacing(track).mirrorsLocalPreview, local = true)
     }
 
     private suspend fun addLocalMedia(video: Boolean) {
