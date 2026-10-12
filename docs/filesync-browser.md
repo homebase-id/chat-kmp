@@ -42,7 +42,8 @@ Every file and folder is one Homebase file:
 - Range reads work: start one block before the range, for videos and resuming.
 - Check the hash: the payload descriptor's `hash.contentHash` is the plaintext hash, encrypted
   with the file key and IV = payload IV XOR `0xAA…AA`. `hash.algorithm` is `blake3` (written by
-  Filesync) or `sha256`. A file that doesn't match is damaged: refuse it.
+  Filesync) or `sha256`: verify with the one it names. Refuse a file with an unknown algorithm,
+  no hash, or a hash that doesn't match.
 
 ## Uploading (new file or folder)
 - `uniqueId` = a new random GUID, `groupId` = the parent folder's node id, and always
@@ -50,7 +51,8 @@ Every file and folder is one Homebase file:
 - Files need a `sync_data` payload (`application/octet-stream`) with a random IV and both hashes:
   - `storedHash` over the ciphertext;
   - `contentHash` over the plaintext, encrypted as above;
-  - SHA-256 is fine. A file without them is ignored by Filesync.
+  - Write BLAKE3. SHA-256 is accepted, but it costs Filesync an extra pass per download and can
+    cause needless conflict copies. A file without both hashes is ignored by Filesync.
 - Names: Unicode NFC, at most 255 UTF-8 bytes, no `/` or NUL, not `.` or `..`.
   - Unique within the folder, ignoring case and Unicode form (as on macOS and Windows): add
     `(1)`, `(2)` and so on if needed.
