@@ -1,46 +1,46 @@
 package id.homebase.api.client.drives.files
 
 import androidx.compose.runtime.Immutable
-import id.homebase.api.client.connections.IntOrNameSerializer
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.jsonPrimitive
 
-/** odin-core `docs/payload-hashes.md`; both hashes are base64, like [PayloadDescriptor.iv]. */
+/**
+ * odin-core `docs/payload-hashes.md`; both hashes are base64, like [PayloadDescriptor.iv].
+ * [algorithm] stays the raw wire value so a header with a future algorithm still saves back unchanged.
+ */
 @Serializable
 @Immutable
 data class PayloadHash(
-    val algorithm: PayloadHashAlgorithm,
+    @Serializable(with = PayloadHashAlgorithmNameSerializer::class) val algorithm: String,
     val storedHash: String,
     val contentHash: String,
-)
+) {
+    val knownAlgorithm: PayloadHashAlgorithm? get() = PayloadHashAlgorithm.fromWire(algorithm)
+}
 
-/** [Unknown] keeps a future algorithm from breaking the parse of a whole file header. */
-@Serializable(with = PayloadHashAlgorithmSerializer::class)
-enum class PayloadHashAlgorithm(val value: Int) {
-    Sha256(1),
-    Blake3(2),
-    Unknown(0);
-
-    val wireName: String get() = name.lowercase()
+enum class PayloadHashAlgorithm(val wireName: String, private val wireNumber: Int) {
+    Sha256("sha256", 1),
+    Blake3("blake3", 2);
 
     companion object {
-        fun fromValue(value: Int): PayloadHashAlgorithm =
-            entries.firstOrNull { it.value == value && it != Unknown } ?: Unknown
-
-        fun fromName(name: String): PayloadHashAlgorithm =
-            entries.firstOrNull { it.wireName == name.lowercase() && it != Unknown } ?: Unknown
+        fun fromWire(value: String): PayloadHashAlgorithm? =
+            entries.firstOrNull { it.wireName.equals(value, ignoreCase = true) || it.wireNumber.toString() == value }
     }
 }
 
-internal object PayloadHashAlgorithmSerializer : IntOrNameSerializer<PayloadHashAlgorithm>(
-    serialName = "PayloadHashAlgorithm",
-    fallback = PayloadHashAlgorithm.Unknown,
-    valueOf = { it.value },
-    fromValue = PayloadHashAlgorithm::fromValue,
-    fromName = PayloadHashAlgorithm::fromName,
-) {
-    override fun serialize(encoder: Encoder, value: PayloadHashAlgorithm) {
-        require(value != PayloadHashAlgorithm.Unknown) { "An unknown payload hash algorithm can't be sent" }
-        encoder.encodeString(value.wireName)
-    }
+/** odin-core also reads the algorithm as 1 / 2; a number is kept as its digits and sent back by name. */
+internal object PayloadHashAlgorithmNameSerializer : KSerializer<String> {
+    override val descriptor = PrimitiveSerialDescriptor("PayloadHashAlgorithm", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: String) =
+        encoder.encodeString(PayloadHashAlgorithm.fromWire(value)?.wireName ?: value)
+
+    override fun deserialize(decoder: Decoder): String =
+        (decoder as? JsonDecoder)?.decodeJsonElement()?.jsonPrimitive?.content ?: decoder.decodeString()
 }

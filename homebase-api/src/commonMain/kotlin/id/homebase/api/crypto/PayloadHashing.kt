@@ -4,6 +4,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.file.FileOperationsProvider
+import kotlinx.coroutines.CancellationException
 import kotlin.io.encoding.Base64
 
 private const val PAYLOAD_HASH_LENGTH = 32
@@ -12,7 +13,6 @@ private val CONTENT_HASH_IV_MASK = ByteArray(16) { 0xAA.toByte() }
 fun PayloadHashAlgorithm.newHasher(): IncrementalHasher = when (this) {
     PayloadHashAlgorithm.Sha256 -> Sha256Hasher()
     PayloadHashAlgorithm.Blake3 -> Blake3Hasher()
-    PayloadHashAlgorithm.Unknown -> error("No hasher for an unknown payload hash algorithm")
 }
 
 /** XOR with a non-zero mask, so the encrypted content hash never reuses the payload IV. */
@@ -25,7 +25,7 @@ suspend fun encryptedPayloadHash(
     contentDigest: ByteArray,
     payloadKey: KeyHeader,
 ): PayloadHash = PayloadHash(
-    algorithm = algorithm,
+    algorithm = algorithm.wireName,
     storedHash = Base64.encode(storedDigest),
     contentHash = Base64.encode(AesCbc.encrypt(contentDigest, payloadKey.aesKey, contentHashIv(payloadKey.iv))),
 )
@@ -35,10 +35,16 @@ suspend fun encryptedPayloadHash(
  * unknown algorithm, or a contentHash that doesn't decrypt to a hash.
  */
 suspend fun PayloadHash.plaintextContentHash(payloadKey: KeyHeader?): ByteArray? {
-    if (algorithm == PayloadHashAlgorithm.Unknown) return null
+    if (knownAlgorithm == null) return null
     val raw = runCatching { Base64.decode(contentHash) }.getOrNull() ?: return null
     val plain = if (payloadKey == null) raw else {
-        runCatching { AesCbc.decrypt(raw, payloadKey.aesKey, contentHashIv(payloadKey.iv)) }.getOrNull() ?: return null
+        try {
+            AesCbc.decrypt(raw, payloadKey.aesKey, contentHashIv(payloadKey.iv))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return null
+        }
     }
     return plain.takeIf { it.size == PAYLOAD_HASH_LENGTH }
 }

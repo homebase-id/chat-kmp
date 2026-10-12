@@ -1,6 +1,8 @@
 package id.homebase.api.client.drives.files
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.upload.UpdateManifest
+import id.homebase.api.client.drives.upload.UploadManifest
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.contentHashIv
@@ -17,6 +19,7 @@ import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -56,7 +59,7 @@ class PayloadHashTest {
 
     @Test
     fun aContentHashThatDoesNotDecryptReadsAsNull() = runTest {
-        val hash = PayloadHash(PayloadHashAlgorithm.Blake3, "", Base64.encode(encryptedBlake3.hexToByteArray()))
+        val hash = PayloadHash("blake3", "", Base64.encode(encryptedBlake3.hexToByteArray()))
         assertNull(hash.plaintextContentHash(KeyHeader(payloadKey.iv, SecureByteArray(ByteArray(32) { 7 }))))
     }
 
@@ -78,16 +81,28 @@ class PayloadHashTest {
     }
 
     @Test
-    fun theAlgorithmIsSentByNameAndReadByNameOrNumber() {
-        val hash = PayloadHash(PayloadHashAlgorithm.Blake3, "cw==", "Yw==")
-        assertTrue(OdinSystemSerializer.serialize(hash).contains("\"algorithm\":\"blake3\""))
+    fun theAlgorithmIsReadByNameOrNumberAndSentByName() {
+        fun parse(json: String) =
+            OdinSystemSerializer.deserialize<PayloadHash>("""{"algorithm":$json,"storedHash":"","contentHash":""}""")
+        assertEquals(PayloadHashAlgorithm.Sha256, parse("\"sha256\"").knownAlgorithm)
+        assertEquals(PayloadHashAlgorithm.Blake3, parse("2").knownAlgorithm)
+        assertTrue(OdinSystemSerializer.serialize(parse("2")).contains("\"algorithm\":\"blake3\""))
+    }
 
-        fun algorithmOf(json: String) =
-            OdinSystemSerializer.deserialize<PayloadHash>("""{"algorithm":$json,"storedHash":"","contentHash":""}""").algorithm
-        assertEquals(PayloadHashAlgorithm.Sha256, algorithmOf("\"sha256\""))
-        assertEquals(PayloadHashAlgorithm.Blake3, algorithmOf("2"))
-        assertEquals(PayloadHashAlgorithm.Unknown, algorithmOf("\"sha3\""))
-        assertEquals(PayloadHashAlgorithm.Unknown, algorithmOf("9"))
+    @Test
+    fun aHeaderWithAFutureAlgorithmSavesBackUnchanged() = runTest {
+        val json = """{"key":"sync_data","hash":{"algorithm":"sha3","storedHash":"cw==","contentHash":"Yw=="}}"""
+        val parsed = OdinSystemSerializer.deserialize<PayloadDescriptor>(json)
+        assertNull(parsed.hash?.knownAlgorithm)
+        assertNull(parsed.hash?.plaintextContentHash(payloadKey))
+        assertEquals(parsed, OdinSystemSerializer.deserialize<PayloadDescriptor>(OdinSystemSerializer.serialize(parsed)))
+    }
+
+    @Test
+    fun anUploadRefusesAHashWithoutItsIv() {
+        val hashed = PayloadFile(key = "sync_data", filePath = "/x", hash = PayloadHash("blake3", "cw==", "Yw=="))
+        assertFailsWith<IllegalArgumentException> { UploadManifest.build(listOf(hashed), generatePayloadIv = true) }
+        assertFailsWith<IllegalArgumentException> { UpdateManifest.build(listOf(hashed), generatePayloadIv = true) }
     }
 
     @Test
@@ -96,6 +111,6 @@ class PayloadHashTest {
         val parsed = OdinSystemSerializer.deserialize<PayloadDescriptor>(
             """{"key":"sync_data","hash":{"algorithm":"blake3","storedHash":"cw==","contentHash":"Yw=="}}"""
         )
-        assertEquals(PayloadHashAlgorithm.Blake3, parsed.hash?.algorithm)
+        assertEquals(PayloadHashAlgorithm.Blake3, parsed.hash?.knownAlgorithm)
     }
 }

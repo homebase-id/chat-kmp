@@ -77,6 +77,7 @@ data class UploadManifest(
             thumbnails: List<ThumbnailFile>? = null,
             generatePayloadIv: Boolean = false
         ): UploadManifest {
+            requireHashesBoundToIvs(payloads)
             val descriptors =
                 payloads?.map { payload ->
                     UploadPayloadDescriptor(
@@ -189,6 +190,7 @@ data class UpdateManifest(
             thumbnails: List<ThumbnailFile>? = null,
             generatePayloadIv: Boolean = false
         ): UpdateManifest {
+            requireHashesBoundToIvs(payloads)
             val appendInstructions =
                 payloads?.map { payload ->
                     UploadManifestPayloadDescriptor(
@@ -238,6 +240,11 @@ data class UpdateManifest(
             )
         }
     }
+}
+
+// A hash's encrypted content hash is bound to the payload IV, so a generated IV would orphan it.
+private fun requireHashesBoundToIvs(payloads: List<PayloadFile>?) {
+    payloads?.forEach { require(it.hash == null || it.iv != null) { "Payload ${it.key} has a hash but no IV" } }
 }
 
 /** Helper class for specifying payloads to delete. */
