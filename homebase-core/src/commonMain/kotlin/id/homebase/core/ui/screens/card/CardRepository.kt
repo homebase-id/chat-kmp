@@ -86,9 +86,10 @@ class CardRepository(private val store: CardAttributeStore) {
         return card.copy(id = written.id, versionTag = written.versionTag)
     }
 
-    // Written, not deleted: with no stored card the web serves the site default, not the template the app shows.
+    // Deleted: an unstored public card falls back to the site design, then the template, on the app and the web alike.
     suspend fun resetPublic() {
-        savePublic(PUBLIC_CARD_TEMPLATE.design, PUBLIC_CARD_TEMPLATE.overrides)
+        val existing = cards().publicCard() ?: return
+        store.delete(existing.id, existing.versionTag)
     }
 
     // 404 counts as reset.

@@ -14,13 +14,14 @@ internal fun testAvatarViewModel(
     repository: ProfileRepository,
     circles: List<CardCircle>,
     circlePhotosSupported: Boolean = SERVER_STORES_CIRCLE_PHOTOS,
+    bus: CropResultBus = CropResultBus(),
 ) = ProfileAvatarEditViewModel(
     ownerSession = object : AvatarOwnerSession {
         override val user: Flow<OwnerSession?> = MutableStateFlow(null)
         override suspend fun reloadAvatar(odinId: OdinId) = Unit
     },
     profileRepository = repository,
-    cropResultBus = CropResultBus(),
+    cropResultBus = bus,
     fileOperationsProvider = object : FileOperationsProvider {
         override fun getCacheDirectory() = System.getProperty("java.io.tmpdir")
         override fun openFileInput(path: String) = error("not used")

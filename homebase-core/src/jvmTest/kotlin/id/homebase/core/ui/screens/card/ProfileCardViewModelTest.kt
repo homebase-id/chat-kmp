@@ -1691,7 +1691,7 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun resettingThePublicCardWritesItsTemplate() = runTest(dispatcher) {
+    fun resettingThePublicCardDeletesItAndShowsTheTemplate() = runTest(dispatcher) {
         val store = FakeCardStore(
             keepWrites = true,
             attributes = listOf(cardAttribute(ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, CardDesign.DOSSIER, CardOverrides(socials = "bar")), ProfileVisibility.ANONYMOUS)),
@@ -1703,12 +1703,29 @@ class ProfileCardViewModelTest {
         vm.onResetCardConfirmed()
         advanceUntilIdle()
 
-        assertTrue(store.deleted.isEmpty())
-        assertEquals(JsonPrimitive(CardDesign.BOARD), store.writes.single().data["design"])
+        assertTrue(store.writes.isEmpty())
+        assertEquals(1, store.deleted.size)
         assertTrue(source.savedDesigns.isEmpty())
         assertEquals(CardDesign.BOARD, vm.uiState.value.design)
         assertEquals(PUBLIC_CARD_TEMPLATE.overrides, vm.uiState.value.overrides)
         assertEquals(CardDesign.BOARD, host.rendered.last().design)
+    }
+
+    @Test
+    fun resettingTheSavedPublicCardOverTheWireFallsBackToTheSiteDesignLikeTheWeb() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val (vm, host) = wireCircleVm(wire, listOf(publicCardAttribute), defaults = { CardSiteDefaults(design = CardDesign.DOSSIER) })
+        awaitUntil { vm.uiState.value.selectedCard != null }
+        assertEquals(publicCardAttribute.id, vm.uiState.value.selectedCard?.id)
+
+        vm.onResetCardConfirmed()
+        awaitUntil { wire.deletes == 1 && !vm.uiState.value.isCardBusy && vm.uiState.value.selectedCard?.isDefault == true }
+
+        assertEquals(listOf(publicCardAttribute.id.toString()), wire.deletedIds.toList())
+        assertEquals(0, wire.puts)
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
+        assertEquals(CardOverrides.EMPTY, vm.uiState.value.overrides)
+        assertEquals(CardDesign.DOSSIER, host.rendered.last().design)
     }
 
     @Test
@@ -1729,7 +1746,7 @@ class ProfileCardViewModelTest {
 
     @Test
     fun aThrowingResetOfThePublicCardReportsAResetFailure() = runTest(dispatcher) {
-        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute)).apply { failWith = IllegalStateException("offline") }
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute)).apply { deleteThrows = IllegalStateException("offline") }
         val (vm, _, _) = circleVm(store)
         val event = async { vm.events.first() }
 
@@ -1793,10 +1810,11 @@ class ProfileCardViewModelTest {
         seeded: List<ProfileAttribute>,
         host: FakeHost = FakeHost(),
         circles: List<CardCircle> = listOf(friendsCircle, family),
+        defaults: suspend () -> CardSiteDefaults = { CardSiteDefaults() },
     ): Pair<ProfileCardViewModel, FakeHost> {
         seeded.forEach { wire.seed(it.id, it.versionTag, it.type, it.visibility.wireValue, it.data, it.priority, it.acl.circleIdList) }
         val profileRepository = wire.profileRepository()
-        val source = FakeSource(profile, cardRepository = CardRepository(ProfileRepositoryCardStore(profileRepository))).apply {
+        val source = FakeSource(profile, defaults = defaults, cardRepository = CardRepository(ProfileRepositoryCardStore(profileRepository))).apply {
             liveCards = { profileRepository.loadAttributes() }
             circleList = circles
         }

@@ -247,19 +247,23 @@ class CardRepositoryTest {
     }
 
     @Test
-    fun resettingThePublicCardWritesItsTemplateOverTheStoredCardAndLeavesCircleCards() = runTest {
+    fun resettingThePublicCardDeletesItAndLeavesCircleCards() = runTest {
         val circle = profileCardAttribute(buildJsonObject { put("design", "poster") }, ProfileVisibility.CONNECTED, listOf("c-friends"), 20)
         val public = profileCardAttribute(buildJsonObject { put("design", "dossier") })
         val store = FakeCardStore(listOf(public, circle))
 
         CardRepository(store).resetPublic()
 
-        assertTrue(store.deleted.isEmpty())
-        val write = store.writes.single()
-        assertEquals(public.id, write.id)
-        assertEquals(ProfileVisibility.ANONYMOUS, write.visibility)
-        assertEquals(PUBLIC_CARD_TEMPLATE.design, (write.data["design"] as JsonPrimitive).content)
-        assertEquals(PUBLIC_CARD_TEMPLATE.overrides.toJson(), write.data["overrides"])
+        assertEquals(listOf(public.id), store.deleted)
+        assertTrue(store.writes.isEmpty())
+        assertEquals(listOf(circle.id), store.attributes.map { it.id })
+    }
+
+    @Test
+    fun resettingAnUnstoredPublicCardSendsNothing() = runTest {
+        val store = FakeCardStore()
+        CardRepository(store).resetPublic()
+        assertTrue(store.deleted.isEmpty() && store.writes.isEmpty())
     }
 
     @Test

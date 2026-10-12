@@ -1,7 +1,9 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -12,7 +14,6 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import id.homebase.api.client.profile.ProfileAttributeTypes
-import id.homebase.core.ui.screens.profile.testAvatarViewModel
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import androidx.compose.ui.Modifier
@@ -146,21 +147,33 @@ class ProfileCardScreenFlowTest {
                 liveCards = { repository.loadAttributes() }
                 circleList = circles
             }
-            val viewModel = ProfileCardViewModel(source) { ProfileCardViewModelTest.FakeHost() }
-            val avatar = testAvatarViewModel(repository, circles)
+            val viewModel = ProfileCardViewModel(source) { error("the JVM WebView slot is not part of this flow") }
             setContent {
                 HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
                     var editing by remember { mutableStateOf(false) }
                     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                     Box(Modifier.fillMaxSize()) {
                         if (editing) {
-                            ProfileCardEditorScreen(
-                                viewModel = viewModel,
-                                avatarViewModel = avatar,
-                                onBack = { editing = false },
-                                onNavigateToCropper = {},
-                                preview = { Box(Modifier.fillMaxSize()) },
-                            )
+                            val editorState by viewModel.uiState.collectAsStateWithLifecycle()
+                            var mode by remember { mutableStateOf(EditorMode.Content) }
+                            var step by remember { mutableStateOf(EditorStep.Design) }
+                            LaunchedEffect(mode) { if (mode == EditorMode.Design) viewModel.onEditorOpened() }
+                            ProfileCardEditorContent(
+                                uiState = editorState,
+                                mode = mode,
+                                step = step,
+                                onStep = { step = it },
+                                onBack = { if (mode == EditorMode.Design) mode = EditorMode.Content else editing = false },
+                                onSelect = viewModel::onDesignSelected,
+                                onOption = viewModel::onOptionSelected,
+                                onBlockOrder = viewModel::onBlockOrderChanged,
+                                onSave = viewModel::onSaveDesign,
+                                onChangeDesign = { mode = EditorMode.Design },
+                                onContentToggle = viewModel::onContentToggled,
+                                onContentAudience = viewModel::onContentAudienceChanged,
+                                onContentAdd = viewModel::onContentAdded,
+                                snackbarHostState = remember { SnackbarHostState() },
+                            ) { Box(Modifier.fillMaxSize()) }
                         } else {
                             CardBottomChrome(
                                 audience = uiState.selectedAudience,

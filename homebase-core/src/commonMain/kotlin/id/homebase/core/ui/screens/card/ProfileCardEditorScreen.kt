@@ -201,7 +201,6 @@ fun ProfileCardEditorScreen(
     avatarViewModel: ProfileAvatarEditViewModel,
     onBack: () -> Unit,
     onNavigateToCropper: (Uuid) -> Unit,
-    preview: (@Composable BoxScope.(layoutWidth: Dp) -> Unit)? = null,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val avatarState by avatarViewModel.state.collectAsStateWithLifecycle()
@@ -354,10 +353,6 @@ fun ProfileCardEditorScreen(
             onContentAudience = viewModel::onContentAudienceChanged,
             onContentAdd = viewModel::onContentAdded,
         ) { layoutWidth ->
-            if (preview != null) {
-                preview(layoutWidth)
-                return@ProfileCardEditorContent
-            }
             val backdrop by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
             val designCover by viewModel.designCover.collectAsStateWithLifecycle()
             CardSurface(

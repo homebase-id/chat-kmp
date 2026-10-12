@@ -70,23 +70,6 @@ class ProfileCardPhotosTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private val session = object : AvatarOwnerSession {
-        override val user: Flow<OwnerSession?> = MutableStateFlow(null)
-        override suspend fun reloadAvatar(odinId: OdinId) = Unit
-    }
-
-    private val files = object : FileOperationsProvider {
-        override fun getCacheDirectory() = System.getProperty("java.io.tmpdir")
-        override fun openFileInput(path: String) = error("not used")
-        override suspend fun readFileBytes(path: String) = File(path).readBytes()
-        override fun deleteTempFile(path: String) = false
-        override fun getFileSize(path: String) = File(path).length()
-        override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String =
-            File.createTempFile("K11-$prefix", suffix).also { it.writeBytes(bytes); it.deleteOnExit() }.path
-        override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String) = error("not used")
-        override suspend fun writeStream(path: String, data: Flow<ByteArray>) = error("not used")
-    }
-
     private fun png(): ByteArray = ByteArrayOutputStream().also {
         ImageIO.write(BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB), "png", it)
     }.toByteArray()
@@ -100,13 +83,13 @@ class ProfileCardPhotosTest {
         }
 
     private suspend fun viewModel(harness: CardWireHarness, bus: CropResultBus = CropResultBus(), circlePhotosSupported: Boolean = true): ProfileAvatarEditViewModel {
-        val vm = ProfileAvatarEditViewModel(session, harness.profileRepository(), bus, files, circlePhotosSupported) { circles }
+        val vm = testAvatarViewModel(harness.profileRepository(), circles, circlePhotosSupported, bus)
         withTimeout(5_000) { vm.state.first { !it.isLoading } }
         return vm
     }
 
     private suspend fun productionDefaultViewModel(harness: CardWireHarness, bus: CropResultBus): ProfileAvatarEditViewModel {
-        val vm = ProfileAvatarEditViewModel(session, harness.profileRepository(), bus, files) { circles }
+        val vm = testAvatarViewModel(harness.profileRepository(), circles, bus = bus)
         withTimeout(5_000) { vm.state.first { !it.isLoading } }
         return vm
     }
@@ -397,6 +380,30 @@ class ProfileCardPhotosTest {
 
         assertEquals(1, harness.deletes)
         assertEquals(listOf(publicId.toString()), harness.storedIds)
+    }
+
+    @Test
+    fun aFailedReadAfterReplacingAnExistingFamilyPhotoKeepsThePhoto() = runBlocking {
+        val harness = CardWireHarness(queryFailsAfterPhotoPut = true)
+        val familyPhoto = Uuid.random()
+        harness.seed(
+            familyPhoto, Uuid.random(), ProfileAttributeTypes.PHOTO, "connected",
+            buildJsonObject { put(ProfileAttributeTypes.KEY_PROFILE_IMAGE, "family-key") }, 0, listOf(FAMILY_CIRCLE_ID),
+        )
+        val bus = CropResultBus()
+        val vm = viewModel(harness, bus)
+        val failed = kotlinx.coroutines.CompletableDeferred<ProfileAvatarEditEvent>()
+        val job = launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            vm.events.collect { if (it is ProfileAvatarEditEvent.UploadFailed) failed.complete(it) }
+        }
+
+        uploadFamilyPhoto(vm, bus, awaitStored = false)
+        withTimeout(5_000) { failed.await() }
+        job.cancel()
+
+        assertEquals(familyPhoto.toString(), harness.photoPutBodies.single()["id"]!!.jsonPrimitive.content)
+        assertEquals(0, harness.deletes)
+        assertEquals(listOf(familyPhoto.toString()), harness.storedIds)
     }
 
     @Test

@@ -265,6 +265,7 @@ class ProfileAvatarEditViewModel(
             _events.tryEmit(ProfileAvatarEditEvent.UploadFailed(slot.visibility))
             return
         }
+        val previousId = tierState(slot).existing?.id
         updateTier(slot) { it.copy(isUploading = true) }
 
         viewModelScope.launch {
@@ -289,17 +290,20 @@ class ProfileAvatarEditViewModel(
                     circleId = slot.circleId,
                 )
 
-                val refreshed = refreshTier(slot)
+                val refreshed = refreshTier(slot).let { if (it.isFailure) refreshTier(slot) else it }
+                if (slot.circleId != null && refreshed.isFailure && written.id == previousId) {
+                    // Replacing a photo updates its attribute in place, so deleting it on an unverified read would lose the old photo too.
+                    error("could not verify the ${slot.circleId} photo is scoped to its circle")
+                }
                 if (slot.circleId != null && refreshed.getOrNull()?.id != written.id) {
-                    // Unverified (refresh failed) or stored without its circle scope: either way it may be visible to every connection.
                     try {
                         profileRepository.delete(written.id, written.versionTag)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        Logger.e(throwable = e, tag = TAG) { "Failed to delete unverified ${slot.circleId} photo ${written.id}" }
+                        Logger.e(throwable = e, tag = TAG) { "Failed to delete misscoped ${slot.circleId} photo ${written.id}" }
                     }
-                    error("could not verify the ${slot.circleId} photo is scoped to its circle")
+                    error("the ${slot.circleId} photo was stored without its circle scope")
                 }
                 pendingCroppedBytes.remove(slot)
                 // Best-effort refresh so Settings picks up a new Anonymous photo — the public
