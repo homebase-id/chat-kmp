@@ -39,9 +39,16 @@ class CallControllerTest {
         script: FakeCallScript,
     ) {
         val engines = mutableListOf<FakeCallEngine>()
+        var offline = false
+        private val link = net.endpoint(id)
         val controller = CallController(
             selfOdinId = id,
-            signaling = net.endpoint(id),
+            signaling = object : CallSignaling by link {
+                override suspend fun send(outbound: OutboundSignal) {
+                    if (offline) throw IllegalStateException("Unable to resolve host")
+                    link.send(outbound)
+                }
+            },
             engineFactory = CallEngineFactory { _ ->
                 FakeCallEngine(scope.backgroundScope, script, peerLabel = "peer", selfLabel = id).also { engines += it }
             },
@@ -453,6 +460,32 @@ class CallControllerTest {
         assertTrue(net.sent.any { it.from == sam && it.signal is CallSignal.RestartAnswer })
         assertEquals(1, a.engines.single().restarts)
         assertEquals(1, b.engines.single().restarts)
+    }
+
+    @Test
+    fun callerOfflineWhileReconnectingRestartsIceOnceTheNetworkReturns() = runTest {
+        val (net, a, b) = pair()
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        a.offline = true
+        a.engines.single().simulateDrop()
+        b.engines.single().simulateDrop()
+        runCurrent()
+        assertEquals(CallPhase.Reconnecting, a.phase)
+        assertEquals(CallPhase.Reconnecting, b.phase)
+        assertTrue(net.sent.none { it.from == frodo && it.signal is CallSignal.Restart })
+
+        a.offline = false
+        advanceTimeBy(RECONNECT_TICK_MS + 1)
+        assertTrue(net.sent.any { it.from == frodo && it.signal is CallSignal.Restart })
+        assertTrue(net.sent.any { it.from == sam && it.signal is CallSignal.RestartAnswer })
+        a.engines.single().simulateRecover()
+        b.engines.single().simulateRecover()
+        runCurrent()
+        assertEquals(CallPhase.Connected, a.phase)
+        assertEquals(CallPhase.Connected, b.phase)
     }
 
     @Test

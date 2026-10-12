@@ -140,6 +140,18 @@ class CallController(
         signaling.send(outbound)
     }
 
+    // While reconnecting the lost network is the expected cause; the next Reconnect tick resends and its timeout ends the call.
+    private suspend fun sendUnlessOffline(peer: String, signal: CallSignal, state: CallState) {
+        if (state.phase != CallPhase.Reconnecting) return send(peer, signal)
+        try {
+            send(peer, signal)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.w(e) { "${describe(signal)} call=${signal.callId} not sent while reconnecting; next tick retries" }
+        }
+    }
+
     private fun describe(signal: CallSignal): String = when (signal) {
         is CallSignal.Hangup -> "hangup(${signal.reason})"
         is CallSignal.Offer -> "offer(seq=${signal.seq})"
@@ -186,7 +198,7 @@ class CallController(
     private suspend fun run(effect: CallEffect, state: CallState) {
         try {
             when (effect) {
-                is CallEffect.SendSignal -> send(effect.peer, effect.signal)
+                is CallEffect.SendSignal -> sendUnlessOffline(effect.peer, effect.signal, state)
                 is CallEffect.CreateOffer -> {
                     val sdp = engine().createOffer(effect.video)
                     offerSdp = sdp
@@ -218,11 +230,11 @@ class CallController(
                 }
                 CallEffect.RestartIce -> {
                     val sdp = engine().restartIce()
-                    send(state.peer!!, CallSignal.Restart(state.callId!!, sdp))
+                    sendUnlessOffline(state.peer!!, CallSignal.Restart(state.callId!!, sdp), state)
                 }
                 is CallEffect.AnswerRestart -> {
                     val sdp = engine().answerRestart(effect.offerSdp)
-                    send(state.peer!!, CallSignal.RestartAnswer(state.callId!!, sdp))
+                    sendUnlessOffline(state.peer!!, CallSignal.RestartAnswer(state.callId!!, sdp), state)
                 }
                 is CallEffect.AddIce ->
                     if (remoteReady) engine?.addIce(effect.candidate, effect.sdpMid, effect.sdpMLineIndex)
