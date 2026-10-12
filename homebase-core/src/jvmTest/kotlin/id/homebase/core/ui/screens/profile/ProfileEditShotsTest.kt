@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -24,20 +25,30 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import id.homebase.api.client.drives.AccessControlList
+import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
+import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.screens.card.CardCircle
+import id.homebase.core.ui.screens.card.FAMILY_CIRCLE_ID
+import id.homebase.core.ui.screens.card.FRIENDS_CIRCLE_ID
+import id.homebase.core.ui.screens.card.WORK_CIRCLE_ID
 import id.homebase.core.ui.screens.card.CardExpressiveTheme
 import id.homebase.core.ui.theme.HomebaseTheme
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * Renders the profile editor in every state, light and dark, to PNGs for design review.
  * Set CARD_SHOTS_DIR to write the images; without it the states are only composed.
  */
-@OptIn(ExperimentalTestApi::class)
+@OptIn(ExperimentalTestApi::class, ExperimentalUuidApi::class)
 class ProfileEditShotsTest {
 
     private val outDir: File? = System.getenv("CARD_SHOTS_DIR")?.let(::File)?.also { it.mkdirs() }
@@ -45,9 +56,9 @@ class ProfileEditShotsTest {
     /** Comma-separated shot-name prefixes; renders only those, for quick iteration on one state. */
     private val only: List<String> = System.getenv("CARD_SHOTS_ONLY")?.split(',')?.map { it.trim() }.orEmpty()
 
-    private val family = CardCircle("f", "Family")
-    private val friends = CardCircle("fr", "Friends")
-    private val work = CardCircle("w", "Work")
+    private val family = CardCircle(FAMILY_CIRCLE_ID, "Family")
+    private val friends = CardCircle(FRIENDS_CIRCLE_ID, "Friends")
+    private val work = CardCircle(WORK_CIRCLE_ID, "Work")
     private val climbing = CardCircle("c", "Climbing partners from the Tuesday bouldering gym night")
     private val circles = listOf(family, friends, work)
 
@@ -69,17 +80,17 @@ class ProfileEditShotsTest {
         ),
         audiences = mapOf(
             ProfileAttributeTypes.NAME to ProfileAudience.Public,
-            ProfileAttributeTypes.NICKNAME to ProfileAudience.Circles(setOf("f", "fr")),
+            ProfileAttributeTypes.NICKNAME to ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID)),
             ProfileAttributeTypes.BIO_SUMMARY to ProfileAudience.Public,
             ProfileAttributeTypes.BIRTHDAY to ProfileAudience.OnlyMe,
-            ProfileAttributeTypes.EMAIL to ProfileAudience.Circles(setOf("f", "fr", "w")),
-            ProfileAttributeTypes.PHONE to ProfileAudience.Circles(setOf("f")),
-            ProfileAttributeTypes.ADDRESS to ProfileAudience.Circles(setOf("fr", "w")),
+            ProfileAttributeTypes.EMAIL to ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID)),
+            ProfileAttributeTypes.PHONE to ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID)),
+            ProfileAttributeTypes.ADDRESS to ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID)),
             ProfileAttributeTypes.INSTAGRAM to ProfileAudience.Public,
         ),
         links = listOf(
             LinkDraft("l1", "Garden journal", "https://sam.garden", ProfileAudience.Public),
-            LinkDraft("l2", "Recipes", "https://sam.kitchen", ProfileAudience.Circles(setOf("f"))),
+            LinkDraft("l2", "Recipes", "https://sam.kitchen", ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID))),
         ),
     )
 
@@ -87,6 +98,27 @@ class ProfileEditShotsTest {
         state.copy(audiences = state.audiences + (type to audience))
 
     private val avatar = ProfileAvatarEditUiState(isLoading = false)
+
+    private fun photo(visibility: ProfileVisibility, acl: AccessControlList) = ProfileAttribute(
+        id = Uuid.random(),
+        type = ProfileAttributeTypes.PHOTO,
+        versionTag = Uuid.random(),
+        visibility = visibility,
+        data = buildJsonObject { put(ProfileAttributeTypes.KEY_PROFILE_IMAGE, "key") },
+        acl = acl,
+    )
+
+    private val publicPhoto = photo(ProfileVisibility.ANONYMOUS, AccessControlList(requiredSecurityGroup = "anonymous"))
+    private val familyPhoto = photo(ProfileVisibility.CONNECTED, AccessControlList(requiredSecurityGroup = "connected", circleIdList = listOf(FAMILY_CIRCLE_ID)))
+
+    /** A seeded Public photo and a set Family photo; Friends and Work inherit the public one. */
+    private fun circleAvatar(supported: Boolean) = ProfileAvatarEditUiState(
+        isLoading = false,
+        anonymous = PhotoTierUiState(ProfileVisibility.ANONYMOUS, existing = publicPhoto),
+        circleSlots = mapOf(FAMILY_CIRCLE_ID to PhotoTierUiState(ProfileVisibility.CONNECTED, circleId = FAMILY_CIRCLE_ID, existing = familyPhoto)),
+        photos = listOf(publicPhoto, familyPhoto),
+        circlePhotosSupported = supported,
+    )
 
     private class Shot(
         val name: String,
@@ -96,6 +128,10 @@ class ProfileEditShotsTest {
         val rtl: Boolean = false,
         val widthDp: Int = PHONE_W,
         val heightDp: Int = PHONE_H,
+        val avatar: ProfileAvatarEditUiState? = null,
+        /** Friends and Work show the inherited photo; null skips the circle-slot assertions. */
+        val inheritedSlots: Int? = null,
+        val useDifferentButtons: Int = 0,
     )
 
     private val empty = ProfileEditUiState(isLoading = false, circles = circles)
@@ -110,13 +146,13 @@ class ProfileEditShotsTest {
         Shot("k8-06-no-circle-picked", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(emptySet())), listOf("Phone")),
         Shot(
             "k8-07-other-circles",
-            with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("f"), setOf("x1", "x2")))
+            with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID), setOf("x1", "x2")))
                 .copy(otherCircleNames = mapOf("x1" to "Book club", "x2" to "Hiking crew")),
             listOf("Phone"),
         ),
         Shot("k8-08-no-contacts-circles", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(emptySet()), filled.copy(circles = emptyList())), listOf("Phone")),
-        Shot("k8-09-long-circle", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", "f", "fr")), filled.copy(circles = circles + climbing)), heightDp = FULL_H),
-        Shot("k8-09b-long-circle-open", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", "f")), filled.copy(circles = circles + climbing)), listOf("Phone")),
+        Shot("k8-09-long-circle", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID)), filled.copy(circles = circles + climbing)), heightDp = FULL_H),
+        Shot("k8-09b-long-circle-open", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("c", FAMILY_CIRCLE_ID)), filled.copy(circles = circles + climbing)), listOf("Phone")),
         Shot("k8-10-link-open", filled, listOf("Recipes")),
         Shot("k8-11-empty-profile", empty),
         Shot("k8-12-loading", ProfileEditUiState()),
@@ -125,7 +161,8 @@ class ProfileEditShotsTest {
         Shot("k8-15-font-scale-open", filled, listOf("Phone"), fontScale = 1.6f),
         Shot("k8-16-rtl-open", filled, listOf("Phone"), rtl = true),
         Shot("k8-17-small-open", filled, listOf("Email"), widthDp = 360, heightDp = 640),
-        Shot("k8-18-card-focused", filled, listOf("Family"), heightDp = FULL_H),
+        Shot("k11-01-card-photos", filled, heightDp = FULL_H),
+        Shot("k11-02-card-photos-rtl", filled, heightDp = FULL_H, rtl = true),
         Shot("k8-19-single-card", filled.copy(circles = emptyList(), audiences = filled.audiences.filterValues { it !is ProfileAudience.Circles })),
         Shot("k8-20-add-sheet", filled, listOf("Add detail")),
         Shot("k8-21-add-from-empty", empty, listOf("Phone")),
@@ -135,11 +172,15 @@ class ProfileEditShotsTest {
         Shot("k8-25-audience-popover-rtl", filled, listOf("cd:Visible to Family. Change"), rtl = true),
         Shot("k8-26-custom-label", filled.copy(values = filled.values + (ProfileField.EMAIL_LABEL to "Hobbit post")), listOf("Email")),
         // A legacy Connected record with no circles loads as every Contacts circle picked.
-        Shot("k8-27-legacy-all-circles-open", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("f", "fr", "w"))), listOf("Phone")),
+        Shot("k8-27-legacy-all-circles-open", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID))), listOf("Phone")),
         Shot("k8-28-birthday-picker", filled, listOf("Birthday", "cd:Birthday")),
-        Shot("k8-29-popover-other-circles", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf("f"), setOf("x1")))
+        Shot("k8-29-popover-other-circles", with(ProfileAttributeTypes.PHONE, ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID), setOf("x1")))
             .copy(otherCircleNames = mapOf("x1" to "Book club")), listOf("cd:Visible to Family, Book club. Change")),
-        Shot("k8-30-focused-font-scale", filled, listOf("Family"), fontScale = 1.6f),
+        Shot("k11-03-card-photos-font-scale", filled, fontScale = 1.6f, heightDp = FULL_H),
+        Shot("k11-04-circle-photos", filled, heightDp = FULL_H, avatar = circleAvatar(true), inheritedSlots = 2, useDifferentButtons = 2),
+        Shot("k11-05-circle-photos-rtl", filled, heightDp = FULL_H, rtl = true, avatar = circleAvatar(true), inheritedSlots = 2, useDifferentButtons = 2),
+        Shot("k11-06-circle-photos-gate-off", filled, heightDp = FULL_H, avatar = circleAvatar(false), inheritedSlots = 2, useDifferentButtons = 0),
+        Shot("k11-07-circle-photos-gate-off-rtl", filled, heightDp = FULL_H, rtl = true, avatar = circleAvatar(false), inheritedSlots = 2, useDifferentButtons = 0),
     )
 
     @Test
@@ -171,7 +212,7 @@ class ProfileEditShotsTest {
                 var state by remember { mutableStateOf(shot.state) }
                 ProfileEditContent(
                     uiState = state,
-                    avatarUiState = avatar,
+                    avatarUiState = shot.avatar ?: avatar,
                     previewMode = false,
                     onTogglePreview = {},
                     onOpenCard = {},
@@ -185,7 +226,7 @@ class ProfileEditShotsTest {
                         }
                     },
                     onAvatarAction = {},
-                    onPickAnonymousPhoto = {},
+                    onPickPhoto = {},
                     onPickOnlyMePhoto = {},
                     snackbarHostState = remember { SnackbarHostState() },
                 )
@@ -219,7 +260,21 @@ class ProfileEditShotsTest {
             mainClock.autoAdvance = false
             mainClock.advanceTimeBy(SETTLE_MS)
         }
+        assertPhotoSection(shot)
         save(shot.name, dark)
+    }
+
+    private fun ComposeUiTest.assertPhotoSection(shot: Shot) {
+        onAllNodesWithText("Your cards", useUnmergedTree = true).assertCountEquals(0)
+        if (shot.avatar == null) return
+        for (caption in listOf("Friends", "Family", "Work")) {
+            assertTrue(onAllNodesWithText(caption, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(), "caption $caption missing in ${shot.name}")
+        }
+        onAllNodesWithText("Shown on every card", useUnmergedTree = true).assertCountEquals(1)
+        shot.inheritedSlots?.let { onAllNodesWithText("Uses your Public photo", useUnmergedTree = true).assertCountEquals(it) }
+        onAllNodesWithText("Use a different photo", useUnmergedTree = true).assertCountEquals(shot.useDifferentButtons)
+        val intro = if (shot.useDifferentButtons > 0) "Each card can have its own photo" else "Friends, Family and Work show the photo they inherit for now"
+        assertTrue(onAllNodesWithText(intro, substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(), "intro for ${shot.name}")
     }
 
     private fun ComposeUiTest.save(name: String, dark: Boolean) {

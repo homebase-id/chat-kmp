@@ -10,9 +10,7 @@ package id.homebase.core.ui.screens.profile
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.ToggleButton
@@ -31,7 +29,6 @@ import id.homebase.core.util.rememberImeOffsetState
 import id.homebase.resources.ok
 import id.homebase.resources.profile_edit_label
 import id.homebase.resources.profile_edit_birthday_pick
-import id.homebase.resources.profile_edit_not_on_card
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
@@ -44,7 +41,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -93,14 +89,16 @@ import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material.icons.outlined.WorkOutline
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextDirection
+import id.homebase.resources.profile_card_photo_own_circle
 import id.homebase.resources.profile_edit_photo_public_caption
+import id.homebase.resources.profile_edit_photo_inherits_earlier
+import id.homebase.resources.profile_edit_photo_inherits_none
+import id.homebase.resources.profile_edit_photo_inherits_public
+import id.homebase.resources.profile_edit_photo_use_different
 import id.homebase.resources.profile_edit_photo_only_me_caption
 import id.homebase.resources.profile_edit_add_group_about
 import id.homebase.resources.profile_edit_add_group_social
@@ -135,12 +133,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -148,7 +146,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.input.KeyboardType
@@ -159,9 +156,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.core.ui.screens.card.CardAudience
 import id.homebase.core.ui.screens.card.CardCircle
 import id.homebase.core.ui.screens.card.CookieBadge
+import id.homebase.core.ui.screens.card.isFixedCard
 import id.homebase.core.ui.screens.card.WithTooltip
+import id.homebase.core.ui.screens.card.photoFor
 import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
@@ -188,7 +188,6 @@ import id.homebase.resources.profile_edit_address2
 import id.homebase.resources.profile_edit_address_label
 import id.homebase.resources.profile_edit_bio
 import id.homebase.resources.profile_edit_birthday
-import id.homebase.resources.profile_edit_birthday_hint
 import id.homebase.resources.profile_edit_city
 import id.homebase.resources.profile_edit_conflict_detail
 import id.homebase.resources.profile_edit_conflict_remove
@@ -214,6 +213,7 @@ import id.homebase.resources.profile_edit_nickname
 import id.homebase.resources.profile_edit_phone
 import id.homebase.resources.profile_edit_phone_label
 import id.homebase.resources.profile_edit_photos_desc
+import id.homebase.resources.profile_edit_photos_desc_inherited
 import id.homebase.resources.profile_edit_photos_title
 import id.homebase.resources.profile_edit_postcode
 import id.homebase.resources.profile_edit_preview_exit
@@ -252,8 +252,13 @@ fun ProfileEditScreen(
     val errAvatarTooLarge = stringResource(MR.string.profile_avatar_edit_error_too_large)
     val errAvatarDelete = stringResource(MR.string.profile_avatar_edit_error_delete)
 
-    val anonymousPhotoPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
-        file?.let { avatarViewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.ANONYMOUS, it)) }
+    var pickCircleId by remember { mutableStateOf<String?>(null) }
+    val cardPhotoPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
+        file?.let {
+            val circleId = pickCircleId
+            val visibility = if (circleId == null) ProfileVisibility.ANONYMOUS else ProfileVisibility.CONNECTED
+            avatarViewModel.onAction(ProfileAvatarEditAction.PhotoPicked(visibility, it, circleId))
+        }
     }
     val onlyMePhotoPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
         file?.let { avatarViewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.OWNER, it)) }
@@ -290,7 +295,10 @@ fun ProfileEditScreen(
         onOpenCard = onOpenCard,
         onAction = viewModel::onAction,
         onAvatarAction = avatarViewModel::onAction,
-        onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
+        onPickPhoto = { circleId ->
+            pickCircleId = circleId
+            cardPhotoPicker.launch()
+        },
         onPickOnlyMePhoto = { onlyMePhotoPicker.launch() },
         snackbarHostState = snackbarHostState,
     )
@@ -305,7 +313,7 @@ internal fun ProfileEditContent(
     onOpenCard: (() -> Unit)?,
     onAction: (ProfileEditAction) -> Unit,
     onAvatarAction: (ProfileAvatarEditAction) -> Unit,
-    onPickAnonymousPhoto: () -> Unit,
+    onPickPhoto: (circleId: String?) -> Unit,
     onPickOnlyMePhoto: () -> Unit,
     snackbarHostState: SnackbarHostState,
 ) {
@@ -367,7 +375,7 @@ internal fun ProfileEditContent(
                                     onAction = onAction,
                                     avatarUiState = avatarUiState,
                                     onAvatarAction = onAvatarAction,
-                                    onPickAnonymousPhoto = onPickAnonymousPhoto,
+                                    onPickPhoto = onPickPhoto,
                                     onPickOnlyMePhoto = onPickOnlyMePhoto,
                                     modifier = Modifier.fillMaxSize(),
                                 )
@@ -501,7 +509,7 @@ private fun ProfileForm(
     onAction: (ProfileEditAction) -> Unit,
     avatarUiState: ProfileAvatarEditUiState,
     onAvatarAction: (ProfileAvatarEditAction) -> Unit,
-    onPickAnonymousPhoto: () -> Unit,
+    onPickPhoto: (circleId: String?) -> Unit,
     onPickOnlyMePhoto: () -> Unit,
     modifier: Modifier,
 ) {
@@ -509,18 +517,9 @@ private fun ProfileForm(
     val openLinks = remember { mutableStateMapOf<String, LinkDraft>() }
     var showAddSheet by remember { mutableStateOf(false) }
     var openNewLink by remember { mutableStateOf(false) }
-    var selectedCard by remember { mutableStateOf<String?>(null) }
-    var pulse by remember { mutableStateOf(CardPulse()) }
     val motion = MaterialTheme.motionScheme
 
-    val cards = remember(uiState.circles) { listOf(EditorCard(null)) + uiState.circles.map { EditorCard(it) } }
-    val focusCard = cards.firstOrNull { it.key == selectedCard }
-    fun onFocusedCard(audience: ProfileAudience) = focusCard == null || audience.isOnCard(focusCard.circle?.id)
-    val focusName = focusCard?.let { cardLabel(it) }
-    fun hiddenOn(audience: ProfileAudience): String? = focusName?.takeUnless { onFocusedCard(audience) }
-    fun pulseCardsOf(audience: ProfileAudience) {
-        pulse = CardPulse(pulse.tick + 1, cards.filter { audience.isOnCard(it.circle?.id) }.map { it.key }.toSet())
-    }
+    val cards = remember(uiState.circles) { listOf<CardCircle?>(null) + uiState.circles.filter { it.isFixedCard() } }
 
     val present = ATTRIBUTE_SPECS.filter { displayValueFor(it.type, uiState.values) != null }
     val missing = ATTRIBUTE_SPECS - present.toSet()
@@ -532,15 +531,6 @@ private fun ProfileForm(
         if (!openNewLink) return@LaunchedEffect
         uiState.links.lastOrNull { it.target.isBlank() && it.text.isBlank() }?.let { openLinks[it.key] = it }
         openNewLink = false
-    }
-
-    fun contentsOf(card: EditorCard): CardContents {
-        val id = card.circle?.id
-        val specs = present.filter { uiState.audience(it.type).isOnCard(id) }
-        val links = savedLinks.filter { it.audience.isOnCard(id) }
-        val name = profileNameValue(uiState.values)?.takeIf { uiState.audience(ProfileAttributeTypes.NAME).isOnCard(id) }
-        val labels = specs.map { it.labelRes } + if (links.isEmpty()) emptyList() else listOf(MR.string.profile_edit_link)
-        return CardContents(name, labels, specs.size + links.size)
     }
 
     val scroll = rememberScrollState()
@@ -557,31 +547,29 @@ private fun ProfileForm(
                 .pureImePadding(ime)
                 .verticalScroll(scroll),
         ) {
-            ProfileCardsStrip(
-                cards = cards,
-                contents = ::contentsOf,
-                selected = selectedCard,
-                onSelect = { selectedCard = it },
-                pulse = pulse,
-            )
-
-            Spacer(Modifier.height(32.dp))
-            SectionHeader(stringResource(MR.string.profile_edit_photos_title), stringResource(MR.string.profile_edit_photos_desc))
+            SectionHeader(stringResource(MR.string.profile_edit_photos_title), stringResource(if (avatarUiState.circlePhotosSupported) MR.string.profile_edit_photos_desc else MR.string.profile_edit_photos_desc_inherited))
             if (!avatarUiState.isLoading) {
+                cards.chunked(2).forEach { pair ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        pair.forEach { circle ->
+                            CardPhotoBlock(
+                                circle = circle,
+                                avatarUiState = avatarUiState,
+                                onAvatarAction = onAvatarAction,
+                                onPickPhoto = { onPickPhoto(circle?.id) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    PhotoBlock(
-                        audience = ProfileAudience.Public,
-                        caption = stringResource(MR.string.profile_edit_photo_public_caption),
-                        tier = ProfileVisibility.ANONYMOUS,
-                        photoState = avatarUiState.anonymous,
-                        onAvatarAction = onAvatarAction,
-                        onPickPhoto = onPickAnonymousPhoto,
-                        dimmed = !onFocusedCard(ProfileAudience.Public),
-                        modifier = Modifier.weight(1f),
-                    )
                     PhotoBlock(
                         audience = ProfileAudience.OnlyMe,
                         caption = stringResource(MR.string.profile_edit_photo_only_me_caption),
@@ -589,12 +577,12 @@ private fun ProfileForm(
                         photoState = avatarUiState.onlyMe,
                         onAvatarAction = onAvatarAction,
                         onPickPhoto = onPickOnlyMePhoto,
-                        dimmed = !onFocusedCard(ProfileAudience.OnlyMe),
                         modifier = Modifier.weight(1f),
                     )
+                    Spacer(Modifier.weight(1f))
                 }
             }
-            ConnectionsPhotoBlock(avatarUiState.connected, onAvatarAction)
+            PhotoRemovalConfirmDialog(avatarUiState.removalToConfirm, onAvatarAction)
 
             Spacer(Modifier.height(32.dp))
             SectionHeader(
@@ -629,10 +617,8 @@ private fun ProfileForm(
                             popoverFor = null
                             onAction(ProfileEditAction.AudienceChanged(spec.type, picked))
                             onAction(ProfileEditAction.SaveAttribute(spec.type))
-                            pulseCardsOf(picked)
                         },
                         editing = snapshot != null,
-                        hiddenOn = hiddenOn(audience),
                         onOpen = {
                             openRows[spec.type] = RowSnapshot(fields.associateWith { uiState.value(it) }, audience)
                         },
@@ -645,7 +631,6 @@ private fun ProfileForm(
                         },
                         onSave = {
                             onAction(ProfileEditAction.SaveAttribute(spec.type))
-                            pulseCardsOf(audience)
                             openRows.remove(spec.type)
                         },
                         onRemove = if (snapshot?.values?.values?.any { it.isNotBlank() } == true) {
@@ -674,8 +659,6 @@ private fun ProfileForm(
                 openLinks = openLinks,
                 popoverFor = popoverFor,
                 onPopover = { popoverFor = it },
-                hiddenOn = ::hiddenOn,
-                onSaved = ::pulseCardsOf,
                 onAction = onAction,
             )
             // Clears the FAB (56dp) and its 16dp margin, plus a rhythm step, so the last row scrolls above it.
@@ -716,6 +699,78 @@ private fun ProfileForm(
     }
 }
 
+@Composable
+private fun CardPhotoBlock(
+    circle: CardCircle?,
+    avatarUiState: ProfileAvatarEditUiState,
+    onAvatarAction: (ProfileAvatarEditAction) -> Unit,
+    onPickPhoto: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (circle == null) {
+        PhotoBlock(
+            audience = ProfileAudience.Public,
+            caption = stringResource(MR.string.profile_edit_photo_public_caption),
+            tier = ProfileVisibility.ANONYMOUS,
+            photoState = avatarUiState.anonymous,
+            onAvatarAction = onAvatarAction,
+            onPickPhoto = onPickPhoto,
+            modifier = modifier,
+        )
+        return
+    }
+    val slot = avatarUiState.circleSlot(circle.id)
+    val audience = ProfileAudience.Circles(setOf(circle.id))
+    val inherited = avatarUiState.photos.photoFor(CardAudience.Circle(circle.id, circle.name))
+    if (slot.existing != null || slot.pendingCroppedAvatar != null) {
+        PhotoBlock(
+            audience = audience,
+            caption = stringResource(MR.string.profile_card_photo_own_circle),
+            tier = ProfileVisibility.CONNECTED,
+            circleId = circle.id,
+            circles = listOf(circle),
+            canPick = avatarUiState.circlePhotosSupported,
+            photoState = slot,
+            onAvatarAction = onAvatarAction,
+            onPickPhoto = onPickPhoto,
+            modifier = modifier,
+        )
+        return
+    }
+    Column(
+        modifier = modifier
+            .background(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.shapes.extraLarge)
+            .padding(vertical = 16.dp, horizontal = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier.size(96.dp).clip(MaterialShapes.Cookie9Sided.toShape())
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        ) {
+            ExistingAvatarContent(inherited, "CardPhotoBlock")
+        }
+        AudienceBadge(audience = audience, circles = listOf(circle))
+        Text(
+            text = stringResource(
+                when (inherited?.visibility) {
+                    ProfileVisibility.ANONYMOUS -> MR.string.profile_edit_photo_inherits_public
+                    null -> MR.string.profile_edit_photo_inherits_none
+                    else -> MR.string.profile_edit_photo_inherits_earlier
+                },
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        if (avatarUiState.circlePhotosSupported) {
+            TextButton(onClick = onPickPhoto, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)) {
+                Text(stringResource(MR.string.profile_edit_photo_use_different), textAlign = TextAlign.Center)
+            }
+        }
+    }
+}
+
 /** One photo slot in an expressive shape, with its audience pill underneath. */
 @Composable
 private fun PhotoBlock(
@@ -723,16 +778,16 @@ private fun PhotoBlock(
     caption: String,
     tier: ProfileVisibility,
     photoState: PhotoTierUiState,
+    circleId: String? = null,
+    circles: List<CardCircle> = emptyList(),
+    canPick: Boolean = true,
     onAvatarAction: (ProfileAvatarEditAction) -> Unit,
     onPickPhoto: () -> Unit,
-    dimmed: Boolean,
     modifier: Modifier = Modifier,
 ) {
     var photoRevealed by remember { mutableStateOf(false) }
-    val alpha by animateFloatAsState(if (dimmed) DIMMED_ALPHA else 1f, MaterialTheme.motionScheme.defaultEffectsSpec())
     Column(
         modifier = modifier
-            .graphicsLayer { this.alpha = alpha }
             .background(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.shapes.extraLarge)
             .padding(vertical = 16.dp, horizontal = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -741,9 +796,13 @@ private fun PhotoBlock(
         PhotoTierSection(
             tier = photoState,
             onPick = onPickPhoto,
-            onRemove = { onAvatarAction(ProfileAvatarEditAction.RemoveClicked(tier)) },
+            onRemove = {
+                onAvatarAction(
+                    if (circleId != null) ProfileAvatarEditAction.RemoveRequested(tier, circleId) else ProfileAvatarEditAction.RemoveClicked(tier),
+                )
+            },
             onSaveClicked = {
-                onAvatarAction(ProfileAvatarEditAction.SaveClicked(tier))
+                onAvatarAction(ProfileAvatarEditAction.SaveClicked(tier, circleId))
                 photoRevealed = false
             },
             controlsVisible = photoRevealed,
@@ -751,11 +810,12 @@ private fun PhotoBlock(
             onPhotoTap = { photoRevealed = true },
             shape = MaterialShapes.Cookie9Sided.toShape(),
             idleBadge = true,
+            canPick = canPick,
         ) {
             ExistingAvatarContent(photoState.existing, "ProfileEditScreen")
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            AudienceBadge(audience = audience, circles = emptyList())
+            AudienceBadge(audience = audience, circles = circles)
             Text(
                 text = caption,
                 style = MaterialTheme.typography.bodySmall,
@@ -787,7 +847,6 @@ private fun SectionHeader(title: String, description: String? = null) {
     }
 }
 
-private const val DIMMED_ALPHA = 0.6f
 private const val FAB_LABEL_MAX_FONT_SCALE = 1.3f
 
 /**
@@ -809,7 +868,6 @@ private fun EditableFieldGroup(
     onClosePopover: () -> Unit,
     onSaveAudience: (ProfileAudience) -> Unit,
     editing: Boolean,
-    hiddenOn: String?,
     onOpen: () -> Unit,
     onCancel: () -> Unit,
     onSave: () -> Unit,
@@ -851,8 +909,6 @@ private fun EditableFieldGroup(
         },
         motion.defaultEffectsSpec(),
     )
-    val dimmed = hiddenOn != null && !editing
-    val alpha by animateFloatAsState(if (dimmed) DIMMED_ALPHA else 1f, motion.defaultEffectsSpec())
     val shape = RoundedCornerShape(corner)
     val bringIntoView = remember { BringIntoViewRequester() }
 
@@ -861,7 +917,6 @@ private fun EditableFieldGroup(
             .fillMaxWidth()
             .bringIntoViewRequester(bringIntoView)
             .padding(horizontal = inset, vertical = if (tile) 4.dp else 0.dp)
-            .graphicsLayer { this.alpha = alpha }
             .background(fillColor, shape)
             .clip(shape),
     ) {
@@ -921,7 +976,6 @@ private fun EditableFieldGroup(
                         )
                     }
                 }
-                hiddenOn != null -> { { NotOnCardMarker(hiddenOn) } }
                 else -> null
             },
         )
@@ -960,30 +1014,6 @@ private fun EditableFieldGroup(
     }
 }
 
-/** Why a row is dimmed while a card is focused: it is not on that card. */
-@Composable
-private fun NotOnCardMarker(cardName: String) {
-    Row(
-        modifier = Modifier.widthIn(max = 132.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Icon(
-            Icons.Outlined.VisibilityOff,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(16.dp),
-        )
-        Text(
-            text = stringResource(MR.string.profile_edit_not_on_card, cardName),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
 @Composable
 internal fun EditorActions(canSave: Boolean, onSave: () -> Unit, onCancel: () -> Unit, onRemove: (() -> Unit)?) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1014,8 +1044,6 @@ private fun LinksSection(
     openLinks: MutableMap<String, LinkDraft>,
     popoverFor: String?,
     onPopover: (String?) -> Unit,
-    hiddenOn: (ProfileAudience) -> String?,
-    onSaved: (ProfileAudience) -> Unit,
     onAction: (ProfileEditAction) -> Unit,
 ) {
     val label = stringResource(MR.string.profile_edit_link)
@@ -1039,10 +1067,8 @@ private fun LinksSection(
                 onPopover(null)
                 onAction(ProfileEditAction.LinkAudienceChanged(key, picked))
                 onAction(ProfileEditAction.SaveLink(key))
-                onSaved(picked)
             },
             editing = snapshot != null,
-            hiddenOn = hiddenOn(link.audience),
             onOpen = { openLinks[key] = link },
             onCancel = {
                 snapshot?.let { s ->
@@ -1053,7 +1079,6 @@ private fun LinksSection(
             },
             onSave = {
                 onAction(ProfileEditAction.SaveLink(key))
-                onSaved(link.audience)
                 openLinks.remove(key)
             },
             onRemove = {

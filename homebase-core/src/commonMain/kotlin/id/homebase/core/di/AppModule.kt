@@ -207,6 +207,7 @@ import id.homebase.core.ui.screens.moments.MomentsFeedViewModel
 import id.homebase.core.ui.screens.moments.MomentsSettingsViewModel
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
+import id.homebase.core.ui.screens.profile.OwnerSessionAvatar
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditViewModel
 import id.homebase.core.ui.screens.profile.ProfileEditViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
@@ -1270,7 +1271,10 @@ val appModule = module {
             },
         ) { cards.circles() }
     }
-    viewModelOf(::ProfileAvatarEditViewModel)
+    viewModel {
+        val cards = get<ProfileCardSource>()
+        ProfileAvatarEditViewModel(OwnerSessionAvatar(get()), get(), get(), get()) { cards.circles() }
+    }
     viewModel { ProfileCardViewModel(get(), ::createCardHost) }
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)

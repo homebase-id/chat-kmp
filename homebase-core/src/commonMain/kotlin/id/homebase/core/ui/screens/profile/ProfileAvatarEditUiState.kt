@@ -26,14 +26,23 @@ data class ProfileAvatarEditUiState(
     val isLoading: Boolean = true,
     val anonymous: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.ANONYMOUS),
     val onlyMe: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.OWNER),
-    /** A photo an earlier version saved for connections. It can no longer be added, only removed. */
-    val connected: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.CONNECTED),
-)
+    val circleSlots: Map<String, PhotoTierUiState> = emptyMap(),
+    val photos: List<ProfileAttribute> = emptyList(),
+    val circlePhotosSupported: Boolean = false,
+    val removalToConfirm: PhotoRemoval? = null,
+) {
+    fun circleSlot(circleId: String): PhotoTierUiState =
+        circleSlots[circleId] ?: PhotoTierUiState(ProfileVisibility.CONNECTED, circleId = circleId)
+}
+
+@Immutable
+data class PhotoRemoval(val visibility: ProfileVisibility, val circleId: String?, val sharedByOtherCards: Boolean)
 
 /** One [ProfileVisibility] tier's photo slot: what's currently stored, and any in-flight edit. */
 @Immutable
 data class PhotoTierUiState(
     val visibility: ProfileVisibility,
+    val circleId: String? = null,
     /** The currently-uploaded attribute for this tier, if any — null means "not set". */
     val existing: ProfileAttribute? = null,
     /** Cropped local preview, not yet uploaded. */
@@ -50,11 +59,19 @@ data class PhotoTierUiState(
 
 sealed interface ProfileAvatarEditAction {
     /** Photo was picked — goes straight into the (mandatory, square-locked) crop pipeline. */
-    data class PhotoPicked(val visibility: ProfileVisibility, val file: PlatformFile) : ProfileAvatarEditAction
+    data class PhotoPicked(
+        val visibility: ProfileVisibility,
+        val file: PlatformFile,
+        val circleId: String? = null,
+    ) : ProfileAvatarEditAction
     /** Commits whatever is currently pending for this tier — a cropped upload or a staged removal. */
-    data class SaveClicked(val visibility: ProfileVisibility) : ProfileAvatarEditAction
+    data class SaveClicked(val visibility: ProfileVisibility, val circleId: String? = null) : ProfileAvatarEditAction
     /** Stages [PhotoTierUiState.existing] for removal; does not call the server. */
-    data class RemoveClicked(val visibility: ProfileVisibility) : ProfileAvatarEditAction
+    data class RemoveClicked(val visibility: ProfileVisibility, val circleId: String? = null) : ProfileAvatarEditAction
+    /** For callers with no Save button: asks first, then deletes on [RemoveConfirmed]. */
+    data class RemoveRequested(val visibility: ProfileVisibility, val circleId: String? = null) : ProfileAvatarEditAction
+    data object RemoveConfirmed : ProfileAvatarEditAction
+    data object RemoveCancelled : ProfileAvatarEditAction
     data object BackClicked : ProfileAvatarEditAction
 }
 

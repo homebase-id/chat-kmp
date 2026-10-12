@@ -22,7 +22,6 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileProvider
 import id.homebase.api.client.profile.ProfileRepository
-import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
@@ -39,7 +38,6 @@ import id.homebase.core.ui.screens.profile.ProfileEditViewModel
 import id.homebase.core.ui.screens.profile.audience
 import id.homebase.core.ui.screens.profile.photoImageData
 import id.homebase.core.ui.screens.profile.saveWithAudience
-import id.homebase.core.ui.screens.profile.visiblePhoto
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -920,7 +918,7 @@ class ProfileCardViewModel(
         defaults: CardSiteDefaults,
         storedDesign: String?,
     ) {
-        val photo = attributes.visiblePhoto(ProfileVisibility.ANONYMOUS)?.photoImageData()
+        val photo = attributes.photoFor(CardAudience.Public)?.photoImageData()
         content = CardContent(odinId, attributes, defaults, photo)
         photo?.let { imageSrcAsync(it, CARD_IMAGE_MAX_EDGE) }
         val stored = attributes.profileCards()
@@ -999,8 +997,7 @@ class ProfileCardViewModel(
 
     private suspend fun payloadFor(design: String, audience: CardAudience): CardPayload? {
         val content = content ?: return null
-        val photo = if (audience == CardAudience.Public) content.photo
-        else content.attributes.visiblePhoto(audience.aclFilter())?.photoImageData()
+        val photo = content.attributes.photoFor(audience)?.photoImageData()
         val card = _uiState.value.cards.firstOrNull { it.audience == audience }
         val stored = _uiState.value.previewOverrides.takeIf { audience == _uiState.value.selectedAudience } ?: card?.overrides ?: CardOverrides.EMPTY
         return buildCardPayload(

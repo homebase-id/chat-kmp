@@ -39,11 +39,15 @@ import kotlinx.serialization.json.put
  * The real ProfileRepository + providers over a Ktor MockEngine that decrypts what the app PUTs.
  * [cardType] false plays a server from before the profile_card type, which rejects every card write (the type and
  * `circleIds` shipped together in odin-core 6e0032f24, so no server keeps one without the other); true plays one that
- * refuses `circleIds` on anything but Connected, as the real one does.
+ * refuses `circleIds` on anything but Connected, as the real one does. The photo PUT takes `circleIds` only once odin-core
+ * adds them to `SetPhotoAttributeRequest`; [photoCircleIds] false plays the server of today, which drops the field.
  */
 class CardWireHarness(
     private val deleteReply: (Int) -> Reply? = { null },
     private val cardType: Boolean = true,
+    private val photoCircleIds: Boolean = true,
+    private val queryFailsAfterPhotoPut: Boolean = false,
+    private val photoReply: Reply = Reply.Ok,
     private val putReply: (Int) -> Reply = { Reply.Ok },
 ) {
     sealed interface Reply {
@@ -53,6 +57,8 @@ class CardWireHarness(
 
     private val recorded = java.util.concurrent.CopyOnWriteArrayList<JsonElement>()
     val putBodies: List<JsonElement> get() = recorded.toList()
+    private val photoRecorded = java.util.concurrent.CopyOnWriteArrayList<JsonObject>()
+    val photoPutBodies: List<JsonObject> get() = photoRecorded.toList()
     private val putCount = java.util.concurrent.atomic.AtomicInteger()
     val puts: Int get() = putCount.get()
 
@@ -109,6 +115,14 @@ class CardWireHarness(
                 put("sharedSecretEncryptedKeyHeader", buildJsonObject { put("encryptionVersion", 1); put("iv", "AAAA"); put("encryptedAesKey", "AAAA") })
                 put("fileMetadata", buildJsonObject {
                     put("versionTag", a.versionTag)
+                    if (body["type"]?.jsonPrimitive?.content == ProfileAttributeTypes.PHOTO) {
+                        put("payloads", JsonArray(listOf(buildJsonObject {
+                            put("key", body["data"]!!.jsonObject[ProfileAttributeTypes.KEY_PROFILE_IMAGE]!!.jsonPrimitive.content)
+                            put("contentType", "image/jpeg")
+                            put("bytesWritten", 1)
+                            put("lastModified", 1)
+                        })))
+                    }
                     put("appData", buildJsonObject { put("uniqueId", a.id); put("fileType", 77); put("content", content) })
                 })
                 put("serverMetadata", buildJsonObject { put("accessControlList", acl) })
@@ -146,6 +160,29 @@ class CardWireHarness(
                     is Reply.Problem -> respond(reply.json, HttpStatusCode.fromValue(reply.status), json)
                 }
             }
+            request.method == HttpMethod.Put && request.url.encodedPath.endsWith("/profile/attributes/photo") -> {
+                val plain = CryptoHelper.decryptContentAsString((request.body as TextContent).text, secret.unsafeBytes)
+                val obj = OdinSystemSerializer.json.parseToJsonElement(plain).jsonObject
+                photoRecorded += obj
+                if (photoReply is Reply.Problem) {
+                    return@MockEngine respond(photoReply.json, HttpStatusCode.fromValue(photoReply.status), json)
+                }
+                val circleIds = obj["circleIds"]
+                if (photoCircleIds && circleIds != null && obj["visibility"]!!.jsonPrimitive.content != "Connected") {
+                    return@MockEngine respond(CIRCLES_NEED_CONNECTED_400, HttpStatusCode.BadRequest, json)
+                }
+                val id = obj["id"]?.jsonPrimitive?.content ?: Uuid.random().toString()
+                val tag = Uuid.random().toString()
+                val photo = buildJsonObject {
+                    put("type", ProfileAttributeTypes.PHOTO)
+                    put("visibility", obj["visibility"]!!.jsonPrimitive.content.lowercase())
+                    put("data", buildJsonObject { put(ProfileAttributeTypes.KEY_PROFILE_IMAGE, "key-$id") })
+                    put("priority", 0)
+                    if (photoCircleIds) circleIds?.let { put("circleIds", it) }
+                }
+                synchronized(stored) { stored[id] = Stored(id, tag, photo) }
+                respond("{\"id\":\"$id\",\"versionTag\":\"$tag\"}", HttpStatusCode.OK, json)
+            }
             request.method == HttpMethod.Delete && request.url.encodedPath.contains("/profile/attributes/") -> {
                 val id = request.url.encodedPath.substringAfterLast('/')
                 deletedIds += id
@@ -156,6 +193,8 @@ class CardWireHarness(
                     else -> respond("", HttpStatusCode.NotFound, json)
                 }
             }
+            request.url.encodedPath.endsWith("/query-batch") && queryFailsAfterPhotoPut && photoRecorded.isNotEmpty() ->
+                respond("", HttpStatusCode.InternalServerError, json)
             request.url.encodedPath.endsWith("/query-batch") -> respond(searchResults(), HttpStatusCode.OK, json)
             else -> error("unexpected ${request.method} ${request.url}")
         }

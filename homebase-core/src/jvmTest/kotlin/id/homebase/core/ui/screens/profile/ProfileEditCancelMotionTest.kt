@@ -43,10 +43,6 @@ class ProfileEditCancelMotionTest {
         cancel("Email", filled.copy(values = filled.values + (ProfileField.EMAIL_LABEL to "Hobbit post")))
     }
 
-    @Test
-    fun deselectingACardSpringsTheFocusRingWithoutCrashing() =
-        openThenClose("Family", "Show all", filled.copy(circles = listOf(CardCircle("f", "Family"))))
-
     @Composable
     private fun screen(state: ProfileEditUiState) {
         CompositionLocalProvider(LocalDensity provides Density(2f, 1f)) {
@@ -63,7 +59,7 @@ class ProfileEditCancelMotionTest {
                             if (a is ProfileEditAction.FieldChanged) s = s.copy(values = s.values + (a.field to a.value))
                         },
                         onAvatarAction = {},
-                        onPickAnonymousPhoto = {},
+                        onPickPhoto = {},
                         onPickOnlyMePhoto = {},
                         snackbarHostState = remember { SnackbarHostState() },
                     )
