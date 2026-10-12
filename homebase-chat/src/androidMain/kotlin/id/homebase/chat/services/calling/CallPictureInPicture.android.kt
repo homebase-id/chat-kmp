@@ -15,6 +15,7 @@ import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
@@ -77,6 +78,19 @@ actual fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, m
         val filter = IntentFilter().apply { addAction(ACTION_MUTE); addAction(ACTION_HANGUP) }
         androidx.core.content.ContextCompat.registerReceiver(activity, receiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
         onDispose { activity.unregisterReceiver(receiver) }
+    }
+
+    DisposableEffect(activity) {
+        val listener = Consumer<Intent> { Logger.i("CallPiP") { "new intent inPip=${activity.isInPictureInPictureMode} action=${it.action}" } }
+        activity.addOnNewIntentListener(listener)
+        onDispose { activity.removeOnNewIntentListener(listener) }
+    }
+    val inPip = rememberInPictureInPicture()
+    LaunchedEffect(inPip, eligible) {
+        if (shouldLeavePictureInPicture(inPip, eligible)) {
+            Logger.i("CallPiP") { "leaving pip: call no longer pip-eligible" }
+            activity.startActivity(Intent(activity, activity.javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+        }
     }
 
     val params = remember(eligible, muted, size, muteLabel, hangupLabel) {

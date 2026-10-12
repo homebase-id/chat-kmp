@@ -1,7 +1,9 @@
 package id.homebase.chat.calling
 
+import id.homebase.chat.services.calling.CallEndReason
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.pipAspectRatio
+import id.homebase.chat.services.calling.shouldLeavePictureInPicture
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -35,5 +37,13 @@ class PictureInPictureTest {
         assertTrue(CallUiState(phase = CallPhase.Reconnecting).keepScreenAwake)
         assertFalse(CallUiState(phase = CallPhase.Incoming).keepScreenAwake)
         assertFalse(CallUiState().keepScreenAwake)
+    }
+
+    @Test
+    fun leavesPipWhenCallEndsWhileInPip() {
+        val ended = CallUiState(phase = CallPhase.Ended(CallEndReason.Hangup(remote = false)), remoteVideo = true)
+        assertTrue(shouldLeavePictureInPicture(inPip = true, eligible = ended.pipEligible))
+        assertFalse(shouldLeavePictureInPicture(inPip = true, eligible = CallUiState(phase = CallPhase.Connected, remoteVideo = true).pipEligible))
+        assertFalse(shouldLeavePictureInPicture(inPip = false, eligible = false))
     }
 }

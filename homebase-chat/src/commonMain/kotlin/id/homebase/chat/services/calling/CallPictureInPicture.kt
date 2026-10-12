@@ -32,3 +32,6 @@ expect fun rememberInPictureInPicture(): Boolean
  */
 @Composable
 expect fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, muted: Boolean, onToggleMute: () -> Unit, onHangup: () -> Unit)
+
+/** The PiP window only makes sense for an eligible call; once it is not, the activity must go back to full screen. */
+fun shouldLeavePictureInPicture(inPip: Boolean, eligible: Boolean): Boolean = inPip && !eligible
