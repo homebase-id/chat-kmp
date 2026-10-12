@@ -11,14 +11,14 @@ import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.util.isWeb
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
@@ -27,34 +27,40 @@ private const val TAG = "FilesyncViewModel"
 
 class FilesyncViewModel(
     private val repository: FilesyncRepository,
-    private val filesyncPermissionViewModel: ExtendPermissionViewModel,
+    val extendPermissionViewModel: ExtendPermissionViewModel,
     private val filesyncPreferences: FilesyncPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FilesyncUiState(path = listOf(FilesyncCrumb(FilesyncProtocol.RootNodeId, null))))
     val uiState: StateFlow<FilesyncUiState> = _uiState.asStateFlow()
 
-    private val _events = MutableSharedFlow<FilesyncUiEvent>(extraBufferCapacity = 4)
-    val events: SharedFlow<FilesyncUiEvent> = _events.asSharedFlow()
+    // Apart from uiState so a download's progress redraws one indicator, not the screen.
+    private val _transferProgress = MutableStateFlow(0f)
+    val transferProgress: StateFlow<Float> = _transferProgress.asStateFlow()
 
-    val extendPermissionViewModel: ExtendPermissionViewModel
-        get() = filesyncPermissionViewModel
+    // Buffered so a download that finishes while the screen is away is still handed off on return.
+    private val _events = Channel<FilesyncUiEvent>(Channel.BUFFERED)
+    val events: Flow<FilesyncUiEvent> = _events.receiveAsFlow()
 
     private var payloads: Map<Uuid, FilesyncPayload> = emptyMap()
     private var loadJob: Job? = null
     private var transferJob: Job? = null
 
+    // Not cleared by the dialog closing: its confirm button dismisses it before the grant arrives.
+    private var setupRequested = false
+
     init {
         viewModelScope.launch {
             combine(
-                filesyncPermissionViewModel.permissionsChecked,
-                filesyncPermissionViewModel.permissionsGranted,
+                extendPermissionViewModel.permissionsChecked,
+                extendPermissionViewModel.permissionsGranted,
             ) { checked, granted -> if (granted) true else if (checked) false else null }
                 .collect { installed ->
                     val wasInstalled = _uiState.value.installed == true
                     _uiState.update { it.copy(installed = installed) }
                     if (installed == true && !wasInstalled) {
-                        if (_uiState.value.setupInitiated) filesyncPreferences.setIconVisible(true)
+                        if (setupRequested) filesyncPreferences.setIconVisible(true)
+                        setupRequested = false
                         _uiState.update { it.copy(setupInitiated = false) }
                         loadCurrentFolder()
                     }
@@ -62,7 +68,11 @@ class FilesyncViewModel(
         }
 
         viewModelScope.launch {
-            filesyncPermissionViewModel.uiState
+            extendPermissionViewModel.checkFailed.collect { failed -> _uiState.update { it.copy(checkFailed = failed) } }
+        }
+
+        viewModelScope.launch {
+            extendPermissionViewModel.uiState
                 .filter { it is ExtendPermissionUiState.Dismissed }
                 .collect { _uiState.update { s -> s.copy(setupInitiated = false) } }
         }
@@ -71,14 +81,14 @@ class FilesyncViewModel(
     fun onAction(action: FilesyncUiAction) {
         when (action) {
             FilesyncUiAction.SetupClicked -> {
+                setupRequested = true
                 _uiState.update { it.copy(setupInitiated = true) }
-                filesyncPermissionViewModel.recheckPermissions()
+                extendPermissionViewModel.recheckPermissions()
             }
 
-            FilesyncUiAction.DismissOnboardingClicked -> viewModelScope.launch {
-                filesyncPreferences.setIconVisible(false)
-                _events.emit(FilesyncUiEvent.CloseOnboarding)
-            }
+            FilesyncUiAction.DismissOnboardingClicked -> viewModelScope.launch { filesyncPreferences.setIconVisible(false) }
+
+            FilesyncUiAction.RetryCheck -> extendPermissionViewModel.recheckPermissions()
 
             FilesyncUiAction.Refresh -> loadCurrentFolder()
 
@@ -102,6 +112,8 @@ class FilesyncViewModel(
             is FilesyncUiAction.SaveClicked -> transfer(action.node, save = true)
 
             FilesyncUiAction.CancelTransfer -> transferJob?.cancel()
+
+            is FilesyncUiAction.SaveHandedOff -> repository.discard(action.path)
         }
     }
 
@@ -132,26 +144,27 @@ class FilesyncViewModel(
         val payload = payloads[node.nodeId] ?: return
         if (transferJob?.isActive == true) return
         transferJob = viewModelScope.launch {
-            _uiState.update { it.copy(transferNodeId = node.nodeId, transferProgress = 0f) }
+            _transferProgress.value = 0f
+            _uiState.update { it.copy(transferNodeId = node.nodeId) }
             try {
-                val path = repository.download(node, payload) { progress ->
-                    _uiState.update { it.copy(transferProgress = progress) }
-                }
-                if (path == null) {
-                    _events.emit(FilesyncUiEvent.Error(FilesyncError.DownloadFailed))
-                } else {
-                    _events.emit(if (save) FilesyncUiEvent.SaveFile(path, node.name) else FilesyncUiEvent.OpenFile(path))
-                }
+                val path = repository.download(node.name, payload, forOpen = !save) { _transferProgress.value = it }
+                _events.send(
+                    when {
+                        path == null -> FilesyncUiEvent.Error(FilesyncError.DownloadFailed)
+                        save -> FilesyncUiEvent.SaveFile(path, node.name)
+                        else -> FilesyncUiEvent.OpenFile(path)
+                    }
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PayloadDamagedException) {
                 Logger.e(e, TAG) { "file ${node.nodeId} failed its hash check" }
-                _events.emit(FilesyncUiEvent.Error(FilesyncError.Damaged))
+                _events.send(FilesyncUiEvent.Error(FilesyncError.Damaged))
             } catch (e: Exception) {
                 Logger.e(e, TAG) { "download of ${node.nodeId} failed" }
-                _events.emit(FilesyncUiEvent.Error(FilesyncError.DownloadFailed))
+                _events.send(FilesyncUiEvent.Error(FilesyncError.DownloadFailed))
             } finally {
-                _uiState.update { it.copy(transferNodeId = null, transferProgress = 0f) }
+                _uiState.update { it.copy(transferNodeId = null) }
             }
         }
     }

@@ -252,7 +252,7 @@ class PayloadDownloadServiceTest {
     @Test
     fun `exportVerified refuses a missing or unknown hash before downloading`() = runTest {
         val (keyHeader, _) = encryptedFixture(1_000)
-        val unknown = PayloadHash(PayloadHashAlgorithm.Unknown, "", "")
+        val unknown = PayloadHash("sha3", "", "")
 
         for (hash in listOf(null, unknown)) {
             assertFailsWith<PayloadDamagedException> {
@@ -260,6 +260,17 @@ class PayloadDownloadServiceTest {
             }
         }
         assertTrue(mockEngine.requestHistory.isEmpty())
+    }
+
+    @Test
+    fun `an export that fails mid-stream leaves no partial file behind`() = runTest {
+        // Random bytes decrypt chunk by chunk, then fail on the final padding block.
+        nextBody = ByteArray(200_000).also { Random.nextBytes(it) }
+
+        assertTrue(runCatching {
+            service.exportToTemp(driveId, fileId, key, KeyHeader.newRandom16(), ExportDestination.UploadTemp("fs_", ".bin"))
+        }.isFailure)
+        assertTrue(File(tempDir, "hb-scratch/upload-temp").listFiles().isNullOrEmpty())
     }
 
     @Test

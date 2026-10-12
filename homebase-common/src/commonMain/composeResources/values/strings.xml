@@ -2742,11 +2742,14 @@
     <string name="filesync_folder_empty">This folder is empty</string>
     <string name="filesync_load_failed">Couldn't load this folder.</string>
     <string name="filesync_retry">Try again</string>
-    <string name="filesync_refresh">Refresh</string>
     <string name="filesync_more">More options</string>
     <string name="filesync_save">Save to device</string>
     <string name="filesync_cancel_download">Cancel download</string>
     <string name="filesync_download_failed">Couldn't download the file.</string>
     <string name="filesync_damaged">This file is damaged, so it wasn't opened.</string>
     <string name="filesync_folder">Folder</string>
+    <string name="filesync_open_failed">No app on this device can open this file.</string>
+    <string name="filesync_save_failed">Couldn't save the file.</string>
+    <string name="filesync_check_failed">Couldn't check whether Filesync is set up.</string>
+    <string name="settings_filesync_icon_desc">Show Filesync in the navigation bar</string>
 </resources>

@@ -44,6 +44,7 @@ import org.jetbrains.compose.resources.stringResource
 fun FilesyncOnboardingScreen(
     viewModel: FilesyncViewModel,
     setupInitiated: Boolean,
+    onDismiss: () -> Unit,
 ) {
     // The grant is checked silently on open; the dialog only appears once the user asks to set up.
     if (setupInitiated) ExtendPermissionDialog(viewModel = viewModel.extendPermissionViewModel)
@@ -96,7 +97,10 @@ fun FilesyncOnboardingScreen(
             }
             Spacer(modifier = Modifier.height(8.dp))
             TextButton(
-                onClick = { viewModel.onAction(FilesyncUiAction.DismissOnboardingClicked) },
+                onClick = {
+                    viewModel.onAction(FilesyncUiAction.DismissOnboardingClicked)
+                    onDismiss()
+                },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(MR.string.filesync_onboarding_dismiss))

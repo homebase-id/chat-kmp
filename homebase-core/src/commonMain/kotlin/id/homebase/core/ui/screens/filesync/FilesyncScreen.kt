@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Folder
@@ -38,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -51,9 +51,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.common.util.formatBytes
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.util.formatMediumDate
+import id.homebase.core.ui.screens.vault.components.fileTypeIcon
+import kotlinx.coroutines.flow.StateFlow
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.filesync_cancel_download
+import id.homebase.resources.filesync_check_failed
 import id.homebase.resources.filesync_damaged
 import id.homebase.resources.filesync_desktop_download
 import id.homebase.resources.filesync_download_failed
@@ -62,10 +65,14 @@ import id.homebase.resources.filesync_folder_empty
 import id.homebase.resources.filesync_label
 import id.homebase.resources.filesync_load_failed
 import id.homebase.resources.filesync_more
+import id.homebase.resources.filesync_open_failed
+import id.homebase.resources.filesync_save_failed
 import id.homebase.resources.filesync_retry
 import id.homebase.resources.filesync_save
 import id.homebase.resources.menu_back
 import kotlinx.io.files.Path
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
@@ -77,11 +84,28 @@ fun FilesyncScreen(viewModel: FilesyncViewModel) {
     val snackbarHostState = remember { SnackbarHostState() }
     val fileSystemHandler = getUriHandler()
 
+    val scope = rememberCoroutineScope()
+    fun showMessage(message: StringResource) {
+        scope.launch { snackbarHostState.showSnackbar(getString(message)) }
+    }
+
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
-                is FilesyncUiEvent.OpenFile -> fileSystemHandler.openFile(Path(event.path), showChooser = false)
-                is FilesyncUiEvent.SaveFile -> fileSystemHandler.saveFile(Path(event.path), event.name)
+                is FilesyncUiEvent.OpenFile -> fileSystemHandler.openFile(
+                    Path(event.path),
+                    showChooser = false,
+                    onError = { showMessage(MR.string.filesync_open_failed) },
+                )
+                is FilesyncUiEvent.SaveFile -> fileSystemHandler.saveFile(
+                    Path(event.path),
+                    event.name,
+                    onSuccess = { viewModel.onAction(FilesyncUiAction.SaveHandedOff(event.path)) },
+                    onError = {
+                        viewModel.onAction(FilesyncUiAction.SaveHandedOff(event.path))
+                        showMessage(MR.string.filesync_save_failed)
+                    },
+                )
                 is FilesyncUiEvent.Error -> snackbarHostState.showSnackbar(
                     getString(
                         when (event.error) {
@@ -90,7 +114,6 @@ fun FilesyncScreen(viewModel: FilesyncViewModel) {
                         }
                     )
                 )
-                FilesyncUiEvent.CloseOnboarding -> Unit
             }
         }
     }
@@ -148,7 +171,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel) {
                         items(uiState.nodes, key = { it.nodeId.toString() }) { node ->
                             NodeRow(
                                 node = node,
-                                transferProgress = uiState.transferProgress.takeIf { uiState.transferNodeId == node.nodeId },
+                                transferProgress = if (uiState.transferNodeId == node.nodeId) viewModel.transferProgress else null,
                                 onClick = { viewModel.onAction(FilesyncUiAction.NodeClicked(node)) },
                                 onSave = { viewModel.onAction(FilesyncUiAction.SaveClicked(node)) },
                                 onCancel = { viewModel.onAction(FilesyncUiAction.CancelTransfer) },
@@ -208,18 +231,21 @@ private fun Breadcrumbs(path: List<FilesyncCrumb>, onCrumb: (Int) -> Unit) {
 @Composable
 private fun NodeRow(
     node: FilesyncNode,
-    transferProgress: Float?,
+    transferProgress: StateFlow<Float>?,
     onClick: () -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    val details = if (node.isFolder) {
-        stringResource(MR.string.filesync_folder)
-    } else {
-        listOfNotNull(
-            node.sizeBytes?.let { formatBytes(it) },
-            node.modifiedMs?.let { formatMediumDate(Instant.fromEpochMilliseconds(it)) },
-        ).joinToString(" · ")
+    val folderLabel = stringResource(MR.string.filesync_folder)
+    val details = remember(node) {
+        if (node.isFolder) {
+            folderLabel
+        } else {
+            listOfNotNull(
+                node.sizeBytes?.let { formatBytes(it) },
+                node.modifiedMs?.let { formatMediumDate(Instant.fromEpochMilliseconds(it)) },
+            ).joinToString(" · ")
+        }
     }
     ListItem(
         modifier = Modifier.clickable(onClick = onClick),
@@ -227,7 +253,7 @@ private fun NodeRow(
         supportingContent = { if (details.isNotEmpty()) Text(details) },
         leadingContent = {
             Icon(
-                imageVector = if (node.isFolder) Icons.Outlined.Folder else Icons.AutoMirrored.Outlined.InsertDriveFile,
+                imageVector = if (node.isFolder) Icons.Outlined.Folder else fileTypeIcon(null, node.name),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
             )
@@ -237,8 +263,9 @@ private fun NodeRow(
                 node.isFolder -> Unit
                 transferProgress != null -> {
                     val cancelLabel = stringResource(MR.string.filesync_cancel_download)
+                    val progress by transferProgress.collectAsStateWithLifecycle()
                     IconButton(onClick = onCancel, modifier = Modifier.semantics { contentDescription = cancelLabel }) {
-                        CircularProgressIndicator(progress = { transferProgress }, modifier = Modifier.size(24.dp))
+                        CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(24.dp))
                     }
                 }
                 else -> IconButton(onClick = onSave) {
@@ -247,6 +274,20 @@ private fun NodeRow(
             }
         },
     )
+}
+
+@Composable
+fun FilesyncCheckingScreen(failed: Boolean, onRetry: () -> Unit) {
+    CenteredBox {
+        if (failed) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(stringResource(MR.string.filesync_check_failed))
+                TextButton(onClick = onRetry) { Text(stringResource(MR.string.filesync_retry)) }
+            }
+        } else {
+            CircularProgressIndicator()
+        }
+    }
 }
 
 @Composable

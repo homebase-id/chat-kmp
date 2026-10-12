@@ -931,7 +931,7 @@ val appModule = module {
 
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
-    single { FilesyncRepository(get(), get()) }
+    single { FilesyncRepository(get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
     single { WebDropShareFlowState() }
 
@@ -1305,7 +1305,7 @@ val appModule = module {
     viewModel {
         FilesyncViewModel(
             repository = get(),
-            filesyncPermissionViewModel = get(FilesyncPermissionQualifier),
+            extendPermissionViewModel = get(FilesyncPermissionQualifier),
             filesyncPreferences = get(),
         )
     }

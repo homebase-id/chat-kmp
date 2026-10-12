@@ -14,13 +14,10 @@ import kotlin.uuid.Uuid
 @Immutable
 data class FilesyncNode(
     val nodeId: Uuid,
-    val fileId: Uuid,
     val isFolder: Boolean,
     val name: String,
     val modifiedMs: Long?,
     val sizeBytes: Long?,
-    /** Written by a newer schema; shown, never changed. */
-    val readOnly: Boolean,
 )
 
 /** What a download of a file node needs; kept out of [FilesyncNode] so UI state carries no keys. */
@@ -40,7 +37,6 @@ private data class FilesyncNodeContent(
 
 private const val TAG = "FilesyncNode"
 
-/** Null for anything that isn't a readable node: another file type, no id, or content that won't decrypt or parse. */
 internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncPayload?>? {
     val appData = fileMetadata.appData
     val isFolder = when (appData.fileType) {
@@ -70,11 +66,9 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncPayload?>
 
     return FilesyncNode(
         nodeId = nodeId,
-        fileId = fileId,
         isFolder = isFolder,
         name = name,
         modifiedMs = content.mtime,
         sizeBytes = content.size,
-        readOnly = content.v > FilesyncProtocol.ContentVersion,
     ) to payload
 }

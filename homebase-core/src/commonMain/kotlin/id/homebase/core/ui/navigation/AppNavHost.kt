@@ -198,8 +198,9 @@ import id.homebase.core.ui.screens.webdrop.WebDropUiEvent
 import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.webdrop.onboarding.WebDropOnboardingScreen
 import id.homebase.core.filesync.FilesyncPreferences
+import id.homebase.core.ui.screens.filesync.FilesyncCheckingScreen
 import id.homebase.core.ui.screens.filesync.FilesyncScreen
-import id.homebase.core.ui.screens.filesync.FilesyncUiEvent
+import id.homebase.core.ui.screens.filesync.FilesyncUiAction
 import id.homebase.core.ui.screens.filesync.FilesyncViewModel
 import id.homebase.core.ui.screens.filesync.onboarding.FilesyncOnboardingScreen
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorScreen
@@ -2122,27 +2123,15 @@ fun AppNavHost(
                                     animationSpec = chromeMotion.defaultEffectsSpec(),
                                 ) { installed ->
                                     when (installed) {
-                                        null -> {
-                                            Box(
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentAlignment = Alignment.Center,
-                                            ) {
-                                                CircularProgressIndicator()
-                                            }
-                                        }
-                                        false -> {
-                                            FilesyncOnboardingScreen(
-                                                viewModel = filesyncViewModel,
-                                                setupInitiated = filesyncUiState.setupInitiated,
-                                            )
-                                            LaunchedEffect(Unit) {
-                                                filesyncViewModel.events.collect { event ->
-                                                    if (event is FilesyncUiEvent.CloseOnboarding) {
-                                                        navController.popBackStack()
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        null -> FilesyncCheckingScreen(
+                                            failed = filesyncUiState.checkFailed,
+                                            onRetry = { filesyncViewModel.onAction(FilesyncUiAction.RetryCheck) },
+                                        )
+                                        false -> FilesyncOnboardingScreen(
+                                            viewModel = filesyncViewModel,
+                                            setupInitiated = filesyncUiState.setupInitiated,
+                                            onDismiss = { navController.popBackStack() },
+                                        )
                                         true -> FilesyncScreen(viewModel = filesyncViewModel)
                                     }
                                 }

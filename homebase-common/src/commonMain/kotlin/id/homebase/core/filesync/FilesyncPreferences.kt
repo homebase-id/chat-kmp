@@ -32,6 +32,6 @@ class FilesyncPreferences(private val databaseManager: DatabaseManager) {
     }
 
     companion object {
-        val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0a01")
+        val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0a02")
     }
 }

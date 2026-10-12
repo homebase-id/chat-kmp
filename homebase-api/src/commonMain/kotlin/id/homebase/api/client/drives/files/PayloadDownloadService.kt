@@ -93,11 +93,7 @@ class PayloadDownloadService(
         onProgress: ((Float) -> Unit)? = null,
     ): String? = export(driveId, fileId, key, keyHeader, destination, onProgress, fileOperationsProvider)
 
-    /**
-     * [exportToTemp], checking the plaintext against [hash] as it streams. [keyHeader] is the
-     * payload's key (file AES key, payload IV); encrypted payloads only. Throws
-     * [PayloadDamagedException], leaving no file behind, unless the hash is present, readable and matches.
-     */
+    /** [exportToTemp] that checks the plaintext against [hash] as it streams; [keyHeader] is the payload's key. */
     suspend fun exportVerified(
         driveId: Uuid,
         fileId: Uuid,
@@ -108,14 +104,20 @@ class PayloadDownloadService(
         onProgress: ((Float) -> Unit)? = null,
     ): String? {
         if (hash == null) throw PayloadDamagedException("no hash")
+        val algorithm = hash.knownAlgorithm ?: throw PayloadDamagedException("unknown algorithm ${hash.algorithm}")
         val expected = hash.plaintextContentHash(keyHeader)
             ?: throw PayloadDamagedException("unreadable ${hash.algorithm} hash")
-        val hasher = hash.algorithm.newHasher()
+        val hasher = algorithm.newHasher()
         val hashingFileOps = object : FileOperationsProvider by fileOperationsProvider {
             override suspend fun writeStream(path: String, data: Flow<ByteArray>) =
                 fileOperationsProvider.writeStream(path, data.hashedBy(hasher))
         }
-        val path = export(driveId, fileId, key, keyHeader, destination, onProgress, hashingFileOps) ?: return null
+        // Per network chunk otherwise: thousands of UI updates for a large file.
+        val gate = WholePercentProgressGate()
+        val gatedProgress: ((Float) -> Unit)? = onProgress?.let { report ->
+            { fraction -> if (gate.admit(fraction * 100) != null) report(fraction) }
+        }
+        val path = export(driveId, fileId, key, keyHeader, destination, gatedProgress, hashingFileOps) ?: return null
         if (!hasher.digest().contentEquals(expected)) {
             runCatching { fileOperationsProvider.deleteTempFile(path) }
             throw PayloadDamagedException("${hash.algorithm} mismatch")
@@ -141,15 +143,21 @@ class PayloadDownloadService(
                 AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.EXPORT) +
                     "/" + destination.prefix + randomToken() + destination.suffix
         }
-        val ok = driveFileProvider.streamPayloadDecryptedToPath(
-            driveId = driveId,
-            fileId = fileId,
-            key = key,
-            keyHeader = keyHeader,
-            outputPath = path,
-            fileOps = fileOps,
-            onProgress = onProgress,
-        )
+        // A cancelled or failed export must not leave a partial plaintext copy behind.
+        val ok = try {
+            driveFileProvider.streamPayloadDecryptedToPath(
+                driveId = driveId,
+                fileId = fileId,
+                key = key,
+                keyHeader = keyHeader,
+                outputPath = path,
+                fileOps = fileOps,
+                onProgress = onProgress,
+            )
+        } catch (t: Throwable) {
+            runCatching { fileOperationsProvider.deleteTempFile(path) }
+            throw t
+        }
         if (!ok) {
             runCatching { fileOperationsProvider.deleteTempFile(path) }
             return null

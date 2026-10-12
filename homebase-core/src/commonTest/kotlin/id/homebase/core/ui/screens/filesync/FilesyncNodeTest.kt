@@ -9,7 +9,6 @@ import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadHash
-import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.common.SecureByteArray
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlin.io.encoding.Base64
@@ -26,7 +25,7 @@ class FilesyncNodeTest {
     private val nodeId = Uuid.random()
     private val fileKey = ByteArray(16) { it.toByte() }
     private val payloadIv = ByteArray(16) { (it + 100).toByte() }
-    private val hash = PayloadHash(PayloadHashAlgorithm.Blake3, "cw==", "Yw==")
+    private val hash = PayloadHash("blake3", "cw==", "Yw==")
 
     private fun row(
         fileType: Int?,
@@ -67,16 +66,9 @@ class FilesyncNodeTest {
         assertFalse(node.isFolder)
         assertEquals(1759920000123, node.modifiedMs)
         assertEquals(52311, node.sizeBytes)
-        assertFalse(node.readOnly)
         assertContentEquals(payloadIv, payload!!.payloadKey.iv)
         assertContentEquals(fileKey, payload.payloadKey.aesKey.unsafeBytes)
         assertEquals(hash, payload.hash)
-    }
-
-    @Test
-    fun aNewerSchemaIsShownReadOnly() {
-        val (node, _) = row(FilesyncProtocol.FolderFileType, """{"v":2,"name":"Future"}""").toFilesyncNode()!!
-        assertTrue(node.readOnly)
     }
 
     @Test
