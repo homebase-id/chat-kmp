@@ -68,7 +68,13 @@ private fun CallHostContent(service: CallService, state: CallState, videos: Call
     var showVerification by remember { mutableStateOf(false) }
     val actions = remember(service) {
         CallScreenActions(
-            accept = { gate.run(video = false) { service.accept() } },
+            accept = {
+                val wantsVideo = service.state.value.media.localVideo
+                gate.run(video = wantsVideo) { video ->
+                    if (wantsVideo && !video) service.setVideo(false)
+                    service.accept()
+                }
+            },
             decline = service::decline,
             hangup = service::hangup,
             setMuted = { service.setMuted(it) },

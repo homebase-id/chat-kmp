@@ -89,6 +89,31 @@ class CallControllerTest {
     }
 
     @Test
+    fun videoOfferAcceptedWithoutCameraAnswersAsVoice() = runTest {
+        val (_, a, b) = pair()
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+        assertTrue(b.state.media.localVideo)
+        b.controller.setVideo(false)
+        b.controller.accept()
+        runCurrent()
+        advanceTimeBy(1_001)
+        assertEquals(CallPhase.Connected, b.phase)
+        assertEquals(null, b.engines.single().localVideo.value)
+        assertEquals(false, b.state.media.localVideo)
+    }
+
+    @Test
+    fun videoOfferAcceptedWithCameraAnswersWithVideo() = runTest {
+        val (_, a, b) = pair()
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+        b.controller.accept()
+        runCurrent()
+        assertNotNull(b.engines.single().localVideo.value)
+    }
+
+    @Test
     fun localIceReachesPeerAfterRemoteDescription() = runTest {
         val (_, a, b) = pair()
         a.controller.startCall(sam, video = false)

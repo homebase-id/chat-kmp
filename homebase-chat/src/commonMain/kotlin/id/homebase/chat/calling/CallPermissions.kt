@@ -15,10 +15,13 @@ import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.PermissionsManager
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.resources.MR
+import id.homebase.resources.call_camera_denied_body
+import id.homebase.resources.call_camera_denied_title
 import id.homebase.resources.call_cancel
 import id.homebase.resources.call_open_settings
 import id.homebase.resources.call_permission_body
 import id.homebase.resources.call_permission_title
+import id.homebase.resources.call_verification_ok
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -35,6 +38,7 @@ fun rememberCallPermissionGate(): CallPermissionGate {
     val scope = rememberCoroutineScope()
     var pending by remember { mutableStateOf<CompletableDeferred<Boolean>?>(null) }
     var blocked by remember { mutableStateOf(false) }
+    var cameraDenied by remember { mutableStateOf(false) }
     val manager: PermissionsManager = createPermissionsManager { _, status, _ ->
         pending?.complete(status == PermissionStatus.GRANTED)
     }
@@ -55,6 +59,7 @@ fun rememberCallPermissionGate(): CallPermissionGate {
                     return@launch
                 }
                 val withVideo = video && ensure(PermissionType.CAMERA)
+                if (video && !withVideo) cameraDenied = true
                 onGranted(withVideo)
             }
         }
@@ -71,6 +76,19 @@ fun rememberCallPermissionGate(): CallPermissionGate {
                 }
             },
             dismissButton = { TextButton(onClick = { blocked = false }) { Text(stringResource(MR.string.call_cancel)) } },
+        )
+    }
+    if (cameraDenied) {
+        AlertDialog(
+            onDismissRequest = { cameraDenied = false },
+            title = { Text(stringResource(MR.string.call_camera_denied_title)) },
+            text = { Text(stringResource(MR.string.call_camera_denied_body)) },
+            confirmButton = { TextButton(onClick = { cameraDenied = false }) { Text(stringResource(MR.string.call_verification_ok)) } },
+            dismissButton = {
+                TextButton(onClick = { cameraDenied = false; managerRef.launchSettings() }) {
+                    Text(stringResource(MR.string.call_open_settings))
+                }
+            },
         )
     }
     return gate

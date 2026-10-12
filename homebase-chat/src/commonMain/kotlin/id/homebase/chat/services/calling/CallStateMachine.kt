@@ -58,7 +58,9 @@ class CallStateMachine(private val selfOdinId: String) {
         is CallEvent.Media -> media(state, event.event, nowMs)
         is CallEvent.EngineError -> failed(state, event.reason)
         is CallEvent.SetMuted -> control(state, CallEffect.SetMuted(event.muted)) { it.copy(muted = event.muted) }
-        is CallEvent.SetVideo -> control(state, CallEffect.SetVideo(event.on)) { it.copy(localVideo = event.on) }
+        is CallEvent.SetVideo ->
+            if (state.phase == CallPhase.Incoming && !event.on) CallTransition(state.copy(media = state.media.copy(localVideo = false)))
+            else control(state, CallEffect.SetVideo(event.on)) { it.copy(localVideo = event.on) }
         CallEvent.SwitchCamera -> control(state, CallEffect.SwitchCamera) {
             it.copy(camera = if (it.camera == CameraFacing.Front) CameraFacing.Back else CameraFacing.Front)
         }
@@ -273,7 +275,7 @@ class CallStateMachine(private val selfOdinId: String) {
     private fun offerForPushedRing(s: CallState, from: String, sig: CallSignal.Offer): CallTransition {
         if (s.phase != CallPhase.Incoming || s.pendingOfferSdp != null || s.peer != from) return CallTransition(s)
         val ringing = CallEffect.SendSignal(from, CallSignal.Ringing(sig.callId))
-        val media = s.media.copy(localVideo = sig.video, remoteVideo = sig.video)
+        val media = s.media.copy(localVideo = sig.video && !s.acceptPending, remoteVideo = sig.video)
         if (!s.acceptPending) return CallTransition(s.copy(pendingOfferSdp = sig.sdp, media = media), listOf(ringing))
         return CallTransition(
             s.copy(phase = CallPhase.Connecting, acceptPending = false, media = media),

@@ -2769,6 +2769,8 @@
     <string name="call_verification_ok">Got it</string>
     <string name="call_open_settings">Open settings</string>
     <string name="call_permission_title">Permission needed</string>
+    <string name="call_camera_denied_title">Camera is off</string>
+    <string name="call_camera_denied_body">Camera access was denied, so this call continues as a voice call. You can allow the camera in Settings to use video.</string>
     <string name="call_permission_body">Calls need access to your microphone, and your camera for video.</string>
     <string name="call_no_video">Camera off</string>
     <string name="call_you">You</string>

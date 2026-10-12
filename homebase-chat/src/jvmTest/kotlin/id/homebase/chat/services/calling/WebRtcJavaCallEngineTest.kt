@@ -7,8 +7,10 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -85,7 +87,7 @@ class WebRtcJavaCallEngineTest {
             assertTrue(restart.contains("a=ice-ufrag"))
             a.applyRemote(b.answerRestart(restart))
         } finally {
-            scope.cancel()
+            scope.coroutineContext[Job]!!.cancelAndJoin()
             a.close()
             b.close()
         }
