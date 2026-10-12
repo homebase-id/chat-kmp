@@ -63,7 +63,9 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -131,6 +133,8 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
+import id.homebase.resources.close
+import id.homebase.resources.profile_card_preview
 import id.homebase.resources.profile_card_access_allow_description
 import id.homebase.resources.profile_card_app_only
 import id.homebase.resources.profile_card_change_design_to
@@ -181,13 +185,6 @@ private val DESIGN_STRIP_INSET = 20.dp
 private val CAPTION_LINE = 20.dp
 // The card keeps at least the rest of the height, so the controls never shrink it out of being the hero.
 private const val PANEL_MAX_SHARE = 0.55f
-private const val CONTENT_PANEL_MAX_SHARE = 0.74f
-private const val LARGE_TEXT_CONTENT_SHARE = 0.12f
-// The Content list never takes the hero below this, so the card stays a card rather than a pill.
-private const val CONTENT_HERO_SHARE = 0.28f
-private val CONTENT_HERO_MIN = 152.dp
-private const val LARGE_TEXT_HERO_GIVE = 0.06f
-private val TOP_BAR_HEIGHT = 64.dp
 private const val HERO_PULSE_SCALE = 0.97f
 private val WIDE_CHIP_GAP = 12.dp
 private const val DISABLED_TILE_ALPHA = 0.38f
@@ -440,17 +437,12 @@ internal fun ProfileCardEditorContent(
             // The viewer's sheet width: the preview lays the card out there and scales it down, so it wraps like the saved card.
             val cardWidth = minOf(maxWidth, WIDE_SHEET_MAX_WIDTH)
             val contentOpen = mode == EditorMode.Content
-            val textGrowth = (LocalDensity.current.fontScale - 1f).coerceIn(0f, 1f)
-            val grow = (1f + textGrowth).coerceAtMost(LARGE_TEXT_SCALE)
-            // The Content step is a list to read through, so it takes the room and the card steps back to a whole, smaller preview.
-            val contentPanelMax = minOf(
-                // Large text makes every row taller, so the list takes more of the height to keep several rows in view.
-                maxHeight * (CONTENT_PANEL_MAX_SHARE + LARGE_TEXT_CONTENT_SHARE * textGrowth),
-                maxHeight - TOP_BAR_HEIGHT * grow - maxOf(CONTENT_HERO_MIN, maxHeight * (CONTENT_HERO_SHARE - LARGE_TEXT_HERO_GIVE * textGrowth)) - metrics.gap * 2,
-            )
+            var previewOpen by rememberSaveable { mutableStateOf(false) }
+            val previewing = previewOpen && contentOpen && showCard
+            @Suppress("DEPRECATION") BackHandler(enabled = previewing) { previewOpen = false }
             val density = LocalDensity.current
             var wideCard by remember { mutableStateOf(IntSize.Zero) }
-            val panelMaxHeight = if (contentOpen) contentPanelMax else maxHeight * PANEL_MAX_SHARE
+            val panelMaxHeight = maxHeight * PANEL_MAX_SHARE
             // A content change lands on the card, so the card answers it with a brief pulse.
             val heroPulse = remember { Animatable(1f) }
             val pulseIn = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
@@ -491,7 +483,28 @@ internal fun ProfileCardEditorContent(
                     modifier = modifier,
                 )
             }
-            Column(
+            if (previewing) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top)),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { previewOpen = false }) {
+                            Icon(Icons.Filled.Close, contentDescription = stringResource(MR.string.close))
+                        }
+                    }
+                    CardPreviewFrame(
+                        keepProportions = false,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(start = PREVIEW_SIDE_INSET, end = PREVIEW_SIDE_INSET, bottom = metrics.gap),
+                    ) { preview(cardWidth) }
+                }
+            } else Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top)),
@@ -504,6 +517,7 @@ internal fun ProfileCardEditorContent(
                     unsaved = uiState.isUnsavedCard,
                     onBack = onBack,
                     title = if (contentOpen) stringResource(MR.string.profile_edit_title) else null,
+                    onPreview = { previewOpen = true }.takeIf { contentOpen && showCard },
                 )
                 if (contentOpen && uiState.cards.size > 1) {
                     CardSwitcher(
@@ -513,7 +527,7 @@ internal fun ProfileCardEditorContent(
                         modifier = Modifier.padding(bottom = metrics.gap),
                     )
                 }
-                if (!showCard) {
+                if (!showCard || contentOpen) {
                     panel(
                         Modifier.weight(1f).widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(),
                         cardSheetShape(),
@@ -558,11 +572,9 @@ internal fun ProfileCardEditorContent(
                     }
                 } else {
                     CardPreviewFrame(
-                        keepProportions = contentOpen,
-                        // A whole card at thumbnail size: the sheet's large corners would round it into a pill.
-                        shape = if (contentOpen) MaterialTheme.shapes.large else MaterialTheme.shapes.extraLargeIncreased,
+                        keepProportions = false,
                         // A failure sits on a neutral plate, which a fade in the card's colour would only stain.
-                        fadeInto = if (uiState.loadFailed || uiState.cardFailed || contentOpen) null else ({ previewEdge }),
+                        fadeInto = if (uiState.loadFailed || uiState.cardFailed) null else ({ previewEdge }),
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
@@ -649,6 +661,7 @@ private fun EditorTopBar(
     unsaved: Boolean,
     onBack: () -> Unit,
     title: String? = null,
+    onPreview: (() -> Unit)? = null,
 ) {
     val editing = stringResource(MR.string.profile_card_audience_editing, audienceLabel(audience))
     val readOnlyLabel = stringResource(MR.string.profile_card_read_only)
@@ -690,8 +703,14 @@ private fun EditorTopBar(
                     if (showsChip) AudienceChip(audience = audience, locked = readOnly, unsaved = unsaved, elevated = false)
                 }
             }
-            // Balances the back button so the audience chip sits centred.
-            Spacer(Modifier.size(48.dp))
+            if (onPreview != null) {
+                IconButton(onClick = onPreview) {
+                    Icon(Icons.Outlined.Visibility, contentDescription = stringResource(MR.string.profile_card_preview))
+                }
+            } else {
+                // Balances the back button so the audience chip sits centred.
+                Spacer(Modifier.size(48.dp))
+            }
         }
     }
 }

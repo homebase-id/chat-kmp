@@ -2424,6 +2424,7 @@
     <string name="profile_card_tool_socials">Socials</string>
     <string name="profile_card_tool_order">Order</string>
     <string name="profile_card_content_name_required">Always on the Public card</string>
+    <string name="profile_card_preview">Preview</string>
     <string name="profile_card_content_empty">Nothing else on this card yet. Add something below.</string>
     <string name="profile_card_content_shown_to">Shown to %1$s</string>
     <string name="profile_card_content_shown_everyone">Shown to everyone</string>
