@@ -84,6 +84,10 @@ import id.homebase.resources.call_lab_remote_hangs_up
 import id.homebase.resources.call_lab_ring_timeout
 import id.homebase.resources.call_lab_scenarios
 import id.homebase.resources.call_lab_screens
+import id.homebase.resources.call_lab_bubbles
+import id.homebase.chat.conversationlist.MessageClusterPosition
+import id.homebase.chat.widget.messageBubbleShape
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.call_lab_live
 import id.homebase.resources.call_lab_stop
 import id.homebase.resources.call_lab_title
@@ -226,6 +230,8 @@ fun CallLabScreen(onBackClick: () -> Unit) {
                         )
                     }
                 }
+                Text(stringResource(MR.string.call_lab_bubbles), style = MaterialTheme.typography.titleSmall)
+                LabCallBubbles()
             }
         }
         val shown = preview
@@ -236,6 +242,34 @@ fun CallLabScreen(onBackClick: () -> Unit) {
         }
         if (active != null || shown != null) {
             LabPanel(scenarios + live, Modifier.align(Alignment.CenterEnd))
+        }
+    }
+}
+
+@Composable
+private fun LabCallBubbles() {
+    val samples = remember {
+        listOf(
+            CallEventDescriptor(CallOutcome.Completed, durationSeconds = 754) to false,
+            CallEventDescriptor(CallOutcome.Completed, video = true, durationSeconds = 3_725) to true,
+            CallEventDescriptor(CallOutcome.NoAnswer) to false,
+            CallEventDescriptor(CallOutcome.NoAnswer, video = true) to true,
+            CallEventDescriptor(CallOutcome.Declined) to true,
+            CallEventDescriptor(CallOutcome.Failed) to false,
+            null to false,
+        )
+    }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        samples.forEach { (descriptor, own) ->
+            CallEventBubble(
+                descriptor = descriptor,
+                isOwn = own,
+                modifier = Modifier.align(if (own) Alignment.End else Alignment.Start).widthIn(max = 320.dp),
+                shape = messageBubbleShape(own, MessageClusterPosition.ALONE),
+                containerColor = if (own) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = if (own) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface,
+                onCallBack = descriptor?.let { {} },
+            )
         }
     }
 }

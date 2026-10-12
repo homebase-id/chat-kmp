@@ -9,6 +9,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.Surface
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import id.homebase.chat.conversationlist.MessageClusterPosition
+import id.homebase.chat.widget.messageBubbleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
@@ -247,38 +253,67 @@ class CallScreenshotTest {
 
     @Test
     fun callEventBubblesSitAmongChatBubblesInBothThemes() {
-        val rows = listOf(
+        val rows: List<Pair<Any?, Boolean>> = listOf(
+            "Are you free to talk about the trip?" to false,
             CallEventDescriptor(CallOutcome.Completed, durationSeconds = 754) to false,
             CallEventDescriptor(CallOutcome.Completed, video = true, durationSeconds = 3_725) to true,
+            "Sorry, signal dropped" to true,
             CallEventDescriptor(CallOutcome.NoAnswer) to false,
             CallEventDescriptor(CallOutcome.NoAnswer, video = true) to true,
+            CallEventDescriptor(CallOutcome.Cancelled) to true,
             CallEventDescriptor(CallOutcome.Declined) to true,
+            CallEventDescriptor(CallOutcome.Busy, video = true) to true,
+            CallEventDescriptor(CallOutcome.Failed) to false,
             null to false,
         )
-        for (dark in listOf(false, true)) runDesktopComposeUiTest(390, 640) {
+        class Variant(val name: String, val width: Int, val dark: Boolean, val fontScale: Float = 1f, val rtl: Boolean = false)
+        val variants = listOf(
+            Variant("light-phone", 390, false), Variant("dark-phone", 390, true),
+            Variant("light-desktop", 900, false), Variant("dark-desktop", 900, true),
+            Variant("light-phone-font150", 390, false, fontScale = 1.5f), Variant("dark-phone-rtl", 390, true, rtl = true),
+        )
+        for (v in variants) runDesktopComposeUiTest(v.width, if (v.fontScale > 1f) 1300 else 980) {
             setContent {
-                HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
-                    Column(
-                        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        for ((descriptor, own) in rows) {
-                            CallEventBubble(
-                                descriptor = descriptor,
-                                isOwn = own,
-                                modifier = Modifier.align(if (own) Alignment.End else Alignment.Start),
-                                containerColor = if (own) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh,
-                                contentColor = if (own) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface,
-                                onCallBack = descriptor?.let { {} },
-                                footer = { color -> Text("12:41", style = MaterialTheme.typography.labelSmall, color = color) },
-                            )
+                val density = LocalDensity.current
+                CompositionLocalProvider(
+                    LocalDensity provides Density(density.density, v.fontScale),
+                    LocalLayoutDirection provides if (v.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
+                ) {
+                    HomebaseTheme(darkTheme = v.dark, followsSystemTheme = false) {
+                        Column(
+                            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            for ((item, own) in rows) {
+                                val container = if (own) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh
+                                val content = if (own) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface
+                                val shape = messageBubbleShape(own, MessageClusterPosition.ALONE)
+                                val placed = Modifier.align(if (own) Alignment.End else Alignment.Start).widthIn(max = 320.dp)
+                                if (item is String) {
+                                    Surface(placed, shape = shape, color = container, contentColor = content) {
+                                        Text(item, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyLarge)
+                                    }
+                                } else {
+                                    val descriptor = item as CallEventDescriptor?
+                                    CallEventBubble(
+                                        descriptor = descriptor,
+                                        isOwn = own,
+                                        modifier = placed,
+                                        shape = shape,
+                                        containerColor = container,
+                                        contentColor = content,
+                                        onCallBack = descriptor?.let { {} },
+                                        footer = { color -> Text("12:41", style = MaterialTheme.typography.labelSmall, color = color) },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
             assertShown("Missed call")
-            assertShown("12 min 34 s")
-            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "bubbles-${if (dark) "dark" else "light"}.png"))
+            assertShown("12\u00A0min\u00A034\u00A0s")
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "bubbles-${v.name}.png"))
         }
     }
 }

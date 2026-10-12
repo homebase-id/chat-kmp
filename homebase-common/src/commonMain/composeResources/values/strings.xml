@@ -2774,7 +2774,6 @@
     <string name="call_no_video">Camera off</string>
     <string name="call_you">You</string>
     <string name="call_event_missed">Missed call</string>
-    <string name="call_event_missed_video">Missed video call</string>
     <string name="call_event_declined">Call declined</string>
     <string name="call_event_cancelled">Cancelled call</string>
     <string name="call_event_no_answer">No answer</string>
@@ -2782,8 +2781,6 @@
     <string name="call_event_failed">Call failed</string>
     <string name="call_event_outgoing">Outgoing call</string>
     <string name="call_event_incoming">Incoming call</string>
-    <string name="call_event_outgoing_video">Outgoing video call</string>
-    <string name="call_event_incoming_video">Incoming video call</string>
     <string name="call_event_duration">%1$s · %2$s</string>
     <string name="call_event_unparseable">Unable to display this call. Please update the app.</string>
     <string name="call_lab_title">Call lab</string>
@@ -2798,6 +2795,7 @@
     <string name="call_lab_real">Real WebRTC loopback (uses microphone)</string>
     <string name="call_lab_stop">Stop scenario</string>
     <string name="call_lab_screens">Screens</string>
+    <string name="call_lab_bubbles">Call log bubbles</string>
     <string name="call_lab_scenarios">Scenarios</string>
     <string name="call_accept_audio_label">Voice</string>
     <string name="call_accept_video_label">Video</string>
