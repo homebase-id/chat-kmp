@@ -1,6 +1,9 @@
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,11 +71,14 @@ import kotlin.uuid.Uuid
 class ProfileCardEditorShotsTest {
 
     private val outDir: File? = System.getenv("CARD_SHOTS_DIR")?.let(::File)?.also { it.mkdirs() }
+    private val realPreviewDir: File? = System.getenv("CARD_REAL_PREVIEW_DIR")?.let(::File)
 
     private data class Shot(
         val name: String,
         val state: ProfileCardUiState,
         val step: EditorStep = EditorStep.Design,
+        val mode: EditorMode = EditorMode.Design,
+        val photo: CardPhotoUi = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
         val preview: Preview = Preview.Ready,
         val fontScale: Float = 1f,
         val rtl: Boolean = false,
@@ -83,7 +89,7 @@ class ProfileCardEditorShotsTest {
         val act: ComposeUiTest.() -> Unit = {},
     )
 
-    private enum class Preview { Ready, Loading, LoadFailed, CardFailed }
+    private enum class Preview { Ready, Loading, LoadFailed, CardFailed, Real }
 
     private fun card(audience: CardAudience, design: String = CardDesign.BOARD) =
         ProfileCard(id = Uuid.random(), versionTag = Uuid.random(), audience = audience, design = design)
@@ -259,63 +265,71 @@ class ProfileCardEditorShotsTest {
         circles = contentCircles,
         cards = listOf(public, card(friendsCard)),
     )
-    private val contentTool = tool("What this card shows")
     private val familyCard = CardAudience.Circle(FAMILY_CIRCLE_ID, "Family")
     private val workCard = CardAudience.Circle(WORK_CIRCLE_ID, "Work")
-    private val longContentCircle = CardCircle("c-long", "Climbing partners from the Tuesday bouldering gym night")
-    private val longContentCard = CardAudience.Circle(longContentCircle.id, longContentCircle.name)
     private val fullAttributes = listOf(
         attribute(ProfileAttributeTypes.EMAIL, ProfileAttributeTypes.KEY_EMAIL, "sam@shire.example", ProfileVisibility.ANONYMOUS),
         attribute(ProfileAttributeTypes.TWITTER, ProfileAttributeTypes.KEY_TWITTER, "samwise", ProfileVisibility.ANONYMOUS),
         attribute(ProfileAttributeTypes.LINKEDIN, ProfileAttributeTypes.KEY_LINKEDIN, "samwise-gamgee", ProfileVisibility.CONNECTED, listOf(WORK_CIRCLE_ID)),
         attribute(ProfileAttributeTypes.FACEBOOK, ProfileAttributeTypes.KEY_FACEBOOK, "sam.gamgee", ProfileVisibility.CONNECTED),
     )
-    private val firstSwitch: ComposeUiTest.() -> Unit = {
-        onAllNodesWithContentDescription("on this card", substring = true).onFirst().performSemanticsAction(SemanticsActions.OnClick)
-        mainClock.advanceTimeBy(SETTLE_MS)
+    private val contentShots = listOf(
+        Shot(
+            "k14-editor-real-preview-work",
+            contentBase.copy(cards = listOf(public, card(workCard, CardDesign.LINKS)), selectedAudience = workCard),
+            widthDp = REDMI_W,
+            heightDp = REDMI_H,
+            preview = Preview.Real,
+        ),
+    )
+
+    private val editorBase = contentBase.copy(
+        attributes = contentAttributes + fullAttributes,
+        cards = listOf(public, card(friendsCard), card(workCard)),
+        selectedAudience = friendsCard,
+    )
+    private val editorWork = editorBase.copy(selectedAudience = workCard)
+    private val editorPublic = editorBase.copy(selectedAudience = CardAudience.Public)
+    private val editorEmpty = base.copy(attributes = emptyList(), circles = contentCircles, cards = listOf(public, card(friendsCard)), selectedAudience = friendsCard)
+    private fun editor(name: String, state: ProfileCardUiState, w: Int = REDMI_W, h: Int = REDMI_H, fontScale: Float = 1f, rtl: Boolean = false, photo: CardPhotoUi = CardPhotoUi(null, false, true, false), act: ComposeUiTest.() -> Unit = {}) =
+        Shot(name, state, mode = EditorMode.Content, widthDp = w, heightDp = h, fontScale = fontScale, rtl = rtl, photo = photo, act = act)
+
+    private fun templateCard(audience: CardAudience) = cardTemplateFor(audience)!!.let {
+        ProfileCard(Uuid.NIL, Uuid.NIL, audience, it.design, it.overrides)
     }
-    private val openLockedRow: ComposeUiTest.() -> Unit = {
-        onAllNodesWithContentDescription("Change who can see", substring = true).onFirst().performSemanticsAction(SemanticsActions.OnClick)
-        mainClock.advanceTimeBy(SETTLE_MS)
-    }
-    private val pickCircles: ComposeUiTest.() -> Unit = {
-        onAllNodesWithText("Circles").onFirst().performSemanticsAction(SemanticsActions.OnClick)
-        mainClock.advanceTimeBy(SETTLE_MS)
-    }
-    private val scrollToEnd: ComposeUiTest.() -> Unit = {
-        mainClock.autoAdvance = true
-        onAllNodes(hasScrollAction() and hasAnyDescendant(hasContentDescription("Add to this card: Bio"))).onLast()
-            .performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 100_000f) }
-        mainClock.autoAdvance = false
-        mainClock.advanceTimeBy(SETTLE_MS)
+    private val templateShots = listOf(
+        "k15-editor-template-public" to CardAudience.Public,
+        "k15-editor-template-family" to familyCard,
+        "k15-editor-template-friends" to friendsCard,
+        "k15-editor-template-work" to workCard,
+    ).map { (name, audience) ->
+        editor(name, editorBase.copy(cards = listOf(templateCard(audience)), selectedAudience = audience))
     }
 
-    private val contentShots = listOf(
-        Shot("k9-content-public", contentBase, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-friends", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-friends-small", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = 360, heightDp = 640, act = contentTool),
-        Shot("k9-content-font-scale", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, fontScale = 1.6f, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-rtl", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, rtl = true, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-empty", base, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-wide", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = 900, heightDp = 820, act = contentTool),
-        Shot("k9-content-family", contentBase.copy(cards = listOf(public, card(familyCard)), selectedAudience = familyCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-busy", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); firstSwitch() }),
-        Shot("k9-content-long-circle", contentBase.copy(circles = contentCircles + longContentCircle, cards = listOf(public, card(longContentCard)), selectedAudience = longContentCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-everything", contentBase.copy(attributes = contentAttributes + fullAttributes), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); scrollToEnd() }),
-        Shot("k9-content-everything-work", contentBase.copy(attributes = contentAttributes + fullAttributes, cards = listOf(public, card(workCard)), selectedAudience = workCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); scrollToEnd() }),
-        Shot("k9-content-wide-everything", contentBase.copy(attributes = contentAttributes + fullAttributes, selectedAudience = friendsCard), EditorStep.Customise, widthDp = 900, heightDp = 820, act = contentTool),
-        Shot("k9-content-small-font-scale", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, fontScale = 1.3f, widthDp = 360, heightDp = 640, act = contentTool),
-        Shot("k9-content-saved", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, completesToggle = true, act = { contentTool(); firstSwitch() }),
-        Shot("k9-content-everything-top", contentBase.copy(attributes = contentAttributes + fullAttributes), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = contentTool),
-        Shot("k9-content-public-hint", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); openLockedRow() }),
-        Shot("k9-content-public-hint-circles", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = { contentTool(); openLockedRow(); pickCircles() }),
-        Shot("k9-content-error", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, failsToggle = true, act = { contentTool(); firstSwitch() }),
-        Shot("k9-content-error-rtl", contentBase.copy(selectedAudience = friendsCard), EditorStep.Customise, rtl = true, widthDp = REDMI_W, heightDp = REDMI_H, failsToggle = true, act = { contentTool(); firstSwitch() }),
-        Shot("k9-content-wide-public", contentBase.copy(attributes = contentAttributes + fullAttributes), EditorStep.Customise, widthDp = 1200, heightDp = 800, act = contentTool),
+    private val contentEditorShots = templateShots + listOf(
+        editor("k12-editor-friends", editorBase),
+        editor("k12-editor-public", editorPublic),
+        editor("k12-editor-work", editorWork),
+        editor("k12-editor-empty", editorEmpty),
+        editor("k12-editor-small", editorBase, w = 360, h = 640),
+        editor("k12-editor-font-scale", editorBase, fontScale = 1.6f),
+        editor("k12-editor-rtl", editorBase, rtl = true),
+        editor("k12-editor-wide", editorBase, w = 900, h = 820),
+        editor("k12-editor-photo-own", editorBase, photo = CardPhotoUi(null, true, true, false)),
+        editor("k12-editor-photo-circle-readonly", editorBase, photo = CardPhotoUi(null, false, false, false)),
+        editor("k12-editor-photo-busy", editorBase, photo = CardPhotoUi(null, true, true, true)),
+        editor("k12-editor-busy", editorBase.copy(isContentBusy = true)),
     )
 
     @Test
-    fun contentToolRendersOnThePublicAndACircleCard() {
+    fun contentEditorRendersEveryState() {
+        for (dark in listOf(false, true)) {
+            for (shot in contentEditorShots) render(shot, dark)
+        }
+    }
+
+    @Test
+    fun theEditorPreviewRendersTheWorkCardsRealTemplate() {
         for (dark in listOf(false, true)) {
             for (shot in contentShots) render(shot, dark)
         }
@@ -441,6 +455,8 @@ class ProfileCardEditorShotsTest {
                         var uiState by remember { mutableStateOf(shot.state) }
                         ProfileCardEditorContent(
                             uiState = uiState,
+                            mode = shot.mode,
+                            photo = shot.photo,
                             step = step,
                             onStep = { step = it },
                             onBack = { step = EditorStep.Design },
@@ -448,7 +464,6 @@ class ProfileCardEditorShotsTest {
                             onOption = { _, _ -> },
                             onBlockOrder = {},
                             onSave = {},
-                            onEditProfile = {},
                             snackbarHostState = remember { SnackbarHostState() },
                             // A toggle leaves the save in flight, so the busy state shows on the row that was changed.
                             onContentToggle = { _, _ ->
@@ -461,6 +476,7 @@ class ProfileCardEditorShotsTest {
                         ) { layoutWidth ->
                             when (shot.preview) {
                                 Preview.Ready -> StandInCard(shot.state.design, shot.state.overrides.palette, Modifier.fillMaxSize().laidOutAt(layoutWidth))
+                                Preview.Real -> RealCard(dark, shot.state, Modifier.fillMaxSize().laidOutAt(layoutWidth))
                                 else -> CardSurface(
                                     uiState = shot.state,
                                     host = null,
@@ -480,6 +496,18 @@ class ProfileCardEditorShotsTest {
         shot.act(this)
         mainClock.advanceTimeBy(SETTLE_MS)
         save(shot.name, dark)
+    }
+
+    // A web render of the same design from odin-js (card-shots), so the editor is judged against the real page, not a flat stand-in.
+    @Composable
+    private fun RealCard(dark: Boolean, state: ProfileCardUiState, modifier: Modifier) {
+        val file = realPreviewDir?.resolve("links-390-${if (dark) "dark" else "light"}-circle-3.png")?.takeIf { it.exists() }
+        val bitmap = remember(file) { file?.let { ImageIO.read(it).toComposeImageBitmap() } }
+        if (bitmap == null) {
+            StandInCard(state.design, state.overrides.palette, modifier)
+        } else {
+            Image(bitmap, contentDescription = null, modifier = modifier, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter)
+        }
     }
 
     // Real-size type laid out at the viewer's width, so the shot shows the preview's scale-down, not a reflow.

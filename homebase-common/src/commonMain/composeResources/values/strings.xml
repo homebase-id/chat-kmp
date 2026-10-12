@@ -2387,7 +2387,15 @@
     <string name="profile_card_share_failed">Couldn't create the card image.</string>
     <string name="profile_card_unsupported">Your Homebase server doesn't support profile cards yet.</string>
     <string name="profile_card_edit">Edit card</string>
+    <string name="profile_card_change_design">Change design</string>
+    <string name="profile_card_content_on_card">On this card</string>
+    <string name="profile_card_content_could_add">Also on your profile</string>
+    <string name="profile_card_content_add_new">Add new</string>
+    <string name="profile_card_content_remove_this">Remove %1$s from this card</string>
+    <string name="profile_card_content_add_this">Add %1$s to this card</string>
+    <string name="profile_card_photo_label">Card photo</string>
     <string name="profile_card_photo_own_circle">Only on this card</string>
+    <string name="profile_card_photo_circle_pending">A photo of its own for this card needs a Homebase server update that hasn't shipped yet. Until then it shows the photo it inherits.</string>
     <string name="profile_card_audience_public">Public</string>
     <string name="profile_card_audience_circle">Circle</string>
     <string name="profile_card_intro_title">Your cards</string>
@@ -2402,7 +2410,6 @@
     <string name="profile_card_reset_message_circle">%1$s will see your public card again. Your profile details aren't changed.</string>
     <string name="profile_card_reset_message_template">%1$s goes back to its starting design. Your profile details aren't changed.</string>
     <string name="profile_card_reset_confirm">Reset</string>
-    <string name="profile_card_more_actions">More card actions</string>
     <string name="profile_card_read_only">Read-only</string>
     <string name="profile_card_read_only_why">Why can't I edit?</string>
     <string name="profile_card_read_only_title">This card is locked</string>
@@ -2416,13 +2423,9 @@
     <string name="profile_card_tool_portrait">Portrait</string>
     <string name="profile_card_tool_socials">Socials</string>
     <string name="profile_card_tool_order">Order</string>
-    <string name="profile_card_tool_content">Content</string>
-    <string name="profile_card_option_content">What this card shows</string>
     <string name="profile_card_content_public_hint">Public, shown on every card</string>
     <string name="profile_card_content_change_audience">Change who can see %1$s</string>
     <string name="profile_card_content_name_required">Always on the Public card</string>
-    <string name="profile_card_content_saved">Saved to profile</string>
-    <string name="profile_card_content_switch">Show %1$s on this card</string>
     <string name="profile_card_content_empty">Nothing else on this card yet. Add something below.</string>
     <string name="profile_card_content_shown_to">Shown to %1$s</string>
     <string name="profile_card_content_shown_everyone">Shown to everyone</string>
@@ -2442,7 +2445,6 @@
     <string name="profile_card_access_continue">Continue</string>
     <string name="profile_card_access_later">Not now</string>
     <string name="profile_card_editor_title">Card design</string>
-    <string name="profile_card_edit_profile">Edit profile details</string>
     <string name="profile_card_design_save_failed">Couldn't save the card design.</string>
     <string name="profile_card_step_customise">Customise</string>
     <string name="profile_card_step_count">Step %1$d of %2$d</string>

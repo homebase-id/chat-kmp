@@ -107,6 +107,7 @@ fun ProfileAvatarEditScreen(
                 is ProfileAvatarEditEvent.UploadFailed -> snackbarHostState.showSnackbar(errUpload)
                 is ProfileAvatarEditEvent.UploadTooLarge -> snackbarHostState.showSnackbar(errTooLarge)
                 is ProfileAvatarEditEvent.DeleteFailed -> snackbarHostState.showSnackbar(errDelete)
+                is ProfileAvatarEditEvent.PhotoSaved -> Unit
             }
         }
     }

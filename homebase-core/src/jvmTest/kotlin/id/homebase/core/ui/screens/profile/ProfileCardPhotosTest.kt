@@ -94,19 +94,21 @@ class ProfileCardPhotosTest {
         return vm
     }
 
-    private suspend fun uploadFamilyPhoto(vm: ProfileAvatarEditViewModel, bus: CropResultBus, awaitStored: Boolean = true, circleId: String = FAMILY_CIRCLE_ID) {
+    private suspend fun uploadFamilyPhoto(vm: ProfileAvatarEditViewModel, bus: CropResultBus, awaitStored: Boolean = true, saveOnCrop: Boolean = false, circleId: String = FAMILY_CIRCLE_ID) {
         val source = File.createTempFile("K11-source", ".png").also { it.writeBytes(png()); it.deleteOnExit() }
         val requested = vm.events
         val request = kotlinx.coroutines.CompletableDeferred<Uuid>()
         val collector = kotlinx.coroutines.CoroutineScope(Dispatchers.Unconfined).let { scope ->
             scope.launchCollect(requested, request)
         }
-        vm.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.CONNECTED, PlatformFile(source), circleId))
+        vm.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.CONNECTED, PlatformFile(source), circleId, saveOnCrop))
         val requestId = withTimeout(5_000) { request.await() }
         collector.cancel()
         bus.postResult(requestId, ImageResult(png(), ImageSize(64, 64), ImageSize(64, 64)))
-        withTimeout(5_000) { vm.state.first { it.circleSlot(circleId).pendingCroppedAvatar != null } }
-        vm.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED, circleId))
+        if (!saveOnCrop) {
+            withTimeout(5_000) { vm.state.first { it.circleSlot(circleId).pendingCroppedAvatar != null } }
+            vm.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED, circleId))
+        }
         if (awaitStored) withTimeout(10_000) { vm.state.first { it.circleSlot(circleId).existing != null } }
     }
 
@@ -267,6 +269,66 @@ class ProfileCardPhotosTest {
         awaitRendered(host, "data:image/jpeg;base64,public-key")
     }
 
+    private suspend fun cardViewModelFollowing(harness: CardWireHarness, avatar: ProfileAvatarEditViewModel): Pair<ProfileCardViewModel, ProfileCardViewModelTest.FakeHost> {
+        val repository = harness.profileRepository()
+        val source = ProfileCardViewModelTest.FakeSource(emptyList()).apply {
+            liveCards = { repository.loadAttributes() }
+            circleList = circles
+        }
+        val host = ProfileCardViewModelTest.FakeHost()
+        val cardVm = ProfileCardViewModel(source) { host }.also { it.startHost() }
+        withContext(Dispatchers.Default) {
+            withTimeout(10_000) { while (cardVm.uiState.value.cards.none { it.audience == friends }) delay(10) }
+        }
+        kotlinx.coroutines.CoroutineScope(Dispatchers.Unconfined).launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            avatar.events.collect { if (it is ProfileAvatarEditEvent.PhotoSaved) cardVm.onPhotoChanged() }
+        }
+        return cardVm to host
+    }
+
+    @Test
+    fun changingTheFriendsPhotoFromTheEditorWritesItScopedAndRefreshesOnlyTheFriendsCard() = runBlocking {
+        val harness = CardWireHarness()
+        seedPublicPhoto(harness)
+        val bus = CropResultBus()
+        val avatar = viewModel(harness, bus)
+        val (cardVm, host) = cardViewModelFollowing(harness, avatar)
+        cardVm.onCardOpened(friends)
+        awaitRendered(host, "data:image/jpeg;base64,public-key")
+
+        uploadFamilyPhoto(avatar, bus, saveOnCrop = true, circleId = FRIENDS_CIRCLE_ID)
+
+        val body = harness.photoPutBodies.single()
+        assertEquals("Connected", body["visibility"]!!.jsonPrimitive.content)
+        assertEquals(listOf(FRIENDS_CIRCLE_ID), body["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
+        val friendsKey = avatar.state.value.circleSlot(FRIENDS_CIRCLE_ID).existing!!.imageKey()
+        awaitRendered(host, "data:image/jpeg;base64,$friendsKey")
+        cardVm.onCardOpened(CardAudience.Public)
+        awaitRendered(host, "data:image/jpeg;base64,public-key")
+        cardVm.onCardOpened(family)
+        awaitRendered(host, "data:image/jpeg;base64,public-key")
+    }
+
+    @Test
+    fun removingTheFriendsPhotoFromTheEditorDeletesItAndTheCardFallsBackToThePublicOne() = runBlocking {
+        val harness = CardWireHarness()
+        seedPublicPhoto(harness)
+        val bus = CropResultBus()
+        val avatar = viewModel(harness, bus)
+        val (cardVm, host) = cardViewModelFollowing(harness, avatar)
+        uploadFamilyPhoto(avatar, bus, saveOnCrop = true, circleId = FRIENDS_CIRCLE_ID)
+        val friendsPhoto = avatar.state.value.circleSlot(FRIENDS_CIRCLE_ID).existing!!
+        cardVm.onCardOpened(friends)
+        awaitRendered(host, "data:image/jpeg;base64,${friendsPhoto.imageKey()}")
+
+        avatar.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.CONNECTED, FRIENDS_CIRCLE_ID))
+        avatar.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED, FRIENDS_CIRCLE_ID))
+
+        awaitRendered(host, "data:image/jpeg;base64,public-key")
+        assertEquals(listOf(friendsPhoto.id.toString()), harness.deletedIds.toList())
+        assertNull(avatar.state.value.circleSlot(FRIENDS_CIRCLE_ID).existing)
+    }
+
     @Test
     fun aServerThatDropsCircleIdsFailsTheUploadAndLeavesNoStrayPhotoBehind() = runBlocking {
         val harness = CardWireHarness(photoCircleIds = false)
@@ -378,7 +440,7 @@ class ProfileCardPhotosTest {
     }
 
     @Test
-    fun anUploadRejectedAsTooLargeLeavesTheSlotFreeToRemoveAndRetry() = runBlocking {
+    fun aSaveOnCropUploadRejectedAsTooLargeLeavesTheSlotFreeToRemoveAndRetry() = runBlocking {
         val harness = CardWireHarness(
             photoReply = CardWireHarness.Reply.Problem(
                 400,
@@ -393,7 +455,7 @@ class ProfileCardPhotosTest {
             vm.events.collect { if (it is ProfileAvatarEditEvent.UploadTooLarge) tooLarge.complete(it) }
         }
 
-        uploadFamilyPhoto(vm, bus, awaitStored = false)
+        uploadFamilyPhoto(vm, bus, awaitStored = false, saveOnCrop = true)
         withTimeout(5_000) { tooLarge.await() }
         job.cancel()
 
@@ -401,6 +463,27 @@ class ProfileCardPhotosTest {
         assertEquals(false, slot.isUploading)
         assertNull(slot.pendingCroppedAvatar)
         assertEquals(false, slot.canUpload)
+    }
+
+    @Test
+    fun pickingWithSaveOnCropUploadsWithoutASavePressAndAnnouncesIt() = runBlocking {
+        val harness = CardWireHarness()
+        val publicId = seedPublicPhoto(harness)
+        val bus = CropResultBus()
+        val vm = viewModel(harness, bus)
+        val saved = kotlinx.coroutines.CompletableDeferred<ProfileAvatarEditEvent.PhotoSaved>()
+        val job = launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            vm.events.collect { if (it is ProfileAvatarEditEvent.PhotoSaved) saved.complete(it) }
+        }
+
+        uploadFamilyPhoto(vm, bus, saveOnCrop = true)
+        val event = withTimeout(5_000) { saved.await() }
+        job.cancel()
+
+        assertEquals(FAMILY_CIRCLE_ID, event.circleId)
+        assertEquals(listOf(FAMILY_CIRCLE_ID), harness.photoPutBodies.single()["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing?.id, vm.state.value.photos.photoFor(family)?.id)
+        assertEquals(publicId, vm.state.value.photos.photoFor(friends)?.id)
     }
 
     @Test

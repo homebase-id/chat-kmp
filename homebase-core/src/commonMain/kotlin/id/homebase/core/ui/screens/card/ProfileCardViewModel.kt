@@ -581,6 +581,8 @@ class ProfileCardViewModel(
         true
     }
 
+    fun onPhotoChanged() = load(force = true)
+
     fun onPreviewDiscarded() {
         if (designSaveJob?.isActive == true) return
         if (_uiState.value.previewDesign == null && _uiState.value.previewOverrides == null) return

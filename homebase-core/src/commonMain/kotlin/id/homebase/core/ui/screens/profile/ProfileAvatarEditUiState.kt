@@ -63,6 +63,8 @@ sealed interface ProfileAvatarEditAction {
         val visibility: ProfileVisibility,
         val file: PlatformFile,
         val circleId: String? = null,
+        /** Uploads as soon as the crop returns, for callers with no Save button of their own. */
+        val saveOnCrop: Boolean = false,
     ) : ProfileAvatarEditAction
     /** Commits whatever is currently pending for this tier — a cropped upload or a staged removal. */
     data class SaveClicked(val visibility: ProfileVisibility, val circleId: String? = null) : ProfileAvatarEditAction
@@ -84,4 +86,6 @@ sealed interface ProfileAvatarEditEvent {
      *  [UploadFailed] so the UI can prompt for a smaller photo instead of a generic error. */
     data class UploadTooLarge(val visibility: ProfileVisibility) : ProfileAvatarEditEvent
     data class DeleteFailed(val visibility: ProfileVisibility) : ProfileAvatarEditEvent
+    /** A photo was stored or removed on the server, so anything built from the attribute list is stale. */
+    data class PhotoSaved(val visibility: ProfileVisibility, val circleId: String?) : ProfileAvatarEditEvent
 }

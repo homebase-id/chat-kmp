@@ -1809,9 +1809,16 @@
     <string name="profile_card_share_failed">Kunne ikke lave kortbilledet.</string>
     <string name="profile_card_unsupported">Din Homebase-server understøtter ikke profilkort endnu.</string>
     <string name="profile_card_edit">Rediger kort</string>
+    <string name="profile_card_change_design">Skift design</string>
+    <string name="profile_card_content_on_card">På dette kort</string>
+    <string name="profile_card_content_could_add">Også på din profil</string>
+    <string name="profile_card_content_add_new">Tilføj nyt</string>
+    <string name="profile_card_content_remove_this">Fjern %1$s fra dette kort</string>
+    <string name="profile_card_content_add_this">Tilføj %1$s til dette kort</string>
+    <string name="profile_card_photo_label">Kortets billede</string>
     <string name="profile_card_photo_own_circle">Kun på dette kort</string>
+    <string name="profile_card_photo_circle_pending">Et eget billede til dette kort kræver en opdatering af din Homebase-server, som endnu ikke er udgivet. Indtil da viser det det billede, det arver.</string>
     <string name="profile_card_editor_title">Kortdesign</string>
-    <string name="profile_card_edit_profile">Rediger profiloplysninger</string>
     <string name="profile_card_design_save_failed">Kunne ikke gemme kortdesignet.</string>
     <string name="profile_card_nfc">Del kort ved at holde telefonerne sammen</string>
     <string name="profile_card_nfc_title">Hold din telefon tæt på en anden telefon</string>

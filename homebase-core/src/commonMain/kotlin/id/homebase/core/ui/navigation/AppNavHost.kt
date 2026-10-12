@@ -1691,8 +1691,11 @@ fun AppNavHost(
                                     viewModel = koinViewModel(
                                         viewModelStoreOwner = rememberCardHostOwner(navController, entry),
                                     ),
+                                    avatarViewModel = koinViewModel(),
                                     onBack = { navController.popBackStack() },
-                                    onEditProfile = { navController.navigate(Route.ProfileEdit) },
+                                    onNavigateToCropper = { requestId ->
+                                        navController.navigate(Route.Crop(requestId.toString(), lockedAspect = "square"))
+                                    },
                                 )
                             }
                         }

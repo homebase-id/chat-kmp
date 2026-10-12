@@ -189,11 +189,9 @@ internal fun SettingsPaneHost(
                             ProfilePage.CardEditor -> cardViewModel?.let {
                                 ProfileCardEditorScreen(
                                     viewModel = it,
+                                    avatarViewModel = koinViewModel(),
                                     onBack = { profilePage = ProfilePage.Card },
-                                    onEditProfile = {
-                                        cardOpenedFromEdit = false
-                                        profilePage = ProfilePage.Edit
-                                    },
+                                    onNavigateToCropper = actions.onNavigateToCropper,
                                 )
                             }
                         }
