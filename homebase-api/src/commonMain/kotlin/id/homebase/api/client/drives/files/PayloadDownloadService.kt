@@ -5,7 +5,11 @@ import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.PayloadTooLargeException
 import id.homebase.api.file.AppCacheDirs
+import id.homebase.api.crypto.hashedBy
+import id.homebase.api.crypto.newHasher
+import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
+import kotlinx.coroutines.flow.Flow
 import kotlin.uuid.Uuid
 
 /**
@@ -87,6 +91,46 @@ class PayloadDownloadService(
         keyHeader: KeyHeader,
         destination: ExportDestination,
         onProgress: ((Float) -> Unit)? = null,
+    ): String? = export(driveId, fileId, key, keyHeader, destination, onProgress, fileOperationsProvider)
+
+    /**
+     * [exportToTemp], checking the plaintext against [hash] as it streams. [keyHeader] is the
+     * payload's key (file AES key, payload IV); encrypted payloads only. Throws
+     * [PayloadDamagedException], leaving no file behind, unless the hash is present, readable and matches.
+     */
+    suspend fun exportVerified(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        keyHeader: KeyHeader,
+        hash: PayloadHash?,
+        destination: ExportDestination,
+        onProgress: ((Float) -> Unit)? = null,
+    ): String? {
+        if (hash == null) throw PayloadDamagedException("no hash")
+        val expected = hash.plaintextContentHash(keyHeader)
+            ?: throw PayloadDamagedException("unreadable ${hash.algorithm} hash")
+        val hasher = hash.algorithm.newHasher()
+        val hashingFileOps = object : FileOperationsProvider by fileOperationsProvider {
+            override suspend fun writeStream(path: String, data: Flow<ByteArray>) =
+                fileOperationsProvider.writeStream(path, data.hashedBy(hasher))
+        }
+        val path = export(driveId, fileId, key, keyHeader, destination, onProgress, hashingFileOps) ?: return null
+        if (!hasher.digest().contentEquals(expected)) {
+            runCatching { fileOperationsProvider.deleteTempFile(path) }
+            throw PayloadDamagedException("${hash.algorithm} mismatch")
+        }
+        return path
+    }
+
+    private suspend fun export(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        keyHeader: KeyHeader,
+        destination: ExportDestination,
+        onProgress: ((Float) -> Unit)?,
+        fileOps: FileOperationsProvider,
     ): String? {
         val path = when (destination) {
             is ExportDestination.ShareOutbound ->
@@ -103,7 +147,7 @@ class PayloadDownloadService(
             key = key,
             keyHeader = keyHeader,
             outputPath = path,
-            fileOps = fileOperationsProvider,
+            fileOps = fileOps,
             onProgress = onProgress,
         )
         if (!ok) {
@@ -115,3 +159,5 @@ class PayloadDownloadService(
 
     private fun randomToken(): String = kotlin.random.Random.nextLong().toULong().toString(16)
 }
+
+class PayloadDamagedException(reason: String) : Exception("Payload failed its hash check: $reason")

@@ -137,6 +137,9 @@ import id.homebase.core.ui.screens.webdrop.WebDropService
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import id.homebase.core.ui.screens.webdrop.WebDropStream
 import id.homebase.core.ui.screens.webdrop.WebDropViewModel
+import id.homebase.core.ui.screens.filesync.FilesyncRepository
+import id.homebase.core.ui.screens.filesync.FilesyncViewModel
+import id.homebase.core.filesync.FilesyncPreferences
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -226,6 +229,7 @@ import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
 import id.homebase.core.config.getWebDropPermissionExtensionConfig
+import id.homebase.core.config.getFilesyncPermissionExtensionConfig
 import id.homebase.core.location.EmergencyCircleNotifier
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.PushLocationCapture
@@ -256,6 +260,7 @@ import id.homebase.core.session.IdentitySessionQualifier
 
 val VaultPermissionQualifier = named("vaultPermission")
 val WebDropPermissionQualifier = named("webDropPermission")
+val FilesyncPermissionQualifier = named("filesyncPermission")
 val EmailPermissionQualifier = named("emailPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
@@ -721,6 +726,7 @@ val appModule = module {
                 get<VaultStream>().apply { reset(); start() }
                 get<WebDropStream>().apply { reset(); start() }
                 get<WebDropShareFlowState>().clear()
+                get<FilesyncPreferences>().reset()
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
@@ -924,6 +930,8 @@ val appModule = module {
     singleOf(::VaultUploaderService)
 
     singleOf(::WebDropStream)
+    single { FilesyncPreferences(get()) }
+    single { FilesyncRepository(get(), get()) }
     single { WebDropService(get(), get(), get()) }
     single { WebDropShareFlowState() }
 
@@ -1241,6 +1249,15 @@ val appModule = module {
             autoCheck = false,
         )
     }
+    // Checked on open, unlike the other add-ons: with no drive to mount, the grant is what says "set up".
+    viewModel(FilesyncPermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getFilesyncPermissionExtensionConfig(),
+        )
+    }
     viewModel(EmailPermissionQualifier) {
         ExtendPermissionViewModel(
             get(),
@@ -1285,6 +1302,13 @@ val appModule = module {
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     singleOf(::DesktopViewModel)
+    viewModel {
+        FilesyncViewModel(
+            repository = get(),
+            filesyncPermissionViewModel = get(FilesyncPermissionQualifier),
+            filesyncPreferences = get(),
+        )
+    }
     viewModel {
         WebDropViewModel(
             webDropService = get(),

@@ -8,6 +8,7 @@ import id.homebase.api.youauth.AppPermissionType
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.TargetDriveAccessRequest
+import id.homebase.core.filesync.FilesyncProtocol
 import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
 
@@ -239,6 +240,11 @@ val webDropLabeledDrive = LabeledDrive(
         type = Uuid.parse("edee430a-73d4-49ae-a9ae-2d3091957702"),
     ),
     label = "WebDrop",
+)
+
+val filesyncLabeledDrive = LabeledDrive(
+    drive = TargetDrive(alias = FilesyncProtocol.DriveAlias, type = FilesyncProtocol.DriveType),
+    label = "Filesync",
 )
 
 // Default vault sections — stable UUIDs so re-running onboarding is idempotent
@@ -534,6 +540,29 @@ val webDropTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
         allowAnonymousRead = true,
     )
 )
+
+// Not synced: the browser lists folders over the network, so the drive is never mounted.
+val filesyncTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = filesyncLabeledDrive.drive.alias.toString(),
+        type = filesyncLabeledDrive.drive.type.toString(),
+        name = filesyncLabeledDrive.label,
+        description = "Files synced from your computers by Homebase Filesync",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+        driveSlug = FilesyncProtocol.DriveSlug,
+        driveTypeSlug = FilesyncProtocol.DriveTypeSlug,
+    )
+)
+
+fun getFilesyncPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = filesyncTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
+    )
+}
 
 fun getWebDropPermissionExtensionConfig(): PermissionExtensionConfig {
     return PermissionExtensionConfig(

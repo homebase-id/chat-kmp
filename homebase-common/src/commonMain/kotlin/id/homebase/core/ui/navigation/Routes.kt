@@ -152,6 +152,10 @@ sealed class Route {
     data object WebDrop : Route()
 
     @Serializable
+    @SerialName("filesync")
+    data object Filesync : Route()
+
+    @Serializable
     @SerialName("vault-settings")
     data object VaultSettings : Route()
 

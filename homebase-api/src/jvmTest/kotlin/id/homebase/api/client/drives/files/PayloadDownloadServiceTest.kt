@@ -8,6 +8,8 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.crypto.encryptedPayloadHash
+import id.homebase.api.crypto.newHasher
 import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -213,6 +215,51 @@ class PayloadDownloadServiceTest {
             requestsAfterWarmup, mockEngine.requestHistory.size,
             "a prefetch-warmed payload must play with zero network requests",
         )
+    }
+
+    private suspend fun hashOf(algorithm: PayloadHashAlgorithm, plaintext: ByteArray, keyHeader: KeyHeader): PayloadHash {
+        val contentDigest = algorithm.newHasher().apply { update(plaintext) }.digest()
+        return encryptedPayloadHash(algorithm, ByteArray(32), contentDigest, keyHeader)
+    }
+
+    @Test
+    fun `exportVerified accepts a payload that matches its hash, with either algorithm`() = runTest {
+        for (algorithm in listOf(PayloadHashAlgorithm.Blake3, PayloadHashAlgorithm.Sha256)) {
+            val (keyHeader, plaintext) = encryptedFixture(150_000)
+            val path = service.exportVerified(
+                driveId, fileId, key, keyHeader, hashOf(algorithm, plaintext, keyHeader),
+                ExportDestination.UploadTemp("fs_", ".bin"),
+            )
+            assertNotNull(path, "$algorithm")
+            assertContentEquals(plaintext, File(path).readBytes(), "$algorithm")
+        }
+    }
+
+    @Test
+    fun `exportVerified refuses a damaged payload and leaves no file behind`() = runTest {
+        val (keyHeader, plaintext) = encryptedFixture(10_000)
+        val otherContent = plaintext.copyOf().also { it[0] = (it[0] + 1).toByte() }
+
+        assertFailsWith<PayloadDamagedException> {
+            service.exportVerified(
+                driveId, fileId, key, keyHeader, hashOf(PayloadHashAlgorithm.Blake3, otherContent, keyHeader),
+                ExportDestination.UploadTemp("fs_", ".bin"),
+            )
+        }
+        assertTrue(File(tempDir, "hb-scratch/upload-temp").listFiles().isNullOrEmpty())
+    }
+
+    @Test
+    fun `exportVerified refuses a missing or unknown hash before downloading`() = runTest {
+        val (keyHeader, _) = encryptedFixture(1_000)
+        val unknown = PayloadHash(PayloadHashAlgorithm.Unknown, "", "")
+
+        for (hash in listOf(null, unknown)) {
+            assertFailsWith<PayloadDamagedException> {
+                service.exportVerified(driveId, fileId, key, keyHeader, hash, ExportDestination.UploadTemp("fs_", ".bin"))
+            }
+        }
+        assertTrue(mockEngine.requestHistory.isEmpty())
     }
 
     @Test
