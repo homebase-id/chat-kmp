@@ -63,6 +63,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private var videoTrack: VideoTrack? = null
     private val closed = AtomicBoolean(false)
     private val mapper = PeerEventMapper { _events.tryEmit(it) }
+    private val stopPipelineWatch = watchVideoPipeline()
 
     init {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -81,34 +82,12 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         scope.launch { logVideoStats() }
     }
 
-    // A stalled inbound counter cannot tell a stopped sender from a lost path; the sender's own line can.
     private suspend fun logVideoStats() {
         while (!closed.load()) {
             delay(5_000)
             val stats = runCatching { peer.getStats()?.stats?.values }.getOrNull() ?: continue
-            stats.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "video" }?.members?.let { m ->
-                Logger.i("WebRtcKmp") {
-                    "inbound video packets=${m["packetsReceived"]} lost=${m["packetsLost"]} bytes=${m["bytesReceived"]} " +
-                        "decoded=${m["framesDecoded"]} dropped=${m["framesDropped"]} freezes=${m["freezeCount"]} " +
-                        "size=${m["frameWidth"]}x${m["frameHeight"]} plis=${m["pliCount"]} nacks=${m["nackCount"]} decoder=${m["decoderImplementation"]}"
-                }
-            }
-            stats.firstOrNull { it.type == "outbound-rtp" && it.members["kind"] == "video" }?.members?.let { m ->
-                Logger.i("WebRtcKmp") {
-                    "outbound video packets=${m["packetsSent"]} bytes=${m["bytesSent"]} encoded=${m["framesEncoded"]} " +
-                        "sent=${m["framesSent"]} keyframes=${m["keyFramesEncoded"]} size=${m["frameWidth"]}x${m["frameHeight"]} " +
-                        "target=${m["targetBitrate"]} limit=${m["qualityLimitationReason"]} plisIn=${m["pliCount"]} " +
-                        "firsIn=${m["firCount"]} nacksIn=${m["nackCount"]} encoder=${m["encoderImplementation"]} " +
-                        "track=${videoTrack?.state?.value}"
-                }
-            }
-            stats.firstOrNull { it.type == "candidate-pair" && it.members["nominated"] == true && it.members["state"] == "succeeded" }
-                ?.members?.let { m ->
-                    Logger.i("WebRtcKmp") {
-                        "pair sent=${m["bytesSent"]} received=${m["bytesReceived"]} rtt=${m["currentRoundTripTime"]} " +
-                            "outBitrate=${m["availableOutgoingBitrate"]} local=${m["localCandidateId"]} remote=${m["remoteCandidateId"]}"
-                    }
-                }
+            val entries = stats.map { StatsEntry(it.type, it.members) }
+            videoStatsLines(entries, localTrack = videoTrack?.state?.value?.toString()).forEach { line -> Logger.i("WebRtcKmp") { line } }
         }
     }
 
@@ -232,6 +211,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         scope.cancel()
+        stopPipelineWatch()
         runCatching { stream?.tracks?.forEach { it.stop() } }
         runCatching { stream?.release() }
         runCatching { peer.close() }

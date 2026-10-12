@@ -21,6 +21,8 @@ import dev.onvoid.webrtc.media.audio.AudioOptions
 import dev.onvoid.webrtc.media.audio.AudioTrack
 import dev.onvoid.webrtc.media.video.VideoDeviceSource
 import dev.onvoid.webrtc.media.video.VideoTrack
+import java.util.Timer
+import kotlin.concurrent.timerTask
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -86,6 +88,21 @@ class WebRtcJavaCallEngine(
         },
     ) ?: error("webrtc-java returned no peer connection")
 
+    private val statsTimer = Timer("call-stats", true).apply {
+        schedule(timerTask { logVideoStats() }, STATS_PERIOD_MS, STATS_PERIOD_MS)
+    }
+
+    private fun logVideoStats() {
+        synchronized(lock) {
+            if (closed) return
+            peer.getStats { report ->
+                val entries = report.stats.values.map { StatsEntry(it.type.name.lowercase().replace('_', '-'), it.attributes) }
+                videoStatsLines(entries, localTrack = videoTrack?.let { if (it.isEnabled) "enabled" else "disabled" })
+                    .forEach { line -> Logger.i("WebRtcJava") { line } }
+            }
+        }
+    }
+
     private fun RTCPeerConnectionState.toLinkState() = when (this) {
         RTCPeerConnectionState.NEW -> PeerLinkState.New
         RTCPeerConnectionState.CONNECTING -> PeerLinkState.Connecting
@@ -114,7 +131,12 @@ class WebRtcJavaCallEngine(
 
     private fun startCamera() {
         try {
-            val device = dev.onvoid.webrtc.media.MediaDevices.getVideoCaptureDevices().firstOrNull() ?: return
+            val devices = dev.onvoid.webrtc.media.MediaDevices.getVideoCaptureDevices()
+            val device = devices.firstOrNull() ?: run {
+                Logger.w("WebRtcJava") { "no camera found, continuing audio-only" }
+                return
+            }
+            Logger.i("WebRtcJava") { "camera ${device.name} of ${devices.map { it.name }}" }
             val source = VideoDeviceSource().apply {
                 setVideoCaptureDevice(device)
                 start()
@@ -225,6 +247,7 @@ class WebRtcJavaCallEngine(
         synchronized(lock) {
             if (closed) return
             closed = true
+            statsTimer.cancel()
             localFrames?.let { sink -> videoTrack?.let { runCatching { it.removeSink(sink.sink) } } }
             remoteFrames?.let { sink -> remoteTrack?.let { runCatching { it.removeSink(sink.sink) } } }
             runCatching { peer.close() }
@@ -242,6 +265,7 @@ class WebRtcJavaCallEngine(
 
     private companion object {
         const val STREAM_ID = "homebase-call"
+        const val STATS_PERIOD_MS = 5_000L
         val DESKTOP_CAMERA_FACING = CameraFacing.Front
     }
 }
