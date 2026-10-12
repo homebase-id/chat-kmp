@@ -421,7 +421,7 @@ class ProfileCardViewModel(
                 _uiState.first { !it.isSavingDesign }
                 val picked = _uiState.value.previewDesign
                 if (picked == null || !_uiState.value.canSaveDesign) break
-                saveDesign(leaveAfter = false).join()
+                saveDesign(leaveAfter = false)?.join()
                 if (_uiState.value.previewDesign == picked) break
             }
         }
@@ -594,9 +594,9 @@ class ProfileCardViewModel(
         saveDesign(leaveAfter = true)
     }
 
-    private fun saveDesign(leaveAfter: Boolean): Job {
+    private fun saveDesign(leaveAfter: Boolean): Job? {
         val state = _uiState.value
-        if (!state.canSaveDesign) return Job().apply { complete() }
+        if (!state.canSaveDesign) return null
         if (state.isCircleSelected) return saveCircleCard(state, leaveAfter)
         val design = state.design
         val overrides = state.overrides.takeIf { state.previewOverrides != null }
@@ -628,8 +628,8 @@ class ProfileCardViewModel(
         }
     }
 
-    private fun saveCircleCard(state: ProfileCardUiState, leaveAfter: Boolean): Job {
-        val card = state.selectedCard ?: return Job().apply { complete() }
+    private fun saveCircleCard(state: ProfileCardUiState, leaveAfter: Boolean): Job? {
+        val card = state.selectedCard ?: return null
         val overrides = state.overrides.takeIf { state.previewOverrides != null }
         val updated = card.withDesign(state.design, overrides)
         _uiState.update { it.copy(isSavingDesign = true) }

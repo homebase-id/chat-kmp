@@ -88,8 +88,7 @@ class CardRepository(private val store: CardAttributeStore) {
 
     // Deleted: an unstored public card falls back to the site design, then the template, on the app and the web alike.
     suspend fun resetPublic() {
-        val existing = cards().publicCard() ?: return
-        store.delete(existing.id, existing.versionTag)
+        cards().publicCard()?.let { store.delete(it.id, it.versionTag) }
     }
 
     // 404 counts as reset.
