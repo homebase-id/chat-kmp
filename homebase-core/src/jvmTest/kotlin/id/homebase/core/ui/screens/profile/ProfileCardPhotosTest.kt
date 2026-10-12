@@ -107,7 +107,7 @@ class ProfileCardPhotosTest {
         bus.postResult(requestId, ImageResult(png(), ImageSize(64, 64), ImageSize(64, 64)))
         withTimeout(5_000) { vm.state.first { it.circleSlot(circleId).pendingCroppedAvatar != null } }
         vm.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED, circleId))
-        if (awaitStored) withTimeout(10_000) { vm.state.first { it.circleSlot(circleId).existing != null } }
+        if (awaitStored) withTimeout(10_000) { vm.state.first { it.circleSlot(circleId).let { s -> s.existing != null && !s.isUploading } } }
     }
 
     private fun kotlinx.coroutines.CoroutineScope.launchCollect(
