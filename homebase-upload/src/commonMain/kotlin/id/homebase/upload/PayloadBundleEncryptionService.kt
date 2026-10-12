@@ -9,8 +9,8 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
 import co.touchlab.kermit.Logger
-import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
+import id.homebase.api.crypto.encryptFileStreaming
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.image.ImageMetadataScrubber
@@ -178,28 +178,12 @@ class PayloadBundleEncryptionService(
         // Encrypted, ready-to-transmit → the DURABLE outbox staging dir (not the
         // disposable upload-temp): this file rides an outbox row until the send
         // completes and must survive sweeps/OS reclaim; the outbox reaps it on send
-        // success / drop (#842). Encryption is STREAMED — readFileAsFlow →
-        // streamEncryptWithCbc → writeStream — so peak memory is ~one chunk, not
-        // ~2× the file (the same pipeline as VideoPayloadProcessor.encryptVideoFile;
-        // ciphertext is byte-identical to the bulk encryptDataAes path, pinned by
-        // PayloadBundleEncryptFileStreamTest).
+        // success / drop (#842). Encryption is STREAMED (encryptFileStreaming, shared with
+        // VideoPayloadProcessor.encryptVideoFile) so peak memory is ~one chunk, not
+        // ~2× the file; the ciphertext is byte-identical to the bulk encryptDataAes path,
+        // pinned by PayloadBundleEncryptFileStreamTest.
         val path = fileOps.createOutboxStagingPath(prefix = "enc", suffix = ".encrypted")
-        try {
-            fileOps.writeStream(
-                path = path,
-                data = AesCbc.streamEncryptWithCbc(
-                    dataStream = fileOps.readFileAsFlow(inputFile),
-                    key = keyHeader.aesKey,
-                    iv = keyHeader.iv,
-                ),
-            )
-        } catch (t: Throwable) {
-            // A mid-stream failure (source swept, disk full) must not leave a partial
-            // ciphertext in staging — it would be referenced by nothing and, worse,
-            // could be enqueued truncated if anything retried around this throw.
-            runCatching { fileOps.deleteTempFile(path) }
-            throw t
-        }
+        fileOps.encryptFileStreaming(inputFile, path, keyHeader)
 
         return path
     }
