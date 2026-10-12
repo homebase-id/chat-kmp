@@ -1,10 +1,14 @@
 package id.homebase.chat.calling
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
@@ -19,6 +23,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
@@ -38,12 +44,21 @@ import org.jetbrains.compose.resources.stringResource
 
 /** [isOwn] is true when this device's user placed the call (the author of the log message). */
 @Composable
-fun CallEventBubble(descriptor: CallEventDescriptor?, isOwn: Boolean, modifier: Modifier = Modifier) {
+fun CallEventBubble(
+    descriptor: CallEventDescriptor?,
+    isOwn: Boolean,
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(16.dp),
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
+    footer: (@Composable (Color) -> Unit)? = null,
+) {
     if (descriptor == null) {
-        Surface(modifier, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Surface(modifier, shape = shape, color = containerColor, contentColor = contentColor) {
             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Default.Warning, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(stringResource(MR.string.call_event_unparseable), style = MaterialTheme.typography.bodyMedium)
+                Icon(Icons.Default.Warning, null, Modifier.size(20.dp), tint = contentColor.copy(alpha = 0.7f))
+                Text(stringResource(MR.string.call_event_unparseable), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f, fill = false))
+                footer?.invoke(contentColor.copy(alpha = 0.72f))
             }
         }
         return
@@ -74,19 +89,35 @@ fun CallEventBubble(descriptor: CallEventDescriptor?, isOwn: Boolean, modifier: 
     val subtitle = if (descriptor.outcome == CallOutcome.Completed && descriptor.durationSeconds > 0) {
         formatCallDuration(descriptor.durationSeconds)
     } else null
+    val badgeColor = if (missedForMe) MaterialTheme.colorScheme.errorContainer else contentColor.copy(alpha = 0.1f)
+    val iconTint = if (missedForMe) MaterialTheme.colorScheme.onErrorContainer else contentColor
 
-    Surface(modifier, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(
-                icon,
-                contentDescription = null,
-                modifier = Modifier.size(22.dp),
-                tint = if (missedForMe) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Column {
-                Text(title, style = MaterialTheme.typography.bodyLarge, color = if (missedForMe) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-                if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Surface(modifier.widthIn(min = 200.dp), shape = shape, color = containerColor, contentColor = contentColor) {
+        Row(
+            Modifier.padding(start = 10.dp, end = 12.dp, top = 10.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Row(Modifier.padding(bottom = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.size(40.dp).background(badgeColor, CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = iconTint)
+                }
+                Column {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (missedForMe) MaterialTheme.colorScheme.error else contentColor,
+                    )
+                    if (subtitle != null) {
+                        Text(
+                            subtitle,
+                            style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
+                            color = contentColor.copy(alpha = 0.72f),
+                        )
+                    }
+                }
             }
+            footer?.invoke(contentColor.copy(alpha = 0.72f))
         }
     }
 }

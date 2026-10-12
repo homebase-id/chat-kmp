@@ -364,6 +364,19 @@ fun MessageBubbleRaw(
                 descriptor = content.descriptor,
                 isOwn = sentByYou,
                 modifier = modifier,
+                shape = remember(sentByYou, clusterPosition) { messageBubbleShape(sentByYou, clusterPosition) },
+                containerColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface,
+                footer = { footerColor ->
+                    MessageTimestampFooter(
+                        infoText = formatMessageTimestamp(message.userDate),
+                        contentColor = footerColor,
+                        showDeliveryStatus = false,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        pendingSince = message.userDate,
+                    )
+                },
             )
             return
         }

@@ -1,7 +1,11 @@
 package id.homebase.chat.calling
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +34,7 @@ import id.homebase.chat.services.calling.AudioRoute
 import id.homebase.chat.services.calling.CallDirection
 import id.homebase.chat.services.calling.CallEndReason
 import id.homebase.chat.services.calling.CallPhase
+import id.homebase.chat.services.calling.CallQuality
 import id.homebase.chat.services.calling.CallVideos
 import id.homebase.chat.services.calling.FailReason
 import id.homebase.chat.services.calling.FakeVideo
@@ -90,6 +95,8 @@ class CallScreenshotTest {
         Shot("connecting", { "End call" }) { it.copy(phase = CallPhase.Connecting, connectedAtMs = null, verificationCode = null) },
         Shot("connected", { if (it) "Turn camera off" else "Mute microphone" }) { it.copy(phase = CallPhase.Connected) },
         Shot("reconnecting", { "End call" }) { it.copy(phase = CallPhase.Reconnecting) },
+        Shot("muted", { "Unmute microphone" }) { it.copy(phase = CallPhase.Connected, muted = true, route = AudioRoute.Speaker, quality = CallQuality.Poor) },
+        Shot("peercamoff", { "End call" }) { it.copy(phase = CallPhase.Connected, remoteVideo = false) },
         Shot("failed", { "Retry" }) { it.copy(phase = CallPhase.Ended(CallEndReason.Failed(FailReason.NoRoute)), verificationCode = null) },
         Shot("ended", { "Call ended" }) { it.copy(phase = CallPhase.Ended(CallEndReason.Hangup(remote = true))) },
     )
@@ -204,5 +211,40 @@ class CallScreenshotTest {
             keyUp(Key.CtrlLeft)
         }
         assertEquals(listOf("mute", "video", "end", "end"), recorder.calls)
+    }
+
+    @Test
+    fun callEventBubblesSitAmongChatBubblesInBothThemes() {
+        val rows = listOf(
+            CallEventDescriptor(CallOutcome.Completed, durationSeconds = 754) to false,
+            CallEventDescriptor(CallOutcome.Completed, video = true, durationSeconds = 3_725) to true,
+            CallEventDescriptor(CallOutcome.NoAnswer) to false,
+            CallEventDescriptor(CallOutcome.NoAnswer, video = true) to true,
+            CallEventDescriptor(CallOutcome.Declined) to true,
+            null to false,
+        )
+        for (dark in listOf(false, true)) runDesktopComposeUiTest(390, 640) {
+            setContent {
+                HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
+                    Column(
+                        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        for ((descriptor, own) in rows) {
+                            CallEventBubble(
+                                descriptor = descriptor,
+                                isOwn = own,
+                                modifier = Modifier.align(if (own) Alignment.End else Alignment.Start),
+                                containerColor = if (own) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                contentColor = if (own) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface,
+                                footer = { color -> Text("12:41", style = MaterialTheme.typography.labelSmall, color = color) },
+                            )
+                        }
+                    }
+                }
+            }
+            assertShown("Missed call")
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "bubbles-${if (dark) "dark" else "light"}.png"))
+        }
     }
 }
