@@ -38,9 +38,29 @@ class CallEventDescriptorTest {
     }
 
     @Test
-    fun summaryLinesAreStable() {
-        assertEquals("Missed call", CallEventDescriptor(CallOutcome.NoAnswer).summaryLine())
+    fun summaryLinesAreStableAndNeverClaimAMissedCallForTheCaller() {
+        assertEquals("Call not answered", CallEventDescriptor(CallOutcome.NoAnswer).summaryLine())
+        assertEquals("Call not answered", CallEventDescriptor(CallOutcome.Cancelled).summaryLine())
+        assertEquals("Call failed", CallEventDescriptor(CallOutcome.Failed).summaryLine())
         assertEquals("Video call", CallEventDescriptor(CallOutcome.Completed, video = true, durationSeconds = 4).summaryLine())
+        assertEquals("Call declined", CallEventDescriptor(CallOutcome.Declined).summaryLine())
+    }
+
+    @Test
+    fun failedOutcomeRoundTripsThroughTheParser() {
+        val content = MessageContent.CallEvent(CallEventDescriptor(CallOutcome.Failed, video = true))
+        val json = MessageContentParser.serialize(content)
+        assertEquals(content, MessageContentParser.parse(ChatProtocol.ChatCallEventMessageDataType, json))
+    }
+
+    @Test
+    fun isValidBoundaries() {
+        val max = CallEventDescriptor.MAX_DURATION_SECONDS
+        assertTrue(CallEventDescriptor(CallOutcome.Completed, durationSeconds = max).isValid())
+        assertFalse(CallEventDescriptor(CallOutcome.Completed, durationSeconds = max + 1).isValid())
+        assertTrue(CallEventDescriptor(CallOutcome.Completed, durationSeconds = 0).isValid())
+        assertFalse(CallEventDescriptor(CallOutcome.Completed, durationSeconds = -1).isValid())
+        assertFalse(CallEventDescriptor(CallOutcome.Failed, durationSeconds = 1).isValid())
         assertTrue(CallEventDescriptor(CallOutcome.Busy).isValid())
         assertNotNull(MessageContentParser.parse(ChatProtocol.ChatCallEventMessageDataType, """{"outcome":"Busy"}"""))
     }

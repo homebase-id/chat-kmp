@@ -80,6 +80,7 @@ class CallStateMachine(private val selfOdinId: String) {
             peer = e.peer,
             direction = CallDirection.Outgoing,
             media = CallMedia(localVideo = e.video),
+            placedWithVideo = e.video,
         )
         return CallTransition(
             next,
@@ -160,6 +161,7 @@ class CallStateMachine(private val selfOdinId: String) {
                 peer = from,
                 direction = CallDirection.Incoming,
                 media = CallMedia(localVideo = sig.video, remoteVideo = sig.video),
+                placedWithVideo = sig.video,
                 pendingOfferSdp = sig.sdp,
             )
             return CallTransition(

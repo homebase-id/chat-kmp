@@ -41,6 +41,7 @@ import id.homebase.resources.call_duration_seconds
 import id.homebase.resources.call_event_busy
 import id.homebase.resources.call_event_cancelled
 import id.homebase.resources.call_event_declined
+import id.homebase.resources.call_event_failed
 import id.homebase.resources.call_event_incoming
 import id.homebase.resources.call_event_incoming_video
 import id.homebase.resources.call_event_missed
@@ -78,6 +79,7 @@ fun CallEventBubble(
     val icon: ImageVector = when {
         descriptor.outcome == CallOutcome.Declined -> Icons.Default.CallEnd
         descriptor.outcome == CallOutcome.Busy -> Icons.Default.PhoneDisabled
+        descriptor.outcome == CallOutcome.Failed -> Icons.Default.Warning
         missedForMe -> Icons.AutoMirrored.Filled.CallMissed
         missed -> Icons.AutoMirrored.Filled.CallMissedOutgoing
         isOwn -> Icons.AutoMirrored.Filled.CallMade
@@ -91,9 +93,13 @@ fun CallEventBubble(
                 isOwn -> MR.string.call_event_outgoing
                 else -> MR.string.call_event_incoming
             }
-            CallOutcome.NoAnswer, CallOutcome.Cancelled ->
+            CallOutcome.NoAnswer ->
                 if (isOwn) MR.string.call_event_no_answer
                 else if (descriptor.video) MR.string.call_event_missed_video else MR.string.call_event_missed
+            CallOutcome.Cancelled ->
+                if (isOwn) MR.string.call_event_cancelled
+                else if (descriptor.video) MR.string.call_event_missed_video else MR.string.call_event_missed
+            CallOutcome.Failed -> MR.string.call_event_failed
             CallOutcome.Declined -> MR.string.call_event_declined
             CallOutcome.Busy -> MR.string.call_event_busy
         },

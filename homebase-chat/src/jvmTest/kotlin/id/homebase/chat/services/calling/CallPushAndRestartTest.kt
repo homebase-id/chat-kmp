@@ -126,16 +126,22 @@ class CallEventMappingTest {
         CallState(phase = CallPhase.Ended(reason), callId = "c", peer = "p", direction = CallDirection.Outgoing, connectedAtMs = connectedAt)
 
     @Test
+    fun placedMediaNotCurrentCameraStateDecidesVideo() {
+        val state = ended(CallEndReason.Declined).copy(placedWithVideo = true)
+        assertEquals(true, callEventFor(CallEndReason.Declined, state, 0)?.video)
+    }
+
+    @Test
     fun connectedCallLogsDurationWhoeverHungUp() {
         val e = callEventFor(CallEndReason.Hangup(remote = true), ended(CallEndReason.Hangup(true), 1_000), 66_000)
         assertEquals(id.homebase.chat.calling.CallEventDescriptor(id.homebase.chat.calling.CallOutcome.Completed, false, 65), e)
     }
 
     @Test
-    fun unansweredOutcomesMapAndFailuresAreNotLogged() {
+    fun unansweredOutcomesMapAndPreConnectFailuresAreLoggedAsFailed() {
         assertEquals(id.homebase.chat.calling.CallOutcome.NoAnswer, callEventFor(CallEndReason.Missed, ended(CallEndReason.Missed), 0)?.outcome)
         assertEquals(id.homebase.chat.calling.CallOutcome.Declined, callEventFor(CallEndReason.Declined, ended(CallEndReason.Declined), 0)?.outcome)
         assertEquals(id.homebase.chat.calling.CallOutcome.Busy, callEventFor(CallEndReason.Busy, ended(CallEndReason.Busy), 0)?.outcome)
-        assertNull(callEventFor(CallEndReason.Failed(FailReason.NoRoute), ended(CallEndReason.Failed(FailReason.NoRoute)), 0))
+        assertEquals(id.homebase.chat.calling.CallOutcome.Failed, callEventFor(CallEndReason.Failed(FailReason.NoRoute), ended(CallEndReason.Failed(FailReason.NoRoute)), 0)?.outcome)
     }
 }

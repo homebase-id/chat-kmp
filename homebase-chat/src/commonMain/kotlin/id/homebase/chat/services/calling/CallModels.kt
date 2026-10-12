@@ -56,6 +56,7 @@ data class CallState(
     val pendingOfferSdp: String? = null,
     val acceptPending: Boolean = false,
     val verificationCode: String? = null,
+    val placedWithVideo: Boolean = false,
 ) {
     val isActive: Boolean
         get() = phase !is CallPhase.Idle && phase !is CallPhase.Ended

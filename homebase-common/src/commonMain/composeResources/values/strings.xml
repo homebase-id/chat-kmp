@@ -2779,6 +2779,7 @@
     <string name="call_event_cancelled">Cancelled call</string>
     <string name="call_event_no_answer">No answer</string>
     <string name="call_event_busy">Busy</string>
+    <string name="call_event_failed">Call failed</string>
     <string name="call_event_outgoing">Outgoing call</string>
     <string name="call_event_incoming">Incoming call</string>
     <string name="call_event_outgoing_video">Outgoing video call</string>

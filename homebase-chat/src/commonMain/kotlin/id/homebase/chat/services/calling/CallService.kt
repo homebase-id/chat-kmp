@@ -6,9 +6,12 @@ import id.homebase.api.client.websockets.StunUrlStore
 import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.calling.CallOutcome
 import kotlin.time.Clock
+import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -50,17 +53,7 @@ class CallService(
 
     init {
         if (engineFactory != null) {
-            scope.launch {
-                var recorded: String? = null
-                state.collect { s ->
-                    val ended = s.phase as? CallPhase.Ended ?: return@collect
-                    val callId = s.callId ?: return@collect
-                    if (callId == recorded || s.direction != CallDirection.Outgoing) return@collect
-                    recorded = callId
-                    val peer = s.peer ?: return@collect
-                    callEventFor(ended.reason, s, nowMs())?.let { runCatching { recordEvent(peer, it) } }
-                }
-            }
+            scope.launch { recordCallEvents(state, nowMs, recordEvent) }
             scope.launch {
                 credentialsManager.credentialsFlow
                     .map { it?.domain?.domainName }
@@ -111,9 +104,32 @@ class CallService(
     }
 }
 
+internal suspend fun recordCallEvents(
+    states: Flow<CallState>,
+    nowMs: () -> Long,
+    recordEvent: suspend (peer: String, event: CallEventDescriptor) -> Unit,
+) {
+    var recorded: String? = null
+    states.collect { s ->
+        val ended = s.phase as? CallPhase.Ended ?: return@collect
+        val callId = s.callId ?: return@collect
+        if (callId == recorded || s.direction != CallDirection.Outgoing) return@collect
+        recorded = callId
+        val peer = s.peer ?: return@collect
+        val event = callEventFor(ended.reason, s, nowMs()) ?: return@collect
+        try {
+            recordEvent(peer, event)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = "CallService", throwable = e) { "Failed to record call event for $callId" }
+        }
+    }
+}
+
 /** One log entry per call, written by the caller: the receiving side renders it from the message author. */
 internal fun callEventFor(reason: CallEndReason, state: CallState, nowMs: Long): CallEventDescriptor? {
-    val video = state.media.localVideo || state.media.remoteVideo
+    val video = state.placedWithVideo
     val seconds = state.connectedAtMs?.let { ((nowMs - it) / 1000).coerceAtLeast(0) } ?: 0L
     return when {
         state.connectedAtMs != null -> CallEventDescriptor(CallOutcome.Completed, video, seconds)
@@ -121,6 +137,8 @@ internal fun callEventFor(reason: CallEndReason, state: CallState, nowMs: Long):
         reason == CallEndReason.Declined -> CallEventDescriptor(CallOutcome.Declined, video)
         reason == CallEndReason.Cancelled -> CallEventDescriptor(CallOutcome.Cancelled, video)
         reason == CallEndReason.Busy -> CallEventDescriptor(CallOutcome.Busy, video)
+        reason is CallEndReason.Failed -> CallEventDescriptor(CallOutcome.Failed, video)
+        reason is CallEndReason.Hangup -> CallEventDescriptor(if (reason.remote) CallOutcome.Declined else CallOutcome.Cancelled, video)
         else -> null
     }
 }
