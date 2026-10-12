@@ -85,12 +85,14 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
         update.remoteHandle = CXHandle(type: .generic, value: caller)
         update.localizedCallerName = caller
         update.hasVideo = false // the ring push does not say; Kotlin calls reportVideo() once the offer arrives
+        // A self-addressed hangup push reuses the live call's id: it must not drop that call's mapping.
+        let alreadyKnown = uuidForCall[callId] != nil
         provider.reportNewIncomingCall(with: uuid(for: callId), update: update) { error in
-            if error != nil { self.forget(callId) }
+            if error != nil && !alreadyKnown { self.forget(callId) }
             completion()
         }
         let routed = CallPushRouter.shared.handler != nil && CallPushRouter.shared.tryHandle(data: data)
-        if !routed { endUnrouted(callId) }
+        if !routed && !alreadyKnown { endUnrouted(callId) }
     }
 
     // A VoIP push must be reported to CallKit, but one nothing will handle (not a call, or the handler is not set yet) must not keep ringing.
