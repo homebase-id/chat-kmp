@@ -91,6 +91,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableFloatStateOf
@@ -98,8 +100,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -150,10 +150,12 @@ import id.homebase.resources.profile_card_reset_card
 import id.homebase.resources.profile_card_reset_title
 import id.homebase.resources.profile_card_reset_message_public
 import id.homebase.resources.profile_card_reset_message_circle
+import id.homebase.resources.profile_card_reset_message_template
 import id.homebase.resources.profile_card_reset_confirm
 import id.homebase.resources.profile_card_design_board
 import id.homebase.resources.profile_card_design_collage
 import id.homebase.resources.profile_card_design_dossier
+import id.homebase.resources.profile_card_design_links
 import id.homebase.resources.profile_card_design_poster
 import id.homebase.resources.profile_card_edit
 import id.homebase.resources.profile_card_error
@@ -815,7 +817,9 @@ internal fun AudienceChip(
 internal fun ResetCardDialog(audience: CardAudience, onReset: () -> Unit, onDismiss: () -> Unit) {
     val message = when (audience) {
         CardAudience.Public -> stringResource(MR.string.profile_card_reset_message_public)
-        is CardAudience.Circle -> stringResource(MR.string.profile_card_reset_message_circle, audienceLabel(audience))
+        is CardAudience.Circle ->
+            if (cardTemplateFor(audience) != null) stringResource(MR.string.profile_card_reset_message_template, audienceLabel(audience))
+            else stringResource(MR.string.profile_card_reset_message_circle, audienceLabel(audience))
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1013,6 +1017,7 @@ internal fun designLabel(design: String): StringResource = when (design) {
     CardDesign.POSTER -> MR.string.profile_card_design_poster
     CardDesign.COLLAGE -> MR.string.profile_card_design_collage
     CardDesign.DOSSIER -> MR.string.profile_card_design_dossier
+    CardDesign.LINKS -> MR.string.profile_card_design_links
     else -> MR.string.profile_card_design_board
 }
 

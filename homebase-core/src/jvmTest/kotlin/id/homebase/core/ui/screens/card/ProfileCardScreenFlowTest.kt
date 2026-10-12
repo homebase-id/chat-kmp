@@ -1,6 +1,15 @@
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.test.onAllNodesWithText
+import id.homebase.api.client.profile.ProfileAttributeTypes
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -105,6 +114,60 @@ class ProfileCardScreenFlowTest {
             waitUntil(timeoutMillis = 10_000) { onAllNodesWithContentDescription(open("Friends")).fetchSemanticsNodes().isNotEmpty() }
             onAllNodes(chipFriends).assertCountEquals(0)
             assertFalse(viewModel.uiState.value.viewing)
+        }
+    }
+
+    @Test
+    fun pickingADesignSavesItAndLeavesNothingUnsaved() {
+        val fixtures = ProfileCardViewModelTest()
+        val wire = CardWireHarness()
+        val repository: ProfileRepository = runBlocking { wire.profileRepository() }
+        val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
+
+        runDesktopComposeUiTest(width = 824, height = 1784) {
+            val source = ProfileCardViewModelTest.FakeSource(
+                fixtures.profile.filterNot { it.type == ProfileAttributeTypes.PHOTO },
+                cardRepository = CardRepository(ProfileRepositoryCardStore(repository)),
+            ).apply {
+                liveCards = { repository.loadAttributes() }
+                circleList = listOf(CardCircle(FRIENDS_CIRCLE_ID, "Friends"))
+            }
+            val viewModel = ProfileCardViewModel(source) { error("the JVM WebView slot is not part of this flow") }
+            setContent {
+                HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
+                    val editorState by viewModel.uiState.collectAsStateWithLifecycle()
+                    ProfileCardEditorContent(
+                        uiState = editorState,
+                        step = EditorStep.Design,
+                        onStep = {},
+                        onBack = {},
+                        onSelect = viewModel::onDesignPicked,
+                        onOption = viewModel::onOptionSelected,
+                        onBlockOrder = viewModel::onBlockOrderChanged,
+                        onSave = viewModel::onSaveDesign,
+                        onEditProfile = {},
+                        snackbarHostState = remember { SnackbarHostState() },
+                    ) { Box(Modifier.fillMaxSize()) }
+                }
+            }
+            waitUntil(timeoutMillis = 10_000) { viewModel.uiState.value.cards.any { it.audience == friends } }
+            viewModel.onCardOpened(friends)
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Choose a design").fetchSemanticsNodes().isNotEmpty() }
+
+            onNodeWithContentDescription("Poster").performClick()
+            waitUntil(timeoutMillis = 10_000) {
+                wire.putBodies.any { body ->
+                    body.jsonObject["type"]?.jsonPrimitive?.content == ProfileAttributeTypes.PROFILE_CARD &&
+                        body.jsonObject["data"]?.jsonObject?.get("design") == JsonPrimitive(CardDesign.POSTER)
+                }
+            }
+            waitUntil(timeoutMillis = 10_000) { !viewModel.uiState.value.isSavingDesign }
+            assertEquals(CardDesign.POSTER, viewModel.uiState.value.selectedCard?.design)
+
+            viewModel.onPreviewDiscarded()
+            assertEquals(null, viewModel.uiState.value.previewDesign)
+            assertFalse(viewModel.uiState.value.hasUnsavedChanges)
+            assertEquals(CardDesign.POSTER, viewModel.uiState.value.design)
         }
     }
 }

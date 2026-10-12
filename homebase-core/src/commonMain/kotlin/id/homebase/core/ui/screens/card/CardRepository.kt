@@ -86,14 +86,20 @@ class CardRepository(private val store: CardAttributeStore) {
         return card.copy(id = written.id, versionTag = written.versionTag)
     }
 
-    // 404 counts as reset.
+    // Deleted: an unstored public card falls back to the site design, then the template, on the app and the web alike.
     suspend fun resetPublic() {
-        cards().publicCard()?.let { store.delete(it.id, it.versionTag) }
+        val existing = cards().publicCard() ?: return
+        store.delete(existing.id, existing.versionTag)
     }
 
+    // 404 counts as reset.
     suspend fun resetCircle(card: ProfileCard) {
-        require(card.audience is CardAudience.Circle) { "not a circle card" }
-        if (!card.isDefault) store.delete(card.id, card.versionTag)
+        val circle = card.audience as? CardAudience.Circle ?: error("not a circle card")
+        val template = cardTemplateFor(circle)
+        when {
+            template != null -> saveCircle(card.withTemplate(template))
+            !card.isDefault -> store.delete(card.id, card.versionTag)
+        }
     }
 
     private suspend fun saveOrUnsupported(
