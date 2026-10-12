@@ -384,6 +384,7 @@ val appModule = module {
             engineFactory = platformCallEngineFactory(),
             stunUrls = get(),
             scope = get(),
+            onCallActiveChanged = { get<AuthConnectionCoordinator>().setCallActive(it) },
             recordEvent = { peer, event ->
                 val self = get<CredentialsManager>().getActiveDomain()?.domainName ?: return@CallService
                 get<ChatMessageSenderService>().sendNewTypedMessage(

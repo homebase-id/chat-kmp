@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.PendingIntentCompat
 import androidx.core.util.Consumer
+import co.touchlab.kermit.Logger
 import id.homebase.resources.MR
 import id.homebase.resources.call_hang_up
 import id.homebase.resources.call_mute
@@ -44,7 +45,10 @@ actual fun rememberInPictureInPicture(): Boolean {
     val activity = LocalContext.current.findActivity() ?: return false
     var inPip by remember(activity) { mutableStateOf(activity.isInPictureInPictureMode) }
     DisposableEffect(activity) {
-        val listener = Consumer<androidx.core.app.PictureInPictureModeChangedInfo> { inPip = it.isInPictureInPictureMode }
+        val listener = Consumer<androidx.core.app.PictureInPictureModeChangedInfo> {
+            inPip = it.isInPictureInPictureMode
+            Logger.i("CallPiP") { "pip mode changed inPip=${it.isInPictureInPictureMode}" }
+        }
         activity.addOnPictureInPictureModeChangedListener(listener)
         onDispose { activity.removeOnPictureInPictureModeChangedListener(listener) }
     }
@@ -63,6 +67,7 @@ actual fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, m
     DisposableEffect(activity) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
+                Logger.i("CallPiP") { "pip action ${intent.action}" }
                 when (intent.action) {
                     ACTION_MUTE -> toggleMute()
                     ACTION_HANGUP -> hangup()
@@ -79,7 +84,13 @@ actual fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, m
     }
     DisposableEffect(activity, params) {
         // Pre-31 there is no auto-enter, so the user-leave-hint hook is the only way in.
-        val leave = Runnable { if (eligible) activity.enterPictureInPictureMode(params) }
+        val leave = Runnable {
+            Logger.i("CallPiP") { "user leave hint eligible=$eligible" }
+            if (eligible) {
+                val entered = activity.enterPictureInPictureMode(params)
+                Logger.i("CallPiP") { "enterPictureInPictureMode=$entered" }
+            }
+        }
         activity.setPictureInPictureParams(params)
         activity.addOnUserLeaveHintListener(leave)
         onDispose {

@@ -42,6 +42,7 @@ class CallService(
     private val scope: CoroutineScope,
     private val recordEvent: suspend (peer: String, event: CallEventDescriptor) -> Unit = { _, _ -> },
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val onCallActiveChanged: (Boolean) -> Unit = {},
 ) : CallSession, CallPushTarget, CallRingPushTarget {
     val available: Boolean get() = engineFactory != null
 
@@ -64,6 +65,7 @@ class CallService(
     init {
         if (engineFactory != null) {
             scope.launch { recordCallEvents(state, nowMs, recordEvent) }
+            scope.launch { state.callActiveChanges().collect(onCallActiveChanged) }
             scope.launch {
                 for (push in pushes) {
                     val target = controller.filterNotNull().first()
@@ -164,3 +166,5 @@ internal fun callEventFor(reason: CallEndReason, state: CallState, nowMs: Long):
         else -> null
     }
 }
+
+internal fun Flow<CallState>.callActiveChanges(): Flow<Boolean> = map { it.isActive }.distinctUntilChanged()
