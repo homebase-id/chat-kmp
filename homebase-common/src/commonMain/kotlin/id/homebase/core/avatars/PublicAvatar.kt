@@ -107,7 +107,7 @@ fun PublicAvatar(
                     modifier = if (imageClick != null) {
                         Modifier.fillMaxSize().clickable(onClick = imageClick)
                     } else {
-                        Modifier
+                        Modifier.fillMaxSize()
                     }
                 )
             } else {

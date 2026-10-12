@@ -67,6 +67,7 @@ import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroup
 import androidx.compose.material3.ButtonGroupDefaults
@@ -1066,8 +1067,6 @@ private fun BoxScope.EndedLayout(
         large = large,
         modifier = Modifier.align(Alignment.Center).padding(bottom = if (large) 120.dp else 170.dp),
     )
-    val elapsed = remember(ui.callId) { Animatable(0f) }
-    LaunchedEffect(ui.callId) { elapsed.animateTo(1f, tween(ENDED_LINGER_MS.toInt(), easing = LinearEasing)) }
     Column(
         Modifier.align(Alignment.BottomCenter).widthIn(max = 360.dp).fillMaxWidth().padding(horizontal = 32.dp).padding(bottom = if (large) 48.dp else 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1082,32 +1081,18 @@ private fun BoxScope.EndedLayout(
             Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(56.dp)))
             Text(stringResource(MR.string.call_call_back), style = ButtonDefaults.textStyleFor(56.dp))
         }
-        CountdownCloseButton(progress = { elapsed.value }, onClick = actions.close)
+        CloseButton(onClick = actions.close)
     }
 }
 
-/** Fills from the start edge as the auto-dismiss runs out, so the button itself is the timer. */
 @Composable
-private fun CountdownCloseButton(progress: () -> Float, onClick: () -> Unit) {
-    val fill = MaterialTheme.colorScheme.secondaryContainer
-    Surface(
+private fun CloseButton(onClick: () -> Unit) {
+    OutlinedButton(
         onClick = onClick,
-        shape = CircleShape,
-        color = Color.Transparent,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+        contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
     ) {
-        Box(
-            Modifier.fillMaxWidth().heightIn(min = 56.dp).drawBehind {
-                val w = size.width * progress().coerceIn(0f, 1f)
-                val x = if (layoutDirection == LayoutDirection.Rtl) size.width - w else 0f
-                drawRect(fill, topLeft = Offset(x, 0f), size = Size(w, size.height))
-            },
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(stringResource(MR.string.call_close), style = ButtonDefaults.textStyleFor(56.dp))
-        }
+        Text(stringResource(MR.string.call_close), style = ButtonDefaults.textStyleFor(56.dp))
     }
 }
 

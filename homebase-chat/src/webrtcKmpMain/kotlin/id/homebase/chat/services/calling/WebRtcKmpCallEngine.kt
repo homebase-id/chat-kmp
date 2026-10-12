@@ -90,7 +90,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
                 Logger.i("WebRtcKmp") {
                     "inbound video packets=${m["packetsReceived"]} lost=${m["packetsLost"]} bytes=${m["bytesReceived"]} " +
                         "decoded=${m["framesDecoded"]} dropped=${m["framesDropped"]} freezes=${m["freezeCount"]} " +
-                        "plis=${m["pliCount"]} nacks=${m["nackCount"]} decoder=${m["decoderImplementation"]}"
+                        "size=${m["frameWidth"]}x${m["frameHeight"]} plis=${m["pliCount"]} nacks=${m["nackCount"]} decoder=${m["decoderImplementation"]}"
                 }
             }
             stats.firstOrNull { it.type == "outbound-rtp" && it.members["kind"] == "video" }?.members?.let { m ->
@@ -152,6 +152,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
                 MediaStreamTrackKind.Video -> (track as? VideoTrack)?.let {
                     videoTrack = it
                     publishLocal(it)
+                    Logger.i("WebRtcKmp") { "local video settings=${it.settings}" }
                     // webrtc-kmp stops the track itself on a camera error or freeze; nothing else reports it.
                     scope.launch {
                         it.state.first { state -> state is MediaStreamTrackState.Ended }
