@@ -165,6 +165,7 @@ class CallStateMachine(private val selfOdinId: String) {
                 next,
                 listOf(
                     CallEffect.CancelTimers,
+                    CallEffect.SendSignal(from, CallSignal.Hangup(s.callId!!, HangupReason.Cancelled)),
                     CallEffect.ReleaseEngine,
                     CallEffect.CreateAnswer(sig.sdp, s.media.localVideo),
                     CallEffect.StartTimer(CallTimer.Connect, sig.callId),

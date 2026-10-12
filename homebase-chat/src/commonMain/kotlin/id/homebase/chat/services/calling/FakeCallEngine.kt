@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import id.homebase.core.util.initials
 
 data class FakeVideo(val argb: Long, val initials: String)
 
@@ -19,6 +20,7 @@ data class FakeCallScript(
     val recoverAfterDropMs: Long? = null,
     val remoteVideoOffAtMs: Long? = null,
     val failConnect: Boolean = false,
+    val failOnCreateOffer: Throwable? = null,
 )
 
 class FakeCallEngine(
@@ -30,8 +32,8 @@ class FakeCallEngine(
     private val _events = MutableSharedFlow<MediaEvent>(extraBufferCapacity = 64)
     override val events: SharedFlow<MediaEvent> = _events.asSharedFlow()
 
-    private val remoteSource = FakeVideo(colorFor(peerLabel), initialsOf(peerLabel))
-    private val localSource = FakeVideo(colorFor(selfLabel), initialsOf(selfLabel))
+    private val remoteSource = FakeVideo(colorFor(peerLabel), peerLabel.dotsToSpaces().initials())
+    private val localSource = FakeVideo(colorFor(selfLabel), selfLabel.dotsToSpaces().initials())
     private val _remoteVideo = MutableStateFlow<FakeVideo?>(null)
     private val _localVideo = MutableStateFlow<FakeVideo?>(null)
     val remoteVideo: StateFlow<FakeVideo?> = _remoteVideo.asStateFlow()
@@ -50,6 +52,7 @@ class FakeCallEngine(
     private var scriptJob: Job? = null
 
     override suspend fun createOffer(video: Boolean): String {
+        script.failOnCreateOffer?.let { throw it }
         _localVideo.value = if (video) localSource else null
         _events.emit(MediaEvent.LocalIce("fake-candidate-local", "0", 0))
         return "fake-offer"
@@ -116,19 +119,6 @@ class FakeCallEngine(
 
         fun colorFor(label: String) = palette[(label.hashCode() and Int.MAX_VALUE) % palette.size]
 
-        fun initialsOf(label: String): String {
-            val parts = label.split(' ', '.', '-', '_').filter { it.isNotEmpty() }
-            val letters = when {
-                parts.isEmpty() -> "?"
-                parts.size == 1 -> parts[0].firstCodePoint()
-                else -> parts[0].firstCodePoint() + parts[1].firstCodePoint()
-            }
-            return letters.uppercase()
-        }
-
-        fun String.firstCodePoint(): String {
-            val end = if (length > 1 && this[0].isHighSurrogate()) 2 else 1
-            return substring(0, end)
-        }
+        fun String.dotsToSpaces() = replace('.', ' ')
     }
 }

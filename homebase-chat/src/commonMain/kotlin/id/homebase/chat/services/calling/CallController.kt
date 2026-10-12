@@ -31,13 +31,29 @@ class CallController(
     private val bufferedIce = mutableListOf<CallEffect.AddIce>()
     private val timers = mutableMapOf<CallTimer, Job>()
 
+    private val collectors: List<Job>
+    private var closed = false
+
     init {
-        scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            signaling.incoming.collect { inbox.trySend(CallEvent.Signal(it)) }
-        }
-        scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            for (event in inbox) process(event)
-        }
+        collectors = listOf(
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                signaling.incoming.collect { inbox.trySend(CallEvent.Signal(it)) }
+            },
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                for (event in inbox) process(event)
+            },
+        )
+        scope.coroutineContext[Job]?.invokeOnCompletion { close() }
+    }
+
+    fun close() {
+        if (closed) return
+        closed = true
+        collectors.forEach { it.cancel() }
+        timers.values.forEach { it.cancel() }
+        timers.clear()
+        inbox.close()
+        releaseEngine()
     }
 
     fun startCall(peer: String, video: Boolean, callId: String = Uuid.random().toString()) =

@@ -5,7 +5,16 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -63,7 +72,8 @@ class CallControllerTest {
         assertEquals(CallPhase.Connected, a.phase)
         assertEquals(CallPhase.Connected, b.phase)
         assertNotNull(a.state.connectedAtMs)
-        assertTrue(a.engines.single().addedIce.isEmpty() || a.engines.single().addedIce.all { it.startsWith("fake") })
+        assertEquals(emptyList(), a.engines.single().addedIce)
+        assertEquals(listOf("fake-candidate-local"), b.engines.single().addedIce)
 
         a.controller.hangup()
         runCurrent()
@@ -94,6 +104,7 @@ class CallControllerTest {
         assertEquals(CallPhase.Ended(CallEndReason.Missed), a.phase)
         assertEquals(CallPhase.Ended(CallEndReason.Missed), b.phase)
         assertTrue(net.sent.any { it.signal is CallSignal.Hangup && it.from == frodo })
+        assertTrue(listOf(a, b).flatMap { it.engines }.all { it.closed })
     }
 
     @Test
@@ -105,6 +116,7 @@ class CallControllerTest {
         runCurrent()
         assertEquals(CallPhase.Ended(CallEndReason.Cancelled), a.phase)
         assertEquals(CallPhase.Ended(CallEndReason.Cancelled), b.phase)
+        assertTrue(listOf(a, b).flatMap { it.engines }.all { it.closed })
     }
 
     @Test
@@ -116,6 +128,7 @@ class CallControllerTest {
         runCurrent()
         assertEquals(CallPhase.Ended(CallEndReason.Declined), a.phase)
         assertEquals(CallPhase.Ended(CallEndReason.Declined), b.phase)
+        assertTrue(listOf(a, b).flatMap { it.engines }.all { it.closed })
     }
 
     @Test
@@ -144,11 +157,12 @@ class CallControllerTest {
         assertEquals(CallPhase.Connected, b.phase)
         assertEquals(frodo, b.state.peer)
         assertEquals(CallPhase.Ended(CallEndReason.Busy), gimliSide.phase)
+        assertTrue(gimliSide.engines.all { it.closed })
     }
 
     @Test
     fun glareLowerOdinIdKeepsOfferAndBothConnect() = runTest {
-        val (_, a, b) = pair()
+        val (net, a, b) = pair()
         a.controller.startCall(sam, video = false, callId = "call-a")
         b.controller.startCall(frodo, video = false, callId = "call-b")
         runCurrent()
@@ -160,6 +174,10 @@ class CallControllerTest {
         assertEquals("call-a", b.state.callId)
         assertEquals(CallDirection.Outgoing, a.state.direction)
         assertEquals(CallDirection.Incoming, b.state.direction)
+        assertTrue(net.sent.contains(LoopbackSignaling.Sent(sam, frodo, CallSignal.Hangup("call-b", HangupReason.Cancelled))))
+        assertEquals(2, b.engines.size)
+        assertTrue(b.engines.first().closed)
+        assertTrue(!b.engines.last().closed)
     }
 
     @Test
@@ -195,6 +213,7 @@ class CallControllerTest {
         advanceTimeBy(RECONNECT_TICK_MS * MAX_RECONNECT_ATTEMPTS + 1)
         assertEquals(CallPhase.Ended(CallEndReason.Failed(FailReason.NoRoute)), a.phase)
         assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = true)), b.phase)
+        assertTrue(listOf(a, b).flatMap { it.engines }.all { it.closed })
     }
 
     @Test
@@ -206,6 +225,7 @@ class CallControllerTest {
         advanceTimeBy(CONNECT_TIMEOUT_MS + 1)
         assertEquals(CallPhase.Ended(CallEndReason.Failed(FailReason.NoRoute)), a.phase)
         assertEquals(CallPhase.Ended(CallEndReason.Failed(FailReason.NoRoute)), b.phase)
+        assertTrue(listOf(a, b).flatMap { it.engines }.all { it.closed })
     }
 
     @Test
@@ -216,6 +236,7 @@ class CallControllerTest {
         a.controller.onPermissionDenied()
         runCurrent()
         assertEquals(CallPhase.Ended(CallEndReason.Failed(FailReason.Permission)), a.phase)
+        assertTrue(a.engines.isNotEmpty() && a.engines.all { it.closed })
     }
 
     @Test
@@ -274,4 +295,70 @@ class CallControllerTest {
         all.forEach { assertEquals(it, CallSignalCodec.decode(CallSignalCodec.encode(it))) }
         assertEquals(null, CallSignalCodec.decode("not-base64!!"))
     }
+
+    @Test
+    fun defaultClocksRingTheCallee() = runTest {
+        val net = LoopbackSignaling()
+        val scope = CoroutineScope(Job() + UnconfinedTestDispatcher(testScheduler))
+        val callee = CallController(sam, net.endpoint(sam), CallEngineFactory { FakeCallEngine(scope) }, scope)
+        val caller = CallController(frodo, net.endpoint(frodo), CallEngineFactory { FakeCallEngine(scope) }, scope)
+        caller.startCall(sam, video = false)
+        runCurrent()
+        assertEquals(CallPhase.Incoming, callee.state.value.phase)
+        scope.cancel()
+    }
+
+    @Test
+    fun cancellingTheScopeDuringConnectedClosesTheEngine() = runTest {
+        val net = LoopbackSignaling(now = { testScheduler.currentTime })
+        val scopeA = CoroutineScope(Job() + StandardTestDispatcher(testScheduler))
+        val engines = mutableListOf<FakeCallEngine>()
+        val a = CallController(frodo, net.endpoint(frodo), CallEngineFactory {
+            FakeCallEngine(scopeA).also { engines += it }
+        }, scopeA, clock = { testScheduler.currentTime })
+        val b = Side(sam, this, net, FakeCallScript())
+        a.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        assertEquals(CallPhase.Connected, a.state.value.phase)
+        assertTrue(!engines.single().closed)
+        scopeA.cancel()
+        runCurrent()
+        assertTrue(engines.single().closed)
+    }
+
+    @Test
+    fun concurrentFirstUseOfOneInboxLosesNoSignal() = runTest {
+        val net = LoopbackSignaling(now = { testScheduler.currentTime })
+        withContext(Dispatchers.Default) {
+            coroutineScope {
+                repeat(8) { i -> launch { repeat(200) { net.endpoint("user$i") } } }
+            }
+        }
+        val ep = net.endpoint("target")
+        val got = mutableListOf<InboundSignal>()
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { ep.incoming.collect { got += it } }
+        withContext(Dispatchers.Default) {
+            coroutineScope { repeat(8) { i -> launch { net.deliver("target", "p$i", CallSignal.Ring("c$i"), 0) } } }
+        }
+        assertEquals(8, got.size)
+        job.cancel()
+    }
+
+    private fun failingOfferEnds(error: Throwable, expected: FailReason) = runTest {
+        val (_, a, _) = pair(FakeCallScript(failOnCreateOffer = error))
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        assertEquals(CallPhase.Ended(CallEndReason.Failed(expected)), a.phase)
+        assertTrue(a.engines.single().closed)
+    }
+
+    @Test
+    fun engineExceptionEndsFailedWithItsReasonAndClosesEngine() =
+        failingOfferEnds(CallEngineException(FailReason.Permission, "mic"), FailReason.Permission)
+
+    @Test
+    fun genericEngineExceptionEndsFailedOtherAndClosesEngine() =
+        failingOfferEnds(IllegalStateException("boom"), FailReason.Other)
 }
