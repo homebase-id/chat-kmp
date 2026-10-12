@@ -25,6 +25,13 @@ interface CallKitActions {
     fun setMuted(muted: Boolean)
 }
 
+/** Implemented in Swift: shows the remote call video in the system PiP window; AVKit's video-call content source has no Kotlin binding. */
+interface CallPictureInPictureBridge {
+    /** [remoteTrack] is the WebRTC RTCVideoTrack. PiP then starts by itself when the app backgrounds. */
+    fun start(remoteTrack: Any)
+    fun stop()
+}
+
 /** Holds the PushKit token until Koin is up (App.init runs before initializeApp, which a pending crash report skips). */
 object VoipTokenRelay {
     @kotlin.concurrent.Volatile
@@ -47,4 +54,8 @@ object VoipTokenRelay {
 object CallKitBridgeHolder {
     var bridge: CallKitBridge? = null
     var actions: CallKitActions? = null
+}
+
+object CallPictureInPictureBridgeHolder {
+    var bridge: CallPictureInPictureBridge? = null
 }

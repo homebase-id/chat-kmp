@@ -1,6 +1,7 @@
 import AVFoundation
 import CallKit
 import ComposeApp
+import AVKit
 import Foundation
 import PushKit
 import WebRTC
@@ -34,6 +35,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
 
     func start() {
         CallKitBridgeHolder.shared.bridge = self
+        CallPictureInPictureBridgeHolder.shared.bridge = PictureInPictureManager.shared
         let registry = PKPushRegistry(queue: .main)
         registry.delegate = self
         registry.desiredPushTypes = [.voIP]
@@ -242,5 +244,68 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
 
     func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
         NSLog("[Call] CallKit timed out performing %@", String(describing: type(of: action)))
+    }
+}
+
+
+/// Remote call video in the system PiP window. AVPictureInPictureVideoCallViewController (iOS 15+) hosts a Metal view fed
+/// by the remote track; PiP starts by itself when the app backgrounds. Capturing the local camera in the background needs
+/// the com.apple.developer.avfoundation.multitasking-camera-access entitlement, which this app does not declare, so
+/// outgoing video freezes there while the remote video and audio keep going.
+final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVideoViewDelegate {
+    static let shared = PictureInPictureManager()
+
+    private var controller: AVPictureInPictureController?
+    private var content: AVPictureInPictureVideoCallViewController?
+    private var renderer: RTCMTLVideoView?
+    private var track: RTCVideoTrack?
+
+    func start(remoteTrack: Any) {
+        guard let remote = remoteTrack as? RTCVideoTrack else { return }
+        DispatchQueue.main.async { [self] in
+            teardown()
+            guard AVPictureInPictureController.isPictureInPictureSupported(),
+                  let source = UIApplication.shared.connectedScenes
+                    .compactMap({ $0 as? UIWindowScene }).flatMap({ $0.windows })
+                    .first(where: { $0.isKeyWindow })?.rootViewController?.view
+            else { return }
+
+            let vc = AVPictureInPictureVideoCallViewController()
+            vc.preferredContentSize = CGSize(width: 9, height: 16)
+            let view = RTCMTLVideoView(frame: vc.view.bounds)
+            view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            view.videoContentMode = .scaleAspectFill
+            view.delegate = self
+            vc.view.addSubview(view)
+            remote.add(view)
+
+            let pip = AVPictureInPictureController(
+                contentSource: AVPictureInPictureController.ContentSource(
+                    activeVideoCallSourceView: source, contentViewController: vc))
+            pip.canStartPictureInPictureAutomaticallyFromInline = true
+            controller = pip
+            content = vc
+            renderer = view
+            track = remote
+        }
+    }
+
+    func stop() {
+        DispatchQueue.main.async { [self] in teardown() }
+    }
+
+    private func teardown() {
+        controller?.canStartPictureInPictureAutomaticallyFromInline = false
+        if controller?.isPictureInPictureActive == true { controller?.stopPictureInPicture() }
+        if let renderer { track?.remove(renderer); renderer.delegate = nil; renderer.removeFromSuperview() }
+        controller = nil
+        content = nil
+        renderer = nil
+        track = nil
+    }
+
+    func videoView(_ videoView: RTCVideoRenderer, didChangeVideoSize size: CGSize) {
+        guard size.width > 0, size.height > 0 else { return }
+        DispatchQueue.main.async { [self] in content?.preferredContentSize = size }
     }
 }

@@ -347,6 +347,13 @@ private fun CallUiState.remoteShowing(): Boolean =
     videos.remote != null && remoteVideo && (phase == CallPhase.Connected || phase == CallPhase.Reconnecting)
 
 @Composable
+internal fun CallPipLayout(ui: CallUiState, avatar: @Composable (Dp) -> Unit) {
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLowest), contentAlignment = Alignment.Center) {
+        if (ui.remoteShowing()) CallVideoSurface(ui.videos.remote, Modifier.fillMaxSize()) else avatar(48.dp)
+    }
+}
+
+@Composable
 private fun VideoStage(ui: CallUiState, large: Boolean, avatar: @Composable (Dp) -> Unit) {
     val reconnecting = ui.phase == CallPhase.Reconnecting
     Box(Modifier.fillMaxSize()) {

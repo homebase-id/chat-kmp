@@ -32,7 +32,10 @@ import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.CallRingEffect
+import id.homebase.chat.services.calling.CallPictureInPictureEffect
 import id.homebase.chat.services.calling.CallService
+import id.homebase.chat.services.calling.RemoteVideoSize
+import id.homebase.chat.services.calling.rememberInPictureInPicture
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.util.initials
@@ -71,6 +74,15 @@ fun CallOverlay(
     modifier: Modifier = Modifier,
 ) {
     val gate = rememberCallPermissionGate()
+    val inPip = rememberInPictureInPicture()
+    CallPictureInPictureEffect(
+        eligible = ui.pipEligible,
+        remote = ui.videos.remote,
+        muted = ui.muted,
+        onToggleMute = viewModel::toggleMute,
+        onHangup = viewModel::hangup,
+    )
+    LaunchedEffect(ui.inProgress) { if (!ui.inProgress) RemoteVideoSize.current.value = null }
     var showVerification by remember { mutableStateOf(false) }
     var confirmEnd by remember { mutableStateOf(false) }
     LaunchedEffect(viewModel) {
@@ -101,15 +113,15 @@ fun CallOverlay(
 
     Box(modifier) {
         AnimatedVisibility(
-            visible = ui.visible && !ui.minimized,
+            visible = ui.visible && (!ui.minimized || inPip),
             enter = fadeIn() + slideInVertically { it / 8 },
             exit = fadeOut() + slideOutVertically { it / 8 },
         ) {
             Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
-                CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions)
+                if (inPip) CallPipLayout(ui, avatar) else CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions)
             }
         }
-        if (ui.pillVisible) {
+        if (ui.pillVisible && !inPip) {
             OngoingCallPill(
                 ui = ui,
                 peerName = peerName,

@@ -33,7 +33,7 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier) {
             modifier = modifier,
             factory = { context ->
                 SurfaceViewRenderer(context).apply {
-                    init(eglContext, null)
+                    init(eglContext, if (kmp.local) null else remoteSizeEvents())
                     setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
                     setEnableHardwareScaler(true)
                     setMirror(kmp.mirrored)
@@ -45,6 +45,15 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier) {
             },
             update = { it.setMirror(kmp.mirrored) },
         )
+    }
+}
+
+private fun remoteSizeEvents() = object : RendererCommon.RendererEvents {
+    override fun onFirstFrameRendered() = Unit
+
+    override fun onFrameResolutionChanged(videoWidth: Int, videoHeight: Int, rotation: Int) {
+        val rotated = rotation % 180 != 0
+        RemoteVideoSize.current.value = if (rotated) videoHeight to videoWidth else videoWidth to videoHeight
     }
 }
 
