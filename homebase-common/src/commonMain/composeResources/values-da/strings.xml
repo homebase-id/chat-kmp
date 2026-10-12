@@ -1844,8 +1844,6 @@
     <string name="cd_profile_avatar_change_photo">Skift foto</string>
     <string name="profile_avatar_edit_acl_anonymous">Offentligt foto</string>
     <string name="profile_avatar_edit_anonymous_desc">Synligt for alle, også personer du ikke er forbundet med.</string>
-    <string name="profile_avatar_edit_acl_connected">Foto til forbindelser</string>
-    <string name="profile_avatar_edit_connected_desc">En tidligere version gemte dette foto til dine forbindelser. Fotos er nu offentlige eller kun til dig, så fjern det for at erstatte det.</string>
     <string name="profile_avatar_edit_acl_only_me">Foto kun til mig</string>
     <string name="profile_avatar_edit_only_me_desc">Kun synligt for dig. Kredse kan endnu ikke vælges for fotos.</string>
     <string name="profile_avatar_edit_upload">Gem</string>
@@ -1967,7 +1965,7 @@
     <string name="profile_edit_photo_public_caption">Vises på alle kort</string>
     <string name="profile_edit_photo_use_different">Brug et andet billede</string>
     <string name="profile_edit_photo_inherits_public">Bruger dit offentlige billede</string>
-    <string name="profile_edit_photo_inherits_connections">Bruger dit billede til alle forbindelser</string>
+    <string name="profile_edit_photo_inherits_earlier">Bruger et billede gemt af en tidligere version</string>
     <string name="profile_edit_photo_inherits_none">Intet billede endnu</string>
     <string name="profile_edit_photo_only_me_caption">Kun du kan se dette</string>
     <string name="profile_edit_add_group_about">Om dig</string>

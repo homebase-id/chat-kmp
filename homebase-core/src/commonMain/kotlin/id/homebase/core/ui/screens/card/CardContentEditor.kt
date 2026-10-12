@@ -88,7 +88,7 @@ import id.homebase.resources.profile_card_import_title
 import id.homebase.resources.profile_card_photo_circle_pending
 import id.homebase.resources.profile_card_photo_label
 import id.homebase.resources.profile_card_photo_own_circle
-import id.homebase.resources.profile_edit_photo_inherits_connections
+import id.homebase.resources.profile_edit_photo_inherits_earlier
 import id.homebase.resources.profile_edit_photo_inherits_none
 import id.homebase.resources.profile_edit_photo_inherits_public
 import id.homebase.resources.profile_edit_photo_public_caption
@@ -251,7 +251,7 @@ private fun PhotoRow(card: CardAudience, photo: CardPhotoUi, onChange: () -> Uni
         photo.own -> stringResource(MR.string.profile_edit_photo_public_caption)
         photo.photo == null -> stringResource(MR.string.profile_edit_photo_inherits_none)
         photo.photo.visibility == ProfileVisibility.ANONYMOUS -> stringResource(MR.string.profile_edit_photo_inherits_public)
-        else -> stringResource(MR.string.profile_edit_photo_inherits_connections)
+        else -> stringResource(MR.string.profile_edit_photo_inherits_earlier)
     }
     Row(
         modifier = Modifier.fillMaxWidth(),

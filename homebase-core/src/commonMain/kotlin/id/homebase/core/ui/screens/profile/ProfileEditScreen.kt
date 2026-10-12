@@ -95,7 +95,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextDirection
 import id.homebase.resources.profile_card_photo_own_circle
 import id.homebase.resources.profile_edit_photo_public_caption
-import id.homebase.resources.profile_edit_photo_inherits_connections
+import id.homebase.resources.profile_edit_photo_inherits_earlier
 import id.homebase.resources.profile_edit_photo_inherits_none
 import id.homebase.resources.profile_edit_photo_inherits_public
 import id.homebase.resources.profile_edit_photo_use_different
@@ -583,7 +583,6 @@ private fun ProfileForm(
                     Spacer(Modifier.weight(1f))
                 }
             }
-            ConnectionsPhotoBlock(avatarUiState.connected, onAvatarAction)
             PhotoRemovalConfirmDialog(avatarUiState.removalToConfirm, onAvatarAction)
 
             Spacer(Modifier.height(32.dp))
@@ -758,7 +757,7 @@ private fun CardPhotoBlock(
                 when (inherited?.visibility) {
                     ProfileVisibility.ANONYMOUS -> MR.string.profile_edit_photo_inherits_public
                     null -> MR.string.profile_edit_photo_inherits_none
-                    else -> MR.string.profile_edit_photo_inherits_connections
+                    else -> MR.string.profile_edit_photo_inherits_earlier
                 },
             ),
             style = MaterialTheme.typography.bodySmall,

@@ -159,7 +159,6 @@ class ProfileAvatarEditViewModel(
                     onlyMe = it.onlyMe.copy(
                         existing = existing.firstOrNull { a -> a.visibility == ProfileVisibility.OWNER },
                     ),
-                    connected = it.connected.copy(existing = existing.legacyConnectedPhoto(circles)),
                 )
             }
         }
@@ -186,7 +185,6 @@ class ProfileAvatarEditViewModel(
                 slot.circleId != null -> it.copy(circleSlots = it.circleSlots + (slot.circleId to block(it.circleSlot(slot.circleId))))
                 slot.visibility == ProfileVisibility.ANONYMOUS -> it.copy(anonymous = block(it.anonymous))
                 slot.visibility == ProfileVisibility.OWNER -> it.copy(onlyMe = block(it.onlyMe))
-                slot.visibility == ProfileVisibility.CONNECTED -> it.copy(connected = block(it.connected))
                 else -> it
             }
         }
@@ -196,7 +194,6 @@ class ProfileAvatarEditViewModel(
         slot.circleId != null -> _state.value.circleSlot(slot.circleId)
         slot.visibility == ProfileVisibility.ANONYMOUS -> _state.value.anonymous
         slot.visibility == ProfileVisibility.OWNER -> _state.value.onlyMe
-        slot.visibility == ProfileVisibility.CONNECTED -> _state.value.connected
         else -> error("Unsupported profile photo tier: ${slot.visibility}")
     }
 
@@ -407,7 +404,3 @@ class ProfileAvatarEditViewModel(
         return loaded
     }
 }
-
-/** A Connected photo no card slot claims: the one an earlier version saved for every connection, or scoped to several circles. */
-private fun List<ProfileAttribute>.legacyConnectedPhoto(circles: List<CardCircle>): ProfileAttribute? =
-    firstOrNull { a -> a.visibility == ProfileVisibility.CONNECTED && circles.none { c -> listOf(a).ownPhotoFor(CardAudience.Circle(c.id, c.name)) != null } }

@@ -219,12 +219,10 @@ class ProfileCardPhotosTest {
         )
         val bus = CropResultBus()
         val vm = viewModel(harness, bus)
-        assertEquals(legacy, vm.state.value.connected.existing?.id)
         assertNull(vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing)
 
         uploadFamilyPhoto(vm, bus)
 
-        assertEquals(legacy, vm.state.value.connected.existing?.id)
         assertNotNull(vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing)
         assertEquals(2, harness.profileRepository().photoAttributes().size)
         assertNull(harness.photoPutBodies.single()["id"])
@@ -370,7 +368,6 @@ class ProfileCardPhotosTest {
         val avatar = viewModel(harness, bus)
         assertEquals(familyPhoto, avatar.state.value.circleSlot(FAMILY_CIRCLE_ID).existing?.id)
         assertNull(avatar.state.value.circleSlot(FRIENDS_CIRCLE_ID).existing)
-        assertNull(avatar.state.value.connected.existing)
 
         uploadFamilyPhoto(avatar, bus, awaitStored = false)
         withContext(Dispatchers.Default) { withTimeout(10_000) { while (harness.photoPutBodies.isEmpty()) delay(10) } }
@@ -462,45 +459,6 @@ class ProfileCardPhotosTest {
 
         assertEquals(emptyList(), harness.photoPutBodies)
         assertEquals(emptyList(), harness.storedIds)
-    }
-
-    @Test
-    fun aLegacyConnectedPhotoScopedToSeveralCirclesShowsInTheLegacySlotAndCanBeRemoved() = runBlocking {
-        val harness = CardWireHarness()
-        val multi = Uuid.random()
-        harness.seed(
-            multi, Uuid.random(), ProfileAttributeTypes.PHOTO, "connected",
-            buildJsonObject { put(ProfileAttributeTypes.KEY_PROFILE_IMAGE, "multi") }, 0, listOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID),
-        )
-        val everyone = Uuid.random()
-        harness.seed(
-            everyone, Uuid.random(), ProfileAttributeTypes.PHOTO, "connected",
-            buildJsonObject { put(ProfileAttributeTypes.KEY_PROFILE_IMAGE, "everyone") }, 0, null,
-        )
-        val vm = viewModel(harness)
-
-        assertNotNull(vm.state.value.connected.existing)
-        assertNull(vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing)
-        assertNull(vm.state.value.circleSlot(FRIENDS_CIRCLE_ID).existing)
-        val legacy = vm.state.value.connected.existing!!
-
-        vm.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.CONNECTED))
-        vm.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED))
-        withTimeout(5_000) { vm.state.first { it.connected.existing == null } }
-
-        assertEquals(listOf(legacy.id.toString()), harness.deletedIds.toList())
-    }
-
-    @Test
-    fun aSingleCirclePhotoOfACircleWithNoSlotFallsToTheLegacySlotToo() = runBlocking {
-        val harness = CardWireHarness()
-        val stray = Uuid.random()
-        harness.seed(
-            stray, Uuid.random(), ProfileAttributeTypes.PHOTO, "connected",
-            buildJsonObject { put(ProfileAttributeTypes.KEY_PROFILE_IMAGE, "stray") }, 0, listOf("11111111-2222-4333-8444-555555555555"),
-        )
-
-        assertEquals(stray, viewModel(harness).state.value.connected.existing?.id)
     }
 
     @Test
