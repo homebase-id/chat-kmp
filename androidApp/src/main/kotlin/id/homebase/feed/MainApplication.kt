@@ -49,8 +49,7 @@ import org.koin.core.context.GlobalContext.startKoin
 class MainApplication : Application(), KoinComponent {
     @OptIn(ExperimentalComposeUiApi::class)
     override fun onCreate() {
-        // Shared WindowInfo sizes itself from an app-level config callback that fires before the
-        // Activity's bounds rotate (API < 31), latching the old orientation's size until restart.
+        // API < 31: shared WindowInfo latches the pre-rotation window size until the process restarts.
         AndroidComposeUiFlags.isSharedWindowInfoEnabled = false
         super.onCreate()
 
