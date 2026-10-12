@@ -5,6 +5,8 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import androidx.compose.ui.AndroidComposeUiFlags
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -45,7 +47,11 @@ import org.koin.core.component.get
 import org.koin.core.context.GlobalContext.startKoin
 
 class MainApplication : Application(), KoinComponent {
+    @OptIn(ExperimentalComposeUiApi::class)
     override fun onCreate() {
+        // Shared WindowInfo sizes itself from an app-level config callback that fires before the
+        // Activity's bounds rotate (API < 31), latching the old orientation's size until restart.
+        AndroidComposeUiFlags.isSharedWindowInfoEnabled = false
         super.onCreate()
 
         if (getProcessName() != packageName) return
