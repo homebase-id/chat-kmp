@@ -27,6 +27,7 @@ private const val TAG = "FilesyncViewModel"
 
 class FilesyncViewModel(
     private val repository: FilesyncRepository,
+    private val uploadQueue: FilesyncUploadQueue,
     val extendPermissionViewModel: ExtendPermissionViewModel,
     private val filesyncPreferences: FilesyncPreferences,
 ) : ViewModel() {
@@ -37,6 +38,8 @@ class FilesyncViewModel(
     // Apart from uiState so a download's progress redraws one indicator, not the screen.
     private val _transferProgress = MutableStateFlow(0f)
     val transferProgress: StateFlow<Float> = _transferProgress.asStateFlow()
+
+    val uploads: StateFlow<List<FilesyncUpload>> = uploadQueue.uploads
 
     // Buffered so a download that finishes while the screen is away is still handed off on return.
     private val _events = Channel<FilesyncUiEvent>(Channel.BUFFERED)
@@ -65,6 +68,16 @@ class FilesyncViewModel(
                         loadCurrentFolder()
                     }
                 }
+        }
+
+        viewModelScope.launch {
+            uploadQueue.changedFolders.collect { folderId ->
+                if (_uiState.value.path.last().nodeId == folderId) loadCurrentFolder()
+            }
+        }
+
+        viewModelScope.launch {
+            uploadQueue.errors.collect { _events.send(FilesyncUiEvent.Error(it)) }
         }
 
         viewModelScope.launch {
@@ -114,6 +127,14 @@ class FilesyncViewModel(
             FilesyncUiAction.CancelTransfer -> transferJob?.cancel()
 
             is FilesyncUiAction.SaveHandedOff -> repository.discard(action.path)
+
+            is FilesyncUiAction.FilesPicked -> uploadQueue.enqueue(action.parentId, action.files)
+
+            is FilesyncUiAction.RetryUpload -> uploadQueue.retry(action.id)
+
+            is FilesyncUiAction.DismissUpload -> uploadQueue.dismiss(action.id)
+
+            is FilesyncUiAction.CreateFolder -> uploadQueue.createFolder(_uiState.value.path.last().nodeId, action.name)
         }
     }
 

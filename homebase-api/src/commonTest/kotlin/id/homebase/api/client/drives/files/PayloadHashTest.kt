@@ -70,7 +70,9 @@ class PayloadHashTest {
         fs.createDirectories("/in".toPath())
         fs.write("/in/plain".toPath()) { write(input) }
 
-        val hash = fileOps.encryptWithPayloadHash("/in/plain", "/in/cipher", payloadKey, PayloadHashAlgorithm.Blake3)
+        val hashed = fileOps.encryptWithPayloadHash("/in/plain", "/in/cipher", payloadKey, PayloadHashAlgorithm.Blake3)
+        val hash = hashed.hash
+        assertEquals(input.size.toLong(), hashed.plaintextBytes)
 
         val ciphertext = fs.read("/in/cipher".toPath()) { readByteArray() }
         assertContentEquals(AesCbc.encrypt(input, payloadKey.aesKey, payloadKey.iv), ciphertext)

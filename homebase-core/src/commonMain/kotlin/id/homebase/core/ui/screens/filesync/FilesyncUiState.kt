@@ -7,6 +7,21 @@ import kotlin.uuid.Uuid
 @Immutable
 data class FilesyncCrumb(val nodeId: Uuid, val name: String?)
 
+/** [ownedCopy]: [path] is the app's own copy, deleted once the upload is done with it. */
+@Immutable
+data class FilesyncPickedFile(val path: String, val name: String, val modifiedMs: Long?, val ownedCopy: Boolean)
+
+/** [name] is the free name chosen on the first attempt and kept for retries; [progress] is null until bytes move. */
+@Immutable
+data class FilesyncUpload(
+    val id: Uuid,
+    val parentId: Uuid,
+    val file: FilesyncPickedFile,
+    val name: String? = null,
+    val progress: Float? = null,
+    val failed: Boolean = false,
+)
+
 @Immutable
 data class FilesyncUiState(
     val installed: Boolean? = null,
@@ -30,9 +45,14 @@ sealed interface FilesyncUiAction {
     data class SaveClicked(val node: FilesyncNode) : FilesyncUiAction
     data object CancelTransfer : FilesyncUiAction
     data class SaveHandedOff(val path: String) : FilesyncUiAction
+    /** [parentId] is the folder shown when the files were picked, not when their copies are ready. */
+    data class FilesPicked(val parentId: Uuid, val files: List<FilesyncPickedFile>) : FilesyncUiAction
+    data class CreateFolder(val name: String) : FilesyncUiAction
+    data class RetryUpload(val id: Uuid) : FilesyncUiAction
+    data class DismissUpload(val id: Uuid) : FilesyncUiAction
 }
 
-enum class FilesyncError { DownloadFailed, Damaged }
+enum class FilesyncError { DownloadFailed, Damaged, UploadFailed, FolderFailed }
 
 sealed interface FilesyncUiEvent {
     data class OpenFile(val path: String) : FilesyncUiEvent

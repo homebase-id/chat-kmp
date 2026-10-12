@@ -15,7 +15,7 @@ package id.homebase.api.client.drives.files
  * progress callback (which the HTTP client invokes sequentially). Concurrent uploads each
  * get their own gate, so there is no shared mutable state to race on.
  */
-internal class WholePercentProgressGate {
+class WholePercentProgressGate {
     private var lastWhole = -1
 
     /**

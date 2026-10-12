@@ -2,11 +2,11 @@ package id.homebase.api.client.drives.files
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.isExistingFileWithUniqueId
 import id.homebase.api.client.KeyHeader
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.api.client.NotFoundException
-import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.upload.CreateFileResult
@@ -130,10 +130,7 @@ class DriveOutboxUploader(
             // with title "File already exists with ClientUniqueId: [...]" — the
             // title match is a defensive fallback for that case. Without it the
             // recovery path is skipped and the outbox retries for 20 attempts.
-            val isExistingFileConflict = e.status == 400 && (
-                    e.errorCode == OdinClientErrorCode.ExistingFileWithUniqueId ||
-                            e.message?.startsWith("File already exists with ClientUniqueId") == true)
-            if (isExistingFileConflict) {
+            if (e.isExistingFileWithUniqueId()) {
                 Logger.w(
                     "$TAG uploadNewFile: uniqueId=${request.metadata.appData.uniqueId} " +
                             "got ExistingFileWithUniqueId (server already has this file) — " +

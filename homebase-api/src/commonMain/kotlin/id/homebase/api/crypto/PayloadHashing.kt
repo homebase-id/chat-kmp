@@ -76,15 +76,26 @@ suspend fun FileOperationsProvider.encryptFileStreaming(
     }
 }
 
+/** [plaintextBytes] is what was actually read and encrypted, whatever the platform reported for the source. */
+class HashedPayload(val hash: PayloadHash, val plaintextBytes: Long)
+
 /** Upload the result with this same [payloadKey] IV: the encrypted content hash is bound to it. */
 suspend fun FileOperationsProvider.encryptWithPayloadHash(
     inputPath: String,
     outputPath: String,
     payloadKey: KeyHeader,
     algorithm: PayloadHashAlgorithm,
-): PayloadHash {
+): HashedPayload {
     val contentHasher = algorithm.newHasher()
     val storedHasher = algorithm.newHasher()
-    encryptFileStreaming(inputPath, outputPath, payloadKey, contentHasher, storedHasher)
-    return encryptedPayloadHash(algorithm, storedHasher.digest(), contentHasher.digest(), payloadKey)
+    var plaintextBytes = 0L
+    val countingContentHasher = object : IncrementalHasher by contentHasher {
+        override fun update(input: ByteArray, offset: Int, length: Int) {
+            plaintextBytes += length
+            contentHasher.update(input, offset, length)
+        }
+    }
+    encryptFileStreaming(inputPath, outputPath, payloadKey, countingContentHasher, storedHasher)
+    val hash = encryptedPayloadHash(algorithm, storedHasher.digest(), contentHasher.digest(), payloadKey)
+    return HashedPayload(hash, plaintextBytes)
 }

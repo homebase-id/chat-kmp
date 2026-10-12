@@ -1,0 +1,125 @@
+package id.homebase.core.ui.screens.filesync
+
+import co.touchlab.kermit.Logger
+import id.homebase.api.client.ClientException
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.OdinClientErrorCode
+import id.homebase.api.client.RetryConfig
+import id.homebase.api.client.ServerException
+import id.homebase.api.client.drives.AccessControlList
+import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.files.PayloadHashAlgorithm
+import id.homebase.api.client.drives.files.SecurityGroupType
+import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.drives.upload.UploadAppFileMetaData
+import id.homebase.api.client.drives.upload.UploadFileMetadata
+import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.client.isExistingFileWithUniqueId
+import id.homebase.api.client.isTransientNetworkFailure
+import id.homebase.api.client.withRetryResult
+import id.homebase.api.crypto.ByteArrayUtil
+import id.homebase.api.crypto.encryptWithPayloadHash
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.filesync.FilesyncProtocol
+import kotlin.time.Clock
+import kotlin.uuid.Uuid
+
+/** Creates nodes the way the desktop engine does (filesync hbsync-homebase drive/mod.rs). */
+class FilesyncUploader(
+    private val driveUploadProvider: DriveUploadProvider,
+    private val fileOperationsProvider: FileOperationsProvider,
+    private val clock: Clock = Clock.System,
+) {
+
+    suspend fun createFolder(parentId: Uuid, name: String): Uuid =
+        create(parentId, FilesyncProtocol.FolderFileType, FilesyncNodeContent(v = CONTENT_VERSION, name = name), KeyHeader.newRandom16())
+
+    suspend fun uploadFile(parentId: Uuid, sourcePath: String, name: String, modifiedMs: Long?, onProgress: (Float) -> Unit): Uuid {
+        val mtime = modifiedMs ?: clock.now().toEpochMilliseconds()
+        return try {
+            uploadOnce(parentId, sourcePath, name, mtime, onProgress)
+        } catch (e: ClientException) {
+            // A hash rejection means the bytes changed under us or a bug: start over once from the source, never resend blindly.
+            if (e.errorCode !in HASH_ERRORS) throw e
+            Logger.w(TAG) { "hash rejected (${e.errorCode}); encrypting again" }
+            uploadOnce(parentId, sourcePath, name, mtime, onProgress)
+        }
+    }
+
+    private suspend fun uploadOnce(parentId: Uuid, sourcePath: String, name: String, mtime: Long, onProgress: (Float) -> Unit): Uuid {
+        val keyHeader = KeyHeader.newRandom16()
+        val payloadKey = KeyHeader(ByteArrayUtil.getRndByteArray(16), keyHeader.aesKey)
+        val encryptedPath = fileOperationsProvider.createUploadTempPath("fs_up_", ".bin")
+        try {
+            val hashed = fileOperationsProvider.encryptWithPayloadHash(sourcePath, encryptedPath, payloadKey, PayloadHashAlgorithm.Blake3)
+            val content = FilesyncNodeContent(v = CONTENT_VERSION, name = name, mtime = mtime, size = hashed.plaintextBytes)
+            val payload = PayloadFile(
+                key = FilesyncProtocol.PayloadKey,
+                filePath = encryptedPath,
+                contentType = "application/octet-stream",
+                isPreEncrypted = true,
+                iv = payloadKey.iv,
+                hash = hashed.hash,
+            )
+            return create(parentId, FilesyncProtocol.FileFileType, content, keyHeader, payload, onProgress)
+        } finally {
+            runCatching { fileOperationsProvider.deleteTempFile(encryptedPath) }
+        }
+    }
+
+    private suspend fun create(
+        parentId: Uuid,
+        fileType: Int,
+        content: FilesyncNodeContent,
+        keyHeader: KeyHeader,
+        payload: PayloadFile? = null,
+        onProgress: ((Float) -> Unit)? = null,
+    ): Uuid {
+        val nodeId = Uuid.random()
+        val metadata = UploadFileMetadata(
+            allowDistribution = false,
+            isEncrypted = true,
+            accessControlList = AccessControlList(requiredSecurityGroup = SecurityGroupType.Owner.value),
+            appData = UploadAppFileMetaData(
+                uniqueId = nodeId,
+                groupId = parentId,
+                fileType = fileType,
+                dataType = 0,
+                content = OdinSystemSerializer.serialize(content),
+            ),
+        ).encryptContent(keyHeader)
+        val request = UploadFileRequest(
+            driveId = FilesyncProtocol.DriveAlias,
+            keyHeader = keyHeader,
+            metadata = metadata,
+            payloads = listOfNotNull(payload),
+        )
+        val progress: (suspend (Long, Long?) -> Unit)? = onProgress?.let { report ->
+            { sent, total -> if (total != null && total > 0) report((sent.toFloat() / total).coerceAtMost(1f)) }
+        }
+
+        // Every retry keeps the node id: if an earlier attempt landed, the server answers 4105 instead of making a duplicate.
+        withRetryResult(RetryConfig(maxRetries = 3, retryOn = { it.isTransientNetworkFailure() || it is ServerException }), TAG) { attempt ->
+            try {
+                driveUploadProvider.uploadFile(request, onProgress = progress)
+            } catch (e: ClientException) {
+                if (attempt == 0 || !e.isExistingFileWithUniqueId()) throw e
+                Logger.i(TAG) { "node $nodeId already landed on an earlier attempt" }
+            }
+            Unit
+        }.getOrThrow()
+        return nodeId
+    }
+
+    private companion object {
+        const val TAG = "FilesyncUploader"
+        const val CONTENT_VERSION = 1
+
+        val HASH_ERRORS = setOf(
+            OdinClientErrorCode.PayloadHashMismatch,
+            OdinClientErrorCode.InvalidPayloadHash,
+            OdinClientErrorCode.PayloadHashRequired,
+        )
+    }
+}

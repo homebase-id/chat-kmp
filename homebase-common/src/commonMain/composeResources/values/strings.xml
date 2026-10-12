@@ -2748,6 +2748,17 @@
     <string name="filesync_download_failed">Couldn't download the file.</string>
     <string name="filesync_damaged">This file is damaged, so it wasn't opened.</string>
     <string name="filesync_folder">Folder</string>
+    <string name="filesync_upload">Upload files</string>
+    <string name="filesync_new_folder">New folder</string>
+    <string name="filesync_new_folder_name">Folder name</string>
+    <string name="filesync_create">Create</string>
+    <string name="filesync_cancel">Cancel</string>
+    <string name="filesync_uploading">Uploading…</string>
+    <string name="filesync_upload_failed_row">Upload failed</string>
+    <string name="filesync_upload_failed">Couldn't upload the file.</string>
+    <string name="filesync_too_large">Filesync can't take files over 4 GB yet.</string>
+    <string name="filesync_folder_failed">Couldn't create the folder.</string>
+    <string name="filesync_dismiss">Dismiss</string>
     <string name="filesync_open_failed">No app on this device can open this file.</string>
     <string name="filesync_save_failed">Couldn't save the file.</string>
     <string name="filesync_check_failed">Couldn't check whether Filesync is set up.</string>

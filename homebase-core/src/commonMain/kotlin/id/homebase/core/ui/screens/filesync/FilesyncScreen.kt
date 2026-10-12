@@ -1,6 +1,41 @@
 package id.homebase.core.ui.screens.filesync
 
 import androidx.compose.foundation.clickable
+import kotlinx.coroutines.CancellationException
+import io.github.vinceglb.filekit.size
+import id.homebase.core.util.isDesktop
+import id.homebase.api.client.drives.upload.DriveUploadProvider
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.UploadFile
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.OutlinedTextField
+import co.touchlab.kermit.Logger
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.chat.widget.fileDropTarget
+import id.homebase.core.files.materializeForUpload
+import id.homebase.core.files.modifiedAtMs
+import id.homebase.core.files.toUploadPath
+import id.homebase.resources.filesync_cancel
+import id.homebase.resources.filesync_create
+import id.homebase.resources.filesync_dismiss
+import id.homebase.resources.filesync_folder_failed
+import id.homebase.resources.filesync_new_folder
+import id.homebase.resources.filesync_new_folder_name
+import id.homebase.resources.filesync_too_large
+import id.homebase.resources.filesync_upload
+import id.homebase.resources.filesync_upload_failed
+import id.homebase.resources.filesync_upload_failed_row
+import id.homebase.resources.filesync_uploading
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.dialogs.FileKitMode
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import io.github.vinceglb.filekit.name
+import org.koin.compose.koinInject
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -111,6 +146,8 @@ fun FilesyncScreen(viewModel: FilesyncViewModel) {
                         when (event.error) {
                             FilesyncError.DownloadFailed -> MR.string.filesync_download_failed
                             FilesyncError.Damaged -> MR.string.filesync_damaged
+                            FilesyncError.UploadFailed -> MR.string.filesync_upload_failed
+                            FilesyncError.FolderFailed -> MR.string.filesync_folder_failed
                         }
                     )
                 )
@@ -119,6 +156,44 @@ fun FilesyncScreen(viewModel: FilesyncViewModel) {
     }
 
     BackHandler(enabled = uiState.path.size > 1) { viewModel.onAction(FilesyncUiAction.NavigateUp) }
+
+    val fileOps = koinInject<FileOperationsProvider>()
+    // Copied into the sandbox while the picker's grant is live: Android and iOS revoke it later.
+    val onFilesChosen: (List<PlatformFile>) -> Unit = { files ->
+        val parentId = uiState.path.last().nodeId
+        scope.launch {
+            val (fitting, tooLarge) = files.partition { it.size() <= DriveUploadProvider.MAX_PLAINTEXT_PAYLOAD_BYTES }
+            if (tooLarge.isNotEmpty()) showMessage(MR.string.filesync_too_large)
+            val picked = fitting.mapNotNull { file ->
+                try {
+                    // A desktop pick is a real path with no grant to lose, so it's read in place rather than copied first.
+                    val desktop = isDesktop()
+                    val snapshot = if (desktop) file else file.materializeForUpload(fileOps)
+                    FilesyncPickedFile(snapshot.toUploadPath(fileOps), file.name, file.modifiedAtMs(), ownedCopy = !desktop)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.w("FilesyncScreen", e) { "a picked file couldn't be copied for upload" }
+                    null
+                }
+            }
+            if (picked.size < fitting.size) showMessage(MR.string.filesync_upload_failed)
+            if (picked.isNotEmpty()) viewModel.onAction(FilesyncUiAction.FilesPicked(parentId, picked))
+        }
+    }
+    val filePicker = rememberFilePickerLauncher(type = FileKitType.File(), mode = FileKitMode.Multiple()) { files ->
+        if (!files.isNullOrEmpty()) onFilesChosen(files)
+    }
+    var showNewFolder by remember { mutableStateOf(false) }
+    if (showNewFolder) {
+        NewFolderDialog(
+            onCreate = { name ->
+                showNewFolder = false
+                viewModel.onAction(FilesyncUiAction.CreateFolder(name))
+            },
+            onDismiss = { showNewFolder = false },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -137,12 +212,30 @@ fun FilesyncScreen(viewModel: FilesyncViewModel) {
                         }
                     }
                 },
-                actions = { OverflowMenu() },
+                actions = {
+                    IconButton(onClick = { showNewFolder = true }) {
+                        Icon(Icons.Outlined.CreateNewFolder, contentDescription = stringResource(MR.string.filesync_new_folder))
+                    }
+                    OverflowMenu()
+                },
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { filePicker.launch() }) {
+                Icon(Icons.Outlined.UploadFile, contentDescription = stringResource(MR.string.filesync_upload))
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+        val uploads by viewModel.uploads.collectAsStateWithLifecycle()
+        val currentFolder = uiState.path.last().nodeId
+        val uploadsHere = uploads.filter { it.parentId == currentFolder }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .fileDropTarget(enabled = true, onDragPreviewChanged = {}, onFilesDropped = onFilesChosen),
+        ) {
             if (uiState.path.size > 1) {
                 Breadcrumbs(path = uiState.path, onCrumb = { viewModel.onAction(FilesyncUiAction.NavigateToCrumb(it)) })
             }
@@ -152,8 +245,8 @@ fun FilesyncScreen(viewModel: FilesyncViewModel) {
                 modifier = Modifier.fillMaxSize(),
             ) {
                 when {
-                    uiState.isLoading && uiState.nodes.isEmpty() -> CenteredBox { CircularProgressIndicator() }
-                    uiState.loadFailed && uiState.nodes.isEmpty() -> CenteredBox {
+                    uiState.isLoading && uiState.nodes.isEmpty() && uploadsHere.isEmpty() -> CenteredBox { CircularProgressIndicator() }
+                    uiState.loadFailed && uiState.nodes.isEmpty() && uploadsHere.isEmpty() -> CenteredBox {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(stringResource(MR.string.filesync_load_failed))
                             TextButton(onClick = { viewModel.onAction(FilesyncUiAction.Refresh) }) {
@@ -161,13 +254,21 @@ fun FilesyncScreen(viewModel: FilesyncViewModel) {
                             }
                         }
                     }
-                    uiState.nodes.isEmpty() -> CenteredBox {
+                    uiState.nodes.isEmpty() && uploadsHere.isEmpty() -> CenteredBox {
                         Text(
                             text = stringResource(MR.string.filesync_folder_empty),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    // Bottom padding keeps the last row's buttons clear of the upload button.
+                    else -> LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
+                        items(uploadsHere, key = { "upload-${it.id}" }) { upload ->
+                            UploadRow(
+                                upload = upload,
+                                onRetry = { viewModel.onAction(FilesyncUiAction.RetryUpload(upload.id)) },
+                                onDismiss = { viewModel.onAction(FilesyncUiAction.DismissUpload(upload.id)) },
+                            )
+                        }
                         items(uiState.nodes, key = { it.nodeId.toString() }) { node ->
                             NodeRow(
                                 node = node,
@@ -182,6 +283,68 @@ fun FilesyncScreen(viewModel: FilesyncViewModel) {
             }
         }
     }
+}
+
+@Composable
+private fun UploadRow(
+    upload: FilesyncUpload,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(upload.file.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        supportingContent = {
+            Text(
+                stringResource(if (upload.failed) MR.string.filesync_upload_failed_row else MR.string.filesync_uploading),
+                color = if (upload.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        leadingContent = {
+            Icon(Icons.Outlined.UploadFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        },
+        trailingContent = {
+            if (upload.failed) {
+                Row {
+                    TextButton(onClick = onRetry) { Text(stringResource(MR.string.filesync_retry)) }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.filesync_dismiss))
+                    }
+                }
+            } else {
+                val fraction = upload.progress
+                if (fraction == null) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                } else {
+                    CircularProgressIndicator(progress = { fraction }, modifier = Modifier.size(24.dp))
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun NewFolderDialog(onCreate: (String) -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(MR.string.filesync_new_folder)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(MR.string.filesync_new_folder_name)) },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onCreate(name.trim()) }, enabled = name.isNotBlank()) {
+                Text(stringResource(MR.string.filesync_create))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(MR.string.filesync_cancel)) }
+        },
+    )
 }
 
 @Composable

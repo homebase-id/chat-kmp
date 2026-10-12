@@ -22,6 +22,13 @@ class ClientException(
  * (#1008). Narrow by design (only VersionTagMismatch) so a genuine bad-request bug still crashes.
  * Walks the cause chain defensively (guards against a cyclic chain).
  */
+/** The server already has a file with this uniqueId; it sometimes collapses the code to UnhandledScenario but keeps the title. */
+fun ClientException.isExistingFileWithUniqueId(): Boolean =
+    status == 400 && (
+        errorCode == OdinClientErrorCode.ExistingFileWithUniqueId ||
+            message?.startsWith("File already exists with ClientUniqueId") == true
+        )
+
 fun Throwable.isRecoverableServerConflict(): Boolean {
     val seen = HashSet<Throwable>()
     var cur: Throwable? = this

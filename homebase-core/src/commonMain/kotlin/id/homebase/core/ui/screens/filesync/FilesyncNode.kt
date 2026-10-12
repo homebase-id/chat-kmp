@@ -27,8 +27,9 @@ class FilesyncPayload(
     val hash: PayloadHash?,
 )
 
+/** The encrypted appData.content of a node; [mtime] and [size] are for files only. */
 @Serializable
-private data class FilesyncNodeContent(
+internal data class FilesyncNodeContent(
     val v: Int = 0,
     val name: String? = null,
     val mtime: Long? = null,

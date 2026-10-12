@@ -17,6 +17,9 @@ import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
+import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.plugins.HttpTimeoutConfig
+import io.ktor.client.plugins.timeout
 import io.ktor.client.statement.readRawBytes
 import io.ktor.http.contentLength
 import io.ktor.utils.io.cancel
@@ -311,6 +314,11 @@ abstract class OdinApiProviderBase(
     }
 
 
+    // An upload's duration grows with its size, so only a stall should end it: the client's socket timeout still does.
+    private fun HttpRequestBuilder.unboundedUploadTimeout() {
+        timeout { requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS }
+    }
+
     protected suspend fun plainPostMultipart(
         url: String,
         token: String,
@@ -324,6 +332,7 @@ abstract class OdinApiProviderBase(
                 httpClient.post(url) {
                     bearerAuth(token)
                     setBody(formData)
+                    unboundedUploadTimeout()
 
                     onUpload { sent, total ->
                         onProgress?.invoke(sent, total)
@@ -347,6 +356,7 @@ abstract class OdinApiProviderBase(
                 httpClient.patch(url) {
                     bearerAuth(token)
                     setBody(formData)
+                    unboundedUploadTimeout()
 
                     onUpload { sent, total ->
                         onProgress?.invoke(sent, total)
