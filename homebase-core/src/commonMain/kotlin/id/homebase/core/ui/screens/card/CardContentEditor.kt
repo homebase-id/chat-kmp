@@ -21,9 +21,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -54,6 +54,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,6 +71,7 @@ import id.homebase.resources.profile_avatar_edit_remove
 import id.homebase.resources.profile_card_change_design
 import id.homebase.resources.profile_card_content_could_add
 import id.homebase.resources.profile_card_content_name_required
+import id.homebase.resources.profile_card_content_required_hint
 import id.homebase.resources.profile_card_content_on_card
 import id.homebase.resources.profile_card_import_action
 import id.homebase.resources.profile_card_import_count
@@ -367,7 +369,10 @@ private fun EditorRow(
         enabled = enabled,
         color = colors.surfaceContainerHigh,
         shape = shape,
-        modifier = Modifier.fillMaxWidth().semantics { onClick(label = edit) { onOpen(); true } },
+        modifier = Modifier.fillMaxWidth().semantics {
+            onClick(label = edit) { onOpen(); true }
+            if (item.required) stateDescription = required
+        },
     ) {
         Row(
             modifier = Modifier.heightIn(min = 64.dp).padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
@@ -391,6 +396,13 @@ private fun EditorRow(
                     softWrap = prose,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (item.required) {
+                    Text(
+                        text = stringResource(MR.string.profile_card_content_required_hint),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
                 // The section already says who sees an item on every card.
                 if (!item.everyCard) {
                     Spacer(Modifier.height(2.dp))
@@ -400,13 +412,12 @@ private fun EditorRow(
             Spacer(Modifier.width(8.dp))
             when {
                 pending -> LoadingIndicator(modifier = Modifier.size(40.dp).padding(8.dp))
-                item.required -> Icon(
-                    Icons.Filled.Lock,
-                    contentDescription = required,
+                item.required || item.locked -> Icon(
+                    Icons.Outlined.Edit,
+                    contentDescription = null,
                     tint = colors.onSurfaceVariant,
                     modifier = Modifier.size(40.dp).padding(8.dp),
                 )
-                item.locked -> Unit
                 item.shown -> IconButton(onClick = onToggle, enabled = enabled) {
                     Icon(Icons.Outlined.VisibilityOff, contentDescription = hide)
                 }
