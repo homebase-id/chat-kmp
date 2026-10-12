@@ -113,7 +113,6 @@ class ProfileAvatarEditViewModel(
     /** Which tier an in-flight crop request belongs to, so the result routes back correctly. */
     private val cropRequestSlot = mutableMapOf<Uuid, PhotoSlot>()
 
-    /** Slots whose cropped photo uploads without a separate Save press. */
     private val saveOnCropSlots = mutableSetOf<PhotoSlot>()
 
     init {

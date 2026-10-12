@@ -212,7 +212,6 @@ private const val REVEAL_MARGIN = 0.6f
 private val BLOCK_TILE_SPACING = 6.dp
 private val BLOCK_TILE_CORNER = 12.dp
 
-/** Every control comes from the design's [CardDesignSpec]. */
 @Composable
 internal fun CardOptionsPanel(
     design: String,

@@ -119,7 +119,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditAction
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditEvent
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditViewModel
@@ -197,7 +196,6 @@ fun ProfileCardEditorScreen(
     val host by viewModel.host.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val uriHandler = getUriHandler()
-    val scope = rememberCoroutineScope()
     val errAvatarUpload = stringResource(MR.string.profile_avatar_edit_error_upload)
     val errAvatarTooLarge = stringResource(MR.string.profile_avatar_edit_error_too_large)
     val errAvatarDelete = stringResource(MR.string.profile_avatar_edit_error_delete)
@@ -269,7 +267,7 @@ fun ProfileCardEditorScreen(
         if (file != null && target != null) {
             avatarViewModel.onAction(
                 ProfileAvatarEditAction.PhotoPicked(
-                    visibility = if (target is CardAudience.Circle) ProfileVisibility.CONNECTED else ProfileVisibility.ANONYMOUS,
+                    visibility = target.photoVisibility,
                     file = file,
                     circleId = (target as? CardAudience.Circle)?.id,
                     saveOnCrop = true,
@@ -321,8 +319,7 @@ fun ProfileCardEditorScreen(
                 photoPicker.launch()
             },
             onRemovePhoto = {
-                val visibility = if (circle == null) ProfileVisibility.ANONYMOUS else ProfileVisibility.CONNECTED
-                avatarViewModel.onAction(ProfileAvatarEditAction.RemoveRequested(visibility, circle?.id))
+                avatarViewModel.onAction(ProfileAvatarEditAction.RemoveRequested(card.photoVisibility, circle?.id))
             },
             snackbarHostState = snackbarHostState,
             onRequestDesignAccess = viewModel::onPublishRetry,
@@ -384,7 +381,6 @@ internal fun ProfileCardEditorContent(
             }
             // The viewer's sheet width: the preview lays the card out there and scales it down, so it wraps like the saved card.
             val cardWidth = minOf(maxWidth, WIDE_SHEET_MAX_WIDTH)
-            // The Content editor is a long list, so the card steps back to a whole, smaller preview.
             val contentOpen = mode == EditorMode.Content
             val textGrowth = (LocalDensity.current.fontScale - 1f).coerceIn(0f, 1f)
             val grow = (1f + textGrowth).coerceAtMost(LARGE_TEXT_SCALE)

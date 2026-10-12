@@ -54,6 +54,9 @@ internal fun CardAudience.aclFilter(): AclFilter = when (this) {
     is CardAudience.Circle -> { acl -> acl.isVisibleToCircle(id) }
 }
 
+internal val CardAudience.photoVisibility: ProfileVisibility
+    get() = if (this is CardAudience.Circle) ProfileVisibility.CONNECTED else ProfileVisibility.ANONYMOUS
+
 internal fun List<ProfileAttribute>.photoFor(card: CardAudience): ProfileAttribute? = visiblePhoto(card.aclFilter())
 
 // Picked in the same order as photoFor, so with several Public photos the one the card shows is the one it owns.
