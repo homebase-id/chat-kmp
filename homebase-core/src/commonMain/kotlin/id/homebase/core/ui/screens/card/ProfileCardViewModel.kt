@@ -30,6 +30,7 @@ import id.homebase.api.youauth.MissingPermissionsResult
 import id.homebase.api.youauth.PermissionCheckResult
 import id.homebase.api.youauth.PermissionExtensionManager
 import id.homebase.api.youauth.SecurityContextProvider
+import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.ui.screens.contactbook.isOwnedByContactsApp
@@ -262,7 +263,7 @@ class DefaultProfileCardSource(
     // Listing system circles is owner-only, but the server creates both at startup, so they always exist.
     override suspend fun serverCircleIds(): Set<String> =
         connectionProvider.getCirclesWithMembers(includeSystemCircle = false).map { it.circle.id }.toSet() +
-            setOf(CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE, AUTO_CONNECTIONS_SYSTEM_CIRCLE)
+            setOf(CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE, AUTO_CONNECTIONS_CIRCLE_ID)
 
     override suspend fun saveCircleCard(card: ProfileCard) = cardRepository.saveCircle(card)
 
@@ -314,9 +315,6 @@ internal fun contactsCircles(circles: List<CircleWithMembers>): List<CardCircle>
         .map { CardCircle(it.circle.id, it.circle.name) }
         .distinctBy { it.id.lowercase() }
         .sortedBy { it.name.lowercase() }
-
-// Odin's SystemCircleConstants.AutoConnectionsCircleId.
-private const val AUTO_CONNECTIONS_SYSTEM_CIRCLE = "9e22b42952f74d2580e11250b651d343"
 
 private data class UnsavedCard(val design: String, val overrides: CardOverrides?)
 
@@ -600,16 +598,7 @@ class ProfileCardViewModel(
             persistTemplateIfUnsaved(card)
             val kept = existingCircles(audience.circleIds)
             val saved = attempt("saving profile content $type") { source.saveProfileAttribute(type, data, audience.keepingOtherCircles(kept), existing) }
-            if (saved == null) {
-                _uiState.update { it.copy(isContentBusy = false, contentFailures = it.contentFailures + 1) }
-                _events.tryEmit(ProfileCardEvent.ContentSaveFailed)
-                return@launch
-            }
-            content = content?.let { c -> c.copy(attributes = c.attributes.filterNot { it.id == saved.id } + saved) }
-            _uiState.update {
-                it.copy(isContentBusy = false, contentSaves = it.contentSaves + 1, attributes = it.attributes.filterNot { a -> a.id == saved.id } + saved)
-            }
-            render()
+            if (saved == null) contentSaveFailed() else applyAttributes(listOf(saved), saved = true)
         }
     }
 
@@ -660,8 +649,7 @@ class ProfileCardViewModel(
                     plan.forEach { audiencesBeforePublic.remove(it.attribute.id) }
                     val rolledBack = restoreAcls(written, kept).attributes
                     applyAttributes(rolledBack, saved = false)
-                    _uiState.update { it.copy(contentFailures = it.contentFailures + 1) }
-                    _events.tryEmit(ProfileCardEvent.ContentSaveFailed)
+                    contentSaveFailed()
                     return@launch
                 }
                 written += step.attribute to saved
@@ -684,10 +672,7 @@ class ProfileCardViewModel(
             val restored = restoreAcls(previous.mapNotNull { p -> current[p.id]?.let { p to it } }, kept)
             importUndo = restored.failed.takeIf { it.isNotEmpty() }
             applyAttributes(restored.attributes, saved = restored.failed.isEmpty())
-            if (restored.failed.isNotEmpty()) {
-                _uiState.update { it.copy(contentFailures = it.contentFailures + 1) }
-                _events.tryEmit(ProfileCardEvent.ContentSaveFailed)
-            }
+            if (restored.failed.isNotEmpty()) contentSaveFailed()
         }
     }
 
@@ -722,6 +707,11 @@ class ProfileCardViewModel(
             )
         }
         render()
+    }
+
+    private fun contentSaveFailed() {
+        _uiState.update { it.copy(isContentBusy = false, contentFailures = it.contentFailures + 1) }
+        _events.tryEmit(ProfileCardEvent.ContentSaveFailed)
     }
 
     fun onPreviewDiscarded() {
