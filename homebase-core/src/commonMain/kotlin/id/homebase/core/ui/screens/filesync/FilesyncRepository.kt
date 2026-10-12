@@ -77,8 +77,8 @@ class FilesyncRepository(
 
     // The name comes from any desktop OS; only a plain alphanumeric extension reaches the temp path.
     private fun extensionOf(name: String): String =
-        name.substringAfterLast('.', "").takeIf { ext -> ext.length in 1..10 && ext.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' } }
-            ?.let { ".$it" }
+        FilesyncNames.split(name).second
+            .takeIf { ext -> ext.length in 2..11 && ext.drop(1).all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' } }
             .orEmpty()
 
     fun discard(path: String) {

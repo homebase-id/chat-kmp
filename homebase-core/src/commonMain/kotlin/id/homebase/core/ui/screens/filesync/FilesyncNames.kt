@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
 import id.homebase.api.util.toNfc
+import id.homebase.core.util.trimToUtf8Boundary
 
 /** Filesync's name rules (filesync docs/spec/node-schema-v1.md): NFC, at most 255 UTF-8 bytes, no / or NUL, not . or .. */
 internal object FilesyncNames {
@@ -27,7 +28,7 @@ internal object FilesyncNames {
         return if (replaced.isEmpty() || replaced == "." || replaced == "..") FALLBACK else replaced
     }
 
-    private fun split(name: String): Pair<String, String> {
+    fun split(name: String): Pair<String, String> {
         val dot = name.lastIndexOf('.')
         // A leading dot is a hidden file's name, not an extension; an oversized "extension" is kept whole in the stem.
         if (dot <= 0 || name.length - dot > 32) return name to ""
@@ -36,17 +37,9 @@ internal object FilesyncNames {
 
     // Only the stem is cut: cutting the " (n)" suffix could turn a numbered name back into the taken one.
     private fun fit(stem: String, suffix: String, extension: String): String {
-        var trimmed = stem
-        while (trimmed.isNotEmpty() && utf8Length(trimmed + suffix + extension) > MAX_BYTES) {
-            trimmed = trimmed.dropLastCodePoint()
-        }
+        val budget = (MAX_BYTES - (suffix + extension).encodeToByteArray().size).coerceAtLeast(0)
+        val stemBytes = stem.encodeToByteArray()
+        val trimmed = if (stemBytes.size <= budget) stem else stemBytes.copyOf(budget).trimToUtf8Boundary().decodeToString()
         return trimmed.ifEmpty { FALLBACK } + suffix + extension
-    }
-
-    private fun utf8Length(s: String): Int = s.encodeToByteArray().size
-
-    private fun String.dropLastCodePoint(): String {
-        val cut = if (length >= 2 && this[length - 1].isLowSurrogate() && this[length - 2].isHighSurrogate()) 2 else 1
-        return substring(0, length - cut)
     }
 }

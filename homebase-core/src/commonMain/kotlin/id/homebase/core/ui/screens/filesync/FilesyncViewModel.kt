@@ -35,10 +35,6 @@ class FilesyncViewModel(
     private val _uiState = MutableStateFlow(FilesyncUiState(path = listOf(FilesyncCrumb(FilesyncProtocol.RootNodeId, null))))
     val uiState: StateFlow<FilesyncUiState> = _uiState.asStateFlow()
 
-    // Apart from uiState so a download's progress redraws one indicator, not the screen.
-    private val _transferProgress = MutableStateFlow(0f)
-    val transferProgress: StateFlow<Float> = _transferProgress.asStateFlow()
-
     val uploads: StateFlow<List<FilesyncUpload>> = uploadQueue.uploads
 
     // Buffered so a download that finishes while the screen is away is still handed off on return.
@@ -128,7 +124,7 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.SaveHandedOff -> repository.discard(action.path)
 
-            is FilesyncUiAction.FilesPicked -> uploadQueue.enqueue(action.parentId, action.files)
+            is FilesyncUiAction.FilesPicked -> uploadQueue.add(_uiState.value.path.last().nodeId, action.files)
 
             is FilesyncUiAction.RetryUpload -> uploadQueue.retry(action.id)
 
@@ -165,10 +161,11 @@ class FilesyncViewModel(
         val payload = payloads[node.nodeId] ?: return
         if (transferJob?.isActive == true) return
         transferJob = viewModelScope.launch {
-            _transferProgress.value = 0f
-            _uiState.update { it.copy(transferNodeId = node.nodeId) }
+            _uiState.update { it.copy(transfer = FilesyncTransfer(node.nodeId)) }
             try {
-                val path = repository.download(node.name, payload, forOpen = !save) { _transferProgress.value = it }
+                val path = repository.download(node.name, payload, forOpen = !save) { progress ->
+                    _uiState.update { it.copy(transfer = it.transfer?.copy(progress = progress)) }
+                }
                 _events.send(
                     when {
                         path == null -> FilesyncUiEvent.Error(FilesyncError.DownloadFailed)
@@ -185,7 +182,7 @@ class FilesyncViewModel(
                 Logger.e(e, TAG) { "download of ${node.nodeId} failed" }
                 _events.send(FilesyncUiEvent.Error(FilesyncError.DownloadFailed))
             } finally {
-                _uiState.update { it.copy(transferNodeId = null) }
+                _uiState.update { it.copy(transfer = null) }
             }
         }
     }

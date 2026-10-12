@@ -70,16 +70,15 @@ class PayloadHashTest {
         fs.createDirectories("/in".toPath())
         fs.write("/in/plain".toPath()) { write(input) }
 
-        val hashed = fileOps.encryptWithPayloadHash("/in/plain", "/in/cipher", payloadKey, PayloadHashAlgorithm.Blake3)
+        val hashed = fileOps.encryptWithPayloadHash("/in/plain", "/in/cipher", payloadKey.aesKey, PayloadHashAlgorithm.Blake3)
         val hash = hashed.hash
         assertEquals(input.size.toLong(), hashed.plaintextBytes)
 
         val ciphertext = fs.read("/in/cipher".toPath()) { readByteArray() }
-        assertContentEquals(AesCbc.encrypt(input, payloadKey.aesKey, payloadKey.iv), ciphertext)
+        assertContentEquals(AesCbc.encrypt(input, payloadKey.aesKey, hashed.iv), ciphertext)
         val storedDigest = PayloadHashAlgorithm.Blake3.newHasher().apply { update(ciphertext) }.digest()
         assertContentEquals(storedDigest, Base64.decode(hash.storedHash))
-        assertEquals(blake3, hash.plaintextContentHash(payloadKey)?.toHexString())
-        assertEquals(encryptedBlake3, Base64.decode(hash.contentHash).toHexString())
+        assertEquals(blake3, hash.plaintextContentHash(KeyHeader(hashed.iv, payloadKey.aesKey))?.toHexString())
     }
 
     @Test

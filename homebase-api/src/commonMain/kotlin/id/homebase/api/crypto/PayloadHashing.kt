@@ -1,6 +1,7 @@
 package id.homebase.api.crypto
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.SecureByteArray
 import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.file.FileOperationsProvider
@@ -76,16 +77,19 @@ suspend fun FileOperationsProvider.encryptFileStreaming(
     }
 }
 
-/** [plaintextBytes] is what was actually read and encrypted, whatever the platform reported for the source. */
-class HashedPayload(val hash: PayloadHash, val plaintextBytes: Long)
+/**
+ * [iv] is the fresh payload IV the upload must send: the encrypted content hash is bound to it.
+ * [plaintextBytes] is what was actually read and encrypted, whatever the platform reported for the source.
+ */
+class HashedPayload(val hash: PayloadHash, val iv: ByteArray, val plaintextBytes: Long)
 
-/** Upload the result with this same [payloadKey] IV: the encrypted content hash is bound to it. */
 suspend fun FileOperationsProvider.encryptWithPayloadHash(
     inputPath: String,
     outputPath: String,
-    payloadKey: KeyHeader,
+    aesKey: SecureByteArray,
     algorithm: PayloadHashAlgorithm,
 ): HashedPayload {
+    val payloadKey = KeyHeader(ByteArrayUtil.getRndByteArray(16), aesKey)
     val contentHasher = algorithm.newHasher()
     val storedHasher = algorithm.newHasher()
     var plaintextBytes = 0L
@@ -97,5 +101,5 @@ suspend fun FileOperationsProvider.encryptWithPayloadHash(
     }
     encryptFileStreaming(inputPath, outputPath, payloadKey, countingContentHasher, storedHasher)
     val hash = encryptedPayloadHash(algorithm, storedHasher.digest(), contentHasher.digest(), payloadKey)
-    return HashedPayload(hash, plaintextBytes)
+    return HashedPayload(hash, payloadKey.iv, plaintextBytes)
 }

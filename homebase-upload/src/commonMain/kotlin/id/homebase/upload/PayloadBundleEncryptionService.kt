@@ -175,13 +175,8 @@ class PayloadBundleEncryptionService(
         // between that probe and this read. A typed throw keeps the send fail-soft.
         if (!fileOps.sourceExists(inputFile)) throw SourceUnavailableException(inputFile)
 
-        // Encrypted, ready-to-transmit → the DURABLE outbox staging dir (not the
-        // disposable upload-temp): this file rides an outbox row until the send
-        // completes and must survive sweeps/OS reclaim; the outbox reaps it on send
-        // success / drop (#842). Encryption is STREAMED (encryptFileStreaming, shared with
-        // VideoPayloadProcessor.encryptVideoFile) so peak memory is ~one chunk, not
-        // ~2× the file; the ciphertext is byte-identical to the bulk encryptDataAes path,
-        // pinned by PayloadBundleEncryptFileStreamTest.
+        // The durable outbox staging dir, not upload-temp: this file rides an outbox row until
+        // the send completes and must survive sweeps; the outbox reaps it on success or drop.
         val path = fileOps.createOutboxStagingPath(prefix = "enc", suffix = ".encrypted")
         fileOps.encryptFileStreaming(inputFile, path, keyHeader)
 

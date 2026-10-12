@@ -1,11 +1,15 @@
 package id.homebase.core.ui.screens.filesync
 
 import androidx.compose.runtime.Immutable
+import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
 /** One step of the breadcrumb trail; [name] is null for the top level. */
 @Immutable
 data class FilesyncCrumb(val nodeId: Uuid, val name: String?)
+
+@Immutable
+data class FilesyncTransfer(val nodeId: Uuid, val progress: Float = 0f)
 
 /** [ownedCopy]: [path] is the app's own copy, deleted once the upload is done with it. */
 @Immutable
@@ -31,7 +35,7 @@ data class FilesyncUiState(
     val nodes: List<FilesyncNode> = emptyList(),
     val isLoading: Boolean = false,
     val loadFailed: Boolean = false,
-    val transferNodeId: Uuid? = null,
+    val transfer: FilesyncTransfer? = null,
 )
 
 sealed interface FilesyncUiAction {
@@ -45,14 +49,13 @@ sealed interface FilesyncUiAction {
     data class SaveClicked(val node: FilesyncNode) : FilesyncUiAction
     data object CancelTransfer : FilesyncUiAction
     data class SaveHandedOff(val path: String) : FilesyncUiAction
-    /** [parentId] is the folder shown when the files were picked, not when their copies are ready. */
-    data class FilesPicked(val parentId: Uuid, val files: List<FilesyncPickedFile>) : FilesyncUiAction
+    data class FilesPicked(val files: List<PlatformFile>) : FilesyncUiAction
     data class CreateFolder(val name: String) : FilesyncUiAction
     data class RetryUpload(val id: Uuid) : FilesyncUiAction
     data class DismissUpload(val id: Uuid) : FilesyncUiAction
 }
 
-enum class FilesyncError { DownloadFailed, Damaged, UploadFailed, FolderFailed }
+enum class FilesyncError { DownloadFailed, Damaged, UploadFailed, TooLarge, FolderFailed }
 
 sealed interface FilesyncUiEvent {
     data class OpenFile(val path: String) : FilesyncUiEvent

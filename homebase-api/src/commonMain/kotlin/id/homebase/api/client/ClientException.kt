@@ -9,6 +9,19 @@ class ClientException(
     cause: Throwable? = null
 ) : OdinApiException(status, message, correlationId, problem)
 
+/** The server already has a file with this uniqueId; it sometimes collapses the code to UnhandledScenario but keeps the title. */
+fun ClientException.isExistingFileWithUniqueId(): Boolean =
+    status == 400 && (
+        errorCode == OdinClientErrorCode.ExistingFileWithUniqueId ||
+            message?.startsWith("File already exists with ClientUniqueId") == true
+        )
+
+/** The server refused a payload's hashes: the bytes changed while uploading, or the hash was built wrong. */
+fun ClientException.isPayloadHashRejection(): Boolean =
+    errorCode == OdinClientErrorCode.PayloadHashMismatch ||
+        errorCode == OdinClientErrorCode.InvalidPayloadHash ||
+        errorCode == OdinClientErrorCode.PayloadHashRequired
+
 /**
  * True when [this] (or anything in its cause chain) is a **recoverable optimistic-concurrency
  * conflict** — a server 400 with [OdinClientErrorCode.VersionTagMismatch] (covers both "Missing"
@@ -22,13 +35,6 @@ class ClientException(
  * (#1008). Narrow by design (only VersionTagMismatch) so a genuine bad-request bug still crashes.
  * Walks the cause chain defensively (guards against a cyclic chain).
  */
-/** The server already has a file with this uniqueId; it sometimes collapses the code to UnhandledScenario but keeps the title. */
-fun ClientException.isExistingFileWithUniqueId(): Boolean =
-    status == 400 && (
-        errorCode == OdinClientErrorCode.ExistingFileWithUniqueId ||
-            message?.startsWith("File already exists with ClientUniqueId") == true
-        )
-
 fun Throwable.isRecoverableServerConflict(): Boolean {
     val seen = HashSet<Throwable>()
     var cur: Throwable? = this

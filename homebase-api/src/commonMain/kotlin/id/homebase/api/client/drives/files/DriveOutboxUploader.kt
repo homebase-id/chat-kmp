@@ -124,12 +124,6 @@ class DriveOutboxUploader(
         // from a previous install), convert the failed UploadNewFile into an
         // UpdateFileByUniqueId so the client's fresh content lands on the server.
         } catch (e: ClientException) {
-            // Route through retryAsUpdate whenever the server reports the uniqueId
-            // already exists. The proper errorCode is ExistingFileWithUniqueId, but
-            // the server also reports this condition as errorCode=UnhandledScenario
-            // with title "File already exists with ClientUniqueId: [...]" — the
-            // title match is a defensive fallback for that case. Without it the
-            // recovery path is skipped and the outbox retries for 20 attempts.
             if (e.isExistingFileWithUniqueId()) {
                 Logger.w(
                     "$TAG uploadNewFile: uniqueId=${request.metadata.appData.uniqueId} " +

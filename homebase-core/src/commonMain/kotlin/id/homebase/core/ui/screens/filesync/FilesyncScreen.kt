@@ -1,43 +1,10 @@
 package id.homebase.core.ui.screens.filesync
 
 import androidx.compose.foundation.clickable
-import kotlinx.coroutines.CancellationException
-import io.github.vinceglb.filekit.size
-import id.homebase.core.util.isDesktop
-import id.homebase.api.client.drives.upload.DriveUploadProvider
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.CreateNewFolder
-import androidx.compose.material.icons.outlined.UploadFile
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.OutlinedTextField
-import co.touchlab.kermit.Logger
-import id.homebase.api.file.FileOperationsProvider
-import id.homebase.chat.widget.fileDropTarget
-import id.homebase.core.files.materializeForUpload
-import id.homebase.core.files.modifiedAtMs
-import id.homebase.core.files.toUploadPath
-import id.homebase.resources.filesync_cancel
-import id.homebase.resources.filesync_create
-import id.homebase.resources.filesync_dismiss
-import id.homebase.resources.filesync_folder_failed
-import id.homebase.resources.filesync_new_folder
-import id.homebase.resources.filesync_new_folder_name
-import id.homebase.resources.filesync_too_large
-import id.homebase.resources.filesync_upload
-import id.homebase.resources.filesync_upload_failed
-import id.homebase.resources.filesync_upload_failed_row
-import id.homebase.resources.filesync_uploading
-import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.dialogs.FileKitMode
-import io.github.vinceglb.filekit.dialogs.FileKitType
-import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import io.github.vinceglb.filekit.name
-import org.koin.compose.koinInject
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -49,17 +16,23 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.UploadFile
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -83,34 +56,49 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.chat.widget.fileDropTarget
 import id.homebase.common.util.formatBytes
 import id.homebase.core.filesync.FilesyncProtocol
-import id.homebase.core.util.formatMediumDate
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
-import kotlinx.coroutines.flow.StateFlow
+import id.homebase.core.util.formatMediumDate
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
+import id.homebase.resources.create
 import id.homebase.resources.filesync_cancel_download
 import id.homebase.resources.filesync_check_failed
 import id.homebase.resources.filesync_damaged
 import id.homebase.resources.filesync_desktop_download
+import id.homebase.resources.filesync_dismiss
 import id.homebase.resources.filesync_download_failed
 import id.homebase.resources.filesync_folder
 import id.homebase.resources.filesync_folder_empty
+import id.homebase.resources.filesync_folder_failed
 import id.homebase.resources.filesync_label
 import id.homebase.resources.filesync_load_failed
 import id.homebase.resources.filesync_more
+import id.homebase.resources.filesync_new_folder
+import id.homebase.resources.filesync_new_folder_name
 import id.homebase.resources.filesync_open_failed
-import id.homebase.resources.filesync_save_failed
 import id.homebase.resources.filesync_retry
 import id.homebase.resources.filesync_save
+import id.homebase.resources.filesync_save_failed
+import id.homebase.resources.filesync_too_large
+import id.homebase.resources.filesync_upload
+import id.homebase.resources.filesync_upload_failed
+import id.homebase.resources.filesync_upload_failed_row
+import id.homebase.resources.filesync_uploading
 import id.homebase.resources.menu_back
-import kotlinx.io.files.Path
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.dialogs.FileKitMode
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import kotlin.time.Instant
 import kotlinx.coroutines.launch
+import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
-import kotlin.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -147,6 +135,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel) {
                             FilesyncError.DownloadFailed -> MR.string.filesync_download_failed
                             FilesyncError.Damaged -> MR.string.filesync_damaged
                             FilesyncError.UploadFailed -> MR.string.filesync_upload_failed
+                            FilesyncError.TooLarge -> MR.string.filesync_too_large
                             FilesyncError.FolderFailed -> MR.string.filesync_folder_failed
                         }
                     )
@@ -157,30 +146,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel) {
 
     BackHandler(enabled = uiState.path.size > 1) { viewModel.onAction(FilesyncUiAction.NavigateUp) }
 
-    val fileOps = koinInject<FileOperationsProvider>()
-    // Copied into the sandbox while the picker's grant is live: Android and iOS revoke it later.
-    val onFilesChosen: (List<PlatformFile>) -> Unit = { files ->
-        val parentId = uiState.path.last().nodeId
-        scope.launch {
-            val (fitting, tooLarge) = files.partition { it.size() <= DriveUploadProvider.MAX_PLAINTEXT_PAYLOAD_BYTES }
-            if (tooLarge.isNotEmpty()) showMessage(MR.string.filesync_too_large)
-            val picked = fitting.mapNotNull { file ->
-                try {
-                    // A desktop pick is a real path with no grant to lose, so it's read in place rather than copied first.
-                    val desktop = isDesktop()
-                    val snapshot = if (desktop) file else file.materializeForUpload(fileOps)
-                    FilesyncPickedFile(snapshot.toUploadPath(fileOps), file.name, file.modifiedAtMs(), ownedCopy = !desktop)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Logger.w("FilesyncScreen", e) { "a picked file couldn't be copied for upload" }
-                    null
-                }
-            }
-            if (picked.size < fitting.size) showMessage(MR.string.filesync_upload_failed)
-            if (picked.isNotEmpty()) viewModel.onAction(FilesyncUiAction.FilesPicked(parentId, picked))
-        }
-    }
+    val onFilesChosen: (List<PlatformFile>) -> Unit = { viewModel.onAction(FilesyncUiAction.FilesPicked(it)) }
     val filePicker = rememberFilePickerLauncher(type = FileKitType.File(), mode = FileKitMode.Multiple()) { files ->
         if (!files.isNullOrEmpty()) onFilesChosen(files)
     }
@@ -244,17 +210,13 @@ fun FilesyncScreen(viewModel: FilesyncViewModel) {
                 onRefresh = { viewModel.onAction(FilesyncUiAction.Refresh) },
                 modifier = Modifier.fillMaxSize(),
             ) {
+                val nothingToShow = uiState.nodes.isEmpty() && uploadsHere.isEmpty()
                 when {
-                    uiState.isLoading && uiState.nodes.isEmpty() && uploadsHere.isEmpty() -> CenteredBox { CircularProgressIndicator() }
-                    uiState.loadFailed && uiState.nodes.isEmpty() && uploadsHere.isEmpty() -> CenteredBox {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(stringResource(MR.string.filesync_load_failed))
-                            TextButton(onClick = { viewModel.onAction(FilesyncUiAction.Refresh) }) {
-                                Text(stringResource(MR.string.filesync_retry))
-                            }
-                        }
+                    nothingToShow && uiState.isLoading -> CenteredBox { CircularProgressIndicator() }
+                    nothingToShow && uiState.loadFailed -> RetryMessage(MR.string.filesync_load_failed) {
+                        viewModel.onAction(FilesyncUiAction.Refresh)
                     }
-                    uiState.nodes.isEmpty() && uploadsHere.isEmpty() -> CenteredBox {
+                    nothingToShow -> CenteredBox {
                         Text(
                             text = stringResource(MR.string.filesync_folder_empty),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -272,7 +234,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel) {
                         items(uiState.nodes, key = { it.nodeId.toString() }) { node ->
                             NodeRow(
                                 node = node,
-                                transferProgress = if (uiState.transferNodeId == node.nodeId) viewModel.transferProgress else null,
+                                progress = uiState.transfer?.takeIf { it.nodeId == node.nodeId }?.progress,
                                 onClick = { viewModel.onAction(FilesyncUiAction.NodeClicked(node)) },
                                 onSave = { viewModel.onAction(FilesyncUiAction.SaveClicked(node)) },
                                 onCancel = { viewModel.onAction(FilesyncUiAction.CancelTransfer) },
@@ -338,11 +300,11 @@ private fun NewFolderDialog(onCreate: (String) -> Unit, onDismiss: () -> Unit) {
         },
         confirmButton = {
             TextButton(onClick = { onCreate(name.trim()) }, enabled = name.isNotBlank()) {
-                Text(stringResource(MR.string.filesync_create))
+                Text(stringResource(MR.string.create))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(MR.string.filesync_cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) }
         },
     )
 }
@@ -394,7 +356,7 @@ private fun Breadcrumbs(path: List<FilesyncCrumb>, onCrumb: (Int) -> Unit) {
 @Composable
 private fun NodeRow(
     node: FilesyncNode,
-    transferProgress: StateFlow<Float>?,
+    progress: Float?,
     onClick: () -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
@@ -424,9 +386,8 @@ private fun NodeRow(
         trailingContent = {
             when {
                 node.isFolder -> Unit
-                transferProgress != null -> {
+                progress != null -> {
                     val cancelLabel = stringResource(MR.string.filesync_cancel_download)
-                    val progress by transferProgress.collectAsStateWithLifecycle()
                     IconButton(onClick = onCancel, modifier = Modifier.semantics { contentDescription = cancelLabel }) {
                         CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(24.dp))
                     }
@@ -441,14 +402,15 @@ private fun NodeRow(
 
 @Composable
 fun FilesyncCheckingScreen(failed: Boolean, onRetry: () -> Unit) {
+    if (failed) RetryMessage(MR.string.filesync_check_failed, onRetry) else CenteredBox { CircularProgressIndicator() }
+}
+
+@Composable
+private fun RetryMessage(message: StringResource, onRetry: () -> Unit) {
     CenteredBox {
-        if (failed) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(stringResource(MR.string.filesync_check_failed))
-                TextButton(onClick = onRetry) { Text(stringResource(MR.string.filesync_retry)) }
-            }
-        } else {
-            CircularProgressIndicator()
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(stringResource(message))
+            TextButton(onClick = onRetry) { Text(stringResource(MR.string.filesync_retry)) }
         }
     }
 }

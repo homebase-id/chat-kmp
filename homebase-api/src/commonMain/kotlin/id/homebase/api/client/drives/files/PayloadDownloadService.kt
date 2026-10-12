@@ -113,11 +113,8 @@ class PayloadDownloadService(
                 fileOperationsProvider.writeStream(path, data.hashedBy(hasher))
         }
         // Per network chunk otherwise: thousands of UI updates for a large file.
-        val gate = WholePercentProgressGate()
-        val gatedProgress: ((Float) -> Unit)? = onProgress?.let { report ->
-            { fraction -> if (gate.admit(fraction * 100) != null) report(fraction) }
-        }
-        val path = export(driveId, fileId, key, keyHeader, destination, gatedProgress, hashingFileOps) ?: return null
+        val path = export(driveId, fileId, key, keyHeader, destination, onProgress?.let(::wholePercentFractions), hashingFileOps)
+            ?: return null
         if (!hasher.digest().contentEquals(expected)) {
             runCatching { fileOperationsProvider.deleteTempFile(path) }
             throw PayloadDamagedException("${hash.algorithm} mismatch")

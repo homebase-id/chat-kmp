@@ -93,10 +93,6 @@ class DriveUploadProvider(
 
     companion object {
         const val TAG = "DriveUploadProvider"
-
-        // odin-core can't take a payload over 4 GiB yet; AES-CBC adds up to one 16-byte block.
-        const val MAX_ENCRYPTED_PAYLOAD_BYTES = 4_294_967_295L
-        const val MAX_PLAINTEXT_PAYLOAD_BYTES = MAX_ENCRYPTED_PAYLOAD_BYTES - 16
     }
 
     // ==================== HIGH-LEVEL UPLOAD METHODS ====================

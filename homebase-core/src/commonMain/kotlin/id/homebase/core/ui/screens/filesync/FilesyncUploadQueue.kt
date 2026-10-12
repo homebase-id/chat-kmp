@@ -1,8 +1,17 @@
 package id.homebase.core.ui.screens.filesync
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.drives.files.WholePercentProgressGate
+import id.homebase.api.HomebaseProtocol
+import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.coroutines.supervisedScope
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.core.files.materializeForUpload
+import id.homebase.core.files.modifiedAtMs
+import id.homebase.core.files.toUploadPath
+import id.homebase.core.util.isDesktop
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.name
+import io.github.vinceglb.filekit.size
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.channels.BufferOverflow
@@ -17,12 +26,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
 /** Outside any screen so leaving the Filesync tab doesn't cancel uploads; files go up one at a time. */
 class FilesyncUploadQueue(
     private val repository: FilesyncRepository,
     private val uploader: FilesyncUploader,
+    private val fileOps: FileOperationsProvider,
 ) {
     private val scope = supervisedScope("filesync-upload-queue")
 
@@ -47,10 +58,37 @@ class FilesyncUploadQueue(
         startWorker()
     }
 
-    fun enqueue(parentId: Uuid, files: List<FilesyncPickedFile>) {
-        val uploads = files.map { FilesyncUpload(Uuid.random(), parentId, it) }
-        _uploads.update { it + uploads }
-        uploads.forEach { pending.trySend(it.id) }
+    /** Each file is queued as soon as it's ready, so the first upload doesn't wait for the whole pick to be copied. */
+    fun add(parentId: Uuid, files: List<PlatformFile>) {
+        scope.launch {
+            for (file in files) {
+                val picked = try {
+                    withContext(ioDispatcher) { prepare(file) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.w(TAG, e) { "a picked file couldn't be copied for upload" }
+                    _errors.tryEmit(FilesyncError.UploadFailed)
+                    continue
+                }
+                if (picked == null) {
+                    _errors.tryEmit(FilesyncError.TooLarge)
+                    continue
+                }
+                val upload = FilesyncUpload(Uuid.random(), parentId, picked)
+                _uploads.update { it + upload }
+                pending.trySend(upload.id)
+            }
+        }
+    }
+
+    // Copied into the sandbox while the picker's grant is live: Android and iOS revoke it later.
+    private suspend fun prepare(file: PlatformFile): FilesyncPickedFile? {
+        if (file.size() > HomebaseProtocol.MaxPlaintextPayloadBytes) return null
+        // A desktop pick is a real path with no grant to lose, so it's read in place rather than copied first.
+        val desktop = isDesktop()
+        val snapshot = if (desktop) file else file.materializeForUpload(fileOps)
+        return FilesyncPickedFile(snapshot.toUploadPath(fileOps), file.name, file.modifiedAtMs(), ownedCopy = !desktop)
     }
 
     fun retry(id: Uuid) {
@@ -92,13 +130,8 @@ class FilesyncUploadQueue(
         scope.launch {
             for (id in queue) {
                 val upload = _uploads.value.firstOrNull { it.id == id } ?: continue
-                reporting(FilesyncError.UploadFailed, "upload $id") {
-                    try {
-                        upload(upload)
-                    } catch (e: Exception) {
-                        if (e !is CancellationException) updateUpload(id) { it.copy(failed = true, progress = null) }
-                        throw e
-                    }
+                reporting(FilesyncError.UploadFailed, "upload $id", onFailure = { updateUpload(id) { it.copy(failed = true, progress = null) } }) {
+                    upload(upload)
                 }
                 // An idle queue lists afresh next time: the desktop may have added files meanwhile.
                 if (queue.isEmpty) namingLock.withLock { batchTakenKeys.clear() }
@@ -112,9 +145,8 @@ class FilesyncUploadQueue(
             FilesyncNames.freeName(upload.file.name, taken).also { taken += FilesyncNames.key(it) }
         }.also { chosen -> updateUpload(upload.id) { it.copy(name = chosen) } }
 
-        val gate = WholePercentProgressGate()
         uploader.uploadFile(upload.parentId, upload.file.path, name, upload.file.modifiedMs) { fraction ->
-            if (gate.admit(fraction * 100) != null) updateUpload(upload.id) { it.copy(progress = fraction) }
+            updateUpload(upload.id) { it.copy(progress = fraction) }
         }
         finish(upload)
         // One refresh per batch for a folder, not one per file.
@@ -124,13 +156,14 @@ class FilesyncUploadQueue(
     private suspend fun listedKeys(folderId: Uuid): MutableSet<String> =
         repository.listFolder(folderId).nodes.mapTo(mutableSetOf()) { FilesyncNames.key(it.name) }
 
-    private suspend fun reporting(error: FilesyncError, what: String, block: suspend () -> Unit) {
+    private suspend fun reporting(error: FilesyncError, what: String, onFailure: () -> Unit = {}, block: suspend () -> Unit) {
         try {
             block()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.e(e, TAG) { "$what failed" }
+            onFailure()
             _errors.tryEmit(error)
         }
     }

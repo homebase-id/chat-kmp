@@ -936,7 +936,7 @@ val appModule = module {
     single { FilesyncPreferences(get()) }
     single { FilesyncRepository(get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
-    single { FilesyncUploadQueue(get(), get()) }
+    single { FilesyncUploadQueue(get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
     single { WebDropShareFlowState() }
 

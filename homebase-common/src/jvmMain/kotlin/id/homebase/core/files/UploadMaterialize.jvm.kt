@@ -7,12 +7,6 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.copyTo
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
-import kotlin.time.ExperimentalTime
-import io.github.vinceglb.filekit.lastModified
-
-// Native PlatformFile carries a real path / content:// URI; the path-based pipelines (and
-// resolveToFilePath for content URIs) already handle it. No copy needed at send time.
-actual suspend fun PlatformFile.toUploadPath(fileOps: FileOperationsProvider): String = toString()
 
 // Desktop has no security scope, but copying a real filesystem path is cheap and harmless
 // and keeps all native platforms behaving the same.
@@ -21,7 +15,3 @@ actual suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProv
     copyTo(dest)
     return dest
 }
-
-@OptIn(ExperimentalTime::class)
-actual fun PlatformFile.modifiedAtMs(): Long? =
-    runCatching { lastModified().toEpochMilliseconds() }.getOrNull()?.takeIf { it > 0 }

@@ -2751,8 +2751,6 @@
     <string name="filesync_upload">Upload files</string>
     <string name="filesync_new_folder">New folder</string>
     <string name="filesync_new_folder_name">Folder name</string>
-    <string name="filesync_create">Create</string>
-    <string name="filesync_cancel">Cancel</string>
     <string name="filesync_uploading">Uploading…</string>
     <string name="filesync_upload_failed_row">Upload failed</string>
     <string name="filesync_upload_failed">Couldn't upload the file.</string>
