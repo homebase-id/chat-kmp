@@ -100,7 +100,7 @@ internal fun cardContentItems(attributes: List<ProfileAttribute>, circles: List<
         val audience = attribute.audience(circles)
         return CardContentItem(
             data = dataOf(attribute),
-            conflicts = if (attribute.type == ProfileAttributeTypes.LINK) emptyList() else loaded.conflicts[attribute.type].orEmpty(),
+            conflicts = if (attribute.type in REPEATABLE_TYPES) emptyList() else loaded.conflicts[attribute.type].orEmpty(),
             id = attribute.id,
             type = attribute.type,
             text = text,

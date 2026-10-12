@@ -629,7 +629,7 @@ class ProfileCardViewModel(
 
     // A same-data leftover would keep showing the item to every connection after it was hidden.
     private suspend fun deleteDuplicates(edited: ProfileAttribute?): Set<Uuid> {
-        if (edited == null || edited.type == ProfileAttributeTypes.LINK) return emptySet()
+        if (edited == null || edited.type in REPEATABLE_TYPES) return emptySet()
         val loaded = LoadedProfileAttributes.from(_uiState.value.attributes)
         if (loaded.byType[edited.type]?.id != edited.id) return emptySet()
         return loaded.duplicates[edited.type].orEmpty()
