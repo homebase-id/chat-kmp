@@ -141,9 +141,13 @@ exercises a real ICE restart. It also proves the natives load on the host.
 - **Android**: `DriveFcmService` hands ring/hangup pushes to `CallPushRouter` before the WorkManager hop.
   `AndroidCallCoordinator` registers a self-managed Telecom account and reports incoming calls
   (`HomebaseConnectionService`), posts a `CallStyle` full-screen-intent notification (`IncomingCallNotifier`),
-  starts a microphone/camera foreground service while a call is live, and cancels on state change. The launch from
-  the notification may show over the lock screen only until the call ends. Outgoing calls are not Telecom-registered.
-  "Answer" opens the app on the incoming screen; the user taps Accept (permission prompt lives there).
+  starts a microphone/camera foreground service while a call is live. `CallRingCoordinator` (homebase-chat) routes
+  the pushes into `CallService` and derives every notification/Telecom/foreground-service action from
+  `CallService.state` alone, so a hangup mid-lookup or a ring refused while busy cannot leave a ring behind.
+  Push events are queued in arrival order inside `CallService` until the identity binds. The launch from the
+  notification may show over the lock screen only until the call ends. Outgoing calls are not Telecom-registered.
+  "Accept" opens `MainActivity`, asks for the microphone if needed, waits for the call to be `Incoming` and accepts;
+  "Decline" sends the decline hangup. A force-stopped app receives no FCM until the user opens it again (Android).
 - **iOS Simulator**: `CallKitBridge.hostsOutgoingCalls` is false there and `CallKitMirror` then does not register
   outgoing calls. Evidence (unified log of the simulator, 5 of 5 outgoing attempts): `callservicesd` fails to open
   `facetime://?showInCallUI=1`, logs "Disconnecting call because there wont be a UI to host the call" and sends

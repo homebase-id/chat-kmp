@@ -31,19 +31,16 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
         val callId = extras?.getString(IncomingCallNotifier.EXTRA_CALL_ID).orEmpty()
         val label = extras?.getString(EXTRA_LABEL).orEmpty()
         val connection = object : Connection() {
-            override fun onShowIncomingCallUi() = IncomingCallNotifier(applicationContext).show(callId, label)
+            override fun onShowIncomingCallUi() = IncomingCallNotifier(applicationContext).show(callId, labels[callId] ?: label)
             override fun onAnswer() {
-                IncomingCallNotifier(applicationContext).cancel(callId)
-                applicationContext.startActivity(
-                    packageManager.getLaunchIntentForPackage(packageName)!!.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
+                applicationContext.startActivity(IncomingCallNotifier.openIntent(applicationContext, callId, accept = true))
             }
             override fun onReject() {
-                callService.decline()
+                if (callService.state.value.callId == callId) callService.decline()
                 end(DisconnectCause.REJECTED)
             }
             override fun onDisconnect() {
-                callService.hangup()
+                if (callService.state.value.callId == callId) callService.hangup()
                 end(DisconnectCause.LOCAL)
             }
             override fun onAbort() = end(DisconnectCause.CANCELED)
@@ -61,12 +58,13 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
     override fun onCreateIncomingConnectionFailed(account: PhoneAccountHandle?, request: ConnectionRequest?) {
         val extras = request?.extras?.getBundle(TelecomManager.EXTRA_INCOMING_CALL_EXTRAS)
         val callId = extras?.getString(IncomingCallNotifier.EXTRA_CALL_ID).orEmpty()
-        IncomingCallNotifier(applicationContext).show(callId, extras?.getString(EXTRA_LABEL).orEmpty())
+        IncomingCallNotifier(applicationContext).show(callId, labels[callId] ?: extras?.getString(EXTRA_LABEL).orEmpty())
     }
 
     companion object {
         const val EXTRA_LABEL = "id.homebase.feed.CALL_LABEL"
         private val connections = ConcurrentHashMap<String, Connection>()
+        val labels = ConcurrentHashMap<String, String>()
 
         fun handle(context: Context) = PhoneAccountHandle(ComponentName(context, HomebaseConnectionService::class.java), "homebase-calls")
 

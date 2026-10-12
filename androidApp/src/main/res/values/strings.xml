@@ -20,4 +20,6 @@
     <string name="crash_report_unavailable">(crash report unavailable)</string>
     <string name="incoming_call">Incoming call</string>
     <string name="ongoing_call">Call in progress</string>
+    <string name="allow_full_screen_calls">Allow full-screen calls</string>
+    <string name="hang_up">Hang up</string>
 </resources>

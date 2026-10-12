@@ -1,0 +1,148 @@
+package id.homebase.chat.services.calling
+
+import id.homebase.core.notifications.CallPushRouter
+import java.io.File
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class CallRingCoordinatorTest {
+    private val frodo = "frodo.baggins.demo.rocks"
+    private val sam = "samwise.gamgee.demo.rocks"
+
+    private class FakeSink : CallRingSink {
+        val events = mutableListOf<String>()
+        override fun ring(callId: String, label: String) { events += "ring:$callId:$label" }
+        override fun stopRinging(callId: String) { events += "stop:$callId" }
+        override fun connected(callId: String) { events += "connected:$callId" }
+        override fun ended(callId: String) { events += "ended:$callId" }
+        override fun setLive(live: Boolean, video: Boolean, callId: String?) { events += "live:$live:$callId" }
+        val ringing: Boolean
+            get() = events.lastOrNull { it.startsWith("ring:") || it.startsWith("stop:") }?.startsWith("ring:") == true
+    }
+
+    private class Rig(scope: TestScope, selfId: String, labelFor: suspend (String) -> String?) {
+        val sink = FakeSink()
+        val controller = CallController(
+            selfOdinId = selfId,
+            signaling = LoopbackSignaling(now = { scope.testScheduler.currentTime }).endpoint(selfId),
+            engineFactory = CallEngineFactory { _ ->
+                FakeCallEngine(scope.backgroundScope, FakeCallScript(), peerLabel = "peer", selfLabel = selfId)
+            },
+            scope = scope.backgroundScope,
+            clock = { scope.testScheduler.currentTime },
+        )
+        val coordinator = CallRingCoordinator(
+            target = object : CallPushTarget {
+                override fun onPushRing(callId: String, from: String) = controller.onPushRing(callId, from)
+                override fun onPushHangup(callId: String) = controller.onPushHangup(callId)
+            },
+            state = controller.state,
+            sink = sink,
+            labelFor = labelFor,
+            scope = scope.backgroundScope,
+        ).also { it.start(); CallPushRouter.handler = it }
+    }
+
+    @AfterTest
+    fun clearHandler() {
+        CallPushRouter.handler = null
+    }
+
+    private fun payload(typeId: String, callId: String, from: String = sam, message: String? = null): Map<String, String> {
+        val msg = message?.let { ""","unEncryptedMessage":"$it"""" }.orEmpty()
+        return mapOf(
+            "data" to """{"senderId":"$from","timestamp":1,"options":{"appId":"app","typeId":"$typeId","tagId":"$callId"$msg}}""",
+        )
+    }
+
+    private fun ring(callId: String) = CallPushRouter.tryHandle(payload(CallPushRouter.RING_TYPE_ID, callId, message = "Sam is calling"))
+    private fun hangup(callId: String) = CallPushRouter.tryHandle(payload(CallPushRouter.HANGUP_TYPE_ID, callId))
+
+    @Test
+    fun ringPushPostsTheRingAndHangupPushRetractsIt() = runTest {
+        val rig = Rig(this, frodo) { "Sam" }
+        assertTrue(ring("c1"))
+        runCurrent()
+        assertEquals(listOf("ring:c1:$sam", "ring:c1:Sam"), rig.sink.events.filter { it.startsWith("ring") })
+        assertTrue(rig.sink.ringing)
+
+        assertTrue(hangup("c1"))
+        runCurrent()
+        assertFalse(rig.sink.ringing)
+        assertEquals("stop:c1", rig.sink.events.last { it.startsWith("stop") })
+    }
+
+    @Test
+    fun hangupDuringTheNameLookupLeavesNothingRinging() = runTest {
+        val lookup = CompletableDeferred<String?>()
+        val rig = Rig(this, frodo) { lookup.await() }
+        ring("c1")
+        runCurrent()
+        hangup("c1")
+        runCurrent()
+        lookup.complete("Sam")
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertFalse(rig.sink.ringing)
+        assertEquals(listOf("ring:c1:$sam", "stop:c1"), rig.sink.events.filter { it.startsWith("ring") || it.startsWith("stop") })
+    }
+
+    @Test
+    fun ringWhileAlreadyInACallNeverRings() = runTest {
+        val rig = Rig(this, frodo) { "Sam" }
+        rig.controller.startCall("merry.demo.rocks", video = false)
+        runCurrent()
+        ring("c2")
+        runCurrent()
+        assertTrue(rig.sink.events.none { it.startsWith("ring:") || it.startsWith("stop:") })
+    }
+
+    @Test
+    fun acceptAndDeclineBothStopTheRing() = runTest {
+        val accepted = Rig(this, frodo) { null }
+        ring("c1")
+        runCurrent()
+        accepted.controller.accept()
+        runCurrent()
+        assertFalse(accepted.sink.ringing)
+        assertTrue("live:true:c1" in accepted.sink.events)
+
+        CallPushRouter.handler = null
+        val declined = Rig(this, frodo) { null }
+        ring("c3")
+        runCurrent()
+        declined.controller.decline()
+        runCurrent()
+        assertFalse(declined.sink.ringing)
+        assertTrue("ended:c3" in declined.sink.events)
+    }
+
+    @Test
+    fun nonCallPayloadsAreNotConsumed() {
+        assertFalse(CallPushRouter.tryHandle(payload("11111111-1111-1111-1111-111111111111", "c1")))
+        assertFalse(CallPushRouter.tryHandle(mapOf("data" to "not json")))
+        assertFalse(CallPushRouter.tryHandle(emptyMap()))
+    }
+
+    @Test
+    fun manifestDeclaresTheCallingPermissionsAndServices() {
+        val manifest = listOf("../androidApp/src/main/AndroidManifest.xml", "androidApp/src/main/AndroidManifest.xml")
+            .map(::File).first { it.exists() }.readText()
+        listOf(
+            "MANAGE_OWN_CALLS", "USE_FULL_SCREEN_INTENT", "FOREGROUND_SERVICE_MICROPHONE", "FOREGROUND_SERVICE_CAMERA",
+            "RECORD_AUDIO", "POST_NOTIFICATIONS",
+        ).forEach { assertTrue("android.permission.$it" in manifest, it) }
+        assertTrue("android.telecom.ConnectionService" in manifest)
+        assertTrue("microphone|camera" in manifest)
+    }
+}

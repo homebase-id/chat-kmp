@@ -1,6 +1,11 @@
 package id.homebase.feed
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
+import id.homebase.chat.services.calling.CallPhase
+import kotlinx.coroutines.withTimeoutOrNull
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import id.homebase.chat.services.calling.CallService
@@ -47,6 +52,12 @@ class MainActivity : AppCompatActivity() {
     private val eventBus: EventBus by inject()
     private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
     private val callService: CallService by inject()
+    private var micRequestFor: String? = null
+    private val requestMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val callId = micRequestFor
+        micRequestFor = null
+        if (granted && callId != null) acceptRingingCall(callId)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Must run before super.onCreate — swaps Theme.Homebase.Splash for the real app
@@ -75,6 +86,7 @@ class MainActivity : AppCompatActivity() {
         authConnectionCoordinator.promoteToForeground()
 
         showOverLockScreenForCall(intent)
+        acceptCallFromIntent(intent)
         handleIntent(intent)
 
         ActivityProvider.initialize(this)
@@ -100,6 +112,7 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent) // Update the activity's intent
         showOverLockScreenForCall(intent)
+        acceptCallFromIntent(intent)
         handleIntent(intent)
 
         // Notify KMPNotifier of new intent
@@ -134,6 +147,30 @@ class MainActivity : AppCompatActivity() {
             callService.state.first { !it.isActive }
             setShowWhenLocked(false)
             setTurnScreenOn(false)
+        }
+    }
+
+    private fun acceptCallFromIntent(intent: Intent) {
+        if (!intent.getBooleanExtra(IncomingCallNotifier.EXTRA_ACCEPT, false)) return
+        intent.removeExtra(IncomingCallNotifier.EXTRA_ACCEPT)
+        val callId = intent.getStringExtra(IncomingCallNotifier.EXTRA_CALL_ID) ?: return
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            acceptRingingCall(callId)
+        } else {
+            micRequestFor = callId
+            requestMic.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    // The ring may still be on its way (cold process); wait for the call state rather than trusting the notification.
+    private fun acceptRingingCall(callId: String) {
+        lifecycleScope.launch {
+            val ringing = withTimeoutOrNull(10_000) {
+                callService.state.first { it.callId == callId && it.phase == CallPhase.Incoming }
+            } ?: return@launch
+            val cameraGranted = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+            if (ringing.media.localVideo && !cameraGranted) callService.setVideo(false)
+            callService.accept()
         }
     }
 

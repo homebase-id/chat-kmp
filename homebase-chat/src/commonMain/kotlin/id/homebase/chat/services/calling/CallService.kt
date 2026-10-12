@@ -12,7 +12,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -37,7 +40,7 @@ class CallService(
     private val scope: CoroutineScope,
     private val recordEvent: suspend (peer: String, event: CallEventDescriptor) -> Unit = { _, _ -> },
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
-) : CallSession {
+) : CallSession, CallPushTarget {
     val available: Boolean get() = engineFactory != null
 
     private val controller = MutableStateFlow<CallController?>(null)
@@ -55,6 +58,15 @@ class CallService(
         if (engineFactory != null) {
             scope.launch { recordCallEvents(state, nowMs, recordEvent) }
             scope.launch {
+                for (push in pushes) {
+                    val target = controller.filterNotNull().first()
+                    when (push) {
+                        is Push.Ring -> target.onPushRing(push.callId, push.from)
+                        is Push.Hangup -> target.onPushHangup(push.callId)
+                    }
+                }
+            }
+            scope.launch {
                 credentialsManager.credentialsFlow
                     .map { it?.domain?.domainName }
                     .distinctUntilChanged()
@@ -63,8 +75,14 @@ class CallService(
         }
     }
 
-    // A push can land before the identity has loaded (cold FCM/PushKit wake); replay it once bound.
-    private var pendingRing: Pair<String, String>? = null
+    private sealed interface Push {
+        data class Ring(val callId: String, val from: String) : Push
+        data class Hangup(val callId: String) : Push
+    }
+
+    // A push can land on any thread before the identity has loaded (cold FCM/PushKit wake); the channel keeps
+    // ring and hangup in arrival order and replays them to whichever controller is bound.
+    private val pushes = Channel<Push>(Channel.UNLIMITED)
 
     private fun bind(selfOdinId: String?) {
         controller.value?.close()
@@ -80,8 +98,7 @@ class CallService(
             scope = CoroutineScope(scope.coroutineContext + job),
             selfLabel = selfOdinId,
             stunUrls = { stunUrls.urls.value },
-        ).also { created -> pendingRing?.let { (callId, from) -> created.onPushRing(callId, from) } }
-        pendingRing = null
+        )
     }
 
     override fun startCall(peer: String, video: Boolean) { controller.value?.startCall(peer, video) }
@@ -93,15 +110,9 @@ class CallService(
     override fun switchCamera() { controller.value?.switchCamera() }
     override fun setAudioRoute(route: AudioRoute) { controller.value?.setAudioRoute(route) }
     fun onPermissionDenied() = controller.value?.onPermissionDenied()
-    fun onPushRing(callId: String, from: String) {
-        val current = controller.value
-        if (current != null) current.onPushRing(callId, from) else pendingRing = callId to from
-    }
+    override fun onPushRing(callId: String, from: String) { pushes.trySend(Push.Ring(callId, from)) }
 
-    fun onPushHangup(callId: String) {
-        if (pendingRing?.first == callId) pendingRing = null
-        controller.value?.onPushHangup(callId)
-    }
+    override fun onPushHangup(callId: String) { pushes.trySend(Push.Hangup(callId)) }
 }
 
 internal suspend fun recordCallEvents(
