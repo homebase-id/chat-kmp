@@ -3,6 +3,7 @@ package id.homebase.chat.services.calling
 import co.touchlab.kermit.Logger
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -50,8 +51,7 @@ class CallController(
         if (closed) return
         closed = true
         collectors.forEach { it.cancel() }
-        timers.values.forEach { it.cancel() }
-        timers.clear()
+        cancelTimers()
         inbox.close()
         releaseEngine()
     }
@@ -111,16 +111,13 @@ class CallController(
                 CallEffect.SwitchCamera -> engine?.switchCamera()
                 is CallEffect.SetRoute -> engine?.setAudioRoute(effect.route)
                 is CallEffect.StartTimer -> startTimer(effect.timer, effect.callId)
-                CallEffect.CancelTimers -> {
-                    timers.values.forEach { it.cancel() }
-                    timers.clear()
-                }
+                CallEffect.CancelTimers -> cancelTimers()
                 CallEffect.ReleaseEngine -> releaseEngine()
             }
         } catch (e: CallEngineException) {
             Logger.w(tag = TAG) { "engine failed: ${e.reason} ${e.message}" }
             post(CallEvent.EngineError(e.reason))
-        } catch (e: kotlinx.coroutines.CancellationException) {
+        } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(e, TAG) { "call effect $effect failed" }
@@ -150,6 +147,11 @@ class CallController(
             }
             post(CallEvent.TimerFired(timer, callId))
         }
+    }
+
+    private fun cancelTimers() {
+        timers.values.forEach { it.cancel() }
+        timers.clear()
     }
 
     private fun releaseEngine() {
