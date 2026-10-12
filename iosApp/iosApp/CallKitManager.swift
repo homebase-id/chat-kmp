@@ -3,6 +3,7 @@ import CallKit
 import ComposeApp
 import Foundation
 import PushKit
+import WebRTC
 
 /// PushKit + CallKit for calling. Server-side VoIP delivery needs the Apple key on the relay; until then
 /// rings arrive as time-sensitive alerts and CallKit is only used for outgoing calls.
@@ -37,11 +38,21 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
         self.registry = registry
     }
 
+    // While CallKit owns a call WebRTC must not start its audio unit until CallKit activates the session
+    // (didActivate), else audio is silent; with no CallKit call (simulator, ring without VoIP push) it runs freely.
+    private func syncManualAudio() {
+        let rtc = RTCAudioSession.sharedInstance()
+        let manual = !uuidForCall.isEmpty
+        rtc.useManualAudio = manual
+        if !manual { rtc.isAudioEnabled = true }
+    }
+
     private func uuid(for callId: String) -> UUID {
         if let existing = uuidForCall[callId] { return existing }
         let created = UUID(uuidString: callId) ?? UUID()
         uuidForCall[callId] = created
         callForUuid[created] = callId
+        syncManualAudio()
         return created
     }
 
@@ -69,7 +80,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: caller)
         update.localizedCallerName = caller
-        update.hasVideo = false
+        update.hasVideo = false // the ring push does not say; Kotlin calls reportVideo() once the offer arrives
         provider.reportNewIncomingCall(with: uuid(for: callId), update: update) { error in
             if error != nil { self.forget(callId) }
             completion()
@@ -101,6 +112,13 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
         provider.reportOutgoingCall(with: id, connectedAt: Date())
     }
 
+    func reportVideo(callId: String, video: Bool) {
+        guard let id = uuidForCall[callId] else { return }
+        let update = CXCallUpdate()
+        update.hasVideo = video
+        provider.reportCall(with: id, updated: update)
+    }
+
     func reportEnded(callId: String, remoteEnded: Bool) {
         guard let id = uuidForCall[callId] else { return }
         provider.reportCall(with: id, endedAt: Date(), reason: remoteEnded ? .remoteEnded : .failed)
@@ -109,6 +127,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
 
     private func forget(_ callId: String) {
         if let id = uuidForCall.removeValue(forKey: callId) { callForUuid.removeValue(forKey: id) }
+        syncManualAudio()
     }
 
     // MARK: CXProviderDelegate (CallKit -> Kotlin)
@@ -117,6 +136,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
         NSLog("[Call] CallKit provider reset")
         uuidForCall.removeAll()
         callForUuid.removeAll()
+        syncManualAudio()
     }
 
     func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
@@ -148,10 +168,16 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
 
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         NSLog("[Call] CallKit audio session activated")
+        let rtc = RTCAudioSession.sharedInstance()
+        rtc.audioSessionDidActivate(audioSession)
+        rtc.isAudioEnabled = true
     }
 
     func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
         NSLog("[Call] CallKit audio session deactivated")
+        let rtc = RTCAudioSession.sharedInstance()
+        rtc.audioSessionDidDeactivate(audioSession)
+        rtc.isAudioEnabled = false
     }
 
     func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {

@@ -41,6 +41,7 @@ class CallKitMirrorTest {
         }
 
         override fun reportConnected(callId: String) { log += "connected:$callId" }
+        override fun reportVideo(callId: String, video: Boolean) { log += "video:$callId:$video" }
         override fun reportEnded(callId: String, remoteEnded: Boolean) { log += "ended:$callId:remote=$remoteEnded" }
     }
 
@@ -107,5 +108,25 @@ class CallKitMirrorTest {
         runCurrent()
 
         assertEquals(listOf("outgoing:c-dev", "connected:c-dev", "ended:c-dev:remote=true"), rig.callKit.log)
+    }
+
+    @Test
+    fun anIncomingVideoCallIsUpdatedToVideoOnCallKit_butAnAudioCallIsNot() = runTest {
+        for (video in listOf(true, false)) {
+            val rig = Rig(this, hosts = true, disconnectsUnhosted = false)
+            val calleeLog = mutableListOf<String>()
+            val bridge = object : CallKitBridge {
+                override val hostsOutgoingCalls = true
+                override fun reportOutgoing(callId: String, handle: String, video: Boolean) = Unit
+                override fun reportConnected(callId: String) = Unit
+                override fun reportEnded(callId: String, remoteEnded: Boolean) = Unit
+                override fun reportVideo(callId: String, video: Boolean) { calleeLog += "video:$callId:$video" }
+            }
+            backgroundScope.launch { CallKitMirror(rig.callee) { bridge }.run() }
+            rig.caller.startCall(sam, video = video, callId = "c-in-$video")
+            runCurrent()
+
+            assertEquals(if (video) listOf("video:c-in-true:true") else emptyList(), calleeLog)
+        }
     }
 }

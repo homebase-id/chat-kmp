@@ -157,7 +157,9 @@ exercises a real ICE restart. It also proves the natives load on the host.
 - **iOS**: `CallKitManager.swift` registers PushKit, reports every VoIP ring to CallKit immediately, forwards the
   payload to `CallPushRouter`, and mirrors outgoing/connected/ended state. The VoIP token is sent as
   `voipDeviceToken` next to the FCM token (`NotificationService.onVoipToken`). The relay needs the Apple `.p8` key
-  before VoIP pushes arrive; until then rings arrive as time-sensitive alerts. **Not verified on a device.**
+  before VoIP pushes arrive; until then rings arrive as time-sensitive alerts. While a call is registered with CallKit,
+  `RTCAudioSession.useManualAudio` is on and audio is enabled in the provider's `didActivate` (off in `didDeactivate`);
+  with no CallKit call it is off. `CXCallUpdate.hasVideo` is set from the offer via `reportVideo`. **Not verified on a device.**
 - **Desktop**: the app is the receiver (socket offers). `CallRingEffect` beeps and shows a tray message while
   ringing. No background ring when the app is closed.
 

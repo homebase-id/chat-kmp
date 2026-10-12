@@ -11,8 +11,10 @@ class CallKitMirror(
 ) {
     private var reported: String? = null
 
+    private data class Key(val callId: String?, val phase: CallPhase, val direction: CallDirection?, val video: Boolean)
+
     suspend fun run() {
-        session.state.map { Triple(it.callId, it.phase, it.direction) }.distinctUntilChanged().collect { (callId, phase, direction) ->
+        session.state.map { Key(it.callId, it.phase, it.direction, it.placedWithVideo) }.distinctUntilChanged().collect { (callId, phase, direction, video) ->
             val bridge = bridge() ?: return@collect
             val id = callId ?: return@collect
             if (direction == CallDirection.Outgoing && !bridge.hostsOutgoingCalls) return@collect
@@ -22,6 +24,7 @@ class CallKitMirror(
                     reported = id
                     bridge.reportOutgoing(id, state.peer.orEmpty(), state.media.localVideo)
                 }
+                CallPhase.Incoming, CallPhase.Connecting -> if (direction == CallDirection.Incoming && video) bridge.reportVideo(id, true)
                 CallPhase.Connected -> bridge.reportConnected(id)
                 is CallPhase.Ended -> {
                     bridge.reportEnded(id, remoteEnded = direction == CallDirection.Incoming || phase.reason is CallEndReason.Hangup)

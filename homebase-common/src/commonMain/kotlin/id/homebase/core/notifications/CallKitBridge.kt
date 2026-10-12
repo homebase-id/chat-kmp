@@ -7,6 +7,8 @@ interface CallKitBridge {
 
     fun reportOutgoing(callId: String, handle: String, video: Boolean)
     fun reportConnected(callId: String)
+    /** The ring push does not say whether the call is video; the offer does, so CallKit's call is updated once it lands. */
+    fun reportVideo(callId: String, video: Boolean)
     fun reportEnded(callId: String, remoteEnded: Boolean)
 }
 
