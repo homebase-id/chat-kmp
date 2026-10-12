@@ -274,7 +274,7 @@ class ProfileCardViewModelTest {
         viewModel(host, source)
 
         val payload = host.rendered.single()
-        assertEquals(CardDesign.BOARD, payload.design)
+        assertEquals(CardDesign.LINKS, payload.design)
         assertEquals("Frodo", payload.data.firstName)
         assertEquals("data:image/jpeg;base64,pub_photo", payload.data.photo?.src)
         assertEquals(listOf("pub_photo"), source.imageRequests)
@@ -332,7 +332,7 @@ class ProfileCardViewModelTest {
         vm.onDesignSelected(CardDesign.DOSSIER)
         vm.onDesignSelected(CardDesign.DOSSIER)
 
-        assertEquals(listOf(CardDesign.BOARD, CardDesign.DOSSIER), host.rendered.map { it.design })
+        assertEquals(listOf(CardDesign.LINKS, CardDesign.DOSSIER), host.rendered.map { it.design })
         assertEquals(requestsAfterLoad, source.imageRequests)
     }
 
@@ -357,14 +357,14 @@ class ProfileCardViewModelTest {
 
         vm.onDesignSelected(CardDesign.DOSSIER)
         assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
-        assertEquals(CardDesign.BOARD, vm.uiState.value.savedDesign)
+        assertEquals(CardDesign.LINKS, vm.uiState.value.savedDesign)
         assertTrue(vm.uiState.value.canSaveDesign)
 
         vm.onPreviewDiscarded()
 
-        assertEquals(CardDesign.BOARD, vm.uiState.value.design)
+        assertEquals(CardDesign.LINKS, vm.uiState.value.design)
         assertFalse(vm.uiState.value.canSaveDesign)
-        assertEquals(listOf(CardDesign.BOARD, CardDesign.DOSSIER, CardDesign.BOARD), host.rendered.map { it.design })
+        assertEquals(listOf(CardDesign.LINKS, CardDesign.DOSSIER, CardDesign.LINKS), host.rendered.map { it.design })
     }
 
     @Test
@@ -405,7 +405,7 @@ class ProfileCardViewModelTest {
     fun anUnknownStoredDesignFallsBackToTheTemplate() = runTest(dispatcher) {
         val vm = viewModel(FakeHost(), FakeSource(profile + cardAttribute("hologram")))
 
-        assertEquals(CardDesign.BOARD, vm.uiState.value.savedDesign)
+        assertEquals(CardDesign.LINKS, vm.uiState.value.savedDesign)
     }
 
     private suspend fun CardWireHarness.awaitPuts(n: Int) = withContext(Dispatchers.Default) {
@@ -730,7 +730,7 @@ class ProfileCardViewModelTest {
         backgroundScope.launch { vm.paintWhileAttached { paints++ } }
 
         assertEquals(0, host.edgeProbes)
-        host.send(CardEvent.Ready(layout = CardDesign.BOARD, ms = 1))
+        host.send(CardEvent.Ready(layout = CardDesign.LINKS, ms = 1))
         assertEquals(1, host.edgeProbes)
         assertEquals(1, paints)
         host.send(CardEvent.Edges(topArgb = 0xFF111111.toInt(), bottomArgb = 0xFF222222.toInt()))
@@ -738,7 +738,7 @@ class ProfileCardViewModelTest {
 
         vm.onDesignSelected(CardDesign.COLLAGE)
         assertNull(vm.uiState.value.cardBottomArgb)
-        vm.onDesignSelected(CardDesign.BOARD)
+        vm.onDesignSelected(CardDesign.LINKS)
         assertEquals(0xFF111111.toInt(), vm.uiState.value.cardTopArgb)
         assertEquals(0xFF222222.toInt(), vm.uiState.value.cardBottomArgb)
     }
@@ -766,11 +766,11 @@ class ProfileCardViewModelTest {
         vm.captureCover()
         assertEquals(0, host.snapshots)
 
-        host.send(CardEvent.Ready(layout = CardDesign.BOARD, ms = 1))
+        host.send(CardEvent.Ready(layout = CardDesign.LINKS, ms = 1))
         vm.captureCover()
         vm.captureCover()
         assertEquals(1, host.snapshots)
-        assertEquals(CardDesign.BOARD, assertNotNull(vm.cover.value).design)
+        assertEquals(CardDesign.LINKS, assertNotNull(vm.cover.value).design)
 
         vm.onDesignSelected(CardDesign.DOSSIER)
         vm.onSaveDesign()
@@ -822,7 +822,7 @@ class ProfileCardViewModelTest {
         assertEquals(ProfileCardEvent.DesignSaveFailed, event.await())
         val state = vm.uiState.value
         assertEquals(CardDesign.DOSSIER, state.design)
-        assertEquals(CardDesign.BOARD, state.savedDesign)
+        assertEquals(CardDesign.LINKS, state.savedDesign)
         assertFalse(state.isSavingDesign)
         assertTrue(state.canSaveDesign)
     }
@@ -1715,9 +1715,9 @@ class ProfileCardViewModelTest {
         assertTrue(store.writes.isEmpty())
         assertEquals(1, store.deleted.size)
         assertTrue(source.savedDesigns.isEmpty())
-        assertEquals(CardDesign.BOARD, vm.uiState.value.design)
+        assertEquals(CardDesign.LINKS, vm.uiState.value.design)
         assertEquals(PUBLIC_CARD_TEMPLATE.overrides, vm.uiState.value.overrides)
-        assertEquals(CardDesign.BOARD, host.rendered.last().design)
+        assertEquals(CardDesign.LINKS, host.rendered.last().design)
     }
 
     @Test
@@ -1965,7 +1965,7 @@ class ProfileCardViewModelTest {
 
         val cards = vm.uiState.value.cards
         assertEquals(4, cards.size)
-        assertEquals(setOf(CardDesign.BOARD, CardDesign.POSTER, CardDesign.COLLAGE, CardDesign.LINKS), cards.map { it.design }.toSet())
+        assertEquals(setOf(CardDesign.POSTER, CardDesign.COLLAGE, CardDesign.LINKS), cards.map { it.design }.toSet())
         assertEquals(4, cards.map { it.design to it.overrides.palette?.ground }.distinct().size)
         assertTrue(store.writes.isEmpty())
     }
@@ -1983,7 +1983,7 @@ class ProfileCardViewModelTest {
         assertTrue(store.writes.isEmpty())
         assertTrue(events.isEmpty())
         assertTrue(vm.uiState.value.selectedCard!!.isDefault)
-        assertEquals(CardDesign.BOARD, host.rendered.last().design)
+        assertEquals(CardDesign.LINKS, host.rendered.last().design)
         assertEquals(PUBLIC_CARD_TEMPLATE.overrides, vm.uiState.value.overrides)
         collecting.cancel()
     }

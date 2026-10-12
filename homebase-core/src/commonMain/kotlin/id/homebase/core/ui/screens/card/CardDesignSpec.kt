@@ -160,7 +160,7 @@ private val FIXED_CIRCLE_TEMPLATES = listOf(
     WORK_CIRCLE_ID to template(CardDesign.LINKS, "cloud"),
 )
 
-internal val PUBLIC_CARD_TEMPLATE = template(CardDesign.BOARD, "forest")
+internal val PUBLIC_CARD_TEMPLATE = template(CardDesign.LINKS, "mint")
 
 internal fun cardTemplateFor(audience: CardAudience): CardTemplate? = when (audience) {
     CardAudience.Public -> PUBLIC_CARD_TEMPLATE

@@ -204,8 +204,8 @@ class CardIntroTest {
         fun template(audience: CardAudience, priority: Int) =
             cardTemplateFor(audience)!!.let { ProfileCard(Uuid.NIL, Uuid.NIL, audience, it.design, it.overrides, priority) }
         val state = ProfileUiStateForTemplates(listOf(template(CardAudience.Public, PUBLIC_CARD_PRIORITY), template(family, 10), template(friends, 20), template(work, 30)))
-        assertEquals(4, state.cards.map { it.design }.toSet().size)
-        assertEquals(setOf(CardDesign.BOARD, CardDesign.POSTER, CardDesign.COLLAGE, CardDesign.LINKS), state.cards.map { it.design }.toSet())
+        assertEquals(setOf(CardDesign.POSTER, CardDesign.COLLAGE, CardDesign.LINKS), state.cards.map { it.design }.toSet())
+        assertEquals(4, state.cards.map { it.design to it.overrides.palette?.ground }.distinct().size)
         runDesktopComposeUiTest(width = 824, height = 1784) {
             setContent {
                 HomebaseTheme(darkTheme = false, updatesSystemChrome = false) { intro(state) }
