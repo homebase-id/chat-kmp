@@ -24,7 +24,7 @@ data class FilesyncNode(
 class FilesyncPayload(
     val fileId: Uuid,
     val payloadKey: KeyHeader,
-    val hash: PayloadHash?,
+    val hash: PayloadHash,
 )
 
 /** The encrypted appData.content of a node; [mtime] and [size] are for files only. */
@@ -46,11 +46,16 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncPayload?>
         else -> return null
     }
     val nodeId = appData.uniqueId ?: return null
+    if (!fileMetadata.isEncrypted) {
+        Logger.w(TAG) { "skipping node $nodeId: not encrypted" }
+        return null
+    }
     val content = runCatching {
         OdinSystemSerializer.json.decodeFromString<FilesyncNodeContent>(appData.content.orEmpty())
     }.getOrNull()
-    val name = content?.name?.takeIf { it.isNotBlank() && content.v >= 1 }
-    if (name == null) {
+    val name = content?.name?.takeIf { content.v >= 1 && FilesyncNames.isValid(it) }
+    // Without its size a file's padded stored size would be taken for it, and every download would fail its hash.
+    if (name == null || (!isFolder && content.size == null)) {
         Logger.w(TAG) { "skipping node $nodeId: unreadable content" }
         return null
     }
@@ -58,11 +63,12 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncPayload?>
     val payload = if (isFolder) null else {
         val descriptor = fileMetadata.getPayloadDescriptor(FilesyncProtocol.PayloadKey)
         val iv = descriptor?.iv?.let { runCatching { Base64.decode(it) }.getOrNull() }
-        if (descriptor == null || iv == null) {
-            Logger.w(TAG) { "skipping file $nodeId: no ${FilesyncProtocol.PayloadKey} payload" }
+        val hash = descriptor?.hash
+        if (iv == null || hash == null) {
+            Logger.w(TAG) { "skipping file $nodeId: no hashed ${FilesyncProtocol.PayloadKey} payload" }
             return null
         }
-        FilesyncPayload(fileId, KeyHeader(iv, keyHeader.aesKey), descriptor.hash)
+        FilesyncPayload(fileId, KeyHeader(iv, keyHeader.aesKey), hash)
     }
 
     return FilesyncNode(

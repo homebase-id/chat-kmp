@@ -31,6 +31,7 @@ class FilesyncNodeTest {
         fileType: Int?,
         content: String?,
         payloads: List<PayloadDescriptor>? = null,
+        isEncrypted: Boolean = true,
     ) = HomebaseFile(
         fileId = Uuid.random(),
         driveId = FilesyncProtocol.DriveAlias,
@@ -38,7 +39,7 @@ class FilesyncNodeTest {
         fileSystemType = FileSystemType.Standard,
         keyHeader = KeyHeader(ByteArray(16), SecureByteArray(fileKey)),
         fileMetadata = FileMetadata(
-            isEncrypted = true,
+            isEncrypted = isEncrypted,
             appData = AppFileMetaData(uniqueId = nodeId, groupId = FilesyncProtocol.RootNodeId, fileType = fileType, content = content),
             payloads = payloads,
         ),
@@ -76,7 +77,24 @@ class FilesyncNodeTest {
         assertNull(row(fileType = 1, content = """{"v":1,"name":"x"}""").toFilesyncNode())
         assertNull(row(FilesyncProtocol.FolderFileType, """{"message":"Decryption Failure"}""").toFilesyncNode())
         assertNull(row(FilesyncProtocol.FolderFileType, "not json").toFilesyncNode())
-        assertNull(row(FilesyncProtocol.FolderFileType, """{"v":1,"name":" "}""").toFilesyncNode())
-        assertNull(row(FilesyncProtocol.FileFileType, """{"v":1,"name":"no-payload.txt"}""").toFilesyncNode())
+        assertNull(row(FilesyncProtocol.FolderFileType, """{"name":"no version"}""").toFilesyncNode())
+        assertNull(row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"plain"}""", isEncrypted = false).toFilesyncNode())
+        assertNull(row(FilesyncProtocol.FileFileType, """{"v":1,"name":"no-payload.txt","mtime":1,"size":5}""").toFilesyncNode())
+        assertNull(row(FilesyncProtocol.FileFileType, """{"v":1,"name":"no-size.txt","mtime":1}""", listOf(syncData)).toFilesyncNode())
+        val unhashed = syncData.copy(hash = null)
+        assertNull(row(FilesyncProtocol.FileFileType, """{"v":1,"name":"no-hash.txt","mtime":1,"size":5}""", listOf(unhashed)).toFilesyncNode())
+    }
+
+    @Test
+    fun namesThatBreakTheSchemaAreSkipped() {
+        for (name in listOf("", ".", "..", "a/b", "nul\\u0000")) {
+            assertNull(row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"$name"}""").toFilesyncNode(), name)
+        }
+        assertEquals(" ", row(FilesyncProtocol.FolderFileType, """{"v":1,"name":" "}""").toFilesyncNode()!!.first.name)
+    }
+
+    @Test
+    fun aLaterVersionIsStillListed() {
+        assertEquals("next.txt", row(FilesyncProtocol.FolderFileType, """{"v":2,"name":"next.txt"}""").toFilesyncNode()!!.first.name)
     }
 }
