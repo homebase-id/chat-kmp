@@ -4,7 +4,10 @@ const val RING_TIMEOUT_MS = 45_000L
 const val CONNECT_TIMEOUT_MS = 30_000L
 const val RECONNECT_TICK_MS = 5_000L
 const val OFFER_REPUBLISH_MS = 250L
-const val MAX_RECONNECT_ATTEMPTS = 3
+
+// Must outlast ICE noticing the drop (~6 s) plus a phone rejoining wifi until DNS resolves again (~5 s+).
+const val RECONNECT_TIMEOUT_MS = 30_000L
+const val MAX_RECONNECT_ATTEMPTS = (RECONNECT_TIMEOUT_MS / RECONNECT_TICK_MS).toInt()
 
 enum class CallDirection { Outgoing, Incoming }
 

@@ -488,6 +488,33 @@ class CallControllerTest {
         assertEquals(CallPhase.Connected, b.phase)
     }
 
+    // Device timeline: ICE flagged the drop ~6 s after wifi went off, and the phone had no route for ~17 s after that.
+    @Test
+    fun bothSidesSurviveAnOutageThatOutlastsFifteenSecondsOfIceDisconnected() = runTest {
+        val (net, a, b) = pair()
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        a.offline = true
+        a.engines.single().simulateDrop()
+        b.engines.single().simulateDrop()
+        runCurrent()
+
+        advanceTimeBy(17_000)
+        assertEquals(CallPhase.Reconnecting, a.phase)
+        assertEquals(CallPhase.Reconnecting, b.phase)
+        a.offline = false
+        advanceTimeBy(RECONNECT_TICK_MS + 1)
+        assertTrue(net.sent.any { it.from == frodo && it.signal is CallSignal.Restart })
+        assertTrue(net.sent.any { it.from == sam && it.signal is CallSignal.RestartAnswer })
+        a.engines.single().simulateRecover()
+        b.engines.single().simulateRecover()
+        runCurrent()
+        assertEquals(CallPhase.Connected, a.phase)
+        assertEquals(CallPhase.Connected, b.phase)
+    }
+
     @Test
     fun callerLinkUpBeforeItsUndeliveredRestartKeepsRestartingUntilAnswered() = runTest {
         val (net, a, b) = pair()
