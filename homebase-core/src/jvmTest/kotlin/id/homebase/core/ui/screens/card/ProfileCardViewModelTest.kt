@@ -24,6 +24,7 @@ import id.homebase.api.youauth.MissingPermissionsResult
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.core.ui.screens.profile.saveWithAudience
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.AfterTest
@@ -88,7 +89,7 @@ class ProfileCardViewModelTest {
         val emitted = MutableSharedFlow<CardEvent>(extraBufferCapacity = 16)
         override val events: SharedFlow<CardEvent> = emitted
         override val isLoaded = MutableStateFlow(true)
-        val rendered = mutableListOf<CardPayload>()
+        val rendered = CopyOnWriteArrayList<CardPayload>()
         var onExport: () -> Unit = {}
         var disposed = false
 
@@ -1834,7 +1835,7 @@ class ProfileCardViewModelTest {
         awaitUntil { vm.uiState.value.selectedAudience == friends }
         assertEquals(0, wire.puts)
         assertEquals(CardDesign.COLLAGE, vm.uiState.value.design)
-        assertEquals("circle", host.rendered.last().audience?.kind)
+        awaitUntil { host.rendered.lastOrNull()?.audience?.kind == "circle" }
 
         vm.onDesignSelected(CardDesign.POSTER)
         vm.onSaveDesign()
