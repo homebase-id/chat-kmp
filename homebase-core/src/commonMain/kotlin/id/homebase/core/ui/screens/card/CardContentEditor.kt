@@ -366,7 +366,7 @@ private fun EditorRow(
 }
 
 @Composable
-private fun CopyFromSheet(sources: List<CardImportSource>, onPick: (CardAudience) -> Unit, onDismiss: () -> Unit) {
+internal fun CopyFromSheet(sources: List<CardImportSource>, onPick: (CardAudience) -> Unit, onDismiss: () -> Unit) {
     AdaptiveSheet(onDismiss = onDismiss) {
         Column(
             modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
@@ -381,7 +381,7 @@ private fun CopyFromSheet(sources: List<CardImportSource>, onPick: (CardAudience
                 val name = audienceLabel(source.audience)
                 val count = pluralStringResource(MR.plurals.profile_card_import_count, source.newItems, source.newItems)
                 Surface(
-                    onClick = { dismiss { onPick(source.audience) } },
+                    onClick = { dismiss { onDismiss(); onPick(source.audience) } },
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     shape = MaterialTheme.shapes.large,
                     modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = "$name, $count" },

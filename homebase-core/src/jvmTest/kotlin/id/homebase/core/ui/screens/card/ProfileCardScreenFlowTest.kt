@@ -272,4 +272,25 @@ class ProfileCardScreenFlowTest {
             assertEquals(CardDesign.POSTER, viewModel.uiState.value.design)
         }
     }
+
+    @Test
+    fun pickingACardToCopyFromClosesTheSheetSoTheNextTapReachesTheScreen() {
+        val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
+        var copying by mutableStateOf(true)
+        var picked: CardAudience? = null
+        runDesktopComposeUiTest(width = 400, height = 800) {
+            setContent {
+                HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
+                    if (copying) {
+                        CopyFromSheet(listOf(CardImportSource(friends, 1)), onPick = { picked = it }, onDismiss = { copying = false })
+                    }
+                }
+            }
+            onNodeWithContentDescription("Friends, 1 new item").performClick()
+            waitUntil(timeoutMillis = 10_000) { picked != null }
+            waitForIdle()
+            assertEquals(friends, picked)
+            assertFalse(copying)
+        }
+    }
 }
