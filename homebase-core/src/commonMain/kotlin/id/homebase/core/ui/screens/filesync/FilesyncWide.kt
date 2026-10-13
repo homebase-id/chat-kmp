@@ -77,12 +77,10 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -97,6 +95,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.filesync_all_files
 import id.homebase.resources.filesync_file_count
 import id.homebase.resources.filesync_folder_count
+import id.homebase.resources.filesync_info_hint
 import id.homebase.resources.filesync_more
 import id.homebase.resources.filesync_new_folder
 import id.homebase.resources.filesync_recent
@@ -273,8 +272,19 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
             )
         },
         sidebarExtra = { TagFilters(uiState, scope.onAction) },
-        pane = uiState.selected?.let { node ->
-            { FilesyncInfoContent(node, crumbNames(uiState.path), scope.onAction) }
+        // Always there, empty until a row is selected: a pane that opened on the first press of a
+        // double-click would move the row out from under the second.
+        pane = {
+            val selected = uiState.selected
+            if (selected != null) {
+                FilesyncInfoContent(selected, crumbNames(uiState.path), scope.onAction)
+            } else {
+                Text(
+                    text = stringResource(MR.string.filesync_info_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         },
     ) {
         BoxWithConstraints(
@@ -302,9 +312,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                 .focusable()
                 .browserDropTarget(scope),
         ) {
-            // Measured as if the info pane were open, so selecting a row doesn't make columns come and go.
-            val width = if (uiState.selected == null) maxWidth - PaneWidth else maxWidth
-            val columns = TableColumns(modified = width >= ModifiedFrom, kind = width >= KindFrom)
+            val columns = TableColumns(modified = maxWidth >= ModifiedFrom, kind = maxWidth >= KindFrom)
             Column(modifier = Modifier.fillMaxSize()) {
                 if (scope.uploads.isNotEmpty()) {
                     UploadStrip(
@@ -433,11 +441,8 @@ internal fun TableRow(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
-    val density = LocalDensity.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     var menuAt by remember { mutableStateOf<DpOffset?>(null) }
-    var lastMousePress by remember { mutableStateOf<Long?>(null) }
-    var byMouse by remember { mutableStateOf(false) }
     var moreOpen by remember { mutableStateOf(false) }
     // The pointer loop below outlives recompositions; it must act on the node as it is now.
     val current by rememberUpdatedState(node)
@@ -456,44 +461,40 @@ internal fun TableRow(
                 .clip(RoundedCornerShape(10.dp))
                 .background(background)
                 .hoverable(interaction)
+                // Touch, keyboard and screen readers; a mouse press never reaches it, the handler below consumes it.
+                .combinedClickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    onLongClick = onSelect,
+                    onClick = { actions.click(node) },
+                )
                 // A mouse selects on press and opens on a double-click, the way desktop file managers do; a finger opens
                 // on a tap and selects on a long press, and never on press, or every scroll would select its row.
-                // Read in the Initial pass: by the Main pass the click handler below has already consumed the press.
-                .pointerInput(node.nodeId) {
-                    val buttonsWidth = (ActionsWidth + 8.dp).toPx()
+                // Inside the click handler, so it sees a press after the row's buttons and before the handler consumes it.
+                .pointerInput(node.nodeId, rtl) {
+                    var lastPress: Long? = null
                     awaitPointerEventScope {
                         while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val event = awaitPointerEvent()
                             if (event.type != PointerEventType.Press) continue
                             val change = event.changes.first()
-                            // A press on the row's own Save and More buttons is theirs, not a click on the row.
-                            val x = change.position.x
-                            if (if (rtl) x < buttonsWidth else x > size.width - buttonsWidth) continue
-                            val mouse = change.type == PointerType.Mouse
-                            byMouse = mouse && !event.buttons.isSecondaryPressed
-                            if (!mouse) continue
+                            // Pressed on the row's own Save or More button.
+                            if (change.isConsumed || change.type != PointerType.Mouse) continue
+                            event.changes.forEach { it.consume() }
                             if (event.buttons.isSecondaryPressed) {
                                 select()
-                                val start = if (rtl) size.width - x else x
-                                menuAt = with(density) { DpOffset(start.toDp(), change.position.y.toDp() - RowHeight) }
-                                event.changes.forEach { it.consume() }
-                            } else if (lastMousePress?.let { change.uptimeMillis - it < viewConfiguration.doubleTapTimeoutMillis } == true) {
-                                lastMousePress = null
+                                val start = if (rtl) size.width - change.position.x else change.position.x
+                                menuAt = DpOffset(start.toDp(), change.position.y.toDp() - RowHeight)
+                            } else if (lastPress?.let { change.uptimeMillis - it < viewConfiguration.doubleTapTimeoutMillis } == true) {
+                                lastPress = null
                                 actions.click(current)
                             } else {
-                                lastMousePress = change.uptimeMillis
+                                lastPress = change.uptimeMillis
                                 select()
                             }
                         }
                     }
                 }
-                .combinedClickable(
-                    interactionSource = interaction,
-                    indication = null,
-                    // A mouse press was handled above; the flag is spent so Enter and screen readers still click.
-                    onLongClick = { if (byMouse) byMouse = false else onSelect() },
-                    onClick = { if (byMouse) byMouse = false else actions.click(node) },
-                )
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
