@@ -99,7 +99,7 @@ internal class SendResolutionLadder(
         if (byTarget < height && networkBound) {
             encoderLimitedTicks = 0
             // The rung an encoder-limited climb reached was more than the link carries: wait longer before the next try.
-            if (ticksSinceEncoderClimb.let { it != null && it <= CLIMB_PROBATION_TICKS }) {
+            if ((ticksSinceEncoderClimb ?: Int.MAX_VALUE) <= CLIMB_PROBATION_TICKS) {
                 climbTicksNeeded = minOf(climbTicksNeeded * 2, MAX_CLIMB_TICKS)
             }
             ticksSinceEncoderClimb = null
@@ -115,14 +115,14 @@ internal class SendResolutionLadder(
         encoderLimitedTicks = if (encoderLimited) encoderLimitedTicks + 1 else 0
         if (encoderLimitedTicks < climbTicksNeeded) return height
         encoderLimitedTicks = 0
-        if (ticksSinceEncoderClimb.let { it != null && it > CLIMB_PROBATION_TICKS }) climbTicksNeeded = CLIMB_TICKS
+        if ((ticksSinceEncoderClimb ?: 0) > CLIMB_PROBATION_TICKS) climbTicksNeeded = CLIMB_TICKS
         ticksSinceEncoderClimb = 0
         return up
     }
 
     // libwebrtc shedding resolution on its own (BALANCED, bandwidth) also sends under target; climbing then flaps.
     private fun sendsFullRung(outbound: Map<String, Any?>, sending: Int): Boolean {
-        val short = listOfNotNull(outbound["frameWidth"].asDouble(), outbound["frameHeight"].asDouble()).minOrNull() ?: return false
+        val short = outbound.sentShortSide() ?: return false
         return short >= sending * 0.9
     }
 
@@ -144,8 +144,9 @@ internal class SendResolutionLadder(
     }
 }
 
-// Short sides to step through when the encoder, not the network, cannot keep up; no floor.
-private val loadRungs = listOf(720, 540, 360, 270, 180)
+private val loadRungs = sendRungs.map { it.first }
+
+private fun Map<String, Any?>.sentShortSide(): Double? = listOfNotNull(this["frameWidth"].asDouble(), this["frameHeight"].asDouble()).minOrNull()
 
 private const val SLOW_FPS = SendVideoCap.FPS * 0.8
 private const val FAST_FPS = SendVideoCap.FPS * 0.9
@@ -154,8 +155,8 @@ private const val STEP_UP_ENCODE_MS = SLOW_ENCODE_MS * 0.8
 private const val SLOW_TICKS_TO_STEP_DOWN = 2
 private const val FAST_TICKS_TO_STEP_UP = 6
 
-// libwebrtc's CPU adaptation waits for 200 % encode usage on a hardware encoder; the Redmi already sends 13-22 fps at
-// 150 %. Slow = under 24 fps with frames over 50 ms to encode, so a camera slowed by low light never counts.
+// libwebrtc's CPU adaptation waits for 200 % encode usage on a hardware encoder; slow = under 24 fps with frames over
+// 50 ms to encode, so a camera slowed by low light never counts.
 internal class SendLoadRung {
     var height = SendVideoCap.HEIGHT
         private set
@@ -167,7 +168,7 @@ internal class SendLoadRung {
         val encodeMs = perFrame(outbound, previous, "totalEncodeTime", "framesEncoded", 1000.0)
         previous = outbound
         val fps = outbound["framesPerSecond"].asDouble()
-        val sentShortSide = listOfNotNull(outbound["frameWidth"].asDouble(), outbound["frameHeight"].asDouble()).minOrNull()
+        val sentShortSide = outbound.sentShortSide()
         if (fps == null || encodeMs == null || sentShortSide == null || sentShortSide <= 0) {
             slowTicks = 0
             fastTicks = 0

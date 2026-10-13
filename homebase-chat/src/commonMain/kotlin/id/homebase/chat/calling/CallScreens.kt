@@ -6,6 +6,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
@@ -397,7 +401,7 @@ private fun CallStage(
                         if (phase.reason is CallEndReason.Failed) FailedLayout(phase.reason.reason, large, peerName, avatar, actions)
                         else EndedLayout(ui, phase.reason, large, peerName, avatar, actions)
                     CallPhase.Idle -> Unit
-                    else -> InCallLayout(ui, videoMode, large, peerName, avatar, actions)
+                    else -> InCallLayout(ui, videoMode, large, chromeVisible, peerName, avatar, actions)
                 }
             }
         }
@@ -632,6 +636,7 @@ private fun BoxScope.InCallLayout(
     ui: CallUiState,
     videoMode: Boolean,
     large: Boolean,
+    chromeVisible: Boolean,
     peerName: String,
     avatar: @Composable (Dp) -> Unit,
     actions: CallScreenActions,
@@ -658,7 +663,6 @@ private fun BoxScope.InCallLayout(
         }
     }
 
-    val chromeVisible = LocalCallChrome.current?.visible ?: true
     val enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec())
     val exit = fadeOut(MaterialTheme.motionScheme.slowEffectsSpec())
     AnimatedVisibility(chromeVisible, Modifier.align(Alignment.TopCenter), enter = enter, exit = exit) {
@@ -860,7 +864,7 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
     val springSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Offset>()
     val fill = remember { Animatable(if (fillStage) 1f else 0f) }
     LaunchedEffect(fillStage) { fill.animateTo(if (fillStage) 1f else 0f, tween(PreviewShrinkMs, easing = EmphasizedEasing)) }
-    val filling = fill.value > 0f
+    val filling by remember { derivedStateOf { fill.value > 0f } }
     // Below the chrome while it fills the stage; the tile sits above it.
     BoxWithConstraints(Modifier.matchParentSize().zIndex(if (filling) ChromeLayer / 2 else ChromeLayer * 2)) {
         val compact = LocalCompactHeight.current
@@ -868,10 +872,11 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
         val pipWidth = if (large) 192.dp else if (compact) 156.dp else 108.dp
         val pipHeight = if (large) 132.dp else if (compact) 108.dp else 156.dp
         val insets = if (large) WindowInsets(0) else WindowInsets.safeDrawing
-        val insetStart = (if (rtl) insets.getRight(density, direction) else insets.getLeft(density, direction)).toFloat()
-        val insetTop = insets.getTop(density).toFloat()
-        val insetEnd = (if (rtl) insets.getLeft(density, direction) else insets.getRight(density, direction)).toFloat()
-        val insetBottom = insets.getBottom(density).toFloat()
+        val pad = insets.asPaddingValues(density)
+        val insetStart = with(density) { pad.calculateStartPadding(direction).toPx() }
+        val insetTop = with(density) { pad.calculateTopPadding().toPx() }
+        val insetEnd = with(density) { pad.calculateEndPadding(direction).toPx() }
+        val insetBottom = with(density) { pad.calculateBottomPadding().toPx() }
         val stageW = with(density) { maxWidth.toPx() }
         val stageH = with(density) { maxHeight.toPx() }
         val width = stageW - insetStart - insetEnd
