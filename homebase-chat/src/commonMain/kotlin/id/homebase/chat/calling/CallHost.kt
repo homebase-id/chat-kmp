@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,18 +59,25 @@ import id.homebase.core.util.KeepScreenOn
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
+/** Lays the call overlay over [content], hiding [content] from screen readers while the call screen covers it. */
 @Composable
-fun CallHost(viewModel: CallViewModel, modifier: Modifier = Modifier) {
-    if (!koinInject<CallService>().available) return
+fun CallHost(viewModel: CallViewModel, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    if (!koinInject<CallService>().available) {
+        Box(modifier) { content() }
+        return
+    }
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val name = rememberPeerName(ui.peer)
-    CallOverlay(
-        viewModel = viewModel,
-        ui = ui,
-        peerName = name,
-        avatar = { size -> ui.peer?.let { PeerAvatar(it, name, size) } },
-        modifier = modifier,
-    )
+    val covered = ui.visible && !ui.minimized
+    Box(modifier) {
+        Box(if (covered) Modifier.clearAndSetSemantics {} else Modifier) { content() }
+        CallOverlay(
+            viewModel = viewModel,
+            ui = ui,
+            peerName = name,
+            avatar = { size -> ui.peer?.let { PeerAvatar(it, name, size) } },
+        )
+    }
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -99,7 +107,6 @@ fun CallOverlay(
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
-                CallUiEvent.ShowVerification -> showVerification = true
                 CallUiEvent.ConfirmEnd -> confirmEnd = true
             }
         }
@@ -111,11 +118,14 @@ fun CallOverlay(
             decline = viewModel::decline,
             hangup = viewModel::hangup,
             toggleMute = viewModel::toggleMute,
-            toggleVideo = viewModel::toggleVideo,
+            toggleVideo = {
+                if (viewModel.uiState.value.localVideo) viewModel.setVideo(false)
+                else gate.run(video = true) { granted -> if (granted) viewModel.setVideo(true) }
+            },
             switchCamera = viewModel::switchCamera,
             setRoute = viewModel::setRoute,
-            onVerificationClick = viewModel::onVerificationClick,
-            retry = { gate.run(video = viewModel.uiState.value.localVideo) { video -> viewModel.retry(video) } },
+            onVerificationClick = { showVerification = true },
+            retry = { gate.run(video = viewModel.uiState.value.placedWithVideo) { video -> viewModel.retry(video) } },
             close = viewModel::close,
             minimize = viewModel::minimize,
             endFromKeyboard = viewModel::endFromKeyboard,

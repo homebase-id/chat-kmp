@@ -101,18 +101,18 @@ class CallPushAndRestartTest {
 
     @Test
     fun offerCarriesRingPushAndPreAnswerHangupRetractsItWithTheSameTag() {
-        val offer = CallChannel.outbound(sam, CallSignal.Offer(c, "sdp", false), "Frodo")
+        val offer = CallChannel.outbound(sam, CallSignal.Offer(c, "sdp", false))
         assertEquals(CallChannel.keyFor(sam), offer.channelKey)
-        assertEquals(CallPush(CallPushKind.Ring, CallChannel.RING_TYPE_ID, c, "Frodo is calling"), offer.push)
+        assertEquals(CallPush(CallPushKind.Ring, CallChannel.RING_TYPE_ID, c, "Incoming call"), offer.push)
 
-        val cancel = CallChannel.outbound(sam, CallSignal.Hangup(c, HangupReason.Cancelled), "Frodo")
+        val cancel = CallChannel.outbound(sam, CallSignal.Hangup(c, HangupReason.Cancelled))
         assertEquals(CallPushKind.Hangup, cancel.push?.kind)
         assertEquals(c, cancel.push?.tagId)
 
-        assertNull(CallChannel.outbound(sam, CallSignal.Hangup(c, HangupReason.Normal), "Frodo").push)
-        assertNull(CallChannel.outbound(sam, CallSignal.Hangup(c, HangupReason.Declined), "Frodo").push)
-        assertNull(CallChannel.outbound(sam, CallSignal.Ice(c, "cand"), "Frodo").push)
-        assertNull(CallChannel.outbound(sam, CallSignal.Ringing(c), "Frodo").push)
+        assertNull(CallChannel.outbound(sam, CallSignal.Hangup(c, HangupReason.Normal)).push)
+        assertNull(CallChannel.outbound(sam, CallSignal.Hangup(c, HangupReason.Declined)).push)
+        assertNull(CallChannel.outbound(sam, CallSignal.Ice(c, "cand")).push)
+        assertNull(CallChannel.outbound(sam, CallSignal.Ringing(c)).push)
     }
 
     @Test
@@ -135,20 +135,20 @@ class CallEventMappingTest {
     @Test
     fun placedMediaNotCurrentCameraStateDecidesVideo() {
         val state = ended(CallEndReason.Declined).copy(placedWithVideo = true)
-        assertEquals(true, callEventFor(CallEndReason.Declined, state, 0)?.video)
+        assertEquals(true, callEventFor(CallEndReason.Declined, state)?.video)
     }
 
     @Test
     fun connectedCallLogsDurationWhoeverHungUp() {
-        val e = callEventFor(CallEndReason.Hangup(remote = true), ended(CallEndReason.Hangup(true), 1_000), 66_000)
+        val e = callEventFor(CallEndReason.Hangup(remote = true), ended(CallEndReason.Hangup(true), 1_000).copy(endedAtMs = 66_000))
         assertEquals(id.homebase.chat.calling.CallEventDescriptor(id.homebase.chat.calling.CallOutcome.Completed, false, 65), e)
     }
 
     @Test
     fun unansweredOutcomesMapAndPreConnectFailuresAreLoggedAsFailed() {
-        assertEquals(id.homebase.chat.calling.CallOutcome.NoAnswer, callEventFor(CallEndReason.Missed, ended(CallEndReason.Missed), 0)?.outcome)
-        assertEquals(id.homebase.chat.calling.CallOutcome.Declined, callEventFor(CallEndReason.Declined, ended(CallEndReason.Declined), 0)?.outcome)
-        assertEquals(id.homebase.chat.calling.CallOutcome.Busy, callEventFor(CallEndReason.Busy, ended(CallEndReason.Busy), 0)?.outcome)
-        assertEquals(id.homebase.chat.calling.CallOutcome.Failed, callEventFor(CallEndReason.Failed(FailReason.NoRoute), ended(CallEndReason.Failed(FailReason.NoRoute)), 0)?.outcome)
+        assertEquals(id.homebase.chat.calling.CallOutcome.NoAnswer, callEventFor(CallEndReason.Missed, ended(CallEndReason.Missed))?.outcome)
+        assertEquals(id.homebase.chat.calling.CallOutcome.Declined, callEventFor(CallEndReason.Declined, ended(CallEndReason.Declined))?.outcome)
+        assertEquals(id.homebase.chat.calling.CallOutcome.Busy, callEventFor(CallEndReason.Busy, ended(CallEndReason.Busy))?.outcome)
+        assertEquals(id.homebase.chat.calling.CallOutcome.Failed, callEventFor(CallEndReason.Failed(FailReason.NoRoute), ended(CallEndReason.Failed(FailReason.NoRoute)))?.outcome)
     }
 }

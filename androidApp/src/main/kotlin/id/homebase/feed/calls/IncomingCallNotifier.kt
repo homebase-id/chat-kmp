@@ -25,8 +25,8 @@ class IncomingCallNotifier(private val context: Context) {
     init {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Calls", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "Incoming calls"
+                NotificationChannel(CHANNEL_ID, context.getString(R.string.call_channel_incoming), NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = context.getString(R.string.call_channel_incoming_description)
                     lockscreenVisibility = Notification.VISIBILITY_PUBLIC
                     enableVibration(true)
                     setSound(
@@ -81,24 +81,14 @@ class IncomingCallNotifier(private val context: Context) {
         Logger.i(tag = TAG) { "ring notification posted call=$callId ${interruptionState()}" }
     }
 
-    // The app cannot read whether DND intercepted its own notification, so log every input the system's call filter decides from.
+    // The app cannot read whether DND intercepted its own notification, so log the inputs the system's call filter decides from.
     fun interruptionState(): String {
-        val filter = when (manager.currentInterruptionFilter) {
-            NotificationManager.INTERRUPTION_FILTER_ALL -> "all"
-            NotificationManager.INTERRUPTION_FILTER_PRIORITY -> "priority"
-            NotificationManager.INTERRUPTION_FILTER_ALARMS -> "alarms"
-            NotificationManager.INTERRUPTION_FILTER_NONE -> "none"
-            else -> "unknown(${manager.currentInterruptionFilter})"
-        }
         val channel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            manager.getNotificationChannel(CHANNEL_ID)?.let {
-                "importance=${it.importance} bypassDnd=${it.canBypassDnd()} sound=${it.sound} defaultRingtone=${RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)} usage=${it.audioAttributes?.usage} vibrate=${it.shouldVibrate()} pattern=${it.vibrationPattern?.toList()}"
-            }
+            manager.getNotificationChannel(CHANNEL_ID)?.let { "importance=${it.importance} bypassDnd=${it.canBypassDnd()}" }
         } else {
             null
         }
-        val policy = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) manager.consolidatedNotificationPolicy else manager.notificationPolicy
-        return "dnd=$filter channel=[$channel] fullScreen=${canUseFullScreenIntent()} policy=$policy"
+        return "dnd=${manager.currentInterruptionFilter} channel=[$channel] fullScreen=${canUseFullScreenIntent()}"
     }
 
     private fun canUseFullScreenIntent() =

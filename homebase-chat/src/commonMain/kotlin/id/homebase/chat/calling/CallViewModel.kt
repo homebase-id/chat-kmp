@@ -12,7 +12,6 @@ import id.homebase.chat.services.calling.CallVideos
 import id.homebase.chat.services.calling.holdsPictureInPicture
 import id.homebase.chat.services.calling.isInCall
 import id.homebase.chat.services.calling.platformAudioRoutes
-import kotlin.time.Clock
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -36,6 +35,7 @@ data class CallUiState(
     val muted: Boolean = false,
     val localVideo: Boolean = false,
     val remoteVideo: Boolean = false,
+    val placedWithVideo: Boolean = false,
     val route: AudioRoute = AudioRoute.Earpiece,
     val availableRoutes: List<AudioRoute> = emptyList(),
     val quality: CallQuality = CallQuality.Unknown,
@@ -55,21 +55,16 @@ data class CallUiState(
 
     val pipEligible: Boolean get() = isVideoCall && phase.holdsPictureInPicture
 
-    val keepScreenAwake: Boolean get() = inProgress
+    val keepScreenAwake: Boolean get() = phase != CallPhase.Idle && phase !is CallPhase.Ended
 
     private val minimizedInCall: Boolean get() = minimized && inProgress
 
     val pillVisible: Boolean get() = minimizedInCall && !isVideoCall
 
     val tileVisible: Boolean get() = minimizedInCall && isVideoCall
-
-    val endReason: CallEndReason? get() = (phase as? CallPhase.Ended)?.reason
-
-    val failed: Boolean get() = endReason is CallEndReason.Failed
 }
 
 sealed interface CallUiEvent {
-    data object ShowVerification : CallUiEvent
     data object ConfirmEnd : CallUiEvent
 }
 
@@ -101,18 +96,15 @@ class CallViewModel(
                         muted = state.media.muted,
                         localVideo = state.media.localVideo,
                         remoteVideo = state.media.remoteVideo,
+                        placedWithVideo = state.placedWithVideo,
                         route = state.media.route,
                         availableRoutes = routes,
                         quality = state.quality,
                         connectedAtMs = state.connectedAtMs,
-                        endedAtMs = when {
-                            state.phase !is CallPhase.Ended -> null
-                            previous.phase is CallPhase.Ended && !newCall -> previous.endedAtMs
-                            else -> Clock.System.now().toEpochMilliseconds()
-                        },
+                        endedAtMs = state.endedAtMs,
                         verificationCode = state.verificationCode,
                         videos = videos,
-                        minimized = previous.minimized && !newCall,
+                        minimized = previous.minimized && !newCall && state.phase.isInCall,
                     )
                 }
                 scheduleDismissal(state.phase, state.callId)
@@ -123,14 +115,12 @@ class CallViewModel(
     // Failed stays up: it carries Retry, so only the user dismisses it.
     private fun scheduleDismissal(phase: CallPhase, callId: String?) {
         val ended = phase as? CallPhase.Ended
-        if (ended == null || ended.reason is CallEndReason.Failed || callId == null) {
-            if (ended == null) {
-                lingerJob?.cancel()
-                lingeringFor = null
-            }
+        if (ended == null) {
+            lingerJob?.cancel()
+            lingeringFor = null
             return
         }
-        if (lingeringFor == callId) return
+        if (ended.reason is CallEndReason.Failed || callId == null || lingeringFor == callId) return
         lingerJob?.cancel()
         lingeringFor = callId
         lingerJob = viewModelScope.launch {
@@ -150,7 +140,7 @@ class CallViewModel(
 
     fun toggleMute() = session.setMuted(!_uiState.value.muted)
 
-    fun toggleVideo() = session.setVideo(!_uiState.value.localVideo)
+    fun setVideo(on: Boolean) = session.setVideo(on)
 
     fun switchCamera() = session.switchCamera()
 
@@ -174,17 +164,13 @@ class CallViewModel(
         _uiState.update { it.copy(minimized = false) }
     }
 
-    fun onVerificationClick() {
-        _events.tryEmit(CallUiEvent.ShowVerification)
-    }
-
     fun endFromKeyboard() {
         when (_uiState.value.phase) {
-            CallPhase.Connected -> _events.tryEmit(CallUiEvent.ConfirmEnd)
+            CallPhase.Connecting, CallPhase.Connected, CallPhase.Reconnecting -> _events.tryEmit(CallUiEvent.ConfirmEnd)
             CallPhase.Incoming -> session.decline()
+            CallPhase.Outgoing -> session.hangup()
             is CallPhase.Ended -> close()
             CallPhase.Idle -> Unit
-            else -> session.hangup()
         }
     }
 }

@@ -4,9 +4,9 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.websockets.StunUrlStore
+import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.calling.CallOutcome
-import kotlin.time.Clock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -41,9 +41,8 @@ class CallService(
     private val stunUrls: StunUrlStore,
     private val scope: CoroutineScope,
     private val recordEvent: suspend (peer: String, event: CallEventDescriptor) -> Unit = { _, _ -> },
-    private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val onCallActiveChanged: (Boolean) -> Unit = {},
-) : CallSession, CallPushTarget, CallRingPushTarget {
+) : CallSession, CallPushTarget {
     val available: Boolean get() = engineFactory != null
 
     private val controller = MutableStateFlow<CallController?>(null)
@@ -64,17 +63,15 @@ class CallService(
 
     init {
         if (engineFactory != null) {
-            scope.launch { recordCallEvents(state, nowMs, recordEvent) }
+            scope.launch { recordCallEvents(state, recordEvent) }
             scope.launch { state.callActiveChanges().collect(onCallActiveChanged) }
             scope.launch {
                 for (push in pushes) {
                     val target = controller.filterNotNull().first()
                     when (push) {
                         is Push.Ring -> {
-                            val processed = target.pushRing(push.callId, push.from)
-                            push.ack?.let { ack ->
-                                processed.invokeOnCompletion { error -> if (error == null) ack.complete(processed.getCompleted()) else ack.cancel() }
-                            }
+                            val processed = target.pushRing(push.callId, push.from, push.sentAtMs)
+                            processed.invokeOnCompletion { error -> if (error == null) push.ack.complete(processed.getCompleted()) else push.ack.cancel() }
                         }
                         is Push.Hangup -> target.onPushHangup(push.callId)
                     }
@@ -90,12 +87,13 @@ class CallService(
     }
 
     private sealed interface Push {
-        data class Ring(val callId: String, val from: String, val ack: CompletableDeferred<CallState>? = null) : Push
+        data class Ring(val callId: String, val from: String, val sentAtMs: Long, val ack: CompletableDeferred<CallState>) : Push
         data class Hangup(val callId: String) : Push
     }
 
-    private fun bind(selfOdinId: String?) {
-        controller.value?.close()
+    // Signing out mid-call must tell the peer and release camera and mic, not just drop the controller.
+    private suspend fun bind(selfOdinId: String?) {
+        controller.value?.endForQuit()
         controllerJob?.cancel()
         controller.value = null
         if (selfOdinId == null || engineFactory == null) return
@@ -106,8 +104,8 @@ class CallService(
             signaling = LiveRelayCallSignaling(selfOdinId, relay, eventBus),
             engineFactory = engineFactory,
             scope = CoroutineScope(scope.coroutineContext + job),
-            selfLabel = selfOdinId,
             stunUrls = { stunUrls.urls.value },
+            engineCloseContext = ioDispatcher,
         )
     }
 
@@ -121,17 +119,14 @@ class CallService(
     override fun setAudioRoute(route: AudioRoute) { controller.value?.setAudioRoute(route) }
     fun onPermissionDenied() = controller.value?.onPermissionDenied()
     suspend fun endForQuit() { controller.value?.endForQuit() }
-    override fun onPushRing(callId: String, from: String) { pushes.trySend(Push.Ring(callId, from)) }
-
-    override fun pushRing(callId: String, from: String): Deferred<CallState> =
-        CompletableDeferred<CallState>().also { pushes.trySend(Push.Ring(callId, from, it)) }
+    override fun pushRing(callId: String, from: String, sentAtMs: Long): Deferred<CallState> =
+        CompletableDeferred<CallState>().also { pushes.trySend(Push.Ring(callId, from, sentAtMs, it)) }
 
     override fun onPushHangup(callId: String) { pushes.trySend(Push.Hangup(callId)) }
 }
 
 internal suspend fun recordCallEvents(
     states: Flow<CallState>,
-    nowMs: () -> Long,
     recordEvent: suspend (peer: String, event: CallEventDescriptor) -> Unit,
 ) {
     var recorded: String? = null
@@ -141,7 +136,7 @@ internal suspend fun recordCallEvents(
         if (callId == recorded || s.direction != CallDirection.Outgoing) return@collect
         recorded = callId
         val peer = s.peer ?: return@collect
-        val event = callEventFor(ended.reason, s, nowMs()) ?: return@collect
+        val event = callEventFor(ended.reason, s) ?: return@collect
         try {
             recordEvent(peer, event)
         } catch (e: CancellationException) {
@@ -153,9 +148,9 @@ internal suspend fun recordCallEvents(
 }
 
 /** One log entry per call, written by the caller: the receiving side renders it from the message author. */
-internal fun callEventFor(reason: CallEndReason, state: CallState, nowMs: Long): CallEventDescriptor? {
+internal fun callEventFor(reason: CallEndReason, state: CallState): CallEventDescriptor? {
     val video = state.placedWithVideo
-    val seconds = state.connectedAtMs?.let { ((nowMs - it) / 1000).coerceAtLeast(0) } ?: 0L
+    val seconds = state.connectedAtMs?.let { connected -> state.endedAtMs?.let { ((it - connected) / 1000).coerceAtLeast(0) } } ?: 0L
     return when {
         state.connectedAtMs != null -> CallEventDescriptor(CallOutcome.Completed, video, seconds)
         reason == CallEndReason.Missed -> CallEventDescriptor(CallOutcome.NoAnswer, video)

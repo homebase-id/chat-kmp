@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import platform.Foundation.NSNotificationCenter
 import platform.UIKit.UIAccessibilityIsVoiceOverRunning
 import platform.UIKit.UIAccessibilityVoiceOverStatusDidChangeNotification
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
@@ -37,25 +38,28 @@ actual fun platformCallEngineFactory(): CallEngineFactory? = CallEngineFactory {
 actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius: Dp) {
     val kmp = handle as? KmpVideoHandle ?: return
     val renderers = LocalCallVideoRenderers.current
-    val attached = remember(kmp.track, renderers) { renderers?.obtain(kmp) ?: AttachedVideoView(kmp) }
-    if (renderers == null) {
-        DisposableEffect(attached) { onDispose { attached.detach() } }
+    // UIKitView runs its factory once, so a new track needs a new UIKitView, not just a new remembered view.
+    key(kmp.track, renderers) {
+        val attached = remember { renderers?.obtain(kmp) ?: AttachedVideoView(kmp) }
+        if (renderers == null) {
+            DisposableEffect(attached) { onDispose { attached.detach() } }
+        }
+        UIKitView(
+            // A wrapper per interop view: a pooled video view moves into the new one, whatever order the old one is released in.
+            factory = { VideoContainer() },
+            modifier = modifier,
+            // A cooperative interop view eats the tap that brings the hidden controls back.
+            properties = UIKitInteropProperties(interactionMode = null),
+            update = { container ->
+                val video = attached.view
+                if (video.superview != container) container.addSubview(video)
+                container.setNeedsLayout()
+                video.transform = CGAffineTransformMakeScale(if (kmp.mirrored) -1.0 else 1.0, 1.0)
+                container.layer.cornerRadius = cornerRadius.value.toDouble()
+                container.clipsToBounds = cornerRadius.value > 0f
+            },
+        )
     }
-    UIKitView(
-        // A wrapper per interop view: a pooled video view moves into the new one, whatever order the old one is released in.
-        factory = { VideoContainer() },
-        modifier = modifier,
-        // A cooperative interop view eats the tap that brings the hidden controls back.
-        properties = UIKitInteropProperties(interactionMode = null),
-        update = { container ->
-            val video = attached.view
-            if (video.superview != container) container.addSubview(video)
-            container.setNeedsLayout()
-            video.transform = CGAffineTransformMakeScale(if (kmp.mirrored) -1.0 else 1.0, 1.0)
-            container.layer.cornerRadius = cornerRadius.value.toDouble()
-            container.clipsToBounds = cornerRadius.value > 0f
-        },
-    )
 }
 
 // Lays the video out by bounds and centre: its mirroring transform leaves its frame undefined.

@@ -118,6 +118,35 @@ class CardIntroTest {
     }
 
     @Test
+    fun theTopLeftBackArrowClosesTheCardsScreen() {
+        var closed = 0
+        runDesktopComposeUiTest(width = 824, height = 1784) {
+            setContent {
+                HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
+                    CardIntro(
+                        uiState = stateOf(), tiles = emptyMap(), host = null, revision = 0,
+                        onOpen = {}, onClose = { closed++ }, onRetry = {}, onCapture = {}, onTilePainted = {},
+                    )
+                }
+            }
+            onNodeWithContentDescription("Back").performClick()
+            assertEquals(1, closed)
+            onAllNodesWithContentDescription("Close").assertCountEquals(0)
+        }
+    }
+
+    @Test
+    fun introRendersLightAndDark() {
+        for (dark in listOf(false, true)) {
+            runDesktopComposeUiTest(width = 824, height = 1784) {
+                setContent { HomebaseTheme(darkTheme = dark, updatesSystemChrome = false) { intro(stateOf()) } }
+                waitForIdle()
+                outDir?.let { ImageIO.write(onAllNodes(isRoot()).onFirst().captureToImage().toAwtImage(), "png", File(it, "L1-intro-${if (dark) "dark" else "light"}.png")) }
+            }
+        }
+    }
+
+    @Test
     fun eachTileReportsItsOwnPaintOnceItsStillIsShown() {
         val painted = mutableListOf<CardAudience>()
         val state = stateOf()
@@ -198,6 +227,25 @@ class CardIntroTest {
             outDir?.let { ImageIO.write(onAllNodes(isRoot()).onFirst().captureToImage().toAwtImage(), "png", File(it, "k7-$name.png")) }
         }
     }
+
+    @Test
+    fun anEmptyCardSetShowsFourDifferentDesignsInTheIntro() {
+        fun template(audience: CardAudience, priority: Int) =
+            cardTemplateFor(audience)!!.let { ProfileCard(Uuid.NIL, Uuid.NIL, audience, it.design, it.overrides, priority) }
+        val state = ProfileUiStateForTemplates(listOf(template(CardAudience.Public, PUBLIC_CARD_PRIORITY), template(family, 10), template(friends, 20), template(work, 30)))
+        assertEquals(setOf(CardDesign.POSTER, CardDesign.COLLAGE, CardDesign.LINKS), state.cards.map { it.design }.toSet())
+        assertEquals(4, state.cards.map { it.design to it.overrides.palette?.ground }.distinct().size)
+        runDesktopComposeUiTest(width = 824, height = 1784) {
+            setContent {
+                HomebaseTheme(darkTheme = false, updatesSystemChrome = false) { intro(state) }
+            }
+            waitForIdle()
+            listOf("Public", "Family", "Friends", "Work").forEach { onNodeWithContentDescription("Open the $it card").assertIsDisplayed() }
+            outDir?.let { ImageIO.write(onAllNodes(isRoot()).onFirst().captureToImage().toAwtImage(), "png", File(it, "k13-intro-four-templates.png")) }
+        }
+    }
+
+    private fun ProfileUiStateForTemplates(cards: List<ProfileCard>) = ProfileCardUiState(cards = cards)
 
     @Test
     fun layoutsHoldUpAcrossCircleCountsLongNamesAndLargeFonts() {

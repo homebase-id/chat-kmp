@@ -66,7 +66,7 @@ import id.homebase.resources.call_hang_up
 import id.homebase.resources.call_mute
 import id.homebase.resources.call_tile_description
 import id.homebase.resources.call_unmute
-import id.homebase.resources.call_you
+import id.homebase.resources.you
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
@@ -192,7 +192,7 @@ internal fun FloatingCallTile(
                 }
                 val local = ui.videos.local
                 if (local != null && ui.localVideo) {
-                    val self = stringResource(MR.string.call_you)
+                    val self = stringResource(MR.string.you)
                     Box(
                         Modifier.align(Alignment.TopEnd).padding(6.dp).size(33.dp, 44.dp)
                             .clip(RoundedCornerShape(SelfCorner))

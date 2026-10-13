@@ -124,12 +124,12 @@ class CardOverridesTest {
         assertNull(poster.palette)
         assertNull(poster.portraits)
         assertEquals(CardTypeface(display = "caveat", text = "newsreader"), poster.type)
-        assertEquals(listOf(CardBlock("posts"), CardBlock("links")), poster.blocks)
+        assertEquals(listOf("links", "chat", "moments", "posts").map(::CardBlock), poster.blocks)
         assertEquals("handles", poster.socials)
 
         val collage = everything.prunedFor(CardDesign.COLLAGE)
         assertEquals(CardPalette(accent = "#ABCDEF"), collage.palette)
-        assertEquals(listOf(CardBlock("posts"), CardBlock("links")), collage.blocks)
+        assertEquals(listOf("links", "chat", "moments", "posts").map(::CardBlock), collage.blocks)
         assertEquals(listOf(CardPortrait(shape = "square"), CardPortrait()), collage.portraits)
 
         val dossier = everything.prunedFor(CardDesign.DOSSIER)

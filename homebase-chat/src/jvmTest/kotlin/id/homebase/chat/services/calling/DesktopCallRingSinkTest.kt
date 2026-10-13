@@ -13,11 +13,13 @@ class DesktopCallRingSinkTest {
     @Test
     fun ringingPostsANotificationRaisesTheWindowAndRepeatsTheToneUntilStopped() = runTest {
         val notifications = mutableListOf<RichNotificationData>()
+        val cancelled = mutableListOf<Int>()
         var raised = 0
         var tones = 0
         val sink = DesktopCallRingSink(
             scope = backgroundScope,
             notify = { notifications += it },
+            cancelNotification = { cancelled += it },
             bringToFront = { raised++ },
             ringTone = { tones++ },
             incomingCallText = { "Incoming call" },
@@ -35,9 +37,11 @@ class DesktopCallRingSinkTest {
         runCurrent()
         assertEquals(1, raised)
         assertEquals("Samwise", notifications.last().title)
+        assertEquals(listOf(notifications.first().notificationId), cancelled)
 
         sink.stopRinging("c1")
         advanceTimeBy(5_000)
         assertEquals(3, tones)
+        assertEquals(2, cancelled.size)
     }
 }

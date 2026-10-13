@@ -69,6 +69,7 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Share
@@ -91,6 +92,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableFloatStateOf
@@ -98,8 +101,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -150,21 +151,20 @@ import id.homebase.resources.profile_card_reset_card
 import id.homebase.resources.profile_card_reset_title
 import id.homebase.resources.profile_card_reset_message_public
 import id.homebase.resources.profile_card_reset_message_circle
+import id.homebase.resources.profile_card_reset_message_template
 import id.homebase.resources.profile_card_reset_confirm
 import id.homebase.resources.profile_card_design_board
 import id.homebase.resources.profile_card_design_collage
 import id.homebase.resources.profile_card_design_dossier
+import id.homebase.resources.profile_card_design_links
 import id.homebase.resources.profile_card_design_poster
-import id.homebase.resources.profile_card_edit
+import id.homebase.resources.edit
+import id.homebase.resources.profile_card_design_action
 import id.homebase.resources.profile_card_error
 import id.homebase.resources.profile_card_save
 import id.homebase.resources.profile_card_share
 import id.homebase.resources.profile_card_share_failed
 import id.homebase.resources.profile_card_unsupported
-import id.homebase.resources.profile_card_access_body
-import id.homebase.resources.profile_card_access_continue
-import id.homebase.resources.profile_card_access_later
-import id.homebase.resources.profile_card_access_title
 import id.homebase.resources.profile_card_save_public
 import id.homebase.resources.profile_card_share_public
 import id.homebase.resources.profile_card_share_public_message
@@ -231,10 +231,11 @@ fun ProfileCardScreen(
     viewModel: ProfileCardViewModel,
     onBack: () -> Unit,
     onEdit: () -> Unit,
+    onChangeDesign: () -> Unit,
 ) {
     LaunchedEffect(viewModel) { viewModel.onScreenShown() }
     IntroViewerSwitch(viewModel = viewModel, onBack = onBack) { onClose ->
-        ProfileCardViewer(viewModel = viewModel, onBack = onClose, onEdit = onEdit)
+        ProfileCardViewer(viewModel = viewModel, onBack = onClose, onEdit = onEdit, onChangeDesign = onChangeDesign)
     }
 }
 
@@ -277,6 +278,7 @@ private fun ProfileCardViewer(
     viewModel: ProfileCardViewModel,
     onBack: () -> Unit,
     onEdit: () -> Unit,
+    onChangeDesign: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val host by viewModel.host.collectAsStateWithLifecycle()
@@ -321,7 +323,7 @@ private fun ProfileCardViewer(
                 ProfileCardEvent.ShareFailed -> launch { snackbarHostState.showSnackbar(errShare) }
                 ProfileCardEvent.ResetFailed -> launch { snackbarHostState.showSnackbar(errReset) }
                 ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
-                ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed, ProfileCardEvent.ContentSaveFailed -> Unit
+                ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed, ProfileCardEvent.ContentSaveFailed, is ProfileCardEvent.ContentImported, ProfileCardEvent.ImportUndoExpired -> Unit
             }
         }
     }
@@ -435,12 +437,12 @@ private fun ProfileCardViewer(
                     canReset = uiState.canReset,
                     onShare = { if (uiState.isCircleSelected) confirmPublicShare = true else viewModel.onShareClicked() },
                     onEdit = onEdit,
+                    onChangeDesign = onChangeDesign,
                     onReset = viewModel::onResetCardConfirmed,
                     extraActions = { nfc?.let { CardNfcAction(it) } },
                 )
             }
         }
-        DesignAccessPrompt(shown = uiState.isDesignAccessPromptShown, viewModel = viewModel)
         val circle = uiState.selectedAudience as? CardAudience.Circle
         if (confirmPublicShare && circle != null) {
             SharePublicCardDialog(
@@ -498,6 +500,7 @@ internal fun BoxScope.CardBottomChrome(
     canReset: Boolean,
     onShare: () -> Unit,
     onEdit: () -> Unit,
+    onChangeDesign: () -> Unit,
     onReset: () -> Unit,
     extraActions: @Composable () -> Unit,
 ) {
@@ -516,7 +519,7 @@ internal fun BoxScope.CardBottomChrome(
             .height(TOOLBAR_BAND_HEIGHT),
         contentAlignment = Alignment.Center,
     ) {
-        // One toolbar: the quick actions as icons, Edit as its labelled, filled lead action.
+        // One toolbar: the quick actions as icons, Edit and Design as its labelled lead actions.
         HorizontalFloatingToolbar(
             expanded = true,
             colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
@@ -547,11 +550,13 @@ internal fun BoxScope.CardBottomChrome(
             }
             Spacer(Modifier.width(4.dp))
             // Read-only keeps the slot but turns quiet, so nothing promises an edit that can't be kept.
+            // Weighted without fill, a narrow screen or large text ellipsises the labels instead of clipping them.
             AnimatedContent(
                 targetState = readOnly,
                 transitionSpec = {
                     fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
                 },
+                modifier = Modifier.weight(1f, fill = false),
             ) { locked ->
                 if (locked) {
                     FilledTonalButton(
@@ -570,14 +575,26 @@ internal fun BoxScope.CardBottomChrome(
                         )
                     }
                 } else {
-                    Button(
-                        onClick = onEdit,
-                        shapes = ButtonDefaults.shapes(),
-                        contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
-                    ) {
-                        Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                        Text(stringResource(MR.string.profile_card_edit), maxLines = 1)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = onEdit,
+                            shapes = ButtonDefaults.shapes(),
+                            contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
+                        ) {
+                            Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                            Text(stringResource(MR.string.edit), maxLines = 1)
+                        }
+                        FilledTonalButton(
+                            onClick = onChangeDesign,
+                            shapes = ButtonDefaults.shapes(),
+                            contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
+                            modifier = Modifier.weight(1f, fill = false),
+                        ) {
+                            Icon(Icons.Outlined.Palette, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                            Text(stringResource(MR.string.profile_card_design_action), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
             }
@@ -591,31 +608,6 @@ internal fun BoxScope.CardBottomChrome(
         )
     }
     if (explainReadOnly) ReadOnlyCardDialog(onDismiss = { explainReadOnly = false })
-}
-
-@Composable
-internal fun DesignAccessPrompt(shown: Boolean, viewModel: ProfileCardViewModel) {
-    if (shown) DesignAccessDialog(onContinue = viewModel::onDesignAccessAccepted, onDismiss = viewModel::onDesignAccessDeclined)
-}
-
-@Composable
-internal fun DesignAccessDialog(onContinue: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
-        title = { Text(stringResource(MR.string.profile_card_access_title), textAlign = TextAlign.Center) },
-        text = { Text(stringResource(MR.string.profile_card_access_body)) },
-        confirmButton = {
-            Button(onClick = onContinue, shapes = ButtonDefaults.shapes()) {
-                Text(stringResource(MR.string.profile_card_access_continue))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
-                Text(stringResource(MR.string.profile_card_access_later))
-            }
-        },
-    )
 }
 
 // Native bands in the page's colour where a design has content under the chrome; the page has no safe-area support.
@@ -815,7 +807,9 @@ internal fun AudienceChip(
 internal fun ResetCardDialog(audience: CardAudience, onReset: () -> Unit, onDismiss: () -> Unit) {
     val message = when (audience) {
         CardAudience.Public -> stringResource(MR.string.profile_card_reset_message_public)
-        is CardAudience.Circle -> stringResource(MR.string.profile_card_reset_message_circle, audienceLabel(audience))
+        is CardAudience.Circle ->
+            if (cardTemplateFor(audience) != null) stringResource(MR.string.profile_card_reset_message_template, audienceLabel(audience))
+            else stringResource(MR.string.profile_card_reset_message_circle, audienceLabel(audience))
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1013,6 +1007,7 @@ internal fun designLabel(design: String): StringResource = when (design) {
     CardDesign.POSTER -> MR.string.profile_card_design_poster
     CardDesign.COLLAGE -> MR.string.profile_card_design_collage
     CardDesign.DOSSIER -> MR.string.profile_card_design_dossier
+    CardDesign.LINKS -> MR.string.profile_card_design_links
     else -> MR.string.profile_card_design_board
 }
 

@@ -6,7 +6,10 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.Outbox
 import id.homebase.chat.data.ConversationState
+import id.homebase.chat.calling.CallEventDescriptor
+import id.homebase.chat.calling.CallOutcome
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.avatars.ConversationAvatarModel
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -244,6 +247,33 @@ class ChatMessageSenderServiceRecipientRuleTest {
             assertTrue(request.metadata.allowDistribution)
             assertEquals(listOf(OdinId("alice.test")), request.transitOptions?.recipients)
             assertEquals(true, request.transitOptions?.useAppNotification)
+        }
+    }
+
+    @Test
+    fun callLog_pushesOnlyForMissedCalls() = runTest {
+        ChatMessageSenderServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val conversationId = fixture.seedConversation(others = listOf("alice.test"))
+
+            suspend fun push(outcome: CallOutcome): Boolean? {
+                val messageId = Uuid.random()
+                service.sendNewTypedMessage(
+                    messageUniqueId = messageId,
+                    conversationId = conversationId,
+                    content = MessageContent.CallEvent(CallEventDescriptor(outcome, durationSeconds = if (outcome == CallOutcome.Completed) 5 else 0)),
+                    previousMessageUniqueId = null,
+                )
+                return fixture.drainOutboxInDependencyOrder()
+                    .single { it.uniqueId == messageId }
+                    .asUploadFileRequestOrNull()!!
+                    .transitOptions?.useAppNotification
+            }
+
+            assertEquals(false, push(CallOutcome.Completed))
+            assertEquals(false, push(CallOutcome.Declined))
+            assertEquals(true, push(CallOutcome.NoAnswer))
+            assertEquals(true, push(CallOutcome.Cancelled))
         }
     }
 }

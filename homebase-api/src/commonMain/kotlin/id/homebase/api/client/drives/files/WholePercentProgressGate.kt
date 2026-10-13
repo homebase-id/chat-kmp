@@ -31,3 +31,15 @@ internal class WholePercentProgressGate {
         return percent
     }
 }
+
+/** [report] sees the 0..1 fractions passed in, at most once per whole percent. */
+fun wholePercentFractions(report: (Float) -> Unit): (Float) -> Unit {
+    val gate = WholePercentProgressGate()
+    return { fraction -> if (gate.admit(fraction * 100) != null) report(fraction) }
+}
+
+/** Sent/total byte counts as 0..1 fractions for [report], at most once per whole percent; nothing while the total is unknown. */
+fun wholePercentBytes(report: (Float) -> Unit): suspend (Long, Long?) -> Unit {
+    val fractions = wholePercentFractions(report)
+    return { sent, total -> if (total != null && total > 0) fractions((sent.toFloat() / total).coerceAtMost(1f)) }
+}

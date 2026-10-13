@@ -6,6 +6,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
@@ -136,6 +140,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -146,7 +151,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.staticCompositionLocalOf
 import id.homebase.chat.services.calling.RemoteVideoSize
 import androidx.compose.ui.unit.LayoutDirection
@@ -164,6 +168,7 @@ import id.homebase.chat.services.calling.VideoHandle
 import id.homebase.chat.services.calling.rememberScreenReaderOn
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
+import id.homebase.resources.action_retry
 import id.homebase.resources.call_accept
 import id.homebase.resources.call_accept_audio_from
 import id.homebase.resources.call_accept_audio_label
@@ -171,7 +176,6 @@ import id.homebase.resources.call_accept_video_from
 import id.homebase.resources.call_call_back
 import id.homebase.resources.call_camera_off
 import id.homebase.resources.call_camera_on
-import id.homebase.resources.call_close
 import id.homebase.resources.call_decline
 import id.homebase.resources.call_decline_from
 import id.homebase.resources.call_ended_busy
@@ -205,7 +209,6 @@ import id.homebase.resources.call_permission_title
 import id.homebase.resources.call_pill_description
 import id.homebase.resources.call_pill_text
 import id.homebase.resources.call_poor_connection
-import id.homebase.resources.call_retry
 import id.homebase.resources.call_route_bluetooth
 import id.homebase.resources.call_route_earpiece
 import id.homebase.resources.call_route_name_bluetooth
@@ -225,8 +228,11 @@ import id.homebase.resources.call_switch_camera
 import id.homebase.resources.call_unmute
 import id.homebase.resources.call_verification_chip
 import id.homebase.resources.call_verification_show
-import id.homebase.resources.call_you
 import id.homebase.resources.call_you_are_muted
+import id.homebase.resources.close
+import id.homebase.resources.you
+import id.homebase.core.util.formatHms
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.time.Clock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -284,7 +290,9 @@ fun CallScreen(
     chromeHeld: Boolean = false,
 ) {
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    // Taking focus on a ring would turn Esc typed into the composer into a decline.
+    val ringing = ui.phase == CallPhase.Incoming
+    LaunchedEffect(ringing) { if (!ringing) runCatching { focus.requestFocus() } }
     val chrome = remember { CallChrome() }
     val screenReader = rememberScreenReaderOn()
 
@@ -391,7 +399,7 @@ private fun CallStage(
                         if (phase.reason is CallEndReason.Failed) FailedLayout(phase.reason.reason, large, peerName, avatar, actions)
                         else EndedLayout(ui, phase.reason, large, peerName, avatar, actions)
                     CallPhase.Idle -> Unit
-                    else -> InCallLayout(ui, videoMode, large, peerName, avatar, actions)
+                    else -> InCallLayout(ui, videoMode, large, chromeVisible, peerName, avatar, actions)
                 }
             }
         }
@@ -429,7 +437,7 @@ internal fun CallPipLayout(ui: CallUiState, avatar: @Composable (Dp) -> Unit) {
         val local = ui.videos.local
         if (local != null && ui.localVideo) {
             val width = minOf(maxWidth, maxHeight) * PipSelfFraction
-            val description = stringResource(MR.string.call_you)
+            val description = stringResource(MR.string.you)
             Box(
                 Modifier.align(Alignment.BottomEnd).padding(PipSelfMargin)
                     .size(width, width * 4 / 3)
@@ -448,7 +456,7 @@ private val PipSelfCorner = 8.dp
 
 @Composable
 internal fun RemoteVideo(handle: VideoHandle?) {
-    val videoSize by RemoteVideoSize.current.collectAsState()
+    val videoSize by RemoteVideoSize.current.collectAsStateWithLifecycle()
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim), contentAlignment = Alignment.Center) {
         val letterbox = remoteVideoLetterbox(videoSize, maxWidth.value, maxHeight.value)
         CallVideoSurface(handle, (if (letterbox != null) Modifier.aspectRatio(letterbox) else Modifier.fillMaxSize()).testTag(RemoteVideoTag))
@@ -550,8 +558,8 @@ private fun BoxScope.IncomingLayout(
             icon = Icons.Default.CallEnd,
             label = stringResource(MR.string.call_decline),
             description = stringResource(MR.string.call_decline_from, peerName),
-            container = HomebaseTheme.extendedColors.cameraRecord,
-            content = HomebaseTheme.extendedColors.onCameraRecord,
+            container = MaterialTheme.colorScheme.error,
+            content = MaterialTheme.colorScheme.onError,
             onClick = actions.decline,
         )
         if (video) {
@@ -626,13 +634,14 @@ private fun BoxScope.InCallLayout(
     ui: CallUiState,
     videoMode: Boolean,
     large: Boolean,
+    chromeVisible: Boolean,
     peerName: String,
     avatar: @Composable (Dp) -> Unit,
     actions: CallScreenActions,
 ) {
     val reconnecting = ui.phase == CallPhase.Reconnecting
     val connecting = ui.phase == CallPhase.Connecting
-    val elapsed = rememberElapsedText(ui.connectedAtMs)
+    val elapsed = rememberElapsed(ui.connectedAtMs)
 
     if (!videoMode) {
         Column(
@@ -652,7 +661,6 @@ private fun BoxScope.InCallLayout(
         }
     }
 
-    val chromeVisible = LocalCallChrome.current?.visible ?: true
     val enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec())
     val exit = fadeOut(MaterialTheme.motionScheme.slowEffectsSpec())
     AnimatedVisibility(chromeVisible, Modifier.align(Alignment.TopCenter), enter = enter, exit = exit) {
@@ -668,7 +676,7 @@ private fun BoxScope.InCallLayout(
 }
 
 @Composable
-private fun AudioCallStatus(ui: CallUiState, elapsed: String) {
+private fun AudioCallStatus(ui: CallUiState, elapsed: () -> String) {
     when (ui.phase) {
         CallPhase.Connecting -> Text(
             stringResource(MR.string.call_status_connecting),
@@ -685,7 +693,7 @@ private fun AudioCallStatus(ui: CallUiState, elapsed: String) {
         }
         else -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                elapsed,
+                elapsed(),
                 style = MaterialTheme.typography.titleLargeEmphasized.copy(fontWeight = FontWeight.SemiBold).tabular(),
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -777,7 +785,7 @@ private val PreviewCorner = 20.dp
 private data class PillStatus(val icon: ImageVector, val text: StringResource, val warn: Boolean)
 
 @Composable
-private fun NamePill(ui: CallUiState, peerName: String, elapsed: String) {
+private fun NamePill(ui: CallUiState, peerName: String, elapsed: () -> String) {
     val status = when {
         ui.quality == CallQuality.Poor -> PillStatus(Icons.Default.Warning, MR.string.call_poor_connection, warn = true)
         ui.phase == CallPhase.Connected && !ui.remoteShowing() -> PillStatus(Icons.Default.VideocamOff, MR.string.call_no_video, warn = false)
@@ -802,7 +810,7 @@ private fun NamePill(ui: CallUiState, peerName: String, elapsed: String) {
                 )
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        if (ui.phase == CallPhase.Connecting) stringResource(MR.string.call_status_connecting) else elapsed,
+                        if (ui.phase == CallPhase.Connecting) stringResource(MR.string.call_status_connecting) else elapsed(),
                         style = MaterialTheme.typography.labelLarge.tabular(),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -854,7 +862,7 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
     val springSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Offset>()
     val fill = remember { Animatable(if (fillStage) 1f else 0f) }
     LaunchedEffect(fillStage) { fill.animateTo(if (fillStage) 1f else 0f, tween(PreviewShrinkMs, easing = EmphasizedEasing)) }
-    val filling = fill.value > 0f
+    val filling by remember { derivedStateOf { fill.value > 0f } }
     // Below the chrome while it fills the stage; the tile sits above it.
     BoxWithConstraints(Modifier.matchParentSize().zIndex(if (filling) ChromeLayer / 2 else ChromeLayer * 2)) {
         val compact = LocalCompactHeight.current
@@ -862,10 +870,11 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
         val pipWidth = if (large) 192.dp else if (compact) 156.dp else 108.dp
         val pipHeight = if (large) 132.dp else if (compact) 108.dp else 156.dp
         val insets = if (large) WindowInsets(0) else WindowInsets.safeDrawing
-        val insetStart = (if (rtl) insets.getRight(density, direction) else insets.getLeft(density, direction)).toFloat()
-        val insetTop = insets.getTop(density).toFloat()
-        val insetEnd = (if (rtl) insets.getLeft(density, direction) else insets.getRight(density, direction)).toFloat()
-        val insetBottom = insets.getBottom(density).toFloat()
+        val pad = insets.asPaddingValues(density)
+        val insetStart = with(density) { pad.calculateStartPadding(direction).toPx() }
+        val insetTop = with(density) { pad.calculateTopPadding().toPx() }
+        val insetEnd = with(density) { pad.calculateEndPadding(direction).toPx() }
+        val insetBottom = with(density) { pad.calculateBottomPadding().toPx() }
         val stageW = with(density) { maxWidth.toPx() }
         val stageH = with(density) { maxHeight.toPx() }
         val width = stageW - insetStart - insetEnd
@@ -878,7 +887,7 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
         val bottom = with(density) { reserve.bottom.toPx() }
         val previewDescription = stringResource(MR.string.call_local_preview)
         val corners = previewCorners(width, height, pipW, pipH, margin, top, bottom)
-        var corner by remember(compact) { mutableIntStateOf(1) }
+        var corner by remember { mutableIntStateOf(1) }
         val anchor = remember(width, height, compact) { Animatable(corners[corner], Offset.VectorConverter) }
         var drag by remember(width, height, compact) { mutableStateOf(Offset.Zero) }
         LaunchedEffect(corners[corner]) { anchor.animateTo(corners[corner], springSpec) }
@@ -928,7 +937,7 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
                     verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
                 ) {
                     Icon(Icons.Default.VideocamOff, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(stringResource(MR.string.call_you), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(MR.string.you), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -1243,7 +1252,7 @@ private fun BoxScope.EndedLayout(
     )
     EndActions(large, spacing = 12.dp) { slot ->
         RetryButton(
-            icon = if (ui.isVideoCall) Icons.Default.Videocam else Icons.Default.Call,
+            icon = if (ui.placedWithVideo) Icons.Default.Videocam else Icons.Default.Call,
             text = stringResource(MR.string.call_call_back),
             onClick = actions.retry,
             modifier = slot,
@@ -1290,7 +1299,7 @@ private fun CloseButton(onClick: () -> Unit, modifier: Modifier) {
         modifier = modifier.heightIn(min = 56.dp),
         contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
     ) {
-        Text(stringResource(MR.string.call_close), style = ButtonDefaults.textStyleFor(56.dp))
+        Text(stringResource(MR.string.close), style = ButtonDefaults.textStyleFor(56.dp))
     }
 }
 
@@ -1302,26 +1311,14 @@ private fun BoxScope.FailedLayout(
     avatar: @Composable (Dp) -> Unit,
     actions: CallScreenActions,
 ) {
-    val title = stringResource(
-        when (reason) {
-            FailReason.NoRoute -> MR.string.call_failed_title
-            FailReason.Permission -> MR.string.call_permission_title
-            FailReason.Other -> MR.string.call_ended_failed
-        },
-    )
-    val body = stringResource(
-        when (reason) {
-            FailReason.NoRoute -> MR.string.call_failed_body
-            FailReason.Permission -> MR.string.call_permission_body
-            FailReason.Other -> MR.string.call_failed_other_body
-        },
-    )
-    val compact = LocalCompactHeight.current
-    val badge = when (reason) {
-        FailReason.NoRoute -> Icons.Default.WifiOff
-        FailReason.Permission -> Icons.Default.MicOff
-        FailReason.Other -> Icons.Default.ErrorOutline
+    val (titleRes, bodyRes, badge) = when (reason) {
+        FailReason.NoRoute -> Triple(MR.string.call_failed_title, MR.string.call_failed_body, Icons.Default.WifiOff)
+        FailReason.Permission -> Triple(MR.string.call_permission_title, MR.string.call_permission_body, Icons.Default.MicOff)
+        FailReason.Other -> Triple(MR.string.call_ended_failed, MR.string.call_failed_other_body, Icons.Default.ErrorOutline)
     }
+    val title = stringResource(titleRes)
+    val body = stringResource(bodyRes)
+    val compact = LocalCompactHeight.current
     Column(
         Modifier.align(Alignment.Center).widthIn(max = 420.dp).padding(horizontal = 32.dp)
             .padding(bottom = if (large) 72.dp else if (compact) 80.dp else 120.dp),
@@ -1359,20 +1356,20 @@ private fun BoxScope.FailedLayout(
         Text(body, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
     }
     EndActions(large, spacing = 8.dp) { slot ->
-        RetryButton(Icons.Default.Refresh, stringResource(MR.string.call_retry), actions.retry, slot)
+        RetryButton(Icons.Default.Refresh, stringResource(MR.string.action_retry), actions.retry, slot)
         TextButton(
             onClick = actions.close,
             modifier = slot.heightIn(min = 56.dp),
             contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
         ) {
-            Text(stringResource(MR.string.call_close), style = ButtonDefaults.textStyleFor(56.dp))
+            Text(stringResource(MR.string.close), style = ButtonDefaults.textStyleFor(56.dp))
         }
     }
 }
 
 @Composable
 fun OngoingCallPill(ui: CallUiState, peerName: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val elapsed = rememberElapsedText(ui.connectedAtMs)
+    val elapsed = rememberElapsed(ui.connectedAtMs)
     val description = stringResource(MR.string.call_pill_description, peerName)
     Surface(
         onClick = onClick,
@@ -1389,7 +1386,7 @@ fun OngoingCallPill(ui: CallUiState, peerName: String, onClick: () -> Unit, modi
         ) {
             Icon(Icons.Default.Call, null, Modifier.size(18.dp))
             Text(
-                stringResource(MR.string.call_pill_text, peerName, elapsed),
+                stringResource(MR.string.call_pill_text, peerName, elapsed()),
                 style = MaterialTheme.typography.labelLarge.tabular(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1463,6 +1460,12 @@ private fun PeerHeader(
 
 @Composable
 private fun AvatarHalo(avatarSize: Dp, mode: HaloMode) {
+    val cookie = MaterialShapes.Cookie12Sided.toShape()
+    val ringColor = MaterialTheme.colorScheme.primary
+    if (mode == HaloMode.Still) {
+        Box(Modifier.size(avatarSize * 1.26f).background(ringColor.copy(alpha = 0.2f), cookie))
+        return
+    }
     val transition = rememberInfiniteTransition(label = "halo")
     val rotation by transition.animateFloat(
         initialValue = 0f,
@@ -1476,8 +1479,6 @@ private fun AvatarHalo(avatarSize: Dp, mode: HaloMode) {
         animationSpec = infiniteRepeatable(tween(1_400), RepeatMode.Reverse),
         label = "haloBreath",
     )
-    val cookie = MaterialShapes.Cookie12Sided.toShape()
-    val ringColor = MaterialTheme.colorScheme.primary
     if (mode == HaloMode.Ringing) {
         Box(
             Modifier.size(avatarSize * 1.5f).graphicsLayer {
@@ -1488,10 +1489,8 @@ private fun AvatarHalo(avatarSize: Dp, mode: HaloMode) {
             }.background(ringColor, CircleShape),
         )
     }
-    val still = mode == HaloMode.Still
     Box(
         Modifier.size(avatarSize * 1.26f).graphicsLayer {
-            if (still) return@graphicsLayer
             rotationZ = rotation
             val s = 0.96f + breath * 0.06f
             scaleX = s
@@ -1538,7 +1537,14 @@ private fun RoundCallButton(
                 Box(contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(if (size > 72.dp) 36.dp else 32.dp)) }
             }
         }
-        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
+        // The button's description already says it; a second node would be announced twice.
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.clearAndSetSemantics {},
+        )
     }
 }
 
@@ -1568,8 +1574,8 @@ private fun EndCallButton(onClick: () -> Unit, modifier: Modifier) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(corner),
-        color = HomebaseTheme.extendedColors.cameraRecord,
-        contentColor = HomebaseTheme.extendedColors.onCameraRecord,
+        color = MaterialTheme.colorScheme.error,
+        contentColor = MaterialTheme.colorScheme.onError,
         interactionSource = interaction,
         modifier = modifier.semantics { contentDescription = description; role = Role.Button },
     ) {
@@ -1601,24 +1607,16 @@ internal fun CallVideoSurface(handle: VideoHandle?, modifier: Modifier = Modifie
     }
 }
 
+/** Read the returned text only where it is drawn, so the per-second tick recomposes that text and nothing around it. */
 @Composable
-private fun rememberElapsedText(connectedAtMs: Long?): String {
-    var now by remember { mutableLongStateOf(Clock.System.now().toEpochMilliseconds()) }
+private fun rememberElapsed(connectedAtMs: Long?): () -> String {
+    val now = remember { mutableLongStateOf(Clock.System.now().toEpochMilliseconds()) }
     LaunchedEffect(connectedAtMs) {
         if (connectedAtMs == null) return@LaunchedEffect
         while (true) {
-            now = Clock.System.now().toEpochMilliseconds()
+            now.longValue = Clock.System.now().toEpochMilliseconds()
             delay(1_000)
         }
     }
-    return formatCallDuration(((now - (connectedAtMs ?: now)) / 1000).coerceAtLeast(0))
-}
-
-internal fun formatCallDuration(totalSeconds: Long): String {
-    val h = totalSeconds / 3600
-    val m = (totalSeconds % 3600) / 60
-    val s = totalSeconds % 60
-    val mm = m.toString().padStart(2, '0')
-    val ss = s.toString().padStart(2, '0')
-    return if (h > 0) "$h:$mm:$ss" else "$mm:$ss"
+    return remember(connectedAtMs) { { formatHms(now.longValue - (connectedAtMs ?: now.longValue), padMinutes = true) } }
 }
