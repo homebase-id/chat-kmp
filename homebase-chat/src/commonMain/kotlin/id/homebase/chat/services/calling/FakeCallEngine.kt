@@ -30,8 +30,9 @@ class FakeCallEngine(
     private val script: FakeCallScript = FakeCallScript(),
     peerLabel: String = "Peer",
     selfLabel: String = "Me",
-    override val mediaDevices: CallMediaDevices? = null,
+    private val devices: ManagedCallMediaDevices? = null,
 ) : CallEngine {
+    override val mediaDevices: CallMediaDevices? get() = devices
     private val _events = MutableSharedFlow<MediaEvent>(extraBufferCapacity = 64)
     override val events: SharedFlow<MediaEvent> = _events.asSharedFlow()
 
@@ -55,7 +56,7 @@ class FakeCallEngine(
     private var scriptJob: Job? = null
 
     override suspend fun createOffer(video: Boolean): String {
-        (mediaDevices as? ManagedCallMediaDevices)?.applyPreferences()
+        devices?.applyPreferences()
         script.failOnCreateOffer?.let { throw it }
         _localVideo.value = if (video) localSource else null
         script.localCandidates.forEach { _events.emit(MediaEvent.LocalIce(it, "0", 0)) }
@@ -63,7 +64,7 @@ class FakeCallEngine(
     }
 
     override suspend fun answer(offerSdp: String, video: Boolean): String {
-        (mediaDevices as? ManagedCallMediaDevices)?.applyPreferences()
+        devices?.applyPreferences()
         _localVideo.value = if (video) localSource else null
         _remoteVideo.value = null
         startScript()

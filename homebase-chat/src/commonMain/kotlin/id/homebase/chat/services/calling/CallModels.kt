@@ -71,6 +71,8 @@ data class CallState(
     val verificationCode: String? = null,
     val placedWithVideo: Boolean = false,
     val restartPending: Boolean = false,
+    /** The engine holds a camera track; without one, turning video on renegotiates through [CallEffect.AddVideo]. */
+    val localVideoTrack: Boolean = false,
     val linkUp: Boolean = false,
 ) {
     val isActive: Boolean

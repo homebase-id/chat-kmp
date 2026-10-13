@@ -262,6 +262,7 @@ class CallController(
                     else sendUnlessOffline(effect.peer, effect.signal, state)
                 is CallEffect.CreateOffer -> {
                     val sdp = engine().createOffer(effect.video)
+                    if (effect.video && engine().localVideo.value == null) post(CallEvent.NoLocalVideoTrack)
                     offerSdp = sdp
                     offerVideo = effect.video
                     offerSeq = 0
@@ -274,6 +275,7 @@ class CallController(
                 }
                 is CallEffect.CreateAnswer -> {
                     val sdp = engine().answer(effect.offerSdp, effect.video)
+                    if (effect.video && engine().localVideo.value == null) post(CallEvent.NoLocalVideoTrack)
                     offerSdp = effect.offerSdp
                     answerSdp = sdp
                     send(state.peer!!, CallSignal.Answer(state.callId!!, sdp))
@@ -303,16 +305,17 @@ class CallController(
                     if (remoteReady) engine?.addIce(effect.candidate, effect.sdpMid, effect.sdpMLineIndex)
                     else bufferedIce += effect
                 is CallEffect.SetMuted -> engine?.setMuted(effect.muted)
-                is CallEffect.SetVideo -> {
-                    val current = engine
-                    if (current != null && effect.on && current.localVideo.value == null && state.phase == CallPhase.Connected) {
-                        // A voice call has no video m-line, so turning the camera on renegotiates through the restart signals.
-                        current.addVideo()?.let { sdp ->
-                            restartOfferSdp = sdp
-                            post(CallEvent.VideoUpgradeSent)
-                            sendUnlessOffline(state.peer!!, CallSignal.Restart(state.callId!!, sdp), state)
-                        } ?: post(CallEvent.SetVideo(false))
-                    } else current?.setVideo(effect.on)
+                is CallEffect.SetVideo -> engine?.setVideo(effect.on)
+                CallEffect.AddVideo -> {
+                    val sdp = engine?.addVideo()
+                    if (sdp != null) {
+                        restartOfferSdp = sdp
+                        post(CallEvent.VideoUpgradeSent)
+                        sendUnlessOffline(state.peer!!, CallSignal.Restart(state.callId!!, sdp), state)
+                    } else {
+                        post(CallEvent.NoLocalVideoTrack)
+                        post(CallEvent.SetVideo(false))
+                    }
                 }
                 CallEffect.SwitchCamera -> engine?.switchCamera()
                 is CallEffect.SetRoute -> engine?.setAudioRoute(effect.route)

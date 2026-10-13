@@ -44,7 +44,7 @@ class CallDevicesViewModelTest {
             signaling = net.endpoint("frodo.baggins.demo.rocks"),
             engineFactory = CallEngineFactory { _ ->
                 val devices = ManagedCallMediaDevices({ hardware() }, { applied += it }, prefs).also { it.refresh(); managed += it }
-                FakeCallEngine(scope.backgroundScope, FakeCallScript(), "peer", "me", mediaDevices = devices)
+                FakeCallEngine(scope.backgroundScope, FakeCallScript(), "peer", "me", devices = devices)
             },
             scope = scope.backgroundScope,
             clock = { scope.testScheduler.currentTime },
