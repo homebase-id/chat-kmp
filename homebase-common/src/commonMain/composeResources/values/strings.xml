@@ -2733,11 +2733,11 @@
     <string name="filesync_home_subtitle">Browse the files you sync from your computers</string>
     <string name="filesync_onboarding_title">Your files, on your own Homebase</string>
     <string name="filesync_onboarding_body_1">Replace Dropbox, OneDrive and Google Drive with something safe and fast: your folders, end-to-end encrypted on your own Homebase.</string>
-    <string name="filesync_onboarding_body_2">Homebase Filesync keeps folders in sync on your computers. Here you can browse them, open files and save them to this device.</string>
+    <string name="filesync_onboarding_body_2">Upload files from this device, browse your folders, and open or save files here. If you use Filesync on a computer, its folders show up here too.</string>
     <string name="filesync_onboarding_setup">Set it up</string>
     <string name="filesync_onboarding_dismiss">Not now</string>
     <string name="filesync_desktop_title">Get the desktop app</string>
-    <string name="filesync_desktop_body">Filesync for Mac, Windows and Linux syncs your folders with your Homebase.</string>
+    <string name="filesync_desktop_body">Want folders from your computer here too? Filesync for Mac, Windows and Linux keeps them in sync with your Homebase.</string>
     <string name="filesync_desktop_download">Download Filesync</string>
     <string name="filesync_folder_empty">This folder is empty</string>
     <string name="filesync_load_failed">Couldn't load this folder.</string>
