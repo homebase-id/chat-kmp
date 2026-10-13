@@ -138,7 +138,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
         if (sig is CallSignal.Hangup && sig.reason.isElsewhere) return elsewhere(s, inbound.from, sig)
         if (!s.isActive || sig.callId != s.callId) return CallTransition(s)
         if (inbound.from != s.peer) return CallTransition(s)
-        if (s.peerDevice != null && sig.device != null && sig.device != s.peerDevice) return otherCalleeDevice(s, sig)
+        if (!s.isFromPeerDevice(sig.device)) return otherCalleeDevice(s, sig)
         return when (sig) {
             is CallSignal.Offer -> CallTransition(s)
             is CallSignal.Ringing ->

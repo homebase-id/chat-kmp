@@ -18,11 +18,9 @@ val HangupReason.isElsewhere: Boolean get() = this == HangupReason.AnsweredElsew
  * Call signalling payload, carried as the base64 `blob` of an odin-core LiveRelay message.
  * An [Offer] doubles as the ring (maps to push kind `ring`); a [Hangup] sent before the call was
  * answered maps to push kind `hangup` with the same `tagId` = callId. [Ringing] is the callee's
- * "my phone is ringing" acknowledgement and has nothing to do with the push kind.
- */
-/**
- * Every signal names the device that sent it in [device], so the caller can tell a callee's devices apart once one has
- * answered; null from a build that predates it, which is then trusted as before.
+ * "my phone is ringing" acknowledgement and has nothing to do with the push kind. Every signal names the device that
+ * sent it in [device], so the caller can tell a callee's devices apart once one has answered; a build that predates it
+ * sends null and is trusted as before.
  */
 @Serializable
 sealed class CallSignal {

@@ -166,7 +166,7 @@ class CallController(
             is CallEvent.Signal -> {
                 val sig = event.inbound.signal
                 sig is CallSignal.Hangup && !sig.reason.isElsewhere && sig.callId == s.callId && event.inbound.from == s.peer &&
-                    (s.peerDevice == null || sig.device == null || sig.device == s.peerDevice)
+                    s.isFromPeerDevice(sig.device)
             }
             else -> false
         }

@@ -78,6 +78,8 @@ data class CallState(
 ) {
     val isActive: Boolean
         get() = phase !is CallPhase.Idle && phase !is CallPhase.Ended
+
+    fun isFromPeerDevice(device: String?): Boolean = peerDevice == null || device == null || device == peerDevice
 }
 
 sealed interface MediaEvent {
