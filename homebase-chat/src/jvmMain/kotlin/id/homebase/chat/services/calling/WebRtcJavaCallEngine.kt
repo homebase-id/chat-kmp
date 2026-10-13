@@ -194,19 +194,27 @@ class WebRtcJavaCallEngine(
         if (closed) return@synchronized
         val native = nativeDevices[device.kind to device.id] ?: error("${device.name} is no longer present")
         when (device.kind) {
-            MediaDeviceKind.Mic -> {
-                adm.stopRecording()
-                adm.setRecordingDevice(native as AudioDevice)
-                adm.initRecording()
-                adm.startRecording()
+            MediaDeviceKind.Mic -> switchAudio(native as AudioDevice, activeMic, { activeMic = it }) {
+                adm.stopRecording(); adm.setRecordingDevice(it); adm.initRecording(); adm.startRecording()
             }
-            MediaDeviceKind.Speaker -> {
-                adm.stopPlayout()
-                adm.setPlayoutDevice(native as AudioDevice)
-                adm.initPlayout()
-                adm.startPlayout()
+            MediaDeviceKind.Speaker -> switchAudio(native as AudioDevice, activeSpeaker, { activeSpeaker = it }) {
+                adm.stopPlayout(); adm.setPlayoutDevice(it); adm.initPlayout(); adm.startPlayout()
             }
             MediaDeviceKind.Camera -> switchCaptureDevice(native as VideoDevice)
+        }
+    }
+
+    private var activeMic: AudioDevice? = null
+    private var activeSpeaker: AudioDevice? = null
+
+    // The native ADM throws java.lang.Error (not Exception) when a device refuses to start, e.g. a Continuity mic.
+    private fun switchAudio(target: AudioDevice, previous: AudioDevice?, remember: (AudioDevice) -> Unit, start: (AudioDevice) -> Unit) {
+        try {
+            start(target)
+            remember(target)
+        } catch (e: Throwable) {
+            if (previous != null) runCatching { start(previous) }
+            throw IllegalStateException("${target.name} could not be started: ${e.message}", e)
         }
     }
 
@@ -248,6 +256,7 @@ class WebRtcJavaCallEngine(
         source.start()
         localFrames?.mirrored = cameraMirrored(device.name, device.deviceTransport?.name)
         watchForSilentCamera(tried)
+        devices.markApplied(MediaDeviceKind.Camera, device.descriptor)
     }
 
     private fun logVideoStats() {

@@ -106,6 +106,9 @@ class ManagedCallMediaDevices(
         }
     }
 
+    /** Records a device the platform switched to on its own, without remembering it as the user's choice. */
+    fun markApplied(kind: MediaDeviceKind, id: String) { _selected.update { it + (kind to id) } }
+
     override fun select(kind: MediaDeviceKind, id: String) = serialize {
         val device = _devices.value.firstOrNull { it.kind == kind && it.id == id } ?: return@serialize
         if (_selected.value[kind] == id) return@serialize
