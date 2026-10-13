@@ -10,8 +10,14 @@ import id.homebase.chat.services.calling.CallQuality
 import id.homebase.chat.services.calling.CallSession
 import id.homebase.chat.services.calling.CallVideos
 import id.homebase.chat.services.calling.isInCall
+import id.homebase.chat.services.calling.MediaDevice
+import id.homebase.chat.services.calling.MediaDeviceKind
+import id.homebase.chat.services.calling.MediaDeviceNotice
 import id.homebase.chat.services.calling.platformAudioRoutes
 import kotlin.time.Clock
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -21,6 +27,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -44,6 +53,9 @@ data class CallUiState(
     val videos: CallVideos = CallVideos(),
     val minimized: Boolean = false,
     val dismissedCallId: String? = null,
+    val devices: List<MediaDevice> = emptyList(),
+    val selectedDevices: Map<MediaDeviceKind, String?> = emptyMap(),
+    val micLevel: Float = 0f,
 ) {
     val visible: Boolean
         get() = phase != CallPhase.Idle && !(phase is CallPhase.Ended && callId == dismissedCallId)
@@ -66,11 +78,14 @@ data class CallUiState(
 sealed interface CallUiEvent {
     data object ShowVerification : CallUiEvent
     data object ConfirmEnd : CallUiEvent
+    data class DeviceDisconnected(val name: String, val fallbackName: String) : CallUiEvent
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class CallViewModel(
     private val session: CallSession,
     private val audioRoutes: () -> List<AudioRoute> = ::platformAudioRoutes,
+    private val deviceDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(CallUiState())
     val uiState: StateFlow<CallUiState> = _uiState.asStateFlow()
@@ -81,7 +96,25 @@ class CallViewModel(
     private var lingerJob: Job? = null
     private var lingeringFor: String? = null
 
+    private class DeviceSnapshot(
+        val devices: List<MediaDevice> = emptyList(),
+        val selected: Map<MediaDeviceKind, String?> = emptyMap(),
+        val micLevel: Float = 0f,
+    )
+
     init {
+        viewModelScope.launch {
+            session.mediaDevices
+                .flatMapLatest { d -> if (d == null) flowOf(DeviceSnapshot()) else combine(d.devices, d.selected, d.micLevel, ::DeviceSnapshot) }
+                .collect { snap ->
+                    _uiState.update { it.copy(devices = snap.devices, selectedDevices = snap.selected, micLevel = snap.micLevel) }
+                }
+        }
+        viewModelScope.launch {
+            session.mediaDevices.flatMapLatest { it?.events ?: emptyFlow() }.collect { notice ->
+                if (notice is MediaDeviceNotice.Disconnected) _events.tryEmit(CallUiEvent.DeviceDisconnected(notice.name, notice.fallbackName))
+            }
+        }
         viewModelScope.launch {
             combine(session.state, session.videos) { state, videos -> state to videos }.collect { (state, videos) ->
                 val routes = if (state.isActive) audioRoutes() else emptyList()
@@ -150,6 +183,12 @@ class CallViewModel(
     fun switchCamera() = session.switchCamera()
 
     fun setRoute(route: AudioRoute) = session.setAudioRoute(route)
+
+    // Swapping a device restarts native audio or capture, which takes long enough to drop frames on the main thread.
+    fun selectDevice(kind: MediaDeviceKind, id: String) {
+        val devices = session.mediaDevices.value ?: return
+        viewModelScope.launch(deviceDispatcher) { devices.select(kind, id) }
+    }
 
     fun retry(withVideo: Boolean) {
         val current = _uiState.value

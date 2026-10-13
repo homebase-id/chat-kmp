@@ -14,6 +14,7 @@ interface CallEngine {
     val events: Flow<MediaEvent>
     val localVideo: StateFlow<VideoHandle?>
     val remoteVideo: StateFlow<VideoHandle?>
+    val mediaDevices: CallMediaDevices? get() = null
 
     suspend fun createOffer(video: Boolean): String
     suspend fun answer(offerSdp: String, video: Boolean): String

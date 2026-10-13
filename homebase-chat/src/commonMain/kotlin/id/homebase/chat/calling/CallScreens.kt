@@ -22,6 +22,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -70,6 +71,8 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.PhoneInTalk
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
@@ -120,6 +123,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -169,8 +174,10 @@ import id.homebase.chat.services.calling.CallQuality
 import id.homebase.chat.services.calling.CallVideoView
 import id.homebase.chat.services.calling.FailReason
 import id.homebase.chat.services.calling.FakeVideo
+import id.homebase.chat.services.calling.MediaDeviceKind
 import id.homebase.chat.services.calling.VideoHandle
 import id.homebase.resources.MR
+import id.homebase.resources.call_devices
 import id.homebase.resources.call_accept
 import id.homebase.resources.call_accept_audio_from
 import id.homebase.resources.call_accept_audio_label
@@ -261,6 +268,7 @@ class CallScreenActions(
     val close: () -> Unit,
     val minimize: () -> Unit,
     val endFromKeyboard: () -> Unit,
+    val selectDevice: (MediaDeviceKind, String) -> Unit = { _, _ -> },
 )
 
 private val ContentMaxWidth = 480.dp
@@ -692,7 +700,8 @@ private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actio
             ) { center() }
         }
         val code = ui.verificationCode
-        if (code != null || desktop) {
+        val showDevices = ui.devices.isNotEmpty()
+        if (code != null || desktop || showDevices) {
             Column(Modifier.align(Alignment.TopEnd), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (code != null) {
@@ -703,6 +712,13 @@ private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actio
                             tint = MaterialTheme.colorScheme.primary,
                             selected = codeOpen,
                         )
+                    }
+                    if (showDevices) {
+                        var devicesOpen by remember { mutableStateOf(false) }
+                        Box {
+                            ChromeIconButton(Icons.Default.Tune, stringResource(MR.string.call_devices), { devicesOpen = true }, selected = devicesOpen)
+                            CallDeviceMenu(devicesOpen, { devicesOpen = false }, ui, MediaDeviceKind.entries, actions.selectDevice)
+                        }
                     }
                     if (desktop) ChromeIconButton(Icons.AutoMirrored.Filled.Chat, stringResource(MR.string.call_back_to_chat), actions.minimize)
                 }
@@ -963,10 +979,12 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
 private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActions, modifier: Modifier, placing: Boolean) {
     val compact = LocalCompactHeight.current
     val showLabels = !large && !compact
-    val showRoute = ui.availableRoutes.size > 1
+    // Desktop pickers choose the real output and camera, so the phone route and flip toggles would only duplicate them.
+    val pickers = ui.devices.isNotEmpty()
+    val showRoute = ui.availableRoutes.size > 1 && !pickers
     val showCamera = ui.videos.local != null
     // Desktop webcams are single-facing, so flip only earns a slot on phone widths.
-    val showFlip = ui.localVideo && !large && !placing
+    val showFlip = ui.localVideo && !large && !placing && !pickers
     val count = 1 + listOf(showRoute, showCamera, showFlip).count { it }
     val routeSlot = 1
     val cameraSlot = if (showRoute) 2 else 1
@@ -986,6 +1004,8 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
             shapes = segmentShapes(0, count),
             interaction = muteInteraction,
             modifier = Modifier.animateWidth(muteInteraction),
+            level = ui.micLevel.takeIf { pickers && !ui.muted },
+            chevron = if (pickers) ({ DeviceChevron(ui, MediaDeviceKind.Mic, actions) }) else null,
         )
         if (showRoute) {
             val routeInteraction = remember { MutableInteractionSource() }
@@ -1005,6 +1025,7 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
                 shapes = segmentShapes(cameraSlot, count),
                 interaction = cameraInteraction,
                 modifier = Modifier.animateWidth(cameraInteraction),
+                chevron = if (pickers) ({ DeviceChevron(ui, MediaDeviceKind.Camera, actions) }) else null,
             )
         }
         if (showFlip) {
@@ -1095,9 +1116,12 @@ private fun CallToggle(
     shapes: IconToggleButtonShapes,
     interaction: MutableInteractionSource,
     modifier: Modifier,
+    level: Float? = null,
+    chevron: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     ToggleColumn(label, modifier) {
         DesktopTooltip(tooltip ?: description) {
+        Box(Modifier.fillMaxWidth()) {
         FilledTonalIconToggleButton(
             checked = checked,
             onCheckedChange = onCheckedChange,
@@ -1114,9 +1138,45 @@ private fun CallToggle(
                 stateDescription = state
             },
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(26.dp))
+            val ring = MaterialTheme.colorScheme.primary
+            val shown by animateFloatAsState(level ?: 0f, tween(100), label = "micLevel")
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(26.dp).then(
+                    if (level == null) Modifier else Modifier.drawBehind {
+                        val radius = 22.dp.toPx()
+                        val stroke = 3.dp.toPx()
+                        val topLeft = Offset(center.x - radius, center.y - radius)
+                        val box = Size(radius * 2, radius * 2)
+                        drawArc(ring.copy(alpha = 0.2f), 0f, 360f, false, topLeft, box, style = Stroke(stroke))
+                        drawArc(ring, -90f, 360f * shown, false, topLeft, box, style = Stroke(stroke, cap = StrokeCap.Round))
+                    },
+                ),
+            )
+        }
+        chevron?.invoke(this)
         }
         }
+    }
+}
+
+@Composable
+private fun BoxScope.DeviceChevron(ui: CallUiState, kind: MediaDeviceKind, actions: CallScreenActions) {
+    var open by remember { mutableStateOf(false) }
+    val description = stringResource(kind.label())
+    Box(Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 6.dp)) {
+        Box(
+            Modifier.size(24.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.85f))
+                .clickable(role = Role.Button, onClickLabel = description) { open = true }
+                .focusRing(CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Default.ArrowDropDown, contentDescription = description, modifier = Modifier.size(20.dp))
+        }
+        CallDeviceMenu(open, { open = false }, ui, listOf(kind), actions.selectDevice)
     }
 }
 

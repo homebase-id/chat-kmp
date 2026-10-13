@@ -42,6 +42,9 @@ class CallController(
     private val _videos = MutableStateFlow(CallVideos())
     override val videos: StateFlow<CallVideos> = _videos.asStateFlow()
 
+    private val _mediaDevices = MutableStateFlow<CallMediaDevices?>(null)
+    override val mediaDevices: StateFlow<CallMediaDevices?> = _mediaDevices.asStateFlow()
+
     // Everything below the inbox is touched only from the inbox loop; other threads just post.
     private sealed interface Command {
         class Event(val event: CallEvent, val processed: CompletableDeferred<CallState>? = null) : Command
@@ -241,6 +244,7 @@ class CallController(
 
     private fun engine(): CallEngine = engine ?: engineFactory.create(stunUrls()).also { created ->
         engine = created
+        _mediaDevices.value = created.mediaDevices
         remoteReady = false
         engineEvents = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             created.events.collect { post(CallEvent.Media(it)) }
@@ -402,6 +406,7 @@ class CallController(
         engineVideos?.cancel()
         engineVideos = null
         _videos.value = CallVideos()
+        _mediaDevices.value = null
         engine?.close()
         engine = null
         remoteReady = false

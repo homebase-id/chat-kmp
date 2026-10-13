@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 interface CallSession {
     val state: StateFlow<CallState>
     val videos: StateFlow<CallVideos>
+    val mediaDevices: StateFlow<CallMediaDevices?> get() = NoCallMediaDevices
 
     fun startCall(peer: String, video: Boolean)
     fun accept()

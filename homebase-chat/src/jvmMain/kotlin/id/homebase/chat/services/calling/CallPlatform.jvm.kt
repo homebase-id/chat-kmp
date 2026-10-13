@@ -13,7 +13,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 
-actual fun platformCallEngineFactory(): CallEngineFactory? = CallEngineFactory { WebRtcJavaCallEngine(it) }
+actual fun platformCallEngineFactory(): CallEngineFactory? = CallEngineFactory { WebRtcJavaCallEngine(it, devicePreferences = desktopCallDevicePreferences()) }
 
 @Composable
 actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius: Dp) {

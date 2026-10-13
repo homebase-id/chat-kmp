@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -20,6 +21,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,12 +42,15 @@ import id.homebase.core.util.initials
 import id.homebase.resources.MR
 import id.homebase.resources.call_end_confirm_body
 import id.homebase.resources.call_end_confirm_title
+import id.homebase.resources.call_device_disconnected
 import id.homebase.resources.call_end_keep
 import id.homebase.resources.call_hang_up
 import id.homebase.resources.call_verification_body
 import id.homebase.resources.call_verification_ok
 import id.homebase.resources.call_verification_title
 import id.homebase.core.util.KeepScreenOn
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
@@ -87,11 +92,15 @@ fun CallOverlay(
     LaunchedEffect(ui.inProgress) { if (!ui.inProgress) RemoteVideoSize.current.value = null }
     var showVerification by remember { mutableStateOf(false) }
     var confirmEnd by remember { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
                 CallUiEvent.ShowVerification -> showVerification = true
                 CallUiEvent.ConfirmEnd -> confirmEnd = true
+                is CallUiEvent.DeviceDisconnected ->
+                    scope.launch { snackbar.showSnackbar(getString(MR.string.call_device_disconnected, event.name, event.fallbackName)) }
             }
         }
     }
@@ -110,6 +119,7 @@ fun CallOverlay(
             close = viewModel::close,
             minimize = onMinimize,
             endFromKeyboard = viewModel::endFromKeyboard,
+            selectDevice = viewModel::selectDevice,
         )
     }
 
@@ -122,6 +132,9 @@ fun CallOverlay(
             Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
                 if (inPip) CallPipLayout(ui, avatar) else CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, fillsWindow = fillsWindow, topInset = topInset)
             }
+        }
+        if (ui.visible && !inPip) {
+            CallDeviceSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(bottom = SnackbarAboveDock))
         }
         if (ui.pillVisible && !inPip) {
             OngoingCallPill(
@@ -181,3 +194,5 @@ internal fun PeerAvatar(odinId: String, name: String, size: Dp) {
         options = AvatarOptions(size = size, fontSize = (size.value / 3).sp),
     )
 }
+
+private val SnackbarAboveDock = 120.dp

@@ -1,5 +1,8 @@
 package id.homebase.chat.services.calling
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import dev.onvoid.webrtc.media.FourCC
@@ -14,7 +17,8 @@ import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.ImageInfo
 
-class JvmVideoHandle(val mirrored: Boolean = false) : VideoHandle {
+class JvmVideoHandle(mirrored: Boolean = false) : VideoHandle {
+    var mirrored by mutableStateOf(mirrored)
     private val _frame = MutableStateFlow<ImageBitmap?>(null)
     val frame: StateFlow<ImageBitmap?> = _frame.asStateFlow()
 

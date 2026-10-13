@@ -2818,6 +2818,12 @@
     <string name="call_bar_return">Return to call</string>
     <string name="call_bar_end">End call with %1$s</string>
     <string name="call_back_to_chat">Back to chat</string>
+    <string name="call_devices">Devices</string>
+    <string name="call_device_microphone">Microphone</string>
+    <string name="call_device_speaker">Speaker</string>
+    <string name="call_device_camera">Camera</string>
+    <string name="call_device_system_default">%1$s (System default)</string>
+    <string name="call_device_disconnected">%1$s disconnected, using %2$s</string>
     <string name="call_tooltip_shortcut">%1$s (%2$s)</string>
     <string name="call_key_escape">Esc</string>
     <string name="call_hide_self_view">Hide self view</string>

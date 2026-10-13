@@ -18,13 +18,22 @@ import dev.onvoid.webrtc.RTCSessionDescription
 import dev.onvoid.webrtc.SetSessionDescriptionObserver
 import dev.onvoid.webrtc.logging.LogSink
 import dev.onvoid.webrtc.logging.Logging
+import dev.onvoid.webrtc.media.Device
+import dev.onvoid.webrtc.media.DeviceChangeListener
+import dev.onvoid.webrtc.media.MediaDevices
 import dev.onvoid.webrtc.media.MediaStreamTrack
+import dev.onvoid.webrtc.media.audio.AudioDevice
+import dev.onvoid.webrtc.media.audio.AudioDeviceModule
 import dev.onvoid.webrtc.media.audio.AudioDeviceModuleBase
 import dev.onvoid.webrtc.media.audio.AudioOptions
 import dev.onvoid.webrtc.media.audio.AudioTrack
+import dev.onvoid.webrtc.media.video.VideoCaptureCapability
+import dev.onvoid.webrtc.media.video.VideoDevice
 import dev.onvoid.webrtc.media.video.VideoDeviceSource
 import dev.onvoid.webrtc.media.video.VideoTrack
 import java.util.Timer
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.timerTask
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -40,6 +49,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 class WebRtcJavaCallEngine(
     stunUrls: List<String>,
     audioDevice: AudioDeviceModuleBase? = null,
+    devicePreferences: CallDevicePreferences = InMemoryCallDevicePreferences(),
 ) : CallEngine {
     private val _events = MutableSharedFlow<MediaEvent>(extraBufferCapacity = 64)
     override val events: SharedFlow<MediaEvent> = _events.asSharedFlow()
@@ -53,8 +63,10 @@ class WebRtcJavaCallEngine(
         nativeLogs
     }
 
-    private val factory = if (audioDevice != null) PeerConnectionFactory(audioDevice) else PeerConnectionFactory()
-    private var audioTrack: AudioTrack? = null
+    private val ownsAudioDevice = audioDevice == null
+    private val adm: AudioDeviceModuleBase = audioDevice ?: AudioDeviceModule()
+    private val factory = PeerConnectionFactory(adm)
+    @Volatile private var audioTrack: AudioTrack? = null
     private var videoTrack: VideoTrack? = null
     private var videoSender: RTCRtpSender? = null
     private val sendLadder = SendResolutionLadder { scale -> videoSender?.let { scaleVideoSender(it, scale) } }
@@ -62,7 +74,6 @@ class WebRtcJavaCallEngine(
     private var localFrames: JvmVideoHandle? = null
     private var remoteFrames: JvmVideoHandle? = null
     private var remoteTrack: VideoTrack? = null
-    private var cameraIndex = 0
     private val mapper = PeerEventMapper { _events.tryEmit(it) }
 
     // Native callbacks arrive on WebRTC threads; the lock keeps close() from disposing the connection under a live call.
@@ -71,6 +82,32 @@ class WebRtcJavaCallEngine(
     // Held by the signaling thread in onTrack, so never across a peer call: getStats and addIceCandidate block on that thread.
     private val remoteLock = Any()
     @Volatile private var closed = false
+
+    // deviceLock serialises picker work and is always taken before [lock]; close() never takes it.
+    private val deviceLock = Any()
+    private val nativeDevices = mutableMapOf<Pair<MediaDeviceKind, String>, Device>()
+
+    // getSignalLevel waits on the signaling thread, so the meter runs under its own lock, never [lock].
+    private val levelLock = Any()
+    private var levelStopped = false
+    @Volatile private var live = false
+    @Volatile private var micMuted = false
+
+    private val deviceExecutor = Executors.newSingleThreadExecutor { task -> Thread(task, "call-devices").apply { isDaemon = true } }
+    private val listenerRegistered = AtomicBoolean(false)
+    private val deviceListener = object : DeviceChangeListener {
+        override fun deviceConnected(device: Device) = refreshDevices()
+        override fun deviceDisconnected(device: Device) = refreshDevices()
+    }
+
+    private val devices = ManagedCallMediaDevices(
+        enumerate = ::enumerateDevices,
+        apply = ::applyDevice,
+        preferences = devicePreferences,
+        serialize = { step -> synchronized(deviceLock) { step() } },
+        onApplyFailed = { device, e -> Logger.w(e, "WebRtcJava") { "could not switch ${device.kind} to ${device.name}" } },
+    )
+    override val mediaDevices: CallMediaDevices get() = devices
 
     private val peer: RTCPeerConnection = factory.createPeerConnection(
         RTCConfiguration().apply {
@@ -83,6 +120,7 @@ class WebRtcJavaCallEngine(
             }
 
             override fun onConnectionChange(state: RTCPeerConnectionState) {
+                live = state == RTCPeerConnectionState.CONNECTED
                 if (!closed) mapper.linkState(state.toLinkState())
             }
 
@@ -104,8 +142,81 @@ class WebRtcJavaCallEngine(
         schedule(timerTask { logVideoStats() }, STATS_PERIOD_MS, STATS_PERIOD_MS)
     }
 
+    private val micLevelTimer = Timer("call-mic-level", true).apply {
+        schedule(timerTask { pollMicLevel() }, MIC_LEVEL_PERIOD_MS, MIC_LEVEL_PERIOD_MS)
+    }
+
+    init {
+        devices.refresh()
+        if (!closed) {
+            MediaDevices.addDeviceChangeListener(deviceListener)
+            listenerRegistered.set(true)
+        }
+    }
+
     @Volatile
     private var previousStats = emptyList<StatsEntry>()
+
+    private fun refreshDevices() {
+        if (closed) return
+        runCatching { deviceExecutor.execute { if (!closed) devices.refresh() } }
+    }
+
+    private fun pollMicLevel() {
+        val level = synchronized(levelLock) {
+            if (levelStopped) return
+            val track = audioTrack
+            if (!live || micMuted || track == null) 0f else normalizeMicLevel(track.signalLevel)
+        }
+        devices.setMicLevel(level)
+    }
+
+    private fun enumerateDevices(): List<MediaDevice> {
+        nativeDevices.clear()
+        val found = mutableListOf<MediaDevice>()
+        fun add(kind: MediaDeviceKind, list: List<Device>, defaultId: String?) = list.forEach { device ->
+            nativeDevices[kind to device.descriptor] = device
+            found += MediaDevice(device.descriptor, device.name, kind, isDefault = device.descriptor == defaultId)
+        }
+        runCatching {
+            add(MediaDeviceKind.Mic, MediaDevices.getAudioCaptureDevices(), runCatching { MediaDevices.getDefaultAudioCaptureDevice()?.descriptor }.getOrNull())
+        }
+        runCatching {
+            add(MediaDeviceKind.Speaker, MediaDevices.getAudioRenderDevices(), runCatching { MediaDevices.getDefaultAudioRenderDevice()?.descriptor }.getOrNull())
+        }
+        runCatching { add(MediaDeviceKind.Camera, cameras(), null) }
+        return found
+    }
+
+    private fun applyDevice(device: MediaDevice) = synchronized(lock) {
+        if (closed) return@synchronized
+        val native = nativeDevices[device.kind to device.id] ?: error("${device.name} is no longer present")
+        when (device.kind) {
+            MediaDeviceKind.Mic -> {
+                adm.stopRecording()
+                adm.setRecordingDevice(native as AudioDevice)
+                adm.initRecording()
+                adm.startRecording()
+            }
+            MediaDeviceKind.Speaker -> {
+                adm.stopPlayout()
+                adm.setPlayoutDevice(native as AudioDevice)
+                adm.initPlayout()
+                adm.startPlayout()
+            }
+            MediaDeviceKind.Camera -> switchCaptureDevice(native as VideoDevice)
+        }
+    }
+
+    private fun switchCaptureDevice(device: VideoDevice) {
+        val source = videoSource ?: return
+        source.stop()
+        source.setVideoCaptureDevice(device)
+        runCatching { pickCapability(MediaDevices.getVideoCaptureCapabilities(device).map { Capability(it.width, it.height, it.frameRate) }) }
+            .getOrNull()?.let { source.setVideoCaptureCapability(VideoCaptureCapability(it.width, it.height, it.frameRate)) }
+        source.start()
+        localFrames?.mirrored = cameraMirrored(device.name, device.deviceTransport?.name)
+    }
 
     private fun logVideoStats() {
         synchronized(lock) {
@@ -129,6 +240,8 @@ class WebRtcJavaCallEngine(
         RTCPeerConnectionState.CLOSED -> PeerLinkState.Closed
     }
 
+    internal fun isAudioEnabled(): Boolean = audioTrack?.isEnabled == true
+
     private fun checkOpen() {
         if (closed) throw CallEngineException(FailReason.Other, "engine closed")
     }
@@ -148,20 +261,21 @@ class WebRtcJavaCallEngine(
 
     private fun startCamera() {
         try {
-            val devices = cameras()
-            val device = devices.firstOrNull() ?: run {
+            val available = cameras()
+            val chosen = devices.selected.value[MediaDeviceKind.Camera]
+            val device = available.firstOrNull { it.descriptor == chosen } ?: available.firstOrNull() ?: run {
                 Logger.w("WebRtcJava") { "no camera found, continuing audio-only" }
                 return
             }
-            Logger.i("WebRtcJava") { "camera ${device.name} of ${devices.map { it.name }}" }
+            Logger.i("WebRtcJava") { "camera ${device.name} of ${available.map { it.name }}" }
             val source = VideoDeviceSource().apply {
                 setVideoCaptureDevice(device)
                 start()
             }
             videoSource = source
             val track = factory.createVideoTrack("video0", source)
-            // The Mac camera faces the user, so its preview is mirrored; the transmitted frames are untouched.
-            val handle = JvmVideoHandle.localPreview(DESKTOP_CAMERA_FACING).also { localFrames = it }
+            // A webcam faces the user, so its preview is mirrored; the transmitted frames are untouched.
+            val handle = JvmVideoHandle(cameraMirrored(device.name, device.deviceTransport?.name)).also { localFrames = it }
             track.addSink(handle.sink)
             videoSender = peer.addTrack(track, listOf(STREAM_ID)).also(::configureVideoSender)
             videoTrack = track
@@ -172,11 +286,13 @@ class WebRtcJavaCallEngine(
     }
 
     override suspend fun createOffer(video: Boolean): String {
+        devices.applyPreferences()
         addLocalMedia(video)
         return offer(RTCOfferOptions())
     }
 
     override suspend fun answer(offerSdp: String, video: Boolean): String {
+        devices.applyPreferences()
         addLocalMedia(video)
         setRemote(RTCSessionDescription(RTCSdpType.OFFER, offerSdp))
         return createAnswer()
@@ -242,6 +358,7 @@ class WebRtcJavaCallEngine(
     }
 
     override fun setMuted(muted: Boolean) {
+        micMuted = muted
         synchronized(lock) { if (!closed) audioTrack?.isEnabled = !muted }
     }
 
@@ -250,16 +367,11 @@ class WebRtcJavaCallEngine(
     }
 
     override fun switchCamera() {
-        synchronized(lock) {
-            if (closed) return
-            val devices = cameras()
-            val source = videoSource ?: return
-            if (devices.size < 2) return
-            cameraIndex = (cameraIndex + 1) % devices.size
-            source.stop()
-            source.setVideoCaptureDevice(devices[cameraIndex])
-            source.start()
-        }
+        if (closed || videoSource == null) return
+        val cameras = devices.devices.value.filter { it.kind == MediaDeviceKind.Camera }
+        if (cameras.size < 2) return
+        val current = cameras.indexOfFirst { it.id == devices.selected.value[MediaDeviceKind.Camera] }
+        devices.select(MediaDeviceKind.Camera, cameras[(current + 1) % cameras.size].id)
     }
 
     private fun cameras() = preferredCameraOrder(dev.onvoid.webrtc.media.MediaDevices.getVideoCaptureDevices()) { it.name }
@@ -267,6 +379,11 @@ class WebRtcJavaCallEngine(
     override fun setAudioRoute(route: AudioRoute) = Unit
 
     override fun close() {
+        // Before [lock]: the listener's native thread can be inside a refresh that waits for [lock].
+        if (listenerRegistered.compareAndSet(true, false)) runCatching { MediaDevices.removeDeviceChangeListener(deviceListener) }
+        deviceExecutor.shutdownNow()
+        micLevelTimer.cancel()
+        synchronized(levelLock) { levelStopped = true }
         synchronized(lock) {
             if (closed) return
             closed = true
@@ -285,13 +402,14 @@ class WebRtcJavaCallEngine(
             localFrames?.close()
             _local.value = null
             runCatching { factory.dispose() }
+            if (ownsAudioDevice) runCatching { adm.dispose() }
         }
     }
 
     private companion object {
         const val STREAM_ID = "homebase-call"
         const val STATS_PERIOD_MS = 5_000L
-        val DESKTOP_CAMERA_FACING = CameraFacing.Front
+        const val MIC_LEVEL_PERIOD_MS = 100L
 
         // The capturer reports a failed camera start only through the native log, which otherwise goes nowhere.
         val nativeLogs: Unit by lazy {
@@ -332,4 +450,20 @@ internal fun scaleVideoSender(sender: RTCRtpSender, scaleDownBy: Double) {
     val params = sender.parameters
     params.encodings?.forEach { it.scaleResolutionDownBy = scaleDownBy }
     sender.parameters = params
+}
+
+internal data class Capability(val width: Int, val height: Int, val frameRate: Int)
+
+/** The capture mode nearest 720p at no more than 30 fps; null when the device lists none. */
+internal fun pickCapability(options: List<Capability>): Capability? =
+    options.minWithOrNull(
+        compareBy<Capability> { kotlin.math.abs(it.width * it.height - 1280 * 720) }
+            .thenBy { kotlin.math.abs(minOf(it.frameRate, 30) - 30) + if (it.frameRate > 30) 1 else 0 },
+    )
+
+/** Webcams face the user, so their preview is mirrored; virtual, HDMI and wireless (Continuity) sources are not. */
+internal fun cameraMirrored(name: String, transport: String?): Boolean {
+    val label = name.lowercase()
+    if (VIRTUAL_CAMERA_HINTS.any { it in label }) return false
+    return transport?.uppercase() !in setOf("HDMI", "WIRELESS")
 }

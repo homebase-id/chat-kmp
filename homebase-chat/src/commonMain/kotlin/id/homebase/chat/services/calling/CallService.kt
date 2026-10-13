@@ -57,6 +57,10 @@ class CallService(
         .flatMapLatest { it?.videos ?: flowOf(CallVideos()) }
         .stateIn(scope, SharingStarted.Eagerly, CallVideos())
 
+    override val mediaDevices: StateFlow<CallMediaDevices?> = controller
+        .flatMapLatest { it?.mediaDevices ?: flowOf(null) }
+        .stateIn(scope, SharingStarted.Eagerly, null)
+
     // Declared before init: the init-launched loop reads it, and a field initialised later is null there.
     // A push can land on any thread before the identity has loaded (cold FCM/PushKit wake); the channel keeps
     // ring and hangup in arrival order and replays them to whichever controller is bound.
