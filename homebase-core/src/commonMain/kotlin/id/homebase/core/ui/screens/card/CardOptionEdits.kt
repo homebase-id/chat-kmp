@@ -12,8 +12,10 @@ fun CardOverrides.valueOf(option: CardOption): String? = when (option) {
 }
 
 /** Orderable sections in effect; posts rides with moments. */
-fun CardOverrides.blockOrder(): List<String> {
-    val chosen = blocks?.map { it.kind }.orEmpty().filter { it in CardDesignSpecs.ORDERED_KINDS }.distinct()
+fun CardOverrides.blockOrder(): List<String> = completeOrder(blocks?.map { it.kind }.orEmpty())
+
+private fun completeOrder(kinds: List<String>): List<String> {
+    val chosen = kinds.filter { it in CardDesignSpecs.ORDERED_KINDS }.distinct()
     return chosen + CardDesignSpecs.ORDERED_KINDS.filter { it !in chosen }
 }
 
@@ -31,9 +33,5 @@ fun CardOverrides.with(option: CardOption, value: String?): CardOverrides = when
     CardOption.BLOCK_ORDER -> this
 }
 
-fun CardOverrides.withBlockOrder(kinds: List<String>?): CardOverrides {
-    val ordered = kinds?.filter { it in CardDesignSpecs.ORDERED_KINDS }?.distinct()?.let { chosen ->
-        chosen + CardDesignSpecs.ORDERED_KINDS.filter { it !in chosen }
-    }
-    return copy(blocks = ordered?.flatMap { if (it == "moments") listOf(it, "posts") else listOf(it) }?.map { CardBlock(it) })
-}
+fun CardOverrides.withBlockOrder(kinds: List<String>?): CardOverrides =
+    copy(blocks = kinds?.let { completeOrder(it) }?.flatMap { if (it == "moments") listOf(it, "posts") else listOf(it) }?.map { CardBlock(it) })
