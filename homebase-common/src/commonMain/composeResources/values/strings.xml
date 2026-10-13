@@ -2803,8 +2803,6 @@
     <string name="call_accept_audio_label">Voice only</string>
     <string name="call_accept">Accept</string>
     <string name="call_lab_hide">Hide lab controls</string>
-    <string name="call_accept_audio">Accept as voice call</string>
-    <string name="call_accept_video">Accept as video call</string>
     <string name="call_failed_title">Can't connect</string>
     <string name="call_failed_body">Your network may be blocking direct calls. Try switching between Wi-Fi and mobile data, then retry.</string>
     <string name="call_failed_other_body">Something went wrong setting up the call. Try again.</string>
