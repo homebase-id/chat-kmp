@@ -78,10 +78,6 @@ private fun remoteSizeEvents() = object : RendererCommon.RendererEvents {
     }
 }
 
-// The "calls" notification channel rings on Android; ringing here too would double up.
-@Composable
-actual fun CallRingEffect(ringing: Boolean, callerName: String) = Unit
-
 actual fun platformAudioRoutes(): List<AudioRoute> {
     val routes = mutableListOf(AudioRoute.Earpiece, AudioRoute.Speaker)
     if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return routes

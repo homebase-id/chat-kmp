@@ -30,8 +30,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
-import id.homebase.chat.services.calling.CallPhase
-import id.homebase.chat.services.calling.CallRingEffect
 import id.homebase.chat.services.calling.CallPictureInPictureEffect
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.RemoteVideoSize
@@ -56,7 +54,6 @@ fun CallHost(viewModel: CallViewModel, modifier: Modifier = Modifier) {
     if (!koinInject<CallService>().available) return
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val name = rememberPeerName(ui.peer)
-    CallRingEffect(ringing = ui.phase == CallPhase.Incoming, callerName = name)
     CallOverlay(
         viewModel = viewModel,
         ui = ui,
