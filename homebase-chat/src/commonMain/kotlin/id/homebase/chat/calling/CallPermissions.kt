@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.PermissionsManager
@@ -32,8 +33,11 @@ class CallPermissionGate internal constructor(
     fun run(video: Boolean, onGranted: (video: Boolean) -> Unit) = request(video, onGranted)
 }
 
+/** The app's one gate, provided by [CallHost]: one pending request and one pair of dialogs for every call entry point. */
+val LocalCallPermissionGate = staticCompositionLocalOf<CallPermissionGate> { error("CallPermissionGate is provided by CallHost") }
+
 @Composable
-fun rememberCallPermissionGate(): CallPermissionGate {
+internal fun rememberCallPermissionGate(): CallPermissionGate {
     val scope = rememberCoroutineScope()
     var pending by remember { mutableStateOf<CompletableDeferred<Boolean>?>(null) }
     var blocked by remember { mutableStateOf(false) }
@@ -45,6 +49,8 @@ fun rememberCallPermissionGate(): CallPermissionGate {
 
     suspend fun ensure(type: PermissionType): Boolean {
         if (managerRef.isPermissionGranted(type)) return true
+        // A request the OS never answered (the dialog was dismissed by leaving the app) must not strand the next one.
+        pending?.complete(false)
         val answer = CompletableDeferred<Boolean>().also { pending = it }
         managerRef.askPermission(type)
         return answer.await()

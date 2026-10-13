@@ -30,7 +30,7 @@ fun rememberCallStarter(conversation: EnrichedConversationUiModel): CallStarter?
     val status = conversation.oneOnOneConnectionStatus as? OneOnOneConnectionStatus.Connected ?: return null
     if (conversation.conversation.isGroupConversation || conversation.conversation.isWithSelf) return null
     val state by service.state.collectAsStateWithLifecycle()
-    val gate = rememberCallPermissionGate()
+    val gate = LocalCallPermissionGate.current
     val peer = remember(status) { status.otherOdinId.domainName }
     val start = remember(service, gate, peer) {
         { video: Boolean -> gate.run(video = video) { granted -> service.startCall(peer, video = granted) } }

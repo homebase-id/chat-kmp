@@ -16,6 +16,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,21 +53,23 @@ import org.koin.compose.koinInject
 /** Lays the call overlay over [content], hiding [content] from screen readers while the call screen covers it. */
 @Composable
 fun CallHost(viewModel: CallViewModel, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    if (!koinInject<CallService>().available) {
-        Box(modifier) { content() }
-        return
-    }
-    val ui by viewModel.uiState.collectAsStateWithLifecycle()
-    val name = rememberPeerName(ui.peer)
-    val covered = ui.visible && !ui.minimized
-    Box(modifier) {
-        Box(if (covered) Modifier.clearAndSetSemantics {} else Modifier) { content() }
-        CallOverlay(
-            viewModel = viewModel,
-            ui = ui,
-            peerName = name,
-            avatar = { size -> ui.peer?.let { PeerAvatar(it, name, size) } },
-        )
+    CompositionLocalProvider(LocalCallPermissionGate provides rememberCallPermissionGate()) {
+        if (!koinInject<CallService>().available) {
+            Box(modifier) { content() }
+            return@CompositionLocalProvider
+        }
+        val ui by viewModel.uiState.collectAsStateWithLifecycle()
+        val name = rememberPeerName(ui.peer)
+        val covered = ui.visible && !ui.minimized
+        Box(modifier) {
+            Box(if (covered) Modifier.clearAndSetSemantics {} else Modifier) { content() }
+            CallOverlay(
+                viewModel = viewModel,
+                ui = ui,
+                peerName = name,
+                avatar = { size -> ui.peer?.let { PeerAvatar(it, name, size) } },
+            )
+        }
     }
 }
 
@@ -78,7 +81,7 @@ fun CallOverlay(
     avatar: @Composable (Dp) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val gate = rememberCallPermissionGate()
+    val gate = LocalCallPermissionGate.current
     val inPip = rememberInPictureInPicture()
     KeepScreenOn(ui.keepScreenAwake)
     CallPictureInPictureEffect(

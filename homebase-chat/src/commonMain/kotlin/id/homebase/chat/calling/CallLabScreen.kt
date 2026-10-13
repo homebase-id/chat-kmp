@@ -157,7 +157,7 @@ fun CallLabScreen(onBackClick: () -> Unit) {
     val scope = rememberCoroutineScope()
     DisposableEffect(Unit) { onDispose { lab?.close() } }
 
-    val gate = rememberCallPermissionGate()
+    val gate = LocalCallPermissionGate.current
     fun launch(
         script: FakeCallScript = FakeCallScript(),
         real: CallEngineFactory? = null,
