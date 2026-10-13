@@ -56,6 +56,10 @@ import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.calling.CallViewModel
+import id.homebase.chat.calling.history.CallLogDeleter
+import id.homebase.chat.calling.history.CallsViewModel
+import id.homebase.chat.services.calling.history.CallHistoryService
+import id.homebase.core.calling.CallsPreferences
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.platformCallEngineFactory
 import id.homebase.chat.services.livelocation.LiveLocationShareService
@@ -152,6 +156,7 @@ import id.homebase.core.config.getPermissionExtensionConfig
 import id.homebase.core.config.getStickerPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.moments.MomentsPreferences
+import kotlinx.coroutines.flow.map
 import id.homebase.core.moments.services.MomentActionService
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.moments.services.MomentCommentsService
@@ -394,6 +399,18 @@ val appModule = module {
                     previousMessageUniqueId = null,
                 )
             },
+        )
+    }
+    single { CallsPreferences(get()) }
+    single {
+        CallHistoryService(
+            credentialsManager = get(),
+            dbm = get(),
+            eventBus = get(),
+            conversations = get(),
+            preferences = get(),
+            scope = get(),
+            conversationsReady = get<ConversationStream>().conversations.map { it.dataReady },
         )
     }
     single { EmergencyLocateStore(eventBus = get(), scope = get()) }
@@ -682,6 +699,7 @@ val appModule = module {
                 conversationStream.reset()
                 conversationStream.start()
                 get<ContactService>().start()
+                get<CallHistoryService>()
                 // MRU store before lookup: lookup's combine() reads
                 // mruStore.stableKeys, and started-first means the cold-load
                 // emits before the lookup builds its first list.
@@ -1031,6 +1049,17 @@ val appModule = module {
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)
     viewModel { CallViewModel(get<CallService>()) }
+    viewModel {
+        val calls = get<CallService>()
+        CallsViewModel(
+            history = get<CallHistoryService>(),
+            contacts = get<ContactService>().contacts,
+            conversations = get(),
+            session = calls,
+            callsAvailable = calls.available,
+            deleter = CallLogDeleter { id, forEveryone -> get<ChatMessageActionService>().deleteMessage(id, forEveryone) },
+        )
+    }
     viewModelOf(::HomeViewModel)
     viewModel { FeedViewModel(get(), get(), get(FeedPermissionQualifier)) }
     // Manual `viewModel { ... }` rather than viewModelOf because the constructor

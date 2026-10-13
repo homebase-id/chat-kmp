@@ -84,25 +84,28 @@ fun CallEventBubble(
         )
         return
     }
-    val missedForMe = !isOwn && (descriptor.outcome == CallOutcome.NoAnswer || descriptor.outcome == CallOutcome.Cancelled)
-    val icon: ImageVector = when {
-        missedForMe -> Icons.AutoMirrored.Filled.CallMissed
-        descriptor.outcome == CallOutcome.NoAnswer -> Icons.AutoMirrored.Filled.CallMissedOutgoing
-        descriptor.outcome == CallOutcome.Cancelled -> Icons.Outlined.Cancel
-        descriptor.outcome == CallOutcome.Declined -> Icons.Default.CallEnd
-        descriptor.outcome == CallOutcome.Busy -> Icons.Default.PhoneDisabled
-        descriptor.outcome == CallOutcome.Failed -> Icons.Outlined.ErrorOutline
-        isOwn -> Icons.AutoMirrored.Filled.CallMade
-        else -> Icons.AutoMirrored.Filled.CallReceived
+    val visual = callEventVisual(descriptor, isOwn)
+    val missedForMe = visual.missed
+    val icon: ImageVector = when (visual.icon) {
+        CallEventIcon.Missed -> Icons.AutoMirrored.Filled.CallMissed
+        CallEventIcon.NoAnswerOutgoing -> Icons.AutoMirrored.Filled.CallMissedOutgoing
+        CallEventIcon.Cancelled -> Icons.Outlined.Cancel
+        CallEventIcon.Declined -> Icons.Default.CallEnd
+        CallEventIcon.Busy -> Icons.Default.PhoneDisabled
+        CallEventIcon.Failed -> Icons.Outlined.ErrorOutline
+        CallEventIcon.Outgoing -> Icons.AutoMirrored.Filled.CallMade
+        CallEventIcon.Incoming -> Icons.AutoMirrored.Filled.CallReceived
     }
     val title = stringResource(
-        when (descriptor.outcome) {
-            CallOutcome.Completed -> if (isOwn) MR.string.call_event_outgoing else MR.string.call_event_incoming
-            CallOutcome.NoAnswer -> if (isOwn) MR.string.call_event_no_answer else MR.string.call_event_missed
-            CallOutcome.Cancelled -> if (isOwn) MR.string.call_event_cancelled else MR.string.call_event_missed
-            CallOutcome.Failed -> MR.string.call_event_failed
-            CallOutcome.Declined -> MR.string.call_event_declined
-            CallOutcome.Busy -> MR.string.call_event_busy
+        when (visual.title) {
+            CallEventTitle.Outgoing -> MR.string.call_event_outgoing
+            CallEventTitle.Incoming -> MR.string.call_event_incoming
+            CallEventTitle.NoAnswer -> MR.string.call_event_no_answer
+            CallEventTitle.Missed -> MR.string.call_event_missed
+            CallEventTitle.Cancelled -> MR.string.call_event_cancelled
+            CallEventTitle.Failed -> MR.string.call_event_failed
+            CallEventTitle.Declined -> MR.string.call_event_declined
+            CallEventTitle.Busy -> MR.string.call_event_busy
         },
     )
     val kind = stringResource(if (descriptor.video) MR.string.call_button_video else MR.string.call_button_voice)
