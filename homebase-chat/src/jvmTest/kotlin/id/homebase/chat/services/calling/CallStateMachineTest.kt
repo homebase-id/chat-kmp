@@ -503,4 +503,45 @@ class CallStateMachineTest {
         assertEquals("rich", offered.state.pendingOfferSdp)
         assertEquals(4, offered.state.offerSeq)
     }
+
+    @Test
+    fun theCallerKeepsTheFirstAnsweringDeviceAndTellsALateOneAgain() {
+        val t = machine.step(outgoing, fromSam(CallSignal.Answer(c, "ans", device = "s1")))
+        assertEquals("s1", t.state.peerDevice)
+        assertTrue(CallEffect.SendSignal(sam, CallSignal.Hangup(c, HangupReason.AnsweredElsewhere, chosen = "s1")) in t.effects)
+
+        val late = machine.step(t.state, fromSam(CallSignal.Answer(c, "ans2", device = "s2")))
+        assertEquals(t.state, late.state)
+        assertEquals(listOf(CallEffect.SendSignal(sam, CallSignal.Hangup(c, HangupReason.AnsweredElsewhere, chosen = "s1"))), late.effects)
+    }
+
+    @Test
+    fun theCallerDropsEverythingElseFromAnUnchosenDevice() {
+        val connected = machine.step(
+            machine.step(outgoing, fromSam(CallSignal.Answer(c, "ans", device = "s1"))).state,
+            CallEvent.Media(MediaEvent.Connected),
+        ).state
+        listOf(
+            CallSignal.Hangup(c, HangupReason.Normal, device = "s2"),
+            CallSignal.Ice(c, "cand", device = "s2"),
+            CallSignal.RestartAnswer(c, "sdp", device = "s2"),
+        ).forEach { assertNoOp(connected, fromSam(it)) }
+        assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = true)), machine.step(connected, fromSam(CallSignal.Hangup(c, device = "s1"))).state.phase)
+        assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = true)), machine.step(connected, fromSam(CallSignal.Hangup(c))).state.phase)
+    }
+
+    @Test
+    fun aCalleeDeviceThatAnsweredTooEndsWhenTheCallerChoseAnother() {
+        val device = CallStateMachine(frodo, "f1")
+        val answered = device.step(device.step(idle, fromSam(CallSignal.Offer(c, "sdp", false)), now = 0).state, CallEvent.UserAccept).state
+        assertEquals(CallPhase.Connecting, answered.phase)
+
+        val lost = device.step(answered, fromSam(CallSignal.Hangup(c, HangupReason.AnsweredElsewhere, chosen = "f2")))
+        assertEquals(CallPhase.Ended(CallEndReason.AnsweredElsewhere), lost.state.phase)
+        assertEquals(listOf(CallEffect.CancelTimers, CallEffect.ReleaseEngine), lost.effects)
+
+        assertEquals(CallTransition(answered), device.step(answered, fromSam(CallSignal.Hangup(c, HangupReason.AnsweredElsewhere, chosen = "f1"))))
+        assertEquals(CallTransition(answered), device.step(answered, fromSam(CallSignal.Hangup(c, HangupReason.AnsweredElsewhere))))
+    }
 }
+

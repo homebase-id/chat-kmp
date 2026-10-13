@@ -39,6 +39,7 @@ class CallControllerTest {
         net: LoopbackSignaling,
         script: FakeCallScript,
         wrap: (FakeCallEngine) -> CallEngine = { it },
+        val device: String = id.substringBefore('.'),
     ) {
         val engines = mutableListOf<FakeCallEngine>()
         var offline = false
@@ -58,6 +59,7 @@ class CallControllerTest {
             },
             scope = scope.backgroundScope,
             clock = { scope.testScheduler.currentTime },
+            deviceId = device,
         )
         val phase get() = controller.state.value.phase
         val state get() = controller.state.value
@@ -87,7 +89,7 @@ class CallControllerTest {
         runCurrent()
         advanceTimeBy(1_001)
 
-        assertTrue(net.sent.any { it.from == frodo && it.to == sam && it.signal == CallSignal.Hangup(a.state.callId!!, HangupReason.AnsweredElsewhere) })
+        assertTrue(net.sent.any { it.from == frodo && it.to == sam && it.signal == CallSignal.Hangup(a.state.callId!!, HangupReason.AnsweredElsewhere, chosen = b.device, device = a.device) })
         assertEquals(CallPhase.Connected, a.phase)
         assertEquals(CallPhase.Connected, b.phase)
     }
@@ -106,7 +108,7 @@ class CallControllerTest {
 
         assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = false)), a.phase)
         assertTrue(a.engines.single().closed)
-        assertTrue(net.sent.any { it.from == frodo && it.signal == CallSignal.Hangup(a.state.callId!!, HangupReason.Normal) })
+        assertTrue(net.sent.any { it.from == frodo && it.signal == CallSignal.Hangup(a.state.callId!!, HangupReason.Normal, device = a.device) })
         assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = true)), b.phase)
     }
 
@@ -322,7 +324,7 @@ class CallControllerTest {
         assertEquals("call-a", b.state.callId)
         assertEquals(CallDirection.Outgoing, a.state.direction)
         assertEquals(CallDirection.Incoming, b.state.direction)
-        assertTrue(net.sent.any { it.from == sam && it.to == frodo && it.signal == CallSignal.Hangup("call-b", HangupReason.AnsweredElsewhere) })
+        assertTrue(net.sent.any { it.from == sam && it.to == frodo && it.signal == CallSignal.Hangup("call-b", HangupReason.AnsweredElsewhere, device = b.device) })
         assertTrue(net.sent.none { it.signal is CallSignal.Hangup && !it.signal.reason.isElsewhere && it.push != null })
         assertEquals(1, net.sent.count { it.push?.kind == CallPushKind.Ring && it.from == frodo })
         assertEquals(1, net.sent.count { it.push?.kind == CallPushKind.Ring && it.from == sam })
@@ -538,7 +540,7 @@ class CallControllerTest {
         advanceTimeBy(RING_TIMEOUT_MS + 5_000)
         assertEquals(CallPhase.Ended(CallEndReason.Missed), a.phase)
         assertEquals(CallPhase.Ended(CallEndReason.Missed), b.phase)
-        assertTrue(net.sent.any { it.from == frodo && it.signal == CallSignal.Hangup(a.state.callId!!, HangupReason.Missed) })
+        assertTrue(net.sent.any { it.from == frodo && it.signal == CallSignal.Hangup(a.state.callId!!, HangupReason.Missed, device = a.device) })
     }
 
     private fun failingOfferEnds(error: Throwable, expected: FailReason) = runTest {
@@ -726,4 +728,27 @@ class CallControllerTest {
         runCurrent()
         assertTrue(ring.isCancelled)
     }
+
+    @Test
+    fun twoCalleeDevicesAcceptingAtOnceLeaveOneCallAndTheLoserEndsQuietly() = runTest {
+        val (net, a, b1) = pair()
+        val b2 = Side(sam, this, net, FakeCallScript(), device = "samwise-tablet")
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b1.controller.accept()
+        b2.controller.accept()
+        runCurrent()
+        advanceTimeBy(1_001)
+
+        val (winner, loser) = if (a.state.peerDevice == b1.device) b1 to b2 else b2 to b1
+        assertEquals(CallPhase.Connected, a.phase)
+        assertEquals(CallPhase.Connected, winner.phase)
+        assertEquals(CallPhase.Ended(CallEndReason.AnsweredElsewhere), loser.phase)
+        assertTrue(net.sent.none { it.from == sam && it.signal is CallSignal.Hangup })
+
+        advanceTimeBy(CONNECT_TIMEOUT_MS + 1)
+        assertEquals(CallPhase.Connected, a.phase)
+        assertEquals(CallPhase.Connected, winner.phase)
+    }
 }
+

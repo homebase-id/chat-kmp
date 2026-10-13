@@ -20,19 +20,30 @@ val HangupReason.isElsewhere: Boolean get() = this == HangupReason.AnsweredElsew
  * answered maps to push kind `hangup` with the same `tagId` = callId. [Ringing] is the callee's
  * "my phone is ringing" acknowledgement and has nothing to do with the push kind.
  */
+/**
+ * Every signal names the device that sent it in [device], so the caller can tell a callee's devices apart once one has
+ * answered; null from a build that predates it, which is then trusted as before.
+ */
 @Serializable
 sealed class CallSignal {
     abstract val callId: String
+    abstract val device: String?
 
     /** [seq] orders re-published offers of one call; the first offer is 0 and is omitted from the wire. */
     @Serializable @SerialName("offer")
-    data class Offer(override val callId: String, val sdp: String, val video: Boolean, val seq: Int = 0) : CallSignal()
+    data class Offer(
+        override val callId: String,
+        val sdp: String,
+        val video: Boolean,
+        val seq: Int = 0,
+        override val device: String? = null,
+    ) : CallSignal()
 
     @Serializable @SerialName("ringing")
-    data class Ringing(override val callId: String) : CallSignal()
+    data class Ringing(override val callId: String, override val device: String? = null) : CallSignal()
 
     @Serializable @SerialName("answer")
-    data class Answer(override val callId: String, val sdp: String) : CallSignal()
+    data class Answer(override val callId: String, val sdp: String, override val device: String? = null) : CallSignal()
 
     @Serializable @SerialName("ice")
     data class Ice(
@@ -40,17 +51,34 @@ sealed class CallSignal {
         val candidate: String,
         val sdpMid: String? = null,
         val sdpMLineIndex: Int? = null,
+        override val device: String? = null,
     ) : CallSignal()
 
+    /** [chosen] is the callee device that took the call, on an [HangupReason.AnsweredElsewhere] the caller relays. */
     @Serializable @SerialName("hangup")
-    data class Hangup(override val callId: String, val reason: HangupReason = HangupReason.Normal) : CallSignal()
+    data class Hangup(
+        override val callId: String,
+        val reason: HangupReason = HangupReason.Normal,
+        val chosen: String? = null,
+        override val device: String? = null,
+    ) : CallSignal()
 
     /** Caller's ICE-restart offer for an established call. */
     @Serializable @SerialName("restart")
-    data class Restart(override val callId: String, val sdp: String) : CallSignal()
+    data class Restart(override val callId: String, val sdp: String, override val device: String? = null) : CallSignal()
 
     @Serializable @SerialName("restart_answer")
-    data class RestartAnswer(override val callId: String, val sdp: String) : CallSignal()
+    data class RestartAnswer(override val callId: String, val sdp: String, override val device: String? = null) : CallSignal()
+}
+
+fun CallSignal.fromDevice(device: String): CallSignal = when (this) {
+    is CallSignal.Offer -> copy(device = device)
+    is CallSignal.Ringing -> copy(device = device)
+    is CallSignal.Answer -> copy(device = device)
+    is CallSignal.Ice -> copy(device = device)
+    is CallSignal.Hangup -> copy(device = device)
+    is CallSignal.Restart -> copy(device = device)
+    is CallSignal.RestartAnswer -> copy(device = device)
 }
 
 data class InboundSignal(val from: String, val signal: CallSignal, val receivedAtMs: Long)

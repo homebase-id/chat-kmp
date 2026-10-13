@@ -35,9 +35,10 @@ class CallController(
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val ringTimeoutMs: Long = RING_TIMEOUT_MS,
     private val offerRepublishMs: Long = OFFER_REPUBLISH_MS,
+    private val deviceId: String = Uuid.random().toString(),
 ) : CallSession {
     private val log = Logger.withTag(TAG)
-    private val machine = CallStateMachine(selfOdinId)
+    private val machine = CallStateMachine(selfOdinId, deviceId)
     private val _state = MutableStateFlow(CallState())
     override val state: StateFlow<CallState> = _state.asStateFlow()
 
@@ -164,7 +165,8 @@ class CallController(
             CallEvent.UserHangup, CallEvent.UserDecline -> true
             is CallEvent.Signal -> {
                 val sig = event.inbound.signal
-                sig is CallSignal.Hangup && !sig.reason.isElsewhere && sig.callId == s.callId && event.inbound.from == s.peer
+                sig is CallSignal.Hangup && !sig.reason.isElsewhere && sig.callId == s.callId && event.inbound.from == s.peer &&
+                    (s.peerDevice == null || sig.device == null || sig.device == s.peerDevice)
             }
             else -> false
         }
@@ -181,7 +183,7 @@ class CallController(
     }
 
     private suspend fun send(peer: String, signal: CallSignal) {
-        val outbound = CallChannel.outbound(peer, signal)
+        val outbound = CallChannel.outbound(peer, signal.fromDevice(deviceId))
         log.i { "send ${describe(signal)} call=${signal.callId} to=$peer push=${outbound.push?.kind?.wire}" }
         signaling.send(outbound)
     }

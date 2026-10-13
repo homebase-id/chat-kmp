@@ -59,6 +59,8 @@ data class CallState(
     val phase: CallPhase = CallPhase.Idle,
     val callId: String? = null,
     val peer: String? = null,
+    /** The callee device whose answer the caller took; signals from the callee's other devices are dropped. */
+    val peerDevice: String? = null,
     val direction: CallDirection? = null,
     val media: CallMedia = CallMedia(),
     val connectedAtMs: Long? = null,

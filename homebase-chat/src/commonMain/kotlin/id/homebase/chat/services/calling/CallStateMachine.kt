@@ -44,7 +44,7 @@ sealed interface CallEffect {
 
 data class CallTransition(val state: CallState, val effects: List<CallEffect> = emptyList())
 
-class CallStateMachine(private val selfOdinId: String) {
+class CallStateMachine(private val selfOdinId: String, private val selfDevice: String? = null) {
 
     fun reduce(state: CallState, event: CallEvent, nowMs: Long): CallTransition =
         decide(state, event, nowMs).stampEnd(state, nowMs).also { log(state, event, it) }
@@ -138,6 +138,7 @@ class CallStateMachine(private val selfOdinId: String) {
         if (sig is CallSignal.Hangup && sig.reason.isElsewhere) return elsewhere(s, inbound.from, sig)
         if (!s.isActive || sig.callId != s.callId) return CallTransition(s)
         if (inbound.from != s.peer) return CallTransition(s)
+        if (s.peerDevice != null && sig.device != null && sig.device != s.peerDevice) return otherCalleeDevice(s, sig)
         return when (sig) {
             is CallSignal.Offer -> CallTransition(s)
             is CallSignal.Ringing ->
@@ -145,10 +146,10 @@ class CallStateMachine(private val selfOdinId: String) {
             is CallSignal.Answer ->
                 if (s.phase == CallPhase.Outgoing) {
                     CallTransition(
-                        s.copy(phase = CallPhase.Connecting, peerRinging = false),
+                        s.copy(phase = CallPhase.Connecting, peerRinging = false, peerDevice = sig.device),
                         listOf(
                             CallEffect.CancelTimers,
-                            relayToCalleeDevices(s, HangupReason.AnsweredElsewhere),
+                            relayToCalleeDevices(s, HangupReason.AnsweredElsewhere, chosen = sig.device),
                             CallEffect.ApplyRemoteAnswer(sig.sdp),
                             CallEffect.StartTimer(CallTimer.Connect, s.callId!!),
                         ),
@@ -181,13 +182,23 @@ class CallStateMachine(private val selfOdinId: String) {
     }
 
     // The relay cannot loop a signal back to our own identity, so the caller tells the callee's other devices which one took the call.
-    private fun relayToCalleeDevices(s: CallState, reason: HangupReason) =
-        CallEffect.SendSignal(s.peer!!, CallSignal.Hangup(s.callId!!, reason))
+    private fun relayToCalleeDevices(s: CallState, reason: HangupReason, chosen: String? = null) =
+        CallEffect.SendSignal(s.peer!!, CallSignal.Hangup(s.callId!!, reason, chosen))
 
-    // The answering or declining device is already Connecting/Ended, so only a sibling still ringing for this call ends here.
+    // A sibling still ringing ends; one that also answered ends once it learns another device was [CallSignal.Hangup.chosen].
     private fun elsewhere(s: CallState, from: String, sig: CallSignal.Hangup): CallTransition {
-        if (from != s.peer || s.phase != CallPhase.Incoming || s.callId != sig.callId) return CallTransition(s)
+        if (from != s.peer || s.callId != sig.callId) return CallTransition(s)
+        val lostTheAnswer = sig.reason == HangupReason.AnsweredElsewhere && sig.chosen != null && sig.chosen != selfDevice &&
+            s.direction == CallDirection.Incoming && s.phase.isInCall
+        if (s.phase != CallPhase.Incoming && !lostTheAnswer) return CallTransition(s)
         return end(s, if (sig.reason == HangupReason.AnsweredElsewhere) CallEndReason.AnsweredElsewhere else CallEndReason.DeclinedElsewhere)
+    }
+
+    // A second device's answer means it missed the first relay (or raced it), so it is told again; anything else it sends is dropped.
+    private fun otherCalleeDevice(s: CallState, sig: CallSignal): CallTransition {
+        Logger.i(TAG) { "call=${s.callId} dropped ${sig::class.simpleName} from unchosen device ${sig.device}" }
+        if (sig !is CallSignal.Answer || !s.phase.isInCall) return CallTransition(s)
+        return CallTransition(s, listOf(relayToCalleeDevices(s, HangupReason.AnsweredElsewhere, chosen = s.peerDevice)))
     }
 
     private fun offer(s: CallState, from: String, sig: CallSignal.Offer, receivedAtMs: Long, nowMs: Long): CallTransition {
