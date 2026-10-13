@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toAwtImage
@@ -22,6 +23,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPosition
 import id.homebase.core.calling.DesktopCallTrayItem
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -70,26 +72,34 @@ class CallSystemMenuTest {
     private val connected = listOf(DesktopCallTrayItem.Status("Samwise Gamgee", "01:23"), DesktopCallTrayItem.Mute(true), DesktopCallTrayItem.HangUp)
 
     @Test
-    fun theMenuTextFollowsTheTimerOnlyEveryFewSecondsButAMuteChangeLandsAtOnce() = runDesktopComposeUiTest(300, 150) {
-        val items = mutableStateOf(listOf(DesktopCallTrayItem.Status("Sam", "00:01"), DesktopCallTrayItem.Mute(false), DesktopCallTrayItem.HangUp))
-        var shown: List<DesktopCallTrayItem> = emptyList()
-        setContent { shown = rememberSettledCallItems(items.value) }
+    fun theMenuFollowsTheTimerOnlyEveryFewSecondsButAMuteChangeLandsAtOnceWithoutRecomposingTheCaller() = runDesktopComposeUiTest(300, 150) {
+        fun items(elapsed: String, muted: Boolean) = listOf(DesktopCallTrayItem.Status("Sam", elapsed), DesktopCallTrayItem.Mute(muted), DesktopCallTrayItem.HangUp)
+        val flow = MutableStateFlow(items("00:01", muted = false))
+        val passes = mutableListOf<List<CallMenuEntry>>()
+        setContent {
+            val entries = collectSettledCallEntries(flow, rememberApplicationLifecycleOwner())
+            SideEffect { passes += entries }
+        }
         mainClock.autoAdvance = false
         mainClock.advanceTimeBy(50)
-        assertEquals("00:01", (shown[0] as DesktopCallTrayItem.Status).elapsed)
+        assertEquals(1, passes.size)
+        assertEquals("In call with Sam · 00:01", passes.last()[0].label)
 
         for (second in 2..10) {
-            items.value = listOf(DesktopCallTrayItem.Status("Sam", "00:%02d".format(second)), DesktopCallTrayItem.Mute(false), DesktopCallTrayItem.HangUp)
+            flow.value = items("00:%02d".format(second), muted = false)
             mainClock.advanceTimeBy(1_000)
         }
-        assertEquals("00:01", (shown[0] as DesktopCallTrayItem.Status).elapsed, "a ticking timer must not rebuild the menu")
+        assertEquals(1, passes.size, "a ticking timer must not recompose the caller or rebuild the menu")
 
-        items.value = listOf(DesktopCallTrayItem.Status("Sam", "00:11"), DesktopCallTrayItem.Mute(true), DesktopCallTrayItem.HangUp)
+        flow.value = items("00:11", muted = true)
         mainClock.advanceTimeBy(100)
-        assertEquals(DesktopCallTrayItem.Mute(true), shown[1])
+        assertEquals(2, passes.size)
+        assertEquals("Unmute", passes.last()[1].label)
 
+        flow.value = items("00:12", muted = true)
         mainClock.advanceTimeBy(15_000)
-        assertEquals("00:11", (shown[0] as DesktopCallTrayItem.Status).elapsed)
+        assertEquals("In call with Sam · 00:12", passes.last()[0].label)
+        assertEquals(3, passes.size)
     }
 
     @Test

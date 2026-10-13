@@ -293,10 +293,9 @@ fun main() {
         }
 
         val appLifecycleOwner = rememberApplicationLifecycleOwner()
-        val callTrayItems by callWindow.trayItems.collectAsStateWithLifecycle(lifecycleOwner = appLifecycleOwner)
         // The ring window never takes focus, so its answer and decline shortcuts live in this menu.
         val callRinging by callWindow.ringing.collectAsStateWithLifecycle(lifecycleOwner = appLifecycleOwner)
-        val callEntries = rememberCallMenuEntries(rememberSettledCallItems(callTrayItems))
+        val callEntries = collectSettledCallEntries(callWindow.trayItems, appLifecycleOwner)
         CallDockMenu(callEntries, callWindow::perform)
         val callActiveLabel = stringResource(MR.string.desktop_tray_call_indicator)
 
