@@ -14,6 +14,7 @@ import android.telecom.PhoneAccount
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import co.touchlab.kermit.Logger
+import id.homebase.chat.services.calling.CallEndReason
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.isRingingFor
 import java.util.concurrent.ConcurrentHashMap
@@ -51,16 +52,16 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
             override fun onReject() {
                 Logger.i(tag = TAG) { "telecom onReject call=$callId" }
                 if (callService.state.value.callId == callId) callService.decline()
-                end(DisconnectCause.REJECTED)
+                end(callId, DisconnectCause.REJECTED)
             }
             override fun onDisconnect() {
                 Logger.i(tag = TAG) { "telecom onDisconnect call=$callId" }
                 if (callService.state.value.callId == callId) callService.hangup()
-                end(DisconnectCause.LOCAL)
+                end(callId, DisconnectCause.LOCAL)
             }
             override fun onAbort() {
                 Logger.i(tag = TAG) { "telecom onAbort call=$callId" }
-                end(DisconnectCause.CANCELED)
+                end(callId, DisconnectCause.CANCELED)
             }
         }.apply {
             connectionProperties = Connection.PROPERTY_SELF_MANAGED
@@ -129,17 +130,22 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
 
         fun setActive(callId: String) { connections[callId]?.setActive() }
 
-        fun end(callId: String, remote: Boolean) {
+        // Removing first makes the second of Telecom's callback and the call state's own end a no-op.
+        fun end(callId: String, cause: Int) {
             connections.remove(callId)?.let {
-                Logger.i(tag = TAG) { "telecom end call=$callId remote=$remote" }
-                it.setDisconnected(DisconnectCause(if (remote) DisconnectCause.REMOTE else DisconnectCause.LOCAL))
+                Logger.i(tag = TAG) { "telecom end call=$callId cause=$cause" }
+                it.setDisconnected(DisconnectCause(cause))
                 it.destroy()
             }
         }
     }
 }
 
-private fun Connection.end(cause: Int) {
-    setDisconnected(DisconnectCause(cause))
-    destroy()
+internal fun CallEndReason.disconnectCause(): Int = when (this) {
+    is CallEndReason.Hangup -> if (remote) DisconnectCause.REMOTE else DisconnectCause.LOCAL
+    CallEndReason.Declined -> DisconnectCause.REJECTED
+    CallEndReason.Missed, CallEndReason.Cancelled -> DisconnectCause.MISSED
+    CallEndReason.Busy -> DisconnectCause.BUSY
+    is CallEndReason.Failed -> DisconnectCause.ERROR
+    CallEndReason.AnsweredElsewhere, CallEndReason.DeclinedElsewhere -> DisconnectCause.ANSWERED_ELSEWHERE
 }

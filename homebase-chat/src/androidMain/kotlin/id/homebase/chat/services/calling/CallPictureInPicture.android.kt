@@ -92,18 +92,18 @@ actual fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, m
         buildPipParams(activity, eligible, muted, size, muteLabel, hangupLabel)
     }
     DisposableEffect(activity, params) {
-        // Pre-31 there is no auto-enter, so the user-leave-hint hook is the only way in.
+        activity.setPictureInPictureParams(params)
+        // Pre-31 there is no auto-enter, so the user-leave-hint hook is the only way in; from 31 auto-enter does it.
         val leave = Runnable {
             Logger.i("CallPiP") { "user leave hint eligible=$eligible" }
             if (eligible) {
                 val entered = activity.enterPictureInPictureMode(params)
                 Logger.i("CallPiP") { "enterPictureInPictureMode=$entered" }
             }
-        }
-        activity.setPictureInPictureParams(params)
-        activity.addOnUserLeaveHintListener(leave)
+        }.takeIf { Build.VERSION.SDK_INT < Build.VERSION_CODES.S }
+        leave?.let(activity::addOnUserLeaveHintListener)
         onDispose {
-            activity.removeOnUserLeaveHintListener(leave)
+            leave?.let(activity::removeOnUserLeaveHintListener)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 activity.setPictureInPictureParams(PictureInPictureParams.Builder().setAutoEnterEnabled(false).build())
             }

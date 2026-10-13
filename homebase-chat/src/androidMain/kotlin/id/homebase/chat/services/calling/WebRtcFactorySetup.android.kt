@@ -1,11 +1,9 @@
 package id.homebase.chat.services.calling
 
-import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.util.Log
 import co.touchlab.kermit.Logger
 import com.shepeliev.webrtckmp.WebRtc
-import org.koin.mp.KoinPlatformTools
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.Loggable
 import org.webrtc.Logging
@@ -13,7 +11,7 @@ import org.webrtc.Logging
 // The logger can only be injected through PeerConnectionFactory.initialize, which webrtc-kmp runs when it first builds
 // the factory; once injected, Logging.enableLogToDebugOutput throws, so debug builds get their logcat copy from here.
 internal val configureWebRtcFactory: Unit by lazy {
-    val context = KoinPlatformTools.defaultContext().get().get<Context>()
+    val context = callAppContext
     val debuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     val severity = if (debuggable) Logging.Severity.LS_INFO else Logging.Severity.LS_WARNING
     val options = WebRtc.createInitializationOptionsBuilder().setInjectableLogger(WebRtcLog, severity)
