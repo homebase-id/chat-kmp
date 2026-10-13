@@ -83,7 +83,7 @@ class CallStateMachine(private val selfOdinId: String) {
         is CallEvent.TimerFired -> timer(state, event)
         is CallEvent.Media -> media(state, event.event, nowMs)
         is CallEvent.EngineError -> failed(state, event.reason)
-        CallEvent.VideoUpgradeSent -> CallTransition(if (state.phase.isEstablishing()) state.copy(restartPending = true) else state)
+        CallEvent.VideoUpgradeSent -> CallTransition(if (state.phase.isInCall) state.copy(restartPending = true) else state)
         is CallEvent.SetMuted -> control(state, CallEffect.SetMuted(event.muted)) { it.copy(muted = event.muted) }
         is CallEvent.SetVideo ->
             if (state.phase == CallPhase.Incoming && !event.on) CallTransition(state.copy(media = state.media.copy(localVideo = false)))
