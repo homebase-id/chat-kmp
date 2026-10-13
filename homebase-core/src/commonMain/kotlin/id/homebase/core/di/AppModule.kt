@@ -123,7 +123,6 @@ import id.homebase.core.ui.screens.card.CardPreferences
 import id.homebase.core.ui.screens.card.CardRepository
 import id.homebase.core.ui.screens.card.ProfileRepositoryCardStore
 import id.homebase.core.ui.screens.card.CardTapShare
-import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.core.ui.screens.card.DefaultProfileCardSource
 import id.homebase.core.ui.screens.card.ProfileCardSource
 import id.homebase.core.ui.screens.card.ProfileCardViewModel
@@ -144,6 +143,14 @@ import id.homebase.core.ui.screens.webdrop.WebDropService
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import id.homebase.core.ui.screens.webdrop.WebDropStream
 import id.homebase.core.ui.screens.webdrop.WebDropViewModel
+import id.homebase.core.ui.screens.filesync.FilesyncRepository
+import id.homebase.core.ui.screens.filesync.FilesyncViewModel
+import id.homebase.core.ui.screens.filesync.FilesyncEditor
+import id.homebase.core.ui.screens.filesync.FilesyncRecentViewModel
+import id.homebase.core.ui.screens.filesync.FilesyncTrashViewModel
+import id.homebase.core.ui.screens.filesync.FilesyncUploader
+import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
+import id.homebase.core.filesync.FilesyncPreferences
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -214,8 +221,8 @@ import id.homebase.core.ui.screens.moments.MomentsFeedViewModel
 import id.homebase.core.ui.screens.moments.MomentsSettingsViewModel
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
+import id.homebase.core.ui.screens.profile.OwnerSessionAvatar
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditViewModel
-import id.homebase.core.ui.screens.profile.ProfileEditViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
 import id.homebase.core.ui.screens.defragmenter.DefragmenterViewModel
 import id.homebase.core.ui.screens.defragmenter.service.DefragSource
@@ -233,6 +240,7 @@ import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
 import id.homebase.core.config.getWebDropPermissionExtensionConfig
+import id.homebase.core.config.getFilesyncPermissionExtensionConfig
 import id.homebase.core.location.EmergencyCircleNotifier
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.PushLocationCapture
@@ -263,6 +271,7 @@ import id.homebase.core.session.IdentitySessionQualifier
 
 val VaultPermissionQualifier = named("vaultPermission")
 val WebDropPermissionQualifier = named("webDropPermission")
+val FilesyncPermissionQualifier = named("filesyncPermission")
 val EmailPermissionQualifier = named("emailPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
@@ -742,6 +751,7 @@ val appModule = module {
                 get<VaultStream>().apply { reset(); start() }
                 get<WebDropStream>().apply { reset(); start() }
                 get<WebDropShareFlowState>().clear()
+                get<FilesyncPreferences>().reset()
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
@@ -945,6 +955,11 @@ val appModule = module {
     singleOf(::VaultUploaderService)
 
     singleOf(::WebDropStream)
+    single { FilesyncPreferences(get()) }
+    single { FilesyncRepository(get(), get(), get()) }
+    single { FilesyncUploader(get(), get()) }
+    single { FilesyncUploadQueue(get(), get(), get(), get()) }
+    single { FilesyncEditor(get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
     single { WebDropShareFlowState() }
 
@@ -1263,6 +1278,15 @@ val appModule = module {
             autoCheck = false,
         )
     }
+    // Checked on open, unlike the other add-ons: with no drive to mount, the grant is what says "set up".
+    viewModel(FilesyncPermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getFilesyncPermissionExtensionConfig(),
+        )
+    }
     viewModel(EmailPermissionQualifier) {
         ExtendPermissionViewModel(
             get(),
@@ -1283,16 +1307,8 @@ val appModule = module {
     viewModelOf(::SettingsViewModel)
     viewModel {
         val cards = get<ProfileCardSource>()
-        val connections = get<ConnectionNetworkProvider>()
-        ProfileEditViewModel(
-            get(),
-            get<DeveloperPreferences>().connectionReviewEnabled.value,
-            loadCircleNames = {
-                connections.getCirclesWithMembers(includeSystemCircle = false).associate { it.circle.id to it.circle.name }
-            },
-        ) { cards.circles() }
+        ProfileAvatarEditViewModel(OwnerSessionAvatar(get()), get(), get(), get()) { cards.circles() }
     }
-    viewModelOf(::ProfileAvatarEditViewModel)
     viewModel { ProfileCardViewModel(get(), ::createCardHost) }
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)
@@ -1307,6 +1323,17 @@ val appModule = module {
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     singleOf(::DesktopViewModel)
+    viewModel {
+        FilesyncViewModel(
+            repository = get(),
+            uploadQueue = get(),
+            editor = get(),
+            extendPermissionViewModel = get(FilesyncPermissionQualifier),
+            webDropShareFlowState = get(),
+        )
+    }
+    viewModel { FilesyncTrashViewModel(get(), get()) }
+    viewModel { FilesyncRecentViewModel(get(), get()) }
     viewModel {
         WebDropViewModel(
             webDropService = get(),

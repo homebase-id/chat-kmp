@@ -44,6 +44,10 @@ class ExtendPermissionViewModel(
     private val _permissionsChecked = MutableStateFlow(false)
     val permissionsChecked: StateFlow<Boolean> = _permissionsChecked.asStateFlow()
 
+    /** The last check couldn't reach a verdict (security context unreachable, or it threw); a recheck clears it. */
+    private val _checkFailed = MutableStateFlow(false)
+    val checkFailed: StateFlow<Boolean> = _checkFailed.asStateFlow()
+
     /**
      * Credentials token captured on the first successful check. If the active credentials'
      * token ever differs from this (because a leaked VM from a previous sign-in is still
@@ -110,6 +114,7 @@ class ExtendPermissionViewModel(
 
     private suspend fun checkPermissions() {
         if (_uiState.value is ExtendPermissionUiState.Dismissed) return
+        _checkFailed.value = false
         try {
             val active = credentialsManager.getActiveCredentials()
             if (active == null) {
@@ -143,10 +148,12 @@ class ExtendPermissionViewModel(
                 // An unreachable security context is not a grant. Leaving _permissionsChecked
                 // false is the point: a wrong verdict cached here would be treated as final
                 // for the rest of the session.
-                PermissionCheckResult.Unknown ->
+                PermissionCheckResult.Unknown -> {
                     Logger.w(tag = TAG) {
                         "Security context unavailable — permissions left unverified"
                     }
+                    _checkFailed.value = true
+                }
 
                 is PermissionCheckResult.Missing -> {
                     val details = result.details
@@ -169,6 +176,7 @@ class ExtendPermissionViewModel(
             }
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Error checking permissions: ${e.message}" }
+            _checkFailed.value = true
         }
     }
 
