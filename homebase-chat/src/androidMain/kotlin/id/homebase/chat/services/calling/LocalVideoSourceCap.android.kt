@@ -17,7 +17,7 @@ internal actual fun MediaStreamConstraintsBuilder.requestCamera() = video {
 internal actual fun configureVideoSender(sender: RtpSender) {
     val native = sender.android
     val params = native.parameters
-    params.degradationPreference = RtpParameters.DegradationPreference.BALANCED
+    params.degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_FRAMERATE
     params.encodings.forEach {
         it.maxBitrateBps = SendVideoCap.MAX_BITRATE_BPS
         it.minBitrateBps = SendVideoCap.MIN_BITRATE_BPS

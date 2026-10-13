@@ -149,8 +149,9 @@ exercises a real ICE restart. It also proves the natives load on the host.
 
 ### Video send
 
-`SendVideoCap` bounds what a sender puts on the wire: at most 1080p30, 300 kbps to 2.5 Mbps, with BALANCED degradation
-on webrtc-kmp (webrtc-java has no degradation preference). Android asks Camera2 for 1080p; on iOS webrtc-kmp reads the
+`SendVideoCap` bounds what a sender puts on the wire: at most 1080p30, 300 kbps to 2.5 Mbps, with MAINTAIN_FRAMERATE
+degradation on webrtc-kmp, so libwebrtc's own adaptations lower resolution and never frame rate (webrtc-java has no
+degradation preference). Android asks Camera2 for 1080p; on iOS webrtc-kmp reads the
 camera formats through a freed struct and opens the camera at 4K, so `capLocalVideoSource` adapts the source output to
 1080p instead.
 
@@ -163,6 +164,11 @@ camera formats through a freed struct and opens the camera at 4K, so `capLocalVi
   tick and sets `scaleResolutionDownBy`: 1080p from 1.5 Mbps, 720p from 800 kbps, 540p from 500 kbps, else the 480p
   floor. It steps straight down to the rung that fits and back up one rung at a time with 25 % headroom
   (`CallSendResolutionLadderTest`).
+- **Encoder load.** libwebrtc's CPU adaptation gives a hardware encoder 200 % encode usage before it acts; the Redmi's
+  sent frame rate already falls to 13-22 fps from about 150 %, with `HardwareVideoEncoder: Dropped frame, encoder queue
+  full`. `SendLoadRung` caps the ladder further: two ticks under 24 fps with frames over 50 ms to encode step it down
+  one rung (1080, 720, 540, 360, 270, 180; no floor), six ticks at 27 fps whose encode time, scaled to the next rung's
+  pixels, stays under 40 ms step it back up. A camera slowed by low light encodes fast and never counts as slow.
 - **Health logs.** Each engine logs inbound, source, outbound and candidate-pair stats every 5 s (`videoStatsLines`),
   and `watchVideoPipeline` writes camera-session interruptions and native WebRTC warnings to homebase.log.
 

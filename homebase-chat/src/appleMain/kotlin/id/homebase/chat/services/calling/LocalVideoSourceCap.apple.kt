@@ -36,7 +36,7 @@ internal actual fun MediaStreamConstraintsBuilder.requestCamera() = video(true)
 internal actual fun configureVideoSender(sender: RtpSender) {
     val native = sender.ios
     val params = native.parameters
-    params.degradationPreference = NSNumber(long = RTCDegradationPreference.RTCDegradationPreferenceBalanced.value)
+    params.degradationPreference = NSNumber(long = RTCDegradationPreference.RTCDegradationPreferenceMaintainFramerate.value)
     params.encodings.filterIsInstance<RTCRtpEncodingParameters>().forEach {
         it.maxBitrateBps = NSNumber(int = SendVideoCap.MAX_BITRATE_BPS)
         it.minBitrateBps = NSNumber(int = SendVideoCap.MIN_BITRATE_BPS)

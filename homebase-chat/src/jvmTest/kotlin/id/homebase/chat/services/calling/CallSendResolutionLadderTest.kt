@@ -69,5 +69,70 @@ class CallSendResolutionLadderTest {
         assertEquals(720.0 / 540, applied)
     }
 
+    private class Encoder(var width: Int = 1920, var height: Int = 1080) {
+        private var frames = 0.0
+        private var seconds = 0.0
+
+        fun tick(fps: Double, encodeMs: Double): Map<String, Any?> {
+            val count = fps * 5
+            frames += count
+            seconds += count * encodeMs / 1000
+            return mapOf(
+                "kind" to "video", "framesPerSecond" to fps, "framesEncoded" to frames, "totalEncodeTime" to seconds,
+                "frameWidth" to width, "frameHeight" to height,
+            )
+        }
+    }
+
+    // Owner call 14:30-14:31 Redmi sender: 13-22 fps, 61-108 ms a frame at 360p-720p.
+    @Test
+    fun aSenderThatCannotEncode30FpsStepsDownARungEveryTwoSlowTicks() {
+        val rung = SendLoadRung()
+        val encoder = Encoder(1280, 720)
+        assertEquals(1080, rung.onStats(encoder.tick(19.0, 79.3)))
+        assertEquals(540, rung.onStats(encoder.tick(22.0, 88.7)))
+        encoder.width = 960; encoder.height = 540
+        assertEquals(540, rung.onStats(encoder.tick(18.0, 90.7)))
+        assertEquals(360, rung.onStats(encoder.tick(13.0, 61.0)))
+    }
+
+    // 13:56 Redmi in dim light: the camera gave 15 fps and each 270p frame took 12-14 ms.
+    @Test
+    fun aCameraSlowedByLowLightIsNotAnOverloadedEncoder() {
+        val rung = SendLoadRung()
+        val encoder = Encoder(480, 270)
+        repeat(6) { assertEquals(1080, rung.onStats(encoder.tick(15.0, 13.5))) }
+    }
+
+    @Test
+    fun itStepsBackUpOnlyWhenTheNextRungsPixelsWouldStillEncodeInTime() {
+        val rung = SendLoadRung()
+        val encoder = Encoder(1280, 720)
+        rung.onStats(encoder.tick(12.0, 70.0))
+        assertEquals(540, rung.onStats(encoder.tick(12.0, 70.0)))
+        encoder.width = 960; encoder.height = 540
+        repeat(5) { assertEquals(540, rung.onStats(encoder.tick(30.0, 15.0))) }
+        assertEquals(720, rung.onStats(encoder.tick(30.0, 15.0)))
+        encoder.width = 1280; encoder.height = 720
+        // 1080p would need 25 ms x 2.25 = 56 ms a frame: stay.
+        repeat(12) { assertEquals(720, rung.onStats(encoder.tick(30.0, 25.0))) }
+    }
+
+    @Test
+    fun theLoadRungCapsTheLaddersScaleBelowTheNetworkFloor() {
+        var applied: Double? = null
+        val ladder = SendResolutionLadder { applied = it }
+        val encoder = Encoder(1280, 720)
+        fun stats(fps: Double, ms: Double) = listOf(
+            StatsEntry("media-source", mapOf("kind" to "video", "width" to 1080, "height" to 1920)),
+            StatsEntry("outbound-rtp", encoder.tick(fps, ms) + ("targetBitrate" to 300_000.0)),
+        )
+        ladder.onStats(stats(14.0, 80.0))
+        assertEquals(2.25, applied)
+        encoder.width = 854; encoder.height = 480
+        ladder.onStats(stats(14.0, 80.0))
+        assertEquals(3.0, applied)
+    }
+
     private fun RTCRtpSender.scale() = parameters.encodings.single().scaleResolutionDownBy
 }

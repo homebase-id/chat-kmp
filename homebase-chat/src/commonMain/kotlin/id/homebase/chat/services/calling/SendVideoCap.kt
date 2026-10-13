@@ -47,24 +47,81 @@ internal fun nextSendHeight(currentHeight: Int, targetBps: Double): Int {
 
 /**
  * Caps the sender's resolution to the network: libwebrtc's quality scaler only reacts to encoder QP and frame drops,
- * so a cheap-to-encode picture keeps 1080p at any target bitrate. [apply] receives scaleResolutionDownBy.
+ * so a cheap-to-encode picture keeps 1080p at any target bitrate. [SendLoadRung] lowers the cap further when the
+ * device cannot encode 30 fps. [apply] receives scaleResolutionDownBy.
  */
 internal class SendResolutionLadder(private val apply: (Double) -> Unit) {
     private var height = SendVideoCap.HEIGHT
     private var scale = 1.0
+    private val load = SendLoadRung()
 
     fun onStats(stats: Collection<StatsEntry>): String? {
-        val target = stats.video("outbound-rtp")?.get("targetBitrate").asDouble() ?: return null
+        val outbound = stats.video("outbound-rtp") ?: return null
+        val target = outbound["targetBitrate"].asDouble() ?: return null
         val source = stats.video("media-source")
         // iOS reports the camera's 4K before its adapter caps the encoder input at 1080p.
         val inputShortSide = listOfNotNull(source?.get("width").asDouble(), source?.get("height").asDouble())
             .filter { it > 0 }.plus(SendVideoCap.HEIGHT.toDouble()).min()
+        val loadBefore = load.height
+        val loadHeight = load.onStats(outbound)
         val next = nextSendHeight(height, target)
-        val nextScale = maxOf(1.0, inputShortSide / next)
-        if (next == height && nextScale == scale) return null
+        val nextScale = maxOf(1.0, inputShortSide / minOf(next, loadHeight))
+        if (next == height && nextScale == scale && loadHeight == loadBefore) return null
         height = next
+        if (nextScale != scale) apply(nextScale)
         scale = nextScale
-        apply(nextScale)
-        return "send ladder target=${target.toLong()} height=$next scaleDownBy=$nextScale"
+        return "send ladder target=${target.toLong()} height=$next load=$loadHeight scaleDownBy=$nextScale"
+    }
+}
+
+// Short sides to step through when the encoder, not the network, cannot keep up; no floor.
+private val loadRungs = listOf(1080, 720, 540, 360, 270, 180)
+
+private const val SLOW_FPS = SendVideoCap.FPS * 0.8
+private const val FAST_FPS = SendVideoCap.FPS * 0.9
+private const val SLOW_ENCODE_MS = 1500.0 / SendVideoCap.FPS
+private const val STEP_UP_ENCODE_MS = SLOW_ENCODE_MS * 0.8
+private const val SLOW_TICKS_TO_STEP_DOWN = 2
+private const val FAST_TICKS_TO_STEP_UP = 6
+
+// libwebrtc's CPU adaptation waits for 200 % encode usage on a hardware encoder; the Redmi already sends 13-22 fps at
+// 150 %. Slow = under 24 fps with frames over 50 ms to encode, so a camera slowed by low light never counts.
+internal class SendLoadRung {
+    var height = SendVideoCap.HEIGHT
+        private set
+    private var previous: Map<String, Any?> = emptyMap()
+    private var slowTicks = 0
+    private var fastTicks = 0
+
+    fun onStats(outbound: Map<String, Any?>): Int {
+        val encodeMs = perFrame(outbound, previous, "totalEncodeTime", "framesEncoded", 1000.0)
+        previous = outbound
+        val fps = outbound["framesPerSecond"].asDouble()
+        val sentShortSide = listOfNotNull(outbound["frameWidth"].asDouble(), outbound["frameHeight"].asDouble()).minOrNull()
+        if (fps == null || encodeMs == null || sentShortSide == null || sentShortSide <= 0) {
+            slowTicks = 0
+            fastTicks = 0
+            return height
+        }
+        if (fps < SLOW_FPS && encodeMs > SLOW_ENCODE_MS) {
+            fastTicks = 0
+            if (++slowTicks >= SLOW_TICKS_TO_STEP_DOWN) {
+                slowTicks = 0
+                height = loadRungs.firstOrNull { it < minOf(height.toDouble(), sentShortSide) } ?: height
+            }
+            return height
+        }
+        slowTicks = 0
+        val up = loadRungs.lastOrNull { it > height }
+        val ratio = (up ?: 0) / sentShortSide
+        if (up != null && fps >= FAST_FPS && encodeMs * ratio * ratio <= STEP_UP_ENCODE_MS) {
+            if (++fastTicks >= FAST_TICKS_TO_STEP_UP) {
+                fastTicks = 0
+                height = up
+            }
+        } else {
+            fastTicks = 0
+        }
+        return height
     }
 }

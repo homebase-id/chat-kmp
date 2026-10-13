@@ -63,7 +63,7 @@ internal fun Any?.asDouble(): Double? = when (this) {
     else -> toString().toDoubleOrNull()
 }
 
-private fun perFrame(now: Map<String, Any?>, before: Map<String, Any?>, total: String, frames: String, scale: Double = 1.0): Double? {
+internal fun perFrame(now: Map<String, Any?>, before: Map<String, Any?>, total: String, frames: String, scale: Double = 1.0): Double? {
     val totalNow = now[total].asDouble() ?: return null
     val frameCount = (now[frames].asDouble() ?: return null) - (before[frames].asDouble() ?: 0.0)
     if (frameCount <= 0) return null
