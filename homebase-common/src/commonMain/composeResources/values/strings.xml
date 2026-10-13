@@ -2739,6 +2739,12 @@
     <string name="filesync_desktop_title">Get the desktop app</string>
     <string name="filesync_desktop_body">Want folders from your computer here too? Filesync for Mac, Windows and Linux keeps them in sync with your Homebase.</string>
     <string name="filesync_desktop_download">Download Filesync</string>
+    <string name="filesync_download_windows">Windows</string>
+    <string name="filesync_download_mac_apple">Mac with Apple chip (M1 or later)</string>
+    <string name="filesync_download_mac_intel">Mac with Intel chip</string>
+    <string name="filesync_download_linux">Linux (Ubuntu, Debian)</string>
+    <string name="filesync_download_linux_arm">Linux on ARM (Ubuntu, Debian)</string>
+    <string name="filesync_download_other">Other downloads</string>
     <string name="filesync_folder_empty">This folder is empty</string>
     <string name="filesync_load_failed">Couldn't load this folder.</string>
     <string name="filesync_retry">Try again</string>

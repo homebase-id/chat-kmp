@@ -18,6 +18,6 @@ object FilesyncProtocol {
 
     const val PayloadKey = "sync_data"
 
-    // Until the first final release, the stable per-OS assets on filesync-release-production don't exist yet.
-    const val DesktopDownloadUrl = "https://github.com/homebase-id/filesync/releases"
+    // filesync's update site (its RELEASING.md); latest/download/<version-free name> always resolves.
+    const val DesktopReleasesUrl = "https://github.com/homebase-id/filesync-release-production/releases/latest"
 }

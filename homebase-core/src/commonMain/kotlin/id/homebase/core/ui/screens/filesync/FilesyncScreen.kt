@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -57,13 +59,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.fileDropTarget
-import id.homebase.core.filesync.FilesyncProtocol
-import id.homebase.core.util.getUriHandler
+import id.homebase.core.ui.screens.filesync.components.FilesyncDownloadButtons
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.close
 import id.homebase.resources.create
 import id.homebase.resources.filesync_check_failed
 import id.homebase.resources.filesync_desktop_download
+import id.homebase.resources.filesync_desktop_title
 import id.homebase.resources.filesync_dismiss
 import id.homebase.resources.filesync_folder_deleted
 import id.homebase.resources.filesync_folder_empty
@@ -316,7 +319,7 @@ private fun OverflowMenu(
     onOpenRecent: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val uriHandler = getUriHandler()
+    var showDownloads by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.string.filesync_more))
@@ -352,10 +355,18 @@ private fun OverflowMenu(
                 leadingIcon = { Icon(Icons.Outlined.Download, contentDescription = null) },
                 onClick = {
                     expanded = false
-                    uriHandler.openUrl(FilesyncProtocol.DesktopDownloadUrl)
+                    showDownloads = true
                 },
             )
         }
+    }
+    if (showDownloads) {
+        AlertDialog(
+            onDismissRequest = { showDownloads = false },
+            title = { Text(stringResource(MR.string.filesync_desktop_title)) },
+            text = { FilesyncDownloadButtons(modifier = Modifier.verticalScroll(rememberScrollState())) },
+            confirmButton = { TextButton(onClick = { showDownloads = false }) { Text(stringResource(MR.string.close)) } },
+        )
     }
 }
 
