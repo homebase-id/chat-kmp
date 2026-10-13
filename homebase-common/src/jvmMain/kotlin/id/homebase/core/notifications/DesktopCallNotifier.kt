@@ -28,8 +28,8 @@ class DesktopCallNotifier : CallNotifier {
             adapter.showCall(id, title, body, actions)
             return
         }
-        CallNotificationClickRouter.onOpen = actions.onOpen
-        NotifierManager.getLocalNotifier().notify(id = id, title = title, body = body, payloadData = CallNotificationClickRouter.payload(callId))
+        clicks.register(callId, actions.onOpen)
+        NotifierManager.getLocalNotifier().notify(id = id, title = title, body = body, payloadData = clicks.payload(callId))
     }
 
     override fun retract(callId: String) {
@@ -37,6 +37,42 @@ class DesktopCallNotifier : CallNotifier {
         val id = callNotificationId(callId)
         val adapter = nucleus
         if (adapter != null) adapter.dismiss(id) else runCatching { NotifierManager.getLocalNotifier().remove(id) }
+        clicks.forget(callId)
+    }
+
+    private val clicks by lazy {
+        CallNotificationClicks().also { clicks ->
+            NotifierManager.addListener(object : NotifierManager.Listener {
+                override fun onNotificationClicked(data: com.mmk.kmpnotifier.notification.PayloadData) {
+                    clicks.handle(data)
+                }
+            })
+        }
+    }
+}
+
+/** A button-less call notification's click opens the ring window; the chat tap path ignores it, having no "data" key. */
+internal class CallNotificationClicks {
+    private val onOpen = java.util.concurrent.ConcurrentHashMap<String, () -> Unit>()
+
+    fun payload(callId: String): Map<String, String> = mapOf(KEY to callId)
+
+    fun register(callId: String, open: () -> Unit) {
+        onOpen[callId] = open
+    }
+
+    fun forget(callId: String) {
+        onOpen.remove(callId)
+    }
+
+    fun handle(data: Map<String, Any?>): Boolean {
+        val callId = data[KEY] as? String ?: return false
+        onOpen[callId]?.invoke()
+        return true
+    }
+
+    private companion object {
+        const val KEY = "homebase_call_open"
     }
 }
 

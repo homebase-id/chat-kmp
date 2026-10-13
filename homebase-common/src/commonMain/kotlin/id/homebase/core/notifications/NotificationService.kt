@@ -296,7 +296,6 @@ class NotificationService(
 
             override fun onNotificationClicked(data: PayloadData) {
                 Logger.i(tag = "NotificationService") { "Notification clicked: $data" }
-                if (CallNotificationClickRouter.tryHandle(data)) return
                 // Route through NotificationEntry so iOS taps (which arrive via
                 // KMPNotifier) hit the same defensive-sync path as Android /
                 // Desktop taps. See NotificationClickRouter.handler comment above.
