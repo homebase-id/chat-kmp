@@ -28,6 +28,7 @@ class CallRingCoordinatorTest {
     private class FakeSink : CallRingSink {
         val events = mutableListOf<String>()
         override fun ring(callId: String, label: String) { events += "ring:$callId:$label" }
+        override fun dialing(callId: String, peer: String) { events += "dialing:$callId:$peer" }
         override fun stopRinging(callId: String) { events += "stop:$callId" }
         override fun connected(callId: String) { events += "connected:$callId" }
         override fun ended(callId: String, reason: CallEndReason) { events += "ended:$callId" }
@@ -236,4 +237,21 @@ class CallRingCoordinatorTest {
         assertTrue("android.telecom.ConnectionService" in manifest)
         assertTrue("microphone|camera" in manifest)
     }
+
+    @Test
+    fun aPlacedCallIsReportedAsDialingOnceAndARingNever() = runTest {
+        val rig = Rig(this, frodo) { null }
+        rig.controller.startCall(sam, video = false, callId = "out1")
+        runCurrent()
+        rig.controller.setMuted(true)
+        runCurrent()
+        assertEquals(listOf("dialing:out1:$sam"), rig.sink.events.filter { it.startsWith("dialing") })
+        rig.controller.hangup()
+        runCurrent()
+
+        assertTrue(ring("in1"))
+        runCurrent()
+        assertEquals(listOf("dialing:out1:$sam"), rig.sink.events.filter { it.startsWith("dialing") })
+    }
 }
+

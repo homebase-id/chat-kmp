@@ -18,6 +18,8 @@ interface CallPushTarget {
 
 interface CallRingSink {
     fun ring(callId: String, label: String)
+    /** The user placed [callId]; the OS can be told about an outgoing call here. */
+    fun dialing(callId: String, peer: String) {}
     fun stopRinging(callId: String)
     fun connected(callId: String)
     fun ended(callId: String, reason: CallEndReason)
@@ -41,6 +43,7 @@ class CallRingCoordinator(
             var live = false
             var liveVideo = false
             var established: String? = null
+            var dialed: String? = null
             transitions.collect { s ->
                 val callId = s.callId
                 val nowRinging = callId.takeIf { s.isRinging }
@@ -63,6 +66,10 @@ class CallRingCoordinator(
                     sink.setLive(nowLive, s.media.localVideo, callId)
                     live = nowLive
                     liveVideo = s.media.localVideo
+                }
+                if (callId != null && s.phase == CallPhase.Outgoing && s.direction == CallDirection.Outgoing && dialed != callId) {
+                    dialed = callId
+                    sink.dialing(callId, s.peer.orEmpty())
                 }
                 if (callId != null && s.phase == CallPhase.Connected && established != callId) {
                     established = callId

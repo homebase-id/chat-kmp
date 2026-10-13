@@ -50,6 +50,11 @@ private class AndroidCallRingSink(private val context: Context) : CallRingSink {
         notifier.show(callId, label)
     }
 
+    override fun dialing(callId: String, peer: String) {
+        val viaTelecom = HomebaseConnectionService.reportOutgoing(context, callId, peer)
+        Logger.i(tag = "AndroidCall") { "dialing call=$callId viaTelecom=$viaTelecom" }
+    }
+
     override fun stopRinging(callId: String) = notifier.cancel(callId, reason = "stopRinging")
 
     override fun connected(callId: String) = HomebaseConnectionService.setActive(callId)

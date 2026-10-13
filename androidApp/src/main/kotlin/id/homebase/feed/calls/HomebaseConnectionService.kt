@@ -15,6 +15,7 @@ import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import co.touchlab.kermit.Logger
 import id.homebase.chat.services.calling.CallEndReason
+import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.isRingingFor
 import java.util.concurrent.ConcurrentHashMap
@@ -22,7 +23,7 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
 /**
- * Self-managed Telecom registration for incoming calls: gives the OS the call (audio focus, Bluetooth,
+ * Self-managed Telecom registration for incoming and outgoing calls: gives the OS the call (audio focus, Bluetooth,
  * "in a call" state) while the app keeps its own UI and its own notification.
  */
 class HomebaseConnectionService : ConnectionService(), KoinComponent {
@@ -39,7 +40,7 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
             Logger.i(tag = TAG) { "telecom incoming call=$callId cancelled: no longer ringing" }
             return Connection.createCanceledConnection()
         }
-        val connection = object : Connection() {
+        val connection = object : CallConnection(callId, label) {
             override fun onShowIncomingCallUi() {
                 val ringing = stillRinging(callId)
                 Logger.i(tag = TAG) { "telecom onShowIncomingCallUi call=$callId stillRinging=$ringing" }
@@ -54,24 +55,52 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
                 if (callService.state.value.callId == callId) callService.decline()
                 end(callId, DisconnectCause.REJECTED)
             }
-            override fun onDisconnect() {
-                Logger.i(tag = TAG) { "telecom onDisconnect call=$callId" }
-                if (callService.state.value.callId == callId) callService.hangup()
-                end(callId, DisconnectCause.LOCAL)
-            }
-            override fun onAbort() {
-                Logger.i(tag = TAG) { "telecom onAbort call=$callId" }
-                end(callId, DisconnectCause.CANCELED)
-            }
-        }.apply {
-            connectionProperties = Connection.PROPERTY_SELF_MANAGED
+        }.apply { setRinging() }
+        connections[callId] = connection
+        return connection
+    }
+
+    override fun onCreateOutgoingConnection(account: PhoneAccountHandle?, request: ConnectionRequest?): Connection {
+        val extras = request?.outgoingExtras()
+        val callId = extras?.getString(IncomingCallNotifier.EXTRA_CALL_ID).orEmpty()
+        val state = callService.state.value
+        if (state.callId != callId || !state.isActive) {
+            Logger.i(tag = TAG) { "telecom outgoing call=$callId cancelled: no longer active" }
+            return Connection.createCanceledConnection()
+        }
+        val connection = CallConnection(callId, extras?.getString(EXTRA_LABEL).orEmpty()).apply { setDialing() }
+        connections[callId] = connection
+        if (state.phase == CallPhase.Connected) connection.setActive()
+        return connection
+    }
+
+    // The call goes on without Telecom, as it did before outgoing calls were reported: another app's call can refuse it.
+    override fun onCreateOutgoingConnectionFailed(account: PhoneAccountHandle?, request: ConnectionRequest?) {
+        val callId = request?.outgoingExtras()?.getString(IncomingCallNotifier.EXTRA_CALL_ID)
+        Logger.w(tag = TAG) { "telecom refused outgoing call=$callId" }
+    }
+
+    // Not device-verified which shape Telecom hands placeCall's EXTRA_OUTGOING_CALL_EXTRAS over in, so both are read.
+    private fun ConnectionRequest.outgoingExtras(): Bundle? = extras?.let { it.getBundle(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS) ?: it }
+
+    private open inner class CallConnection(private val callId: String, label: String) : Connection() {
+        init {
+            connectionProperties = PROPERTY_SELF_MANAGED
             setAddress(Uri.fromParts("homebase", label.ifBlank { "caller" }, null), TelecomManager.PRESENTATION_ALLOWED)
             setCallerDisplayName(label, TelecomManager.PRESENTATION_ALLOWED)
             audioModeIsVoip = true
-            setRinging()
         }
-        connections[callId] = connection
-        return connection
+
+        override fun onDisconnect() {
+            Logger.i(tag = TAG) { "telecom onDisconnect call=$callId" }
+            if (callService.state.value.callId == callId) callService.hangup()
+            end(callId, DisconnectCause.LOCAL)
+        }
+
+        override fun onAbort() {
+            Logger.i(tag = TAG) { "telecom onAbort call=$callId" }
+            end(callId, DisconnectCause.CANCELED)
+        }
     }
 
     override fun onCreateIncomingConnectionFailed(account: PhoneAccountHandle?, request: ConnectionRequest?) {
@@ -126,6 +155,25 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
         } catch (e: RuntimeException) {
             // SecurityException, or IllegalArgumentException for an unregistered account; the caller's notification still rings.
             Logger.w(e, tag = TAG) { "telecom addNewIncomingCall refused call=$callId" }
+            false
+        }
+
+        /** Returns false when Telecom refused; the call then runs without it. */
+        fun reportOutgoing(context: Context, callId: String, label: String): Boolean = try {
+            val extras = Bundle().apply {
+                putString(IncomingCallNotifier.EXTRA_CALL_ID, callId)
+                putString(EXTRA_LABEL, label)
+            }
+            context.getSystemService(TelecomManager::class.java).placeCall(
+                Uri.fromParts("homebase", label.ifBlank { "callee" }, null),
+                Bundle().apply {
+                    putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, handle(context))
+                    putBundle(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS, extras)
+                },
+            )
+            true
+        } catch (e: RuntimeException) {
+            Logger.w(e, tag = TAG) { "telecom placeCall refused call=$callId" }
             false
         }
 
