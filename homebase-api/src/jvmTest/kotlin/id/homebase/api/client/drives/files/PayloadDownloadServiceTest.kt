@@ -285,8 +285,8 @@ class PayloadDownloadServiceTest {
 
     @Test
     fun `an export that fails mid-stream leaves no partial file behind`() = runTest {
-        // Random bytes decrypt chunk by chunk, then fail on the final padding block.
-        nextBody = ByteArray(200_000).also { Random.nextBytes(it) }
+        // Not a multiple of the AES block size, so the final chunk always fails to decrypt.
+        nextBody = ByteArray(200_001).also { Random.nextBytes(it) }
 
         assertTrue(runCatching {
             service.exportToTemp(driveId, fileId, key, KeyHeader.newRandom16(), ExportDestination.UploadTemp("fs_", ".bin"))

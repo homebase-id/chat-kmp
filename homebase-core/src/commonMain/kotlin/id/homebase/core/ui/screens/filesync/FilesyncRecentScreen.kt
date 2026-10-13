@@ -9,11 +9,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -44,18 +42,14 @@ import kotlin.time.Instant
 /** What arrived lately next to what was deleted lately: a timeline of single files, by day. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FilesyncRecentScreen(viewModel: FilesyncRecentViewModel, onBack: () -> Unit) {
+fun FilesyncRecentScreen(viewModel: FilesyncRecentViewModel, places: FilesyncPlaces, onBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     FilesyncEventsEffect(viewModel.events, snackbarHostState) { viewModel.onAction(FilesyncRecentAction.SaveHandedOff(it)) }
 
-    Scaffold(
-        topBar = {
-            SettingsTopBar(title = stringResource(MR.string.filesync_recent), onBack = onBack)
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+    val title = stringResource(MR.string.filesync_recent)
+    val body: @Composable () -> Unit = {
+        Column(modifier = Modifier.fillMaxSize()) {
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 FilesyncRecentTab.entries.forEachIndexed { index, tab ->
                     SegmentedButton(
@@ -94,6 +88,14 @@ fun FilesyncRecentScreen(viewModel: FilesyncRecentViewModel, onBack: () -> Unit)
             }
         }
     }
+    FilesyncPlaceScaffold(
+        place = FilesyncPlace.Recent,
+        places = places,
+        snackbarHostState = snackbarHostState,
+        title = title,
+        compactTopBar = { SettingsTopBar(title = title, onBack = onBack) },
+        content = body,
+    )
 }
 
 @Composable
@@ -140,7 +142,7 @@ private fun RecentList(
                         modifier = Modifier.clickable { onAction(FilesyncRecentAction.Open(node)) },
                         trailing = {
                             SaveButton(
-                                progress = uiState.transfer?.takeIf { it.nodeId == node.nodeId }?.progress,
+                                progress = uiState.transfer.progressOf(node.nodeId),
                                 onSave = { onAction(FilesyncRecentAction.Save(node)) },
                                 onCancel = { onAction(FilesyncRecentAction.CancelTransfer) },
                             )
