@@ -15,8 +15,8 @@ Signalling    LiveRelayCallSignaling               CallSignal <-> LiveRelay blob
 Engines       WebRtcKmpCallEngine (Android, iOS)   webrtcKmpMain source set shared by androidMain + appleMain
               WebRtcJavaCallEngine (desktop JVM)   webrtc-java
 Platform glue AndroidCallCoordinator (FCM, Telecom, full-screen notification, foreground service)
-              AppleCallCoordinator + CallKitManager.swift (PushKit, CallKit)
-              CallRingEffect (no-op; desktop rings from DesktopCallRingSink)
+              AppleCallCoordinator + CallKitManager.swift (PushKit, CallKit, PiP)
+              DesktopCallCoordinator + DesktopCallRingSink (notification, focus, ring tone)
 ```
 
 `CallService` is a Koin `single`. It tracks the active credentials and builds a new `CallController` whenever the
@@ -38,9 +38,9 @@ Every signal is one `POST /api/v2/live-relay` with `{channelKey, recipients, blo
 - **blob**: base64 of the `CallSignal` JSON (`offer`, `ringing`, `answer`, `ice`, `hangup`, `restart`,
   `restart_answer`). `CallSignal.Ringing` is the callee's "my phone is ringing" ack, unrelated to push kind `ring`.
 - **push**: the first `Offer` (seq 0) carries `{kind: ring, typeId: RING_TYPE_ID, tagId: callId, unEncryptedMessage: "<name> is calling"}`.
-  A caller-side `Hangup` with reason `Cancelled` or `Missed` carries `kind: hangup` with the same `tagId` and
-  `HANGUP_TYPE_ID`. Ring and hangup use distinct typeIds (defined once, in `CallPushRouter`, which also routes the
-  delivered push by typeId because the payload has no `kind`).
+  A caller-side `Hangup` with reason `Cancelled`, `Missed`, `AnsweredElsewhere` or `DeclinedElsewhere` carries
+  `kind: hangup` with the same `tagId` and `HANGUP_TYPE_ID`. Ring and hangup use distinct typeIds (defined once, in
+  `CallPushRouter`, which also routes the delivered push by typeId because the payload has no `kind`).
   Everything else (re-published offers, answer, ICE, ringing, declined, normal hangup, glare yield, restart) is sent without a push.
 - **last blob wins**: odin-core keeps only the LAST blob per sender per app and flushes it when a socket (re)connects.
   While a call is unanswered every blob the caller sends must therefore be a complete offer. The caller holds its
@@ -89,21 +89,30 @@ inbound signals, push ring/hangup, timers, media events. Effects are the only si
   odin id ordering: the lower id keeps its offer and ignores the peer's, the higher id abandons its own call, sends
   `Hangup(Normal)` for it (no push, so no missed-call alert) and answers the lower id's offer.
 - **ICE restart.** `Disconnected` moves to `Reconnecting`, starts the reconnect timer and, on the original caller's
-  side only, emits `RestartIce`. Every timer tick (up to `MAX_RECONNECT_ATTEMPTS`) restarts again. The engine's new
-  offer travels as `Restart`, the answer as `RestartAnswer`. Only the caller drives it so the sides never offer at once.
+  side only, emits `RestartIce`. The timer ticks every 5 s (`RECONNECT_TICK_MS`) and the call fails with `NoRoute`
+  after 30 s (`RECONNECT_TIMEOUT_MS`, 6 attempts): ICE reports the drop about 6 s late and a phone rejoining wifi
+  can take 5 s or more before DNS resolves again. The engine's new offer travels as `Restart`, the answer as
+  `RestartAnswer`; the caller resends the same unanswered restart offer on each tick and stays `Reconnecting` until a
+  `RestartAnswer` arrives (`restartPending`), even if its own link reports up first. A signal that fails to send while
+  reconnecting is logged, not fatal. Only the caller drives it so the sides never offer at once.
 - **Thread safety.** All mutable controller state (engine, timers, buffered ICE, SDPs) is touched only on the inbox
-  loop. `close()` posts a `Close` command; scope cancellation runs the same teardown in the loop's `finally`.
+  loop. `close()` posts a `Close` command; scope cancellation runs the same teardown in the loop's `finally`. A user
+  hangup or decline, or the peer's hangup for the live call, cancels the event in flight first, so an engine call that
+  hangs (a native deadlock, a stalled `setRemoteDescription`) cannot keep the call from ending.
 - **Other devices of the same user.** Live Relay fans out to connected peer identities (`LiveRelayService.RelayAsync`
-  resolves each recipient through the circle network), so a sender does not receive its own relay. "Answered on
-  another device" is therefore not detectable and was removed. Consequence: a callee's other devices keep ringing
-  until the ring timeout (45 s) or a caller-side hangup push. Revisit if odin-core adds self-delivery.
+  resolves each recipient through the circle network), so a sender does not receive its own relay and a callee
+  device cannot tell its siblings it took the call. The caller relays instead: on the first `Answer` it sends
+  `Hangup(AnsweredElsewhere)`, and on a `Hangup(Declined)` it sends `Hangup(DeclinedElsewhere)`, both to the callee
+  identity with a hangup push. A device still `Incoming` on that callId ends as `AnsweredElsewhere` /
+  `DeclinedElsewhere` (CallKit records it as handled elsewhere); the device that answered or declined has already
+  moved on and ignores it. A failed relay of either is only logged.
 
 ## Call log message (C3)
 
 `MessageContent.CallEvent`, `ChatProtocol.ChatCallEventMessageDataType = 217`, descriptor `CallEventDescriptor`
 (`outcome`, `video`, `durationSeconds`, `schemaVersion`; no ids, author or time). The caller writes one message per
-call when the machine reaches `Ended` (`callEventFor`): Completed with duration, NoAnswer, Declined, Cancelled, Busy;
-failures are not logged. The receiver renders "Missed call" from the envelope author. Older clients show the
+call when the machine reaches `Ended` (`callEventFor`): Completed with duration, NoAnswer, Declined, Cancelled, Busy,
+Failed. The receiver renders "Missed call" from the envelope author. Older clients show the
 `Unknown` chip. Parse failures yield `CallEvent(null)` and an unparseable chip, never `null`.
 
 ## Engines
@@ -121,7 +130,9 @@ desktopApp consumes a repackaged chat jar).
 
 Both engines map native callbacks through `PeerEventMapper` (`MediaEventMappingTest` drives it from a fake peer connection
 through real controllers). Both are idempotent on `close()`; the desktop engine serialises native calls with the close lock,
-so a late ICE candidate is dropped instead of reaching a disposed connection.
+so a late ICE candidate is dropped instead of reaching a disposed connection. Its `onTrack` takes a separate `remoteLock`
+instead: it runs on webrtc-java's signaling thread, and `getStats` and `addIceCandidate` block on that thread while
+holding the close lock, so sharing it deadlocks (`WebRtcJavaCallEngineLockTest`).
 
 Local self-preview is mirrored only for the user-facing camera (`CameraFacing.mirrorsLocalPreview`), at the renderer: the
 Android `SurfaceViewRenderer`, the iOS view transform and the desktop canvas. The transmitted stream is never mirrored.
@@ -135,6 +146,44 @@ needs `NSCameraUsageDescription` and `NSMicrophoneUsageDescription` (Compose `in
 Tests: `WebRtcJavaCallEngineTest` runs two real webrtc-java engines over `LoopbackSignaling` through two
 `CallController`s, reaches `Connected`, checks both sides compute the same verification code, then hangs up and
 exercises a real ICE restart. It also proves the natives load on the host.
+
+### Video send
+
+`SendVideoCap` bounds what a sender puts on the wire: at most 1080p30, 300 kbps to 2.5 Mbps, with BALANCED degradation
+on webrtc-kmp (webrtc-java has no degradation preference). Android asks Camera2 for 1080p; on iOS webrtc-kmp reads the
+camera formats through a freed struct and opens the camera at 4K, so `capLocalVideoSource` adapts the source output to
+1080p instead.
+
+- **H.264 level.** libwebrtc offers H.264 at level 3.1 (`42e01f`, at most 3600 macroblocks a frame) and each side
+  encodes at the level the peer advertised. Every local offer and answer is raised to level 4.0 before it is set
+  (`withH264SendLevel`): VideoToolbox rejects a 1080p frame at 3.1 with -12902 and, with no fallback codec, the
+  stream stops for good.
+- **Resolution ladder.** libwebrtc's quality scaler only reacts to encoder QP and frame drops, so a cheap-to-encode
+  picture stays at 1080p on any bitrate. `SendResolutionLadder` reads the outbound `targetBitrate` on every 5 s stats
+  tick and sets `scaleResolutionDownBy`: 1080p from 1.5 Mbps, 720p from 800 kbps, 540p from 500 kbps, else the 480p
+  floor. It steps straight down to the rung that fits and back up one rung at a time with 25 % headroom
+  (`CallSendResolutionLadderTest`).
+- **Health logs.** Each engine logs inbound, source, outbound and candidate-pair stats every 5 s (`videoStatsLines`),
+  and `watchVideoPipeline` writes camera-session interruptions and native WebRTC warnings to homebase.log.
+
+### Keep-awake and picture-in-picture
+
+While a call is `Connecting`, `Connected` or `Reconnecting` (`CallPhase.isInCall`) the phone screen stays on
+(`KeepScreenOn`), and `AuthConnectionCoordinator.setCallActive` keeps the notify WebSocket open even when the app is
+backgrounded or in PiP, because answer, ICE and hangup ride it.
+
+A video call that is `Connected` or `Reconnecting` goes into a system PiP window when the user leaves the app
+(`CallPictureInPictureEffect`). The window takes the remote video's aspect ratio (`RemoteVideoSize`, clamped to the
+2.39:1 limit both platforms enforce). Desktop and web have none.
+
+- **Android**: auto-enter on API 31+, the user-leave-hint hook before that; mute and end-call `RemoteAction`s. The
+  activity leaves PiP as soon as the call stops being eligible.
+- **iOS**: Swift's `PictureInPictureManager` (behind `CallPictureInPictureBridge`) hosts the remote track in an
+  `AVPictureInPictureVideoCallViewController`, fed by the receiver's native `RTCVideoTrack` (webrtc-kmp's Kotlin wrapper
+  keeps it private). PiP starts automatically from inline; the window is closed when the app becomes active again and
+  when the call ends. The system draws the controls. Outgoing video keeps flowing because `watchVideoPipeline` turns on
+  `multitaskingCameraAccessEnabled` on webrtc-kmp's capture session as soon as it starts, where the device supports it;
+  without it iOS interrupts the camera when the app leaves the foreground.
 
 ## Platform glue
 
