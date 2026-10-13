@@ -26,9 +26,16 @@ internal actual fun configureVideoSender(sender: RtpSender) {
     if (!native.setParameters(params)) Logger.w("WebRtcKmp") { "video sender rejected ${describeVideoSender(sender)}" }
 }
 
+internal actual fun scaleVideoSender(sender: RtpSender, scaleDownBy: Double) {
+    val native = sender.android
+    val params = native.parameters
+    params.encodings.forEach { it.scaleResolutionDownBy = scaleDownBy }
+    if (!native.setParameters(params)) Logger.w("WebRtcKmp") { "video sender rejected scale $scaleDownBy" }
+}
+
 internal actual fun describeVideoSender(sender: RtpSender): String {
     val params = sender.android.parameters
     val codecs = params.codecs.joinToString { "${it.name}${it.parameters}" }
-    val encodings = params.encodings.joinToString { "max=${it.maxBitrateBps} min=${it.minBitrateBps} fps=${it.maxFramerate}" }
+    val encodings = params.encodings.joinToString { "max=${it.maxBitrateBps} min=${it.minBitrateBps} fps=${it.maxFramerate} scaleDownBy=${it.scaleResolutionDownBy}" }
     return "degradation=${params.degradationPreference} encodings=[$encodings] codecs=[$codecs]"
 }

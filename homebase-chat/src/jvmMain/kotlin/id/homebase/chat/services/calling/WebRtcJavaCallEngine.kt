@@ -56,6 +56,8 @@ class WebRtcJavaCallEngine(
     private val factory = if (audioDevice != null) PeerConnectionFactory(audioDevice) else PeerConnectionFactory()
     private var audioTrack: AudioTrack? = null
     private var videoTrack: VideoTrack? = null
+    private var videoSender: RTCRtpSender? = null
+    private val sendLadder = SendResolutionLadder { scale -> videoSender?.let { scaleVideoSender(it, scale) } }
     private var videoSource: VideoDeviceSource? = null
     private var localFrames: JvmVideoHandle? = null
     private var remoteFrames: JvmVideoHandle? = null
@@ -109,6 +111,7 @@ class WebRtcJavaCallEngine(
                 val entries = report.stats.values.map { StatsEntry(it.type.name.lowercase().replace('_', '-'), it.attributes) }
                 videoStatsLines(entries, localTrack = videoTrack?.let { if (it.isEnabled) "enabled" else "disabled" }, previous = previousStats)
                     .forEach { line -> Logger.i("WebRtcJava") { line } }
+                if (!closed) sendLadder.onStats(entries)?.let { line -> Logger.i("WebRtcJava") { line } }
                 previousStats = entries
             }
         }
@@ -157,7 +160,7 @@ class WebRtcJavaCallEngine(
             // The Mac camera faces the user, so its preview is mirrored; the transmitted frames are untouched.
             val handle = JvmVideoHandle.localPreview(DESKTOP_CAMERA_FACING).also { localFrames = it }
             track.addSink(handle.sink)
-            configureVideoSender(peer.addTrack(track, listOf(STREAM_ID)))
+            videoSender = peer.addTrack(track, listOf(STREAM_ID)).also(::configureVideoSender)
             videoTrack = track
             _local.value = handle
         } catch (e: Exception) {
@@ -317,5 +320,11 @@ internal fun configureVideoSender(sender: RTCRtpSender) {
         it.minBitrate = SendVideoCap.MIN_BITRATE_BPS
         it.maxFramerate = SendVideoCap.FPS.toDouble()
     }
+    sender.parameters = params
+}
+
+internal fun scaleVideoSender(sender: RTCRtpSender, scaleDownBy: Double) {
+    val params = sender.parameters
+    params.encodings?.forEach { it.scaleResolutionDownBy = scaleDownBy }
     sender.parameters = params
 }

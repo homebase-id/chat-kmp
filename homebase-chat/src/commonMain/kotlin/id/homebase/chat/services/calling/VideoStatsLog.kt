@@ -54,10 +54,10 @@ internal fun videoStatsLines(
         }
 }
 
-private fun Collection<StatsEntry>.video(type: String) = firstOrNull { it.type == type && it.members["kind"] == "video" }?.members
+internal fun Collection<StatsEntry>.video(type: String) = firstOrNull { it.type == type && it.members["kind"] == "video" }?.members
 
 // Android reports uint64 counters as BigInteger and iOS as NSNumber; both read through toString.
-private fun Any?.asDouble(): Double? = when (this) {
+internal fun Any?.asDouble(): Double? = when (this) {
     null -> null
     is Number -> toDouble()
     else -> toString().toDoubleOrNull()

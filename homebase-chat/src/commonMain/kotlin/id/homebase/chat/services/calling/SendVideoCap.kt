@@ -31,3 +31,40 @@ internal fun withH264SendLevel(sdp: String): String = profileLevelId.replace(sdp
 }
 
 internal fun h264Levels(sdp: String): List<Int> = profileLevelId.findAll(sdp).map { it.groupValues[3].toInt(16) }.toList()
+
+// Short side of each rung and the target bitrate it needs; the last rung is the 480p floor.
+private val sendRungs = listOf(1080 to 1_500_000, 720 to 800_000, 540 to 500_000, 480 to 0)
+
+private const val STEP_UP_HEADROOM = 1.25
+
+/** The rung to send at next: straight down to the rung [targetBps] fits, back up one rung at a time with headroom. */
+internal fun nextSendHeight(currentHeight: Int, targetBps: Double): Int {
+    val fits = sendRungs.first { (_, min) -> targetBps >= min }.first
+    if (fits <= currentHeight) return fits
+    val (up, upMin) = sendRungs.last { (height, _) -> height > currentHeight }
+    return if (targetBps >= upMin * STEP_UP_HEADROOM) up else currentHeight
+}
+
+/**
+ * Caps the sender's resolution to the network: libwebrtc's quality scaler only reacts to encoder QP and frame drops,
+ * so a cheap-to-encode picture keeps 1080p at any target bitrate. [apply] receives scaleResolutionDownBy.
+ */
+internal class SendResolutionLadder(private val apply: (Double) -> Unit) {
+    private var height = SendVideoCap.HEIGHT
+    private var scale = 1.0
+
+    fun onStats(stats: Collection<StatsEntry>): String? {
+        val target = stats.video("outbound-rtp")?.get("targetBitrate").asDouble() ?: return null
+        val source = stats.video("media-source")
+        // iOS reports the camera's 4K before its adapter caps the encoder input at 1080p.
+        val inputShortSide = listOfNotNull(source?.get("width").asDouble(), source?.get("height").asDouble())
+            .filter { it > 0 }.plus(SendVideoCap.HEIGHT.toDouble()).min()
+        val next = nextSendHeight(height, target)
+        val nextScale = maxOf(1.0, inputShortSide / next)
+        if (next == height && nextScale == scale) return null
+        height = next
+        scale = nextScale
+        apply(nextScale)
+        return "send ladder target=${target.toLong()} height=$next scaleDownBy=$nextScale"
+    }
+}

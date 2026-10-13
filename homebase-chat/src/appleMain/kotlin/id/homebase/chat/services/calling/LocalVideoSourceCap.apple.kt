@@ -46,10 +46,20 @@ internal actual fun configureVideoSender(sender: RtpSender) {
 }
 
 @OptIn(ExperimentalForeignApi::class)
+internal actual fun scaleVideoSender(sender: RtpSender, scaleDownBy: Double) {
+    val native = sender.ios
+    val params = native.parameters
+    params.encodings.filterIsInstance<RTCRtpEncodingParameters>().forEach {
+        it.scaleResolutionDownBy = NSNumber(double = scaleDownBy)
+    }
+    native.parameters = params
+}
+
+@OptIn(ExperimentalForeignApi::class)
 internal actual fun describeVideoSender(sender: RtpSender): String {
     val params = sender.ios.parameters
     val codecs = params.codecs.filterIsInstance<RTCRtpCodecParameters>().joinToString { "${it.name}${it.parameters}" }
     val encodings = params.encodings.filterIsInstance<RTCRtpEncodingParameters>()
-        .joinToString { "max=${it.maxBitrateBps} min=${it.minBitrateBps} fps=${it.maxFramerate}" }
+        .joinToString { "max=${it.maxBitrateBps} min=${it.minBitrateBps} fps=${it.maxFramerate} scaleDownBy=${it.scaleResolutionDownBy}" }
     return "degradation=${params.degradationPreference} encodings=[$encodings] codecs=[$codecs]"
 }
