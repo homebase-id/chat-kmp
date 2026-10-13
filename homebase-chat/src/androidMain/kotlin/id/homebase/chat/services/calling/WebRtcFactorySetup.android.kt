@@ -6,6 +6,7 @@ import android.util.Log
 import co.touchlab.kermit.Logger
 import com.shepeliev.webrtckmp.WebRtc
 import org.koin.mp.KoinPlatformTools
+import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.Loggable
 import org.webrtc.Logging
 
@@ -16,8 +17,12 @@ internal val configureWebRtcFactory: Unit by lazy {
     val debuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     val severity = if (debuggable) Logging.Severity.LS_INFO else Logging.Severity.LS_WARNING
     val options = WebRtc.createInitializationOptionsBuilder().setInjectableLogger(WebRtcLog, severity)
-    WebRtc.configure(peerConnectionFactoryBuilder = WebRtc.createPeerConnectionFactoryBuilder(initializationOptionsBuilder = options))
-    Logger.i("WebRtcKmp") { "libwebrtc logging at $severity, warnings to homebase.log" }
+    // A texture-mode decoder has one output texture and drops every frame decoded while libwebrtc's render queue still
+    // holds the last one until its render time, which halved 1080p to 15 fps on the Redmi; byte buffers have no such slot.
+    val builder = WebRtc.createPeerConnectionFactoryBuilder(initializationOptionsBuilder = options)
+        .setVideoDecoderFactory(DefaultVideoDecoderFactory(null))
+    WebRtc.configure(peerConnectionFactoryBuilder = builder)
+    Logger.i("WebRtcKmp") { "libwebrtc logging at $severity, warnings to homebase.log; video decoders output byte buffers, not textures" }
 }
 
 private object WebRtcLog : Loggable {
