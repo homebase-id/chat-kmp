@@ -109,6 +109,7 @@ kotlin {
 
         jvmTest.dependencies {
             implementation(project(":homebase-chat"))
+            implementation(libs.multiplatform.settings.test)
             implementation(compose.desktop.currentOs)
             implementation(libs.jetbrains.compose.ui.test)
         }

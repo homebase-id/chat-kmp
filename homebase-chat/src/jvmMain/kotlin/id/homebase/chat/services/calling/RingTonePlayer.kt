@@ -2,6 +2,7 @@ package id.homebase.chat.services.calling
 
 import java.io.File
 import javax.sound.sampled.AudioSystem
+import javax.sound.sampled.Clip
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -100,9 +101,18 @@ class OsRingTonePlayer(
         job = scope.launch(Dispatchers.IO) {
             previous?.cancelAndJoin()
             val resolved = source()
-            while (isActive) {
-                if (resolved == null) java.awt.Toolkit.getDefaultToolkit().beep() else playOnce(resolved)
-                delay(gapMs)
+            val clip = (resolved as? RingSource.Wav)?.let(::openClip)
+            try {
+                while (isActive) {
+                    when (resolved) {
+                        null -> java.awt.Toolkit.getDefaultToolkit().beep()
+                        is RingSource.Command -> runCommand(resolved)
+                        is RingSource.Wav -> play(clip!!)
+                    }
+                    delay(gapMs)
+                }
+            } finally {
+                clip?.close()
             }
         }
     }
@@ -112,33 +122,31 @@ class OsRingTonePlayer(
         job?.cancel()
     }
 
-    private suspend fun playOnce(source: RingSource) = withContext(Dispatchers.IO) {
-        when (source) {
-            is RingSource.Command -> {
-                val process = ProcessBuilder(source.argv)
-                    .redirectErrorStream(true)
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .start()
-                val reaper = Thread { process.destroyForcibly() }
-                runCatching { Runtime.getRuntime().addShutdownHook(reaper) }
-                try {
-                    runInterruptible { process.waitFor() }
-                } finally {
-                    process.destroyForcibly()
-                    runCatching { Runtime.getRuntime().removeShutdownHook(reaper) }
-                }
-            }
-            is RingSource.Wav -> {
-                val clip = AudioSystem.getClip()
-                try {
-                    AudioSystem.getAudioInputStream(source.file).use { clip.open(it) }
-                    clip.start()
-                    delay(clip.microsecondLength / 1_000)
-                } finally {
-                    clip.stop()
-                    clip.close()
-                }
-            }
+    private suspend fun runCommand(source: RingSource.Command) = withContext(Dispatchers.IO) {
+        val process = ProcessBuilder(source.argv)
+            .redirectErrorStream(true)
+            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            .start()
+        val reaper = Thread { process.destroyForcibly() }
+        runCatching { Runtime.getRuntime().addShutdownHook(reaper) }
+        try {
+            runInterruptible { process.waitFor() }
+        } finally {
+            process.destroyForcibly()
+            runCatching { Runtime.getRuntime().removeShutdownHook(reaper) }
+        }
+    }
+
+    private fun openClip(source: RingSource.Wav): Clip =
+        AudioSystem.getClip().apply { AudioSystem.getAudioInputStream(source.file).use { open(it) } }
+
+    private suspend fun play(clip: Clip) {
+        clip.framePosition = 0
+        clip.start()
+        try {
+            delay(clip.microsecondLength / 1_000)
+        } finally {
+            clip.stop()
         }
     }
 }

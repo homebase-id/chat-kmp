@@ -97,6 +97,7 @@ class WebRtcJavaCallEngine(
 
     private val deviceExecutor = Executors.newSingleThreadExecutor { task -> Thread(task, "call-devices").apply { isDaemon = true } }
     private val listenerRegistered = AtomicBoolean(false)
+    private val refreshQueued = AtomicBoolean(false)
     private val deviceListener = object : DeviceChangeListener {
         override fun deviceConnected(device: Device) = refreshDevices()
         override fun deviceDisconnected(device: Device) = refreshDevices()
@@ -159,9 +160,15 @@ class WebRtcJavaCallEngine(
     @Volatile
     private var previousStats = emptyList<StatsEntry>()
 
+    // A hot-plug fires a burst of callbacks; one enumeration covers them all.
     private fun refreshDevices() {
-        if (closed) return
-        runCatching { deviceExecutor.execute { if (!closed) devices.refresh() } }
+        if (closed || !refreshQueued.compareAndSet(false, true)) return
+        runCatching {
+            deviceExecutor.execute {
+                refreshQueued.set(false)
+                if (!closed) devices.refresh()
+            }
+        }.onFailure { refreshQueued.set(false) }
     }
 
     private fun pollMicLevel() {

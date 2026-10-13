@@ -1,5 +1,6 @@
 package id.homebase.app
 
+import com.russhwolf.settings.MapSettings
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.window.awaitApplication
@@ -88,7 +89,7 @@ class CallWindowAppScopeTest {
                         exitApplication()
                     }
                     // A plain body: PeerAvatar needs the production Koin graph, which is not what is under test.
-                    CallWindow(model, DesktopPreferences(InMemorySettings()), ThemeState.Light) { _, _ -> Text("in call") }
+                    CallWindow(model, DesktopPreferences(MapSettings()), ThemeState.Light) { _, _ -> Text("in call") }
                 }
             }
         }

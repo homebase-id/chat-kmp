@@ -1,5 +1,6 @@
 package id.homebase.app
 
+import com.russhwolf.settings.MapSettings
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -48,7 +49,7 @@ class DesktopPreferencesMiniModeTest {
 
     @Test
     fun miniPositionIsRememberedAcrossRestartsAndSharedByVideoAndVoice() {
-        val settings = InMemorySettings()
+        val settings = MapSettings()
         assertNull(DesktopPreferences(settings).miniWindowPosition())
         DesktopPreferences(settings).saveMiniWindowPosition(WindowPosition.Absolute(1000.dp, 700.dp))
         assertEquals(WindowPosition.Absolute(1000.dp, 700.dp), DesktopPreferences(settings).miniWindowPosition())
@@ -69,7 +70,7 @@ class DesktopPreferencesMiniModeTest {
 
     @Test
     fun theMiniSpotAndTheFullGeometryAreSeparateKeys() {
-        val prefs = DesktopPreferences(InMemorySettings())
+        val prefs = DesktopPreferences(MapSettings())
         val full = CallWindowGeometry(1100.dp, 700.dp, WindowPosition.Absolute(40.dp, 60.dp))
         prefs.saveCallWindowGeometry(video = true, full)
         prefs.saveMiniWindowPosition(WindowPosition.Absolute(10.dp, 20.dp))
@@ -80,7 +81,7 @@ class DesktopPreferencesMiniModeTest {
 
     @Test
     fun autoMiniOnBlurIsOffByDefaultAndPersists() {
-        val settings = InMemorySettings()
+        val settings = MapSettings()
         assertFalse(DesktopPreferences(settings).callAutoMini)
         DesktopPreferences(settings).callAutoMini = true
         assertTrue(DesktopPreferences(settings).callAutoMini)

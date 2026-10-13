@@ -1,5 +1,6 @@
 package id.homebase.app
 
+import com.russhwolf.settings.MapSettings
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPosition
 import kotlin.test.Test
@@ -8,14 +9,14 @@ import kotlin.test.assertEquals
 class DesktopPreferencesCallWindowTest {
     @Test
     fun defaultsDifferForVideoAndVoice() {
-        val prefs = DesktopPreferences(InMemorySettings())
+        val prefs = DesktopPreferences(MapSettings())
         assertEquals(CallWindowGeometry(960.dp, 640.dp, WindowPosition.PlatformDefault), prefs.callWindowGeometry(video = true))
         assertEquals(CallWindowGeometry(640.dp, 480.dp, WindowPosition.PlatformDefault), prefs.callWindowGeometry(video = false))
     }
 
     @Test
     fun geometryRoundTripsSeparatelyForVideoAndVoice() {
-        val settings = InMemorySettings()
+        val settings = MapSettings()
         val video = CallWindowGeometry(1100.dp, 700.dp, WindowPosition.Absolute(40.dp, 60.dp))
         val voice = CallWindowGeometry(400.dp, 500.dp, WindowPosition.Absolute(900.dp, 20.dp))
         DesktopPreferences(settings).apply {
@@ -29,14 +30,14 @@ class DesktopPreferencesCallWindowTest {
 
     @Test
     fun savedSizeBelowTheMinimumIsRaisedToIt() {
-        val settings = InMemorySettings()
+        val settings = MapSettings()
         DesktopPreferences(settings).saveCallWindowGeometry(false, CallWindowGeometry(100.dp, 50.dp, WindowPosition.PlatformDefault))
         assertEquals(CallWindowGeometry(320.dp, 240.dp, WindowPosition.PlatformDefault), DesktopPreferences(settings).callWindowGeometry(false))
     }
 
     @Test
     fun callWindowKeysDoNotTouchTheMainWindow() {
-        val settings = InMemorySettings()
+        val settings = MapSettings()
         val prefs = DesktopPreferences(settings)
         prefs.saveCallWindowGeometry(true, CallWindowGeometry(1100.dp, 700.dp, WindowPosition.Absolute(1.dp, 2.dp)))
         assertEquals(1200.dp, prefs.windowWidthDp)
