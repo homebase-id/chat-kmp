@@ -39,15 +39,14 @@ internal actual fun configureVideoSender(sender: RtpSender) {
     params.degradationPreference = NSNumber(long = RTCDegradationPreference.RTCDegradationPreferenceBalanced.value)
     params.encodings.filterIsInstance<RTCRtpEncodingParameters>().forEach {
         it.maxBitrateBps = NSNumber(int = SendVideoCap.MAX_BITRATE_BPS)
-        it.minBitrateBps = NSNumber(int = SendVideoCap.MIN_BITRATE_BPS)
         it.maxFramerate = NSNumber(int = SendVideoCap.FPS)
     }
     native.parameters = params
 }
 
 @OptIn(ExperimentalForeignApi::class)
-internal actual fun scaleVideoSender(sender: RtpSender, scaleDownBy: Double) {
-    val native = sender.ios
+internal actual fun sendResolutionLadder(sender: () -> RtpSender?): SendResolutionLadder? = SendResolutionLadder { scaleDownBy ->
+    val native = sender()?.ios ?: return@SendResolutionLadder
     val params = native.parameters
     params.encodings.filterIsInstance<RTCRtpEncodingParameters>().forEach {
         it.scaleResolutionDownBy = NSNumber(double = scaleDownBy)

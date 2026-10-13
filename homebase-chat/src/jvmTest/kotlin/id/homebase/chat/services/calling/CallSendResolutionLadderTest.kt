@@ -7,7 +7,6 @@ import dev.onvoid.webrtc.RTCIceCandidate
 import dev.onvoid.webrtc.RTCRtpSender
 import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule
 import dev.onvoid.webrtc.media.video.CustomVideoSource
-import kotlin.math.roundToInt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -22,9 +21,12 @@ class CallSendResolutionLadderTest {
     fun rungsStepStraightDownAndBackUpOneAtATimeWithHeadroom() {
         assertEquals(1080, nextSendHeight(1080, 2_500_000.0))
         assertEquals(540, nextSendHeight(1080, 527_743.0))
-        assertEquals(480, nextSendHeight(540, 300_000.0))
-        assertEquals(480, nextSendHeight(480, 579_000.0))
-        assertEquals(540, nextSendHeight(480, 881_000.0))
+        assertEquals(360, nextSendHeight(540, 300_000.0))
+        assertEquals(360, nextSendHeight(360, 579_000.0))
+        assertEquals(540, nextSendHeight(360, 881_000.0))
+        assertEquals(180, nextSendHeight(540, 40_000.0))
+        assertEquals(270, nextSendHeight(180, 200_000.0))
+        assertEquals(180, nextSendHeight(270, 120_000.0))
         assertEquals(720, nextSendHeight(540, 1_100_000.0))
         assertEquals(720, nextSendHeight(720, 1_600_000.0))
         assertEquals(1080, nextSendHeight(720, 2_500_000.0))
@@ -33,7 +35,7 @@ class CallSendResolutionLadderTest {
     // mobile2-r1 Redmi under NLC 3G: target 2.5M -> 527k -> 300k, then 361k..881k..2.5M once NLC was off, while
     // libwebrtc kept 1920x1080 with resChanges=0 because the encoder's QP (25-26) never crossed the scaler's 37.
     @Test
-    fun theDeviceRunsTargetsDriveTheRealSendersScaleBetween1080pAnd480p() {
+    fun theDeviceRunsTargetsDriveTheRealSendersScaleBetween1080pAnd180p() {
         val factory = PeerConnectionFactory(HeadlessAudioDeviceModule())
         val source = CustomVideoSource()
         val peer = factory.createPeerConnection(RTCConfiguration(), object : PeerConnectionObserver {
@@ -47,8 +49,11 @@ class CallSendResolutionLadderTest {
 
             assertNull(ladder.onStats(stats(2_500_000.0)))
             assertEquals(2.0, scale(527_743.0))
-            assertEquals(2.25, scale(300_000.0))
-            assertEquals(2.25, scale(579_000.0))
+            assertEquals(3.0, scale(300_000.0))
+            assertEquals(3.0, scale(579_000.0))
+            assertEquals(6.0, scale(40_000.0))
+            assertEquals(4.0, scale(881_000.0))
+            assertEquals(3.0, scale(881_000.0))
             assertEquals(2.0, scale(881_000.0))
             assertEquals(1.5, scale(2_500_000.0))
             assertEquals(1.0, scale(2_500_000.0))
@@ -65,21 +70,10 @@ class CallSendResolutionLadderTest {
         var applied: Double? = null
         val ladder = SendResolutionLadder { applied = it }
         ladder.onStats(stats(300_000.0, sourceWidth = 3840, sourceHeight = 2160))
-        assertEquals(2.25, applied)
+        assertEquals(3.0, applied)
         ladder.onStats(stats(2_500_000.0, sourceWidth = 1280, sourceHeight = 720))
         assertEquals(720.0 / 540, applied)
     }
 
     private fun RTCRtpSender.scale() = parameters.encodings.single().scaleResolutionDownBy
-
-    // encoder-stall Redmi: the quality scaler's 960x540 at the 480 rung's 2.25 became 427x240, which MediaCodec refused.
-    @Test
-    fun theOddSizesLibwebrtcDerivesFromTheLaddersScalesAreRoundedDownToEven() {
-        val scaled = (960 / 2.25).roundToInt()
-
-        assertEquals(427, scaled)
-        assertEquals(426, evenFloor(scaled))
-        assertEquals(240, evenFloor(240))
-        assertEquals(852, evenFloor((1920 / 2.25).roundToInt()))
-    }
 }

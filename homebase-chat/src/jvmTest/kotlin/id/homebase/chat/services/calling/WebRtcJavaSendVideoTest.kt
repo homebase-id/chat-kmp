@@ -16,6 +16,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -23,7 +24,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 /** Real libwebrtc: a peer encodes H.264 at the level the other side's SDP advertises. */
 class WebRtcJavaSendVideoTest {
     @Test
-    fun theAnswerOurEngineSendsLetsThePeerEncode1080pAndTheSenderKeepsItsBitrateWindow() = runBlocking {
+    fun theAnswerOurEngineSendsLetsThePeerEncode1080pAndTheSenderKeepsItsCap() = runBlocking {
         val factory = PeerConnectionFactory(HeadlessAudioDeviceModule())
         val source = CustomVideoSource()
         val peer = factory.createPeerConnection(RTCConfiguration(), object : PeerConnectionObserver {
@@ -53,7 +54,7 @@ class WebRtcJavaSendVideoTest {
             }
             val encoding = params.encodings.single()
             assertEquals(SendVideoCap.MAX_BITRATE_BPS, encoding.maxBitrate)
-            assertEquals(SendVideoCap.MIN_BITRATE_BPS, encoding.minBitrate)
+            assertNull(encoding.minBitrate)
         } finally {
             engine.close()
             peer.close()

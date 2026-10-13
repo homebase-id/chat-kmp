@@ -6,7 +6,6 @@ import android.util.Log
 import co.touchlab.kermit.Logger
 import com.shepeliev.webrtckmp.WebRtc
 import org.koin.mp.KoinPlatformTools
-import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.Loggable
 import org.webrtc.Logging
 
@@ -17,9 +16,7 @@ internal val configureWebRtcFactory: Unit by lazy {
     val debuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     val severity = if (debuggable) Logging.Severity.LS_INFO else Logging.Severity.LS_WARNING
     val options = WebRtc.createInitializationOptionsBuilder().setInjectableLogger(WebRtcLog, severity)
-    val builder = WebRtc.createPeerConnectionFactoryBuilder(initializationOptionsBuilder = options)
-        .setVideoEncoderFactory(EvenSizeVideoEncoderFactory(DefaultVideoEncoderFactory(WebRtc.rootEglBase.eglBaseContext, true, true)))
-    WebRtc.configure(peerConnectionFactoryBuilder = builder)
+    WebRtc.configure(peerConnectionFactoryBuilder = WebRtc.createPeerConnectionFactoryBuilder(initializationOptionsBuilder = options))
     Logger.i("WebRtcKmp") { "libwebrtc logging at $severity, warnings to homebase.log" }
 }
 

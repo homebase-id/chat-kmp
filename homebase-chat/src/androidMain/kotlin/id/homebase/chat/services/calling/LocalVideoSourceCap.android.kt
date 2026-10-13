@@ -20,18 +20,13 @@ internal actual fun configureVideoSender(sender: RtpSender) {
     params.degradationPreference = RtpParameters.DegradationPreference.BALANCED
     params.encodings.forEach {
         it.maxBitrateBps = SendVideoCap.MAX_BITRATE_BPS
-        it.minBitrateBps = SendVideoCap.MIN_BITRATE_BPS
         it.maxFramerate = SendVideoCap.FPS
     }
     if (!native.setParameters(params)) Logger.w("WebRtcKmp") { "video sender rejected ${describeVideoSender(sender)}" }
 }
 
-internal actual fun scaleVideoSender(sender: RtpSender, scaleDownBy: Double) {
-    val native = sender.android
-    val params = native.parameters
-    params.encodings.forEach { it.scaleResolutionDownBy = scaleDownBy }
-    if (!native.setParameters(params)) Logger.w("WebRtcKmp") { "video sender rejected scale $scaleDownBy" }
-}
+// The quality scaler already follows the bandwidth on MediaCodec, and a scaled layer skips its 2-pixel alignment.
+internal actual fun sendResolutionLadder(sender: () -> RtpSender?): SendResolutionLadder? = null
 
 internal actual fun describeVideoSender(sender: RtpSender): String {
     val params = sender.android.parameters

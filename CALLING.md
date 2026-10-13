@@ -149,20 +149,26 @@ exercises a real ICE restart. It also proves the natives load on the host.
 
 ### Video send
 
-`SendVideoCap` bounds what a sender puts on the wire: at most 1080p30, 300 kbps to 2.5 Mbps, with BALANCED degradation
-on webrtc-kmp (webrtc-java has no degradation preference). Android asks Camera2 for 1080p; on iOS webrtc-kmp reads the
-camera formats through a freed struct and opens the camera at 4K, so `capLocalVideoSource` adapts the source output to
-1080p instead.
+`SendVideoCap` caps what a sender puts on the wire at 1080p30 and 2.5 Mbps, with BALANCED degradation on webrtc-kmp
+(webrtc-java has no degradation preference). There is no minimum bitrate, so the encoder follows the bandwidth estimate
+down to libwebrtc's own 30 kbps floor. Android asks Camera2 for 1080p; on iOS webrtc-kmp reads the camera formats through
+a freed struct and opens the camera at 4K, so `configureWebRtc` adapts the source output to 1080p instead. Desktop's
+`VideoDeviceSource` captures at its default 1280x720@30.
 
 - **H.264 level.** libwebrtc offers H.264 at level 3.1 (`42e01f`, at most 3600 macroblocks a frame) and each side
   encodes at the level the peer advertised. Every local offer and answer is raised to level 4.0 before it is set
   (`withH264SendLevel`): VideoToolbox rejects a 1080p frame at 3.1 with -12902 and, with no fallback codec, the
   stream stops for good.
-- **Resolution ladder.** libwebrtc's quality scaler only reacts to encoder QP and frame drops, so a cheap-to-encode
-  picture stays at 1080p on any bitrate. `SendResolutionLadder` reads the outbound `targetBitrate` on every 5 s stats
-  tick and sets `scaleResolutionDownBy`: 1080p from 1.5 Mbps, 720p from 800 kbps, 540p from 500 kbps, else the 480p
-  floor. It steps straight down to the rung that fits and back up one rung at a time with 25 % headroom
-  (`CallSendResolutionLadderTest`).
+- **Resolution ladder (iOS and desktop).** libwebrtc's quality scaler only reacts to encoder QP and frame drops, so a
+  cheap-to-encode picture stays at 1080p on any bitrate. `SendResolutionLadder` reads the outbound `targetBitrate` on
+  every 5 s stats tick and sets `scaleResolutionDownBy`: 1080p from 1.5 Mbps, 720p from 800 kbps, 540p from 500 kbps,
+  360p from 300 kbps, 270p from 150 kbps, else 180p. It steps straight down to the rung that fits and back up one rung at
+  a time with 25 % headroom (`CallSendResolutionLadderTest`). The scale divides whatever the quality scaler already
+  adapted the frame to, so the two compound rather than one flooring the other.
+- **Android has no ladder.** The quality scaler follows the bandwidth on MediaCodec by itself (720p to 240p and back on
+  the Redmi). A scaled layer would also skip `HardwareVideoEncoder`'s 2-pixel alignment, which only the scaler's own
+  output honours (`EncoderInfo(2, false)`): the ladder's 2.25 turned a 960x540 frame into 427x240, MediaCodec refused
+  it, and with no H.264 software fallback the stream stopped.
 - **Health logs.** Each engine logs inbound, source, outbound and candidate-pair stats every 5 s (`videoStatsLines`),
   and `watchVideoPipeline` writes camera-session interruptions and native WebRTC warnings to homebase.log.
 

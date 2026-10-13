@@ -12,9 +12,6 @@ internal object SendVideoCap {
     const val FPS = 30
     const val MAX_BITRATE_BPS = 2_500_000
 
-    // libwebrtc has no resolution floor; a floor bitrate keeps the quality scaler from dropping below ~480p for long.
-    const val MIN_BITRATE_BPS = 300_000
-
     // Level 4.0: 8192 macroblocks a frame, 245760 a second; 1080p30 needs 8160 and 244800.
     const val H264_MIN_LEVEL = 0x28
 }
@@ -32,11 +29,10 @@ internal fun withH264SendLevel(sdp: String): String = profileLevelId.replace(sdp
 
 internal fun h264Levels(sdp: String): List<Int> = profileLevelId.findAll(sdp).map { it.groupValues[3].toInt(16) }.toList()
 
-/** The largest even value not above [n]: Android's MediaCodec encoders reject an odd frame dimension. */
-internal fun evenFloor(n: Int): Int = n and 1.inv()
-
-// Short side of each rung and the target bitrate it needs; the last rung is the 480p floor.
-private val sendRungs = listOf(1080 to 1_500_000, 720 to 800_000, 540 to 500_000, 480 to 0)
+// Short side of each rung and the target bitrate it needs.
+private val sendRungs = listOf(
+    1080 to 1_500_000, 720 to 800_000, 540 to 500_000, 360 to 300_000, 270 to 150_000, 180 to 0,
+)
 
 private const val STEP_UP_HEADROOM = 1.25
 

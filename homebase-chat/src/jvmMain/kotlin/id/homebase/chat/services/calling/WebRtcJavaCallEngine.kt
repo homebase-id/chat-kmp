@@ -317,12 +317,11 @@ internal fun <T> preferredCameraOrder(devices: List<T>, name: (T) -> String): Li
 private val BUILT_IN_CAMERA_HINTS = listOf("facetime", "built-in", "integrated")
 private val VIRTUAL_CAMERA_HINTS = listOf("virtual", "obs", "snap camera", "ndi", "manycam", "mmhmm")
 
-/** Bounds the video sender to [SendVideoCap]'s bitrate window; webrtc-java exposes no degradation preference. */
+/** Caps the video sender at [SendVideoCap]; webrtc-java exposes no degradation preference. */
 internal fun configureVideoSender(sender: RTCRtpSender) {
     val params = sender.parameters
     params.encodings?.forEach {
         it.maxBitrate = SendVideoCap.MAX_BITRATE_BPS
-        it.minBitrate = SendVideoCap.MIN_BITRATE_BPS
         it.maxFramerate = SendVideoCap.FPS.toDouble()
     }
     sender.parameters = params
