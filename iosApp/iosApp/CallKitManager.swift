@@ -268,8 +268,8 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
     private var onRestore: () -> Void = {}
     private var track: RTCVideoTrack?
     private var lifecycleObservers: [NSObjectProtocol] = []
-    // A controller released while its window is up leaves that window on screen with nothing to close it.
-    private var stopping: [(AVPictureInPictureController, AVPictureInPictureVideoCallViewController?)] = []
+    // A window being stopped keeps its controller and live content until didStop, or it shows black while it animates away.
+    private var stopping: [(controller: AVPictureInPictureController, release: () -> Void)] = []
     private var firstFrameLogged = false
     private var log: (String) -> Void = { NSLog("%@", $0) }
 
@@ -356,38 +356,55 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
     private func teardown() {
         lifecycleObservers.forEach { NotificationCenter.default.removeObserver($0) }
         lifecycleObservers = []
-        controller?.canStartPictureInPictureAutomaticallyFromInline = false
-        if let controller, controller.isPictureInPictureActive {
-            stopping.append((controller, content))
-            controller.stopPictureInPicture()
+        let (renderer, track, selfView, content) = (renderer, track, selfView, content)
+        let release = {
+            if let renderer { track?.remove(renderer); renderer.delegate = nil; renderer.removeFromSuperview() }
+            selfView?.removeFromSuperview()
+            _ = content
         }
-        if let renderer { track?.remove(renderer); renderer.delegate = nil; renderer.removeFromSuperview() }
-        selfView?.removeFromSuperview()
-        selfView = nil
-        controller = nil
-        content = nil
-        renderer = nil
-        track = nil
+        // stopPictureInPicture() does nothing unless the scene is foreground-active (AVKit's canAnimatePictureInPictureTransition);
+        // releasing the controller stops it anyway, because its dealloc invalidates the window without that check.
+        if let controller, controller.isPictureInPictureActive, UIApplication.shared.applicationState == .active {
+            controller.canStartPictureInPictureAutomaticallyFromInline = false
+            stopping.append((controller, release))
+            controller.stopPictureInPicture()
+        } else {
+            if let controller {
+                weak var released = controller
+                DispatchQueue.main.async { [self] in log("pip controller released=\(released == nil)") }
+            }
+            release()
+        }
+        self.selfView = nil
+        self.controller = nil
+        self.content = nil
+        self.renderer = nil
+        self.track = nil
     }
 
-    func pictureInPictureControllerWillStartPictureInPicture(_ c: AVPictureInPictureController) { log("pip will start") }
-    func pictureInPictureControllerDidStartPictureInPicture(_ c: AVPictureInPictureController) { log("pip started") }
+    private func event(_ name: String) {
+        log("pip \(name) main=\(Thread.isMainThread) appState=\(UIApplication.shared.applicationState.rawValue) stopping=\(stopping.count)")
+    }
+
+    func pictureInPictureControllerWillStartPictureInPicture(_ c: AVPictureInPictureController) { event("will start") }
+    func pictureInPictureControllerDidStartPictureInPicture(_ c: AVPictureInPictureController) { event("started") }
+    func pictureInPictureControllerWillStopPictureInPicture(_ c: AVPictureInPictureController) { event("will stop") }
     func pictureInPictureController(_ c: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
-        log("pip failed to start: \(error)")
+        event("failed to start: \(error)")
     }
     func pictureInPictureController(
         _ c: AVPictureInPictureController,
         restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
     ) {
-        log("pip restore requested")
+        event("restore requested")
         onRestore()
         completionHandler(true)
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) {
-        let wasStopping = stopping.contains { $0.0 === c }
-        stopping.removeAll { $0.0 === c }
-        log("pip stopped\(wasStopping ? " after teardown" : "")")
+        event("stopped")
+        stopping.filter { $0.controller === c }.forEach { $0.release() }
+        stopping.removeAll { $0.controller === c }
     }
 
     func videoView(_ videoView: RTCVideoRenderer, didChangeVideoSize size: CGSize) {
