@@ -57,9 +57,11 @@ class CallHistoryServiceTest {
         uniqueId: Uuid = Uuid.random(),
         dataType: Int = ChatProtocol.ChatCallEventMessageDataType,
         fileState: String = "active",
+        fileId: Uuid = Uuid.random(),
+        updatedMs: Long = userDateMs,
     ): HomebaseFile = OdinSystemSerializer.deserialize(
         """{
-            "fileId": "${Uuid.random()}",
+            "fileId": "$fileId",
             "driveId": "${f.chatDriveId}",
             "fileState": "$fileState",
             "fileSystemType": "standard",
@@ -67,7 +69,7 @@ class CallHistoryServiceTest {
             "keyHeader": {"iv": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0], "aesKey": {"bytes": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}},
             "fileMetadata": {
                 "globalTransitId": "${Uuid.random()}",
-                "created": $userDateMs, "updated": $userDateMs, "transitCreated": $userDateMs, "transitUpdated": 0,
+                "created": $userDateMs, "updated": $updatedMs, "transitCreated": $userDateMs, "transitUpdated": 0,
                 "isEncrypted": false,
                 "senderOdinId": "$author", "originalAuthor": "$author",
                 "appData": {
@@ -261,6 +263,30 @@ class CallHistoryServiceTest {
             f.eventBus.emit(BackendEvent.DataEvent.BatchReceived(f.chatDriveId, listOf(
                 header(f, convo, base + 200_000, descriptor(CallOutcome.NoAnswer), "alice.test"),
             )))
+            assertEquals(1, svc.missedCount.first { it == 1 })
+        }
+    }
+
+    @Test
+    fun silentDriveSync_stoppedRequeriesAddsMissedAndDropsSoftDeleted() = runTest {
+        ChatMessageSenderServiceTestFixture().use { f ->
+            f.build(backgroundScope)
+            val convo = f.seedConversation(others = listOf("alice.test"))
+            val kept = seedCall(f, convo, base + 1_000, CallOutcome.Completed)
+            val doomedFile = Uuid.random()
+            val doomed = Uuid.random()
+            seed(f, header(f, convo, base + 2_000, descriptor(CallOutcome.Completed), "alice.test", doomed, fileId = doomedFile))
+            val svc = service(f, nowMs = { base + 100_000 })
+            svc.refresh()
+            assertEquals(2, svc.entries.value.size)
+            assertEquals(0, svc.missedCount.value)
+
+            val missed = seedCall(f, convo, base + 3_000, CallOutcome.NoAnswer)
+            val doomedHeader = header(f, convo, base + 2_000, descriptor(CallOutcome.Completed), "alice.test", doomed, fileState = "deleted", fileId = doomedFile, updatedMs = base + 50_000)
+            seed(f, doomedHeader)
+            f.eventBus.emit(BackendEvent.DriveEvent.Stopped(f.chatDriveId, 2, BackendEvent.DriveResult.Completed))
+
+            assertEquals(listOf(missed, kept), svc.entries.first { l -> l.any { it.messageId == missed } }.map { it.messageId })
             assertEquals(1, svc.missedCount.first { it == 1 })
         }
     }

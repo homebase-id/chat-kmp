@@ -117,6 +117,10 @@ class CallHistoryService(
                     is BackendEvent.DataEvent.BatchReceived -> if (event.driveId == chatDrive) {
                         onBatch(event.batchData)
                     }
+                    // DriveSync lands rows silently (no BatchReceived), so re-query once it stops.
+                    is BackendEvent.DriveEvent.Stopped -> if (event.driveId == chatDrive && event.totalCount > 0) {
+                        scope.launch { runCatchingNonCancel { resync() } }
+                    }
                     else -> {}
                 }
             }
@@ -139,6 +143,17 @@ class CallHistoryService(
             } finally {
                 _isLoading.value = false
             }
+        }
+    }
+
+    private suspend fun resync() {
+        lock.withLock {
+            val page = fetchPage(null, maxOf(pageSize, byMessageId.size))
+            byMessageId.clear()
+            page.entries.forEach { byMessageId[it.messageId] = it }
+            cursor = page.cursor
+            _hasMore.value = page.hasMore
+            publish()
         }
     }
 
@@ -166,12 +181,12 @@ class CallHistoryService(
 
     private class Page(val entries: List<CallHistoryEntry>, val cursor: QueryBatchCursor, val hasMore: Boolean)
 
-    private suspend fun fetchPage(from: QueryBatchCursor?): Page {
+    private suspend fun fetchPage(from: QueryBatchCursor?, size: Int = pageSize): Page {
         val c = credentialsManager.requireActiveCredentials()
         val result = QueryBatch(c.getIdentityId()).queryBatchAsync(
             dbm = dbm,
             driveId = chatDrive,
-            noOfItems = pageSize,
+            noOfItems = size,
             cursor = from,
             sortOrder = QueryBatchSortOrder.NewestFirst,
             sortField = QueryBatchSortField.UserDate,
