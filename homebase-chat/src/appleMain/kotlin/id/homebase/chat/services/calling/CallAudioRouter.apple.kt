@@ -11,6 +11,7 @@ import platform.AVFAudio.AVAudioSessionPortDescription
 import platform.AVFAudio.AVAudioSessionPortHeadphones
 import platform.AVFAudio.AVAudioSessionPortOverrideNone
 import platform.AVFAudio.AVAudioSessionPortOverrideSpeaker
+import platform.AVFAudio.AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
 import platform.AVFAudio.currentRoute
 import platform.AVFAudio.setActive
 
@@ -38,6 +39,6 @@ actual class CallAudioRouter actual constructor() {
     }
 
     actual fun stop() {
-        session.setActive(false, error = null)
+        session.setActive(false, withOptions = AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation, error = null)
     }
 }

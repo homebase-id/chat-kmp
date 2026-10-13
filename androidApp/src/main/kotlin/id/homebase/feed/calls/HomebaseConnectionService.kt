@@ -123,7 +123,8 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
                 Bundle().apply { putBundle(TelecomManager.EXTRA_INCOMING_CALL_EXTRAS, extras) },
             )
             true
-        } catch (e: SecurityException) {
+        } catch (e: RuntimeException) {
+            // SecurityException, or IllegalArgumentException for an unregistered account; the caller's notification still rings.
             Logger.w(e, tag = TAG) { "telecom addNewIncomingCall refused call=$callId" }
             false
         }
