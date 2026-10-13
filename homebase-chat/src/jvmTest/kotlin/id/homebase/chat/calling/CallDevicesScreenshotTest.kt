@@ -22,6 +22,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -117,7 +119,7 @@ class CallDevicesScreenshotTest {
     fun topBarMenuListsEveryKindWithTheSelectionAndSystemDefaultMarked() {
         for (dark in listOf(false, true)) runDesktopComposeUiTest(960, 640) {
             show(dark, state(), menu = MediaDeviceKind.entries)
-            for (text in listOf("MacBook Pro Microphone (System default)", "USB Podcast Mic", "MacBook Pro Speakers (System default)", "AirPods Pro", "FaceTime HD Camera", "Studio Display Camera")) {
+            for (text in listOf("MacBook Pro Microphone", "USB Podcast Mic", "MacBook Pro Speakers", "AirPods Pro", "FaceTime HD Camera", "Studio Display Camera", "System default")) {
                 assertTrue(onAllNodes(hasText(text), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(), "menu shows $text")
             }
             save("devices-menu", dark)
@@ -125,13 +127,35 @@ class CallDevicesScreenshotTest {
     }
 
     @Test
-    fun micChevronOpensOnlyMicrophones() {
+    fun micChevronOpensTheAudioMenu() {
         for (dark in listOf(false, true)) runDesktopComposeUiTest(960, 640) {
-            show(dark, state(), menu = listOf(MediaDeviceKind.Mic), menuAlign = Alignment.BottomStart, menuPadding = PaddingValues(start = 330.dp, bottom = 110.dp))
+            show(dark, state(), menu = listOf(MediaDeviceKind.Mic, MediaDeviceKind.Speaker), menuAlign = Alignment.BottomStart, menuPadding = PaddingValues(start = 330.dp, bottom = 110.dp))
             assertTrue(onAllNodes(hasText("USB Podcast Mic"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
-            assertEquals(0, onAllNodes(hasText("AirPods Pro"), useUnmergedTree = true).fetchSemanticsNodes().size)
+            assertTrue(onAllNodes(hasText("AirPods Pro"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+            assertEquals(0, onAllNodes(hasText("Studio Display Camera"), useUnmergedTree = true).fetchSemanticsNodes().size)
             save("mic-chevron-menu", dark)
         }
+    }
+
+    @Test
+    fun pickersRenderInACompactAndALargeWindow() {
+        for (dark in listOf(false, true)) {
+            runDesktopComposeUiTest(480, 560) {
+                show(dark, state(micLevel = 0.4f), menu = MediaDeviceKind.entries, menuPadding = PaddingValues(top = 64.dp, end = 12.dp))
+                save("devices-menu-compact", dark)
+            }
+            runDesktopComposeUiTest(1440, 900) {
+                show(dark, state(micLevel = 0.4f), menu = listOf(MediaDeviceKind.Mic, MediaDeviceKind.Speaker), menuAlign = Alignment.BottomCenter, menuPadding = PaddingValues(end = 120.dp, bottom = 120.dp))
+                save("mic-chevron-menu-large", dark)
+            }
+        }
+    }
+
+    @Test
+    fun chevronsAnnounceTheDeviceInUse() = runDesktopComposeUiTest(960, 640) {
+        show(false, state())
+        assertTrue(onAllNodes(hasContentDescription("Microphone") and hasClickAction() and SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "USB Podcast Mic")).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(onAllNodes(hasContentDescription("Camera") and hasClickAction() and SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "FaceTime HD Camera")).fetchSemanticsNodes().isNotEmpty())
     }
 
     @Test

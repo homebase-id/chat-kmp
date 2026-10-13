@@ -178,6 +178,7 @@ import id.homebase.chat.services.calling.MediaDeviceKind
 import id.homebase.chat.services.calling.VideoHandle
 import id.homebase.resources.MR
 import id.homebase.resources.call_devices
+import id.homebase.resources.call_device_current
 import id.homebase.resources.call_accept
 import id.homebase.resources.call_accept_audio_from
 import id.homebase.resources.call_accept_audio_label
@@ -1120,8 +1121,9 @@ private fun CallToggle(
     chevron: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     ToggleColumn(label, modifier) {
-        DesktopTooltip(tooltip ?: description) {
+        // The chevron sits beside the tooltip anchor, not inside it, so hovering it shows only its own tip.
         Box(Modifier.fillMaxWidth()) {
+        DesktopTooltip(tooltip ?: description) {
         FilledTonalIconToggleButton(
             checked = checked,
             onCheckedChange = onCheckedChange,
@@ -1155,8 +1157,8 @@ private fun CallToggle(
                 ),
             )
         }
-        chevron?.invoke(this)
         }
+        chevron?.invoke(this)
         }
     }
 }
@@ -1164,19 +1166,32 @@ private fun CallToggle(
 @Composable
 private fun BoxScope.DeviceChevron(ui: CallUiState, kind: MediaDeviceKind, actions: CallScreenActions) {
     var open by remember { mutableStateOf(false) }
+    // Mic and speaker share one audio menu, as Meet and Zoom do, so the output is one click from the dock too.
+    val kinds = if (kind == MediaDeviceKind.Mic) listOf(MediaDeviceKind.Mic, MediaDeviceKind.Speaker) else listOf(kind)
     val description = stringResource(kind.label())
-    Box(Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 6.dp)) {
-        Box(
-            Modifier.size(24.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.85f))
-                .clickable(role = Role.Button, onClickLabel = description) { open = true }
-                .focusRing(CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Default.ArrowDropDown, contentDescription = description, modifier = Modifier.size(20.dp))
+    val current = currentDeviceName(ui, kind)
+    val tip = kinds.mapNotNull { k -> currentDeviceName(ui, k)?.let { k to it } }
+        .map { (k, name) -> stringResource(MR.string.call_device_current, stringResource(k.label()), name) }
+        .joinToString("\n")
+        .ifEmpty { description }
+    val container = if (open) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.9f)
+    val content = if (open) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+    Box(Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 4.dp)) {
+        DesktopTooltip(tip) {
+            Box(
+                Modifier.size(24.dp)
+                    .clip(CircleShape)
+                    .background(container)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                    .clickable(role = Role.Button, onClickLabel = description) { open = true }
+                    .focusRing(CircleShape)
+                    .semantics { if (current != null) stateDescription = current },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.ArrowDropDown, contentDescription = description, tint = content, modifier = Modifier.size(20.dp))
+            }
         }
-        CallDeviceMenu(open, { open = false }, ui, listOf(kind), actions.selectDevice)
+        CallDeviceMenu(open, { open = false }, ui, kinds, actions.selectDevice)
     }
 }
 

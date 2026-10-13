@@ -2822,7 +2822,8 @@
     <string name="call_device_microphone">Microphone</string>
     <string name="call_device_speaker">Speaker</string>
     <string name="call_device_camera">Camera</string>
-    <string name="call_device_system_default">%1$s (System default)</string>
+    <string name="call_device_system_default">System default</string>
+    <string name="call_device_current">%1$s: %2$s</string>
     <string name="call_device_disconnected">%1$s disconnected, using %2$s</string>
     <string name="call_tooltip_shortcut">%1$s (%2$s)</string>
     <string name="call_key_escape">Esc</string>
