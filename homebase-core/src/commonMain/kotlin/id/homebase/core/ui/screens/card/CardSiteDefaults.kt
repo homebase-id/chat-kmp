@@ -26,7 +26,7 @@ internal fun cardDesignForTheme(themeId: String?): String = when (themeId) {
     "555" -> CardDesign.POSTER
     "777" -> CardDesign.COLLAGE
     "888" -> CardDesign.DOSSIER
-    else -> CardDesign.BOARD
+    else -> CardDesign.LINKS
 }
 
 /** The homepage Theme attribute from a `sitedata.json` root; null when it has none. */

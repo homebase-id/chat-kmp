@@ -2032,9 +2032,9 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun theDesignPickerOffersFiveDesignsAndLinksIsCustomisable() {
+    fun theDesignPickerOffersFiveDesignsWithSimpleFirstAndCustomisable() {
         assertEquals(5, CardDesign.all.size)
-        assertEquals(CardDesign.LINKS, CardDesign.all.last())
+        assertEquals(CardDesign.LINKS, CardDesign.all.first())
         val spec = CardDesignSpecs.of(CardDesign.LINKS)!!
         assertEquals(CardOption.entries.toSet(), spec.options)
         assertEquals(1, spec.portraitSlots)

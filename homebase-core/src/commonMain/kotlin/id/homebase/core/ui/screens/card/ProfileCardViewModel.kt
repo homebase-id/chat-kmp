@@ -88,7 +88,7 @@ private val INTRO_READY_TIMEOUT = 5.seconds
 class CardCover(val design: String, val image: ImageBitmap)
 
 data class ProfileCardUiState(
-    val savedDesign: String = CardDesign.BOARD,
+    val savedDesign: String = CardDesign.LINKS,
     val previewDesign: String? = null,
     val isSavingDesign: Boolean = false,
     val loadFailed: Boolean = false,

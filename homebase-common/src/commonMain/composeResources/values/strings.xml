@@ -2366,7 +2366,7 @@
     <string name="profile_card_design_board">Board</string>
     <string name="profile_card_design_collage">Collage</string>
     <string name="profile_card_design_dossier">Dossier</string>
-    <string name="profile_card_design_links">Links</string>
+    <string name="profile_card_design_links">Simple</string>
     <string name="profile_card_error">Couldn't show your card.</string>
     <string name="profile_card_share_failed">Couldn't create the card image.</string>
     <string name="profile_card_unsupported">Your Homebase server doesn't support profile cards yet.</string>

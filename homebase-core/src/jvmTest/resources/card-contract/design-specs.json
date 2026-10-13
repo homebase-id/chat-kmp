@@ -1,12 +1,33 @@
 {
     "ids": [
+        "links",
         "poster",
         "board",
         "collage",
-        "dossier",
-        "links"
+        "dossier"
     ],
     "specs": {
+        "links": {
+            "options": [
+                "ACCENT",
+                "BLOCK_ORDER",
+                "COLOURS",
+                "DISPLAY_FONT",
+                "PORTRAIT_SHAPE",
+                "SOCIALS_STYLE",
+                "TEXT_FONT"
+            ],
+            "portraitSlots": 1,
+            "schemes": [
+                "cloud",
+                "slate",
+                "mint",
+                "peach",
+                "lavender",
+                "navy",
+                "lemon"
+            ]
+        },
         "poster": {
             "options": [
                 "BLOCK_ORDER",
@@ -85,27 +106,6 @@
                 "paper",
                 "blueprint",
                 "sand"
-            ]
-        },
-        "links": {
-            "options": [
-                "ACCENT",
-                "BLOCK_ORDER",
-                "COLOURS",
-                "DISPLAY_FONT",
-                "PORTRAIT_SHAPE",
-                "SOCIALS_STYLE",
-                "TEXT_FONT"
-            ],
-            "portraitSlots": 1,
-            "schemes": [
-                "cloud",
-                "slate",
-                "mint",
-                "peach",
-                "lavender",
-                "navy",
-                "lemon"
             ]
         }
     },
@@ -188,6 +188,15 @@
         }
     },
     "schemeGrounds": {
+        "links": [
+            "#F1F3F6",
+            "#1B1F24",
+            "#DDF0E6",
+            "#FBE3D6",
+            "#E7E3F7",
+            "#14213D",
+            "#F8F2C8"
+        ],
         "poster": [
             "#0F1626",
             "#2A0E14",
@@ -221,15 +230,6 @@
             "#F4F1EA",
             "#12355B",
             "#E8DCC6"
-        ],
-        "links": [
-            "#F1F3F6",
-            "#1B1F24",
-            "#DDF0E6",
-            "#FBE3D6",
-            "#E7E3F7",
-            "#14213D",
-            "#F8F2C8"
         ]
     }
 }
