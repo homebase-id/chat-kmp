@@ -749,6 +749,8 @@ fun AppNavHost(
                     navController.currentBackStack.firstContaining {
                         it.destination.hasRoute(Route.ChatList::class)
                     }
+                    // The bar only offers Email when this host runs mail; a typed link mustn't bypass that.
+                    if (event.route == Route.Email && serverSupportsMail != true) return@collect
                     navController.openApp(event.route, tabRoutes)
                 }
             }

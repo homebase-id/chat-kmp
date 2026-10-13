@@ -10,6 +10,8 @@ import androidx.navigation.compose.rememberNavController
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
 
 @OptIn(ExperimentalTestApi::class)
 class AppLinkTest {
@@ -19,7 +21,7 @@ class AppLinkTest {
         assertEquals(AppLink.Filesync, AppLink.fromSlug("filesync"))
         assertEquals(AppLink.Filesync, AppLink.fromSlug("#filesync"))
         assertEquals(AppLink.Filesync, AppLink.fromSlug("#/FileSync/"))
-        assertEquals(AppLink.Contacts, AppLink.fromSlug("contacts"))
+        assertEquals(AppLink.Contacts, AppLink.fromSlug("contactbook"))
     }
 
     @Test
@@ -36,6 +38,14 @@ class AppLinkTest {
         assertEquals(slugs.size, slugs.toSet().size)
         val routes = AppLink.entries.map { it.route::class }
         assertEquals(routes.size, routes.toSet().size)
+    }
+
+    @Test
+    fun slugIsTheRoutesSerialName() {
+        for (link in AppLink.entries) {
+            val json = Json.encodeToString(Route.serializer(), link.route)
+            assertTrue(json.contains("\"type\":\"${link.slug}\""), "${link.name}: $json")
+        }
     }
 
     @Test
